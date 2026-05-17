@@ -160,6 +160,47 @@ BOEOF
         cp -f /root/genesi-calamares-config-full/etc/calamares/settings.conf /usr/share/calamares/settings_online.conf
         echo ">>> Calamares settings.conf copied to /etc and /usr/share (overwritten)"
     fi
+
+    # Defense in depth: strip every shellprocess@btrfs_snapshot reference from
+    # *any* settings*.conf the system might still load. Genesi's settings.conf
+    # never schedules that step, but if the cp above is silently no-op'd (race,
+    # missing dir, etc.) and cachyos-calamares-next's bundled settings.conf
+    # wins the lookup, we'd still run shellprocess@btrfs_snapshot -> dontChroot
+    # false -> call /etc/calamares/scripts/btrfs-installation-snapshot inside a
+    # chroot that doesn't ship it -> exit 127 -> install aborts at job 45/46
+    # (paste.cachyos.org/p/4bf3a85.log, 2026-05-17 12:12:36).
+    find /etc/calamares /usr/share/calamares -maxdepth 2 -type f -name 'settings*.conf' \
+        -exec sed -i '/shellprocess@btrfs_snapshot/d' {} + 2>/dev/null || true
+    echo ">>> Stripped any lingering shellprocess@btrfs_snapshot from settings*.conf"
+
+    # Also re-inline any shellprocess_btrfs_snapshot.conf that still points at
+    # the external script. The override block above writes the inline version
+    # to the two known module dirs, but if a future cachyos-calamares-next
+    # update drops the same conf at a third path (e.g. /usr/lib/calamares/...),
+    # find every copy and re-write it with the no-op-friendly inline command.
+    find / -xdev -type f -name 'shellprocess_btrfs_snapshot.conf' 2>/dev/null \
+        | while read -r f; do
+        if grep -q '/etc/calamares/scripts/btrfs-installation-snapshot' "$f" 2>/dev/null; then
+            cat > "$f" <<'BTRFSCONFDEFENSE'
+---
+# Genesi OS defense-in-depth re-inline (customize_airootfs.sh).
+dontChroot: false
+timeout: 60
+script:
+    - command: |
+        set -u
+        ROOT_FS="$(findmnt -no FSTYPE / 2>/dev/null || true)"
+        if [ "${ROOT_FS:-}" = "btrfs" ] && command -v btrfs >/dev/null 2>&1; then
+            btrfs subvolume snapshot -r / /.snapshots/@initial-install 2>/dev/null || true
+        fi
+        exit 0
+
+i18n:
+    name: "Creating Btrfs installation snapshot"
+BTRFSCONFDEFENSE
+            echo ">>> Re-inlined $f (was still referencing the external script)"
+        fi
+    done
     
     # Copy Python modules (overwrite)
     if [ -d /root/genesi-calamares-config-full/usr/lib/calamares ]; then
