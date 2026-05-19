@@ -119,6 +119,9 @@ main() {
 EOF
 
     sudo cp "/usr/share/calamares/settings_${mode}.conf" /etc/calamares/settings.conf
+    # Genesi: neutralize shellprocess@btrfs_snapshot before Calamares starts.
+    # See /usr/local/bin/genesi-btrfs-cleanup.sh for rationale.
+    sudo /usr/local/bin/genesi-btrfs-cleanup.sh
     exec pkexec-wrapper calamares -D6 >> $log
 }
 
