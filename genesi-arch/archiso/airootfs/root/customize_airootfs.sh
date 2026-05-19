@@ -105,26 +105,14 @@ BTRFSCONF
         fi
     fi
 
-    # Install genesi-settings with --overwrite BEFORE shellprocess@copy_genesi
-    # runs, so pacman takes ownership of the files first. This prevents
-    # "conflicting files" errors during packages@online.
-    if [ -f /etc/calamares/modules/shellprocess-before-online.conf ]; then
-        cat > /etc/calamares/modules/shellprocess-before-online.conf <<'BOEOF'
----
-# Runs on the LIVE ISO (dontChroot: true).
-# 1. Guarantees [genesi] is in /etc/pacman.conf so pacstrap can resolve
-#    genesi-* packages during installation.
-# 2. Pre-installs genesi-settings with --overwrite to take ownership of
-#    files before shellprocess@copy_genesi runs, preventing conflicts.
-dontChroot: true
-timeout: 600
-script:
-    - "-grep -q '^\\[genesi\\]' /etc/pacman.conf || printf '\\n[genesi]\\nSigLevel = Optional TrustAll\\nServer = https://raw.githubusercontent.com/zFreshy/GenesiOS/main/genesi-arch/repo/x86_64\\n' >> /etc/pacman.conf"
-    - "-pacman -Sy --noconfirm"
-    - "-pacman --root ${ROOT} --config /etc/pacman.conf -Sy --noconfirm"
-    - "-pacman --root ${ROOT} --config /etc/pacman.conf -S --noconfirm --needed --overwrite='*' genesi-settings || true"
-BOEOF
-        echo ">>> Rewrote shellprocess-before-online.conf: ensure [genesi] repo + pre-install genesi-settings with --overwrite"
+    # Belt-and-suspenders: pre-seed [genesi] into the LIVE ISO's
+    # /etc/pacman.conf at build time. genesi-prepare-pacman.sh copies this
+    # file into the target before pacstrap, so the target inherits [genesi]
+    # from boot. shellprocess-before-online.conf re-asserts it after pacstrap
+    # using @@ROOT@@ in case the target's pacman.conf was clobbered.
+    if ! grep -q '^\[genesi\]' /etc/pacman.conf 2>/dev/null; then
+        printf '\n[genesi]\nSigLevel = Optional TrustAll\nServer = https://raw.githubusercontent.com/zFreshy/GenesiOS/main/genesi-arch/repo/x86_64\n' >> /etc/pacman.conf
+        echo ">>> Pre-seeded [genesi] repo into live ISO /etc/pacman.conf"
     fi
 
     # genesi-calamares-branding ships /usr/share/calamares/branding/genesi/*,
