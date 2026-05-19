@@ -118,7 +118,18 @@ main() {
 ########## System: $SYSTEM
 EOF
 
-    sudo cp "/usr/share/calamares/settings_${mode}.conf" /etc/calamares/settings.conf
+    # Genesi: prefer the Genesi settings.conf when present. It schedules
+    # shellprocess@copy_genesi (branding/wallpapers/theme into the target)
+    # which the upstream settings_${mode}.conf does NOT. If Genesi's wasn't
+    # deployed (defensive), fall back to upstream.
+    if [ -f /usr/share/calamares/settings.conf ] \
+       && grep -q 'shellprocess@copy_genesi' /usr/share/calamares/settings.conf; then
+        sudo cp /usr/share/calamares/settings.conf /etc/calamares/settings.conf
+        echo ">>> Using Genesi settings.conf (with copy_genesi)"
+    else
+        sudo cp "/usr/share/calamares/settings_${mode}.conf" /etc/calamares/settings.conf
+        echo ">>> Fell back to upstream settings_${mode}.conf"
+    fi
     # Genesi: neutralize shellprocess@btrfs_snapshot before Calamares starts.
     # See /usr/local/bin/genesi-btrfs-cleanup.sh for rationale.
     sudo /usr/local/bin/genesi-btrfs-cleanup.sh
