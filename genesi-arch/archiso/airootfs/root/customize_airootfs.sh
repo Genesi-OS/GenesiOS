@@ -604,21 +604,39 @@ pacman -S --noconfirm --needed \
     kwidgetsaddons kwindowsystem frameworkintegration kconfigwidgets \
     >/dev/null 2>&1 || true
 
-git clone --depth 1 https://github.com/paulmcauley/klassy.git /tmp/klassy
+KLASSY_LOG=/var/log/genesi-klassy-build.log
+git clone --depth 1 https://github.com/paulmcauley/klassy.git /tmp/klassy 2>&1 \
+    | tee -a "$KLASSY_LOG"
 if [ -d /tmp/klassy ]; then
     cd /tmp/klassy
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
-        -DBUILD_QT5=OFF -DBUILD_QT6=ON >/dev/null 2>&1
-    cmake --build build -j"$(nproc)" >/dev/null 2>&1
-    cmake --install build >/dev/null 2>&1
+    # Log full build output. Silencing this is why broken Klassy builds
+    # used to ship in ISOs unnoticed (no rounded corners on installed
+    # systems). Dump the tail of the log inline if any step fails so the
+    # ISO build log surfaces the failure.
+    if ! cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+              -DBUILD_QT5=OFF -DBUILD_QT6=ON >>"$KLASSY_LOG" 2>&1; then
+        echo ">>> KLASSY cmake configure FAILED — tail of $KLASSY_LOG:"
+        tail -30 "$KLASSY_LOG"
+    elif ! cmake --build build -j"$(nproc)" >>"$KLASSY_LOG" 2>&1; then
+        echo ">>> KLASSY cmake build FAILED — tail of $KLASSY_LOG:"
+        tail -30 "$KLASSY_LOG"
+    elif ! cmake --install build >>"$KLASSY_LOG" 2>&1; then
+        echo ">>> KLASSY cmake install FAILED — tail of $KLASSY_LOG:"
+        tail -30 "$KLASSY_LOG"
+    fi
     cd /
     rm -rf /tmp/klassy
     if [ -f /usr/lib/qt6/plugins/org.kde.kdecoration2/klassydecoration.so ] \
        || [ -f /usr/lib/qt6/plugins/org.kde.kdecoration3/klassydecoration.so ]; then
         echo ">>> Klassy installed successfully"
+        ls -la /usr/lib/qt6/plugins/org.kde.kdecoration2/klassy* 2>/dev/null
+        ls -la /usr/lib/qt6/plugins/org.kde.kdecoration3/klassy* 2>/dev/null
     else
         echo ">>> WARNING: Klassy plugin not found after install"
-        find /usr/lib -name 'klassy*' 2>/dev/null | head -5
+        echo ">>> Files matching klassy* anywhere under /usr/lib:"
+        find /usr/lib -name 'klassy*' 2>/dev/null | head -20
+        echo ">>> Last 50 lines of $KLASSY_LOG:"
+        tail -50 "$KLASSY_LOG"
     fi
 else
     echo ">>> WARNING: Failed to clone Klassy repository (skipping)."
