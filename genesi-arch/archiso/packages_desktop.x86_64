@@ -21,6 +21,15 @@ cachyos-mirrorlist
 chwd
 genesi-update
 genesi-channel
+# Branding + theming packages from the [genesi] repo. Without these the
+# live ISO ships without /usr/share/genesi/skel-override, the Welcome app,
+# Calamares branding, etc. — shellprocess@copy_genesi has no source to
+# copy from and the installed system ends up vanilla Plasma.
+genesi-settings
+genesi-calamares-branding
+genesi-welcome
+genesi-ai-mode
+genesi-kde-settings
 ckbcomp
 clonezilla
 cloud-init
