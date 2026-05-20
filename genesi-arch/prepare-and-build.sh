@@ -77,24 +77,18 @@ sudo cp -r "../genesi-calamares-config-full" "$SCRIPT_DIR/archiso/airootfs/root/
 echo "✅ Genesi Calamares config copied to /root/ (will be applied by customize_airootfs.sh)"
 echo ""
 
-# Step 2.5: Copy Genesi Settings (KDE theme, wallpapers, etc) to airootfs
-echo "📋 Copying Genesi Settings to airootfs..."
-
-# Copy genesi-settings-full to /usr/share/genesi in airootfs
-sudo mkdir -p "$SCRIPT_DIR/archiso/airootfs/usr/share/genesi/"
-sudo rm -rf "$SCRIPT_DIR/archiso/airootfs/usr/share/genesi/skel-override"
-sudo cp -r "../genesi-settings-full/usr/share/genesi/skel-override" "$SCRIPT_DIR/archiso/airootfs/usr/share/genesi/"
-
-# Copy wallpapers
-sudo mkdir -p "$SCRIPT_DIR/archiso/airootfs/usr/share/wallpapers/genesi/"
-sudo cp -r "../genesi-settings-full/usr/share/wallpapers/genesi/"* "$SCRIPT_DIR/archiso/airootfs/usr/share/wallpapers/genesi/" 2>/dev/null || true
-
-# Copy theme applicator script
-sudo mkdir -p "$SCRIPT_DIR/archiso/airootfs/usr/bin/"
-sudo cp "../genesi-settings-full/usr/bin/genesi-apply-theme.sh" "$SCRIPT_DIR/archiso/airootfs/usr/bin/" 2>/dev/null || true
-sudo chmod +x "$SCRIPT_DIR/archiso/airootfs/usr/bin/genesi-apply-theme.sh" 2>/dev/null || true
-
-echo "✅ Genesi Settings copied"
+# Step 2.5: (REMOVED) Genesi Settings used to be copied manually here from
+# the genesi-settings-full/ submodule. That was needed when genesi-settings
+# wasn't in packages_desktop.x86_64. Now that it IS in the package list,
+# pacstrap installs the package -> mkarchiso saw the manually-copied files
+# as pre-existing -> "conflicting files" abort. Drop the manual cp; let
+# pacstrap do its thing. The same applies to wallpapers + apply-theme.sh.
+# Files now provided by:
+#   - genesi-settings package (skel-override, wallpapers, apply-theme.sh)
+#   - genesi-welcome package
+#   - genesi-ai-mode package
+#   - genesi-calamares-branding package
+echo "📋 (Genesi Settings now installed via pacstrap from [genesi] repo)"
 echo ""
 
 # Step 2.6: Create CachyOS mirrorlist files in airootfs
