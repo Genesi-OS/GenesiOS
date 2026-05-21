@@ -648,6 +648,40 @@ else
     echo ">>> WARNING: Failed to clone Klassy repository (skipping)."
 fi
 
+# ============================================================
+# 11. Build Darkly Plasma theme + Qt6 style from source
+# ============================================================
+# Darkly provides glass effects for Plasma popups/menu (Kickoff, system
+# tray, notifications) and the Qt6 widget style for application chrome.
+# It's not on official Arch repos; we build from upstream like Klassy.
+# Bali10050/Darkly's install.sh handles cmake+install internally.
+echo ">>> Building Darkly Plasma theme + Qt6 style from source..."
+DARKLY_LOG=/var/log/genesi-darkly-build.log
+git clone --depth 1 https://github.com/Bali10050/Darkly.git /tmp/Darkly 2>&1 \
+    | tee -a "$DARKLY_LOG"
+if [ -d /tmp/Darkly ]; then
+    cd /tmp/Darkly
+    # install.sh runs cmake configure + build + install for Qt6 variant
+    if ! ./install.sh >>"$DARKLY_LOG" 2>&1; then
+        echo ">>> DARKLY install.sh FAILED — tail of $DARKLY_LOG:"
+        tail -40 "$DARKLY_LOG"
+    fi
+    cd /
+    rm -rf /tmp/Darkly
+    # Verify: the Plasma theme should be in /usr/share/plasma/desktoptheme/darkly
+    if [ -d /usr/share/plasma/desktoptheme/darkly ]; then
+        echo ">>> Darkly Plasma theme installed at /usr/share/plasma/desktoptheme/darkly"
+    else
+        echo ">>> WARNING: Darkly Plasma theme NOT found after install"
+        echo ">>> Files matching darkly* under /usr/share/plasma:"
+        find /usr/share/plasma -iname 'darkly*' 2>/dev/null | head -10
+        echo ">>> Last 50 lines of $DARKLY_LOG:"
+        tail -50 "$DARKLY_LOG"
+    fi
+else
+    echo ">>> WARNING: Failed to clone Darkly repository (skipping)."
+fi
+
 echo ">>> Genesi OS: Branding applied successfully!"
 
 echo ""
