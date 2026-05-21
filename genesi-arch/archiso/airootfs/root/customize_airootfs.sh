@@ -673,10 +673,19 @@ git clone --depth 1 https://github.com/Bali10050/Darkly.git /tmp/Darkly 2>&1 \
     | tee -a "$DARKLY_LOG"
 if [ -d /tmp/Darkly ]; then
     cd /tmp/Darkly
-    # install.sh runs cmake configure + build + install for Qt6 variant
-    if ! ./install.sh >>"$DARKLY_LOG" 2>&1; then
-        echo ">>> DARKLY install.sh FAILED — tail of $DARKLY_LOG:"
-        tail -40 "$DARKLY_LOG"
+    # CRITICAL: install.sh with no argument tries to build BOTH Qt5 and Qt6.
+    # Qt5 cmake fails first (we don't ship Qt5 KDE Frameworks in the chroot),
+    # and the script bails before reaching the Qt6 build. The 2026-05-21 ISO
+    # shipped without Darkly in Application Style for exactly this reason.
+    # Pass `qt6` to skip Qt5 entirely.
+    #
+    # install.sh also calls `sudo cmake --install .` internally — we're
+    # already root inside the chroot, but sudo from base-devel passes through
+    # cleanly. If sudo were missing we'd see "sudo: command not found" in the
+    # log; the verification block below catches that case.
+    if ! ./install.sh qt6 >>"$DARKLY_LOG" 2>&1; then
+        echo ">>> DARKLY install.sh qt6 FAILED — tail of $DARKLY_LOG:"
+        tail -60 "$DARKLY_LOG"
     fi
     cd /
     rm -rf /tmp/Darkly
