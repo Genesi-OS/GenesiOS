@@ -657,6 +657,18 @@ fi
 # Bali10050/Darkly's install.sh handles cmake+install internally.
 echo ">>> Building Darkly Plasma theme + Qt6 style from source..."
 DARKLY_LOG=/var/log/genesi-darkly-build.log
+# Darkly's install.sh runs cmake silently and exits 0 even when individual
+# subcomponents (kstyle, plasma popup theme, decoration) fail to find Qt6/KF6
+# deps. Pre-install the full set so every component builds. Missing this is
+# why ISOs shipped with widgetStyle=Darkly in kdeglobals but no Darkly.so on
+# disk — Qt fell back to Breeze and glassmorphism never showed.
+pacman -S --noconfirm --needed \
+    qt6-svg qt6-declarative qt6-5compat \
+    kiconthemes kpackage kio kirigami knotifications kcolorscheme \
+    breeze-icons \
+    2>&1 | tee -a "$DARKLY_LOG" \
+    | grep -E '^(installing|error|warning|::)' || true
+
 git clone --depth 1 https://github.com/Bali10050/Darkly.git /tmp/Darkly 2>&1 \
     | tee -a "$DARKLY_LOG"
 if [ -d /tmp/Darkly ]; then
@@ -668,15 +680,30 @@ if [ -d /tmp/Darkly ]; then
     fi
     cd /
     rm -rf /tmp/Darkly
-    # Verify: the Plasma theme should be in /usr/share/plasma/desktoptheme/darkly
-    if [ -d /usr/share/plasma/desktoptheme/darkly ]; then
-        echo ">>> Darkly Plasma theme installed at /usr/share/plasma/desktoptheme/darkly"
+    # Verify EVERY Darkly component that kdeglobals/plasmarc references.
+    # widgetStyle=Darkly without the .so means Qt falls back to Breeze.
+    # plasmarc Theme=darkly without the desktoptheme means Plasma popups
+    # show no glass effect. We need both.
+    DARKLY_OK=1
+    if [ ! -d /usr/share/plasma/desktoptheme/darkly ]; then
+        echo ">>> WARNING: Darkly Plasma desktoptheme NOT installed"
+        DARKLY_OK=0
+    fi
+    if ! find /usr/lib/qt6/plugins/styles -iname 'darkly*' 2>/dev/null | grep -q .; then
+        echo ">>> WARNING: Darkly Qt6 style plugin NOT installed (widgetStyle=Darkly will fall back to Breeze)"
+        DARKLY_OK=0
+    fi
+    if [ "$DARKLY_OK" = "1" ]; then
+        echo ">>> Darkly installed successfully (desktoptheme + Qt6 style)"
+        ls -la /usr/share/plasma/desktoptheme/darkly 2>/dev/null | head -5
+        find /usr/lib/qt6/plugins/styles -iname 'darkly*' 2>/dev/null
     else
-        echo ">>> WARNING: Darkly Plasma theme NOT found after install"
         echo ">>> Files matching darkly* under /usr/share/plasma:"
         find /usr/share/plasma -iname 'darkly*' 2>/dev/null | head -10
-        echo ">>> Last 50 lines of $DARKLY_LOG:"
-        tail -50 "$DARKLY_LOG"
+        echo ">>> Files matching darkly* under /usr/lib/qt6:"
+        find /usr/lib/qt6 -iname 'darkly*' 2>/dev/null | head -10
+        echo ">>> Last 60 lines of $DARKLY_LOG:"
+        tail -60 "$DARKLY_LOG"
     fi
 else
     echo ">>> WARNING: Failed to clone Darkly repository (skipping)."

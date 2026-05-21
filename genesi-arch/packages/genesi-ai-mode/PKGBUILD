@@ -2,7 +2,7 @@
 
 pkgname=genesi-ai-mode
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Genesi OS AI Mode - Automatic AI optimization daemon and Plasma widget'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -22,10 +22,15 @@ package() {
     # Install sysctl config
     install -Dm644 "${startdir}/99-genesi-ai.conf" "$pkgdir/etc/sysctl.d/99-genesi-ai.conf"
     
-    # Install widget auto-add script
-    install -Dm755 "${startdir}/genesi-add-aimode-widget.sh" "$pkgdir/usr/local/bin/genesi-add-aimode-widget.sh"
-    install -Dm644 "${startdir}/genesi-add-aimode-widget.desktop" "$pkgdir/etc/xdg/autostart/genesi-add-aimode-widget.desktop"
-    
+    # NOTE: The genesi-add-aimode-widget autostart was removed in pkgrel=2.
+    # It raced with kpackage indexing on first boot and showed
+    # "Error loading Applet: package does not exist" on secondary monitors.
+    # The org.kde.plasma.icon launcher in plasma-org.kde.plasma.desktop-appletsrc
+    # already triggers /usr/share/applications/genesi-aimode.desktop, which
+    # gives the same notify-send toggle UX. The custom plasmoid is still
+    # installed below so users can add it manually if they want the
+    # status-display variant.
+
     # Install Plasma widget
     install -dm755 "$pkgdir/usr/share/plasma/plasmoids/org.genesi.aimode"
     cp -r "${startdir}/plasmoid-aimode/"* "$pkgdir/usr/share/plasma/plasmoids/org.genesi.aimode/"
