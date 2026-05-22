@@ -4,7 +4,7 @@
 _gitname=genesi-settings
 pkgname=genesi-settings
 pkgver=1.3.4
-pkgrel=10
+pkgrel=11
 epoch=1
 groups=(genesi)
 arch=('any')
