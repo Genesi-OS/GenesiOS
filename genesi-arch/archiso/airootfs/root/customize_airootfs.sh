@@ -545,6 +545,31 @@ find /etc/xdg/autostart -name "*.desktop" -exec sed -i 's/CachyOS/Genesi OS/g' {
 find /etc -name "*.conf" -path "*/sddm*" -exec sed -i 's/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
 
 # ============================================================
+# 8a. VirtualBox / VMware: blacklist vmwgfx so SDDM survives
+# ============================================================
+# 2026-05-22: a user installed Genesi on a VirtualBox VM (default VMSVGA
+# graphics adapter) and the system booted to a black screen with a
+# blinking cursor. journalctl -b -p err showed:
+#   vmwgfx [drm] *ERROR* vmwgfx seems to be running on an unsupported hypervisor
+#   vmwgfx [drm] *ERROR* This configuration is likely broken.
+# The vmwgfx driver tries to bind to VMware-compatible PCI IDs (which
+# VirtualBox's VMSVGA adapter advertises) and explodes because the
+# actual hypervisor is not VMware. SDDM starts, the greeter even
+# authenticates, but renders to a dead framebuffer so the user sees
+# nothing. Blacklisting vmwgfx forces the kernel to fall back to
+# simpledrm/vesa, which is unaccelerated but works on every hypervisor.
+# Real VMware installs that genuinely want vmwgfx are rare enough that
+# this default is the right call; users who actually need vmwgfx can
+# delete this file post-install.
+mkdir -p /etc/modprobe.d
+cat > /etc/modprobe.d/genesi-blacklist-vmwgfx.conf << 'VMWGFXCONF'
+# Genesi OS: vmwgfx misbinds to VirtualBox VMSVGA and breaks the display.
+# See customize_airootfs.sh section 8a for context.
+blacklist vmwgfx
+VMWGFXCONF
+echo ">>> Blacklisted vmwgfx (prevents VirtualBox black-screen boot)"
+
+# ============================================================
 # 8. Configure SDDM theme
 # ============================================================
 
