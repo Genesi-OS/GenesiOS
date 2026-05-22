@@ -716,19 +716,33 @@ git clone --depth 1 https://github.com/Bali10050/Darkly.git /tmp/Darkly 2>&1 \
     | tee -a "$DARKLY_LOG"
 if [ -d /tmp/Darkly ]; then
     cd /tmp/Darkly
-    # CRITICAL: install.sh with no argument tries to build BOTH Qt5 and Qt6.
-    # Qt5 cmake fails first (we don't ship Qt5 KDE Frameworks in the chroot),
-    # and the script bails before reaching the Qt6 build. The 2026-05-21 ISO
-    # shipped without Darkly in Application Style for exactly this reason.
-    # Pass `qt6` to skip Qt5 entirely.
+    # We do NOT call ./install.sh qt6 here, even though it's the upstream
+    # entry point. Reason: install.sh runs `sudo cmake --install .` inside
+    # the live ISO chroot, and sudo in that environment either fails
+    # silently (no TTY, no PAM session) or hits PolicyKit checks that
+    # exit 0 without actually installing. The 2026-05-22 ISO reproduced
+    # this: install.sh "succeeded", but /usr/lib/qt6/plugins/styles
+    # ended up with only breeze6.so and oxygen6.so - no darkly6.so.
     #
-    # install.sh also calls `sudo cmake --install .` internally — we're
-    # already root inside the chroot, but sudo from base-devel passes through
-    # cleanly. If sudo were missing we'd see "sudo: command not found" in the
-    # log; the verification block below catches that case.
-    if ! ./install.sh qt6 >>"$DARKLY_LOG" 2>&1; then
-        echo ">>> DARKLY install.sh qt6 FAILED — tail of $DARKLY_LOG:"
-        tail -60 "$DARKLY_LOG"
+    # Calling cmake directly bypasses the sudo wrapper entirely. We're
+    # already root in the chroot, so `cmake --install` lands files in
+    # /usr without needing privilege escalation.
+    #
+    # Same 3-stage tail-on-fail pattern as the Klassy section above.
+    if ! cmake -B build -S . \
+              -DBUILD_QT5=OFF -DBUILD_QT6=ON \
+              -DBUILD_TESTING=OFF \
+              -DKDE_INSTALL_USE_QT_SYS_PATHS=ON \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX=/usr >>"$DARKLY_LOG" 2>&1; then
+        echo ">>> DARKLY cmake configure FAILED — tail of $DARKLY_LOG:"
+        tail -40 "$DARKLY_LOG"
+    elif ! cmake --build build -j"$(nproc)" >>"$DARKLY_LOG" 2>&1; then
+        echo ">>> DARKLY cmake build FAILED — tail of $DARKLY_LOG:"
+        tail -40 "$DARKLY_LOG"
+    elif ! cmake --install build >>"$DARKLY_LOG" 2>&1; then
+        echo ">>> DARKLY cmake install FAILED — tail of $DARKLY_LOG:"
+        tail -40 "$DARKLY_LOG"
     fi
     cd /
     rm -rf /tmp/Darkly
