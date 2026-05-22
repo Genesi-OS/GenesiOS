@@ -718,6 +718,53 @@ else
     echo ">>> WARNING: Failed to clone Darkly repository (skipping)."
 fi
 
+# ============================================================
+# 12. Install Ant-Dark Plasma desktoptheme from source
+# ============================================================
+# The genesi-settings plasmarc points at desktoptheme name=Ant-Dark for
+# Plasma popups (Kickoff, systray, notifications). Live ISO testing on
+# 2026-05-22 confirmed Ant-Dark renders glass popups correctly inside
+# VMs, where Darkly's KWin-blur-dependent look falls flat. Ant-Dark is
+# not on Arch repos; we install kde/Dark/plasma/* from EliverLara/Ant
+# (the same upstream the user already had locally on the live ISO).
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ">>> Installing Ant-Dark Plasma desktoptheme from EliverLara/Ant..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+ANT_LOG=/var/log/genesi-ant-build.log
+git clone --depth 1 https://github.com/EliverLara/Ant.git /tmp/Ant 2>&1 \
+    | tee -a "$ANT_LOG"
+if [ -d /tmp/Ant/kde/Dark/plasma ]; then
+    # desktoptheme is what plasmarc name=Ant-Dark binds to (Plasma popups).
+    # look-and-feel is the optional Global Theme bundle; install both so the
+    # user can pick Ant-Dark in System Settings -> Global Theme if they want
+    # to swap the whole look at once.
+    mkdir -p /usr/share/plasma/desktoptheme
+    mkdir -p /usr/share/plasma/look-and-feel
+    if [ -d /tmp/Ant/kde/Dark/plasma/desktoptheme/Ant-Dark ]; then
+        cp -rf /tmp/Ant/kde/Dark/plasma/desktoptheme/Ant-Dark /usr/share/plasma/desktoptheme/
+        echo ">>> Ant-Dark desktoptheme copied"
+    fi
+    if [ -d /tmp/Ant/kde/Dark/plasma/look-and-feel/Ant-Dark ]; then
+        cp -rf /tmp/Ant/kde/Dark/plasma/look-and-feel/Ant-Dark /usr/share/plasma/look-and-feel/
+        echo ">>> Ant-Dark look-and-feel copied"
+    fi
+    rm -rf /tmp/Ant
+    # Verification: plasmarc name=Ant-Dark will silently fall back to Breeze
+    # if the desktoptheme directory is missing. We MUST surface that here so
+    # the next ISO doesn't ship with Ant-Dark configured but not installed.
+    if [ -d /usr/share/plasma/desktoptheme/Ant-Dark ]; then
+        echo ">>> Ant-Dark installed successfully at /usr/share/plasma/desktoptheme/Ant-Dark"
+        ls /usr/share/plasma/desktoptheme/Ant-Dark | head -5
+    else
+        echo ">>> WARNING: Ant-Dark desktoptheme NOT installed (Plasma will fall back to Breeze)"
+        echo ">>> Last 30 lines of $ANT_LOG:"
+        tail -30 "$ANT_LOG"
+    fi
+else
+    echo ">>> WARNING: kde/Dark/plasma not found in EliverLara/Ant clone (upstream layout changed?)"
+    tail -30 "$ANT_LOG"
+fi
+
 echo ">>> Genesi OS: Branding applied successfully!"
 
 echo ""
