@@ -5,7 +5,7 @@ _gitname=genesi-pkgbuilds
 pkgname=genesi-kde-settings
 pkgdesc='Genesi OS KDE Plasma Settings with Glassmorphism'
 pkgver=4.9
-pkgrel=5
+pkgrel=6
 arch=('any')
 url="https://github.com/zFreshy/genesi-pkgbuilds"
 license=(GPL-1.0-only)
@@ -35,14 +35,34 @@ package() {
     cp -rf "${_srcdir}/cachyos-kde-settings-4.9/etc" "$pkgdir" 2>/dev/null || true
     install -d "$pkgdir/usr"
     cp -rf "${_srcdir}/cachyos-kde-settings-4.9/usr" "$pkgdir" 2>/dev/null || true
-    
+
     # Replace all CachyOS branding with Genesi OS
     find "$pkgdir" -type f -exec sed -i 's/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
     find "$pkgdir" -type f -exec sed -i 's/cachyos/genesi/g' {} + 2>/dev/null || true
-    
-    # Apply Genesi colors (green theme)
-    find "$pkgdir" -type f \( -name "*.conf" -o -name "*.css" -o -name "*.qml" \) | while read file; do
-        sed -i 's/#3daee9/#00ff9f/g' "$file" 2>/dev/null || true  # Accent color
-        sed -i 's/#232629/#0a0f0d/g' "$file" 2>/dev/null || true  # Background
-    done
+
+    # CRITICAL: strip /etc/skel from this package's payload.
+    # genesi-settings (1:1.3.4-16 and later) is the canonical source of
+    # /etc/skel/.config/* and ships our Genesi blue palette
+    # (#0d2030 / BackgroundNormal=13,32,48,230). cachyos-kde-settings's
+    # /etc/skel/.config/kdeglobals carries a green CachyOS palette
+    # (BackgroundNormal=4,52,44,200) and, depending on pacstrap order,
+    # silently overwrites the genesi-settings version. The 2026-05-22
+    # install reproduced this: /etc/skel had our blue, but the user's
+    # ~/.config/kdeglobals was created from cachyos's green template
+    # during user setup. Removing /etc/skel from this package eliminates
+    # the conflict at its source.
+    #
+    # We keep /usr/share/* (color-schemes, plasma themes, wallpapers,
+    # Kvantum presets, etc.) because those don't conflict — they're just
+    # additional resources the user can pick from in System Settings.
+    rm -rf "$pkgdir/etc/skel" 2>/dev/null || true
+    # Some upstream tarballs also drop a /etc/xdg/skel; strip that too
+    # for the same reason.
+    rm -rf "$pkgdir/etc/xdg/skel" 2>/dev/null || true
+
+    # The two sed lines that used to flip cachyos accent #3daee9 / bg
+    # #232629 to a custom green here have been removed in pkgrel=6.
+    # The package now contains zero opinion about colors — kdeglobals
+    # palette lives entirely in genesi-settings, where it can be tuned
+    # without re-rolling this PKGBUILD.
 }
