@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Update Tray
+Comment=Systray applet that notifies when system updates are available
+Exec=genesi-update --tray
+Icon=genesi-update_updates-available-blue
+Categories=Utility
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel
