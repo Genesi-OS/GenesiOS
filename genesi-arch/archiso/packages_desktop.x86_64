@@ -165,7 +165,7 @@ rp-pppoe
 rsync
 rtkit
 rxvt-unicode-terminfo
-plasma-login-manager
+sddm
 sdparm
 sg3_utils
 smartmontools
