@@ -5,6 +5,21 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Lock the build timestamp at script start so iso_version doesn't drift if
+# the build crosses midnight. profiledef.sh computes iso_version with
+#   date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d
+# If we don't export SOURCE_DATE_EPOCH here, mkarchiso reads "today" when
+# it starts (e.g. 22/05 23:50) but post-processing scripts that run after
+# mkarchiso finishes recompute "today" fresh (e.g. 23/05 00:13) and end up
+# referencing a filename that never existed - reproduced 2026-05-23 with
+#   mv: cannot stat '.../genesi-2026.05.23-x86_64.iso': No such file
+# while the actual ISO was at .../genesi-2026.05.22-x86_64.iso.
+# Exporting SOURCE_DATE_EPOCH once here is also a SOURCE_DATE_EPOCH-correct
+# reproducible build practice, so the same source tree always produces the
+# same iso_version regardless of when it's built.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date +%s)}"
+echo "🕒 SOURCE_DATE_EPOCH locked to $(date --date="@$SOURCE_DATE_EPOCH" +%Y-%m-%d_%H:%M:%S) ($SOURCE_DATE_EPOCH)"
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "🚀 Genesi OS - Prepare and Build ISO"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
