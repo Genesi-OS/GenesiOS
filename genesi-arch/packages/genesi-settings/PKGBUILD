@@ -4,7 +4,15 @@
 _gitname=genesi-settings
 pkgname=genesi-settings
 pkgver=1.3.4
-pkgrel=18
+# Bumped 2026-05-27: forces the CI publish-packages workflow to produce a
+# new .pkg.tar.zst even if the version string stays the same, which makes
+# `pacman -Syu` on installed Genesi systems actually pick up the new
+# klassyrc (WindowCornerRadius=14, StyleFluent, ShapeIntegratedRoundedRectangle),
+# kwinrc Klassy decoration, darklyrc 70% transparencies, Kickoff popup
+# size lock, and every other config that landed in the genesi-settings
+# repo since pkgrel=18 was first shipped. Without this bump, pacman sees
+# "same version" and treats the system as up-to-date.
+pkgrel=19
 epoch=1
 groups=(genesi)
 arch=('any')
