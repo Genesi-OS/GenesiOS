@@ -100,8 +100,19 @@ jobs:
           # base-devel and sudo are needed by makepkg itself; the rest comes
           # from the PKGBUILDs. python-requests/python-packaging are tooling
           # used by ISO/CI scripts outside the PKGBUILDs.
+          #
+          # systemd + systemd-sysvcompat MUST go together. The cachyos-v3
+          # container snapshot ships these at e.g. 260.1, but `pacman -Sy`
+          # above pulls fresh DBs where systemd may already be at 260.2.
+          # If any transitive dep in $DEPS pulls systemd, pacman tries to
+          # upgrade systemd alone -> breaks the strict
+          # `systemd-sysvcompat requires systemd=260.1` dep -> transaction
+          # aborts. Listing both explicitly forces pacman to resolve them
+          # as a single upgrade group. Reproduced 2026-05-29 CI run on
+          # commit 3c14822 (exit code 1 at this step).
           pacman -S --needed --noconfirm --overwrite='*' \
             base-devel git sudo \
+            systemd systemd-sysvcompat \
             python-requests python-packaging \
             $DEPS
 
