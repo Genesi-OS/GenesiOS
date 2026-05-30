@@ -186,6 +186,33 @@ This works but has limitations:
 - [ ] Community (Discord/Forum)
 - [ ] Automatic updates (own repository)
 
+### 5.1 Desktop Environment Selector in Installer (Calamares)
+> Like CachyOS's installer — let the user pick their DE at install time
+
+- [ ] Add a "Choose your desktop" step to Calamares (similar to CachyOS's
+      `packagechooser` module that lists DEs with screenshots + descriptions)
+- [ ] **Option 1: KDE Plasma 6 (default)** — current Genesi setup: Klassy
+      14px rounded windows, Darkly glassmorphism, Ant-Dark popups, Kickoff
+      menu, all the existing visual identity
+- [ ] **Option 2: Hyprland + caelestia-shell** — Wayland tiling compositor
+      with the [caelestia-dots/shell](https://github.com/caelestia-dots/shell)
+      design (Quickshell QML widgets, no waybar, modern AI-era aesthetic).
+      Needs to pull `hyprland`, `caelestia-shell` (AUR), `caelestia-cli`,
+      `quickshell-git`, `ddcutil`, `brightnessctl` into a netinstall group
+      that only installs when this option is picked
+- [ ] (Future) Additional options: GNOME, COSMIC, Sway, etc.
+- [ ] SDDM session entries auto-registered for whatever the user picked
+      (Plasma X11 / Plasma Wayland / Hyprland / etc.)
+- [ ] Wallpapers + branding consistent across all DE choices (Genesi logo,
+      green/teal palette, Tela-circle-green-dark icons where applicable)
+- [ ] genesi-x11-detect.sh logic extended to handle the chosen DE — e.g.
+      Hyprland needs different SDDM session forcing than Plasma
+- [ ] Update `genesi-welcome` to detect the running DE and adjust its
+      "open settings" buttons to the correct app per-DE
+- [ ] Doc page explaining the DE choice + when each one shines (Plasma for
+      KDE-native experience and ricing, Hyprland+caelestia for tiling +
+      modern aesthetics + lower RAM footprint)
+
 ---
 
 ## PHASE 3: IDE and Dev Tools (Secondary Differentiator)
