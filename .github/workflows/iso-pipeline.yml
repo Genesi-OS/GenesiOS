@@ -14,6 +14,17 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    # Only build when something that actually changes the ISO changes. A
+    # docs/markdown commit must NOT spend ~30 min building an ISO. ISO inputs:
+    # the archiso profile + build scripts + package lists (genesi-arch/**), the
+    # Calamares config submodule pointer, and this workflow itself. The trailing
+    # !**/*.md drops markdown even inside those paths. Need a build anyway?
+    # use the "Run workflow" button (workflow_dispatch) or push a v* tag.
+    paths:
+      - 'genesi-arch/**'
+      - 'genesi-calamares-config-full'
+      - '.github/workflows/iso-pipeline.yml'
+      - '!**/*.md'
   workflow_dispatch:
 
 # A newer push supersedes an in-flight run (saves Actions minutes).
