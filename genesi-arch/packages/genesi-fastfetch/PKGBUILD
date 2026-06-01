@@ -1,32 +1,37 @@
 # Maintainer: Genesi OS Team
 #
 # Shows a branded Genesi ASCII logo + system info every time a terminal opens,
-# the same way CachyOS greets you with its logo via fastfetch. Ships the logo,
-# a fastfetch config (Genesi green accents), and the fish/bash hooks that run
-# it on interactive shells.
+# the same way CachyOS greets you with its logo via fastfetch.
 pkgname=genesi-fastfetch
 pkgver=1.0.0
-pkgrel=1
+# 2026-06-01: bumped 1 -> 2.
+#  * The greeting only appeared under `sudo -i` because the bash hook lived in
+#    /etc/profile.d (login-only) — Konsole opens a non-login interactive bash.
+#    Now wired into /etc/bash.bashrc (every interactive bash) via the scriptlet.
+#  * Reworked the ASCII logo (the old dot-blob looked bad).
+pkgrel=2
 pkgdesc="Branded fastfetch greeting (logo + system info) for Genesi OS terminals"
 arch=('any')
 url="https://github.com/zFreshy/GenesiOS"
 license=('GPL-3.0-or-later')
 depends=('fastfetch')
+install='genesi-fastfetch.install'
 source=(
   'genesi.jsonc'
   'genesi-logo.txt'
   'genesi-fastfetch.fish'
-  'genesi-fastfetch.sh'
+  'genesi-greeting.sh'
 )
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
   install -Dm644 genesi.jsonc     "${pkgdir}/usr/share/genesi/fastfetch/genesi.jsonc"
   install -Dm644 genesi-logo.txt  "${pkgdir}/usr/share/genesi/fastfetch/genesi-logo.txt"
+  # bash greeting body — sourced from /etc/bash.bashrc by the .install scriptlet
+  # (covers interactive non-login shells like Konsole, not just login shells).
+  install -Dm644 genesi-greeting.sh \
+    "${pkgdir}/usr/share/genesi/fastfetch/genesi-greeting.sh"
   # fish auto-sources vendor_conf.d on every shell start.
   install -Dm644 genesi-fastfetch.fish \
     "${pkgdir}/usr/share/fish/vendor_conf.d/genesi-fastfetch.fish"
-  # bash login shells.
-  install -Dm644 genesi-fastfetch.sh \
-    "${pkgdir}/etc/profile.d/genesi-fastfetch.sh"
 }

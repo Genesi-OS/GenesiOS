@@ -1,0 +1,30 @@
+# Genesi OS - wire the terminal greeting into interactive bash.
+#
+# Arch's bash sources /etc/bash.bashrc for EVERY interactive shell (login and
+# non-login), unlike /etc/profile.d which is login-only. Konsole opens a
+# non-login interactive bash, so the old profile.d hook only fired under
+# `sudo -i`. We append a guarded source line to /etc/bash.bashrc instead.
+# /etc/bash.bashrc is a pacman backup= file, so this edit survives bash
+# upgrades (changes are preserved, new versions land as .pacnew).
+
+_genesi_ff_add() {
+    local f=/etc/bash.bashrc
+    [ -f "$f" ] || : > "$f"
+    grep -q 'genesi-fastfetch' "$f" 2>/dev/null && return 0
+    cat >> "$f" <<'EOF'
+
+# >>> genesi-fastfetch >>>
+[ -f /usr/share/genesi/fastfetch/genesi-greeting.sh ] && . /usr/share/genesi/fastfetch/genesi-greeting.sh
+# <<< genesi-fastfetch <<<
+EOF
+}
+
+_genesi_ff_remove() {
+    local f=/etc/bash.bashrc
+    [ -f "$f" ] || return 0
+    sed -i '/# >>> genesi-fastfetch >>>/,/# <<< genesi-fastfetch <<</d' "$f"
+}
+
+post_install() { _genesi_ff_add; }
+post_upgrade() { _genesi_ff_add; }
+post_remove()  { _genesi_ff_remove; }

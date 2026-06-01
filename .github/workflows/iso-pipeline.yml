@@ -203,65 +203,35 @@ jobs:
 
           echo "✅ Uploaded single-file ISO to R2 (one object, overwritten — \$0 storage)"
 
-      # ── Releases (fast CDN download, resumable, aria2/IDM-friendly) ────────
-      # GitHub Release assets are HARD-CAPPED at 2GB/file. The ISO is ~3.2GB,
-      # so a direct upload fails ("size must be less than 2147483648"). We split
-      # it into <2GB parts (still served by the Release CDN) that the user
-      # reassembles with `cat`. The SHA-256 is of the *reassembled* ISO.
-      - name: 📦 Split ISO into <2GB Release parts
-        run: |
-          set -euo pipefail
-          OUT=release-assets
-          rm -rf "$OUT"; mkdir -p "$OUT"
-          # Checksum of the full ISO under its reassembled name.
-          sha256sum "$ISO_PATH" | awk '{print $1"  genesi-os.iso"}' \
-            > "$OUT/genesi-os.iso.sha256"
-          # 1800 MiB parts -> comfortably under the 2GB (2147483648 B) limit.
-          split -b 1800M -d --additional-suffix=.bin "$ISO_PATH" "$OUT/genesi-os.iso.part"
-          cat > "$OUT/REASSEMBLE.txt" <<'TXT'
-          Genesi OS ISO — how to reassemble
-          =================================
-          GitHub caps Release files at 2GB, so the ISO ships as <2GB parts.
-
-          1. Download every  genesi-os.iso.partNN.bin  file (and the .sha256).
-             Fast parallel download with aria2:
-               aria2c -x16 -s16 -Z \
-                 <url>/genesi-os.iso.part00.bin \
-                 <url>/genesi-os.iso.part01.bin
-          2. Join them (glob sorts the parts in order):
-               cat genesi-os.iso.part*.bin > genesi-os.iso
-          3. Verify:
-               sha256sum -c genesi-os.iso.sha256
-          TXT
-          echo "Parts produced:"; ls -lh "$OUT"
+      # ── GitHub Release (tags only) ─────────────────────────────────────────
+      # The full ISO lives on Cloudflare R2 as ONE file (no 2GB cap, $0 egress).
+      # GitHub Release assets are capped at 2GB, so a tagged Release carries just
+      # the checksum + notes and points at the R2 download.
+      #
+      # We deliberately do NOT split the ISO into <2GB parts anymore: splitting
+      # wrote a second ~3.2GB copy next to the ISO and blew the runner's disk
+      # ("No space left on device", run #15). R2 already serves the single file,
+      # so the parts were redundant. Non-tag builds publish nothing to GitHub
+      # Releases (R2's genesi-os-latest.iso is the rolling download); the slow
+      # Actions artifact above remains as a backup.
+      - name: 🧾 Preparar checksum p/ Release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: sha256sum "$ISO_PATH" | awk '{print $1"  genesi-os-latest.iso"}' > genesi-os-latest.iso.sha256
 
       - name: 🚀 Publicar Release versionado (tags v*)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/*
-          generate_release_notes: true
-
-      - name: 🌀 Publicar/atualizar Release rolling (builds da main)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: rolling
-          prerelease: true
-          name: "Genesi OS — rolling (latest main build)"
+          files: genesi-os-latest.iso.sha256
           body: |
-            Always-fresh ISO rebuilt from the latest `main` build.
+            ## Download
 
-            **The ISO ships as <2GB parts** (GitHub caps Release files at 2GB).
-            Download all `genesi-os.iso.part*.bin`, then:
+            The Genesi OS ISO is a single file on Cloudflare R2 (fast CDN, resumable):
+
+            **https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso**
+
+            ```bash
+            aria2c -x16 -s16 https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso
+            sha256sum -c genesi-os-latest.iso.sha256
             ```
-            cat genesi-os.iso.part*.bin > genesi-os.iso
-            sha256sum -c genesi-os.iso.sha256
-            ```
-            Fast parallel download (aria2):
-            ```
-            aria2c -x16 -s16 -Z \
-              https://github.com/zFreshy/GenesiOS/releases/download/rolling/genesi-os.iso.part00.bin \
-              https://github.com/zFreshy/GenesiOS/releases/download/rolling/genesi-os.iso.part01.bin
-            ```
-          files: release-assets/*
+            `genesi-os-latest.iso` always tracks the newest `main` build.
