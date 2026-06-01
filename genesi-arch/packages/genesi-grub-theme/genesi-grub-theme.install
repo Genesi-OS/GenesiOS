@@ -1,0 +1,45 @@
+# Genesi OS - apply GRUB branding whenever this package is installed/updated.
+#
+# Why a scriptlet instead of relying on the Calamares genesi_grub step: on the
+# 2026-06-01 install the Calamares step did NOT run (the live ISO regenerates
+# settings.conf and dropped the module), leaving /etc/default/grub fully stock
+# (GRUB_BACKGROUND commented) and grub.cfg titled "Arch Linux". Doing it in the
+# package post_install/post_upgrade makes it run on the REAL target every time,
+# independent of Calamares — and it also fixes ALREADY-installed systems on the
+# next `pacman -Syu`.
+
+_genesi_grub_apply() {
+    local gd=/etc/default/grub
+    [ -f "$gd" ] || gd=/etc/default/grub
+
+    _set() {
+        # _set KEY VALUE -> ensure `KEY=VALUE` exists, uncommented.
+        local k="$1" v="$2"
+        if grep -q "^[#[:space:]]*${k}=" "$gd" 2>/dev/null; then
+            sed -i "s|^[#[:space:]]*${k}=.*|${k}=${v}|" "$gd"
+        else
+            printf '%s=%s\n' "$k" "$v" >> "$gd"
+        fi
+    }
+
+    [ -e "$gd" ] || : > "$gd"
+    _set GRUB_DISTRIBUTOR '"Genesi OS"'
+    # Drop any stale GRUB_THEME (old cachyos path that doesn't exist).
+    sed -i '/^[#[:space:]]*GRUB_THEME=/d' "$gd" 2>/dev/null || true
+    if [ -f /usr/share/grub/themes/genesi/background.png ]; then
+        _set GRUB_BACKGROUND '"/usr/share/grub/themes/genesi/background.png"'
+    fi
+    _set GRUB_COLOR_NORMAL    '"light-gray/black"'
+    _set GRUB_COLOR_HIGHLIGHT '"black/green"'
+    _set GRUB_TERMINAL_OUTPUT '"gfxterm"'
+
+    # Regenerate grub.cfg so the menu shows "Genesi OS" + the background.
+    # Guarded so it's a no-op in environments where GRUB isn't set up yet
+    # (e.g. a chroot before grub-install); Calamares/grub will regenerate later.
+    if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
+        grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+    fi
+}
+
+post_install() { _genesi_grub_apply; }
+post_upgrade() { _genesi_grub_apply; }

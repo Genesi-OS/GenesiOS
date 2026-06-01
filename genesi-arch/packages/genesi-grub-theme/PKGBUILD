@@ -14,11 +14,18 @@
 # the background path + colors into /etc/default/grub and regenerates grub.cfg.
 pkgname=genesi-grub-theme
 pkgver=1.0.0
-pkgrel=1
-pkgdesc="Genesi OS GRUB background image"
+# 2026-06-01: bumped 1 -> 2. Added genesi-grub-theme.install — the Calamares
+# genesi_grub step didn't run on the test install (live ISO regenerates
+# settings.conf), so /etc/default/grub stayed stock and the menu read
+# "Arch Linux" on black. The scriptlet writes the branding + regenerates
+# grub.cfg on the real target, and fixes already-installed systems on `-Syu`.
+pkgrel=2
+pkgdesc="Genesi OS GRUB background + branding (sets /etc/default/grub, regenerates grub.cfg)"
 arch=('any')
 url="https://github.com/zFreshy/GenesiOS"
 license=('GPL-3.0-or-later')
+depends=('grub')
+install='genesi-grub-theme.install'
 source=('background.png')
 sha256sums=('SKIP')
 
