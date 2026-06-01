@@ -1,0 +1,66 @@
+# Maintainer: Genesi OS Team
+#
+# Builds Darkly (Bali10050/Darkly) as a real package for the [genesi] repo.
+# Darkly provides the Qt6 widget style + the Plasma desktoptheme that give
+# Genesi its glassmorphism (glass popups for Kickoff, systray, notifications,
+# and app chrome). Like Klassy, it used to be compiled into the LIVE ISO by
+# customize_airootfs.sh but was NEVER copied to the installed target (there is
+# no copy-darkly.sh), so installed systems referenced widgetStyle=Darkly in
+# kdeglobals while Qt fell back to Breeze. Shipping it as a package and listing
+# it in netinstall.yaml fixes that at the source.
+pkgname=genesi-darkly
+pkgver=0
+pkgrel=1
+pkgdesc="Darkly Qt6 style + Plasma desktoptheme for Genesi OS (glassmorphism)"
+arch=('x86_64')
+url="https://github.com/Bali10050/Darkly"
+license=('GPL-3.0-or-later')
+depends=(
+  'qt6-base'
+  'qt6-svg'
+  'qt6-declarative'
+  'qt6-5compat'
+  'kdecoration'
+  'kcoreaddons'
+  'kconfig'
+  'kconfigwidgets'
+  'kguiaddons'
+  'kwindowsystem'
+  'ki18n'
+  'kiconthemes'
+  'kpackage'
+  'frameworkintegration'
+  'kcolorscheme'
+)
+makedepends=('cmake' 'extra-cmake-modules' 'qt6-tools' 'git')
+provides=('darkly')
+conflicts=('darkly')
+source=("git+https://github.com/Bali10050/Darkly.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/Darkly"
+  printf '%s.r%s.%s' \
+    "$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 0)" \
+    "$(git rev-list --count HEAD)" \
+    "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd "$srcdir/Darkly"
+  # Same flags customize_airootfs.sh used; calling cmake directly (not
+  # upstream install.sh, which wraps cmake in sudo and silently no-ops).
+  cmake -B build -S . \
+    -DBUILD_QT5=OFF \
+    -DBUILD_QT6=ON \
+    -DBUILD_TESTING=OFF \
+    -DKDE_INSTALL_USE_QT_SYS_PATHS=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build -j"$(nproc)"
+}
+
+package() {
+  cd "$srcdir/Darkly"
+  DESTDIR="$pkgdir" cmake --install build
+}

@@ -1,0 +1,64 @@
+# Maintainer: Genesi OS Team
+#
+# Builds Klassy (paulmcauley/klassy) as a real package for the [genesi] repo.
+# Klassy is the Qt6/KF6 KWin window decoration that gives Genesi its
+# configurable rounded window corners. Previously it was compiled into the
+# LIVE ISO by customize_airootfs.sh and "copied" to the installed target by
+# etc/calamares/scripts/genesi-copy-klassy.sh — that copy was unreliable and
+# the 2026-06-01 install reproduced an installed system with kwinrc
+# library=org.kde.klassy but NO klassy plugin on disk, so KWin silently fell
+# back to Breeze (square corners, default look). Shipping it as a package and
+# listing it in netinstall.yaml makes the installed system get the real
+# plugin via pacman, exactly like every other Genesi component.
+pkgname=genesi-klassy
+pkgver=0
+pkgrel=1
+pkgdesc="Klassy Qt6 window decoration for Genesi OS (configurable rounded corners)"
+arch=('x86_64')
+url="https://github.com/paulmcauley/klassy"
+license=('GPL-3.0-or-later')
+depends=(
+  'qt6-base'
+  'kdecoration'
+  'kcoreaddons'
+  'kconfig'
+  'kconfigwidgets'
+  'kguiaddons'
+  'kwindowsystem'
+  'ki18n'
+  'kcmutils'
+  'kwidgetsaddons'
+  'frameworkintegration'
+  'kcolorscheme'
+  'kiconthemes'
+  'qt6-svg'
+)
+makedepends=('cmake' 'extra-cmake-modules' 'qt6-tools' 'git')
+provides=('klassy')
+conflicts=('klassy')
+source=("git+https://github.com/paulmcauley/klassy.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/klassy"
+  printf '%s.r%s.%s' \
+    "$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 0)" \
+    "$(git rev-list --count HEAD)" \
+    "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd "$srcdir/klassy"
+  # Same flags customize_airootfs.sh used for the live ISO build.
+  cmake -B build -S . \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_QT5=OFF \
+    -DBUILD_QT6=ON
+  cmake --build build -j"$(nproc)"
+}
+
+package() {
+  cd "$srcdir/klassy"
+  DESTDIR="$pkgdir" cmake --install build
+}

@@ -1,14 +1,23 @@
 # Maintainer: Genesi OS Team
 pkgname=genesi-welcome
 pkgver=1.0.0
-pkgrel=1
+# 2026-06-01: bumped 1 -> 2. The installed system kept showing KDE's own
+# "Welcome Center" (plasma-welcome, the Konqi mascot screen) because the
+# `plasma` meta-package pulls plasma-welcome and nothing removed it — the
+# Calamares write-branding disable targeted /etc/xdg/autostart/
+# org.kde.plasma.welcome.desktop, which doesn't exist (plasma-welcome
+# autostarts via its own mechanism). Conflicting+replacing+providing
+# plasma-welcome makes pacman drop it and satisfy the meta dependency with
+# genesi-welcome, so only the Genesi welcome shows.
+pkgrel=2
 pkgdesc="Welcome application for Genesi OS"
 arch=('any')
 url="https://github.com/zFreshy/GenesiOS"
 license=('GPL3')
 depends=('python' 'python-pyqt5')
-conflicts=('cachyos-hello')
-provides=('cachyos-hello')
+conflicts=('cachyos-hello' 'plasma-welcome')
+provides=('cachyos-hello' 'plasma-welcome')
+replaces=('plasma-welcome')
 source=('genesi-welcome.py'
         'genesi-welcome.desktop')
 sha256sums=('SKIP'

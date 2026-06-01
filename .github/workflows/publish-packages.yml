@@ -137,6 +137,15 @@ jobs:
             "genesi-calamares"
             "genesi-calamares-branding"
             "genesi-welcome"
+            # Window decoration + widget style + glassmorphism. Built from
+            # source (paulmcauley/klassy, Bali10050/Darkly). These replace the
+            # fragile customize_airootfs.sh "build on live, cp to target" hack
+            # so the INSTALLED system actually has the plugins (2026-06-01:
+            # reproduced installs with kwinrc->klassy but no plugin on disk).
+            "genesi-klassy"
+            "genesi-darkly"
+            # Branded GRUB background (no more black "Arch Linux" menu).
+            "genesi-grub-theme"
           )
 
           for pkg in "${PACKAGES[@]}"; do

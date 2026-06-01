@@ -1,0 +1,28 @@
+# Maintainer: Genesi OS Team
+#
+# Ships a branded GRUB background for Genesi OS. The installed system used to
+# show a plain black GRUB menu titled "Arch Linux" because:
+#   1. grubcfg.conf pointed GRUB_THEME at /usr/share/grub/themes/cachyos/
+#      theme.txt — a path that exists nowhere in the build (no GRUB theme was
+#      ever shipped), so GRUB rendered its bare fallback.
+#   2. grub.cfg was generated before GRUB_DISTRIBUTOR=Genesi OS took effect.
+#
+# Rather than a full theme.txt (which needs a generated .pf2 font and is
+# fragile to get rendering right unattended), Genesi uses GRUB_BACKGROUND +
+# GRUB_COLOR_*: these render reliably with gfxterm and GRUB's built-in font,
+# no theme engine required. The Calamares shellprocess@genesi_grub step wires
+# the background path + colors into /etc/default/grub and regenerates grub.cfg.
+pkgname=genesi-grub-theme
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Genesi OS GRUB background image"
+arch=('any')
+url="https://github.com/zFreshy/GenesiOS"
+license=('GPL-3.0-or-later')
+source=('background.png')
+sha256sums=('SKIP')
+
+package() {
+  install -Dm644 "${srcdir}/background.png" \
+    "${pkgdir}/usr/share/grub/themes/genesi/background.png"
+}

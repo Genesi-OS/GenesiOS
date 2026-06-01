@@ -5,3 +5,8 @@
 *.bash text eol=lf
 *.yml  text eol=lf
 *.yaml text eol=lf
+# PKGBUILDs and .install scriptlets are sourced by bash/makepkg in the
+# CachyOS CI container; a stray CRLF appends \r to array values (e.g.
+# depends=("qt6-svg\r")) and breaks dependency resolution. Keep them LF.
+PKGBUILD   text eol=lf
+*.install  text eol=lf
