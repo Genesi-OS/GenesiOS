@@ -97,22 +97,33 @@ jobs:
 
       - name: 🏗️ Build da ISO
         run: |
+          # buildiso.sh writes the ISO and only THEN runs optional post-steps
+          # (sha1 checksum + GPG sign). Those post-steps fail in CI (no GPG
+          # key/agent) and abort buildiso with a non-zero exit AFTER the ISO is
+          # already complete. So don't let that fail the job: run it, then
+          # verify the ISO exists and decide based on that.
           sudo -u builder env CI=true bash -lc '
             cd "'"$GITHUB_WORKSPACE"'/genesi-arch" && bash prepare-and-build.sh
-          '
+          ' || echo "::warning::buildiso exited non-zero (post-build checksum/sign); verifying ISO exists..."
+          ISO=$(find genesi-arch/out -name '*.iso' -type f | head -n1)
+          if [ -z "$ISO" ]; then
+            echo "::error::No ISO was produced - real build failure"
+            exit 1
+          fi
+          echo "ISO_PATH=$ISO" >> "$GITHUB_ENV"
+          echo "✅ ISO produzida: $ISO ($(du -h "$ISO" | cut -f1))"
 
-      - name: 📊 Info da ISO
+      - name: 📊 Checksum da ISO
         run: |
-          ISO=$(ls genesi-arch/out/*.iso | head -n1)
-          echo "ISO: $ISO"
-          echo "Tamanho: $(du -h "$ISO" | cut -f1)"
-          echo "SHA256:  $(sha256sum "$ISO" | cut -d' ' -f1)"
+          sha256sum "$ISO_PATH" | tee "$ISO_PATH.sha256"
 
       - name: 📤 Upload ISO (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: genesi-os-iso
-          path: genesi-arch/out/*.iso
+          path: |
+            genesi-arch/out/**/*.iso
+            genesi-arch/out/**/*.iso.sha256
           retention-days: 14
           if-no-files-found: error
 
@@ -120,5 +131,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: genesi-arch/out/*.iso
+          files: |
+            genesi-arch/out/**/*.iso
+            genesi-arch/out/**/*.iso.sha256
           generate_release_notes: true
