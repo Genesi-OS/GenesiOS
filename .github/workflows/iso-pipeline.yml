@@ -95,6 +95,14 @@ jobs:
   build-iso:
     needs: validate-install            # só roda se a validação passou
     runs-on: ubuntu-latest
+    # R2 creds surfaced as env so the upload step's `if:` can detect whether
+    # they're configured. When the repo has no R2 secrets yet, R2_ACCESS_KEY_ID
+    # is empty and the upload step is skipped — builds never break on this.
+    env:
+      R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET:            ${{ vars.R2_BUCKET }}
     container:
       image: cachyos/cachyos-v3:latest
       options: --privileged            # mkarchiso usa loop/mount/squashfs
@@ -162,6 +170,38 @@ jobs:
             genesi-arch/out/**/*.iso.sha256
           retention-days: 14
           if-no-files-found: error
+
+      # ── Single-file ISO on Cloudflare R2 (the download for the website) ────
+      # R2 has no 2GB cap and ZERO egress cost. We upload the FULL ISO under ONE
+      # fixed key (genesi-os-latest.iso) so every build OVERWRITES the previous
+      # one — R2 storage stays at a single ~3.2GB object, permanently inside the
+      # 10GB free tier => $0. (Versioned/pinned ISOs live as the free GitHub
+      # Release parts instead, so nothing ever accumulates on R2 and bills you.)
+      # Skipped automatically until R2 secrets are set.
+      - name: ☁️ Upload single ISO to Cloudflare R2
+        if: ${{ env.R2_ACCESS_KEY_ID != '' }}
+        run: |
+          set -euo pipefail
+          pacman -Sy --noconfirm --needed rclone
+          # Configure an rclone S3 remote for R2 entirely via env (no config file).
+          export RCLONE_CONFIG_R2_TYPE=s3
+          export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
+          export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          echo "⬆️  $(du -h "$ISO_PATH" | cut -f1) -> r2:${R2_BUCKET}/genesi-os-latest.iso (overwrite)"
+          # copyto to a fixed key overwrites in place; rclone aborts (doesn't
+          # leave orphaned multipart parts) on failure, so storage stays bounded.
+          rclone copyto "$ISO_PATH" "R2:${R2_BUCKET}/genesi-os-latest.iso" \
+            --s3-no-check-bucket --stats-one-line --stats 30s
+
+          # Tiny checksum sidecar (also overwritten each build).
+          sha256sum "$ISO_PATH" | awk '{print $1"  genesi-os-latest.iso"}' > latest.iso.sha256
+          rclone copyto latest.iso.sha256 "R2:${R2_BUCKET}/genesi-os-latest.iso.sha256" \
+            --s3-no-check-bucket
+
+          echo "✅ Uploaded single-file ISO to R2 (one object, overwritten — \$0 storage)"
 
       # ── Releases (fast CDN download, resumable, aria2/IDM-friendly) ────────
       # GitHub Release assets are HARD-CAPPED at 2GB/file. The ISO is ~3.2GB,
