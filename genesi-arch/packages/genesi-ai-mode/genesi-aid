@@ -33,7 +33,12 @@ OLLAMA_API = "http://127.0.0.1:11434/api/ps"
 RUN_DIR        = "/run/genesi-ai-mode"
 FORCE_FILE     = os.path.join(RUN_DIR, "force")
 STATE_FILE     = os.path.join(RUN_DIR, "state.json")
+OLLAMA_ENV_FILE = os.path.join(RUN_DIR, "ollama.env")  # EnvironmentFile for ollama
 ORIGINALS_FILE = "/run/genesi-aid-originals.json"
+
+# Optional, admin-provided extra process names to SIGSTOP during inference
+# (one per line, '#' comments). Merged with BACKGROUND_HOGS, read live.
+EXTRA_HOGS_FILE = "/etc/genesi-ai-mode/hogs.conf"
 
 GOVERNOR_GLOB = "/sys/devices/system/cpu/cpu{}/cpufreq/scaling_governor"
 EPP_GLOB      = "/sys/devices/system/cpu/cpu{}/cpufreq/energy_performance_preference"
@@ -648,6 +653,27 @@ class AIOptimizer:
             if cur and _write(f"/sys/block/{dev}/queue/scheduler", cur):
                 logger.info("I/O scheduler %s restored -> %s", dev, cur)
 
+    def write_ollama_env(self):
+        """Pick Ollama concurrency limits from RAM/VRAM and drop them where the
+        ollama unit's EnvironmentFile picks them up. Always-on sane defaults (not
+        part of the reversible on/off cycle), same spirit as genesi-ollama.conf.
+        Each parallel slot and each loaded model costs KV-cache memory, so we
+        scale by the real memory budget — GPU VRAM if present, else system RAM."""
+        ram_gb = self.hw.total_ram_mb / 1024
+        vram_gb = sum(g.get("vram_mb") or 0 for g in self.hw.gpus) / 1024
+        parallel = 1 if ram_gb < 8 else 2 if ram_gb < 32 else 4
+        budget_gb = vram_gb if vram_gb >= 2 else ram_gb
+        loaded = 1 if budget_gb < 12 else 2 if budget_gb < 32 else 3
+        body = (f"OLLAMA_NUM_PARALLEL={parallel}\n"
+                f"OLLAMA_MAX_LOADED_MODELS={loaded}\n")
+        try:
+            _atomic_write(OLLAMA_ENV_FILE, body)
+            logger.info("Ollama tuning: NUM_PARALLEL=%d MAX_LOADED_MODELS=%d "
+                        "(RAM %.0fGB, VRAM %.0fGB)",
+                        parallel, loaded, ram_gb, vram_gb)
+        except OSError as e:
+            logger.debug(f"ollama env write: {e}")
+
     def effective_applied(self):
         """Static enable tweaks plus the dynamic ones (preload, I/O) for display."""
         out = list(self.applied)
@@ -657,11 +683,25 @@ class AIOptimizer:
         return out
 
     # ── background indexers (SIGSTOP while AI runs, SIGCONT after) ────────────
+    @staticmethod
+    def _hog_names():
+        """Built-in indexers plus any admin-provided extras, read live so the
+        list can be edited without restarting the daemon."""
+        names = set(BACKGROUND_HOGS)
+        data = _read(EXTRA_HOGS_FILE)
+        if data:
+            for line in data.splitlines():
+                n = line.split("#", 1)[0].strip()
+                if n:
+                    names.add(n)
+        return names
+
     def _pause_background(self):
+        hogs = self._hog_names()
         paused = 0
         for p in psutil.process_iter(["pid", "name"]):
             try:
-                if (p.info["name"] or "") in BACKGROUND_HOGS:
+                if (p.info["name"] or "") in hogs:
                     p.suspend()
                     paused += 1
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -674,9 +714,10 @@ class AIOptimizer:
     def _resume_background(self):
         # Resume by name (robust to PID churn / a daemon restart). SIGCONT to an
         # already-running process is a harmless no-op.
+        hogs = self._hog_names()
         for p in psutil.process_iter(["pid", "name"]):
             try:
-                if (p.info["name"] or "") in BACKGROUND_HOGS:
+                if (p.info["name"] or "") in hogs:
                     p.resume()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
@@ -834,6 +875,7 @@ class AIOptimizer:
     def run(self):
         logger.info("Genesi AI Daemon started | %s",
                     json.dumps(self.hw.summary()))
+        self.write_ollama_env()
         while True:
             try:
                 force = self.read_force()

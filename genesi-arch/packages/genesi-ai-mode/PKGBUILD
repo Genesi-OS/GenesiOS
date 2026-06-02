@@ -2,7 +2,7 @@
 
 pkgname=genesi-ai-mode
 pkgver=1.0.0
-pkgrel=12
+pkgrel=13
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma widget'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

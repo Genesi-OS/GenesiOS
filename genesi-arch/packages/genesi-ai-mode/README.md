@@ -40,6 +40,21 @@ when the weights already live on a RAM-backed fs (e.g. a live ISO) or when free
 RAM is tight; the I/O knob is system-wide so it only engages on AC or when
 forced.
 
+### Always-on defaults (not part of the on/off cycle)
+
+- **Ollama concurrency** — at startup `genesi-aid` picks `OLLAMA_NUM_PARALLEL`
+  and `OLLAMA_MAX_LOADED_MODELS` from this machine's RAM/VRAM and writes them to
+  `/run/genesi-ai-mode/ollama.env`, which the Ollama unit reads via
+  `EnvironmentFile=-`. Sane defaults, same spirit as the flash-attention /
+  KV-cache drop-in.
+
+### Pausing extra background apps (opt-in)
+
+Beyond the built-in indexers (`baloo`, `tracker`), list extra process names —
+one per line, `#` comments allowed — in `/etc/genesi-ai-mode/hogs.conf` and they
+are `SIGSTOP`ped while AI Mode is on and `SIGCONT`ed when it ends. The file is
+read live, so edits take effect on the next AI Mode transition (no restart).
+
 CPU affinity pinning was intentionally removed — CPU inference scales with all
 cores, so limiting affinity hurt the main use case.
 
