@@ -91,11 +91,9 @@ libusb-compat
 libwnck3
 linux-atm
 linux-cachyos-lts
-linux-cachyos-lts-zfs
 linux-cachyos-lts-nvidia-open
 linux-cachyos
 linux-cachyos-nvidia-open
-linux-cachyos-zfs
 linux-firmware
 linux-firmware-marvell
 lsb-release
@@ -209,4 +207,3 @@ xl2tpd
 xorg-server
 xorg-xinit
 xorg-xwayland
-zfs-utils
