@@ -78,8 +78,12 @@ PY
         MODEL="${2:-llama3.2}"
         PROMPT="Write a Python function that returns the nth Fibonacci number, with a short explanation."
         command -v ollama >/dev/null || { echo "ollama is not installed (sudo pacman -S ollama)"; exit 1; }
+        # Measure the GENERATION rate ("eval rate:") — NOT "prompt eval rate:",
+        # which is prompt-processing speed and gets skewed by prompt caching
+        # between the two runs.
         rate() { ollama run "$MODEL" --verbose "$PROMPT" 2>&1 \
-                   | grep -i 'eval rate' | grep -oE '[0-9.]+ tokens/s' | head -1; }
+                   | grep -i 'eval rate' | grep -vi 'prompt' \
+                   | grep -oE '[0-9.]+ tokens/s' | head -1; }
         echo ":: warming up $MODEL ..."
         ollama run "$MODEL" "hi" >/dev/null 2>&1 || { echo "could not run $MODEL (pull it first?)"; exit 1; }
         echo ":: AI Mode OFF"
