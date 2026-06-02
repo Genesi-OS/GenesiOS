@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Genesi AI Mode Widget Setup
-Exec=/usr/local/bin/genesi-add-aimode-widget.sh
-Hidden=false
-NoDisplay=true
-X-GNOME-Autostart-enabled=true
-X-KDE-autostart-after=panel

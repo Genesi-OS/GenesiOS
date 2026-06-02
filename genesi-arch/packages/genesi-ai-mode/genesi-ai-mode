@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# genesi-ai-mode — control / inspect the Genesi AI optimization daemon.
+#
+#   genesi-ai-mode on        force AI Mode ON  (stay on even with no AI running)
+#   genesi-ai-mode off       force AI Mode OFF (stay off even while AI runs)
+#   genesi-ai-mode auto      remove the override, follow automatic detection
+#   genesi-ai-mode toggle    flip between forced-ON and automatic
+#   genesi-ai-mode status    print the daemon state (JSON)
+#
+# The override is just a file in the daemon's world-writable runtime dir, so no
+# sudo is needed to flip it.
+set -euo pipefail
+
+DIR=/run/genesi-ai-mode
+FORCE="$DIR/force"
+STATE="$DIR/state.json"
+
+ensure_dir() {
+    [ -d "$DIR" ] || mkdir -p "$DIR" 2>/dev/null || {
+        echo "genesi-ai-mode: $DIR missing (is genesi-aid running?)" >&2
+        exit 1
+    }
+}
+
+case "${1:-status}" in
+    on)     ensure_dir; printf 'on'  > "$FORCE" ;;
+    off)    ensure_dir; printf 'off' > "$FORCE" ;;
+    auto)   rm -f "$FORCE" ;;
+    toggle)
+        if [ "$(cat "$FORCE" 2>/dev/null || true)" = on ]; then
+            rm -f "$FORCE"
+        else
+            ensure_dir; printf 'on' > "$FORCE"
+        fi
+        ;;
+    status)
+        if [ -r "$STATE" ]; then
+            cat "$STATE"; echo
+        else
+            echo '{"error":"genesi-aid not running"}'
+        fi
+        ;;
+    *)
+        echo "usage: genesi-ai-mode {on|off|auto|toggle|status}" >&2
+        exit 2
+        ;;
+esac

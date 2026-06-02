@@ -1,21 +1,26 @@
 [Unit]
 Description=Genesi AI Daemon - Automatic AI Optimizations
 Documentation=https://github.com/zFreshy/GenesiOS
-After=multi-user.target
+# Run after static sysctl is applied so the values we capture as "original"
+# are the real boot defaults, not a half-initialized state.
+After=systemd-sysctl.service
 
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/genesi-aid
 Restart=on-failure
 RestartSec=10
-StandardOutput=journal
-StandardError=journal
 
-# Security hardening
-NoNewPrivileges=false
+# Hardening. We talk to userspace only through /run/genesi-ai-mode (created by
+# tmpfiles.d, NOT affected by PrivateTmp), so the private /tmp is safe to keep.
+# ProtectKernelTunables is deliberately OFF: the daemon must write
+# /proc/sys/vm/* and /sys/.../transparent_hugepage to do its job.
+NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=false
-ProtectHome=false
+ProtectHome=true
+ProtectSystem=true
+ProtectKernelModules=true
+RestrictRealtime=true
 
 [Install]
 WantedBy=multi-user.target

@@ -1,12 +1,18 @@
 post_install() {
+    echo "==> Creating AI Mode runtime directory..."
+    systemd-tmpfiles --create /usr/lib/tmpfiles.d/genesi-ai-mode.conf 2>/dev/null || true
+    echo "==> Applying AI Mode sysctl tuning..."
+    sysctl --system >/dev/null 2>&1 || true
     echo "==> Enabling genesi-aid service..."
     systemctl enable genesi-aid.service 2>/dev/null || true
-    echo "==> AI Mode will start automatically on next boot"
-    echo "==> To start now: sudo systemctl start genesi-aid"
+    echo "==> AI Mode is ready. Start now with: sudo systemctl start genesi-aid"
 }
 
 post_upgrade() {
+    systemd-tmpfiles --create /usr/lib/tmpfiles.d/genesi-ai-mode.conf 2>/dev/null || true
+    sysctl --system >/dev/null 2>&1 || true
     echo "==> Restarting genesi-aid service..."
+    systemctl daemon-reload 2>/dev/null || true
     systemctl restart genesi-aid.service 2>/dev/null || true
 }
 

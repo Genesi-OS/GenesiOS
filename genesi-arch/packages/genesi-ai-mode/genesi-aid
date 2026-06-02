@@ -1,25 +1,47 @@
 #!/usr/bin/env python3
 """
 Genesi AI Daemon (genesi-aid)
-Monitors AI processes and optimizes system resources automatically.
+
+Detects local-AI inference processes and applies reversible system
+optimizations while they run. When the AI workload stops (and no manual
+override is set) every tweak is restored to the value it had before.
+
+Manual control (user -> daemon) and status (daemon -> user) flow through a
+world-readable runtime directory created by tmpfiles.d, so the daemon can keep
+`PrivateTmp=true` hardening:
+
+    /run/genesi-ai-mode/force      user-written: "on" | "off" | absent(=auto)
+    /run/genesi-ai-mode/state.json daemon-written status (read by the widget/CLI)
+
+The pre-change values are stashed in a root-only file under /run so a daemon
+restart (same boot) restores correctly instead of "restoring" the already
+modified value. /run is a tmpfs, so a real reboot starts clean.
 """
 
 import os
+import re
 import sys
-import time
-import psutil
-import subprocess
 import json
+import time
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional
+import tempfile
 
-# Configuration
-CONFIG_FILE = "/etc/genesi/aid.conf"
-STATE_FILE = "/var/run/genesi-aid.state"
-LOG_FILE = "/var/log/genesi-aid.log"
+import psutil
 
-# AI process patterns to detect
+# ── Paths ────────────────────────────────────────────────────────────────────
+RUN_DIR     = "/run/genesi-ai-mode"          # 0777, created by tmpfiles.d
+FORCE_FILE  = os.path.join(RUN_DIR, "force")  # user-writable control file
+STATE_FILE  = os.path.join(RUN_DIR, "state.json")
+ORIGINALS_FILE = "/run/genesi-aid-originals.json"  # root-only (0600)
+
+GOVERNOR_GLOB = "/sys/devices/system/cpu/cpu{}/cpufreq/scaling_governor"
+SWAPPINESS    = "/proc/sys/vm/swappiness"
+THP_ENABLED   = "/sys/kernel/mm/transparent_hugepage/enabled"
+
+POLL_SECONDS  = 5
+AI_NICE       = -5
+
+# AI process patterns (matched against process name and full cmdline).
 AI_PROCESSES = [
     "ollama",
     "llama-server",
@@ -32,220 +54,254 @@ AI_PROCESSES = [
     "oobabooga",
 ]
 
-# Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],   # journal captures stdout/stderr
 )
 logger = logging.getLogger("genesi-aid")
+
+
+def _atomic_write(path: str, data: str, mode: int = 0o644):
+    """Write a file atomically so readers never see a half-written file."""
+    directory = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(data)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class AIOptimizer:
     def __init__(self):
         self.ai_mode_active = False
-        self.original_governor = None
-        self.original_swappiness = None
-        self.ai_processes: List[psutil.Process] = []
-        
-    def detect_ai_processes(self) -> List[psutil.Process]:
-        """Detect running AI processes."""
-        ai_procs = []
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        self.originals = {}              # {'governor','swappiness','thp'}
+        self.ai_processes = []           # list[psutil.Process]
+        self._restore_originals_on_start()
+
+    # ── Detection ────────────────────────────────────────────────────────────
+    def detect_ai_processes(self):
+        found = []
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                name = proc.info['name'].lower()
-                cmdline = ' '.join(proc.info['cmdline'] or []).lower()
-                
-                for ai_pattern in AI_PROCESSES:
-                    if ai_pattern in name or ai_pattern in cmdline:
-                        ai_procs.append(proc)
+                name = (proc.info["name"] or "").lower()
+                cmdline = " ".join(proc.info["cmdline"] or []).lower()
+                for pattern in AI_PROCESSES:
+                    if pattern in name or pattern in cmdline:
+                        found.append(proc)
                         break
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-        
-        return ai_procs
-    
-    def enable_ai_mode(self):
-        """Enable AI optimizations."""
-        if self.ai_mode_active:
-            return
-        
-        logger.info("Enabling AI Mode...")
-        
-        # 1. Save current CPU governor
+        return found
+
+    def read_force(self):
+        """Return 'on', 'off' or None (auto). Only exact values act."""
         try:
-            with open('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor', 'r') as f:
-                self.original_governor = f.read().strip()
+            with open(FORCE_FILE) as f:
+                value = f.read().strip().lower()
+            if value in ("on", "off"):
+                return value
         except FileNotFoundError:
-            logger.warning("CPU governor not available")
-        
-        # 2. Set CPU governor to performance
-        self._set_cpu_governor('performance')
-        
-        # 3. Save and set swappiness
+            pass
+        except OSError as e:
+            logger.debug(f"Could not read force file: {e}")
+        return None
+
+    # ── Low-level knobs ──────────────────────────────────────────────────────
+    def _read_governor(self):
         try:
-            with open('/proc/sys/vm/swappiness', 'r') as f:
-                self.original_swappiness = f.read().strip()
-            self._set_swappiness(10)
-        except Exception as e:
-            logger.error(f"Failed to set swappiness: {e}")
-        
-        # 4. Enable transparent huge pages
-        self._enable_huge_pages()
-        
-        # 5. Reduce compositor effects (if KWin is running)
-        self._reduce_compositor_effects()
-        
-        # 6. Set high priority for AI processes
-        self._prioritize_ai_processes()
-        
-        self.ai_mode_active = True
-        self._save_state()
-        logger.info("AI Mode enabled")
-    
-    def disable_ai_mode(self):
-        """Disable AI optimizations and restore defaults."""
-        if not self.ai_mode_active:
+            with open(GOVERNOR_GLOB.format(0)) as f:
+                return f.read().strip()
+        except OSError:
+            return None
+
+    def _set_governor(self, governor):
+        if not governor:
             return
-        
-        logger.info("Disabling AI Mode...")
-        
-        # Restore CPU governor
-        if self.original_governor:
-            self._set_cpu_governor(self.original_governor)
-        
-        # Restore swappiness
-        if self.original_swappiness:
-            self._set_swappiness(int(self.original_swappiness))
-        
-        # Restore compositor effects
-        self._restore_compositor_effects()
-        
-        self.ai_mode_active = False
-        self._save_state()
-        logger.info("AI Mode disabled")
-    
-    def _set_cpu_governor(self, governor: str):
-        """Set CPU frequency governor for all cores."""
-        try:
-            cpu_count = psutil.cpu_count()
-            for cpu in range(cpu_count):
-                gov_file = f'/sys/devices/system/cpu/cpu{cpu}/cpufreq/scaling_governor'
-                if os.path.exists(gov_file):
-                    with open(gov_file, 'w') as f:
-                        f.write(governor)
+        changed = False
+        for cpu in range(psutil.cpu_count() or 0):
+            path = GOVERNOR_GLOB.format(cpu)
+            try:
+                with open(path, "w") as f:
+                    f.write(governor)
+                changed = True
+            except OSError:
+                continue  # core offline / governor not settable on this CPU
+        if changed:
             logger.info(f"CPU governor set to: {governor}")
-        except Exception as e:
-            logger.error(f"Failed to set CPU governor: {e}")
-    
-    def _set_swappiness(self, value: int):
-        """Set vm.swappiness."""
+
+    def _read_swappiness(self):
         try:
-            with open('/proc/sys/vm/swappiness', 'w') as f:
+            with open(SWAPPINESS) as f:
+                return int(f.read().strip())
+        except (OSError, ValueError):
+            return None
+
+    def _set_swappiness(self, value):
+        if value is None:
+            return
+        try:
+            with open(SWAPPINESS, "w") as f:
                 f.write(str(value))
             logger.info(f"Swappiness set to: {value}")
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to set swappiness: {e}")
-    
-    def _enable_huge_pages(self):
-        """Enable transparent huge pages."""
+
+    def _read_thp(self):
+        """Current THP mode is the bracketed token: 'always [madvise] never'."""
         try:
-            with open('/sys/kernel/mm/transparent_hugepage/enabled', 'w') as f:
-                f.write('always')
-            logger.info("Transparent huge pages enabled")
-        except Exception as e:
-            logger.error(f"Failed to enable huge pages: {e}")
-    
-    def _reduce_compositor_effects(self):
-        """Reduce KWin compositor effects to free VRAM."""
+            with open(THP_ENABLED) as f:
+                data = f.read()
+            m = re.search(r"\[(\w+)\]", data)
+            return m.group(1) if m else None
+        except OSError:
+            return None
+
+    def _set_thp(self, value):
+        if not value:
+            return
         try:
-            # Disable blur effect
-            subprocess.run([
-                'qdbus', 'org.kde.KWin', '/Effects',
-                'org.kde.kwin.Effects.unloadEffect', 'blur'
-            ], capture_output=True)
-            logger.info("Compositor effects reduced")
-        except Exception as e:
-            logger.debug(f"Could not reduce compositor effects: {e}")
-    
-    def _restore_compositor_effects(self):
-        """Restore KWin compositor effects."""
+            with open(THP_ENABLED, "w") as f:
+                f.write(value)
+            logger.info(f"Transparent huge pages set to: {value}")
+        except OSError as e:
+            logger.error(f"Failed to set THP: {e}")
+
+    # ── Originals persistence (survives daemon restart, not reboot) ───────────
+    def _persist_originals(self):
         try:
-            subprocess.run([
-                'qdbus', 'org.kde.KWin', '/Effects',
-                'org.kde.kwin.Effects.loadEffect', 'blur'
-            ], capture_output=True)
-            logger.info("Compositor effects restored")
-        except Exception as e:
-            logger.debug(f"Could not restore compositor effects: {e}")
-    
-    def _prioritize_ai_processes(self):
-        """Set high priority (nice value) for AI processes and try CPU pinning."""
+            _atomic_write(ORIGINALS_FILE, json.dumps(self.originals), mode=0o600)
+        except OSError as e:
+            logger.error(f"Failed to persist originals: {e}")
+
+    def _clear_originals(self):
+        self.originals = {}
+        try:
+            os.unlink(ORIGINALS_FILE)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            logger.debug(f"Could not remove originals file: {e}")
+
+    def _restore_originals_on_start(self):
+        """If a previous instance left AI Mode active (crash/restart), adopt the
+        saved originals and mark ourselves active so the loop can restore them
+        cleanly instead of capturing the already-tuned values as 'original'."""
+        try:
+            with open(ORIGINALS_FILE) as f:
+                self.originals = json.load(f)
+            self.ai_mode_active = True
+            logger.info("Recovered AI Mode state from previous run")
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError) as e:
+            logger.warning(f"Ignoring unreadable originals file: {e}")
+
+    # ── Mode transitions ─────────────────────────────────────────────────────
+    def enable_ai_mode(self):
+        if self.ai_mode_active:
+            return
+        logger.info("Enabling AI Mode...")
+        self.originals = {
+            "governor": self._read_governor(),
+            "swappiness": self._read_swappiness(),
+            "thp": self._read_thp(),
+        }
+        self._persist_originals()
+
+        self._set_governor("performance")
+        self._set_swappiness(10)
+        self._set_thp("always")
+
+        self.ai_mode_active = True
+        logger.info("AI Mode enabled")
+
+    def disable_ai_mode(self):
+        if not self.ai_mode_active:
+            return
+        logger.info("Disabling AI Mode...")
+
+        self._set_governor(self.originals.get("governor"))
+        self._set_swappiness(self.originals.get("swappiness"))
+        self._set_thp(self.originals.get("thp"))
+
+        # Drop the priority bump on any AI process still running.
         for proc in self.ai_processes:
             try:
-                # Set high priority
-                proc.nice(-5)
-                logger.info(f"Prioritized process: {proc.name()} (PID {proc.pid})")
-                
-                # Try to pin to performance cores (first half of CPUs)
-                # This is a simple heuristic - real CPU pinning would need topology detection
-                cpu_count = psutil.cpu_count()
-                if cpu_count and cpu_count > 2:
-                    # Pin to first half of CPUs (usually performance cores on hybrid CPUs)
-                    perf_cores = list(range(cpu_count // 2))
-                    try:
-                        proc.cpu_affinity(perf_cores)
-                        logger.info(f"Pinned {proc.name()} to CPUs: {perf_cores}")
-                    except (psutil.AccessDenied, AttributeError):
-                        logger.debug(f"Could not set CPU affinity for {proc.pid}")
-                        
-            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                logger.debug(f"Could not prioritize {proc.pid}: {e}")
-    
-    def _save_state(self):
-        """Save current state to file for widget to read."""
+                proc.nice(0)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        self.ai_mode_active = False
+        self._clear_originals()
+        logger.info("AI Mode disabled")
+
+    def prioritize_ai_processes(self):
+        """Give AI processes more CPU time. Idempotent, so processes that spawn
+        after AI Mode is already active still get prioritized.
+
+        We intentionally do NOT pin to a subset of cores: CPU inference scales
+        with ALL cores, so affinity-limiting it would hurt the main use case.
+        """
+        for proc in self.ai_processes:
+            try:
+                if proc.nice() != AI_NICE:
+                    proc.nice(AI_NICE)
+                    logger.info(f"Prioritized {proc.name()} (PID {proc.pid})")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+    # ── State export for the widget / CLI ────────────────────────────────────
+    def _save_state(self, force_mode):
+        procs = []
+        for p in self.ai_processes:
+            try:
+                procs.append({"pid": p.pid, "name": p.name()})
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
         state = {
-            'ai_mode_active': self.ai_mode_active,
-            'ai_processes': [
-                {'pid': p.pid, 'name': p.name()} 
-                for p in self.ai_processes if p.is_running()
-            ],
-            'timestamp': time.time()
+            "ai_mode_active": self.ai_mode_active,
+            "force_mode": force_mode or "auto",
+            "ai_processes": procs,
+            "timestamp": time.time(),
         }
-        
-        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-        with open(STATE_FILE, 'w') as f:
-            json.dump(state, f)
-    
+        try:
+            _atomic_write(STATE_FILE, json.dumps(state))
+        except OSError as e:
+            logger.debug(f"Could not write state file: {e}")
+
+    # ── Main loop ────────────────────────────────────────────────────────────
     def run(self):
-        """Main daemon loop."""
         logger.info("Genesi AI Daemon started")
-        
         while True:
             try:
-                # Check for manual force file
-                force_mode = os.path.exists("/tmp/genesi-ai-mode-forced")
-                
-                # Detect AI processes
+                force = self.read_force()
                 self.ai_processes = self.detect_ai_processes()
-                
-                # Enable AI mode if AI processes detected or forced
-                if (self.ai_processes or force_mode) and not self.ai_mode_active:
+
+                if force == "off":
+                    want_active = False
+                elif force == "on":
+                    want_active = True
+                else:
+                    want_active = bool(self.ai_processes)
+
+                if want_active and not self.ai_mode_active:
                     self.enable_ai_mode()
-                
-                # Disable AI mode if no AI processes and not forced
-                elif not self.ai_processes and not force_mode and self.ai_mode_active:
+                elif not want_active and self.ai_mode_active:
                     self.disable_ai_mode()
-                
-                # Save state for widget
-                self._save_state()
-                
-                # Sleep for 5 seconds
-                time.sleep(5)
-                
+
+                if self.ai_mode_active:
+                    self.prioritize_ai_processes()
+
+                self._save_state(force)
+                time.sleep(POLL_SECONDS)
             except KeyboardInterrupt:
                 logger.info("Shutting down...")
                 if self.ai_mode_active:
@@ -253,21 +309,15 @@ class AIOptimizer:
                 break
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-                time.sleep(5)
+                time.sleep(POLL_SECONDS)
 
 
 def main():
-    # Check if running as root
     if os.geteuid() != 0:
         print("Error: genesi-aid must run as root", file=sys.stderr)
         sys.exit(1)
-    
-    # Create log directory
-    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-    
-    # Run optimizer
-    optimizer = AIOptimizer()
-    optimizer.run()
+    os.makedirs(RUN_DIR, exist_ok=True)
+    AIOptimizer().run()
 
 
 if __name__ == "__main__":

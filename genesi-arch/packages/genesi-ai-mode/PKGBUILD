@@ -2,8 +2,8 @@
 
 pkgname=genesi-ai-mode
 pkgver=1.0.0
-pkgrel=2
-pkgdesc='Genesi OS AI Mode - Automatic AI optimization daemon and Plasma widget'
+pkgrel=3
+pkgdesc='Genesi OS AI Mode - automatic, reversible AI optimization daemon + Plasma widget'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
 license=('GPL-3.0-or-later')
@@ -13,25 +13,26 @@ source=()
 sha256sums=()
 
 package() {
-    # Install daemon
-    install -Dm755 "${startdir}/genesi-aid" "$pkgdir/usr/local/bin/genesi-aid"
-    
-    # Install systemd service
-    install -Dm644 "${startdir}/genesi-aid.service" "$pkgdir/usr/lib/systemd/system/genesi-aid.service"
-    
-    # Install sysctl config
-    install -Dm644 "${startdir}/99-genesi-ai.conf" "$pkgdir/etc/sysctl.d/99-genesi-ai.conf"
-    
-    # NOTE: The genesi-add-aimode-widget autostart was removed in pkgrel=2.
-    # It raced with kpackage indexing on first boot and showed
-    # "Error loading Applet: package does not exist" on secondary monitors.
-    # The org.kde.plasma.icon launcher in plasma-org.kde.plasma.desktop-appletsrc
-    # already triggers /usr/share/applications/genesi-aimode.desktop, which
-    # gives the same notify-send toggle UX. The custom plasmoid is still
-    # installed below so users can add it manually if they want the
-    # status-display variant.
+    # Daemon + user-facing control CLI
+    install -Dm755 "${startdir}/genesi-aid"      "$pkgdir/usr/local/bin/genesi-aid"
+    install -Dm755 "${startdir}/genesi-ai-mode"  "$pkgdir/usr/local/bin/genesi-ai-mode"
 
-    # Install Plasma widget
+    # systemd service
+    install -Dm644 "${startdir}/genesi-aid.service" \
+        "$pkgdir/usr/lib/systemd/system/genesi-aid.service"
+
+    # Runtime dir for user<->daemon IPC (world-writable, on tmpfs)
+    install -Dm644 "${startdir}/genesi-ai-mode.tmpfiles.conf" \
+        "$pkgdir/usr/lib/tmpfiles.d/genesi-ai-mode.conf"
+
+    # Static sysctl tuning
+    install -Dm644 "${startdir}/99-genesi-ai.conf" \
+        "$pkgdir/etc/sysctl.d/99-genesi-ai.conf"
+
+    # Plasma widget (status display + manual toggle). Not auto-added to the
+    # panel — the org.kde.plasma.icon launcher in the default layout already
+    # provides the toggle UX; this is here for users who want the status view.
     install -dm755 "$pkgdir/usr/share/plasma/plasmoids/org.genesi.aimode"
-    cp -r "${startdir}/plasmoid-aimode/"* "$pkgdir/usr/share/plasma/plasmoids/org.genesi.aimode/"
+    cp -r "${startdir}/plasmoid-aimode/"* \
+        "$pkgdir/usr/share/plasma/plasmoids/org.genesi.aimode/"
 }
