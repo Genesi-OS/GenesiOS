@@ -21,6 +21,7 @@ on:
       - 'genesi-welcome-full'
       - 'genesi-calamares-config-full'
       - 'genesi-update-full'
+      - 'genesi-packageinstaller-full'
       - 'cachyos-calamares-full'
       - 'cachyos-pkgbuilds'
   workflow_dispatch:
@@ -148,6 +149,10 @@ jobs:
             "genesi-grub-theme"
             # Branded fastfetch greeting (logo + system info) in the terminal.
             "genesi-fastfetch"
+            # Genesi fork of the CachyOS package installer (Qt6 + Rust). Verified
+            # to build in ~112s via test-packageinstaller.yml — well under the
+            # 25-min per-package budget, so it won't stall the publish pipeline.
+            "genesi-packageinstaller"
           )
 
           for pkg in "${PACKAGES[@]}"; do
