@@ -33,7 +33,10 @@ pkgver=1.3.4
 # missing, AI Mode toasts dead). Dropped the layout rebuild; the static skel
 # appletsrc already has floating panel + sized Kickoff + a tray with
 # shownItems=notifications. New installs now get a working notification server.
-pkgrel=29
+# 2026-06-03 (30): add the Genesi AI Mode widget (org.genesi.aimode) to the
+# default panel appletsrc (applet 32, next to the AI Mode launcher). Static
+# config edit only — systemtray untouched. Rebuild to pull the new skel.
+pkgrel=30
 epoch=1
 groups=(genesi)
 arch=('any')
