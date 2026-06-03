@@ -57,7 +57,15 @@ jobs:
           echo "Built artifacts:"
           ls -lh ./*.pkg.tar.zst
           # Sanity: the Turbo tool needs llama-server in the package.
-          if tar tf ./*.pkg.tar.zst | grep -q 'usr/bin/llama-server'; then
+          # NOTE: capture `tar tf` into a var first. A `tar tf ... | grep -q`
+          # pipeline trips `set -o pipefail` via SIGPIPE — grep -q exits on the
+          # first match, closes the pipe, tar dies with 141, and pipefail makes
+          # the whole pipeline "fail" even though the file IS present. That gave
+          # a false "missing usr/bin/llama-server" while the package was fine.
+          contents="$(tar tf ./*.pkg.tar.zst)"
+          echo "Packaged binaries:"
+          echo "$contents" | grep '^usr/bin/llama-' || true
+          if grep -q 'usr/bin/llama-server' <<< "$contents"; then
             echo "OK: usr/bin/llama-server present"
           else
             echo "::error::package is missing usr/bin/llama-server"
