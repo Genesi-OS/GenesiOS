@@ -192,6 +192,15 @@ usbutils
 vim
 virtualbox-guest-utils
 vpnc
+# Real-GPU Vulkan ICDs. Previously only vulkan-virtio (the VM GPU driver) was
+# installed, so on bare metal Plasma/KWin had no hardware Vulkan path. mesa
+# already ships the OpenGL drivers (radeonsi/iris/etc), but shipping the Vulkan
+# ICDs too gives KWin (Plasma 6.3+) and games a real accelerated path instead
+# of falling back to llvmpipe (software) - which is what makes blur/transparency
+# work for a while then drop out under load on real hardware.
+vulkan-intel
+vulkan-nouveau
+vulkan-radeon
 vulkan-virtio
 wget
 wireless-regdb
