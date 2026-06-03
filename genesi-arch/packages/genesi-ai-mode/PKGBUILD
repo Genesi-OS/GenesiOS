@@ -2,19 +2,21 @@
 
 pkgname=genesi-ai-mode
 pkgver=1.0.0
-pkgrel=15
+pkgrel=16
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
 license=('GPL-3.0-or-later')
-depends=('python' 'python-psutil' 'plasma-workspace')
+# pyside6 + qqc2-desktop-style are pulled in as hard deps so the AI Mode Monitor
+# (genesi-ai-monitor) works out of the box, dark-themed, wherever genesi-ai-mode
+# is installed — the live ISO and the target both list genesi-ai-mode, so pacman
+# resolves these automatically (no need to edit package lists / the Calamares
+# submodule). kirigami comes transitively via plasma-workspace.
+depends=('python' 'python-psutil' 'plasma-workspace' 'pyside6' 'qqc2-desktop-style')
 optdepends=(
     'power-profiles-daemon: switch to the performance power profile while AI runs'
     'nvidia-utils: NVIDIA GPU performance mode (persistence + max power limit)'
     'ollama: run local models (genesi-ai-mode bench)'
-    'pyside6: Genesi AI Mode Monitor (standalone dashboard app)'
-    'kirigami: UI toolkit for the Monitor app and the Plasma widget'
-    'qqc2-desktop-style: dark/system theming for the Monitor app'
     'qt6-tools: qdbus for the KWin desktop-effect trimmer'
 )
 install="$pkgname.install"
