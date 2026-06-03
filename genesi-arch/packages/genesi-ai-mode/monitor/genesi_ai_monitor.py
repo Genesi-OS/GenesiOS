@@ -51,6 +51,17 @@ class Backend(QObject):
 
 
 def main():
+    # Use Plasma's Qt Quick Controls style so the app inherits the system color
+    # scheme (incl. the dark Genesi theme) instead of the light Qt default.
+    # Needs qqc2-desktop-style; falls back silently to the default if absent.
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "org.kde.desktop")
+    os.environ.setdefault("QT_QPA_PLATFORMTHEME", "kde")
+    try:
+        from PySide6.QtQuickControls2 import QQuickStyle
+        QQuickStyle.setStyle("org.kde.desktop")
+    except ImportError:
+        pass
+
     app = QGuiApplication(sys.argv)
     app.setApplicationName("Genesi AI Mode Monitor")
     app.setApplicationDisplayName("Genesi AI Mode Monitor")
