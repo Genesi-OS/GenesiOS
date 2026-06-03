@@ -9,7 +9,10 @@ pkgver=1.0.0
 # autostarts via its own mechanism). Conflicting+replacing+providing
 # plasma-welcome makes pacman drop it and satisfy the meta dependency with
 # genesi-welcome, so only the Genesi welcome shows.
-pkgrel=2
+# 2026-06-03: bumped 2 -> 3. The "Modo IA" button was a dead stub (`pass`);
+# now it launches the AI Mode Monitor (genesi-ai-monitor), falling back to the
+# CLI status in a terminal.
+pkgrel=3
 pkgdesc="Welcome application for Genesi OS"
 arch=('any')
 url="https://github.com/zFreshy/GenesiOS"

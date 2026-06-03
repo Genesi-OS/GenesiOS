@@ -115,8 +115,20 @@ class GenesiWelcome(QMainWindow):
         subprocess.Popen(["systemsettings"])
 
     def launch_ai_mode(self):
-        # We can launch ai-mode UI or instructions
-        pass
+        # Prefer the full Monitor dashboard; fall back to the CLI status in a
+        # terminal, then to a plain force-on, so the button always does
+        # something useful even on a minimal/older install.
+        import shutil
+        if shutil.which("genesi-ai-monitor"):
+            subprocess.Popen(["genesi-ai-monitor"])
+            return
+        for term in ("konsole", "xterm", "alacritty"):
+            if shutil.which(term):
+                subprocess.Popen([term, "-e", "bash", "-lc",
+                                  "genesi-ai-mode info; echo; "
+                                  "read -p 'Enter para fechar...'"])
+                return
+        subprocess.Popen(["genesi-ai-mode", "on"])
 
     def open_github(self):
         subprocess.Popen(["xdg-open", "https://github.com/zFreshy/GenesiOS"])
