@@ -26,45 +26,42 @@ PlasmoidItem {
 
     preferredRepresentation: compactRepresentation
 
-    // ── runs the genesi-ai-mode CLI (executable engine, Plasma 6 module) ──────
+    // Read state.json and run the CLI through the executable engine. A plasmoid
+    // can't reliably XHR a file:// path under plasmashell (Plasma 6 blocks it),
+    // but it can `cat` the file via the same engine it uses for the buttons.
     P5Support.DataSource {
         id: executable
         engine: "executable"
         connectedSources: []
         onNewData: function(source, data) {
             disconnectSource(source)
-            refresh()
+            if (source.indexOf("cat ") === 0)
+                root.applyState((data["stdout"] || "").trim())
+            else
+                root.readState()        // a control command ran; refresh now
         }
         function exec(cmd) { connectSource(cmd) }
     }
 
+    function readState() { executable.exec("cat /run/genesi-ai-mode/state.json") }
     function setMode(mode) { executable.exec("genesi-ai-mode " + mode) }
 
-    // ── poll state.json ───────────────────────────────────────────────────────
+    function applyState(txt) {
+        try {
+            var s = JSON.parse(txt)
+            root.state = s
+            root.aiModeActive = s.ai_mode_active || false
+            root.forceMode = s.force_mode || "auto"
+            root.aggressive = s.aggressive || false
+        } catch (e) {
+            // transient read miss — keep the last good state, don't blank the UI
+        }
+    }
+
     Timer {
         interval: 3000; running: true; repeat: true
         triggeredOnStart: true
-        onTriggered: refresh()
-    }
-
-    function refresh() {
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file:///run/genesi-ai-mode/state.json")
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== XMLHttpRequest.DONE)
-                return
-            try {
-                var s = JSON.parse(xhr.responseText)
-                root.state = s
-                root.aiModeActive = s.ai_mode_active || false
-                root.forceMode = s.force_mode || "auto"
-                root.aggressive = s.aggressive || false
-            } catch (e) {
-                root.state = ({})
-                root.aiModeActive = false
-            }
-        }
-        xhr.send()
+        onTriggered: readState()
     }
 
     function statusLabel() {
