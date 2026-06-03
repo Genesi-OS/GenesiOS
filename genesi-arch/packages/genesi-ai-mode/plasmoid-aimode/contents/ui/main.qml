@@ -45,6 +45,7 @@ PlasmoidItem {
 
     function readState() { executable.exec("cat /run/genesi-ai-mode/state.json") }
     function setMode(mode) { executable.exec("genesi-ai-mode " + mode) }
+    function openMonitor() { executable.exec("genesi-ai-monitor") }
 
     function applyState(txt) {
         try {
@@ -234,6 +235,14 @@ PlasmoidItem {
                         }
                     }
                 }
+            }
+
+            // open the full Monitor app (dashboard + chat + model advisor)
+            PlasmaComponents.Button {
+                Layout.fillWidth: true
+                text: "Abrir AI Mode Monitor"
+                icon.name: "cpu"
+                onClicked: root.openMonitor()
             }
 
             // controls

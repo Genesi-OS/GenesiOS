@@ -35,6 +35,8 @@ class Backend(QObject):
     chatDone = Signal(str)       # verbose stats line ("" if none)
     chatError = Signal(str)
     modelsLoaded = Signal(str)   # JSON array of model names
+    pullStatus = Signal(str)     # human-readable download progress
+    pullDone = Signal(bool)      # finished (ok?)
 
     def __init__(self):
         super().__init__()
@@ -118,6 +120,45 @@ class Backend(QObject):
     @Slot()
     def stopChat(self):
         self._stop = True
+
+    @Slot(str)
+    def pullModel(self, name):
+        """Download a model via Ollama /api/pull (streamed), reporting progress —
+        so the user never has to drop to a terminal."""
+        name = (name or "").strip()
+        if not name:
+            return
+
+        def work():
+            body = json.dumps({"name": name, "stream": True}).encode()
+            req = urllib.request.Request(
+                OLLAMA + "/api/pull", data=body,
+                headers={"Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=3600) as r:
+                    for raw in r:
+                        raw = raw.strip()
+                        if not raw:
+                            continue
+                        o = json.loads(raw.decode())
+                        if o.get("error"):
+                            self.pullStatus.emit("erro: " + o["error"])
+                            self.pullDone.emit(False)
+                            return
+                        st = o.get("status", "")
+                        comp, tot = o.get("completed"), o.get("total")
+                        if comp and tot:
+                            self.pullStatus.emit(
+                                f"{st}  {comp / tot * 100:.0f}%  "
+                                f"({comp / 1e9:.1f}/{tot / 1e9:.1f} GB)")
+                        elif st:
+                            self.pullStatus.emit(st)
+                self.pullStatus.emit(f"{name} baixado")
+                self.pullDone.emit(True)
+            except Exception as e:
+                self.pullStatus.emit("erro: " + str(e))
+                self.pullDone.emit(False)
+        threading.Thread(target=work, daemon=True).start()
 
     @staticmethod
     def _stats(obj):

@@ -180,9 +180,19 @@ if vram >= 1:
     print(f"\n   Rule of thumb: keep the model file under ~{budget:.1f}GB. A model")
     print("   that spills to CPU can be 5-10x slower — the #1 speed mistake.")
 else:
-    budget = max(ram * 0.6, 1.0)
-    print(f":: Genesi Model Advisor — {cpu}, {ram:.0f}GB RAM, no GPU (CPU inference)")
-    print(f"   Fast path = model fits in ~{budget:.1f}GB of RAM\n")
+    mt = s.get("metrics", {})
+    used = (mt.get("ram_used_mb") or 0) / 1024.0
+    free = (ram - used) if used else ram * 0.55
+    vm = hw.get("virtualized")
+    # The model loads INTO free RAM on top of the running system; keep ~1GB for
+    # the KV cache + the inference process so we don't OOM, and never bank on
+    # more than ~60% of total. This is exactly why a 3B model OOMs a 5GB live VM
+    # (the OS itself runs in RAM there): total says 5GB, but only ~2GB is free.
+    budget = min(ram * 0.6, max(free - 1.0, 0.4))
+    print(f":: Genesi Model Advisor — {cpu}, {ram:.0f}GB RAM"
+          f"{' (VM)' if vm else ''}, no GPU (CPU inference)")
+    print(f"   ~{free:.1f}GB free right now → safe budget ~{budget:.1f}GB "
+          f"(model + KV must fit, or it OOMs)\n")
     best = None
     for tag, p in MODELS:
         q4 = gb(p, 4.8)
@@ -193,8 +203,16 @@ else:
     print()
     if best:
         print(f"   >> Recommended: {best[0]} (Q4_K_M, {best[2]:.1f}GB).  ollama pull {best[0]}")
-    print("\n   No GPU: prefer 3B-8B at Q4. CPU inference is RAM-bandwidth bound —")
-    print("   AI Mode's governor=performance is exactly where it pays off here.")
+    else:
+        print("   >> Not enough free RAM for a model right now. Close apps to free")
+        print("      RAM, or add more. On a 5-6GB VM typically only ~1B models fit.")
+    if vm or ram < 8:
+        print("\n   ! Low RAM / VM: CPU inference is SLOW, and the model loads into")
+        print("     RAM on top of the running desktop — pulling something too big")
+        print("     OOMs the machine. Only the OK rows are safe; close apps first.")
+    else:
+        print("\n   CPU inference is RAM-bandwidth bound — AI Mode's governor=")
+        print("   performance is exactly where it pays off (bare metal).")
 print()
 PY
         ;;
