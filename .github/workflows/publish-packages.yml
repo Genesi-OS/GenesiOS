@@ -111,11 +111,31 @@ jobs:
           # aborts. Listing both explicitly forces pacman to resolve them
           # as a single upgrade group. Reproduced 2026-05-29 CI run on
           # commit 3c14822 (exit code 1 at this step).
-          pacman -S --needed --noconfirm --overwrite='*' \
-            base-devel git sudo \
-            systemd systemd-sysvcompat \
-            python-requests python-packaging \
-            $DEPS
+          # Install with retries — the CachyOS CDN (cdn77) intermittently
+          # returns HTTP 5xx (e.g. 572) and aborts the whole transaction with
+          # "failed to retrieve some files". That is pure infra flake, unrelated
+          # to the PKGBUILDs, so retry a few times (refreshing DBs each attempt
+          # in case a mirror caught up) before giving up. Reproduced 2026-06-03.
+          install_deps() {
+            pacman -Sy --noconfirm && \
+            pacman -S --needed --noconfirm --overwrite='*' \
+              base-devel git sudo \
+              systemd systemd-sysvcompat \
+              python-requests python-packaging \
+              $DEPS
+          }
+          for attempt in 1 2 3 4 5; do
+            if install_deps; then
+              echo "build deps installed (attempt $attempt)"
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo "::error::build deps failed after 5 attempts (CDN/mirror down?)"
+              exit 1
+            fi
+            echo "::warning::build-deps attempt $attempt failed (likely CDN 5xx); retry in 20s"
+            sleep 20
+          done
 
       - name: Build packages
         shell: bash
