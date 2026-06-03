@@ -12,10 +12,17 @@ already downloaded — no re-download.
   genesi-ai-turbo serve <model> [draft]   run a Turbo server on :11435
   genesi-ai-turbo <model>                 same as `serve`
 
-Needs llama.cpp (from the AUR — not in the repos yet):
-  paru -S llama.cpp-cuda     # NVIDIA
-  paru -S llama.cpp-vulkan   # any GPU (NVIDIA/AMD/Intel)
-  paru -S llama.cpp          # CPU-only
+Needs llama-server, shipped by Genesi (Vulkan, any GPU):
+  sudo pacman -S genesi-llama-cpp
+
+Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
+  GENESI_TURBO_CTX=4096          context window
+  GENESI_TURBO_UBATCH=<n>        physical prefill batch / n_ubatch
+                                 (default 1024 on GPU, 512 on CPU; lower it if a
+                                  small GPU OOMs, raise it on a big GPU)
+  GENESI_TURBO_BATCH=2048        logical prefill batch
+  GENESI_TURBO_CACHE_REUSE=256   min prefix chunk reused across requests (KV)
+  GENESI_TURBO_MLOCK=1           pin model in RAM (opt-in; risky on low RAM)
 """
 import os
 import sys
@@ -110,14 +117,49 @@ def have_gpu():
         return shutil.which("nvidia-smi") is not None
 
 
+def _env_int(name, default):
+    try:
+        v = int(os.environ.get(name, "").strip())
+        return v if v > 0 else default
+    except Exception:
+        return default
+
+
+def _env_flag(name):
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def server_cmd(main_gguf, draft_gguf):
     binp = llama_bin("llama-server")
     if not binp:
         return None
+    gpu = have_gpu()
+    ctx = _env_int("GENESI_TURBO_CTX", 4096)
+    # Prefill (reading the prompt) is compute-bound, so a bigger physical batch
+    # (n_ubatch / -ub) reads the prompt in fewer, fatter passes — the 2.8.10
+    # "prefill speedup". Larger -ub costs more compute-buffer memory, so default
+    # to a modest bump only on GPU (where prefill dominates and the buffer fits)
+    # and the llama.cpp default (512) on CPU. Both env-overridable for on-HW
+    # tuning without a rebuild (drop GENESI_TURBO_UBATCH=512 if a small GPU OOMs).
+    batch = _env_int("GENESI_TURBO_BATCH", 2048)
+    ubatch = _env_int("GENESI_TURBO_UBATCH", 1024 if gpu else 512)
     cmd = [binp, "-m", main_gguf, "--host", "127.0.0.1",
-           "--port", str(TURBO_PORT), "-c", "4096", "-fa"]
-    if have_gpu():
+           "--port", str(TURBO_PORT),
+           "-c", str(ctx),
+           "-fa",                          # flash attention (decode + prefill)
+           "-b", str(batch),               # logical prefill batch
+           "-ub", str(ubatch),             # physical prefill batch (n_ubatch)
+           # KV-cache reuse: keep matching prefix chunks across requests via KV
+           # shifting, so a repeated system prompt isn't re-prefilled every turn
+           # (near-instant on the 2nd+ message). Pure win, negligible memory.
+           "--cache-reuse", str(_env_int("GENESI_TURBO_CACHE_REUSE", 256))]
+    if gpu:
         cmd += ["-ngl", "999"]
+    # mlock: pin the model in RAM (no swap/reclaim) for steady CPU inference.
+    # Opt-in only — risky on low-RAM machines and the live ISO (RAM-backed fs),
+    # so default OFF; enable with GENESI_TURBO_MLOCK=1.
+    if _env_flag("GENESI_TURBO_MLOCK"):
+        cmd += ["--mlock"]
     if draft_gguf:
         cmd += ["-md", draft_gguf]
     return cmd

@@ -248,21 +248,29 @@ once and gates every optimizer on detected capabilities.
 > **prefill** (reading the prompt, compute-bound) and **decode** (writing the
 > answer, memory-bandwidth-bound).
 >
-> - [ ] **🥇 Speculative decoding ("Genesi Turbo")** — a small same-family draft
+> - [x] **🥇 Speculative decoding ("Genesi Turbo")** — a small same-family draft
 >       model proposes tokens, the big model verifies several at once. **1.5–3×
 >       faster decode, identical output.** No mainstream OS does this by default.
 >       ollama doesn't expose it → run `llama-server`/`llama-cli` (llama.cpp)
 >       directly with `-md draft`, reusing the GGUFs ollama already pulled.
->       _**← chosen first.**_
+>       _**← chosen first.**_ **DONE:** `genesi-ai-turbo` (`bench`/`serve`) + a
+>       one-click ⚡ switch in the Monitor chat, backed by the shipped
+>       `genesi-llama-cpp` (Vulkan `llama-server`). On-HW bench still pending.
 > - [ ] **🥈 Faster backend per GPU** — auto-detect NVIDIA and use EXL2
 >       (ExLlamaV2) or TensorRT-LLM instead of generic llama.cpp (**2–4×**).
 >       Biggest raw win, biggest effort (different model format, heavier setup).
-> - [ ] **🥈 Prefill speedups (read the prompt faster)** — larger prefill batch
+>       _Deferred: NVIDIA-only, needs EXL2-format models ollama doesn't provide +
+>       a separate serving stack, and can't be validated without NVIDIA hardware._
+> - [x] **🥈 Prefill speedups (read the prompt faster)** — larger prefill batch
 >       (`n_ubatch`) + KV-cache reuse so a repeated system prompt is near-instant.
 >       Needs engine-level control (llama-server). (Flash attention ✅ already.)
+>       **DONE:** `genesi-ai-turbo` now passes `-b 2048 -ub <1024 GPU/512 CPU>`
+>       and `--cache-reuse 256`; all env-tunable (`GENESI_TURBO_UBATCH`, …).
 > - [ ] **🥉 Marginal opt-in tweaks** — explicit huge pages + `mlock` for CPU
 >       inference, mitigations-off (boot param). A few %, not a real differentiator
->       vs a well-tuned Linux. (See 2.8.9.)
+>       vs a well-tuned Linux. (See 2.8.9.) _`mlock` is wired as an opt-in Turbo
+>       knob (`GENESI_TURBO_MLOCK=1`, default off); huge pages + mitigations-off
+>       deferred (risky, marginal, better validated on real hardware)._
 
 ### 2.9 Genesi AI Mode Monitor (dedicated app) 📊
 > A standalone GUI app (beyond the panel widget) to watch and control AI Mode —
