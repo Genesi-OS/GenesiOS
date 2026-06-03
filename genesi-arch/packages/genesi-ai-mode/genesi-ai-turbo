@@ -170,8 +170,8 @@ def cmd_bench(main, draft):
     if not main_g:
         sys.exit(f"could not resolve/pull {main}")
     if not llama_bin("llama-server"):
-        sys.exit("llama-server not found — install llama.cpp from the AUR:\n"
-                 "  paru -S llama.cpp-vulkan   (any GPU)   or   llama.cpp  (CPU)")
+        sys.exit("llama-server not found — install the Genesi Vulkan build:\n"
+                 "  sudo pacman -S genesi-llama-cpp   (ships llama.cpp + Vulkan)")
     draft = draft or pick_draft(main)
     if not draft:
         sys.exit(f"no same-family draft for {main}; pass one explicitly:\n"
@@ -216,8 +216,8 @@ def cmd_serve(main, draft):
         sys.exit(f"could not resolve/pull {main}")
     cmd = server_cmd(main_g, None)
     if not cmd:
-        sys.exit("llama-server not found — install llama.cpp from the AUR:\n"
-                 "  paru -S llama.cpp-vulkan   (any GPU)   or   llama.cpp  (CPU)")
+        sys.exit("llama-server not found — install the Genesi Vulkan build:\n"
+                 "  sudo pacman -S genesi-llama-cpp   (ships llama.cpp + Vulkan)")
     draft = draft or pick_draft(main)
     draft_g = ensure(draft) if draft else None
     cmd = server_cmd(main_g, draft_g)

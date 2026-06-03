@@ -173,6 +173,10 @@ jobs:
             # to build in ~112s via test-packageinstaller.yml — well under the
             # 25-min per-package budget, so it won't stall the publish pipeline.
             "genesi-packageinstaller"
+            # llama.cpp (Vulkan) — backs Genesi Turbo's `llama-server`. Verified
+            # green via test-llama-cpp.yml (~10min, well under the 25-min budget).
+            # Kept LAST so if its build ever flakes it can't block the others.
+            "genesi-llama-cpp"
           )
 
           for pkg in "${PACKAGES[@]}"; do

@@ -2,7 +2,7 @@
 
 pkgname=genesi-ai-mode
 pkgver=1.0.0
-pkgrel=27
+pkgrel=28
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -12,15 +12,21 @@ license=('GPL-3.0-or-later')
 # is installed — the live ISO and the target both list genesi-ai-mode, so pacman
 # resolves these automatically (no need to edit package lists / the Calamares
 # submodule). kirigami comes transitively via plasma-workspace.
+# genesi-llama-cpp (Vulkan llama.cpp, provides=llama.cpp) ships `llama-server`,
+# the backend of Genesi Turbo's ⚡ switch. It is shipped by default via the
+# install lists (archiso packages_desktop.x86_64 + the Calamares netinstall
+# "Genesi OS" group), NOT as a hard dep here: it's built by the SAME publish
+# pipeline, so a `depends=genesi-llama-cpp` would make the build-deps step
+# `pacman -S` a package that isn't in any repo yet (and makepkg's dep check
+# would also fail) → aborting the whole publish. It's an optdepend for docs.
+# It conflicts with the AUR llama.cpp variants, so those are no longer listed.
 depends=('python' 'python-psutil' 'plasma-workspace' 'pyside6' 'qqc2-desktop-style')
 optdepends=(
     'power-profiles-daemon: switch to the performance power profile while AI runs'
     'nvidia-utils: NVIDIA GPU performance mode (persistence + max power limit)'
     'ollama: run local models (genesi-ai-mode bench)'
     'qt6-tools: qdbus for the KWin desktop-effect trimmer'
-    'llama.cpp-cuda: Genesi Turbo speculative decoding on NVIDIA (AUR: paru -S llama.cpp-cuda)'
-    'llama.cpp-vulkan: Genesi Turbo on any GPU (AUR: paru -S llama.cpp-vulkan)'
-    'llama.cpp: Genesi Turbo on CPU (AUR: paru -S llama.cpp)'
+    'genesi-llama-cpp: Genesi Turbo speculative decoding (llama-server, Vulkan — shipped by default)'
 )
 install="$pkgname.install"
 source=()
