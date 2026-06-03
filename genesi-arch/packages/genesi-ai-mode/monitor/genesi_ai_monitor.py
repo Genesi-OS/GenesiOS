@@ -10,6 +10,8 @@ QML can call.
 import os
 import sys
 import json
+import time
+import signal
 import shutil
 import threading
 import subprocess
@@ -27,6 +29,7 @@ except ImportError:
 
 STATE_FILE = "/run/genesi-ai-mode/state.json"
 OLLAMA = "http://127.0.0.1:11434"
+TURBO = "http://127.0.0.1:11435"      # genesi-ai-turbo's llama-server
 
 
 class Backend(QObject):
@@ -37,10 +40,15 @@ class Backend(QObject):
     modelsLoaded = Signal(str)   # JSON array of model names
     pullStatus = Signal(str)     # human-readable download progress
     pullDone = Signal(bool)      # finished (ok?)
+    turboStatus = Signal(str)    # Turbo (speculative decoding) state text
+    turboReady = Signal(bool)    # Turbo server up and serving?
 
     def __init__(self):
         super().__init__()
         self._stop = False
+        self._turbo = False          # route chat to the Turbo server?
+        self._turbo_proc = None      # the genesi-ai-turbo serve subprocess
+        self._turbo_model = None
 
     @Slot(result=str)
     def state(self):
@@ -90,36 +98,129 @@ class Backend(QObject):
     @Slot(str, str)
     def sendPrompt(self, model, prompt):
         self._stop = False
+        target = self._chat_turbo if self._turbo else self._chat_ollama
+        threading.Thread(target=target, args=(model, prompt), daemon=True).start()
 
-        def work():
-            body = json.dumps({"model": model, "prompt": prompt,
-                               "stream": True}).encode()
-            req = urllib.request.Request(
-                OLLAMA + "/api/generate", data=body,
-                headers={"Content-Type": "application/json"})
-            try:
-                with urllib.request.urlopen(req, timeout=600) as r:
-                    for raw in r:
-                        if self._stop:
-                            break
-                        raw = raw.strip()
-                        if not raw:
-                            continue
-                        obj = json.loads(raw.decode())
-                        tok = obj.get("response", "")
-                        if tok:
-                            self.chatToken.emit(tok)
-                        if obj.get("done"):
-                            self.chatDone.emit(self._stats(obj))
-                            return
-                self.chatDone.emit("")
-            except Exception as e:
-                self.chatError.emit(str(e))
-        threading.Thread(target=work, daemon=True).start()
+    def _chat_ollama(self, model, prompt):
+        body = json.dumps({"model": model, "prompt": prompt, "stream": True}).encode()
+        req = urllib.request.Request(OLLAMA + "/api/generate", data=body,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=600) as r:
+                for raw in r:
+                    if self._stop:
+                        break
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    obj = json.loads(raw.decode())
+                    tok = obj.get("response", "")
+                    if tok:
+                        self.chatToken.emit(tok)
+                    if obj.get("done"):
+                        self.chatDone.emit(self._stats(obj))
+                        return
+            self.chatDone.emit("")
+        except Exception as e:
+            self.chatError.emit(str(e))
+
+    def _chat_turbo(self, model, prompt):
+        # llama-server native /completion (the Turbo server is already loaded
+        # with the model + draft, so `model` is ignored here).
+        body = json.dumps({"prompt": prompt, "stream": True,
+                           "n_predict": 512, "cache_prompt": True}).encode()
+        req = urllib.request.Request(TURBO + "/completion", data=body,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=900) as r:
+                for raw in r:
+                    if self._stop:
+                        break
+                    line = raw.decode().strip()
+                    if not line:
+                        continue
+                    if line.startswith("data:"):
+                        line = line[5:].strip()
+                    try:
+                        o = json.loads(line)
+                    except ValueError:
+                        continue
+                    tok = o.get("content", "")
+                    if tok:
+                        self.chatToken.emit(tok)
+                    if o.get("stop"):
+                        t = o.get("timings", {})
+                        tps, n = t.get("predicted_per_second"), t.get("predicted_n")
+                        self.chatDone.emit(
+                            f"⚡ {tps:.1f} tok/s   •   {n} tokens   •   Turbo (speculative)"
+                            if tps else "⚡ Turbo")
+                        return
+            self.chatDone.emit("")
+        except Exception as e:
+            self.chatError.emit("Turbo: " + str(e))
 
     @Slot()
     def stopChat(self):
         self._stop = True
+
+    # ── Turbo (speculative decoding via genesi-ai-turbo) ─────────────────────
+    @Slot(bool, str)
+    def setTurbo(self, on, model):
+        if on:
+            self._start_turbo(model)
+        else:
+            self._stop_turbo()
+
+    def _stop_turbo(self):
+        self._turbo = False
+        self._turbo_model = None
+        p, self._turbo_proc = self._turbo_proc, None
+        if p:
+            try:
+                p.send_signal(signal.SIGINT)
+                p.wait(timeout=8)
+            except Exception:
+                try:
+                    p.kill()
+                except Exception:
+                    pass
+        self.turboReady.emit(False)
+        self.turboStatus.emit("")
+
+    def _start_turbo(self, model):
+        if self._turbo_proc and self._turbo_model == model:
+            return                                  # already serving this model
+        self._stop_turbo()
+        if not shutil.which("genesi-ai-turbo"):
+            self.turboStatus.emit("genesi-ai-turbo não encontrado")
+            return
+        self._turbo_model = model
+        self.turboStatus.emit("iniciando Turbo (carregando o modelo)…")
+        try:
+            self._turbo_proc = subprocess.Popen(
+                ["genesi-ai-turbo", "serve", model],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            self.turboStatus.emit("erro ao iniciar Turbo: " + str(e))
+            return
+
+        def wait():
+            for _ in range(180):
+                if self._turbo_model != model:      # cancelled or model changed
+                    return
+                try:
+                    with urllib.request.urlopen(TURBO + "/health", timeout=2) as r:
+                        if json.loads(r.read()).get("status") == "ok":
+                            self._turbo = True
+                            self.turboReady.emit(True)
+                            self.turboStatus.emit("Turbo ativo ⚡ speculative decoding")
+                            return
+                except Exception:
+                    pass
+                time.sleep(1)
+            self.turboStatus.emit("Turbo não subiu — llama.cpp instalado? "
+                                  "teste: genesi-ai-turbo serve " + model)
+        threading.Thread(target=wait, daemon=True).start()
 
     @Slot(str)
     def pullModel(self, name):
@@ -194,6 +295,7 @@ def main():
 
     engine = QQmlApplicationEngine()
     backend = Backend()
+    app.aboutToQuit.connect(backend._stop_turbo)   # don't leave llama-server up
     engine.rootContext().setContextProperty("backend", backend)
 
     here = os.path.dirname(os.path.abspath(__file__))

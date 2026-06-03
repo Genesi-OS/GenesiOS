@@ -34,8 +34,14 @@ Kirigami.Page {
         input.text = ""
     }
 
+    function applyTurbo() {
+        if (modelCombo.currentText.length > 0)
+            backend.setTurbo(turboSwitch.checked, modelCombo.currentText)
+    }
+
     Connections {
         target: backend
+        function onTurboStatus(s) { statsLabel.text = s }
         function onModelsLoaded(jsonStr) {
             var arr = []
             try { arr = JSON.parse(jsonStr) } catch (e) {}
@@ -78,6 +84,7 @@ Kirigami.Page {
             QQC2.ComboBox {
                 id: modelCombo
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+                onCurrentTextChanged: if (turboSwitch.checked) page.applyTurbo()
             }
             QQC2.ToolButton {
                 icon.name: "view-refresh"
@@ -86,6 +93,13 @@ Kirigami.Page {
                 QQC2.ToolTip.visible: hovered
             }
             Item { Layout.fillWidth: true }
+            QQC2.Switch {
+                id: turboSwitch
+                text: "⚡ Turbo"
+                QQC2.ToolTip.text: "Speculative decoding — respostas 1.5–3× mais rápidas, mesma qualidade"
+                QQC2.ToolTip.visible: hovered
+                onToggled: page.applyTurbo()
+            }
             QQC2.Label {
                 id: statsLabel
                 text: ""
