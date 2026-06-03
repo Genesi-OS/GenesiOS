@@ -241,6 +241,29 @@ once and gates every optimizer on detected capabilities.
 - [ ] Disable CPU security mitigations (opt-in, clearly flagged) for max throughput
 - [ ] Disable PCIe ASPM / USB autosuspend for the inference GPU
 
+#### 2.8.10 🏎️ Beat-any-OS inference speed
+> System tweaks only *match* the hardware ceiling — every OS hits the same wall
+> at the same model+backend. To be genuinely **faster than any other OS**, Genesi
+> must run an inference *method* others don't ship by default. Two phases:
+> **prefill** (reading the prompt, compute-bound) and **decode** (writing the
+> answer, memory-bandwidth-bound).
+>
+> - [ ] **🥇 Speculative decoding ("Genesi Turbo")** — a small same-family draft
+>       model proposes tokens, the big model verifies several at once. **1.5–3×
+>       faster decode, identical output.** No mainstream OS does this by default.
+>       ollama doesn't expose it → run `llama-server`/`llama-cli` (llama.cpp)
+>       directly with `-md draft`, reusing the GGUFs ollama already pulled.
+>       _**← chosen first.**_
+> - [ ] **🥈 Faster backend per GPU** — auto-detect NVIDIA and use EXL2
+>       (ExLlamaV2) or TensorRT-LLM instead of generic llama.cpp (**2–4×**).
+>       Biggest raw win, biggest effort (different model format, heavier setup).
+> - [ ] **🥈 Prefill speedups (read the prompt faster)** — larger prefill batch
+>       (`n_ubatch`) + KV-cache reuse so a repeated system prompt is near-instant.
+>       Needs engine-level control (llama-server). (Flash attention ✅ already.)
+> - [ ] **🥉 Marginal opt-in tweaks** — explicit huge pages + `mlock` for CPU
+>       inference, mitigations-off (boot param). A few %, not a real differentiator
+>       vs a well-tuned Linux. (See 2.8.9.)
+
 ### 2.9 Genesi AI Mode Monitor (dedicated app) 📊
 > A standalone GUI app (beyond the panel widget) to watch and control AI Mode —
 > the visual front-end for everything `genesi-aid` already exposes in
