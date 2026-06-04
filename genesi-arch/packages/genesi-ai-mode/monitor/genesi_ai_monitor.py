@@ -13,6 +13,7 @@ import json
 import time
 import signal
 import shutil
+import tempfile
 import threading
 import subprocess
 import urllib.request
@@ -50,6 +51,7 @@ class Backend(QObject):
         self._turbo = False          # route chat to the Turbo server?
         self._turbo_proc = None      # the genesi-ai-turbo serve subprocess
         self._turbo_model = None
+        self._turbo_log = None       # captured stderr of the serve subprocess
 
     @Slot(result=str)
     def state(self):
@@ -185,6 +187,12 @@ class Backend(QObject):
                     p.kill()
                 except Exception:
                     pass
+        log, self._turbo_log = self._turbo_log, None
+        if log:
+            try:
+                os.unlink(log)
+            except Exception:
+                pass
         self.turboReady.emit(False)
         self.turboStatus.emit("")
 
@@ -202,8 +210,12 @@ class Backend(QObject):
             return False
 
     def _start_turbo(self, model):
-        if self._turbo_proc and self._turbo_model == model:
-            return                                  # already serving this model
+        # Already serving this exact model AND the server is still alive? Nothing
+        # to do. The poll() check matters: a dead Popen object would otherwise
+        # make us think Turbo is up and never restart a server that crashed.
+        if (self._turbo_proc and self._turbo_proc.poll() is None
+                and self._turbo_model == model):
+            return
         self._stop_turbo()
         if not shutil.which("genesi-ai-turbo"):
             self.turboStatus.emit("genesi-ai-turbo não encontrado")
@@ -219,17 +231,36 @@ class Backend(QObject):
         self._turbo_model = model
         gpu_hint = "" if self._has_gpu() else "   (sem GPU: ganho pequeno)"
         self.turboStatus.emit("iniciando Turbo (carregando o modelo)…")
+        # Capture the serve subprocess's stderr so we can surface the REAL reason
+        # it failed (bad arg, OOM, missing blob…) instead of a generic message.
         try:
+            self._turbo_log = tempfile.NamedTemporaryFile(
+                "w", delete=False, suffix=".log").name
             self._turbo_proc = subprocess.Popen(
                 ["genesi-ai-turbo", "serve", model],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                stdout=subprocess.DEVNULL, stderr=open(self._turbo_log, "w"))
         except Exception as e:
             self.turboStatus.emit("erro ao iniciar Turbo: " + str(e))
             return
 
+        proc, log = self._turbo_proc, self._turbo_log
+
+        def _tail():
+            try:
+                return "".join(open(log).readlines()[-2:]).strip()
+            except Exception:
+                return ""
+
         def wait():
-            for i in range(120):
+            for i in range(180):
                 if self._turbo_model != model:      # cancelled or model changed
+                    return
+                # The server process exited before becoming ready → surface why.
+                if proc.poll() is not None:
+                    msg = _tail()
+                    self.turboStatus.emit(
+                        "Turbo falhou: " + (msg.splitlines()[-1] if msg else
+                        "rode no terminal: genesi-ai-turbo serve " + model))
                     return
                 try:
                     with urllib.request.urlopen(TURBO + "/health", timeout=2) as r:

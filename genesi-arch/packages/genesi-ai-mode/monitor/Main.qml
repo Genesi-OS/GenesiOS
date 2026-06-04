@@ -18,26 +18,50 @@ Kirigami.ApplicationWindow {
     property string forceMode: "auto"
     
     // Turbo integration
+    // activeModel = the model Ollama currently has LOADED (live, from /api/ps).
+    // It drives the dashboard "AI ativa" card and FLICKERS as Ollama loads/evicts
+    // models (keep-alive) or returns an empty /api/ps between cycles — so it must
+    // NOT directly control the Turbo server's lifecycle.
     property string activeModel: (st.ollama && st.ollama.length > 0) ? st.ollama[0].name : ""
     property bool turboRequested: false
     property bool turboNeedsInstall: false
 
-    onActiveModelChanged: {
-        if (turboRequested) {
-            if (activeModel) backend.setTurbo(true, activeModel)
-            else backend.setTurbo(false, "")
-        }
+    // turboModel = the STABLE model Turbo serves. Driven from activeModel when it
+    // has a value, otherwise the first installed model. It is sticky: it NEVER
+    // resets to "" on a transient empty poll. Previously Turbo was bound straight
+    // to the volatile activeModel, so every 2s flicker stopped + restarted
+    // llama-server — the load counter kept resetting to 0 and Turbo never came up.
+    property string firstInstalledModel: ""
+    property string turboModel: ""
+
+    onActiveModelChanged: if (activeModel) turboModel = activeModel
+    onFirstInstalledModelChanged: if (!turboModel && firstInstalledModel) turboModel = firstInstalledModel
+
+    // Changing the model only (re)starts Turbo — it never stops it. Only the user
+    // flipping the switch off (turboRequested=false) stops the Turbo server.
+    onTurboModelChanged: {
+        if (turboRequested && turboModel) backend.setTurbo(true, turboModel)
     }
     onTurboRequestedChanged: {
-        if (turboRequested && activeModel) backend.setTurbo(true, activeModel)
+        if (turboRequested && turboModel) backend.setTurbo(true, turboModel)
         else if (!turboRequested) backend.setTurbo(false, "")
     }
+
+    Component.onCompleted: backend.loadModels()
 
     Connections {
         target: backend
         function onTurboNeedsInstall(need) {
             win.turboNeedsInstall = need
             if (need) win.turboRequested = false
+        }
+        // Seed a default Turbo model from the installed list, so Turbo can start
+        // even before the first Ollama prompt (otherwise activeModel stays empty
+        // until something is loaded and the switch appears to do nothing).
+        function onModelsLoaded(jsonStr) {
+            var arr = []
+            try { arr = JSON.parse(jsonStr) } catch (e) {}
+            if (arr.length > 0) win.firstInstalledModel = arr[0]
         }
     }
 
