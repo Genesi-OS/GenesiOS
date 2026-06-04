@@ -42,6 +42,7 @@ class Backend(QObject):
     pullDone = Signal(bool)      # finished (ok?)
     turboStatus = Signal(str)    # Turbo (speculative decoding) state text
     turboReady = Signal(bool)    # Turbo server up and serving?
+    turboNeedsInstall = Signal(bool)  # backend (llama-server) missing -> offer install
 
     def __init__(self):
         super().__init__()
@@ -187,6 +188,19 @@ class Backend(QObject):
         self.turboReady.emit(False)
         self.turboStatus.emit("")
 
+    @staticmethod
+    def _has_llama_server():
+        """Is the Turbo backend (llama-server, from genesi-llama-cpp) present?"""
+        return bool(shutil.which("llama-server")
+                    or os.path.exists("/usr/bin/llama-server"))
+
+    def _has_gpu(self):
+        try:
+            s = json.loads(open(STATE_FILE).read())
+            return bool((s.get("hardware") or {}).get("gpus"))
+        except Exception:
+            return False
+
     def _start_turbo(self, model):
         if self._turbo_proc and self._turbo_model == model:
             return                                  # already serving this model
@@ -194,7 +208,16 @@ class Backend(QObject):
         if not shutil.which("genesi-ai-turbo"):
             self.turboStatus.emit("genesi-ai-turbo não encontrado")
             return
+        # Pre-check the backend so we never hang ~3 min polling a server that
+        # can't even start. If llama-server is missing, ask the UI to offer the
+        # one-click install (genesi-llama-cpp) instead of failing silently.
+        if not self._has_llama_server():
+            self.turboNeedsInstall.emit(True)
+            self.turboStatus.emit(
+                "Backend do Turbo não instalado — clique em “Instalar Turbo”")
+            return
         self._turbo_model = model
+        gpu_hint = "" if self._has_gpu() else "   (sem GPU: ganho pequeno)"
         self.turboStatus.emit("iniciando Turbo (carregando o modelo)…")
         try:
             self._turbo_proc = subprocess.Popen(
@@ -205,7 +228,7 @@ class Backend(QObject):
             return
 
         def wait():
-            for _ in range(180):
+            for i in range(120):
                 if self._turbo_model != model:      # cancelled or model changed
                     return
                 try:
@@ -213,14 +236,56 @@ class Backend(QObject):
                         if json.loads(r.read()).get("status") == "ok":
                             self._turbo = True
                             self.turboReady.emit(True)
-                            self.turboStatus.emit("Turbo ativo ⚡ speculative decoding")
+                            self.turboStatus.emit(
+                                "Turbo ativo ⚡ speculative decoding" + gpu_hint)
                             return
                 except Exception:
                     pass
+                # live elapsed-time feedback so it never looks frozen
+                self.turboStatus.emit(
+                    f"iniciando Turbo (carregando o modelo)… {i + 1}s")
                 time.sleep(1)
-            self.turboStatus.emit("Turbo não subiu — llama.cpp instalado? "
-                                  "teste: genesi-ai-turbo serve " + model)
+            self.turboStatus.emit(
+                "Turbo não subiu — rode no terminal p/ ver o erro: "
+                "genesi-ai-turbo serve " + model)
         threading.Thread(target=wait, daemon=True).start()
+
+    @Slot()
+    def installTurboBackend(self):
+        """One-click install of the Turbo backend: genesi-llama-cpp — the
+        PREBUILT Vulkan llama.cpp from the genesi repo (~tens of MB), NOT a heavy
+        AUR source build. Runs via pkexec so the user authorizes graphically."""
+        if self._has_llama_server():
+            self.turboNeedsInstall.emit(False)
+            self.turboStatus.emit("Backend já instalado ✓ — ligue o Turbo")
+            return
+        if not shutil.which("pkexec"):
+            self.turboStatus.emit(
+                "pkexec ausente — rode: sudo pacman -S genesi-llama-cpp")
+            return
+
+        def work():
+            self.turboStatus.emit(
+                "instalando genesi-llama-cpp… (autorize no diálogo)")
+            try:
+                p = subprocess.run(
+                    ["pkexec", "pacman", "-Sy", "--needed", "--noconfirm",
+                     "genesi-llama-cpp"],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, timeout=900)
+            except Exception as e:
+                self.turboStatus.emit("falha ao instalar: " + str(e))
+                return
+            if p.returncode == 0 and self._has_llama_server():
+                self.turboNeedsInstall.emit(False)
+                self.turboStatus.emit("Backend instalado ✓ — ligue o Turbo de novo")
+            else:
+                last = ""
+                if p.stdout:
+                    lines = [l for l in p.stdout.splitlines() if l.strip()]
+                    last = lines[-1] if lines else ""
+                self.turboStatus.emit("instalação não concluída — " + last)
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot(str)
     def pullModel(self, name):

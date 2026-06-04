@@ -16,6 +16,7 @@ Kirigami.Page {
 
     readonly property color genesiGreen: "#1D9E75"
     property bool busy: false
+    property bool turboNeedsInstall: false   // backend (llama-server) missing
     property string history: ""     // committed transcript
     property string current: ""     // streaming response buffer
 
@@ -42,6 +43,10 @@ Kirigami.Page {
     Connections {
         target: backend
         function onTurboStatus(s) { statsLabel.text = s }
+        function onTurboNeedsInstall(need) {
+            page.turboNeedsInstall = need
+            if (need) turboSwitch.checked = false   // toggle failed the pre-check
+        }
         function onModelsLoaded(jsonStr) {
             var arr = []
             try { arr = JSON.parse(jsonStr) } catch (e) {}
@@ -93,6 +98,15 @@ Kirigami.Page {
                 QQC2.ToolTip.visible: hovered
             }
             Item { Layout.fillWidth: true }
+            QQC2.Button {
+                text: "Instalar Turbo"
+                icon.name: "download"
+                visible: page.turboNeedsInstall
+                onClicked: backend.installTurboBackend()
+                QQC2.ToolTip.text: "Baixa o backend do Turbo (genesi-llama-cpp, " +
+                                   "pré-compilado do repo Genesi — ~dezenas de MB)"
+                QQC2.ToolTip.visible: hovered
+            }
             QQC2.Switch {
                 id: turboSwitch
                 text: "⚡ Turbo"
