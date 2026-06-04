@@ -29,13 +29,14 @@ genesi-settings
 genesi-calamares-branding
 genesi-welcome
 genesi-ai-mode
-genesi-llama-cpp
 genesi-packageinstaller
 genesi-kde-settings
-# Meta-package pulling the full Genesi component set. Listed alongside the
-# explicit packages (redundant but harmless) so the meta is present on the live
-# ISO too; on installed systems it's what lets future components arrive on -Syu.
-genesi-desktop
+# NOTE: genesi-llama-cpp (Vulkan llama.cpp + Vulkan libs, tens of MB) and the
+# genesi-desktop meta are deliberately NOT on the live ISO — they belong on the
+# INSTALLED system (netinstall) only. On the live medium they just bloat the
+# squashfs, which is what makes the "Load to RAM" (copytoram=y) boot entry OOM
+# on low-RAM VMs. llama.cpp also needs models the live ISO doesn't carry, and
+# the meta would drag the entire installed-system component set onto the image.
 ckbcomp
 clonezilla
 cloud-init
