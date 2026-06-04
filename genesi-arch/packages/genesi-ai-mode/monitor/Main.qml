@@ -6,18 +6,20 @@ import org.kde.kirigami as Kirigami
 Kirigami.ApplicationWindow {
     id: win
     title: "Genesi AI Mode Monitor"
-    width: Kirigami.Units.gridUnit * 42
-    height: Kirigami.Units.gridUnit * 36
-    minimumWidth: Kirigami.Units.gridUnit * 36
+    width: Kirigami.Units.gridUnit * 44
+    height: Kirigami.Units.gridUnit * 37
+    minimumWidth: Kirigami.Units.gridUnit * 38
     minimumHeight: Kirigami.Units.gridUnit * 30
+    color: theme.bgBottom
 
-    readonly property color genesiGreen: "#1D9E75"
+    Theme { id: theme }
 
     property var st: ({})
     property bool active: false
     property string forceMode: "auto"
-    
-    // Turbo integration
+    property int currentTab: 0
+
+    // ── Turbo integration ───────────────────────────────────────────────────
     // activeModel = the model Ollama currently has LOADED (live, from /api/ps).
     // It drives the dashboard "AI ativa" card and FLICKERS as Ollama loads/evicts
     // models (keep-alive) or returns an empty /api/ps between cycles — so it must
@@ -25,6 +27,7 @@ Kirigami.ApplicationWindow {
     property string activeModel: (st.ollama && st.ollama.length > 0) ? st.ollama[0].name : ""
     property bool turboRequested: false
     property bool turboNeedsInstall: false
+    property string turboStatusText: ""
 
     // turboModel = the STABLE model Turbo serves. Driven from activeModel when it
     // has a value, otherwise the first installed model. It is sticky: it NEVER
@@ -55,6 +58,7 @@ Kirigami.ApplicationWindow {
             win.turboNeedsInstall = need
             if (need) win.turboRequested = false
         }
+        function onTurboStatus(s) { win.turboStatusText = s }
         // Seed a default Turbo model from the installed list, so Turbo can start
         // even before the first Ollama prompt (otherwise activeModel stays empty
         // until something is loaded and the switch appears to do nothing).
@@ -79,178 +83,267 @@ Kirigami.ApplicationWindow {
 
     Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true; onTriggered: win.poll() }
 
-    globalDrawer: null // Remove default Kirigami drawer
+    globalDrawer: null
 
-    // Custom Header
+    // ════════════════════════ HEADER ════════════════════════
     header: QQC2.ToolBar {
-        background: Rectangle { color: Kirigami.Theme.backgroundColor }
+        background: Rectangle {
+            color: theme.bgTop
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
+        }
         contentItem: RowLayout {
             spacing: Kirigami.Units.largeSpacing
             Item { width: Kirigami.Units.smallSpacing }
-            
-            Kirigami.Icon {
-                source: "cpu"
-                Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
-                Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                color: Kirigami.Theme.textColor
+
+            // ── Brand mark ──
+            Rectangle {
+                width: 34; height: 34; radius: 10
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: theme.greenBright }
+                    GradientStop { position: 1.0; color: theme.greenDeep }
+                }
+                Kirigami.Icon {
+                    anchors.centerIn: parent
+                    source: "cpu"; width: 19; height: 19; color: "#08130E"
+                }
             }
-            Kirigami.Heading { 
-                level: 2; text: "AI Mode"
-                font.bold: true; color: Kirigami.Theme.textColor 
+            ColumnLayout {
+                spacing: -2
+                QQC2.Label { text: "AI Mode"; font.bold: true; font.pixelSize: 15; color: theme.textHi }
+                QQC2.Label { text: "GENESI"; font.pixelSize: 9; font.letterSpacing: 2; color: theme.green }
             }
-            
+
             Item { width: Kirigami.Units.largeSpacing }
 
-            QQC2.TabBar {
-                id: navBar
-                Layout.fillWidth: true
-                background: Item {}
-                QQC2.TabButton { text: "Painel"; width: implicitWidth + Kirigami.Units.largeSpacing }
-                QQC2.TabButton { text: "Chat com a IA"; width: implicitWidth + Kirigami.Units.largeSpacing }
-                QQC2.TabButton { text: "Modelos"; width: implicitWidth + Kirigami.Units.largeSpacing }
+            // ── Tabs (pill) ──
+            Row {
+                spacing: 4
+                Repeater {
+                    model: ["Painel", "Chat com a IA", "Modelos"]
+                    delegate: Rectangle {
+                        required property int index
+                        required property string modelData
+                        readonly property bool sel: win.currentTab === index
+                        height: 34
+                        width: tlbl.implicitWidth + 28
+                        radius: 10
+                        color: sel ? theme.a(theme.green, 0.16)
+                             : (tma.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : "transparent")
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        QQC2.Label {
+                            id: tlbl
+                            anchors.centerIn: parent
+                            text: modelData
+                            font.bold: sel
+                            color: sel ? theme.greenBright : theme.textMid
+                        }
+                        MouseArea {
+                            id: tma
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: win.currentTab = index
+                        }
+                    }
+                }
             }
 
-            QQC2.Button {
-                text: "Force ON"
-                icon.name: "run-build"
-                opacity: win.forceMode === "on" ? 1.0 : 0.6
-                onClicked: backend.setMode("on")
+            Item { Layout.fillWidth: true }
+
+            // ── Mode segmented control ──
+            Rectangle {
+                radius: 11
+                color: theme.card
+                border.width: 1; border.color: theme.line
+                implicitWidth: modeRow.implicitWidth + 8
+                implicitHeight: 36
+                Row {
+                    id: modeRow
+                    anchors.centerIn: parent
+                    spacing: 2
+                    Repeater {
+                        model: [
+                            { "mode": "on",   "label": "Force ON",  "accent": theme.green },
+                            { "mode": "auto", "label": "Auto",      "accent": theme.green },
+                            { "mode": "off",  "label": "Force OFF", "accent": theme.red }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool sel: win.forceMode === modelData.mode
+                            height: 28
+                            width: mlbl.implicitWidth + 22
+                            radius: 8
+                            color: sel ? theme.a(modelData.accent, 0.9)
+                                 : (mma.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : "transparent")
+                            Behavior on color { ColorAnimation { duration: 150 } }
+                            QQC2.Label {
+                                id: mlbl
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                font.bold: sel
+                                font.pixelSize: 12
+                                color: sel ? "#08130E" : theme.textMid
+                            }
+                            MouseArea {
+                                id: mma
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: backend.setMode(modelData.mode)
+                            }
+                        }
+                    }
+                }
             }
-            QQC2.Button {
-                text: "Auto"
-                icon.name: "view-refresh"
-                highlighted: win.forceMode === "auto"
-                onClicked: backend.setMode("auto")
-            }
-            QQC2.Button {
-                text: "Force OFF"
-                icon.name: "dialog-cancel"
-                palette.button: win.forceMode === "off" ? "#DA4453" : Kirigami.Theme.buttonBackgroundColor
-                palette.buttonText: win.forceMode === "off" ? "#ffffff" : Kirigami.Theme.textColor
-                onClicked: backend.setMode("off")
-            }
-            Item { width: Kirigami.Units.smallSpacing }
         }
     }
 
+    // ════════════════════════ CONTENT ════════════════════════
     StackLayout {
         anchors.fill: parent
-        currentIndex: navBar.currentIndex
+        currentIndex: win.currentTab
 
-        // 1. Painel
+        // ───────────────────────── 1. PAINEL ─────────────────────────
         QQC2.ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: availableWidth
-            
+            background: Rectangle {
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: theme.bgTop }
+                    GradientStop { position: 1.0; color: theme.bgBottom }
+                }
+            }
+
             ColumnLayout {
                 width: parent.width
                 spacing: Kirigami.Units.largeSpacing
-                
-                Item { Layout.preferredHeight: Kirigami.Units.smallSpacing } // Top margin
 
-                // MAIN STATUS CARD
-                Rectangle {
+                Item { Layout.preferredHeight: Kirigami.Units.smallSpacing }
+
+                // ── HERO STATUS CARD ──
+                GlassCard {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 120
+                    Layout.preferredHeight: 124
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing
-                    radius: 12
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    border.color: win.active ? win.genesiGreen : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.1)
-                    border.width: 1
+                    accent: theme.green
+                    active: win.active
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.margins: Kirigami.Units.largeSpacing
+                        anchors.margins: Kirigami.Units.largeSpacing + 2
                         spacing: Kirigami.Units.largeSpacing
 
-                        Rectangle {
-                            width: 64; height: 64; radius: 32
-                            color: "transparent"
-                            border.color: win.active ? win.genesiGreen : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.2)
-                            border.width: 1
-                            Kirigami.Icon {
+                        // glowing icon ring
+                        Item {
+                            width: 66; height: 66
+                            Rectangle {
                                 anchors.centerIn: parent
-                                source: "cpu"
-                                width: 32; height: 32
-                                color: win.active ? win.genesiGreen : Kirigami.Theme.disabledTextColor
+                                width: 66; height: 66; radius: 33
+                                color: "transparent"
+                                border.width: 2
+                                border.color: win.active ? theme.green : theme.line
+                                SequentialAnimation on opacity {
+                                    running: win.active
+                                    loops: Animation.Infinite
+                                    NumberAnimation { from: 0.35; to: 0.95; duration: 1200; easing.type: Easing.InOutSine }
+                                    NumberAnimation { from: 0.95; to: 0.35; duration: 1200; easing.type: Easing.InOutSine }
+                                }
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 48; height: 48; radius: 24
+                                color: win.active ? theme.a(theme.green, 0.14) : "transparent"
+                                Kirigami.Icon {
+                                    anchors.centerIn: parent
+                                    source: "cpu"; width: 28; height: 28
+                                    color: win.active ? theme.greenBright : theme.textLo
+                                }
                             }
                         }
 
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 4
-                            Kirigami.Heading {
-                                level: 1
+                            QQC2.Label {
                                 text: win.active
-                                      ? (win.forceMode === "on" ? "AI Mode ON (forced)"
-                                         : st.aggressive ? "AI Mode ON (max)" : "AI Mode ON (battery-safe)")
+                                      ? (win.forceMode === "on" ? "AI Mode ON · forçado"
+                                         : st.aggressive ? "AI Mode ON · máximo" : "AI Mode ON · econômico")
                                       : "AI Mode OFF"
-                                font.bold: true
+                                font.bold: true; font.pixelSize: 21
+                                color: theme.textHi
                             }
                             QQC2.Label {
-                                opacity: 0.7
+                                opacity: 0.85
+                                color: theme.textMid
                                 text: {
                                     var h = win.hw()
                                     var parts = []
-                                    if (h.cpu_vendor) parts.push(h.cpu_vendor + " " + (h.physical_cores||"?") + "c/" + (h.logical_cores||"?") + "t")
-                                    if (h.ram_mb) parts.push(Math.round(h.ram_mb/1024) + " GB RAM")
+                                    if (h.cpu_vendor) parts.push(h.cpu_vendor + " " + (h.physical_cores || "?") + "c/" + (h.logical_cores || "?") + "t")
+                                    if (h.ram_mb) parts.push(Math.round(h.ram_mb / 1024) + " GB RAM")
                                     if (h.chassis) parts.push(h.chassis + (h.virtualized ? " (VM)" : ""))
-                                    return parts.join("  •  ")
+                                    return parts.join("   •   ")
                                 }
                             }
                             RowLayout {
-                                spacing: 6
-                                Rectangle { width: 8; height: 8; radius: 4; color: win.active ? win.genesiGreen : Kirigami.Theme.disabledTextColor }
-                                QQC2.Label { 
-                                    text: win.active ? "Ativo — otimizações aplicadas" : "Inativo — nenhum ajuste aplicado" 
-                                    opacity: 0.8
+                                spacing: 7
+                                Rectangle {
+                                    width: 9; height: 9; radius: 4.5
+                                    color: win.active ? theme.greenBright : theme.textLo
+                                    SequentialAnimation on opacity {
+                                        running: win.active
+                                        loops: Animation.Infinite
+                                        NumberAnimation { from: 1.0; to: 0.3; duration: 900; easing.type: Easing.InOutSine }
+                                        NumberAnimation { from: 0.3; to: 1.0; duration: 900; easing.type: Easing.InOutSine }
+                                    }
+                                }
+                                QQC2.Label {
+                                    color: theme.textMid
+                                    text: win.active ? "Otimizações aplicadas em tempo real" : "Nenhum ajuste aplicado"
                                 }
                             }
                         }
-                        
+
+                        // ON/OFF pill
                         Rectangle {
-                            width: 60; height: 30; radius: 15
-                            color: win.active ? Qt.rgba(win.genesiGreen.r, win.genesiGreen.g, win.genesiGreen.b, 0.2) : "transparent"
-                            border.color: win.active ? win.genesiGreen : Kirigami.Theme.disabledTextColor
+                            width: 66; height: 32; radius: 16
+                            color: win.active ? theme.a(theme.green, 0.18) : "transparent"
+                            border.color: win.active ? theme.green : theme.line
                             border.width: 1
+                            Behavior on color { ColorAnimation { duration: 200 } }
                             QQC2.Label {
                                 anchors.centerIn: parent
                                 text: win.active ? "ON" : "OFF"
-                                font.bold: true
-                                color: win.active ? win.genesiGreen : Kirigami.Theme.disabledTextColor
+                                font.bold: true; font.pixelSize: 13
+                                color: win.active ? theme.greenBright : theme.textLo
                             }
                         }
                     }
                 }
 
-                // TURBO CARD
-                Rectangle {
+                // ── TURBO CARD ──
+                GlassCard {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 80
+                    Layout.preferredHeight: win.turboStatusText.length > 0 ? 100 : 84
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing
-                    radius: 12
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    border.color: win.turboRequested ? "#E67E22" : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.1)
-                    border.width: win.turboRequested ? 1 : 1
+                    accent: theme.turbo
+                    active: win.turboRequested
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.margins: Kirigami.Units.largeSpacing
+                        anchors.margins: Kirigami.Units.largeSpacing + 2
                         spacing: Kirigami.Units.largeSpacing
 
                         Rectangle {
-                            width: 48; height: 48; radius: 12
-                            color: Qt.rgba(230/255, 126/255, 34/255, 0.1)
-                            border.color: "#E67E22"
-                            border.width: 1
+                            width: 50; height: 50; radius: 14
+                            color: theme.a(theme.turbo, 0.14)
+                            border.color: theme.a(theme.turbo, 0.55); border.width: 1
                             Kirigami.Icon {
                                 anchors.centerIn: parent
-                                source: "lightning"
-                                width: 24; height: 24
-                                color: "#E67E22"
+                                source: "lightning"; width: 26; height: 26
+                                color: theme.turboBright
                             }
                         }
 
@@ -258,27 +351,57 @@ Kirigami.ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 2
                             RowLayout {
-                                Kirigami.Heading { level: 2; text: "Modo Turbo"; font.bold: true }
+                                spacing: Kirigami.Units.smallSpacing
+                                QQC2.Label { text: "Modo Turbo"; font.bold: true; font.pixelSize: 16; color: theme.textHi }
+                                Rectangle {
+                                    visible: win.turboRequested
+                                    radius: 6; height: 18
+                                    width: tbadge.implicitWidth + 14
+                                    color: theme.a(theme.turbo, 0.18)
+                                    QQC2.Label { id: tbadge; anchors.centerIn: parent; text: "speculative"; font.pixelSize: 10; color: theme.turboBright }
+                                }
                                 QQC2.Button {
                                     text: "Instalar Backend"
                                     icon.name: "download"
                                     visible: win.turboNeedsInstall
                                     onClicked: backend.installTurboBackend()
-                                    QQC2.ToolTip.text: "Instalar genesi-llama-cpp"
-                                    QQC2.ToolTip.visible: hovered
                                 }
                             }
-                            QQC2.Label { text: "Libera todo o desempenho para inferência ultrarrápida (speculative decoding)."; opacity: 0.7 }
+                            QQC2.Label {
+                                text: "Inferência ultrarrápida com decodificação especulativa."
+                                color: theme.textMid; opacity: 0.9
+                            }
+                            QQC2.Label {
+                                visible: win.turboStatusText.length > 0
+                                Layout.fillWidth: true
+                                text: win.turboStatusText
+                                color: theme.turboBright
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                            }
                         }
-                        
-                        QQC2.Switch {
-                            checked: win.turboRequested
-                            onToggled: win.turboRequested = checked
+
+                        // custom toggle
+                        Rectangle {
+                            width: 54; height: 30; radius: 15
+                            color: win.turboRequested ? theme.turbo : theme.a(theme.textHi, 0.13)
+                            Behavior on color { ColorAnimation { duration: 180 } }
+                            Rectangle {
+                                width: 24; height: 24; radius: 12; y: 3
+                                x: win.turboRequested ? parent.width - 27 : 3
+                                color: "#FFFFFF"
+                                Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.turboRequested = !win.turboRequested
+                            }
                         }
                     }
                 }
 
-                // METRICS ROW
+                // ── METRICS ROW ──
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: Kirigami.Units.largeSpacing
@@ -286,125 +409,85 @@ Kirigami.ApplicationWindow {
                     spacing: Kirigami.Units.largeSpacing
 
                     // CPU
-                    Rectangle {
+                    GlassCard {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 110
-                        radius: 12
-                        color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
+                        Layout.preferredHeight: 116
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: Kirigami.Units.largeSpacing
                             spacing: Kirigami.Units.largeSpacing
-                            
-                            Canvas {
-                                width: 60; height: 60
-                                property real val: win.metrics().cpu_percent !== undefined ? win.metrics().cpu_percent / 100.0 : 0
-                                onValChanged: requestPaint()
-                                onPaint: {
-                                    var ctx = getContext("2d"); ctx.reset(); ctx.clearRect(0,0,width,height);
-                                    var cx = width/2, cy = height/2, r = width/2 - 4;
-                                    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI);
-                                    ctx.lineWidth = 6; ctx.strokeStyle = Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.1); ctx.stroke();
-                                    if(val > 0) {
-                                        ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + 2*Math.PI*Math.min(val, 1.0));
-                                        ctx.lineWidth = 6; ctx.strokeStyle = win.genesiGreen; ctx.stroke();
-                                    }
-                                }
-                                QQC2.Label { anchors.centerIn: parent; text: win.metrics().cpu_percent !== undefined ? Math.round(win.metrics().cpu_percent) + "\n%" : "—"; horizontalAlignment: Text.AlignHCenter; font.bold: true; font.pixelSize: 12 }
+                            GaugeArc {
+                                value: win.metrics().cpu_percent !== undefined ? win.metrics().cpu_percent / 100.0 : 0
+                                stroke: theme.green
+                                big: win.metrics().cpu_percent !== undefined ? Math.round(win.metrics().cpu_percent) + "" : "—"
+                                small: win.metrics().cpu_percent !== undefined ? "%" : ""
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
-                                QQC2.Label { text: "CPU"; font.bold: true; opacity: 0.7 }
-                                Kirigami.Heading { level: 2; text: win.metrics().cpu_percent !== undefined ? win.metrics().cpu_percent.toFixed(1) + "%" : "—" }
-                                QQC2.Label { text: (win.hw().physical_cores||"?") + " núcleos • " + (win.hw().logical_cores||"?") + " threads"; opacity: 0.6; font.pixelSize: 12 }
+                                QQC2.Label { text: "CPU"; font.bold: true; font.pixelSize: 11; font.letterSpacing: 1; color: theme.green }
+                                QQC2.Label { text: win.metrics().cpu_percent !== undefined ? win.metrics().cpu_percent.toFixed(1) + "%" : "—"; font.bold: true; font.pixelSize: 18; color: theme.textHi }
+                                QQC2.Label { text: (win.hw().physical_cores || "?") + " núcleos · " + (win.hw().logical_cores || "?") + " threads"; color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
                             }
                         }
                     }
 
                     // MEMORY
-                    Rectangle {
+                    GlassCard {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 110
-                        radius: 12
-                        color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
+                        Layout.preferredHeight: 116
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: Kirigami.Units.largeSpacing
                             spacing: Kirigami.Units.largeSpacing
-                            
-                            Canvas {
-                                width: 60; height: 60
-                                property real val: win.metrics().ram_total_mb ? (win.metrics().ram_used_mb||0) / win.metrics().ram_total_mb : 0
-                                onValChanged: requestPaint()
-                                onPaint: {
-                                    var ctx = getContext("2d"); ctx.reset(); ctx.clearRect(0,0,width,height);
-                                    var cx = width/2, cy = height/2, r = width/2 - 4;
-                                    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI);
-                                    ctx.lineWidth = 6; ctx.strokeStyle = Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.1); ctx.stroke();
-                                    if(val > 0) {
-                                        ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + 2*Math.PI*Math.min(val, 1.0));
-                                        ctx.lineWidth = 6; ctx.strokeStyle = Kirigami.Theme.highlightColor; ctx.stroke();
-                                    }
-                                }
-                                QQC2.Label { anchors.centerIn: parent; text: win.metrics().ram_total_mb ? Math.round(((win.metrics().ram_used_mb||0) / win.metrics().ram_total_mb)*100) + "\n%" : "—"; horizontalAlignment: Text.AlignHCenter; font.bold: true; font.pixelSize: 12 }
+                            GaugeArc {
+                                value: win.metrics().ram_total_mb ? (win.metrics().ram_used_mb || 0) / win.metrics().ram_total_mb : 0
+                                stroke: theme.blue
+                                big: win.metrics().ram_total_mb ? Math.round(((win.metrics().ram_used_mb || 0) / win.metrics().ram_total_mb) * 100) + "" : "—"
+                                small: win.metrics().ram_total_mb ? "%" : ""
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
-                                QQC2.Label { text: "MEMÓRIA"; font.bold: true; opacity: 0.7 }
-                                Kirigami.Heading { level: 2; text: win.metrics().ram_total_mb ? (Math.round((win.metrics().ram_used_mb||0)/102.4)/10).toFixed(1) + " / " + Math.round(win.metrics().ram_total_mb/1024) + " GB" : "—" }
-                                QQC2.Label { text: (win.metrics().ram_used_mb||0) + " MB em uso"; opacity: 0.6; font.pixelSize: 12 }
+                                QQC2.Label { text: "MEMÓRIA"; font.bold: true; font.pixelSize: 11; font.letterSpacing: 1; color: theme.blue }
+                                QQC2.Label { text: win.metrics().ram_total_mb ? (Math.round((win.metrics().ram_used_mb || 0) / 102.4) / 10).toFixed(1) + " / " + Math.round(win.metrics().ram_total_mb / 1024) + " GB" : "—"; font.bold: true; font.pixelSize: 18; color: theme.textHi }
+                                QQC2.Label { text: (win.metrics().ram_used_mb || 0) + " MB em uso"; color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
                             }
                         }
                     }
 
                     // INFERENCE
-                    Rectangle {
+                    GlassCard {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 110
-                        radius: 12
-                        color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
+                        Layout.preferredHeight: 116
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: Kirigami.Units.largeSpacing
                             spacing: Kirigami.Units.largeSpacing
-                            
-                            Canvas {
-                                width: 60; height: 60
-                                onPaint: {
-                                    var ctx = getContext("2d"); ctx.reset(); ctx.clearRect(0,0,width,height);
-                                    var cx = width/2, cy = height/2, r = width/2 - 4;
-                                    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI);
-                                    ctx.lineWidth = 6; ctx.strokeStyle = Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.1); ctx.stroke();
-                                    if(win.activeModel) {
-                                        ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + 2*Math.PI);
-                                        ctx.lineWidth = 6; ctx.strokeStyle = "#9B59B6"; ctx.stroke();
-                                    }
-                                }
-                                QQC2.Label { anchors.centerIn: parent; text: win.activeModel ? "🚀\n" : "—"; horizontalAlignment: Text.AlignHCenter; font.bold: true; font.pixelSize: 12 }
+                            GaugeArc {
+                                value: win.activeModel ? 1 : 0
+                                stroke: theme.purple
+                                big: win.activeModel ? "🚀" : "—"
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
-                                QQC2.Label { text: "INFERÊNCIA"; font.bold: true; opacity: 0.7 }
-                                Kirigami.Heading { level: 2; text: win.activeModel ? (st.tokens_per_second ? st.tokens_per_second + " t/s" : "Ativa") : "—" }
-                                QQC2.Label { text: win.activeModel ? win.activeModel : "nenhum modelo"; opacity: 0.6; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                                QQC2.Label { text: "INFERÊNCIA"; font.bold: true; font.pixelSize: 11; font.letterSpacing: 1; color: theme.purpleBright }
+                                QQC2.Label { text: win.activeModel ? (st.tokens_per_second ? st.tokens_per_second + " t/s" : "Ativa") : "—"; font.bold: true; font.pixelSize: 18; color: theme.textHi }
+                                QQC2.Label { text: win.activeModel ? win.activeModel : "nenhum modelo"; color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
                             }
                         }
                     }
                 }
 
-                // APPLIED OPTIMIZATIONS
-                Rectangle {
+                // ── APPLIED OPTIMIZATIONS ──
+                GlassCard {
                     Layout.fillWidth: true
                     Layout.preferredHeight: implicitHeight
                     implicitHeight: optLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing
-                    radius: 12
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    
+
                     ColumnLayout {
                         id: optLayout
                         anchors.left: parent.left
@@ -413,41 +496,42 @@ Kirigami.ApplicationWindow {
                         anchors.margins: Kirigami.Units.largeSpacing
                         spacing: Kirigami.Units.smallSpacing
 
-                        QQC2.Label {
-                            text: win.active ? "Otimizações Aplicadas" : "Inativo — nenhum ajuste aplicado"
-                            font.bold: true
-                            font.pixelSize: 16
+                        RowLayout {
+                            spacing: Kirigami.Units.smallSpacing
+                            Kirigami.Icon { source: "configure"; color: theme.green; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
+                            QQC2.Label {
+                                text: win.active ? "Otimizações aplicadas" : "Inativo — nenhum ajuste aplicado"
+                                font.bold: true; font.pixelSize: 15; color: theme.textHi
+                            }
                         }
-                        
+
                         QQC2.Label {
                             visible: !win.active
-                            opacity: 0.6
+                            color: theme.textLo
                             text: "Inicie um modelo local (ou use Force ON) para ver o tuning ao vivo aqui."
                         }
 
                         Repeater {
                             model: st.applied || []
-                            RowLayout {
+                            delegate: RowLayout {
+                                required property string modelData
                                 Layout.fillWidth: true
-                                Kirigami.Icon { source: "dialog-ok"; color: win.genesiGreen; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
-                                QQC2.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: modelData; opacity: 0.8 }
+                                spacing: Kirigami.Units.smallSpacing
+                                Kirigami.Icon { source: "dialog-ok-apply"; color: theme.green; Layout.preferredWidth: 15; Layout.preferredHeight: 15; Layout.alignment: Qt.AlignTop }
+                                QQC2.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: modelData; color: theme.textMid }
                             }
                         }
                     }
                 }
-                
-                Item { Layout.fillHeight: true } // spacer
+
+                Item { Layout.fillHeight: true }
             }
         }
 
-        // 2. Chat
-        ChatPage {
-            id: chatPage
-        }
+        // ───────────────────────── 2. CHAT ─────────────────────────
+        ChatPage { id: chatPage }
 
-        // 3. Modelos
-        AdvisorPage {
-            id: advisorPage
-        }
+        // ───────────────────────── 3. MODELOS ─────────────────────────
+        AdvisorPage { id: advisorPage }
     }
 }

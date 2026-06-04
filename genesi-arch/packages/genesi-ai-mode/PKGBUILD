@@ -2,7 +2,7 @@
 
 pkgname=genesi-ai-mode
 pkgver=1.0.0
-pkgrel=43
+pkgrel=44
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -81,6 +81,15 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatPage.qml"
     install -Dm644 "${startdir}/monitor/AdvisorPage.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/AdvisorPage.qml"
+    # Shared UI building blocks (brand palette + reusable visual components)
+    install -Dm644 "${startdir}/monitor/Theme.qml" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/Theme.qml"
+    install -Dm644 "${startdir}/monitor/GlassCard.qml" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/GlassCard.qml"
+    install -Dm644 "${startdir}/monitor/GaugeArc.qml" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/GaugeArc.qml"
+    install -Dm644 "${startdir}/monitor/ChatBubble.qml" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatBubble.qml"
     install -Dm755 "${startdir}/monitor/genesi-ai-monitor" \
         "$pkgdir/usr/local/bin/genesi-ai-monitor"
     install -Dm644 "${startdir}/monitor/org.genesi.aimonitor.desktop" \
