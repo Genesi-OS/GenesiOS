@@ -273,7 +273,10 @@ def server_cmd(main_gguf, draft_gguf):
     cmd = [binp, "-m", main_gguf, "--host", "127.0.0.1",
            "--port", str(TURBO_PORT),
            "-c", str(ctx),
-           "-fa",                          # flash attention (decode + prefill)
+           "-fa", "on",                    # flash attention (decode + prefill).
+                                           # Newer llama.cpp made -fa take a value
+                                           # (on|off|auto); bare "-fa" now eats the
+                                           # next arg ("--ctk") and errors out.
            "--ctk", "q8_0",                # 8-bit KV cache (key) - cuts memory bandwidth in half
            "--ctv", "q8_0",                # 8-bit KV cache (value)
            "-b", str(batch),               # logical prefill batch
