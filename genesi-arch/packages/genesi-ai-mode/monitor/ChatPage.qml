@@ -35,17 +35,11 @@ Kirigami.Page {
         input.text = ""
     }
 
-    function applyTurbo() {
-        if (modelCombo.currentText.length > 0)
-            backend.setTurbo(turboSwitch.checked, modelCombo.currentText)
-    }
-
     Connections {
         target: backend
         function onTurboStatus(s) { statsLabel.text = s }
         function onTurboNeedsInstall(need) {
-            page.turboNeedsInstall = need
-            if (need) turboSwitch.checked = false   // toggle failed the pre-check
+            // Handled globally in Main.qml now
         }
         function onModelsLoaded(jsonStr) {
             var arr = []
@@ -89,7 +83,6 @@ Kirigami.Page {
             QQC2.ComboBox {
                 id: modelCombo
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 12
-                onCurrentTextChanged: if (turboSwitch.checked) page.applyTurbo()
             }
             QQC2.ToolButton {
                 icon.name: "view-refresh"
@@ -98,22 +91,6 @@ Kirigami.Page {
                 QQC2.ToolTip.visible: hovered
             }
             Item { Layout.fillWidth: true }
-            QQC2.Button {
-                text: "Instalar Turbo"
-                icon.name: "download"
-                visible: page.turboNeedsInstall
-                onClicked: backend.installTurboBackend()
-                QQC2.ToolTip.text: "Baixa o backend do Turbo (genesi-llama-cpp, " +
-                                   "pré-compilado do repo Genesi — ~dezenas de MB)"
-                QQC2.ToolTip.visible: hovered
-            }
-            QQC2.Switch {
-                id: turboSwitch
-                text: "⚡ Turbo"
-                QQC2.ToolTip.text: "Speculative decoding — respostas 1.5–3× mais rápidas, mesma qualidade"
-                QQC2.ToolTip.visible: hovered
-                onToggled: page.applyTurbo()
-            }
             QQC2.Label {
                 id: statsLabel
                 text: ""
