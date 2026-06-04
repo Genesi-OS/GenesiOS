@@ -50,48 +50,80 @@ DRAFT_FOR = [
 TINY = (":0.5b", ":0.6b", ":1b", ":1.5b")
 
 
-def models_dir():
+def _candidate_model_dirs():
+    """Yield every plausible Ollama model root, in priority order.
+
+    The daemon may store models in any of these depending on how Ollama was
+    installed: an explicit OLLAMA_MODELS, the upstream installer's
+    /usr/share/ollama/.ollama, or the Arch/CachyOS package's /var/lib/ollama.
+    Crucially, MORE THAN ONE of these can exist at once — e.g. an empty/stale
+    /usr/share/ollama/.ollama/models/manifests left by the upstream installer
+    alongside the real models under /var/lib/ollama. So callers must probe
+    *every* root for the specific model they want instead of locking onto the
+    first directory that merely has a manifests/ subdir."""
+    seen = set()
     for d in (os.environ.get("OLLAMA_MODELS"),
               "/usr/share/ollama/.ollama/models",
               "/var/lib/ollama/.ollama/models",
               "/var/lib/ollama/models",
               os.path.expanduser("~/.ollama/models")):
-        if d and os.path.isdir(os.path.join(d, "manifests")):
-            return d
+        if d and d not in seen and os.path.isdir(os.path.join(d, "manifests")):
+            seen.add(d)
+            yield d
+
+
+def models_dir():
+    """First existing model root (any with a manifests/ dir), or None.
+
+    Kept for the permission-fix path; model *resolution* uses gguf_path, which
+    searches all roots — see _candidate_model_dirs()."""
+    for d in _candidate_model_dirs():
+        return d
     return None
 
 
 def gguf_path(tag):
-    """The GGUF blob ollama stored for `tag` (e.g. 'llama3.1:8b'), or None."""
-    md = models_dir()
-    if not md:
-        print(f"[!] md is None, models_dir() failed to find manifests dir", file=sys.stderr)
-        return None
+    """The GGUF blob ollama stored for `tag` (e.g. 'llama3.1:8b'), or None.
+
+    Searches every candidate model root (not just the first one with a
+    manifests/ dir) so a stale/empty root can't shadow the one the daemon
+    actually pulled into."""
     name, _, ver = tag.partition(":")
     ver = ver or "latest"
-    man = os.path.join(md, "manifests", "registry.ollama.ai", "library", name, ver)
-    if not os.path.isfile(man):
-        print(f"[!] Manifest not found: {man}", file=sys.stderr)
+    roots = list(_candidate_model_dirs())
+    if not roots:
+        print("[!] No Ollama models directory found (no manifests/ dir anywhere)",
+              file=sys.stderr)
         return None
-    try:
-        m = json.load(open(man))
-    except Exception as e:
-        print(f"[!] Error reading manifest {man}: {e}", file=sys.stderr)
-        return None
-    for layer in m.get("layers", []):
-        if layer.get("mediaType", "").endswith("image.model"):
-            digest = layer.get("digest", "")
-            # Ollama sometimes uses sha256-xxx, sometimes sha256:xxx in digest, but the file is always sha256-xxx
-            blob_name = digest.replace(":", "-")
-            blob = os.path.join(md, "blobs", blob_name)
-            if not os.path.isfile(blob):
-                print(f"[!] Blob not found: {blob}", file=sys.stderr)
-                return None
-            if not os.access(blob, os.R_OK):
-                print(f"[!] Permission denied to read blob: {blob}", file=sys.stderr)
-                return None
-            return blob
-    print(f"[!] No image.model layer found in manifest {man}", file=sys.stderr)
+    last_err = None
+    for md in roots:
+        man = os.path.join(md, "manifests", "registry.ollama.ai", "library", name, ver)
+        if not os.path.isfile(man):
+            last_err = f"[!] Manifest not found: {man}"
+            continue
+        try:
+            m = json.load(open(man))
+        except Exception as e:
+            last_err = f"[!] Error reading manifest {man}: {e}"
+            continue
+        for layer in m.get("layers", []):
+            if layer.get("mediaType", "").endswith("image.model"):
+                digest = layer.get("digest", "")
+                # Ollama sometimes uses sha256-xxx, sometimes sha256:xxx in digest, but the file is always sha256-xxx
+                blob_name = digest.replace(":", "-")
+                blob = os.path.join(md, "blobs", blob_name)
+                if not os.path.isfile(blob):
+                    last_err = f"[!] Blob not found: {blob}"
+                    break
+                if not os.access(blob, os.R_OK):
+                    last_err = f"[!] Permission denied to read blob: {blob}"
+                    break
+                return blob
+        else:
+            last_err = f"[!] No image.model layer found in manifest {man}"
+    # Nothing matched in any root — report the most specific reason we hit.
+    if last_err:
+        print(last_err, file=sys.stderr)
     return None
 
 
@@ -148,18 +180,18 @@ def ensure(tag):
     p = gguf_path(tag)
     if p:
         return p
-    # Pull succeeded, but we can't read the files → permission issue.
-    if not models_dir():
-        print("\n[!] Cannot read the Ollama models directory — fixing permissions…",
-              file=sys.stderr, flush=True)
-        if _fix_ollama_permissions():
-            p = gguf_path(tag)
-            if p:
-                return p
-        print("[!] Still cannot read models. Run manually:", file=sys.stderr)
-        print("    sudo chmod a+rx /var/lib/ollama /var/lib/ollama/models", file=sys.stderr)
-        print("    sudo chmod -R a+rX /var/lib/ollama/models/blobs /var/lib/ollama/models/manifests",
-              file=sys.stderr)
+    # Pull succeeded but we still can't resolve the GGUF. Almost always the
+    # daemon (ollama user) wrote files the current user can't traverse/read, so
+    # open up the perms and try once more across all roots.
+    print("\n[!] Model pulled but its files aren't readable — fixing permissions…",
+          file=sys.stderr, flush=True)
+    if _fix_ollama_permissions():
+        p = gguf_path(tag)
+        if p:
+            return p
+    print("[!] Still cannot read the model. Run manually:", file=sys.stderr)
+    print("    sudo chmod -R a+rX /var/lib/ollama /usr/share/ollama/.ollama",
+          file=sys.stderr)
     return p
 
 
