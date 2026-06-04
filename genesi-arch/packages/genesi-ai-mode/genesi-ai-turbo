@@ -53,6 +53,8 @@ TINY = (":0.5b", ":0.6b", ":1b", ":1.5b")
 def models_dir():
     for d in (os.environ.get("OLLAMA_MODELS"),
               "/usr/share/ollama/.ollama/models",
+              "/var/lib/ollama/.ollama/models",
+              "/var/lib/ollama/models",
               os.path.expanduser("~/.ollama/models")):
         if d and os.path.isdir(os.path.join(d, "manifests")):
             return d
@@ -71,12 +73,19 @@ def gguf_path(tag):
         return None
     try:
         m = json.load(open(man))
-    except Exception:
+    except Exception as e:
+        print(f"[!] Error reading manifest {man}: {e}", file=sys.stderr)
         return None
     for layer in m.get("layers", []):
         if layer.get("mediaType", "").endswith("image.model"):
             blob = os.path.join(md, "blobs", layer.get("digest", "").replace(":", "-"))
-            return blob if os.path.isfile(blob) else None
+            if not os.path.isfile(blob):
+                print(f"[!] Blob not found: {blob}", file=sys.stderr)
+                return None
+            if not os.access(blob, os.R_OK):
+                print(f"[!] Permission denied to read blob: {blob}", file=sys.stderr)
+                return None
+            return blob
     return None
 
 
@@ -88,7 +97,12 @@ def ensure(tag):
     print(f":: pulling {tag} ...", flush=True)
     if subprocess.run(["ollama", "pull", tag]).returncode != 0:
         return None
-    return gguf_path(tag)
+    p = gguf_path(tag)
+    if not p and not models_dir():
+        print("\n[!] Error: Could not read Ollama models directory.", file=sys.stderr)
+        print("    If Ollama runs as a system service (e.g. /var/lib/ollama),", file=sys.stderr)
+        print("    you may need to run this command with 'sudo'.", file=sys.stderr)
+    return p
 
 
 def pick_draft(main):
