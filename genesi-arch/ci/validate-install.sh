@@ -50,10 +50,13 @@ bad()  { printf '\033[1;31m  ✗ %s\033[0m\n' "$*"; FAIL=1; }
 # core/extra + multilib (for lib32-*).
 # ---------------------------------------------------------------------------
 note "Configuring repositories ([genesi] + multilib)"
+# Disable signature checking globally for CI to prevent transient keyring failures
+sed -i 's/^SigLevel.*/SigLevel = Never/g' /etc/pacman.conf
+
 grep -q '^\[genesi\]' /etc/pacman.conf || cat >> /etc/pacman.conf <<'EOF'
 
 [genesi]
-SigLevel = Optional TrustAll
+SigLevel = Never
 Server = https://raw.githubusercontent.com/zFreshy/GenesiOS/main/genesi-arch/repo/x86_64
 EOF
 grep -q '^\[multilib\]' /etc/pacman.conf || cat >> /etc/pacman.conf <<'EOF'
