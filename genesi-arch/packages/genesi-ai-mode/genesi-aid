@@ -1094,6 +1094,22 @@ class AIOptimizer:
         except OSError as e:
             logger.debug(f"state write: {e}")
 
+    def manage_always_warm(self):
+        conf = self._advanced_conf()
+        if conf.get("always_warm_turbo") in ("on", "1", "true", "yes"):
+            if not hasattr(self, "_warm_proc") or self._warm_proc.poll() is not None:
+                logger.info("Spawning Always-Warm Turbo daemon...")
+                # Run as nobody or root. Running as root is fine since it's an inference server.
+                self._warm_proc = subprocess.Popen(
+                    ["genesi-ai-turbo", "serve", "llama3.2:latest"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+        else:
+            if hasattr(self, "_warm_proc") and self._warm_proc.poll() is None:
+                logger.info("Stopping Always-Warm Turbo daemon...")
+                self._warm_proc.terminate()
+                self._warm_proc = None
+
     # ── main loop ────────────────────────────────────────────────────────────
     def run(self):
         logger.info("Genesi AI Daemon started | %s",
@@ -1124,6 +1140,8 @@ class AIOptimizer:
                     # Idle: keep the last-used model warm in page cache so the
                     # next launch loads from RAM (RAM-gated; no-op on tight boxes).
                     self.maybe_warm_idle()
+
+                self.manage_always_warm()
 
                 metrics = self.collect_metrics()
                 if self.ai_mode_active:

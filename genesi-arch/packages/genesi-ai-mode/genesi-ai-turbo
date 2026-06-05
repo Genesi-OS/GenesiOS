@@ -260,9 +260,11 @@ def server_cmd(main_gguf, draft_gguf):
         gpus = hw.get("gpus") or []
         vram_mb = max([g.get("vram_mb") or 0 for g in gpus], default=0)
         ram_mb = hw.get("ram_mb") or 0
+        phys_cores = hw.get("physical_cores") or 4
     except Exception:
         vram_mb = 0
         ram_mb = 0
+        phys_cores = 4
 
     gpu = vram_mb > 0 or shutil.which("nvidia-smi") is not None
     vram_gb = vram_mb / 1024.0
@@ -327,7 +329,11 @@ def server_cmd(main_gguf, draft_gguf):
            # KV-cache reuse: keep matching prefix chunks across requests via KV
            # shifting, so a repeated system prompt isn't re-prefilled every turn
            # (near-instant on the 2nd+ message). Pure win, negligible memory.
-           "--cache-reuse", str(_env_int("GENESI_TURBO_CACHE_REUSE", 256))]
+           "--cache-reuse", str(_env_int("GENESI_TURBO_CACHE_REUSE", 256)),
+           "--threads", str(_env_int("GENESI_TURBO_THREADS", phys_cores)),
+           # Persistent KV Cache (Zero Cold-Start)
+           "--prompt-cache", "/var/tmp/genesi-turbo-cache.bin",
+           "--prompt-cache-all"]
            
     if use_ngl_999:
         cmd += ["-ngl", "999"]
@@ -340,6 +346,9 @@ def server_cmd(main_gguf, draft_gguf):
         
     if draft_gguf:
         cmd += ["-md", draft_gguf, "--draft", "8"]
+    else:
+        # Idea 1: N-Gram Speculation (Zero-VRAM). If no draft, speculate internally!
+        cmd += ["--lookup-ngram-min", "2", "--lookup-nc", "50"]
         
     return cmd
 

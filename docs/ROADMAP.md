@@ -348,7 +348,7 @@ once and gates every optimizer on detected capabilities.
       most-used model at low priority when the machine is idle, so the first
       prompt is instant (vs ~2 min cold load today). RAM-gated; integrates with
       the existing usage signals.
-- [ ] **Persistent prompt/KV cache to disk.** Use `llama-server` slot
+- [ ] **🌟 Ideia 2: Persistent prompt/KV cache to disk (Zero Cold-Start).** Use `llama-server` slot
       save/restore (`--slot-save-path`) so a long system-prompt's KV survives
       restarts — first reply of a new chat stays fast even after a reboot.
       (The server already enables an 8 GiB prompt cache; persist + reuse it.)
@@ -362,18 +362,22 @@ once and gates every optimizer on detected capabilities.
       pin with `--cpu-mask`/cpuset, NUMA placement, auto `-ngl` from VRAM, plus
       governor/power already done by AI Mode. (Builds on 2.8.4 + 2.8.7.)
 
-**Tier 3 — algorithmic decode wins**
+**Tier 3 — Algorithmic decode wins (Revolutionary)**
 - [ ] **N-gram / prompt-lookup speculation** (no draft model needed) — great for
       code, quotes and repetitive text; a free fallback when no same-family draft
       exists.
 - [ ] **Dynamic draft length** — tune how many tokens the draft proposes from the
       live acceptance rate (`--draft-max/--draft-min/--draft-p-min`): speculate
       more on easy spans, back off on hard ones. Beats today's fixed N.
-- [ ] **(ambitious) Lookahead / Medusa / EAGLE** — Jacobi-style parallel decode
-      or speculative heads, larger gains but heavier integration.
+- [ ] **🌟 Ideia 1: Native Medusa / EAGLE Integration** — Em vez de 2 modelos (principal + draft),
+      carrega um **único modelo** com múltiplas "cabeças extras" de especulação. Gera ganhos
+      massivos (3x a 4x) de velocidade de resposta sem dobrar o consumo de VRAM.
 
-**Tier 4 — memory/IO**
-- [ ] RAM-aware `mlock` (see 2.8.3) + zram so weights aren't evicted painfully.
+**Tier 4 — Memory & ZRAM OS-Pinning (Revolutionary)**
+- [ ] **🌟 Ideia 3: ZRAM AI Pinning (`mlock` + ZRAM)** — Para PCs de 8GB ou sem placa dedicada:
+      criar um bloco de ZRAM (RAM comprimida pelo Kernel) e "pinar" (`mlock`) o modelo de IA
+      lá dentro. A IA fica hiper-comprimida e nunca vai pro SSD (swap), garantindo trocas
+      instantâneas entre navegador e IA sem o clássico "congelamento" do Windows.
 - [ ] Smart partial offload when VRAM can't hold the whole model.
 
 > **Honest framing for marketing:** lead with *"local AI answers instantly and
