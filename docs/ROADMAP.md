@@ -78,6 +78,17 @@ See [Build & Release Infrastructure](#build--release-infrastructure) for details
 ## PHASE 2: AI Mode — Local AI Optimizations 🟩 ~90%
 > Make Genesi OS run local AI better than any other desktop OS.
 
+> **★ Core design principle — weak hardware is a first-class target.**
+> Every AI Mode / Turbo feature must **help low-end machines too**, even if with
+> smaller models. The litmus test: a **4 GB-RAM laptop with a dedicated GPU**
+> should run models its system RAM alone never could — by living **100% in
+> VRAM** — and be **faster with Turbo than without it**. Concretely this means:
+> nothing may assume lots of RAM; every optimizer is **RAM/VRAM-gated** and
+> degrades gracefully (it does nothing rather than OOM); the advisor picks the
+> **biggest model that fits the VRAM** (small quants by default on 2–4 GB); and
+> heavy knobs that need spare memory are skipped, not forced, on tight boxes.
+> "Runs great on a potato" is a feature, not an afterthought.
+
 ### 2.1 "Genesi AI Optimizer" daemon (`genesi-aid`)
 A systemd service that monitors AI processes and tunes the system automatically.
 
@@ -297,6 +308,29 @@ once and gates every optimizer on detected capabilities.
 > answers instantly, instead of paying the load every time), a **microarch-optimal
 > binary** out of the box, **hardware auto-tuning** nobody sets by hand, and a
 > **system-wide shared cache**. These are the levers an OS — not an app — owns.
+
+**Tier 0 — make it work on weak hardware (the litmus test: 4 GB RAM + a dGPU)**
+> The model's weights live in **VRAM**, separate from the 4 GB system RAM, so a
+> laptop that could never run a model on CPU can run it on the GPU. This already
+> works in llama.cpp/ollama — the OS's job is to detect VRAM, fit the model, and
+> never OOM. Bounded by VRAM size: ~2 GB → 1–3B, 4 GB → 3B (7B Q4 tight), 6 GB+
+> → 7B. Already feasible today; these tasks make it automatic and safe.
+- [~] **VRAM-fit full offload.** Run the model 100% in VRAM (`-ngl` all layers)
+      when the advisor's math says it fits — so a 4 GB-RAM + dGPU laptop runs
+      models its RAM never could. _Turbo already uses `-ngl 999`; the gap is
+      making it **VRAM-aware** (a blind 999 OOMs a 2 GB card) — pick `-ngl` from
+      the fit math instead._
+- [ ] **Advisor → biggest model that fits 100% in VRAM**, defaulting to small
+      quants (1B/3B Q4) on 2–4 GB cards, with the exact `ollama pull`. (The
+      advisor already does the VRAM-fit math — wire it to Turbo's model pick.)
+- [ ] **Turbo draft fallback on tight VRAM.** Speculative needs target+draft
+      resident; if both don't fit, run the draft on CPU or skip it (plain GPU
+      offload — still far faster than CPU). Never let Turbo OOM the GPU.
+- [ ] **Guard CPU+GPU split on low system RAM.** On 4 GB RAM, don't spill big
+      layers to CPU (it OOMs) — prefer a smaller model that fits VRAM fully.
+- [x] q8/q4 KV cache + modest context keep more in VRAM (Turbo ships q8 KV +
+      `GENESI_TURBO_CTX`). Memory coordination (Turbo unloads Ollama) already
+      avoids double-loading on tight boxes.
 
 **Tier 1 — kill the cold-start (the biggest *felt* win)**
 - [x] **Memory coordination (Turbo ⇄ Ollama).** Turbo serves via `llama-server`,
