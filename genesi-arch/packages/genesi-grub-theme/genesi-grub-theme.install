@@ -30,7 +30,7 @@ _genesi_grub_apply() {
         _set GRUB_BACKGROUND '"/usr/share/grub/themes/genesi/background.png"'
     fi
     _set GRUB_COLOR_NORMAL    '"light-gray/black"'
-    _set GRUB_COLOR_HIGHLIGHT '"black/green"'
+    _set GRUB_COLOR_HIGHLIGHT '"black/light-cyan"'
     _set GRUB_TERMINAL_OUTPUT '"gfxterm"'
 
     # Regenerate grub.cfg so the menu shows "Genesi OS" + the background.

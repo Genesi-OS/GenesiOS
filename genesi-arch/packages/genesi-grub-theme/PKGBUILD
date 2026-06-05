@@ -19,7 +19,7 @@ pkgver=1.0.0
 # settings.conf), so /etc/default/grub stayed stock and the menu read
 # "Arch Linux" on black. The scriptlet writes the branding + regenerates
 # grub.cfg on the real target, and fixes already-installed systems on `-Syu`.
-pkgrel=2
+pkgrel=3
 pkgdesc="Genesi OS GRUB background + branding (sets /etc/default/grub, regenerates grub.cfg)"
 arch=('any')
 url="https://github.com/zFreshy/GenesiOS"
