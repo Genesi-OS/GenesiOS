@@ -82,11 +82,25 @@ jobs:
 
       - name: 🔑 Preparar pacman/keyring
         run: |
-          pacman -Sy --noconfirm --needed \
-            python python-yaml arch-install-scripts \
-            archlinux-keyring cachyos-keyring
+          # CachyOS rotates its repo signing key periodically; the cachyos-v3
+          # base image's keyring can lag behind, so `pacman -Sy` aborts with
+          #   error: cachyos-extra-v3: signature ... is invalid
+          # Refresh the archlinux + cachyos keyrings before any real sync. If the
+          # db signature is ALREADY untrusted (catch-22: the sync that fetches the
+          # new keyring is the very sync that fails), bootstrap once with
+          # SigLevel=Never, then re-init/populate so every later sync verifies.
+          if ! pacman -Sy --noconfirm --needed archlinux-keyring cachyos-keyring; then
+            echo "::warning::keyring sync failed (stale CachyOS signing key) — bootstrapping with SigLevel=Never"
+            cp /etc/pacman.conf /etc/pacman.conf.bak
+            sed -i 's/^[[:space:]]*SigLevel.*/SigLevel = Never/' /etc/pacman.conf
+            pacman -Sy --noconfirm archlinux-keyring cachyos-keyring || true
+            mv /etc/pacman.conf.bak /etc/pacman.conf
+          fi
           pacman-key --init || true
           pacman-key --populate archlinux cachyos || true
+          # Validation tools (now verify against the fresh keyring)
+          pacman -Sy --noconfirm --needed \
+            python python-yaml arch-install-scripts
 
       - name: 🧪 Validar instalação (Nível 1 + Nível 2)
         run: bash genesi-arch/ci/validate-install.sh
@@ -122,6 +136,22 @@ jobs:
 
       - name: 🔧 Preparar ambiente de build
         run: |
+          # CachyOS rotates its repo signing key periodically; the cachyos-v3
+          # base image's keyring can lag behind, so `pacman -Sy` aborts with
+          #   error: cachyos-extra-v3: signature ... is invalid
+          # Each job runs in a FRESH container, so refresh the keyrings here too
+          # (Job 1's refresh doesn't carry over). Bootstrap with SigLevel=Never
+          # if the db signature is already untrusted, then re-init/populate.
+          if ! pacman -Sy --noconfirm --needed archlinux-keyring cachyos-keyring; then
+            echo "::warning::keyring sync failed (stale CachyOS signing key) — bootstrapping with SigLevel=Never"
+            cp /etc/pacman.conf /etc/pacman.conf.bak
+            sed -i 's/^[[:space:]]*SigLevel.*/SigLevel = Never/' /etc/pacman.conf
+            pacman -Sy --noconfirm archlinux-keyring cachyos-keyring || true
+            mv /etc/pacman.conf.bak /etc/pacman.conf
+          fi
+          pacman-key --init || true
+          pacman-key --populate archlinux cachyos || true
+
           # mkarchiso roda como root; prepare-and-build.sh espera um usuário
           # NÃO-root + sudo (recusa rodar como root). Criamos esse usuário.
           # archiso + the host tools the profile's bootmodes need:
