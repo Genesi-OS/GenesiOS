@@ -208,6 +208,18 @@ jobs:
       # 10GB free tier => $0. (Versioned/pinned ISOs live as the free GitHub
       # Release parts instead, so nothing ever accumulates on R2 and bills you.)
       # Skipped automatically until R2 secrets are set.
+      #
+      # ── Why we MUST clean up orphaned multipart uploads ──────────────────────
+      # rclone uploads the multi-GB ISO as a MULTIPART upload. If a run is killed
+      # mid-upload (the `concurrency: cancel-in-progress` above SIGKILLs the
+      # superseded run, and SIGKILL can't be trapped), the parts already sent are
+      # left as an "Ongoing Multipart Upload" that STILL counts toward bucket
+      # storage but never appears as a completed object. Two of those = blowing
+      # past the 10GB free tier even though only one real ISO exists. So:
+      #   1. `rclone cleanup` below aborts any stale incomplete uploads each run.
+      #   2. (server-side, set in the R2 dashboard) an "Abort incomplete multipart
+      #      uploads after 1 day" lifecycle rule on the bucket is the real
+      #      backstop — it fires even when this pipeline never runs again.
       - name: ☁️ Upload single ISO to Cloudflare R2
         if: ${{ env.R2_ACCESS_KEY_ID != '' }}
         run: |
@@ -220,9 +232,20 @@ jobs:
           export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
           export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
+          # Abort EVERY orphaned multipart upload left by a previously-killed run
+          # BEFORE uploading, so storage can never accumulate past the single real
+          # ISO. `backend cleanup -o max-age=0` removes incomplete uploads of ANY
+          # age (the plain `rclone cleanup` only touches ones older than 24h, which
+          # would miss a fresh orphan from a build earlier the same day). Safe here:
+          # the `concurrency` group guarantees no other run is uploading in
+          # parallel, so there is never a legitimate in-flight upload to clobber.
+          # Non-fatal — a cleanup failure must not block publishing the ISO.
+          echo "🧹 Abortando uploads multipart incompletos órfãos…"
+          rclone backend cleanup "R2:${R2_BUCKET}" -o max-age=0 --s3-no-check-bucket || \
+            echo "::warning::rclone backend cleanup falhou (segue o upload mesmo assim)"
+
           echo "⬆️  $(du -h "$ISO_PATH" | cut -f1) -> r2:${R2_BUCKET}/genesi-os-latest.iso (overwrite)"
-          # copyto to a fixed key overwrites in place; rclone aborts (doesn't
-          # leave orphaned multipart parts) on failure, so storage stays bounded.
+          # copyto to a fixed key overwrites the completed object in place.
           rclone copyto "$ISO_PATH" "R2:${R2_BUCKET}/genesi-os-latest.iso" \
             --s3-no-check-bucket --stats-one-line --stats 30s
 
