@@ -330,10 +330,14 @@ def server_cmd(main_gguf, draft_gguf):
            # shifting, so a repeated system prompt isn't re-prefilled every turn
            # (near-instant on the 2nd+ message). Pure win, negligible memory.
            "--cache-reuse", str(_env_int("GENESI_TURBO_CACHE_REUSE", 256)),
-           "--threads", str(_env_int("GENESI_TURBO_THREADS", phys_cores)),
-           # Persistent KV Cache (Zero Cold-Start)
-           "--prompt-cache", "/var/tmp/genesi-turbo-cache.bin",
-           "--prompt-cache-all"]
+           "--threads", str(_env_int("GENESI_TURBO_THREADS", phys_cores))]
+           # NOTE: NO --prompt-cache / --prompt-cache-all here. Those are
+           # llama-CLI (main) flags; llama-server rejects them with
+           #   error: invalid argument: --prompt-cache
+           # and refuses to start (broke every Turbo launch, 2026-06-05).
+           # In-session prefix reuse is already handled by --cache-reuse above;
+           # cross-restart persistence in llama-server is a runtime API
+           # (--slot-save-path + /slots?action=save), not a startup flag.
            
     if use_ngl_999:
         cmd += ["-ngl", "999"]
@@ -345,11 +349,16 @@ def server_cmd(main_gguf, draft_gguf):
         cmd += ["--mlock"]
         
     if draft_gguf:
+        # Speculative decoding with a same-family draft model. `--draft` is a
+        # valid llama-server alias of `--draft-max` (common.cpp registers
+        # {"--draft-max","--draft","-n-draft"}).
         cmd += ["-md", draft_gguf, "--draft", "8"]
-    else:
-        # Idea 1: N-Gram Speculation (Zero-VRAM). If no draft, speculate internally!
-        cmd += ["--lookup-ngram-min", "2", "--lookup-nc", "50"]
-        
+    # NOTE: NO --lookup-ngram-min / --lookup-nc fallback. N-gram "lookup"
+    # decoding lives in the separate llama.cpp `lookup` example binary, NOT in
+    # llama-server, which rejects those flags ("invalid argument"). With no
+    # draft model there is simply no speculation (identical output, no speedup) —
+    # the serve/bench messages already say "no draft — no speedup".
+
     return cmd
 
 
