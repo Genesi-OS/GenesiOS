@@ -4,7 +4,7 @@
 _gitname=genesi-calamares
 pkgname=genesi-calamares
 pkgver=3.3.11
-pkgrel=3
+pkgrel=4
 pkgdesc='Distribution-independent installer framework - Genesi OS Edition'
 arch=('x86_64')
 license=(GPL-3.0-or-later)
@@ -56,8 +56,9 @@ backup=('usr/share/calamares/modules/bootloader.conf'
         'usr/share/calamares/modules/initcpio.conf'
         'usr/share/calamares/modules/unpackfs.conf')
 
-source=("git+https://github.com/zFreshy/genesi-calamares.git")
-sha256sums=('SKIP')
+source=("git+https://github.com/zFreshy/genesi-calamares.git"
+        "../../../wallpapers/logo/GenesiOSLogoNoBg.png")
+sha256sums=('SKIP' 'SKIP')
 
 prepare() {
     cd "${srcdir}/${_gitname}"
@@ -100,4 +101,10 @@ package() {
     # Update settings to use Genesi branding
     sed -i "s/branding:.*/branding: genesi/" \
         "${pkgdir}/usr/share/calamares/settings.conf"
+
+    # Replace CachyOS icon with Genesi OS logo in the application package
+    install -Dm644 "${srcdir}/GenesiOSLogoNoBg.png" \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/calamares.png"
+    rm -f "${pkgdir}/usr/share/icons/hicolor/scalable/apps/calamares.svg"
+    sed -i "s/Icon=calamares/Icon=calamares.png/" "${pkgdir}/usr/share/applications/calamares.desktop"
 }
