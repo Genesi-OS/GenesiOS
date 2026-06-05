@@ -96,10 +96,19 @@ libfido2
 libusb-compat
 libwnck3
 linux-atm
+# NVIDIA: the live ISO deliberately does NOT ship the prebuilt nvidia-open
+# kernel modules (linux-cachyos[-lts]-nvidia-open). Those hard-pin an EXACT
+# nvidia-utils version (e.g. =610.43.02); CachyOS is rolling, so whenever the
+# module package and nvidia-utils fall out of sync on the mirror the ENTIRE ISO
+# pacstrap dies with "unable to satisfy dependency 'nvidia-utils=X' required by
+# linux-cachyos-nvidia-open" (hit 2026-05-31 and again 2026-06-05). The
+# live/installer environment only needs a working display, which nouveau
+# (in-kernel, no version pin) provides on every GPU. The proper open/proprietary
+# driver is installed on the TARGET by chwd during install
+# (shellprocess@genesi_gpu in the calamares config). Result: nvidia version
+# churn can never break the ISO build again.
 linux-cachyos-lts
-linux-cachyos-lts-nvidia-open
 linux-cachyos
-linux-cachyos-nvidia-open
 linux-firmware
 linux-firmware-marvell
 lsb-release
