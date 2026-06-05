@@ -302,7 +302,11 @@ class Backend(QObject):
                 except Exception:
                     return ""
 
-            for i in range(180):
+            # Up to ~15 min: an 8B on a CPU-only VM can take 5-8 min to load and
+            # warm up (confirmed on a 6 GB VM). Real failures still surface in
+            # seconds via the proc.poll() death-check below, so a long ceiling
+            # only ever helps a genuine slow load — it never hides a crash.
+            for i in range(900):
                 if self._turbo_model != model:      # cancelled or model changed
                     return
                 # Ready? Check health FIRST — `serve` may have reused an already
@@ -326,11 +330,13 @@ class Backend(QObject):
                         "rode no terminal: genesi-ai-turbo serve " + model))
                     return
                 # live elapsed-time feedback so it never looks frozen
-                self.turboStatus.emit(
-                    f"iniciando Turbo (carregando o modelo)… {i + 1}s")
+                secs = i + 1
+                elapsed = f"{secs // 60}m{secs % 60:02d}s" if secs >= 60 else f"{secs}s"
+                hint = "  ·  modelos grandes em CPU/VM levam alguns minutos" if secs > 25 else ""
+                self.turboStatus.emit(f"carregando o modelo… {elapsed}{hint}")
                 time.sleep(1)
             self.turboStatus.emit(
-                "Turbo não subiu — rode no terminal p/ ver o erro: "
+                "Turbo demorou demais — rode no terminal p/ ver o erro: "
                 "genesi-ai-turbo serve " + model)
         threading.Thread(target=run, daemon=True).start()
 

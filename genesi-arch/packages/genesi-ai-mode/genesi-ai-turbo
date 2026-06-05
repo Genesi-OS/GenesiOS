@@ -301,7 +301,7 @@ def server_cmd(main_gguf, draft_gguf):
     return cmd
 
 
-def wait_ready(timeout=180):
+def wait_ready(timeout=900):   # big models on a CPU-only VM can take 5-8 min
     end = time.time() + timeout
     while time.time() < end:
         try:
