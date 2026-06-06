@@ -483,11 +483,13 @@ rm -f /etc/xdg/autostart/cachyos-hello.desktop 2>/dev/null || true
 # 4. Rebrand Calamares (installed by cachyos-calamares-next)
 # ============================================================
 
-# Patch branding.desc and copy to genesi folder
+# Step A: Copy CachyOS branding as a TEXT FALLBACK (for any .desc/.qml
+# fields we didn't override yet), then sed-patch text references.
 if [ -f /usr/share/calamares/branding/cachyos/branding.desc ]; then
-    # Copy the entire cachyos branding to genesi folder
+    mkdir -p /usr/share/calamares/branding/genesi
+    # Copy CachyOS as baseline (we'll overwrite images/QML next)
     cp -rf /usr/share/calamares/branding/cachyos/* /usr/share/calamares/branding/genesi/ 2>/dev/null || true
-    # Now patch the genesi copy
+    # Patch text references in the copy
     sed -i \
         -e 's/productName:.*CachyOS/productName:       Genesi OS/' \
         -e 's/shortProductName:.*CachyOS/shortProductName:  Genesi OS/' \
@@ -501,10 +503,21 @@ if [ -f /usr/share/calamares/branding/cachyos/branding.desc ]; then
         /usr/share/calamares/branding/genesi/branding.desc
 fi
 
-# Also copy to /etc/calamares/branding/genesi if that path is used
+# Step B: Also copy to /etc/calamares/branding/genesi (some builds read from here)
 mkdir -p /etc/calamares/branding/genesi
 if [ -f /usr/share/calamares/branding/genesi/branding.desc ]; then
     cp -rf /usr/share/calamares/branding/genesi/* /etc/calamares/branding/genesi/
+fi
+
+# Step C: NOW overlay OUR branding from the genesi-calamares-config submodule.
+# This MUST happen AFTER the CachyOS copy above so our logo, icon, slides,
+# show.qml, stylesheet, and branding.desc take priority over CachyOS's.
+if [ -d /root/genesi-calamares-config-full/etc/calamares/branding/genesi ]; then
+    cp -rf /root/genesi-calamares-config-full/etc/calamares/branding/genesi/* \
+        /etc/calamares/branding/genesi/
+    cp -rf /root/genesi-calamares-config-full/etc/calamares/branding/genesi/* \
+        /usr/share/calamares/branding/genesi/ 2>/dev/null || true
+    echo ">>> Genesi branding re-overlaid AFTER CachyOS fallback (our images/QML win)"
 fi
 
 # Force copy our packages.conf (overwrite any existing one)

@@ -73,16 +73,9 @@ main() {
 
     # Rebrand Calamares from CachyOS to Genesi OS
     if [ -d /usr/share/calamares/branding/cachyos ]; then
-        # Copy cachyos branding to genesi folder, then patch
+        # Copy cachyos branding to genesi folder as text fallback, then patch
         sudo mkdir -p /usr/share/calamares/branding/genesi
         sudo cp -rf /usr/share/calamares/branding/cachyos/* /usr/share/calamares/branding/genesi/
-
-        # Copy Genesi OS custom images over CachyOS ones (if they exist in our branding dir)
-        for img in logo.png icon.png welcome.png; do
-            if [ -f /usr/share/calamares/branding/genesi/$img ]; then
-                : # Already there from airootfs
-            fi
-        done
 
         sudo sed -i \
             -e 's/productName:.*CachyOS/productName:       Genesi OS/' \
@@ -99,13 +92,23 @@ main() {
     if [ -f /usr/share/calamares/branding/genesi/branding.desc ]; then
         sudo cp -rf /usr/share/calamares/branding/genesi/* /etc/calamares/branding/genesi/
     fi
+
+    # NOW re-overlay OUR branding so our slides/logo/icon/show.qml win
+    if [ -d /root/genesi-calamares-config-full/etc/calamares/branding/genesi ]; then
+        sudo cp -rf /root/genesi-calamares-config-full/etc/calamares/branding/genesi/* \
+            /etc/calamares/branding/genesi/
+        sudo cp -rf /root/genesi-calamares-config-full/etc/calamares/branding/genesi/* \
+            /usr/share/calamares/branding/genesi/ 2>/dev/null || true
+        echo ">>> Genesi branding re-overlaid AFTER CachyOS fallback (our images/QML win)"
+    fi
+
     # Update settings to use genesi branding
     sudo find /usr/share/calamares /etc/calamares -type f -name "settings*.conf" -exec sed -i \
         -e 's/branding:.*cachyos/branding: genesi/' \
         -e 's/CachyOS/Genesi OS/g' \
         {} + 2>/dev/null || true
     # Patch all Calamares text files
-    sudo find /usr/share/calamares /etc/calamares -type f \( -name "*.conf" -o -name "*.qml" -o -name "*.yml" -o -name "*.yaml" -o -name "*.desc" \) \
+    sudo find /usr/share/calamares /etc/calamares -type f \( -name "*.conf" -o -name "*.yml" -o -name "*.yaml" -o -name "*.desc" \) \
         -exec sed -i -e 's/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
 
     # Get Hardware Informations
