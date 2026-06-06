@@ -56,8 +56,13 @@ backup=('usr/share/calamares/modules/bootloader.conf'
         'usr/share/calamares/modules/initcpio.conf'
         'usr/share/calamares/modules/unpackfs.conf')
 
+# GenesiOSLogoNoBg.png must live NEXT TO this PKGBUILD: makepkg resolves a local
+# source by its basename inside the PKGBUILD dir and does NOT follow ../ paths
+# out of it, so "../../../wallpapers/logo/GenesiOSLogoNoBg.png" failed with
+# "was not found in the build directory and is not a URL" (publish-packages #131,
+# 2026-06-05). The file is a copy of wallpapers/logo/GenesiOSLogoNoBg.png.
 source=("git+https://github.com/zFreshy/genesi-calamares.git"
-        "../../../wallpapers/logo/GenesiOSLogoNoBg.png")
+        "GenesiOSLogoNoBg.png")
 sha256sums=('SKIP' 'SKIP')
 
 prepare() {
