@@ -23,8 +23,12 @@ Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
   GENESI_TURBO_BATCH=2048        logical prefill batch
   GENESI_TURBO_CACHE_REUSE=256   min prefix chunk reused across requests (KV)
   GENESI_TURBO_MLOCK=1           pin model in RAM (opt-in; risky on low RAM)
+  GENESI_TURBO_THREADS=<n>       CPU inference threads (default: fast/perf cores)
+  GENESI_TURBO_FORCE_DRAFT=1     force speculative decoding even on CPU-only
+                                 (off by default — a CPU draft usually slows it)
 """
 import os
+import re
 import sys
 import json
 import time
@@ -249,6 +253,38 @@ def _env_flag(name):
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _performance_cores(fallback):
+    """Best-effort count of the FAST physical cores for CPU inference.
+
+    On Intel hybrid CPUs (P + E cores, e.g. the i5-13420H) spreading llama.cpp
+    across the slow E-cores adds cross-core sync stalls and REGRESSES tokens/s,
+    so we count only the top-frequency physical cores (one entry per core_id,
+    HT siblings deduped). Falls back to `fallback` (physical core count) on any
+    machine that doesn't expose the topology (VMs, odd kernels)."""
+    base = "/sys/devices/system/cpu"
+    try:
+        core_freq = {}                       # physical core_id -> max freq (kHz)
+        for cpu in os.listdir(base):
+            if not re.fullmatch(r"cpu\d+", cpu):
+                continue
+            try:
+                with open(f"{base}/{cpu}/topology/core_id") as f:
+                    cid = int(f.read().strip())
+                with open(f"{base}/{cpu}/cpufreq/cpuinfo_max_freq") as f:
+                    mf = int(f.read().strip())
+            except (OSError, ValueError):
+                return fallback              # incomplete data -> don't guess
+            core_freq[cid] = max(core_freq.get(cid, 0), mf)
+        if not core_freq:
+            return fallback
+        top = max(core_freq.values())
+        # P-cores sit within ~5% of the top clock; E-cores are well below it.
+        fast = sum(1 for f in core_freq.values() if f >= top * 0.95)
+        return fast if fast >= 1 else fallback
+    except OSError:
+        return fallback
+
+
 def server_cmd(main_gguf, draft_gguf):
     binp = llama_bin("llama-server")
     if not binp:
@@ -283,12 +319,17 @@ def server_cmd(main_gguf, draft_gguf):
     fits_main = main_gb <= budget_gb if budget_gb > 0 else False
     fits_both = (main_gb + draft_gb) <= budget_gb if budget_gb > 0 else False
 
+    # Decide WHERE we run (GPU offload vs CPU) and WHETHER speculative decoding
+    # actually pays off. Spec decoding is only a win when BOTH the target and
+    # the draft sit on a fast device together; otherwise the draft becomes the
+    # bottleneck (or, on CPU, just steals cycles from the target).
     use_ngl_999 = False
     if gpu:
         if fits_both:
-            use_ngl_999 = True
+            use_ngl_999 = True               # target + draft both fit -> spec on GPU
         elif fits_main:
-            print(f"   [!] Draft model dropped: not enough VRAM for both (budget: {budget_gb:.1f}GB).", flush=True)
+            if draft_gguf:
+                print(f"   [!] Draft model dropped: not enough VRAM for both (budget: {budget_gb:.1f}GB).", flush=True)
             draft_gguf = None
             use_ngl_999 = True
         else:
@@ -298,39 +339,39 @@ def server_cmd(main_gguf, draft_gguf):
             if ram_mb > 0 and main_gb > free_ram_gb:
                 print("   [!] DANGER: System RAM is too low to safely offload. Expect severe lag or OOM.", flush=True)
             if draft_gguf:
-                print("   [!] Draft model dropped: optimizing memory on tight VRAM.", flush=True)
-                draft_gguf = None
+                print("   [!] Draft model dropped: the target model is already spilling VRAM.", flush=True)
+                draft_gguf = None            # never speculate when the target spills
             if vram_gb > 2.0:
                 use_ngl_999 = True
+    else:
+        # CPU-only. Running a second (draft) model on the same cores almost
+        # always costs more than the speculation saves, and the extra weights
+        # risk OOM on low-RAM laptops. This is exactly what made Turbo SLOWER
+        # than stock ollama on an 8GB CPU-only notebook (it kept the draft).
+        # Disable it unless the user explicitly opts in.
+        if draft_gguf and not _env_flag("GENESI_TURBO_FORCE_DRAFT"):
+            print("   [!] CPU-only: speculative decoding disabled (a CPU draft slows decode). "
+                  "Set GENESI_TURBO_FORCE_DRAFT=1 to override.", flush=True)
+            draft_gguf = None
 
     ctx = _env_int("GENESI_TURBO_CTX", 4096)
     # Prefill (reading the prompt) is compute-bound, so a bigger physical batch
-    # (n_ubatch / -ub) reads the prompt in fewer, fatter passes — the 2.8.10
-    # "prefill speedup". Larger -ub costs more compute-buffer memory, so default
-    # to a modest bump only on GPU (where prefill dominates and the buffer fits)
-    # and the llama.cpp default (512) on CPU. Both env-overridable for on-HW
-    # tuning without a rebuild (drop GENESI_TURBO_UBATCH=512 if a small GPU OOMs).
+    # (n_ubatch / -ub) reads the prompt in fewer, fatter passes. Larger -ub costs
+    # more compute-buffer memory, so default to a modest bump only on GPU and the
+    # llama.cpp default (512) on CPU. Env-overridable for on-HW tuning.
     batch = _env_int("GENESI_TURBO_BATCH", 2048)
     ubatch = _env_int("GENESI_TURBO_UBATCH", 1024 if gpu else 512)
+    threads = _env_int("GENESI_TURBO_THREADS", _performance_cores(phys_cores))
     cmd = [binp, "-m", main_gguf, "--host", "127.0.0.1",
            "--port", str(TURBO_PORT),
            "-c", str(ctx),
-           "-fa", "on",                    # flash attention (decode + prefill).
-                                           # Newer llama.cpp made -fa take a value
-                                           # (on|off|auto); bare "-fa" now eats the
-                                           # next arg and errors out.
-           # 8-bit KV cache (key/value) — halves KV memory bandwidth. Newer
-           # llama.cpp dropped the "--ctk"/"--ctv" (double-dash) spelling; the
-           # valid forms are "-ctk"/"-ctv" (single dash) or these long names.
-           "--cache-type-k", "q8_0",
-           "--cache-type-v", "q8_0",
            "-b", str(batch),               # logical prefill batch
            "-ub", str(ubatch),             # physical prefill batch (n_ubatch)
            # KV-cache reuse: keep matching prefix chunks across requests via KV
            # shifting, so a repeated system prompt isn't re-prefilled every turn
            # (near-instant on the 2nd+ message). Pure win, negligible memory.
            "--cache-reuse", str(_env_int("GENESI_TURBO_CACHE_REUSE", 256)),
-           "--threads", str(_env_int("GENESI_TURBO_THREADS", phys_cores))]
+           "--threads", str(threads)]
            # NOTE: NO --prompt-cache / --prompt-cache-all here. Those are
            # llama-CLI (main) flags; llama-server rejects them with
            #   error: invalid argument: --prompt-cache
@@ -338,21 +379,39 @@ def server_cmd(main_gguf, draft_gguf):
            # In-session prefix reuse is already handled by --cache-reuse above;
            # cross-restart persistence in llama-server is a runtime API
            # (--slot-save-path + /slots?action=save), not a startup flag.
-           
+
+    # Flash attention + quantized KV cache are a clear win on the GPU (they cut
+    # memory bandwidth, which is the bottleneck there), but on CPU the q8_0 KV
+    # has to be de-quantized every single step and CPU flash-attn isn't faster —
+    # both REGRESS tokens/s. So: GPU gets -fa on + q8_0 KV; CPU gets f16 KV
+    # (llama.cpp default, no flag) and lets llama.cpp auto-decide flash-attn.
+    if use_ngl_999:
+        cmd += ["-fa", "on",                 # flash attention (decode + prefill)
+                "--cache-type-k", "q8_0",    # 8-bit KV halves KV bandwidth on GPU
+                "--cache-type-v", "q8_0"]
+    else:
+        cmd += ["-fa", "auto"]               # CPU: f16 KV (default) + auto FA
+
     if use_ngl_999:
         cmd += ["-ngl", "999"]
-        
+
     # mlock: pin the model in RAM (no swap/reclaim) for steady CPU inference.
     # Opt-in only — risky on low-RAM machines and the live ISO (RAM-backed fs),
     # so default OFF; enable with GENESI_TURBO_MLOCK=1.
     if _env_flag("GENESI_TURBO_MLOCK"):
         cmd += ["--mlock"]
-        
+
     if draft_gguf:
         # Speculative decoding with a same-family draft model. `--draft` is a
         # valid llama-server alias of `--draft-max` (common.cpp registers
         # {"--draft-max","--draft","-n-draft"}).
         cmd += ["-md", draft_gguf, "--draft", "8"]
+        # The draft MUST be GPU-resident too. Without -ngld the draft runs on
+        # the CPU while the target is on the GPU, so the slow CPU draft becomes
+        # the bottleneck and speculation yields no speedup — the reason Turbo's
+        # spec decoding "never worked". -ngld is only meaningful with GPU layers.
+        if use_ngl_999:
+            cmd += ["-ngld", "999"]
     # NOTE: NO --lookup-ngram-min / --lookup-nc fallback. N-gram "lookup"
     # decoding lives in the separate llama.cpp `lookup` example binary, NOT in
     # llama-server, which rejects those flags ("invalid argument"). With no
@@ -450,6 +509,12 @@ def cmd_bench(main, draft):
     results = {}
     for label, dg in (("no-spec", None), ("turbo (spec)", draft_g)):
         print(f":: starting {label} ...", flush=True)
+        # bench is a diagnostic: force the draft through even on CPU-only so the
+        # user can SEE the real spec-vs-no-spec delta on their own hardware.
+        # `serve` auto-disables the draft on CPU (where it's a net loss); here we
+        # want the measurement, not the policy.
+        if dg:
+            os.environ["GENESI_TURBO_FORCE_DRAFT"] = "1"
         cmd = server_cmd(main_g, dg)
         print("   " + " ".join(cmd), flush=True)
         log = tempfile.NamedTemporaryFile("w", delete=False, suffix=".log").name

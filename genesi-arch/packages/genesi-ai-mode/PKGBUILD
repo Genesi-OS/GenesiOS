@@ -2,7 +2,14 @@
 
 pkgname=genesi-ai-mode
 pkgver=1.0.0
-pkgrel=52
+# 2026-06-07 (53): Turbo fixes for weak/CPU hardware + working speculative
+# decoding. (1) CPU-only machines no longer keep the speculative draft model —
+# a second model on the same cores made Turbo SLOWER than stock on an 8GB
+# CPU-only laptop. (2) On GPU, the draft is now offloaded with -ngld 999 so it
+# runs on the GPU instead of the CPU (the reason spec decoding "never worked").
+# (3) CPU path uses f16 KV + auto flash-attn (q8_0 KV + forced FA only help on
+# GPU) and pins threads to the fast/perf cores (skips Intel hybrid E-cores).
+pkgrel=53
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

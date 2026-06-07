@@ -142,6 +142,36 @@ jobs:
             sleep 20
           done
 
+      - name: Normalize build flags for broad CPU compatibility
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # The cachyos-v3 container compiles with -march=x86-64-v3 (AVX2/FMA/
+          # BMI2), and its rust.conf uses target-cpu=native (= the GitHub
+          # runner's CPU, frequently AVX-512). Both bake instructions that
+          # older/consumer bare-metal CPUs may lack.
+          #
+          # The [genesi] repo (pacman.conf) ships a SINGLE build to EVERY
+          # machine — unlike the [cachyos] repo which has per-arch v1/v3/v4
+          # variants that pacman's `Architecture = auto` picks per CPU. So the
+          # base system installs v1 packages on a non-v3 CPU (and boots fine),
+          # but cachyos-pi & friends came only in v3 and die with
+          # "Illegal instruction (core dumped)" on real hardware while running
+          # fine in a v3-capable dev VM. Reproduced 2026-06-07 (cachyos-pi).
+          #
+          # Until the genesi repo ships per-arch variants, pin this single build
+          # to the baseline x86-64 ISA so it runs on any x86-64 CPU.
+          for f in /etc/makepkg.conf /etc/makepkg.conf.d/*.conf; do
+            [ -f "$f" ] || continue
+            sed -i -E \
+              -e 's/-march=x86-64-v[0-9]+/-march=x86-64/g' \
+              -e 's/-mtune=[^ "]+/-mtune=generic/g' \
+              -e 's/(-C[[:space:]]*target-cpu=)[^ "]+/\1x86-64/g' \
+              "$f"
+          done
+          echo "Effective arch flags after normalization:"
+          grep -RHE 'march=|mtune=|target-cpu=' /etc/makepkg.conf /etc/makepkg.conf.d/ || true
+
       - name: Build packages
         shell: bash
         run: |
