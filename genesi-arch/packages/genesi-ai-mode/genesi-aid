@@ -142,6 +142,27 @@ def _write(path, value):
         return False
 
 
+def _vulkan_vram_mb():
+    """Largest GPU VRAM (MiB) as reported by llama.cpp's own backend
+    (`llama-server --list-devices`). Vendor-agnostic — works under nouveau/NVK,
+    RADV and ANV, where nvidia-smi and sysfs give us nothing. 0 if unavailable.
+    Only used to SIZE a GPU we already found via DRM, never to invent one."""
+    binp = shutil.which("llama-server") or "/usr/bin/llama-server"
+    if not os.path.exists(binp):
+        return 0
+    try:
+        r = subprocess.run([binp, "--list-devices"],
+                           capture_output=True, text=True, timeout=20)
+        text = (r.stdout or "") + (r.stderr or "")
+    except Exception:
+        return 0
+    best = 0
+    # device lines look like: "  Vulkan0: NVIDIA GeForce RTX 3050 (8448 MiB, ...)"
+    for m in re.finditer(r"\((\d+)\s*MiB", text):
+        best = max(best, int(m.group(1)))
+    return best
+
+
 # ── Hardware detection ───────────────────────────────────────────────────────
 class HardwareProfile:
     """One-shot profile of the host. `on_battery` is re-checked live."""
@@ -217,6 +238,15 @@ class HardwareProfile:
                     gpus.append({"vendor": "nvidia", "card": card})
         except OSError:
             pass
+        # We found a real GPU via DRM but couldn't size its VRAM (nouveau/NVK
+        # have no nvidia-smi and no standard sysfs VRAM total). Ask llama.cpp's
+        # Vulkan backend so the advisor/Turbo get a real budget instead of
+        # falling back to "no GPU". Guarded by `gpus` so a CPU-only/VM box never
+        # invents a GPU here.
+        if gpus and not any((g.get("vram_mb") or 0) > 0 for g in gpus):
+            vram = _vulkan_vram_mb()
+            if vram > 0:
+                gpus[0]["vram_mb"] = vram
         return gpus
 
     def _chassis(self):
@@ -1126,13 +1156,17 @@ class AIOptimizer:
         early — before the NVIDIA driver is necessarily ready — so a GPU can be
         missed and cached as 'absent' for the whole session (the dashboard then
         shows "no GPU" on a machine that has one, and Turbo runs on the CPU).
-        Re-probe every ~30s until we actually have a GPU with VRAM."""
+        Re-probe every ~30s until we have a GPU with VRAM, then stop. Give up
+        after ~20 min so a genuinely GPU-less box doesn't probe forever."""
         if any((g.get("vram_mb") or 0) > 0 for g in self.hw.gpus):
             return                                   # already have a usable GPU
+        if getattr(self, "_gpu_probes", 0) >= 40:
+            return                                   # GPU-less / give up
         now = time.time()
         if now - getattr(self, "_last_gpu_probe", 0.0) < 30:
             return
         self._last_gpu_probe = now
+        self._gpu_probes = getattr(self, "_gpu_probes", 0) + 1
         found = self.hw._detect_gpus()
         if found and (not self.hw.gpus
                       or any((g.get("vram_mb") or 0) > 0 for g in found)):

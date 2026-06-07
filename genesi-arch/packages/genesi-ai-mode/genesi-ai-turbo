@@ -256,10 +256,9 @@ def _env_flag(name):
 def _nvidia_vram_mb():
     """Total VRAM (MiB) of the largest NVIDIA GPU via nvidia-smi, or 0.
 
-    Fallback for when the daemon's state.json doesn't carry the GPU (it profiles
-    once at boot and can miss a not-yet-ready NVIDIA driver, caching 'no GPU' for
-    the session). Without this we'd compute a 0 VRAM budget and silently run on
-    the CPU despite having a perfectly good GPU."""
+    Works only with the proprietary/open NVIDIA driver. On the live ISO (and any
+    nouveau/NVK setup) the binary may exist but the query fails — hence the
+    Vulkan fallback below."""
     if not shutil.which("nvidia-smi"):
         return 0
     try:
@@ -275,6 +274,33 @@ def _nvidia_vram_mb():
         if v.isdigit():
             best = max(best, int(v))
     return best
+
+
+def _vulkan_vram_mb():
+    """Total VRAM (MiB) of the largest GPU as seen by llama.cpp's own backend,
+    via `llama-server --list-devices`. Vendor-agnostic (NVK/nouveau, RADV, ANV,
+    NVIDIA) and, crucially, reports exactly what we can actually offload to —
+    the same Vulkan device the server will use. Returns 0 if unavailable."""
+    binp = llama_bin("llama-server")
+    if not binp:
+        return 0
+    try:
+        r = subprocess.run([binp, "--list-devices"],
+                           capture_output=True, text=True, timeout=20)
+        text = (r.stdout or "") + (r.stderr or "")
+    except Exception:
+        return 0
+    best = 0
+    # device lines look like: "  Vulkan0: NVIDIA GeForce RTX 3050 (8448 MiB, ...)"
+    for m in re.finditer(r"\((\d+)\s*MiB", text):
+        best = max(best, int(m.group(1)))
+    return best
+
+
+def _detect_vram_mb():
+    """Best VRAM (MiB) we can find: nvidia-smi first (proprietary/open driver),
+    then the Vulkan backend (covers the live-ISO nouveau case + AMD/Intel)."""
+    return _nvidia_vram_mb() or _vulkan_vram_mb()
 
 
 def _performance_cores(fallback):
@@ -327,11 +353,12 @@ def server_cmd(main_gguf, draft_gguf):
         phys_cores = 4
 
     # state.json is the primary source, but the daemon can miss the GPU (it
-    # profiles at boot, possibly before the NVIDIA driver is ready, and caches
-    # that). If there's no VRAM figure, ask nvidia-smi directly so we still
-    # offload to the GPU instead of silently falling back to CPU.
+    # profiles at boot, possibly before the driver is ready, and nvidia-smi
+    # doesn't work under nouveau/NVK at all). If there's no VRAM figure, detect
+    # it directly (nvidia-smi, then the Vulkan backend) so we still offload to
+    # the GPU instead of silently falling back to CPU.
     if vram_mb <= 0:
-        vram_mb = _nvidia_vram_mb()
+        vram_mb = _detect_vram_mb()
 
     gpu = vram_mb > 0 or shutil.which("nvidia-smi") is not None
     vram_gb = vram_mb / 1024.0

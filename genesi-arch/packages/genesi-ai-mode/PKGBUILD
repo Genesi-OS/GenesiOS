@@ -16,7 +16,14 @@ pkgver=1.0.0
 # actually offloads to the GPU instead of silently running on CPU. (3) genesi-aid
 # re-detects the GPU every ~30s (it was profiled once at boot, before the NVIDIA
 # driver was ready) + DRM fallback — fixes the dashboard showing "no GPU".
-pkgrel=54
+# 2026-06-07 (55): vendor-agnostic VRAM detection. nvidia-smi doesn't work under
+# nouveau/NVK (the live ISO driver), so VRAM read as 0 → Turbo thought the model
+# "spilled VRAM", dropped the draft and ran on CPU, and the dashboard said "no
+# GPU" — all on a machine whose 3050 llama.cpp clearly sees via Vulkan. Now both
+# genesi-aid and genesi-ai-turbo size the GPU via `llama-server --list-devices`
+# (the same Vulkan backend used for inference) when nvidia-smi/sysfs can't, so
+# spec decoding actually engages on the GPU and the advisor reports the card.
+pkgrel=55
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
