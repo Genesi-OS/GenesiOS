@@ -374,7 +374,14 @@ jobs:
             fi
             echo "push rejected (attempt ${attempt}/5) — rebasing onto origin/${BRANCH}…"
             git fetch origin "${BRANCH}"
-            git rebase "origin/${BRANCH}" || { git rebase --abort || true; \
+            # --autostash: the package build can leave unstaged changes in the
+            # working tree (submodule checkouts, makepkg leftovers). Without it
+            # `git rebase` aborts with "cannot rebase: You have unstaged changes"
+            # and the whole publish is LOST even though our commit only touches
+            # genesi-arch/repo/ (reproduced 2026-06-08, run #150: a concurrent
+            # push to main rejected our push, then the recovery rebase died on
+            # build leftovers). autostash stashes them, rebases, and pops.
+            git rebase --autostash "origin/${BRANCH}" || { git rebase --abort || true; \
               echo "::error::rebase conflict while publishing packages"; exit 1; }
             sleep $(( (RANDOM % 4) + 2 ))
           done
