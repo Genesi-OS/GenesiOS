@@ -288,6 +288,28 @@ once and gates every optimizer on detected capabilities.
 >       _**← chosen first.**_ **DONE:** `genesi-ai-turbo` (`bench`/`serve`) + a
 >       one-click ⚡ switch in the Monitor chat, backed by the shipped
 >       `genesi-llama-cpp` (Vulkan `llama-server`). On-HW bench still pending.
+>
+> - [ ] **🔴 BLOCKED — RE-ENABLE speculative decoding by default.** As of pkgrel
+>       59, `serve` (and the Monitor's Turbo switch) default to **plain full GPU
+>       offload, with speculative decoding OFF** (opt-in via `GENESI_TURBO_SPEC=1`
+>       or an explicit draft arg). Reason: on the **live ISO / NVK** (the open
+>       nouveau Vulkan driver, the only thing testable so far) the speculative
+>       path REGRESSED real speed — plain offload gave ~21 t/s, spec dropped it to
+>       ~baseline, because the draft + verification cost more than it saves
+>       without a mature driver. The 2.3× we measured was **GPU-vs-CPU** (Turbo
+>       offloads via Vulkan; ollama on nouveau has no CUDA → stuck on CPU), NOT
+>       speculative decoding.
+>       **➡️ ACTION (do this when @zFreshy tests on a REAL INSTALL — proprietary
+>       NVIDIA driver / CUDA, NOT the live ISO):**
+>       1. Run `genesi-ai-turbo bench qwen2.5:7b` on the installed system.
+>       2. If spec shows a real win there (expected on CUDA), flip the default
+>          back ON — ideally **conditionally**: enable spec only where it's
+>          proven to help (e.g. mature driver / `nvidia-smi` works, or cache the
+>          bench result per machine), and keep plain offload on Vulkan/NVK.
+>       3. Re-wire the Monitor's ⚡ switch to the speculative path on those
+>          systems.
+>       _Until that validation, DO NOT re-enable by default — it's a measured
+>       regression on the only hardware tested so far._
 > - ~~**Faster backend per GPU** (EXL2 / TensorRT-LLM)~~ — **dropped, not a fit.**
 >       It's a subproject, not a feature: a different model format ollama doesn't
 >       provide (separate downloads + acervo), a separate CUDA-only serving stack,
@@ -399,8 +421,9 @@ once and gates every optimizer on detected capabilities.
 - [x] Detected AI processes + loaded Ollama models (name, size, CPU/GPU split)
 - [x] Tokens/s history graph (Canvas sparkline of the live rate)
 - [x] Shows exactly which optimizations are applied, with on/auto/off control
-- [ ] Profile switch (Max Performance / Balanced / Battery-aware) — currently
-      on/auto/off; explicit named profiles still TODO
+- [x] Profile switch (Máximo / Equilíbrio / Bateria / Auto) — `genesi-ai-mode
+      profile <p>`, a `/run/genesi-ai-mode/profile` file the daemon reads live
+      (re-applies on change), and a segmented control in the Monitor top bar
 - [ ] One-click benchmark (wraps `genesi-ai-mode bench`) with a results chart
 - [ ] **MemPalace integration**: surface AI memory/usage stats
 - [x] Reads `state.json` for display; control via the `genesi-ai-mode` CLI

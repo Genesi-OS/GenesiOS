@@ -90,6 +90,17 @@ class Backend(QObject):
             if mode == "off":
                 threading.Thread(target=self._ollama_unload_all, daemon=True).start()
 
+    @Slot(str)
+    def setProfile(self, profile):
+        """Set the intensity profile: max | balanced | battery | auto."""
+        if profile in ("max", "balanced", "battery", "auto"):
+            try:
+                subprocess.Popen(["genesi-ai-mode", "profile", profile],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+            except OSError:
+                pass
+
     # ── chat (talk to the locally-running Ollama, stream + verbose stats) ─────
     @Slot()
     def loadModels(self):

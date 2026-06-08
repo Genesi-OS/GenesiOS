@@ -32,6 +32,7 @@ OLLAMA_API = "http://127.0.0.1:11434/api/ps"
 # ── Paths ────────────────────────────────────────────────────────────────────
 RUN_DIR        = "/run/genesi-ai-mode"
 FORCE_FILE     = os.path.join(RUN_DIR, "force")
+PROFILE_FILE   = os.path.join(RUN_DIR, "profile")   # max|balanced|battery (user)
 STATE_FILE     = os.path.join(RUN_DIR, "state.json")
 OLLAMA_ENV_FILE = os.path.join(RUN_DIR, "ollama.env")  # EnvironmentFile for ollama
 ORIGINALS_FILE = "/run/genesi-aid-originals.json"
@@ -302,6 +303,7 @@ class AIOptimizer:
         self.hw = hw
         self.ai_mode_active = False
         self.aggressive = False     # full power (AC or forced) vs battery-safe
+        self.profile = "auto"       # effective intensity: max|balanced|battery
         self.originals = {}
         self.applied = []           # static enable-time tweaks (governor, …)
         self.io_applied = []        # dynamic: I/O schedulers we switched
@@ -330,6 +332,24 @@ class AIOptimizer:
     def read_force(self):
         v = (_read(FORCE_FILE) or "").lower()
         return v if v in ("on", "off") else None
+
+    def read_profile(self):
+        """User-selected intensity profile, or None (= auto)."""
+        v = (_read(PROFILE_FILE) or "").lower()
+        return v if v in ("max", "balanced", "battery") else None
+
+    def _effective_profile(self, forced):
+        """Resolve the intensity to apply this run.
+          max      — full send: governor + EPP + power-profile + GPU clocks
+          balanced — fast CPU/mem (governor perf + mem knobs + pause hogs),
+                     leaves power/thermal envelope and GPU power untouched
+          battery  — lightest: pause hogs + mem knobs only, governor left as-is
+          auto     — max on AC / when forced ON, battery on battery
+        """
+        p = self.read_profile()
+        if p in ("max", "balanced", "battery"):
+            return p
+        return "max" if (forced or not self.hw.on_battery()) else "battery"
 
     # ── CPU governor ─────────────────────────────────────────────────────────
     def _read_governor(self):
@@ -521,6 +541,7 @@ class AIOptimizer:
                 self.originals = json.load(f)
             self.ai_mode_active = True
             self.aggressive = self.originals.get("_aggressive", False)
+            self.profile = self.originals.get("_profile", "auto")
             logger.info("Recovered AI Mode state from a previous run")
         except FileNotFoundError:
             pass
@@ -636,14 +657,16 @@ class AIOptimizer:
     def enable_ai_mode(self, forced):
         if self.ai_mode_active:
             return
-        self.aggressive = forced or not self.hw.on_battery()
-        logger.info("Enabling AI Mode (%s)" %
-                    ("max" if self.aggressive else "battery-safe"))
+        profile = self._effective_profile(forced)
+        self.profile = profile
+        self.aggressive = profile == "max"      # full power/GPU only on "max"
+        logger.info("Enabling AI Mode (profile=%s)", profile)
         self.applied = []
-        o = {"_aggressive": self.aggressive}
+        o = {"_aggressive": self.aggressive, "_profile": profile}
 
-        # CPU + memory (cheap, safe even on battery)
-        if self.hw.has_governor:
+        # CPU governor → performance for max/balanced; the battery profile leaves
+        # it untouched to preserve autonomy (the single biggest power knob).
+        if self.hw.has_governor and profile in ("max", "balanced"):
             o["governor"] = self._read_governor()
             self._set_governor("performance")
             self.applied.append("CPU governor: performance")
@@ -712,6 +735,7 @@ class AIOptimizer:
 
         self.ai_mode_active = False
         self.throttled = False
+        self.profile = "auto"
         self.applied = []
         self.io_applied = []
         self._preloaded.clear()
@@ -1119,6 +1143,8 @@ class AIOptimizer:
             "ai_mode_active": self.ai_mode_active,
             "force_mode": force_mode or "auto",
             "aggressive": self.aggressive,
+            "profile": self.profile if self.ai_mode_active else "auto",
+            "profile_mode": self.read_profile() or "auto",
             "throttled": self.throttled,
             "applied": self.effective_applied(),
             "changes": self.changes_summary(),
@@ -1194,6 +1220,12 @@ class AIOptimizer:
                     self.enable_ai_mode(forced=(force == "on"))
                 elif not want and self.ai_mode_active:
                     self.disable_ai_mode()
+                elif want and self.ai_mode_active:
+                    # Profile changed while AI Mode is on? Re-apply so the new
+                    # intensity (and its exact restore snapshot) takes effect.
+                    if self._effective_profile(force == "on") != self.profile:
+                        self.disable_ai_mode()
+                        self.enable_ai_mode(forced=(force == "on"))
 
                 if self.ai_mode_active:
                     self.prioritize_ai_processes()

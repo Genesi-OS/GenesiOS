@@ -44,7 +44,12 @@ pkgver=1.0.0
 # without a mature CUDA driver). Default `serve` is back to plain full GPU
 # offload (the proven win); speculative decoding is now opt-in (GENESI_TURBO_SPEC
 # =1 or an explicit draft). `bench` still compares both so spec can be evaluated.
-pkgrel=59
+# 2026-06-07 (60): Lote B — named intensity profiles (2.9). New
+# `genesi-ai-mode profile max|balanced|battery|auto` + /run profile file the
+# daemon reads live (re-applies on change) + segmented control in the Monitor.
+# max=full(governor+EPP+power+GPU), balanced=governor+mem+hogs only,
+# battery=hogs+mem (governor untouched), auto=AC->max/battery->battery.
+pkgrel=60
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

@@ -5,6 +5,7 @@
 #   genesi-ai-mode off       force AI Mode OFF (stay off even while AI runs)
 #   genesi-ai-mode auto      remove the override, follow automatic detection
 #   genesi-ai-mode toggle    flip between forced-ON and automatic
+#   genesi-ai-mode profile P set intensity: max|balanced|battery|auto
 #   genesi-ai-mode status    print the daemon state (JSON)
 #   genesi-ai-mode info      human-readable status (hardware + applied tweaks)
 #   genesi-ai-mode bench [m] benchmark a model (default llama3.2) OFF vs ON
@@ -15,6 +16,7 @@ set -euo pipefail
 
 DIR=/run/genesi-ai-mode
 FORCE="$DIR/force"
+PROFILE="$DIR/profile"
 STATE="$DIR/state.json"
 
 ensure_dir() {
@@ -28,6 +30,19 @@ case "${1:-status}" in
     on)     ensure_dir; printf 'on'  > "$FORCE" ;;
     off)    ensure_dir; printf 'off' > "$FORCE" ;;
     auto)   rm -f "$FORCE" ;;
+    profile)
+        # Intensity profile (orthogonal to on/off): how hard AI Mode optimizes.
+        #   max      full send (governor+EPP+power-profile+GPU clocks)
+        #   balanced fast CPU/mem (governor perf + mem + pause hogs), no power/GPU
+        #   battery  lightest (pause hogs + mem only), governor left alone
+        #   auto     max on AC / battery on battery (default)
+        case "${2:-show}" in
+            max|balanced|battery) ensure_dir; printf '%s' "$2" > "$PROFILE"; echo "profile: $2" ;;
+            auto)                 rm -f "$PROFILE"; echo "profile: auto" ;;
+            show)                 cat "$PROFILE" 2>/dev/null || echo "auto" ;;
+            *) echo "usage: genesi-ai-mode profile {max|balanced|battery|auto}" >&2; exit 2 ;;
+        esac
+        ;;
     toggle)
         if [ "$(cat "$FORCE" 2>/dev/null || true)" = on ]; then
             rm -f "$FORCE"
@@ -54,7 +69,8 @@ gpus = hw.get("gpus", []) or [{"vendor": "none"}]
 gpu_s = ", ".join(g.get("vendor", "?") +
                   (f" {g['vram_mb']}MB" if g.get("vram_mb") else "") for g in gpus)
 print(f"AI Mode : {'ON' if s.get('ai_mode_active') else 'OFF'} "
-      f"(force={s.get('force_mode')}, mode={'max' if s.get('aggressive') else 'battery-safe'})")
+      f"(force={s.get('force_mode')}, profile={s.get('profile_mode','auto')}"
+      + (f" → {s.get('profile')}" if s.get('ai_mode_active') else "") + ")")
 print(f"Hardware: {hw.get('cpu_vendor','?')} {hw.get('physical_cores','?')}c/"
       f"{hw.get('logical_cores','?')}t, {hw.get('ram_mb',0)}MB RAM, "
       f"{hw.get('chassis','?')}{' (VM)' if hw.get('virtualized') else ''}")
@@ -222,7 +238,7 @@ print()
 PY
         ;;
     *)
-        echo "usage: genesi-ai-mode {on|off|auto|toggle|status|info|bench [model]|advise}" >&2
+        echo "usage: genesi-ai-mode {on|off|auto|toggle|profile|status|info|bench [model]|advise}" >&2
         exit 2
         ;;
 esac

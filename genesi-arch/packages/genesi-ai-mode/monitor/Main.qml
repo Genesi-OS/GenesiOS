@@ -17,6 +17,7 @@ Kirigami.ApplicationWindow {
     property var st: ({})
     property bool active: false
     property string forceMode: "auto"
+    property string profileMode: "auto"
     property int currentTab: 0
 
     // ── Turbo integration ───────────────────────────────────────────────────
@@ -79,6 +80,7 @@ Kirigami.ApplicationWindow {
         try { st = JSON.parse(txt) } catch (e) { st = ({}) }
         active = st.ai_mode_active || false
         forceMode = st.force_mode || "auto"
+        profileMode = st.profile_mode || "auto"
     }
 
     Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true; onTriggered: win.poll() }
@@ -195,6 +197,53 @@ Kirigami.ApplicationWindow {
                     }
                 }
             }
+
+            // ── Profile segmented control (intensity) ──
+            Rectangle {
+                radius: 11
+                color: theme.card
+                border.width: 1; border.color: theme.line
+                implicitWidth: profRow.implicitWidth + 8
+                implicitHeight: 36
+                Row {
+                    id: profRow
+                    anchors.centerIn: parent
+                    spacing: 2
+                    Repeater {
+                        model: [
+                            { "p": "max",      "label": "Máximo",     "accent": theme.green },
+                            { "p": "balanced", "label": "Equilíbrio", "accent": theme.green },
+                            { "p": "battery",  "label": "Bateria",    "accent": theme.green },
+                            { "p": "auto",     "label": "Auto",       "accent": theme.green }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool sel: win.profileMode === modelData.p
+                            height: 28
+                            width: plbl.implicitWidth + 22
+                            radius: 8
+                            color: sel ? theme.a(modelData.accent, 0.9)
+                                 : (pma.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : "transparent")
+                            Behavior on color { ColorAnimation { duration: 150 } }
+                            QQC2.Label {
+                                id: plbl
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                font.bold: sel
+                                font.pixelSize: 12
+                                color: sel ? "#08130E" : theme.textMid
+                            }
+                            MouseArea {
+                                id: pma
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: backend.setProfile(modelData.p)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -268,7 +317,9 @@ Kirigami.ApplicationWindow {
                             spacing: 4
                             QQC2.Label {
                                 text: win.active
-                                      ? (win.forceMode === "on" ? "AI Mode ON · forçado"
+                                      ? (st.profile === "max" ? "AI Mode ON · máximo"
+                                         : st.profile === "balanced" ? "AI Mode ON · equilíbrio"
+                                         : st.profile === "battery" ? "AI Mode ON · bateria"
                                          : st.aggressive ? "AI Mode ON · máximo" : "AI Mode ON · econômico")
                                       : "AI Mode OFF"
                                 font.bold: true; font.pixelSize: 21
