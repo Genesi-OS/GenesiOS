@@ -10,6 +10,7 @@ already downloaded — no re-download.
 
   genesi-ai-turbo bench <model> [draft]   prove the speedup (spec vs no-spec)
   genesi-ai-turbo serve <model> [--spec]  run a Turbo server on :11435
+  genesi-ai-turbo recommend               print the biggest model that fits VRAM
   genesi-ai-turbo <model> [--spec]        same as `serve`
 
   --spec / --speculative   enable speculative decoding (a draft model proposes
@@ -29,6 +30,11 @@ Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
   GENESI_TURBO_CACHE_REUSE=256   min prefix chunk reused across requests (KV)
   GENESI_TURBO_MLOCK=1           pin model in RAM (opt-in; risky on low RAM)
   GENESI_TURBO_THREADS=<n>       CPU inference threads (default: fast/perf cores)
+  GENESI_TURBO_DRAFT_MAX=8       max tokens the draft proposes (speculative only)
+  GENESI_TURBO_DRAFT_MIN=1       min draft length — floor for dynamic draft length
+  GENESI_TURBO_DRAFT_P=0.6       stop drafting below this acceptance probability
+  GENESI_TURBO_SLOT_PATH=<dir>   where to persist prompt/KV slots to disk
+  GENESI_TURBO_NO_SLOT_CACHE=1   disable persistent prompt/KV cache to disk
   GENESI_TURBO_SPEC=1            opt into speculative decoding on `serve` (default
                                  off: serve uses plain full GPU offload, the
                                  reliable win; spec can regress on Vulkan/NVK)
@@ -334,6 +340,54 @@ def _llama_help():
     return _HELP_CACHE
 
 
+def _pick_flag(help_txt, *candidates):
+    """Return the first candidate flag name that the INSTALLED llama-server
+    actually lists in --help, or None. llama.cpp renames speculative-decoding
+    flags often across versions, so we never hardcode one name — we probe and
+    use whatever this build supports (and silently skip the feature if none)."""
+    for c in candidates:
+        if c in help_txt:
+            return c
+    return None
+
+
+# Advisor model catalogue (ollama tag -> params in billions), biggest last. Used
+# by `recommend` to pick the largest model that still runs 100% in VRAM.
+RECOMMEND_MODELS = [
+    ("llama3.2:1b",  1.2), ("llama3.2:3b",  3.2),
+    ("llama3.1:8b",  8.0), ("qwen2.5:7b",   7.6),
+    ("qwen2.5:14b", 14.8), ("qwen2.5:32b", 32.5),
+]
+
+
+def recommend_model():
+    """Advisor → Turbo model pick: the BIGGEST model whose Q4_K_M weights fit
+    100% in VRAM (so Turbo offloads it fully — the single biggest speed lever).
+    Returns (tag, vram_mb, budget_gb). Falls back to a small model with no GPU."""
+    vram_mb = _detect_vram_mb()
+    budget = max(vram_mb / 1024.0 - 1.2, 0.0)     # overhead + KV headroom
+    best = None
+    for tag, p in RECOMMEND_MODELS:
+        q4 = p * 4.8 / 8.0                          # GGUF GB ≈ params * bpw / 8
+        if q4 <= budget and (best is None or p > best[1]):
+            best = (tag, p)
+    tag = best[0] if best else ("llama3.2:3b" if budget >= 1.8 else "llama3.2:1b")
+    return tag, vram_mb, budget
+
+
+def cmd_recommend():
+    """Print the recommended Turbo model. stdout = just the tag (machine-readable
+    for the Monitor); human detail goes to stderr."""
+    tag, vram_mb, budget = recommend_model()
+    print(tag)
+    if vram_mb > 0:
+        print(f":: {vram_mb / 1024.0:.1f}GB VRAM → fits ~{budget:.1f}GB on GPU → "
+              f"recommended Turbo model: {tag}", file=sys.stderr)
+    else:
+        print(":: no GPU/VRAM detected → small CPU-friendly model recommended: "
+              f"{tag}", file=sys.stderr)
+
+
 def _performance_cores(fallback):
     """Best-effort count of the FAST physical cores for CPU inference.
 
@@ -499,18 +553,52 @@ def server_cmd(main_gguf, draft_gguf):
         cmd += ["--mlock"]
 
     help_txt = _llama_help()
+
+    # Persistent prompt/KV cache to disk (Zero Cold-Start). --slot-save-path
+    # enables llama-server's runtime slot save/restore API (/slots?action=save|
+    # restore), so a long system-prompt's KV can survive a server restart — the
+    # first reply of a returning chat stays fast even after a reboot. Harmless
+    # when unused: it only enables the capability + a save dir, never changes
+    # decode. Path defaults to a per-user cache; gated on the binary supporting
+    # the flag. Disable with GENESI_TURBO_NO_SLOT_CACHE=1.
+    if "--slot-save-path" in help_txt and not _env_flag("GENESI_TURBO_NO_SLOT_CACHE"):
+        slot_dir = (os.environ.get("GENESI_TURBO_SLOT_PATH")
+                    or os.path.expanduser("~/.cache/genesi-turbo/slots"))
+        try:
+            os.makedirs(slot_dir, exist_ok=True)
+            cmd += ["--slot-save-path", slot_dir]
+        except OSError:
+            pass
+
     if draft_gguf:
         # Speculative decoding with a same-family draft model. The draft-count
         # flag was renamed in recent llama.cpp: master uses --spec-draft-n-max,
         # older builds use --draft. Pick whatever the installed binary lists so
         # the server doesn't refuse to start on a "removed argument".
-        draft_n = "--spec-draft-n-max" if "--spec-draft-n-max" in help_txt else "--draft"
-        cmd += ["-md", draft_gguf, draft_n, "8"]
+        draft_max = _env_int("GENESI_TURBO_DRAFT_MAX", 8)
+        max_flag = _pick_flag(help_txt, "--spec-draft-n-max", "--draft-max", "--draft")
+        cmd += ["-md", draft_gguf]
+        if max_flag:
+            cmd += [max_flag, str(draft_max)]
         # The draft MUST be GPU-resident too (-ngld). Without it the draft runs
         # on the CPU while the target is on the GPU, so the slow CPU draft
         # becomes the bottleneck and speculation yields no speedup.
         if use_ngl_999:
             cmd += ["-ngld", "999"]
+        # Dynamic draft length (Lote C): instead of always proposing a fixed N
+        # tokens, let the draft length ADAPT to the live acceptance rate —
+        # speculate more on easy/repetitive spans, back off on hard ones. We set
+        # a floor (--draft-min) and a probability threshold (--draft-p-min) so
+        # llama.cpp stops drafting once the draft's confidence drops. Beats a
+        # fixed N. Flag names vary by version, so each is gated on --help and
+        # simply skipped on a build that doesn't expose it (then N stays fixed).
+        # Env-tunable: GENESI_TURBO_DRAFT_MIN / GENESI_TURBO_DRAFT_P.
+        min_flag = _pick_flag(help_txt, "--spec-draft-n-min", "--draft-min", "--draft-n-min")
+        if min_flag:
+            cmd += [min_flag, str(_env_int("GENESI_TURBO_DRAFT_MIN", 1))]
+        p_flag = _pick_flag(help_txt, "--spec-draft-p-min", "--draft-p-min")
+        if p_flag:
+            cmd += [p_flag, (os.environ.get("GENESI_TURBO_DRAFT_P", "").strip() or "0.6")]
         # Recent llama.cpp LOADS the draft but does NOT speculate unless an
         # implementation is selected: --spec-type defaults to 'none', which logs
         # "no implementations specified for speculative decoding" — the draft
@@ -715,6 +803,9 @@ def main():
         print(__doc__)
         return
     action, rest = pos[0], pos[1:]
+    if action == "recommend":
+        cmd_recommend()
+        return
     if action in ("bench", "serve"):
         if not rest:
             sys.exit(f"usage: genesi-ai-turbo {action} <model> [draft-model] [--spec]")

@@ -74,7 +74,20 @@ pkgver=1.0.0
 # session). Same conservative gates: throttled, skipped on RAM-backed fs, <50%
 # of available RAM (no-op on tight 6 GB VMs). Pure reclaimable cache; nothing to
 # restore. Best-effort writes never raise into the main loop.
-pkgrel=64
+# 2026-06-08 (65): Lote C — advanced Turbo stack (mostly tied to ⚡ speculative).
+# (1) Dynamic draft length: when speculative decoding is ON (a draft model is
+# used), genesi-ai-turbo adds a draft-length floor + acceptance-probability
+# threshold so llama.cpp adapts how many tokens it drafts to the live acceptance
+# rate (each flag gated on --help, names vary by version; env GENESI_TURBO_DRAFT
+# _MAX/MIN/P). (2) Persistent prompt/KV cache to disk: --slot-save-path (per-user
+# cache dir, gated, GENESI_TURBO_NO_SLOT_CACHE=1 to disable) enables llama-server
+# slot save/restore. (3) Advisor → Turbo model pick: `genesi-ai-turbo recommend`
+# prints the biggest model that fits 100% in VRAM; the Monitor shows it as a
+# one-click "Recomendado p/ sua GPU" chip. (4) Monitor now makes EXPLICIT that
+# the ⚡ toggle enables speculative decoding + dynamic draft + persistent KV
+# (card text + tooltips). Spec stays OFF by default (still 🔴 BLOCKED on Vulkan/
+# NVK); these wins need validation on a real CUDA install via `bench`.
+pkgrel=65
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

@@ -44,6 +44,7 @@ class Backend(QObject):
     turboStatus = Signal(str)    # Turbo (speculative decoding) state text
     turboReady = Signal(bool)    # Turbo server up and serving?
     turboNeedsInstall = Signal(bool)  # backend (llama-server) missing -> offer install
+    turboRecommended = Signal(str)    # advisor's biggest-fits-VRAM model pick
     # Benchmark (wraps `genesi-ai-mode bench`): live progress + parsed result.
     benchRunning = Signal(bool)    # a benchmark is in flight
     benchProgress = Signal(str)    # human-readable step ("warming up …", "AI Mode ON …")
@@ -459,6 +460,22 @@ class Backend(QObject):
                 "Turbo demorou demais — rode no terminal p/ ver o erro: "
                 "genesi-ai-turbo serve " + model)
         threading.Thread(target=run, daemon=True).start()
+
+    @Slot()
+    def recommendTurboModel(self):
+        """Advisor → Turbo model pick: ask `genesi-ai-turbo recommend` for the
+        biggest model that fits 100% in VRAM and hand the tag to the UI. Runs in
+        a worker thread (it may probe the GPU via the Vulkan backend, ~seconds)."""
+        def work():
+            try:
+                r = subprocess.run(["genesi-ai-turbo", "recommend"],
+                                   capture_output=True, text=True, timeout=30)
+                tag = (r.stdout or "").strip().splitlines()
+                tag = tag[0].strip() if tag else ""
+            except Exception:
+                tag = ""
+            self.turboRecommended.emit(tag)
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot()
     def installTurboBackend(self):

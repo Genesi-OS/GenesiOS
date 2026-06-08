@@ -350,9 +350,14 @@ once and gates every optimizer on detected capabilities.
       so llama.cpp fits as many layers as the VRAM holds instead of a blind 999
       that OOMs a small card — so a 4 GB-RAM + dGPU laptop runs models its RAM
       never could, without crashing tight cards.
-- [ ] **Advisor → biggest model that fits 100% in VRAM**, defaulting to small
+- [x] **Advisor → biggest model that fits 100% in VRAM**, defaulting to small
       quants (1B/3B Q4) on 2–4 GB cards, with the exact `ollama pull`. (The
       advisor already does the VRAM-fit math — wire it to Turbo's model pick.)
+      _**DONE (pkgrel 65):** `genesi-ai-turbo recommend` prints the biggest
+      model whose Q4_K_M fits 100% in VRAM (Vulkan/nvidia-smi VRAM probe + fit
+      math); the Monitor's Turbo card shows it as a one-click "Recomendado p/ sua
+      GPU" chip that sets the served model. Pick logic validatable now; the
+      VRAM-dependent result needs a real GPU._
 - [x] **Turbo draft fallback on tight VRAM.** Speculative needs target+draft
       resident; if both don't fit, Turbo drops the draft and runs plain GPU
       offload (still far faster than CPU); on CPU-only it drops the draft too
@@ -386,10 +391,15 @@ once and gates every optimizer on detected capabilities.
       last-used model into the page cache while idle — so the FIRST prompt after
       login reads from RAM, not disk. Conservative: throttled, skipped on a
       RAM-backed fs, gated to <50% of available RAM (no-op on tight boxes)._
-- [ ] **🌟 Ideia 2: Persistent prompt/KV cache to disk (Zero Cold-Start).** Use `llama-server` slot
+- [x] **🌟 Ideia 2: Persistent prompt/KV cache to disk (Zero Cold-Start).** Use `llama-server` slot
       save/restore (`--slot-save-path`) so a long system-prompt's KV survives
       restarts — first reply of a new chat stays fast even after a reboot.
       (The server already enables an 8 GiB prompt cache; persist + reuse it.)
+      _**DONE (pkgrel 65):** Turbo passes `--slot-save-path` (per-user cache dir,
+      gated on `--help`, disable with `GENESI_TURBO_NO_SLOT_CACHE=1`), enabling
+      the runtime slot save/restore API. Harmless when unused. Next step =
+      client orchestration (save after a prompt, restore on start) to realize the
+      felt zero-cold-start win._
 
 **Tier 2 — real throughput the OS uniquely controls**
 - [ ] **Microarch-optimal `llama.cpp` build + auto-dispatch.** CachyOS is already
@@ -405,9 +415,15 @@ once and gates every optimizer on detected capabilities.
       code, quotes and repetitive text; Turbo enables `--spec-type ngram-simple`
       on CPU-only machines (when the binary supports it), so GPU-less laptops get
       a speculative speedup with no second model and no extra RAM.
-- [ ] **Dynamic draft length** — tune how many tokens the draft proposes from the
+- [x] **Dynamic draft length** — tune how many tokens the draft proposes from the
       live acceptance rate (`--draft-max/--draft-min/--draft-p-min`): speculate
       more on easy spans, back off on hard ones. Beats today's fixed N.
+      _**DONE (pkgrel 65):** when speculative decoding is on (a draft model is
+      used), Turbo adds a draft-length floor + acceptance-probability threshold
+      so llama.cpp adapts N to the live acceptance rate. Each flag is gated on
+      the installed binary's `--help` (names vary by version) and env-tunable
+      (`GENESI_TURBO_DRAFT_MAX/MIN/P`). Active ONLY in ⚡ speculative mode — the
+      Monitor's toggle says so explicitly. Real gain needs CUDA validation._
 - [ ] **🌟 Ideia 1: Native Medusa / EAGLE Integration** — Em vez de 2 modelos (principal + draft),
       carrega um **único modelo** com múltiplas "cabeças extras" de especulação. Gera ganhos
       massivos (3x a 4x) de velocidade de resposta sem dobrar o consumo de VRAM.

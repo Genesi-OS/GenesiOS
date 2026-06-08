@@ -41,6 +41,9 @@ Kirigami.ApplicationWindow {
     property real benchDelta: 0
     property string benchModel: ""
 
+    // Advisor → Turbo model pick (biggest model that fits 100% in VRAM)
+    property string turboRecommend: ""
+
     // turboModel = the STABLE model Turbo serves. Driven from activeModel when it
     // has a value, otherwise the first installed model. It is sticky: it NEVER
     // resets to "" on a transient empty poll. Previously Turbo was bound straight
@@ -66,7 +69,7 @@ Kirigami.ApplicationWindow {
         if (turboRequested && turboModel) backend.setTurbo(true, turboModel, turboSpec)
     }
 
-    Component.onCompleted: backend.loadModels()
+    Component.onCompleted: { backend.loadModels(); backend.recommendTurboModel() }
 
     Connections {
         target: backend
@@ -75,6 +78,7 @@ Kirigami.ApplicationWindow {
             if (need) win.turboRequested = false
         }
         function onTurboStatus(s) { win.turboStatusText = s }
+        function onTurboRecommended(tag) { win.turboRecommend = tag }
         // Seed a default Turbo model from the installed list, so Turbo can start
         // even before the first Ollama prompt (otherwise activeModel stays empty
         // until something is loaded and the switch appears to do nothing).
@@ -408,7 +412,8 @@ Kirigami.ApplicationWindow {
                 // ── TURBO CARD ──
                 GlassCard {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: win.turboStatusText.length > 0 ? 100 : 84
+                    Layout.preferredHeight: (win.turboStatusText.length > 0 ? 116 : 100)
+                                            + (win.turboRecommend.length > 0 ? 22 : 0)
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing
                     accent: theme.turbo
@@ -459,7 +464,9 @@ Kirigami.ApplicationWindow {
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: win.turboSpec = !win.turboSpec
-                                        QQC2.ToolTip.text: "Alterna entre offload total (estável) e speculative decoding (mais rápido em GPU madura, pode regredir em Vulkan/NVK)"
+                                        QQC2.ToolTip.text: win.turboSpec
+                                            ? "Modo avançado ATIVO: speculative decoding (draft model) + draft dinâmico + KV cache persistente em disco. Mais rápido em GPU madura (CUDA); pode regredir em Vulkan/NVK. Clique para voltar ao offload total (estável)."
+                                            : "Offload total (estável). Clique para ligar o modo avançado: ⚡ speculative decoding + draft dinâmico + KV persistente — valide com o benchmark antes (pode regredir em Vulkan/NVK)."
                                         QQC2.ToolTip.visible: containsMouse
                                     }
                                 }
@@ -471,8 +478,49 @@ Kirigami.ApplicationWindow {
                                 }
                             }
                             QQC2.Label {
-                                text: "Inferência ultrarrápida com decodificação especulativa."
-                                color: theme.textMid; opacity: 0.9
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                text: win.turboSpec
+                                    ? "Modo avançado: ⚡ speculative decoding + draft dinâmico + KV cache persistente em disco."
+                                    : "Offload total na GPU (estável). Ligue o ⚡ para o pacote avançado do Lote C."
+                                color: win.turboSpec ? theme.turboBright : theme.textMid
+                                opacity: 0.9
+                                font.pixelSize: 12
+                            }
+                            // Advisor → Turbo model pick: biggest model that fits 100% in VRAM.
+                            RowLayout {
+                                visible: win.turboRecommend.length > 0
+                                spacing: Kirigami.Units.smallSpacing
+                                QQC2.Label {
+                                    text: "Recomendado p/ sua GPU:"
+                                    color: theme.textLo; font.pixelSize: 11
+                                }
+                                Rectangle {
+                                    radius: 6; height: 20
+                                    width: recLbl.implicitWidth + 16
+                                    color: win.turboModel === win.turboRecommend
+                                         ? theme.a(theme.green, 0.30) : theme.a(theme.textHi, 0.10)
+                                    border.width: 1
+                                    border.color: win.turboModel === win.turboRecommend
+                                         ? theme.a(theme.green, 0.6) : theme.line
+                                    QQC2.Label {
+                                        id: recLbl
+                                        anchors.centerIn: parent
+                                        text: win.turboModel === win.turboRecommend
+                                            ? "✓ " + win.turboRecommend : win.turboRecommend
+                                        font.pixelSize: 10
+                                        color: win.turboModel === win.turboRecommend
+                                             ? theme.greenBright : theme.textMid
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: win.turboModel = win.turboRecommend
+                                        QQC2.ToolTip.text: "Usar o maior modelo que roda 100% na sua VRAM (offload total, sem spill pra CPU)"
+                                        QQC2.ToolTip.visible: containsMouse
+                                    }
+                                }
                             }
                             QQC2.Label {
                                 visible: win.turboStatusText.length > 0
