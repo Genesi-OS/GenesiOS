@@ -107,7 +107,15 @@ pkgver=1.0.0
 # AUR helper (paru/yay) — best-effort, with clear warnings when nvidia-smi is
 # down or no AUR helper exists. New backend: backendInfo()/backendAdvice signal +
 # installTurboBackend(kind). Our backend stays Vulkan by default.
-pkgrel=67
+# 2026-06-08 (68): real-world live-ISO fixes. (1) Widget "Abrir AI Mode Monitor"
+# did nothing: the plasmoid launched it via the executable engine, which kills
+# the child when the popup closes (and PATH wasn't guaranteed). Now launches
+# detached with an absolute path (`setsid -f /usr/local/bin/genesi-ai-monitor`).
+# (2) Monitor "baixar modelo"/chat/loadModels failed with "Errno 111 Connection
+# refused" when ollama was installed but its service wasn't running. The Monitor
+# now auto-starts ollama (systemctl start, then a user `ollama serve` fallback)
+# before talking to the API, with a clear message if it still can't.
+pkgrel=68
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

@@ -45,7 +45,7 @@ PlasmoidItem {
 
     function readState() { executable.exec("cat /run/genesi-ai-mode/state.json") }
     function setMode(mode) { executable.exec("genesi-ai-mode " + mode) }
-    function openMonitor() { executable.exec("genesi-ai-monitor") }
+    function openMonitor() { executable.exec("setsid -f /usr/local/bin/genesi-ai-monitor") }
 
     function applyState(txt) {
         try {

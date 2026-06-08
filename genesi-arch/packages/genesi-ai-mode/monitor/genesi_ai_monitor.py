@@ -191,9 +191,47 @@ class Backend(QObject):
                 pass
 
     # ── chat (talk to the locally-running Ollama, stream + verbose stats) ─────
+    def _ollama_up(self):
+        """Is Ollama's HTTP API answering?"""
+        try:
+            urllib.request.urlopen(OLLAMA + "/api/tags", timeout=2).read()
+            return True
+        except Exception:
+            return False
+
+    def _ensure_ollama(self):
+        """Bring Ollama up if it's installed but its API is down (the classic
+        'Errno 111 Connection refused' the user hit: ollama installed via pacman
+        but the service never started). Tries the system service first (silent if
+        polkit/sudo allows), then a user-owned `ollama serve` fallback (no root,
+        and it inherits the user's OLLAMA_MODELS). Returns True once the API
+        answers (waits up to ~10s)."""
+        if self._ollama_up():
+            return True
+        if not shutil.which("ollama"):
+            return False
+        try:
+            subprocess.run(["systemctl", "start", "ollama"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=15)
+        except Exception:
+            pass
+        if not self._ollama_up():
+            try:
+                subprocess.Popen(["ollama", "serve"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+        for _ in range(10):
+            if self._ollama_up():
+                return True
+            time.sleep(1)
+        return False
+
     @Slot()
     def loadModels(self):
         def work():
+            self._ensure_ollama()
             try:
                 with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=4) as r:
                     data = json.loads(r.read().decode())
@@ -210,6 +248,9 @@ class Backend(QObject):
         threading.Thread(target=target, args=(model, prompt), daemon=True).start()
 
     def _chat_ollama(self, model, prompt):
+        if not self._ensure_ollama():
+            self.chatError.emit("Ollama não está rodando (systemctl start ollama)")
+            return
         body = json.dumps({"model": model, "prompt": prompt, "stream": True}).encode()
         req = urllib.request.Request(OLLAMA + "/api/generate", data=body,
                                      headers={"Content-Type": "application/json"})
@@ -643,6 +684,12 @@ class Backend(QObject):
             return
 
         def work():
+            if not self._ensure_ollama():
+                self.pullStatus.emit(
+                    "erro: o Ollama não está rodando e não consegui iniciá-lo "
+                    "(tente no terminal: systemctl start ollama)")
+                self.pullDone.emit(False)
+                return
             body = json.dumps({"name": name, "stream": True}).encode()
             req = urllib.request.Request(
                 OLLAMA + "/api/pull", data=body,
