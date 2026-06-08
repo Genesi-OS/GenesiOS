@@ -57,7 +57,14 @@ pkgver=1.0.0
 # Intel CPUs (P/E) genesi-aid sets the AI process CPU affinity to the P-cores
 # (+ HT siblings) so inference never lands on the slow E-cores; restored on
 # disable. No-op on uniform CPUs and VMs.
-pkgrel=62
+# 2026-06-08 (63): 2.9 — benchmark button in the Monitor. The Painel now has a
+# "Benchmark de desempenho" card that wraps `genesi-ai-mode bench [model]`: it
+# streams each step live (warming up / OFF / ON), then draws an OFF-vs-ON
+# tokens/s bar graph with the % gain. Backend (genesi_ai_monitor.py) runs the
+# CLI in a worker thread and parses its output (single source of truth stays the
+# CLI; no re-implemented measurement). Uses the active/Turbo/first-installed
+# model. Note: on a VM the governor is a no-op so expect ~0% — the card says so.
+pkgrel=63
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

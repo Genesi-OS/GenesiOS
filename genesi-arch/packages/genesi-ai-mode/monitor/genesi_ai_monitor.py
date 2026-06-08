@@ -44,6 +44,11 @@ class Backend(QObject):
     turboStatus = Signal(str)    # Turbo (speculative decoding) state text
     turboReady = Signal(bool)    # Turbo server up and serving?
     turboNeedsInstall = Signal(bool)  # backend (llama-server) missing -> offer install
+    # Benchmark (wraps `genesi-ai-mode bench`): live progress + parsed result.
+    benchRunning = Signal(bool)    # a benchmark is in flight
+    benchProgress = Signal(str)    # human-readable step ("warming up …", "AI Mode ON …")
+    benchDone = Signal(str)        # JSON: {model, off_rate, on_rate, delta_pct, rows[], raw}
+    benchError = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -53,6 +58,7 @@ class Backend(QObject):
         self._turbo_model = None
         self._turbo_log = None       # captured stderr of the serve subprocess
         self._turbo_spec = False     # is the running Turbo using speculative decoding?
+        self._bench_running = False  # a benchmark is in flight (guard re-entry)
 
     @Slot(result=str)
     def state(self):
@@ -75,6 +81,86 @@ class Backend(QObject):
             return (r.stdout or r.stderr or "").strip()
         except Exception as e:
             return f"erro ao consultar o advisor: {e}"
+
+    # ── benchmark (wrap `genesi-ai-mode bench`, stream progress, parse result) ─
+    @Slot(str)
+    def runBench(self, model):
+        """Run `genesi-ai-mode bench [model]` in a worker thread, streaming each
+        step to the UI and emitting the parsed OFF-vs-ON generation rate so the
+        QML can draw a comparison graph. Single source of truth is still the CLI;
+        we only parse its output (never re-implement the measurement)."""
+        if self._bench_running:
+            return
+        model = (model or "llama3.2").strip() or "llama3.2"
+        threading.Thread(target=self._bench_work, args=(model,), daemon=True).start()
+
+    def _bench_work(self, model):
+        import re
+        if not shutil.which("genesi-ai-mode"):
+            self.benchError.emit("genesi-ai-mode não encontrado")
+            return
+        self._bench_running = True
+        self.benchRunning.emit(True)
+        try:
+            proc = subprocess.Popen(
+                ["genesi-ai-mode", "bench", model],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1)
+        except Exception as e:
+            self.benchError.emit(str(e))
+            self._bench_running = False
+            self.benchRunning.emit(False)
+            return
+
+        lines = []
+        rows = []
+        off_rate = on_rate = delta = None
+        # table rows look like: "  generation rate   123.4 tokens/s   145.6 tokens/s"
+        row_re = re.compile(r"^\s{2}([a-z][a-z ]+?)\s{2,}(\S.*?)\s{2,}(\S.*)$")
+        sum_re = re.compile(
+            r"generation:\s*([0-9.]+)\s*->\s*([0-9.]+)\s*tokens/s\s*\(([-+0-9.]+)%\)")
+        try:
+            for raw in proc.stdout:
+                line = raw.rstrip("\n")
+                lines.append(line)
+                s = line.strip()
+                if s.startswith("::"):                       # progress step
+                    self.benchProgress.emit(s.lstrip(": ").strip())
+                    continue
+                m = sum_re.search(line)
+                if m:
+                    off_rate = float(m.group(1))
+                    on_rate = float(m.group(2))
+                    delta = float(m.group(3))
+                    continue
+                rm = row_re.match(line)
+                if rm and rm.group(1).strip() not in ("metric",):
+                    rows.append([rm.group(1).strip(),
+                                 rm.group(2).strip(), rm.group(3).strip()])
+            proc.wait()
+        except Exception as e:
+            self.benchError.emit(str(e))
+            self._bench_running = False
+            self.benchRunning.emit(False)
+            return
+
+        self._bench_running = False
+        self.benchRunning.emit(False)
+        if off_rate is None or on_rate is None:
+            self.benchError.emit(
+                "benchmark sem resultado — verifique se o modelo está instalado "
+                "(ollama pull " + model + ")")
+            return
+        self.benchDone.emit(json.dumps({
+            "model": model,
+            "off_rate": off_rate,
+            "on_rate": on_rate,
+            "delta_pct": delta if delta is not None else
+                         (round((on_rate - off_rate) / off_rate * 100, 1)
+                          if off_rate else 0),
+            "rows": rows,
+            "raw": "\n".join(lines).strip(),
+        }))
 
     @Slot(str)
     def setMode(self, mode):

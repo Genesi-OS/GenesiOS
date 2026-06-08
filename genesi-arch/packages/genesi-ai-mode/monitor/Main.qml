@@ -31,6 +31,16 @@ Kirigami.ApplicationWindow {
     property bool turboNeedsInstall: false
     property string turboStatusText: ""
 
+    // ── Benchmark integration ───────────────────────────────────────────────
+    property bool benchRunning: false
+    property string benchProgress: ""
+    property string benchError: ""
+    property bool benchHasResult: false
+    property real benchOff: 0
+    property real benchOn: 0
+    property real benchDelta: 0
+    property string benchModel: ""
+
     // turboModel = the STABLE model Turbo serves. Driven from activeModel when it
     // has a value, otherwise the first installed model. It is sticky: it NEVER
     // resets to "" on a transient empty poll. Previously Turbo was bound straight
@@ -72,6 +82,23 @@ Kirigami.ApplicationWindow {
             var arr = []
             try { arr = JSON.parse(jsonStr) } catch (e) {}
             if (arr.length > 0) win.firstInstalledModel = arr[0]
+        }
+        // ── Benchmark ──
+        function onBenchRunning(on) {
+            win.benchRunning = on
+            if (on) { win.benchError = ""; win.benchProgress = "iniciando…" }
+        }
+        function onBenchProgress(s) { win.benchProgress = s }
+        function onBenchError(s) { win.benchError = s; win.benchProgress = "" }
+        function onBenchDone(jsonStr) {
+            var r = ({})
+            try { r = JSON.parse(jsonStr) } catch (e) { return }
+            win.benchOff = r.off_rate || 0
+            win.benchOn = r.on_rate || 0
+            win.benchDelta = r.delta_pct || 0
+            win.benchModel = r.model || ""
+            win.benchHasResult = true
+            win.benchProgress = ""
         }
     }
 
@@ -595,6 +622,136 @@ Kirigami.ApplicationWindow {
                                 spacing: Kirigami.Units.smallSpacing
                                 Kirigami.Icon { source: "dialog-ok-apply"; color: theme.green; Layout.preferredWidth: 15; Layout.preferredHeight: 15; Layout.alignment: Qt.AlignTop }
                                 QQC2.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: modelData; color: theme.textMid }
+                            }
+                        }
+                    }
+                }
+
+                // ── BENCHMARK CARD ──
+                GlassCard {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    implicitHeight: benchLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.largeSpacing
+                    accent: theme.blue
+
+                    ColumnLayout {
+                        id: benchLayout
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: Kirigami.Units.largeSpacing
+                        spacing: Kirigami.Units.smallSpacing
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+                            Kirigami.Icon { source: "speedometer"; color: theme.blue; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
+                            QQC2.Label {
+                                text: "Benchmark de desempenho"
+                                font.bold: true; font.pixelSize: 15; color: theme.textHi
+                            }
+                            Item { Layout.fillWidth: true }
+                            QQC2.BusyIndicator {
+                                running: win.benchRunning
+                                visible: win.benchRunning
+                                Layout.preferredWidth: 22; Layout.preferredHeight: 22
+                            }
+                            QQC2.Button {
+                                text: win.benchRunning ? "Medindo…" : "Rodar benchmark"
+                                icon.name: "speedometer"
+                                enabled: !win.benchRunning
+                                onClicked: backend.runBench(win.turboModel || win.activeModel || win.firstInstalledModel || "llama3.2")
+                            }
+                        }
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: theme.textLo
+                            font.pixelSize: 12
+                            text: "Compara a velocidade de geração (tokens/s) com o AI Mode OFF e ON, "
+                                + "no modelo " + (win.turboModel || win.activeModel || win.firstInstalledModel || "llama3.2")
+                                + ". Leva ~1 min (faz duas execuções)."
+                        }
+
+                        // live progress
+                        RowLayout {
+                            visible: win.benchRunning && win.benchProgress.length > 0
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+                            Kirigami.Icon { source: "view-refresh"; color: theme.blue; Layout.preferredWidth: 14; Layout.preferredHeight: 14 }
+                            QQC2.Label { Layout.fillWidth: true; text: win.benchProgress; color: theme.textMid; elide: Text.ElideRight }
+                        }
+
+                        // error
+                        QQC2.Label {
+                            visible: win.benchError.length > 0 && !win.benchRunning
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            text: win.benchError
+                            color: theme.red
+                            font.pixelSize: 12
+                        }
+
+                        // result graph: two horizontal bars OFF vs ON
+                        ColumnLayout {
+                            id: benchGraph
+                            visible: win.benchHasResult && !win.benchRunning
+                            Layout.fillWidth: true
+                            Layout.topMargin: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.smallSpacing
+                            readonly property real maxRate: Math.max(win.benchOff, win.benchOn, 0.01)
+
+                            Repeater {
+                                model: [
+                                    { "label": "OFF", "rate": win.benchOff, "col": theme.textLo },
+                                    { "label": "ON",  "rate": win.benchOn,  "col": theme.green }
+                                ]
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    spacing: Kirigami.Units.smallSpacing
+                                    QQC2.Label {
+                                        text: modelData.label
+                                        font.bold: true; font.pixelSize: 12
+                                        color: theme.textMid
+                                        Layout.preferredWidth: 34
+                                    }
+                                    Rectangle {              // track
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 22
+                                        radius: 6
+                                        color: theme.a(theme.textHi, 0.06)
+                                        Rectangle {          // bar
+                                            height: parent.height
+                                            radius: 6
+                                            width: Math.max(parent.width * (modelData.rate / benchGraph.maxRate || 0), 2)
+                                            color: modelData.col
+                                            Behavior on width { NumberAnimation { duration: 350; easing.type: Easing.OutCubic } }
+                                        }
+                                    }
+                                    QQC2.Label {
+                                        text: modelData.rate.toFixed(1) + " t/s"
+                                        font.bold: true; font.pixelSize: 12
+                                        color: theme.textHi
+                                        Layout.preferredWidth: 72
+                                        horizontalAlignment: Text.AlignRight
+                                    }
+                                }
+                            }
+
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                text: (win.benchDelta >= 0 ? "▲ +" : "▼ ") + win.benchDelta.toFixed(1)
+                                    + "% de ganho de geração com o AI Mode ON"
+                                    + (Math.abs(win.benchDelta) < 1 ? "  ·  em VM o governor é no-op; rode em bare metal para o ganho real" : "")
+                                color: win.benchDelta >= 1 ? theme.greenBright
+                                     : (win.benchDelta <= -1 ? theme.red : theme.textMid)
+                                font.bold: true
+                                font.pixelSize: 12
                             }
                         }
                     }
