@@ -55,6 +55,7 @@ NR_HUGEPAGES     = "/proc/sys/vm/nr_hugepages"                 # 2.8.9 opt-in
 PCIE_ASPM_POLICY = "/sys/module/pcie_aspm/parameters/policy"   # 2.8.9 opt-in
 POWER_SUPPLY  = "/sys/class/power_supply"
 DRM_PATH      = "/sys/class/drm"
+SCHED_EXT_SYS = "/sys/kernel/sched_ext"   # exists iff the kernel has sched_ext
 
 POLL_SECONDS = 5
 AI_NICE      = -5
@@ -640,8 +641,57 @@ class AIOptimizer:
                 m = re.search(r"\[(\w+)\]", cur)
                 adv["pcie_aspm"] = m.group(1) if m else "default"
                 self.applied.append("PCIe ASPM: performance")
+        # sched-ext throughput scheduler (2.8.7): while AI Mode runs, load a BPF
+        # sched_ext scheduler in throughput-oriented "server" mode via scxctl,
+        # and switch back to whatever was running on disable. Opt-in AND
+        # capability-gated: needs a sched_ext-capable kernel (/sys/kernel/
+        # sched_ext) and the scxctl tool (CachyOS scx-scheds). No-op otherwise,
+        # so it can never hurt a machine without sched-ext. Value may be a bare
+        # scheduler name, "on" (→ scx_bpfland), optionally with ":mode".
+        sx = conf.get("sched_ext", "off")
+        if (sx not in ("", "off", "0", "false", "no")
+                and os.path.isdir(SCHED_EXT_SYS) and shutil.which("scxctl")):
+            sched, _, mode = sx.partition(":")
+            sched = sched.strip()
+            if sched in ("on", "1", "true", "yes"):
+                sched = "scx_bpfland"
+            mode = (mode.strip() or "server")
+            prev = self._scx_get()
+            # `start` if nothing is loaded, `switch` if a scheduler already runs
+            # (start refuses while one is active; switch swaps it out).
+            verb = "switch" if prev[0] else "start"
+            if self._scx_run([verb, "-s", sched, "-m", mode]):
+                adv["sched_ext"] = {"running": prev[0], "sched": prev[1],
+                                    "mode": prev[2]}
+                self.applied.append(f"sched-ext: {sched} ({mode})")
         if adv:
             o["advanced"] = adv
+
+    @staticmethod
+    def _scx_run(args):
+        """Run `scxctl <args>`; return True on success. Best-effort, never raises."""
+        try:
+            r = subprocess.run(["scxctl"] + args, capture_output=True,
+                               text=True, timeout=15)
+            return r.returncode == 0
+        except Exception:
+            return False
+
+    @staticmethod
+    def _scx_get():
+        """(running, sched, mode) parsed from `scxctl get`, best-effort. Returns
+        (False, None, None) when nothing is loaded or scxctl is unavailable."""
+        try:
+            out = subprocess.run(["scxctl", "get"], capture_output=True,
+                                 text=True, timeout=10)
+            txt = (out.stdout or "") + (out.stderr or "")
+        except Exception:
+            return (False, None, None)
+        m = re.search(r"(scx_\w+)", txt)
+        if not m:
+            return (False, None, None)
+        mm = re.search(r"\b(auto|gaming|powersave|lowlatency|server)\b", txt, re.I)
+        return (True, m.group(1), mm.group(1).lower() if mm else None)
 
     def _restore_advanced(self, adv):
         if not adv:
@@ -650,6 +700,16 @@ class AIOptimizer:
             _write(NR_HUGEPAGES, adv["nr_hugepages"])
         if adv.get("pcie_aspm"):
             _write(PCIE_ASPM_POLICY, adv["pcie_aspm"])
+        sx = adv.get("sched_ext")
+        if sx is not None:
+            # Put the scheduler back exactly as we found it: switch to the
+            # previous scx scheduler if one was running, otherwise stop ours so
+            # the kernel returns to its default (CFS/EEVDF).
+            if sx.get("running") and sx.get("sched"):
+                self._scx_run(["switch", "-s", sx["sched"],
+                               "-m", sx.get("mode") or "auto"])
+            else:
+                self._scx_run(["stop"])
 
     def changes_summary(self):
         """2.8.8: structured before/after of exactly what AI Mode changed,
@@ -694,6 +754,9 @@ class AIOptimizer:
             add("huge pages", adv.get("nr_hugepages"), "reserved")
         if adv.get("pcie_aspm"):
             add("PCIe ASPM", adv.get("pcie_aspm"), "performance")
+        sx = adv.get("sched_ext")
+        if isinstance(sx, dict):
+            add("sched-ext", sx.get("sched") or "default", "throughput scheduler")
         return out
 
     # ── transitions ──────────────────────────────────────────────────────────
@@ -984,25 +1047,39 @@ class AIOptimizer:
             logger.debug(f"warm-db write failed: {e}")
 
     def _seed_warm_from_mru(self):
-        """Populate _warm_files from the most-recently-used model in the MRU so
-        maybe_warm_idle can warm it before the user launches anything. Picks the
-        newest entry whose files still exist; refreshes sizes from disk."""
+        """Populate _warm_files from the persisted MRU so maybe_warm_idle can warm
+        the user's recent models before they launch anything. Pre-caches the
+        most-recently-used models (2.8.3) — not just the newest one — accumulating
+        their weight files newest-first while the running total stays under ~40%
+        of currently-free RAM, so an 8 GB+ box keeps a couple of recent models
+        instant while a tight box still warms just one (or none). Sizes refreshed
+        from disk; vanished files skipped."""
+        try:
+            avail = psutil.virtual_memory().available
+        except Exception:
+            avail = 0
+        budget = avail * 0.4
+        files = {}
+        total = 0
         for entry in self._load_mru():
-            files = {}
             for path in entry.get("files", {}):
+                if path in files:
+                    continue
                 try:
                     sz = os.path.getsize(path)
                 except OSError:
                     continue
-                if sz >= MODEL_MIN_BYTES:
-                    files[path] = sz
-            if files:
-                self._warm_files = files
-                self._warm_key = self._warm_key_for(files)
-                logger.info("Predictive preload: warming last-used model "
-                            "(%d file(s), %dMB) at idle",
-                            len(files), int(sum(files.values()) / (1024 * 1024)))
-                return
+                if sz < MODEL_MIN_BYTES:
+                    continue
+                if budget and total + sz > budget:
+                    continue
+                files[path] = sz
+                total += sz
+        if files:
+            self._warm_files = files
+            self._warm_key = self._warm_key_for(files)
+            logger.info("Predictive preload: warming %d recent model file(s) "
+                        "(%dMB) at idle", len(files), int(total / (1024 * 1024)))
 
     def _queue_dir_for(self, path):
         """The /sys block-queue dir (the one with queue/scheduler) of the disk

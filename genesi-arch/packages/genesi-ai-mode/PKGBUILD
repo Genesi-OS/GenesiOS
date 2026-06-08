@@ -87,7 +87,18 @@ pkgver=1.0.0
 # the ⚡ toggle enables speculative decoding + dynamic draft + persistent KV
 # (card text + tooltips). Spec stays OFF by default (still 🔴 BLOCKED on Vulkan/
 # NVK); these wins need validation on a real CUDA install via `bench`.
-pkgrel=65
+# 2026-06-08 (66): more roadmap items. (1) 2.8.7 sched-ext: opt-in advanced.conf
+# `sched_ext = on|<scheduler>[:mode]` loads a BPF sched_ext scheduler in "server"
+# (throughput) mode via scxctl on the aggressive path and switches back to what
+# ran before on disable; capability-gated on a sched_ext kernel + scxctl (CachyOS
+# scx-scheds), silent no-op otherwise. (2) 2.8.3 pre-cache the most-recently-used
+# models (plural): the predictive-preload MRU now warms several recent models'
+# weight files newest-first while the total stays under ~40% of free RAM. (3) Doc
+# only: marked 2.2 (partial offload via -ngl auto, mlock via GENESI_TURBO_MLOCK,
+# compositor trim via genesi-ai-kwin-helper) and 2.3 (explicit huge pages on
+# demand via advanced.conf) as already-done; rewrote the 2.8.10 speculative-
+# decoding item from BLOCKED to a user-toggleable option (no longer a blocker).
+pkgrel=66
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

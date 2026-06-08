@@ -106,16 +106,26 @@ A systemd service that monitors AI processes and tunes the system automatically.
 - [x] Detect available VRAM per GPU — NVIDIA `nvidia-smi`, AMD/Intel/NVIDIA DRM
       sysfs, plus a vendor-agnostic Vulkan probe (`llama-server --list-devices`)
       that works under nouveau/NVK where `nvidia-smi` can't talk to the driver
-- [ ] Configure optimal GPU/CPU split for the model (partial offloading)
-- [ ] Use `mlock`/`vmtouch` to keep model weights in RAM without swap
-- [ ] Free VRAM by trimming compositor effects **from the user session** (the
+- [x] Configure optimal GPU/CPU split for the model (partial offloading)
+      _(genesi-ai-turbo: `-ngl 999` when the model fits VRAM, `-ngl auto` to fit
+      as many layers as the VRAM holds when it doesn't — never a blind offload
+      that OOMs a small card; see 2.8.11 Tier 0)_
+- [x] Use `mlock`/`vmtouch` to keep model weights in RAM without swap
+      _(opt-in `GENESI_TURBO_MLOCK=1` → `llama-server --mlock`; default off, as
+      it's risky on low-RAM boxes and the RAM-backed live ISO)_
+- [x] Free VRAM by trimming compositor effects **from the user session** (the
       old root-side `qdbus` call could never reach the user's KWin — removed)
+      _(done: `genesi-ai-kwin-helper`, a user-session autostart that unloads
+      blur/contrast while AI Mode is on and reloads exactly those on off)_
 
 ### 2.3 Huge pages for models
 - [x] Toggle Transparent Huge Pages to `always` while AI runs (restored on exit)
 - [x] Slim sysctl (`vm.max_map_count`, `vm.vfs_cache_pressure`) — **dropped the
       permanent `vm.nr_hugepages=512`** that reserved ~1 GB even with no AI running
-- [ ] Allocate explicit huge pages **on demand** at enable, free them at disable
+- [x] Allocate explicit huge pages **on demand** at enable, free them at disable
+      _(done as an opt-in tradeoff — `/etc/genesi-ai-mode/advanced.conf`
+      `hugepages = N`, reserved on enable / freed on disable, refused if it would
+      eat >50% of free RAM; see 2.8.9)_
 
 ### 2.4 CPU governor and scheduler
 - [x] Switch CPU governor to `performance` when inference is running (restored)
@@ -199,7 +209,11 @@ once and gates every optimizer on detected capabilities.
       RAM-backed fs (live ISO). No `vmtouch` dependency, nothing to restore.
 - [ ] `mlock` the model so it can't be evicted mid-inference (opt-in; risky on
       low-RAM / live-ISO where weights are already in RAM)
-- [ ] Optionally pre-cache the most-recently-used models
+- [x] Optionally pre-cache the most-recently-used models
+      _(pkgrel 66: the predictive-preload MRU now warms the most-recently-used
+      models — plural — at idle, accumulating their weight files newest-first
+      while the total stays under ~40% of free RAM; an 8 GB+ box keeps a couple
+      of recent models instant, a tight box warms one or none)_
 
 #### 2.8.4 🔥 Smart CPU threads & core placement
 - [x] Detect **physical** cores and P-core/E-core topology (`/sys` cpufreq) —
@@ -237,7 +251,12 @@ once and gates every optimizer on detected capabilities.
 - [x] I/O scheduler → `none`/`mq-deadline` on the disk backing the weights
       (resolved from the mmapped files), captured & restored; AC/forced only
 - [ ] NUMA pinning (`numactl`) on multi-socket / Threadripper
-- [ ] Integrate CachyOS `sched-ext` throughput schedulers while AI Mode is on
+- [x] Integrate CachyOS `sched-ext` throughput schedulers while AI Mode is on
+      _(pkgrel 66: opt-in `/etc/genesi-ai-mode/advanced.conf` `sched_ext = on`
+      (or a scheduler name) loads a BPF sched_ext scheduler in throughput
+      "server" mode via `scxctl` on the aggressive path, and switches back to
+      whatever ran before on disable. Capability-gated on a sched_ext kernel +
+      `scxctl` (CachyOS scx-scheds), silent no-op otherwise)_
 
 #### 2.8.8 🧠 Intelligence, metrics & UX
 - [x] **Live metrics** in `state.json` + `genesi-ai-mode info`: CPU% +
@@ -291,29 +310,23 @@ once and gates every optimizer on detected capabilities.
 >       one-click ⚡ switch in the Monitor chat, backed by the shipped
 >       `genesi-llama-cpp` (Vulkan `llama-server`). On-HW bench still pending.
 >
-> - [ ] **🔴 BLOCKED — RE-ENABLE speculative decoding by default.** As of pkgrel
->       59, `serve` (and the Monitor's Turbo switch) default to **plain full GPU
->       offload, with speculative decoding OFF**. As of pkgrel 61 it's a **user
->       choice**: a `--spec`/`--speculative` flag on `genesi-ai-turbo`, and an
->       "offload total ⇄ ⚡ speculative" toggle on the Monitor's Turbo card (still
->       OFF by default). What's still BLOCKED is flipping the **default** back to
->       ON. Reason: on the **live ISO / NVK** (the open nouveau Vulkan driver, the only thing testable so far) the speculative
->       path REGRESSED real speed — plain offload gave ~21 t/s, spec dropped it to
->       ~baseline, because the draft + verification cost more than it saves
->       without a mature driver. The 2.3× we measured was **GPU-vs-CPU** (Turbo
->       offloads via Vulkan; ollama on nouveau has no CUDA → stuck on CPU), NOT
->       speculative decoding.
->       **➡️ ACTION (do this when @zFreshy tests on a REAL INSTALL — proprietary
->       NVIDIA driver / CUDA, NOT the live ISO):**
->       1. Run `genesi-ai-turbo bench qwen2.5:7b` on the installed system.
->       2. If spec shows a real win there (expected on CUDA), flip the default
->          back ON — ideally **conditionally**: enable spec only where it's
->          proven to help (e.g. mature driver / `nvidia-smi` works, or cache the
->          bench result per machine), and keep plain offload on Vulkan/NVK.
->       3. Re-wire the Monitor's ⚡ switch to the speculative path on those
->          systems.
->       _Until that validation, DO NOT re-enable by default — it's a measured
->       regression on the only hardware tested so far._
+> - [x] **Speculative decoding is a user-toggleable option (not a default).**
+>       `serve` and the Monitor default to **plain full GPU offload** (the
+>       reliable, proven win); speculative decoding is **opt-in** via the
+>       `--spec`/`--speculative` flag on `genesi-ai-turbo` (or `GENESI_TURBO_SPEC
+>       =1`) and the "offload total ⇄ ⚡ speculative" toggle on the Monitor's
+>       Turbo card (the toggle now also bundles dynamic draft length + persistent
+>       KV — labelled explicitly in the UI). We deliberately **do NOT enable spec
+>       by default**: on the live ISO / NVK (open nouveau Vulkan, the only thing
+>       tested so far) it REGRESSED real speed — plain offload gave ~21 t/s, spec
+>       dropped to ~baseline, because the draft + verification cost more than it
+>       saves without a mature driver. (The 2.3× once measured was **GPU-vs-CPU**:
+>       Turbo offloads via Vulkan while ollama on nouveau has no CUDA and stays on
+>       CPU — not speculative decoding.) Since it's now a switch the user owns,
+>       this is no longer a blocker — anyone can flip it on and compare with
+>       `genesi-ai-turbo bench`. _Optional future polish: auto-default spec ON
+>       only where it's proven to help (e.g. a mature CUDA driver), keeping plain
+>       offload on Vulkan/NVK._
 > - ~~**Faster backend per GPU** (EXL2 / TensorRT-LLM)~~ — **dropped, not a fit.**
 >       It's a subproject, not a feature: a different model format ollama doesn't
 >       provide (separate downloads + acervo), a separate CUDA-only serving stack,
