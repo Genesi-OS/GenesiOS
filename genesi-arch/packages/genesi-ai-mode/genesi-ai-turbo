@@ -24,8 +24,10 @@ Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
   GENESI_TURBO_CACHE_REUSE=256   min prefix chunk reused across requests (KV)
   GENESI_TURBO_MLOCK=1           pin model in RAM (opt-in; risky on low RAM)
   GENESI_TURBO_THREADS=<n>       CPU inference threads (default: fast/perf cores)
-  GENESI_TURBO_FORCE_DRAFT=1     force speculative decoding even on CPU-only
-                                 (off by default — a CPU draft usually slows it)
+  GENESI_TURBO_SPEC=1            opt into speculative decoding on `serve` (default
+                                 off: serve uses plain full GPU offload, the
+                                 reliable win; spec can regress on Vulkan/NVK)
+  GENESI_TURBO_FORCE_DRAFT=1     force the draft even on CPU-only (usually slower)
 """
 import os
 import re
@@ -667,11 +669,20 @@ def cmd_serve(main, draft):
     if not cmd:
         sys.exit("llama-server not found — install the Genesi Vulkan build:\n"
                  "  sudo pacman -S genesi-llama-cpp   (ships llama.cpp + Vulkan)")
-    draft = draft or pick_draft(main)
+    # Default Turbo = plain full GPU offload, the reliable proven win (GPU >> CPU
+    # is where the big speedup comes from). Speculative decoding is a MAYBE-win:
+    # it helps on a mature driver (CUDA) but can REGRESS on Vulkan/NVK, where the
+    # draft + verification cost more than plain offload saves (measured: plain
+    # offload 21 t/s vs spec ~baseline on an NVK 3050). So spec is opt-in — pass
+    # a draft explicitly, or set GENESI_TURBO_SPEC=1. `bench` always compares
+    # both so you can check whether spec actually helps on your hardware first.
+    if draft is None and _env_flag("GENESI_TURBO_SPEC"):
+        draft = pick_draft(main)
     draft_g = ensure(draft) if draft else None
     cmd = server_cmd(main_g, draft_g)
     print(f":: Genesi Turbo serving {main}" +
-          (f" + draft {draft}" if draft_g else " (sem modelo draft)"))
+          (f" + draft {draft} (speculative)" if draft_g
+           else " (full GPU offload)"))
     print(f"   API: http://127.0.0.1:{TURBO_PORT}/v1   (OpenAI-compatible)  Ctrl-C to stop")
     print("   " + " ".join(cmd), flush=True)
     os.execvp(cmd[0], cmd)

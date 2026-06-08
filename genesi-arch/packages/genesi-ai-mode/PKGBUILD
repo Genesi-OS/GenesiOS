@@ -38,7 +38,13 @@ pkgver=1.0.0
 # 2026-06-07 (58): VRAM-aware offload (Tier 0). Instead of a blind -ngl 999 that
 # OOMs a small/partially-full card, use -ngl auto (fit as many layers as the VRAM
 # holds) when the model doesn't fully fit; keep 999 when it fits entirely.
-pkgrel=58
+# 2026-06-07 (59): FIX REGRESSION — `serve` defaulted to speculative decoding,
+# which REGRESSED real-world speed on Vulkan/NVK (plain GPU offload was 21 t/s,
+# spec dropped it to ~baseline: the draft + verification cost more than it saves
+# without a mature CUDA driver). Default `serve` is back to plain full GPU
+# offload (the proven win); speculative decoding is now opt-in (GENESI_TURBO_SPEC
+# =1 or an explicit draft). `bench` still compares both so spec can be evaluated.
+pkgrel=59
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
