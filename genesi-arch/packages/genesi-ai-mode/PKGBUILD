@@ -98,7 +98,16 @@ pkgver=1.0.0
 # compositor trim via genesi-ai-kwin-helper) and 2.3 (explicit huge pages on
 # demand via advanced.conf) as already-done; rewrote the 2.8.10 speculative-
 # decoding item from BLOCKED to a user-toggleable option (no longer a blocker).
-pkgrel=66
+# 2026-06-08 (67): Monitor backend install now offers CUDA vs Vulkan with a
+# hardware-based recommendation. Clicking "Instalar Backend" opens a dialog that
+# explains both and recommends one: CUDA when nvidia-smi works (NVIDIA + the
+# proprietary/open driver loaded, ~1.5–2× faster), Vulkan otherwise (universal,
+# the shipped genesi-llama-cpp, runs on any GPU incl. nouveau/NVK). Vulkan
+# installs genesi-llama-cpp via pkexec; CUDA builds llama.cpp-cuda via the user's
+# AUR helper (paru/yay) — best-effort, with clear warnings when nvidia-smi is
+# down or no AUR helper exists. New backend: backendInfo()/backendAdvice signal +
+# installTurboBackend(kind). Our backend stays Vulkan by default.
+pkgrel=67
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

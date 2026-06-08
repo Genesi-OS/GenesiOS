@@ -467,6 +467,12 @@ once and gates every optimizer on detected capabilities.
 - [x] One-click benchmark (wraps `genesi-ai-mode bench`) with a results chart
       _(pkgrel 63: "Benchmark de desempenho" card in the Painel — streams each
       step live and draws an OFF-vs-ON tokens/s bar graph with the % gain)_
+- [x] Backend install offers **CUDA vs Vulkan** with a hardware-based pick
+      _(pkgrel 67: the "Instalar Backend" prompt opens a dialog explaining both
+      and recommends one — CUDA when nvidia-smi works (NVIDIA + proprietary
+      driver, ~1.5–2× faster), Vulkan otherwise (universal, shipped). Vulkan →
+      genesi-llama-cpp via pkexec; CUDA → llama.cpp-cuda via the AUR helper,
+      best-effort)_
 - [ ] **MemPalace integration**: surface AI memory/usage stats
 - [x] Reads `state.json` for display; control via the `genesi-ai-mode` CLI
       (PySide6 + Kirigami app, `genesi-ai-monitor`)

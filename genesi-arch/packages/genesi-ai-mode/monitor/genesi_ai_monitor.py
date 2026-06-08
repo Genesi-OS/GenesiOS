@@ -45,6 +45,7 @@ class Backend(QObject):
     turboReady = Signal(bool)    # Turbo server up and serving?
     turboNeedsInstall = Signal(bool)  # backend (llama-server) missing -> offer install
     turboRecommended = Signal(str)    # advisor's biggest-fits-VRAM model pick
+    backendAdvice = Signal(str)       # JSON: which backend (cuda/vulkan) to install
     # Benchmark (wraps `genesi-ai-mode bench`): live progress + parsed result.
     benchRunning = Signal(bool)    # a benchmark is in flight
     benchProgress = Signal(str)    # human-readable step ("warming up …", "AI Mode ON …")
@@ -327,6 +328,74 @@ class Backend(QObject):
         return bool(shutil.which("llama-server")
                     or os.path.exists("/usr/bin/llama-server"))
 
+    @staticmethod
+    def _nvidia_smi_works():
+        """True only when the proprietary/open NVIDIA kernel driver is loaded AND
+        functional (nvidia-smi returns 0). False under nouveau/NVK even on an
+        NVIDIA card — which is exactly the case where CUDA is NOT available."""
+        if not shutil.which("nvidia-smi"):
+            return False
+        try:
+            return subprocess.run(["nvidia-smi"], capture_output=True,
+                                  text=True, timeout=6).returncode == 0
+        except Exception:
+            return False
+
+    def _has_nvidia_gpu(self):
+        """Is there an NVIDIA GPU at all (even on the open nouveau/NVK driver)?
+        Reads the daemon's profiled GPUs first, then falls back to nvidia-smi's
+        mere presence (it ships with the NVIDIA stack)."""
+        try:
+            s = json.loads(open(STATE_FILE).read())
+            for g in (s.get("hardware") or {}).get("gpus") or []:
+                if "nvidia" in (g.get("vendor") or "").lower():
+                    return True
+        except Exception:
+            pass
+        return shutil.which("nvidia-smi") is not None
+
+    @staticmethod
+    def _aur_helper():
+        """AUR helper available to build the CUDA backend (CachyOS ships paru)."""
+        for h in ("paru", "yay"):
+            if shutil.which(h):
+                return h
+        return None
+
+    @Slot()
+    def backendInfo(self):
+        """Detect which Turbo backend to recommend and hand the UI everything it
+        needs to offer a CUDA-vs-Vulkan choice. CUDA is ~1.5–2× faster but only
+        works on an NVIDIA card with the proprietary/open driver actually loaded
+        (nvidia-smi works) — useless on nouveau/NVK or non-NVIDIA. Vulkan is the
+        universal, already-shipped backend that runs on any GPU. Runs in a worker
+        thread (nvidia-smi can take a couple seconds)."""
+        def work():
+            nv_works = self._nvidia_smi_works()
+            has_nv = self._has_nvidia_gpu()
+            if nv_works:
+                recommend, reason = "cuda", (
+                    "Detectei uma GPU NVIDIA com o driver proprietário ativo — "
+                    "CUDA roda ~1,5–2× mais rápido que Vulkan aqui.")
+            elif has_nv:
+                recommend, reason = "vulkan", (
+                    "Você tem uma GPU NVIDIA, mas o driver proprietário/CUDA não "
+                    "está ativo (provável nouveau/NVK). Use Vulkan agora; CUDA só "
+                    "compensa depois de instalar o driver proprietário.")
+            else:
+                recommend, reason = "vulkan", (
+                    "Vulkan é o backend universal e roda na sua GPU. CUDA é "
+                    "exclusivo de placas NVIDIA com driver proprietário.")
+            self.backendAdvice.emit(json.dumps({
+                "recommend": recommend,
+                "reason": reason,
+                "nvidia_works": nv_works,
+                "has_nvidia": has_nv,
+                "installed": self._has_llama_server(),
+                "aur": self._aur_helper() or "",
+            }))
+        threading.Thread(target=work, daemon=True).start()
+
     def _has_gpu(self):
         try:
             s = json.loads(open(STATE_FILE).read())
@@ -477,14 +546,26 @@ class Backend(QObject):
             self.turboRecommended.emit(tag)
         threading.Thread(target=work, daemon=True).start()
 
-    @Slot()
-    def installTurboBackend(self):
-        """One-click install of the Turbo backend: genesi-llama-cpp — the
-        PREBUILT Vulkan llama.cpp from the genesi repo (~tens of MB), NOT a heavy
-        AUR source build. Runs via pkexec so the user authorizes graphically."""
+    @Slot(str)
+    def installTurboBackend(self, kind="vulkan"):
+        """One-click install of the Turbo backend.
+
+        kind="vulkan" (default): genesi-llama-cpp — the PREBUILT Vulkan llama.cpp
+        from the genesi repo (~tens of MB), via pkexec (graphical auth). Universal:
+        runs on any GPU (AMD/Intel/NVIDIA, incl. nouveau/NVK).
+
+        kind="cuda": llama.cpp-cuda from the AUR (a source build that pulls CUDA)
+        via the user's AUR helper. ~1.5–2× faster, but NVIDIA + proprietary driver
+        only, and a heavy build — best run on an INSTALLED system, not the RAM-
+        backed live ISO. Best-effort: if no AUR helper is present we print the
+        manual command instead of failing silently."""
+        kind = "cuda" if str(kind).lower() == "cuda" else "vulkan"
         if self._has_llama_server():
             self.turboNeedsInstall.emit(False)
             self.turboStatus.emit("Backend já instalado ✓ — ligue o Turbo")
+            return
+        if kind == "cuda":
+            self._install_cuda_backend()
             return
         if not shutil.which("pkexec"):
             self.turboStatus.emit(
@@ -493,7 +574,7 @@ class Backend(QObject):
 
         def work():
             self.turboStatus.emit(
-                "instalando genesi-llama-cpp… (autorize no diálogo)")
+                "instalando genesi-llama-cpp (Vulkan)… (autorize no diálogo)")
             try:
                 p = subprocess.run(
                     ["pkexec", "pacman", "-Sy", "--needed", "--noconfirm",
@@ -505,13 +586,52 @@ class Backend(QObject):
                 return
             if p.returncode == 0 and self._has_llama_server():
                 self.turboNeedsInstall.emit(False)
-                self.turboStatus.emit("Backend instalado ✓ — ligue o Turbo de novo")
+                self.turboStatus.emit("Backend Vulkan instalado ✓ — ligue o Turbo de novo")
             else:
                 last = ""
                 if p.stdout:
                     lines = [l for l in p.stdout.splitlines() if l.strip()]
                     last = lines[-1] if lines else ""
                 self.turboStatus.emit("instalação não concluída — " + last)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _install_cuda_backend(self):
+        """Build/install llama.cpp-cuda from the AUR via the user's AUR helper.
+        Heavy (pulls CUDA + base-devel) and NVIDIA-only — opt-in. Surfaces a clear
+        manual command when no helper exists."""
+        helper = self._aur_helper()
+        if not helper:
+            self.turboStatus.emit(
+                "CUDA precisa de um helper do AUR (paru/yay). Instale o paru e "
+                "rode: paru -S llama.cpp-cuda")
+            return
+        if not self._nvidia_smi_works():
+            self.turboStatus.emit(
+                "Aviso: nvidia-smi não responde — o CUDA só roda com o driver "
+                "NVIDIA proprietário ativo. Instalando mesmo assim…")
+
+        def work():
+            self.turboStatus.emit(
+                f"compilando llama.cpp-cuda via {helper}… (pesado, pode demorar)")
+            try:
+                p = subprocess.run(
+                    [helper, "-S", "--needed", "--noconfirm", "llama.cpp-cuda"],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, timeout=3600)
+            except Exception as e:
+                self.turboStatus.emit("falha ao instalar CUDA: " + str(e))
+                return
+            if p.returncode == 0 and self._has_llama_server():
+                self.turboNeedsInstall.emit(False)
+                self.turboStatus.emit("Backend CUDA instalado ✓ — ligue o Turbo de novo")
+            else:
+                last = ""
+                if p.stdout:
+                    lines = [l for l in p.stdout.splitlines() if l.strip()]
+                    last = lines[-1] if lines else ""
+                self.turboStatus.emit("CUDA não concluído — " + last
+                                      + "  (tente no terminal: " + helper
+                                      + " -S llama.cpp-cuda)")
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str)

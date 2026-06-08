@@ -31,6 +31,13 @@ Kirigami.ApplicationWindow {
     property bool turboNeedsInstall: false
     property string turboStatusText: ""
 
+    // Backend install choice (Vulkan universal ⇄ CUDA NVIDIA-only)
+    property string backendRecommend: "vulkan"
+    property string backendReason: ""
+    property bool backendNvWorks: false
+    property bool backendHasNvidia: false
+    property string backendAur: ""
+
     // ── Benchmark integration ───────────────────────────────────────────────
     property bool benchRunning: false
     property string benchProgress: ""
@@ -79,6 +86,15 @@ Kirigami.ApplicationWindow {
         }
         function onTurboStatus(s) { win.turboStatusText = s }
         function onTurboRecommended(tag) { win.turboRecommend = tag }
+        function onBackendAdvice(jsonStr) {
+            var a = ({})
+            try { a = JSON.parse(jsonStr) } catch (e) { return }
+            win.backendRecommend = a.recommend || "vulkan"
+            win.backendReason = a.reason || ""
+            win.backendNvWorks = a.nvidia_works || false
+            win.backendHasNvidia = a.has_nvidia || false
+            win.backendAur = a.aur || ""
+        }
         // Seed a default Turbo model from the installed list, so Turbo can start
         // even before the first Ollama prompt (otherwise activeModel stays empty
         // until something is loaded and the switch appears to do nothing).
@@ -474,7 +490,7 @@ Kirigami.ApplicationWindow {
                                     text: "Instalar Backend"
                                     icon.name: "download"
                                     visible: win.turboNeedsInstall
-                                    onClicked: backend.installTurboBackend()
+                                    onClicked: { backend.backendInfo(); backendDialog.open() }
                                 }
                             }
                             QQC2.Label {
@@ -814,5 +830,104 @@ Kirigami.ApplicationWindow {
 
         // ───────────────────────── 3. MODELOS ─────────────────────────
         AdvisorPage { id: advisorPage }
+    }
+
+    // ════════════ BACKEND CHOICE DIALOG (Vulkan ⇄ CUDA) ════════════
+    Kirigami.PromptDialog {
+        id: backendDialog
+        title: "Instalar backend do Turbo"
+        standardButtons: Kirigami.Dialog.Cancel
+        preferredWidth: Kirigami.Units.gridUnit * 28
+
+        ColumnLayout {
+            spacing: Kirigami.Units.largeSpacing
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: win.backendReason || "Escolha o motor de inferência do Turbo (llama-server)."
+                color: theme.textMid
+            }
+
+            // ── Vulkan ──
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 10
+                implicitHeight: vkCol.implicitHeight + Kirigami.Units.largeSpacing * 2
+                color: vkMa.containsMouse ? theme.a(theme.green, 0.10) : theme.a(theme.textHi, 0.04)
+                border.width: 1
+                border.color: win.backendRecommend === "vulkan" ? theme.a(theme.green, 0.6) : theme.line
+                ColumnLayout {
+                    id: vkCol
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.top: parent.top; anchors.margins: Kirigami.Units.largeSpacing
+                    spacing: 3
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QQC2.Label { text: "Vulkan"; font.bold: true; font.pixelSize: 15; color: theme.textHi }
+                        Rectangle {
+                            visible: win.backendRecommend === "vulkan"
+                            radius: 6; height: 18; width: recVk.implicitWidth + 14
+                            color: theme.a(theme.green, 0.25)
+                            QQC2.Label { id: recVk; anchors.centerIn: parent; text: "Recomendado"; font.pixelSize: 10; color: theme.greenBright }
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.textMid; font.pixelSize: 12
+                        text: "Universal: roda em qualquer GPU (AMD, Intel, NVIDIA aberto/NVK). É o backend já pronto da Genesi (genesi-llama-cpp, leve, ~dezenas de MB). Melhor escolha pra maioria e pro live ISO."
+                    }
+                }
+                MouseArea {
+                    id: vkMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: { backend.installTurboBackend("vulkan"); backendDialog.close() }
+                }
+            }
+
+            // ── CUDA ──
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 10
+                implicitHeight: cuCol.implicitHeight + Kirigami.Units.largeSpacing * 2
+                color: cuMa.containsMouse ? theme.a(theme.turbo, 0.10) : theme.a(theme.textHi, 0.04)
+                border.width: 1
+                border.color: win.backendRecommend === "cuda" ? theme.a(theme.turbo, 0.6) : theme.line
+                ColumnLayout {
+                    id: cuCol
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.top: parent.top; anchors.margins: Kirigami.Units.largeSpacing
+                    spacing: 3
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QQC2.Label { text: "CUDA"; font.bold: true; font.pixelSize: 15; color: theme.textHi }
+                        Rectangle {
+                            visible: win.backendRecommend === "cuda"
+                            radius: 6; height: 18; width: recCu.implicitWidth + 14
+                            color: theme.a(theme.turbo, 0.25)
+                            QQC2.Label { id: recCu; anchors.centerIn: parent; text: "Recomendado"; font.pixelSize: 10; color: theme.turboBright }
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.textMid; font.pixelSize: 12
+                        text: "Só NVIDIA com driver proprietário ativo. ~1,5–2× mais rápido que Vulkan, mas é uma compilação pesada do AUR (llama.cpp-cuda, baixa o CUDA). Ideal num sistema instalado, não no live ISO em RAM."
+                    }
+                    QQC2.Label {
+                        visible: win.backendRecommend === "cuda" && !win.backendNvWorks
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 11; color: theme.red
+                        text: "⚠ nvidia-smi não responde aqui — instale o driver NVIDIA proprietário antes, senão o CUDA não roda."
+                    }
+                    QQC2.Label {
+                        visible: !win.backendAur
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 11; color: theme.textLo
+                        text: "Precisa de um helper do AUR (paru/yay) instalado."
+                    }
+                }
+                MouseArea {
+                    id: cuMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: { backend.installTurboBackend("cuda"); backendDialog.close() }
+                }
+            }
+        }
     }
 }
