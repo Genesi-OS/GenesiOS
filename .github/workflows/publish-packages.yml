@@ -121,25 +121,32 @@ jobs:
           # "failed to retrieve some files". That is pure infra flake, unrelated
           # to the PKGBUILDs, so retry a few times (refreshing DBs each attempt
           # in case a mirror caught up) before giving up. Reproduced 2026-06-03.
+          # -Syy (double y) FORCES a fresh DB download EVERY attempt. A plain
+          # -Sy may skip the refresh when it thinks the DB is current, leaving us
+          # pinned to a version a mirror already rotated away → 404. Seen
+          # 2026-06-09: qt5-base-...r96 vanished from cdn77 (404) while
+          # us.cachyos.org was 523 (origin down), and the single -Sy kept
+          # re-requesting the gone r96. Forcing the DB re-download lets pacman
+          # pick up the current version once any mirror is consistent again.
           install_deps() {
-            pacman -Sy --noconfirm && \
+            pacman -Syy --noconfirm && \
             pacman -S --needed --noconfirm --overwrite='*' \
               base-devel git sudo \
               systemd systemd-sysvcompat \
               python-requests python-packaging \
               $DEPS
           }
-          for attempt in 1 2 3 4 5; do
+          for attempt in 1 2 3 4 5 6 7; do
             if install_deps; then
               echo "build deps installed (attempt $attempt)"
               break
             fi
-            if [ "$attempt" = 5 ]; then
-              echo "::error::build deps failed after 5 attempts (CDN/mirror down?)"
+            if [ "$attempt" = 7 ]; then
+              echo "::error::build deps failed after 7 attempts (CachyOS mirror/CDN inconsistent)"
               exit 1
             fi
-            echo "::warning::build-deps attempt $attempt failed (likely CDN 5xx); retry in 20s"
-            sleep 20
+            echo "::warning::build-deps attempt $attempt failed (CachyOS CDN 404/5xx); refreshing DBs, retry in 30s"
+            sleep 30
           done
 
       - name: Normalize build flags for broad CPU compatibility
