@@ -37,6 +37,11 @@ jobs:
       # which is required because several Genesi packages depend on CachyOS-only
       # packages (cachyos-ananicy-rules, zram-generator, ananicy-cpp, etc.).
       image: cachyos/cachyos-v3:latest
+      # --privileged so we can swapon a swapfile: genesi-llama-cpp's Vulkan
+      # shader-gen forks hundreds of compilers and exhausts the runner's RAM
+      # ("Cannot allocate memory / Failed to fork process"); swap raises the
+      # kernel commit limit so fork() succeeds. Same pattern as iso-pipeline.
+      options: --privileged
 
     steps:
       - name: Install git in container
@@ -178,6 +183,24 @@ jobs:
           done
           echo "Effective arch flags after normalization:"
           grep -RHE 'march=|mtune=|target-cpu=' /etc/makepkg.conf /etc/makepkg.conf.d/ || true
+
+      - name: Add swap headroom (heavy Vulkan build OOMs the runner)
+        shell: bash
+        run: |
+          # genesi-llama-cpp's Vulkan shader-gen forks many compilers in parallel
+          # and exhausts RAM → fork() returns ENOMEM ("Cannot allocate memory").
+          # A swapfile raises the kernel's commit limit so fork() succeeds. The
+          # disk has room (the runner is mostly empty here). Best-effort: never
+          # fail the build if swap can't be set up (just less headroom).
+          set -x
+          if ! swapon --show | grep -q .; then
+            fallocate -l 14G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=14336
+            chmod 600 /swapfile
+            mkswap /swapfile
+            swapon /swapfile || echo "::warning::swapon failed (no privilege?) — building without extra swap"
+          fi
+          swapon --show || true
+          free -h || true
 
       - name: Build packages
         shell: bash

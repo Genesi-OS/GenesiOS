@@ -8,7 +8,7 @@
 # hardware; the CPU fallback (generic, GGML_NATIVE=OFF) keeps it portable.
 pkgname=genesi-llama-cpp
 pkgver=r0
-pkgrel=1
+pkgrel=2
 pkgdesc='llama.cpp (Vulkan) — local LLM inference backing Genesi Turbo'
 arch=('x86_64')
 url='https://github.com/ggml-org/llama.cpp'
@@ -27,6 +27,18 @@ pkgver() {
 }
 
 build() {
+    # The Vulkan backend embeds every shader variant (iq2/iq3/iq4/mxfp4/nvfp4…)
+    # into one enormous generated TU and forks a compiler per variant. Full
+    # `-j$(nproc)` peaks past the CI runner's RAM → "Cannot allocate memory /
+    # Failed to fork process" (2026-06-09, after upstream added the fp4 shaders).
+    # Cap parallelism to ~1 job per 6 GB of RAM (min 1) so the peak fits; the CI
+    # job also adds swap headroom. Local builds on big machines still scale.
+    local mem_gb jobs
+    mem_gb=$(free -g | awk '/^Mem:/{print $2}' 2>/dev/null || echo 8)
+    jobs=$(( mem_gb / 6 )); [ "$jobs" -lt 1 ] && jobs=1
+    [ "$jobs" -gt "$(nproc)" ] && jobs=$(nproc)
+    echo "genesi-llama-cpp: building with -j${jobs} (RAM ${mem_gb} GB)"
+
     cmake -B build -S llama.cpp \
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DCMAKE_BUILD_TYPE=Release \
@@ -34,7 +46,7 @@ build() {
         -DGGML_NATIVE=OFF \
         -DLLAMA_CURL=OFF \
         -DBUILD_SHARED_LIBS=ON
-    cmake --build build --config Release -j"$(nproc)"
+    cmake --build build --config Release -j"${jobs}"
 }
 
 package() {
