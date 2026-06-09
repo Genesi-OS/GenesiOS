@@ -18,6 +18,7 @@ Kirigami.ApplicationWindow {
     property bool active: false
     property string forceMode: "auto"
     property string profileMode: "auto"
+    property string activity: "idle"   // active | warm | idle (smart auto-detect)
     property int currentTab: 0
 
     // ── Turbo integration ───────────────────────────────────────────────────
@@ -133,6 +134,7 @@ Kirigami.ApplicationWindow {
         active = st.ai_mode_active || false
         forceMode = st.force_mode || "auto"
         profileMode = st.profile_mode || "auto"
+        activity = st.activity || "idle"
     }
 
     Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true; onTriggered: win.poll() }
@@ -376,6 +378,15 @@ Kirigami.ApplicationWindow {
                                       : "AI Mode OFF"
                                 font.bold: true; font.pixelSize: 21
                                 color: theme.textHi
+                            }
+                            QQC2.Label {
+                                visible: win.active
+                                opacity: 0.85
+                                font.pixelSize: 12
+                                color: win.activity === "active" ? theme.greenBright : theme.textMid
+                                text: win.activity === "active" ? "● generating"
+                                      : win.activity === "warm" ? "○ model warm · idle"
+                                      : "○ standing by"
                             }
                             QQC2.Label {
                                 opacity: 0.85

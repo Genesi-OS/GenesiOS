@@ -148,22 +148,78 @@ A systemd service that monitors AI processes and tunes the system automatically.
 - [x] Manual ON/OFF toggle (force AI Mode) — wired to the `genesi-ai-mode` CLI
 - [x] Live VRAM / GPU / tokens-per-second metrics (see 2.8)
 - [x] Rewrite for Plasma 6 API (PlasmoidItem / Kirigami / plasma5support)
+- [x] **Smart workload auto-detection** — AI Mode no longer latches ON forever
+      because `ollama serve` is always running. `genesi-aid` now classifies the
+      live workload as **active** (GPU/CPU crunching, or a one-shot CLI) → full
+      `max`; **warm** (a model is resident via ollama keep_alive / a Turbo
+      server, but idle) → eases to `balanced` (governor stays, GPU clock/power
+      locks released); **idle** (server listening, nothing loaded) → powers
+      down. Hysteresis avoids flapping between chat turns: instant promote on
+      activity, a 30s hold before `max`→`balanced`, and an `ai_idle_timeout`
+      grace (advanced.conf, default 90s) before standing down. New `activity`
+      field in `state.json`; the Monitor shows generating / warm·idle /
+      standing-by. Pure detection change — the reversible-restore machinery is
+      untouched.
 
 ### 2.7 Integrated MemPalace
 [MemPalace](https://github.com/MemPalace/mempalace) is a local-first AI memory
 system — it stores conversations and context locally with semantic search,
-nothing leaves the machine.
+nothing leaves the machine. License MIT (compatible with Genesi OS's GPL-3.0).
+**Official sources only**: the GitHub repo, the PyPI package `mempalace`, and
+mempalaceofficial.com — other domains (`.tech`, `.net`, …) are impostors that
+may ship malware, so Genesi provisions strictly from the PyPI package.
 
-- [ ] Pre-install MemPalace on the system
-- [ ] Configure as a background service
-- [ ] Local AIs (Ollama, etc.) can use MemPalace for persistent memory
-- [ ] Developer project context is automatically indexed
+MemPalace is fundamentally a **per-user** tool (the "palace" lives in `$HOME`),
+its MCP server runs **on demand over stdio** (MCP clients spawn it), and its
+"background service" role is really a **periodic indexer**. The Genesi
+integration is shaped around those three facts.
+
+- [x] **Package `genesi-mempalace`** — ships the user systemd service, the
+      `genesi-mempalace` launcher (wraps mine/sweep/status/mcp), config, and the
+      Monitor integration. The `mempalace` CLI itself is provisioned per-user
+      into an isolated `uv tool` env (upstream's recommended install), guided
+      from the Monitor — same pattern as the Turbo backend installer.
+- [x] **Configure as a background service** — a per-user `genesi-mempalace.service`
+      runs `genesi-mempalace watch`: a low-priority loop that periodically mines
+      configured project paths + sweeps the local AI transcript dirs, then writes
+      `mempalace-state.json` for the Monitor. Idempotent and resume-safe.
+- [x] **Local AIs (Ollama, etc.) can use MemPalace for persistent memory** — via
+      the prompt-cache bridge (2.7.1) and the MCP server for MCP-aware clients.
+- [x] Developer project context is automatically indexed (the watch loop)
 - [ ] Semantic search: "why did we switch to GraphQL?" returns the exact conversation
-- [ ] Integrate with the IDE (VS Code/Zed) via MemPalace MCP tools
-- [ ] Plasma widget showing MemPalace status (indexed memories, last sync)
+- [ ] Integrate with the IDE (VS Code/Zed) via MemPalace MCP tools (mcp.json
+      pointing at `genesi-mempalace mcp`)
+- [ ] Plasma widget / Monitor card showing MemPalace status (indexed memories,
+      last sync) — `mempalace-state.json` is published; card pending
 
 Benefit: local AI on Genesi OS gains long-term memory. The dev talks to the AI,
 closes everything, and next time the AI still remembers the context.
+
+#### 2.7.1 Prompt caching with MemPalace (memory + KV reuse) 🧠⚡
+> Make recalled memory **also** kill the prompt cold-start, by combining
+> MemPalace's text recall with the KV-cache machinery `genesi-ai-turbo` already
+> drives (`--cache-reuse` in-session prefix reuse + `--slot-save-path` runtime
+> slot save/restore). Design doc: [`docs/MEMPALACE-PROMPT-CACHE.md`].
+
+The insight: MemPalace stores *text*, not KV tensors, so it is not a KV cache by
+itself. But if recalled memory is injected as a **stable, deterministic prefix**,
+the inference engine reuses the KV computed for that prefix instead of
+re-prefilling it every turn — and the per-conversation KV slot can be persisted
+to disk keyed by MemPalace **wing**, so reopening a chat restores both the *text
+memory* and the *computed KV state* = a warm resume even after reboot.
+
+- [x] Design: two-tier prompt (stable "core memory" prefix that is cacheable +
+      small dynamic retrieved snippets that are not), KV slot keyed per wing
+- [ ] `genesi-mempalace bridge` — local proxy in front of `llama-server` that
+      builds the stable-prefix prompt and drives `/slots?action=save|restore`
+- [ ] Validate TTFT win on multi-turn + resumed conversations (`bench`)
+
+> **Non-breaking guarantee:** the bridge is an additive, opt-in layer in front of
+> the existing Turbo server. It changes only *how the prompt is assembled* and
+> *which KV slot is loaded* — it does **not** alter `genesi-aid`'s optimizer or
+> the `llama-server` flags that already ship. With MemPalace absent, Turbo runs
+> exactly as today. **Decode speed (tokens/s) is unchanged** (that's the model/
+> GPU, handled by speculative decoding); the win is **TTFT / prompt cold-start**.
 
 ---
 

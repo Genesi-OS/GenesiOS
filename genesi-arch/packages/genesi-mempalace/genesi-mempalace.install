@@ -1,0 +1,35 @@
+post_install() {
+    cat <<'EOF'
+==> genesi-mempalace installed.
+
+MemPalace gives the local AI long-term, on-device memory. It is a PER-USER
+tool (the "palace" lives in your $HOME), so finish setup as your normal user
+(NOT with sudo):
+
+  1. Provision the MemPalace CLI (isolated env, from PyPI):
+       genesi-mempalace install
+  2. Tell it what to remember — edit:
+       ~/.config/genesi-mempalace/config.conf
+     (set index_paths / transcript_dirs)
+  3. Enable the background indexer for your user:
+       systemctl --user enable --now genesi-mempalace.service
+  4. Check wiring:
+       genesi-mempalace doctor
+
+The AI Mode Monitor can also do steps 1 and 3 for you with one click.
+
+Only official MemPalace source is the PyPI package `mempalace` (and the
+project's GitHub). Other domains are impostors — Genesi never pulls from them.
+EOF
+}
+
+post_upgrade() {
+    # Pick up a new user-service unit, if running.
+    echo "==> genesi-mempalace upgraded. Reload your user units with:"
+    echo "    systemctl --user daemon-reload && systemctl --user try-restart genesi-mempalace.service"
+}
+
+pre_remove() {
+    echo "==> Remember to disable the user service if enabled:"
+    echo "    systemctl --user disable --now genesi-mempalace.service"
+}

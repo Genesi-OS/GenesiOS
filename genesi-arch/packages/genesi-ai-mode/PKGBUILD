@@ -120,7 +120,21 @@ pkgver=1.0.0
 # AdvisorPage.qml, ChatBubble.qml) + every backend status/error message in
 # genesi_ai_monitor.py, the plasmoid widget strings, and genesi-ai-turbo's
 # `serve` terminal output. No behavior change — text only.
-pkgrel=69
+# 2026-06-09 (70): 2.6 follow-up — SMART auto-detect (no more "latched ON
+# forever"). genesi-aid drove AI Mode off `bool(ai_processes)`, but `ollama
+# serve` is a persistent daemon → the process is ALWAYS present → AI Mode never
+# powered back down and the box sat in performance/locked-GPU-clocks at idle.
+# Now it classifies the live workload: active (GPU/CPU crunching, or a one-shot
+# CLI) → full "max"; warm (a model is resident via ollama keep_alive / a Turbo
+# server, but idle) → eases to "balanced" (governor stays, GPU clock/power locks
+# released); idle (server listening, nothing loaded) → powers down. Hysteresis
+# prevents flapping between chat turns: instant promote on activity, a 30s hold
+# before max→balanced, and an `ai_idle_timeout` (advanced.conf, default 90s)
+# grace before standing down. New state.json field `activity`; the Monitor shows
+# generating / warm·idle / standing-by under the AI Mode status. Forced ON/OFF
+# and explicit profiles still win. Pure detection change — all the optimization
+# and reversible-restore machinery is untouched.
+pkgrel=70
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

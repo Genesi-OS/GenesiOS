@@ -17,6 +17,7 @@ PACKAGES=(
     "genesi-settings"
     "genesi-kde-settings"
     "genesi-ai-mode"
+    "genesi-mempalace"
     "genesi-update"
     "genesi-channel"
     "genesi-calamares"

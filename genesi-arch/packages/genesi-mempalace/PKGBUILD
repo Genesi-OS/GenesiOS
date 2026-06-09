@@ -1,0 +1,50 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+
+pkgname=genesi-mempalace
+pkgver=1.0.0
+# 2026-06-09 (1): initial package (roadmap 2.7). Integrates MemPalace — a
+# local-first, verbatim AI memory system (PyPI `mempalace`, MIT) — as Genesi's
+# long-term memory layer for the on-device AI. Ships:
+#   • genesi-mempalace: launcher wrapping mine/sweep/status/mcp/install/doctor
+#   • genesi-mempalace.service: a PER-USER systemd unit running `watch` (a low-
+#     priority periodic indexer; nice 10 + idle IO so it never steals cycles
+#     from active inference)
+#   • system-default config (all opt-in; no paths => harmless no-op)
+# The `mempalace` CLI itself is provisioned per-user into an isolated `uv tool`
+# env (upstream's recommended install, strictly from PyPI — the only official
+# source), because the palace lives in $HOME. The MCP server is exposed on
+# demand via `genesi-mempalace mcp` for mcp.json clients. See the prompt-cache
+# bridge design in docs/MEMPALACE-PROMPT-CACHE.md (roadmap 2.7.1).
+pkgrel=1
+pkgdesc='Genesi OS MemPalace integration - local-first long-term AI memory (per-user indexer + MCP entry point)'
+arch=('any')
+url='https://github.com/zFreshy/GenesiOS'
+license=('GPL-3.0-or-later')
+# `uv` provisions the isolated mempalace env (upstream-recommended). python is
+# the launcher runtime. mempalace itself is NOT a pacman dep: it's a per-user
+# pip/uv tool (palace in $HOME), provisioned by `genesi-mempalace install`.
+depends=('python' 'uv')
+optdepends=(
+    'python-pipx: alternative isolated installer for the mempalace CLI'
+    'ollama: the local AI that gains persistent memory'
+    'genesi-ai-mode: AI Mode Monitor surfaces MemPalace status + one-click setup'
+)
+install="$pkgname.install"
+# backup() so pacman writes .pacnew instead of clobbering local edits on upgrade.
+backup=('etc/genesi-mempalace/genesi-mempalace.conf')
+source=()
+sha256sums=()
+
+package() {
+    # Launcher / control + MCP entry point
+    install -Dm755 "${startdir}/genesi-mempalace" \
+        "$pkgdir/usr/local/bin/genesi-mempalace"
+
+    # Per-user systemd service (systemctl --user)
+    install -Dm644 "${startdir}/genesi-mempalace.service" \
+        "$pkgdir/usr/lib/systemd/user/genesi-mempalace.service"
+
+    # System-default config (opt-in; per-user overlay in ~/.config)
+    install -Dm644 "${startdir}/genesi-mempalace.conf" \
+        "$pkgdir/etc/genesi-mempalace/genesi-mempalace.conf"
+}

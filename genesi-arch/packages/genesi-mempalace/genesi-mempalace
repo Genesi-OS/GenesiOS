@@ -1,0 +1,371 @@
+#!/usr/bin/env python3
+"""
+Genesi MemPalace integration — local-first long-term memory for the on-device AI.
+
+MemPalace (https://github.com/MemPalace/mempalace, PyPI `mempalace`, MIT) stores
+conversations and project context verbatim and retrieves them with local
+semantic search — zero cloud, nothing leaves the machine. It is a PER-USER tool:
+the "palace" lives in $HOME, its MCP server runs on demand over stdio, and its
+"background service" role is really a periodic indexer. This launcher wraps that
+for Genesi so the rest of the system (the Monitor, the prompt-cache bridge, MCP
+clients) has one stable entry point.
+
+  genesi-mempalace watch     the background service loop: periodically mine the
+                             configured project paths + sweep local-AI transcript
+                             dirs, then publish state for the Monitor (low prio)
+  genesi-mempalace mine      run a single index pass now
+  genesi-mempalace sweep     run a single per-message transcript sweep now
+  genesi-mempalace status    print palace stats as JSON (and refresh the state file)
+  genesi-mempalace mcp       exec the MemPalace MCP server over stdio (what an
+                             mcp.json entry should point at — guarantees the
+                             isolated env + palace path are set)
+  genesi-mempalace install   provision the `mempalace` CLI for the current user
+                             (uv tool install, the upstream-recommended way)
+  genesi-mempalace doctor    check that everything is wired up
+
+Config: /etc/genesi-mempalace/genesi-mempalace.conf (system defaults) overlaid by
+~/.config/genesi-mempalace/config.conf (per-user). `key = value`, '#' comments.
+Everything is opt-in and degrades to a no-op if `mempalace` isn't installed yet
+— the service never crashes, it just logs a hint.
+
+IMPORTANT (supply chain): MemPalace's ONLY official sources are the GitHub repo,
+the PyPI package `mempalace`, and mempalaceofficial.com. We provision strictly
+from PyPI. Other domains (.tech/.net/…) are impostors that may ship malware.
+"""
+
+import os
+import sys
+import json
+import time
+import shutil
+import logging
+import tempfile
+import subprocess
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+SYS_CONF  = "/etc/genesi-mempalace/genesi-mempalace.conf"
+USER_CONF = os.path.expanduser("~/.config/genesi-mempalace/config.conf")
+
+# Per-user runtime state for the Monitor (indexed counts, last sync, health).
+# Lives under XDG_RUNTIME_DIR when available (tmpfs, per-user, cleaned on logout),
+# else a cache dir. The Monitor reads whichever exists.
+def _state_path():
+    rt = os.environ.get("XDG_RUNTIME_DIR")
+    base = rt if rt and os.path.isdir(rt) else os.path.expanduser("~/.cache/genesi-mempalace")
+    os.makedirs(base, exist_ok=True)
+    return os.path.join(base, "mempalace-state.json")
+
+# Default palace location (MemPalace's own default is ~/.mempalace). Overridable
+# via the MEMPALACE_HOME env / config so power users can relocate it.
+def _palace_home():
+    return (os.environ.get("MEMPALACE_HOME")
+            or _conf().get("palace_home")
+            or os.path.expanduser("~/.mempalace"))
+
+WATCH_INTERVAL_DEFAULT = 900   # seconds between background index passes (15 min)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - genesi-mempalace - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger("genesi-mempalace")
+
+_CONF_CACHE = None
+
+
+def _conf():
+    """Merged config: system defaults overlaid by the per-user file. Cached."""
+    global _CONF_CACHE
+    if _CONF_CACHE is not None:
+        return _CONF_CACHE
+    conf = {}
+    for path in (SYS_CONF, USER_CONF):
+        try:
+            with open(path) as f:
+                data = f.read()
+        except OSError:
+            continue
+        for line in data.splitlines():
+            line = line.split("#", 1)[0].strip()
+            if "=" in line:
+                k, v = line.split("=", 1)
+                conf[k.strip().lower()] = v.strip()
+    _CONF_CACHE = conf
+    return conf
+
+
+def _conf_list(key):
+    """A config value that is a list (comma- or newline-separated), expanded for
+    '~'. Empty when unset."""
+    raw = _conf().get(key, "")
+    parts = [p.strip() for p in raw.replace("\n", ",").split(",")]
+    return [os.path.expanduser(p) for p in parts if p]
+
+
+def _conf_int(key, default):
+    try:
+        return int(_conf().get(key, "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _mempalace_bin():
+    """The `mempalace` CLI on PATH, or in the user's uv/pipx tool dir, or None."""
+    direct = shutil.which("mempalace")
+    if direct:
+        return direct
+    for cand in (os.path.expanduser("~/.local/bin/mempalace"),
+                 os.path.expanduser("~/.local/share/uv/tools/mempalace/bin/mempalace")):
+        if os.path.exists(cand):
+            return cand
+    return None
+
+
+def _run(cmd, timeout=None, check=False):
+    """Run a command, capturing output. Returns (rc, stdout). Never hangs the
+    service indefinitely unless timeout is None (only used for the MCP exec)."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if check and p.returncode != 0:
+            logger.debug("cmd %r rc=%s: %s", cmd, p.returncode, (p.stderr or "").strip())
+        return p.returncode, (p.stdout or "").strip()
+    except (subprocess.TimeoutExpired, OSError) as e:
+        logger.debug("cmd %r failed: %s", cmd, e)
+        return 1, ""
+
+
+def _atomic_write(path, data):
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(data)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+# ── palace stats (best-effort, for the Monitor) ───────────────────────────────
+def _palace_stats():
+    """Cheap, dependency-free snapshot of the palace for the Monitor. We do NOT
+    invent `mempalace` subcommands we can't guarantee exist across versions —
+    we read the on-disk palace structure (wings/rooms/drawers) and let any real
+    `mempalace` stats command, if present, override later."""
+    home = _palace_home()
+    stats = {"palace_home": home, "exists": os.path.isdir(home),
+             "wings": 0, "drawers": 0}
+    if not stats["exists"]:
+        return stats
+    wings = 0
+    drawers = 0
+    try:
+        wings_dir = os.path.join(home, "wings")
+        scan_root = wings_dir if os.path.isdir(wings_dir) else home
+        for root, dirs, files in os.walk(scan_root):
+            depth = root[len(scan_root):].count(os.sep)
+            if depth == 0:
+                wings += sum(1 for d in dirs if not d.startswith("."))
+            drawers += sum(1 for f in files if f.endswith((".json", ".md", ".txt")))
+    except OSError:
+        pass
+    stats["wings"] = wings
+    stats["drawers"] = drawers
+    return stats
+
+
+def write_state(last_sync=None, last_action=None, error=None):
+    """Publish per-user state for the Monitor card."""
+    binp = _mempalace_bin()
+    state = {
+        "installed": binp is not None,
+        "binary": binp,
+        "version": _mempalace_version(binp) if binp else None,
+        "last_sync": last_sync,
+        "last_action": last_action,
+        "error": error,
+        "stats": _palace_stats(),
+        "timestamp": time.time(),
+    }
+    try:
+        _atomic_write(_state_path(), json.dumps(state))
+    except OSError as e:
+        logger.debug("state write: %s", e)
+    return state
+
+
+def _mempalace_version(binp):
+    rc, out = _run([binp, "--version"], timeout=10)
+    return out.split()[-1] if rc == 0 and out else None
+
+
+# ── actions ────────────────────────────────────────────────────────────────────
+def cmd_mine():
+    """Index the configured project paths into the palace (one pass)."""
+    binp = _mempalace_bin()
+    if not binp:
+        logger.warning("mempalace not installed — run `genesi-mempalace install`")
+        write_state(error="not-installed")
+        return 1
+    paths = _conf_list("index_paths")
+    if not paths:
+        logger.info("no index_paths configured — nothing to mine")
+        write_state(last_action="mine:noop")
+        return 0
+    backend = _conf().get("backend", "").strip()
+    rc_all = 0
+    for p in paths:
+        if not os.path.isdir(p):
+            logger.info("skip missing path: %s", p)
+            continue
+        cmd = [binp, "mine", p]
+        if backend:
+            cmd += ["--backend", backend]
+        logger.info("mining %s ...", p)
+        rc, _ = _run(cmd, timeout=_conf_int("mine_timeout", 3600))
+        rc_all = rc_all or rc
+    write_state(last_sync=time.time(), last_action="mine",
+                error=None if rc_all == 0 else "mine-failed")
+    return rc_all
+
+
+def cmd_sweep():
+    """Per-message sweep of local-AI transcript dirs (idempotent, resume-safe)."""
+    binp = _mempalace_bin()
+    if not binp:
+        logger.warning("mempalace not installed — run `genesi-mempalace install`")
+        write_state(error="not-installed")
+        return 1
+    dirs = _conf_list("transcript_dirs")
+    if not dirs:
+        logger.info("no transcript_dirs configured — skipping sweep")
+        return 0
+    rc_all = 0
+    for d in dirs:
+        if not os.path.isdir(d):
+            continue
+        logger.info("sweeping %s ...", d)
+        rc, _ = _run([binp, "sweep", d], timeout=_conf_int("sweep_timeout", 1800))
+        rc_all = rc_all or rc
+    write_state(last_sync=time.time(), last_action="sweep",
+                error=None if rc_all == 0 else "sweep-failed")
+    return rc_all
+
+
+def cmd_status():
+    """Print palace stats as JSON and refresh the Monitor state file."""
+    print(json.dumps(write_state(), indent=2))
+    return 0
+
+
+def cmd_mcp():
+    """Exec the MemPalace MCP server over stdio. This is what an mcp.json entry
+    should invoke (`genesi-mempalace mcp`) so the isolated env + palace path are
+    guaranteed set. Replaces this process so JSON-RPC on stdin/stdout is clean."""
+    binp = _mempalace_bin()
+    if not binp:
+        sys.stderr.write("mempalace not installed — run `genesi-mempalace install`\n")
+        return 1
+    env = dict(os.environ)
+    env.setdefault("MEMPALACE_HOME", _palace_home())
+    # The bare `mempalace` command runs the MCP server over stdio (per upstream).
+    os.execve(binp, [binp], env)
+    return 0  # unreachable
+
+
+def cmd_install():
+    """Provision the `mempalace` CLI for the CURRENT user via uv tool install —
+    the isolated env upstream recommends (avoids PEP 668 / dep conflicts). We
+    deliberately install per-user (the palace lives in $HOME), never system-wide
+    as root, and strictly from PyPI (the only official source besides GitHub)."""
+    if _mempalace_bin():
+        logger.info("mempalace already installed at %s", _mempalace_bin())
+        return 0
+    extras = _conf().get("install_extras", "").strip()  # e.g. "gpu" or "extract,spellcheck"
+    pkg = f"mempalace[{extras}]" if extras else "mempalace"
+    if shutil.which("uv"):
+        logger.info(":: installing %s via uv tool ...", pkg)
+        rc, _ = _run(["uv", "tool", "install", pkg])
+        if rc == 0:
+            logger.info("done. The `mempalace` CLI is now on your PATH.")
+            return 0
+    if shutil.which("pipx"):
+        logger.info(":: uv unavailable; trying pipx ...")
+        rc, _ = _run(["pipx", "install", pkg])
+        if rc == 0:
+            return 0
+    logger.error("could not install mempalace. Install `uv` (recommended) or "
+                 "`pipx`, then run: uv tool install %s", pkg)
+    return 1
+
+
+def cmd_doctor():
+    binp = _mempalace_bin()
+    ok = True
+    print("genesi-mempalace doctor")
+    print(f"  mempalace CLI : {binp or 'NOT FOUND — run `genesi-mempalace install`'}")
+    if not binp:
+        ok = False
+    print(f"  palace home   : {_palace_home()} "
+          f"({'exists' if os.path.isdir(_palace_home()) else 'not created yet'})")
+    paths = _conf_list("index_paths") or ["(none configured)"]
+    print(f"  index paths   : {', '.join(paths)}")
+    tdirs = _conf_list("transcript_dirs") or ["(none configured)"]
+    print(f"  transcripts   : {', '.join(tdirs)}")
+    print(f"  uv / pipx     : uv={'yes' if shutil.which('uv') else 'no'} "
+          f"pipx={'yes' if shutil.which('pipx') else 'no'}")
+    return 0 if ok else 1
+
+
+def cmd_watch():
+    """Background service loop. Low priority by design — memory indexing must
+    never compete with the foreground AI it serves. Runs an index pass + sweep
+    every WATCH_INTERVAL, refreshing the Monitor state in between."""
+    # Be a good citizen: nice + idle IO so mining never steals cycles from
+    # active inference (AI Mode is about performance, after all).
+    try:
+        os.nice(10)
+    except OSError:
+        pass
+    interval = _conf_int("watch_interval", WATCH_INTERVAL_DEFAULT)
+    logger.info("MemPalace indexer started (interval=%ss, palace=%s)",
+                interval, _palace_home())
+    if not _mempalace_bin():
+        logger.warning("mempalace not installed yet — the loop will keep checking; "
+                       "run `genesi-mempalace install` to provision it.")
+    while True:
+        try:
+            if _mempalace_bin():
+                cmd_mine()
+                cmd_sweep()
+            else:
+                write_state(error="not-installed")
+        except Exception as e:                       # never let the loop die
+            logger.error("watch pass error: %s", e)
+            write_state(error=str(e))
+        time.sleep(interval)
+
+
+COMMANDS = {
+    "watch": cmd_watch, "mine": cmd_mine, "sweep": cmd_sweep,
+    "status": cmd_status, "mcp": cmd_mcp, "install": cmd_install,
+    "doctor": cmd_doctor,
+}
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    fn = COMMANDS.get(cmd)
+    if not fn:
+        sys.stderr.write(__doc__)
+        return 2
+    return fn() or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

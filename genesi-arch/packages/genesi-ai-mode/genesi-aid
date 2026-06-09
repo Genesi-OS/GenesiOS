@@ -61,6 +61,30 @@ POLL_SECONDS = 5
 AI_NICE      = -5
 WARM_INTERVAL = 60   # seconds between idle page-cache re-warms (predictive preload)
 
+# ── Smart auto-detection (roadmap 2.6 follow-up) ──────────────────────────────
+# The old logic treated "an AI process exists" as "AI Mode should be ON". But
+# ollama runs `ollama serve` as a persistent systemd daemon — it's ALWAYS there
+# once enabled — so AI Mode latched ON forever and never powered back down when
+# the user stopped generating. We now drive AI Mode off *actual workload*:
+#   active — generating right now (GPU/CPU busy, or a one-shot CLI is running)
+#   warm   — a model is resident (ollama keep_alive / a Turbo server) but idle
+#   idle   — a server may be listening, but nothing is loaded or working
+# Hysteresis avoids flapping between chat turns (you read a reply, then type the
+# next prompt 30 s later — that gap must NOT drop AI Mode):
+#   • promote to "max" instantly when generation resumes (no perf lost),
+#   • ease "max"→"balanced" only after WARM_DEMOTE_SECONDS without crunching
+#     (releases GPU clock/power locks; governor stays performance),
+#   • power AI Mode fully OFF only after IDLE_TIMEOUT_DEFAULT of no activity.
+IDLE_TIMEOUT_DEFAULT = 90   # s of no AI activity before AI Mode powers down
+WARM_DEMOTE_SECONDS  = 30   # s after generation stops before easing max→balanced
+ACTIVE_GPU_UTIL      = 20   # % GPU utilization that counts as "actively generating"
+ACTIVE_CPU_PCT       = 40   # % CPU (one core) of an AI proc that counts as active
+
+# AI servers that run as persistent daemons on Genesi: their mere presence does
+# NOT mean work is happening (ollama serve is always up). Anything else that
+# matches AI_PROCESSES is a user-launched tool → presence counts as active use.
+PERSISTENT_AI = ("ollama", "llama-server")
+
 # Persistent state (survives reboot, unlike /run). Created by the service's
 # StateDirectory=genesi-ai-mode → /var/lib/genesi-ai-mode (root-owned). We keep
 # a tiny MRU of the model weight files the user actually loaded, so on the NEXT
@@ -358,7 +382,18 @@ class AIOptimizer:
         self._warm_key = None       # id of the model currently in _warm_files
                                     # (so we persist the MRU only when it changes)
         self._seeded_warm = False   # did we seed _warm_files from the MRU at boot?
+        # Smart auto-detect bookkeeping (see the activity model up top).
+        self._activity = "idle"     # last classified workload state
+        self._last_active_ts = 0.0  # last time we saw active|warm (OFF timeout)
+        self._last_crunch_ts = 0.0  # last time we saw "active" (max→balanced demote)
+        self._cpu_handles = {}      # {pid: psutil.Process} kept across polls so
+                                    # cpu_percent() yields a real delta, not 0.0
+        self._ollama_ps_cache = (0.0, None)  # (ts, /api/ps result) — cached per loop
         self._restore_originals_on_start()
+        # If we recovered an active session, give it the full grace period so we
+        # don't power down on the very first loop before any activity is seen.
+        if self.ai_mode_active:
+            self._last_active_ts = self._last_crunch_ts = time.time()
 
     # ── detection ────────────────────────────────────────────────────────────
     def detect_ai_processes(self):
@@ -373,6 +408,87 @@ class AIOptimizer:
                 continue
         return found
 
+    # ── workload classification ────────────────────────────────────────────
+    def assess_activity(self, metrics):
+        """Classify the live AI workload as 'active' | 'warm' | 'idle'.
+
+        Cheap: reuses signals already gathered this loop (process list, GPU
+        metrics, cached per-process CPU%, and a 4s-cached ollama /api/ps)."""
+        if not self.ai_processes:
+            return "idle"
+        # A user-launched (non-daemon) AI tool running => active by presence.
+        if self._has_interactive_ai():
+            return "active"
+        # GPU crunching right now (only meaningful once AI Mode polls the GPU).
+        for g in metrics.get("gpus", []):
+            if (g.get("util") or 0) >= ACTIVE_GPU_UTIL:
+                return "active"
+        # CPU crunching — covers CPU-only inference, where GPU util tells nothing.
+        if self._ai_cpu_busy() >= ACTIVE_CPU_PCT:
+            return "active"
+        # Nothing crunching, but a model is resident: ollama keeps it for its
+        # keep_alive window, and a llama-server (Turbo) always holds its model.
+        if self._llama_server_present() or self._ollama_loaded():
+            return "warm"
+        # A server is listening but holds no model and isn't working => idle.
+        return "idle"
+
+    def _has_interactive_ai(self):
+        """True if a detected AI process is NOT one of the always-on daemons
+        (ollama serve / llama-server) — i.e. a tool the user launched to work."""
+        for p in self.ai_processes:
+            try:
+                blob = (p.name() or "").lower() + " " + \
+                       " ".join(p.cmdline() or []).lower()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+            if not any(s in blob for s in PERSISTENT_AI):
+                return True
+        return False
+
+    def _llama_server_present(self):
+        for p in self.ai_processes:
+            try:
+                if "llama-server" in (p.name() or "").lower() or \
+                   "llama-server" in " ".join(p.cmdline() or []).lower():
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return False
+
+    def _ollama_loaded(self):
+        """True if ollama currently has at least one model resident (/api/ps)."""
+        return bool(self.ollama_status())
+
+    def _ai_cpu_busy(self):
+        """Highest CPU% (relative to one core) across AI processes. Uses cached
+        Process handles so psutil computes a real delta between polls — a fresh
+        handle would always read 0.0 on its first call. Returns 0.0 until a
+        baseline exists, so a just-appeared process never reads as 'active'."""
+        busy = 0.0
+        live = {}
+        for p in self.ai_processes:
+            try:
+                pid = p.pid
+                handle = self._cpu_handles.get(pid) or p
+                pct = handle.cpu_percent(None)   # since this handle's last call
+                live[pid] = handle
+                busy = max(busy, pct)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        self._cpu_handles = live                 # self-cleans dead pids
+        return busy
+
+    def _idle_timeout(self):
+        """Seconds of no activity before AI Mode powers down. Read live from
+        advanced.conf (`ai_idle_timeout`), default IDLE_TIMEOUT_DEFAULT."""
+        v = self._advanced_conf().get("ai_idle_timeout")
+        try:
+            n = int(v)
+            return n if n >= 0 else IDLE_TIMEOUT_DEFAULT
+        except (TypeError, ValueError):
+            return IDLE_TIMEOUT_DEFAULT
+
     def read_force(self):
         v = (_read(FORCE_FILE) or "").lower()
         return v if v in ("on", "off") else None
@@ -382,18 +498,27 @@ class AIOptimizer:
         v = (_read(PROFILE_FILE) or "").lower()
         return v if v in ("max", "balanced", "battery") else None
 
-    def _effective_profile(self, forced):
+    def _effective_profile(self, forced, activity=None):
         """Resolve the intensity to apply this run.
           max      — full send: governor + EPP + power-profile + GPU clocks
           balanced — fast CPU/mem (governor perf + mem knobs + pause hogs),
                      leaves power/thermal envelope and GPU power untouched
           battery  — lightest: pause hogs + mem knobs only, governor left as-is
-          auto     — max on AC / when forced ON, battery on battery
+          auto     — max while crunching, balanced when only resident-idle
+                     (releases GPU clock/power locks), battery on battery
+        An explicit user profile always wins. `activity` ('active'|'warm') only
+        steers the auto path on AC: a loaded-but-idle model eases to balanced.
         """
         p = self.read_profile()
         if p in ("max", "balanced", "battery"):
             return p
-        return "max" if (forced or not self.hw.on_battery()) else "battery"
+        if self.hw.on_battery() and not forced:
+            return "battery"
+        # auto on AC (or forced ON): full power while working, ease off when the
+        # model is merely resident-and-idle so we don't cook the GPU at idle.
+        if activity == "warm" and not forced:
+            return "balanced"
+        return "max"
 
     # ── CPU governor ─────────────────────────────────────────────────────────
     def _read_governor(self):
@@ -760,10 +885,11 @@ class AIOptimizer:
         return out
 
     # ── transitions ──────────────────────────────────────────────────────────
-    def enable_ai_mode(self, forced):
+    def enable_ai_mode(self, forced, profile=None):
         if self.ai_mode_active:
             return
-        profile = self._effective_profile(forced)
+        if profile is None:
+            profile = self._effective_profile(forced)
         self.profile = profile
         self.aggressive = profile == "max"      # full power/GPU only on "max"
         logger.info("Enabling AI Mode (profile=%s)", profile)
@@ -1294,6 +1420,17 @@ class AIOptimizer:
         return None
 
     def ollama_status(self):
+        """Loaded Ollama models via the local API. Cached for 4s so the same
+        loop's activity check and state export share one /api/ps request."""
+        now = time.time()
+        ts, cached = self._ollama_ps_cache
+        if now - ts < 4.0:
+            return cached
+        result = self._ollama_status_uncached()
+        self._ollama_ps_cache = (now, result)
+        return result
+
+    def _ollama_status_uncached(self):
         """Loaded Ollama models via the local API — only when ollama is running."""
         if not any(self._is_ollama(p) for p in self.ai_processes):
             return None
@@ -1360,6 +1497,7 @@ class AIOptimizer:
                 continue
         state = {
             "ai_mode_active": self.ai_mode_active,
+            "activity": self._activity,   # active | warm | idle (auto-detect)
             "force_mode": force_mode or "auto",
             "aggressive": self.aggressive,
             "profile": self.profile if self.ai_mode_active else "auto",
@@ -1428,23 +1566,52 @@ class AIOptimizer:
                 force = self.read_force()
                 self.ai_processes = self.detect_ai_processes()
 
+                # Classify the live workload first (drives every decision below).
+                # GPU is only polled once AI Mode is already engaged, so on the
+                # loop that turns it ON we rely on process/CPU/ollama signals and
+                # the GPU tier refines on the next pass — a harmless 5s lag.
+                metrics = self.collect_metrics()
+                activity = self.assess_activity(metrics)
+                self._activity = activity
+                now = time.time()
+                if activity in ("active", "warm"):
+                    self._last_active_ts = now
+                if activity == "active":
+                    self._last_crunch_ts = now
+                idle_for = now - self._last_active_ts
+
+                # Should AI Mode be engaged at all?
                 if force == "off":
                     want = False
                 elif force == "on":
                     want = True
+                elif activity in ("active", "warm"):
+                    want = True
                 else:
-                    want = bool(self.ai_processes)
+                    # Idle: hold through a grace window so we don't power down
+                    # between chat turns (read a reply, type the next prompt),
+                    # then drop. Never powers UP from idle — only sustains.
+                    want = self.ai_mode_active and idle_for < self._idle_timeout()
+
+                # Auto-mode intensity tier: stay 'max' while crunching and for a
+                # short hold after; ease to 'balanced' once the model is merely
+                # resident-idle (releases GPU clock/power locks, keeps governor
+                # responsive). An explicit user profile / force overrides this.
+                tier = ("active" if (now - self._last_crunch_ts) < WARM_DEMOTE_SECONDS
+                        else "warm")
+                desired = self._effective_profile(force == "on", activity=tier)
 
                 if want and not self.ai_mode_active:
-                    self.enable_ai_mode(forced=(force == "on"))
+                    self.enable_ai_mode(forced=(force == "on"), profile=desired)
                 elif not want and self.ai_mode_active:
                     self.disable_ai_mode()
                 elif want and self.ai_mode_active:
-                    # Profile changed while AI Mode is on? Re-apply so the new
-                    # intensity (and its exact restore snapshot) takes effect.
-                    if self._effective_profile(force == "on") != self.profile:
+                    # Re-apply when the resolved intensity changes — a user
+                    # profile switch, or the auto tier easing max→balanced (or
+                    # promoting back to max when generation resumes).
+                    if desired != self.profile:
                         self.disable_ai_mode()
-                        self.enable_ai_mode(forced=(force == "on"))
+                        self.enable_ai_mode(forced=(force == "on"), profile=desired)
 
                 if self.ai_mode_active:
                     self.prioritize_ai_processes()
@@ -1457,7 +1624,6 @@ class AIOptimizer:
 
                 self.manage_always_warm()
 
-                metrics = self.collect_metrics()
                 if self.ai_mode_active:
                     self.thermal_guard(metrics)
                 self._save_state(force, metrics)

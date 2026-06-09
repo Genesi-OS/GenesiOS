@@ -1,0 +1,20 @@
+[Unit]
+Description=Genesi MemPalace — local AI memory indexer (per-user)
+Documentation=https://github.com/zFreshy/GenesiOS
+# A USER service (systemctl --user): the palace lives in the user's $HOME, so
+# this must run as the user, never as root. The Genesi install enables it per
+# user (see genesi-mempalace.install / the Monitor's one-click setup).
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/genesi-mempalace watch
+Restart=on-failure
+RestartSec=30
+# Memory indexing is strictly background work — keep it off the foreground AI's
+# back. The launcher also nices itself; this reinforces it at the cgroup level.
+Nice=10
+IOSchedulingClass=idle
+CPUWeight=20
+
+[Install]
+WantedBy=default.target
