@@ -184,20 +184,24 @@ jobs:
           echo "Effective arch flags after normalization:"
           grep -RHE 'march=|mtune=|target-cpu=' /etc/makepkg.conf /etc/makepkg.conf.d/ || true
 
-      - name: Add swap headroom (heavy Vulkan build OOMs the runner)
+      - name: Headroom for the heavy Vulkan build (overcommit + swap)
         shell: bash
         run: |
-          # genesi-llama-cpp's Vulkan shader-gen forks many compilers in parallel
-          # and exhausts RAM → fork() returns ENOMEM ("Cannot allocate memory").
-          # A swapfile raises the kernel's commit limit so fork() succeeds. The
-          # disk has room (the runner is mostly empty here). Best-effort: never
-          # fail the build if swap can't be set up (just less headroom).
+          # genesi-llama-cpp's Vulkan shader-gen forks hundreds of compilers, and
+          # the runner refuses the fork()s with ENOMEM ("Cannot allocate memory")
+          # because the kernel's commit heuristic denies the COW reservation.
           set -x
-          if ! swapon --show | grep -q .; then
-            fallocate -l 14G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=14336
-            chmod 600 /swapfile
-            mkswap /swapfile
-            swapon /swapfile || echo "::warning::swapon failed (no privilege?) — building without extra swap"
+          # 1) DIRECT FIX: tell the kernel to always allow the memory reservation
+          #    so fork() stops being denied (privileged container -> host /proc).
+          sysctl -w vm.overcommit_memory=1 || echo "::warning::could not set overcommit"
+          # 2) Real swap as a backstop so the OOM killer doesn't actually fire.
+          #    Always add it — the runner already ships a tiny /swapfile, so we
+          #    must NOT gate on 'swap exists' (that bug skipped it, 2026-06-09).
+          if [ ! -e /ci-swapfile ]; then
+            fallocate -l 16G /ci-swapfile 2>/dev/null || dd if=/dev/zero of=/ci-swapfile bs=1M count=16384
+            chmod 600 /ci-swapfile
+            mkswap /ci-swapfile
+            swapon /ci-swapfile || echo "::warning::swapon failed — relying on overcommit"
           fi
           swapon --show || true
           free -h || true
