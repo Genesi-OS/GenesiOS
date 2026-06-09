@@ -15,7 +15,15 @@ pkgver=1.0.0
 # source), because the palace lives in $HOME. The MCP server is exposed on
 # demand via `genesi-mempalace mcp` for mcp.json clients. See the prompt-cache
 # bridge design in docs/MEMPALACE-PROMPT-CACHE.md (roadmap 2.7.1).
-pkgrel=1
+# 2026-06-09 (2): prompt-cache bridge (roadmap 2.7.1). `genesi-mempalace bridge`
+# is a local proxy in front of the Turbo llama-server that injects MemPalace
+# memory as a STABLE prefix (so the KV cache hits) and save/restores a per-wing
+# KV slot via llama-server /slots (so reopening a chat skips the prompt prefill
+# = cold-start kill). Stdlib-only, additive, opt-in (point the client at :11436
+# or bypass to :11435). Ships genesi-mempalace-bridge.service (per-user) + config
+# (bridge_port/turbo_url/recall_k/core_ttl/bridge_slots). Memory injection + slot
+# reuse both degrade to a plain proxy when mempalace/Turbo aren't up.
+pkgrel=2
 pkgdesc='Genesi OS MemPalace integration - local-first long-term AI memory (per-user indexer + MCP entry point)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -43,6 +51,10 @@ package() {
     # Per-user systemd service (systemctl --user)
     install -Dm644 "${startdir}/genesi-mempalace.service" \
         "$pkgdir/usr/lib/systemd/user/genesi-mempalace.service"
+
+    # Per-user prompt-cache bridge service (opt-in; roadmap 2.7.1)
+    install -Dm644 "${startdir}/genesi-mempalace-bridge.service" \
+        "$pkgdir/usr/lib/systemd/user/genesi-mempalace-bridge.service"
 
     # System-default config (opt-in; per-user overlay in ~/.config)
     install -Dm644 "${startdir}/genesi-mempalace.conf" \

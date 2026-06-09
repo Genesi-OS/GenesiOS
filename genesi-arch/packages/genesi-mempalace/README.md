@@ -55,7 +55,21 @@ guaranteed set:
 
 The recalled memory can **also** kill the prompt cold-start by combining
 MemPalace's text recall with the KV-cache machinery `genesi-ai-turbo` already
-drives. See the design: [`docs/MEMPALACE-PROMPT-CACHE.md`](../../../docs/MEMPALACE-PROMPT-CACHE.md).
+drives. The `genesi-mempalace bridge` proxy implements it:
+
+```bash
+# Turbo must be serving first (AI Mode Monitor, or `genesi-ai-turbo serve <model>`)
+systemctl --user enable --now genesi-mempalace-bridge.service   # listens on :11436
+# Point your AI client at http://127.0.0.1:11436 instead of :11435.
+genesi-mempalace doctor                                          # shows upstream + port
+```
+
+The bridge injects a **stable memory prefix** (so the engine's KV cache hits)
+and save/restores a **per-wing KV slot** via `llama-server /slots` (so reopening
+a chat skips the prompt prefill). It is **additive and opt-in** — bypass it by
+pointing the client straight at Turbo (`:11435`) and nothing changes. Tunables
+live in the config (`bridge_port`, `turbo_url`, `bridge_recall`, `bridge_slots`,
+`core_ttl`, `recall_k`). Design: [`docs/MEMPALACE-PROMPT-CACHE.md`](../../../docs/MEMPALACE-PROMPT-CACHE.md).
 
 ## State for the Monitor
 

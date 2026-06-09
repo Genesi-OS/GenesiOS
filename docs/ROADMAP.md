@@ -210,8 +210,10 @@ memory* and the *computed KV state* = a warm resume even after reboot.
 
 - [x] Design: two-tier prompt (stable "core memory" prefix that is cacheable +
       small dynamic retrieved snippets that are not), KV slot keyed per wing
-- [ ] `genesi-mempalace bridge` — local proxy in front of `llama-server` that
+- [x] `genesi-mempalace bridge` — local proxy in front of `llama-server` that
       builds the stable-prefix prompt and drives `/slots?action=save|restore`
+      (stdlib-only, opt-in; per-user `genesi-mempalace-bridge.service`)
+- [ ] Tune MemPalace recall calls to the installed CLI's real output (on target)
 - [ ] Validate TTFT win on multi-turn + resumed conversations (`bench`)
 
 > **Non-breaking guarantee:** the bridge is an additive, opt-in layer in front of

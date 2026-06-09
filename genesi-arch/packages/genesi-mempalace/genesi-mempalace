@@ -38,9 +38,14 @@ import sys
 import json
 import time
 import shutil
+import hashlib
 import logging
 import tempfile
+import threading
 import subprocess
+import urllib.request
+import urllib.error
+import http.server
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 SYS_CONF  = "/etc/genesi-mempalace/genesi-mempalace.conf"
@@ -63,6 +68,19 @@ def _palace_home():
             or os.path.expanduser("~/.mempalace"))
 
 WATCH_INTERVAL_DEFAULT = 900   # seconds between background index passes (15 min)
+
+# ── Prompt-cache bridge (roadmap 2.7.1) ───────────────────────────────────────
+# A local proxy in front of the Turbo llama-server that (1) injects MemPalace
+# memory as a STABLE prefix so the engine's KV cache actually hits, and (2)
+# save/restores a per-wing KV slot to disk so reopening a chat skips the prompt
+# prefill (cold-start kill). See docs/MEMPALACE-PROMPT-CACHE.md. Opt-in.
+BRIDGE_PORT_DEFAULT = 11436          # ollama=11434, Turbo=11435, bridge=11436
+TURBO_URL_DEFAULT   = "http://127.0.0.1:11435"
+CORE_TTL_DEFAULT    = 300            # seconds a wing's "core memory" is cached
+RECALL_K_DEFAULT    = 5              # top-k dynamic snippets per request
+# The Turbo server persists slots here (genesi-ai-turbo --slot-save-path). We
+# write one file per wing under it; filenames are relative to that dir.
+SLOT_DIR_DEFAULT    = os.path.expanduser("~/.cache/genesi-turbo/slots")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -319,6 +337,9 @@ def cmd_doctor():
     print(f"  transcripts   : {', '.join(tdirs)}")
     print(f"  uv / pipx     : uv={'yes' if shutil.which('uv') else 'no'} "
           f"pipx={'yes' if shutil.which('pipx') else 'no'}")
+    up = _turbo_url()
+    print(f"  Turbo upstream: {up} ({'reachable' if _turbo_health(up) else 'DOWN'})")
+    print(f"  bridge port   : {_conf_int('bridge_port', BRIDGE_PORT_DEFAULT)}")
     return 0 if ok else 1
 
 
@@ -351,10 +372,260 @@ def cmd_watch():
         time.sleep(interval)
 
 
+# ── prompt-cache bridge (roadmap 2.7.1) ─────────────────────────────────────────
+def _turbo_url():
+    return (_conf().get("turbo_url") or TURBO_URL_DEFAULT).rstrip("/")
+
+
+def _turbo_health(url=None):
+    url = url or _turbo_url()
+    try:
+        with urllib.request.urlopen(url + "/health", timeout=2) as r:
+            return json.loads(r.read()).get("status") == "ok"
+    except Exception:
+        return False
+
+
+def _mp_try(args_variants, timeout=20):
+    """Run `mempalace` trying each argv variant until one succeeds; return its
+    stdout, or "" if none worked / mempalace is absent. Keeps the bridge robust
+    to CLI-flag drift across mempalace versions (e.g. a `--wing` a given release
+    may not accept) — it simply falls back to a broader query."""
+    binp = _mempalace_bin()
+    if not binp:
+        return ""
+    for args in args_variants:
+        rc, out = _run([binp] + args, timeout=timeout)
+        if rc == 0 and out.strip():
+            return out.strip()
+    return ""
+
+
+def _mp_core(wing):
+    """The STABLE 'core memory' for a wing — the cacheable prefix. Uses
+    `mempalace wake-up` (upstream's 'load context for a new session'), scoped to
+    the wing when supported. Deterministic across turns => the engine reuses its
+    KV. Empty when mempalace/the wing has nothing yet."""
+    return _mp_try([["wake-up", "--wing", wing], ["wake-up"]])
+
+
+def _mp_recall(query, wing, k):
+    """Small, DYNAMIC top-k recall for THIS message — placed AFTER the stable
+    prefix so a changing result set only invalidates a few hundred tokens."""
+    if not query.strip():
+        return ""
+    return _mp_try([
+        ["search", query, "--wing", wing, "--top", str(k)],
+        ["search", query, "--wing", wing],
+        ["search", query],
+    ])
+
+
+# Per-process cache of each wing's core memory: {wing: (text, hash, fetched_at)}.
+_CORE_CACHE = {}
+_CORE_LOCK = threading.Lock()
+
+
+def _wing_core(wing):
+    """Cached core memory + content hash. Refreshes past core_ttl. When the hash
+    changes, the wing's KV slot is stale and gets invalidated so the next turn
+    rebuilds + re-saves it."""
+    ttl = _conf_int("core_ttl", CORE_TTL_DEFAULT)
+    now = time.time()
+    with _CORE_LOCK:
+        cached = _CORE_CACHE.get(wing)
+        if cached and now - cached[2] < ttl:
+            return cached[0], cached[1]
+    text = _mp_core(wing)
+    h = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
+    with _CORE_LOCK:
+        prev = _CORE_CACHE.get(wing)
+        _CORE_CACHE[wing] = (text, h, now)
+    if prev and prev[1] != h:
+        _slot_invalidate(wing)        # core changed => persisted KV is stale
+    return text, h
+
+
+def _slot_dir():
+    d = (os.environ.get("GENESI_TURBO_SLOT_PATH") or _conf().get("slot_dir")
+         or SLOT_DIR_DEFAULT)
+    return os.path.expanduser(d)
+
+
+def _slot_file(wing):
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in wing) or "default"
+    return f"wing-{safe}.bin"
+
+
+def _slot_call(action, wing):
+    """POST /slots/0?action=save|restore with the wing's filename. Best-effort:
+    llama-server exposes this only when started with --slot-save-path (Turbo does
+    by default), so failure just means 'no persistent cache this run'. We use
+    slot 0 — fine for one foreground conversation; concurrent wings would share
+    the slot (documented limitation)."""
+    if _conf().get("bridge_slots", "on").lower() in ("off", "0", "false", "no"):
+        return False
+    url = f"{_turbo_url()}/slots/0?action={action}"
+    body = json.dumps({"filename": _slot_file(wing)}).encode()
+    req = urllib.request.Request(url, data=body,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            r.read()
+        return True
+    except Exception as e:
+        logger.debug("slot %s(%s): %s", action, wing, e)
+        return False
+
+
+def _slot_invalidate(wing):
+    try:
+        os.unlink(os.path.join(_slot_dir(), _slot_file(wing)))
+        logger.info("invalidated stale KV slot for wing %s", wing)
+    except OSError:
+        pass
+
+
+def _build_messages(messages, wing):
+    """Two-tier injection (see docs/MEMPALACE-PROMPT-CACHE.md):
+      [1] stable core-memory prefix -> a system message, identical across turns
+      [2] small dynamic recall      -> a system message for THIS user turn
+      [3] the original conversation -> unchanged
+    Recall/core are skipped silently when empty."""
+    recall_on = _conf().get("bridge_recall", "on").lower() not in ("off", "0", "false", "no")
+    core, _ = _wing_core(wing)
+    last_user = ""
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            last_user = m.get("content") or ""
+            break
+    out = []
+    if core:
+        out.append({"role": "system",
+                    "content": "## Long-term memory (MemPalace)\n" + core})
+    if recall_on:
+        snip = _mp_recall(last_user, wing, _conf_int("recall_k", RECALL_K_DEFAULT))
+        if snip:
+            out.append({"role": "system",
+                        "content": "## Relevant recalled context\n" + snip})
+    out.extend(messages)
+    return out
+
+
+def _wing_of(req_headers, body):
+    """Resolve the wing (project/conversation scope) from an explicit header or
+    body field, else 'default'. Clients set this per chat."""
+    w = (req_headers.get("X-Genesi-Wing") or body.get("genesi_wing")
+         or _conf().get("default_wing") or "default")
+    return str(w).strip() or "default"
+
+
+def _make_handler():
+    bridge = sys.modules[__name__]
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *a):
+            return
+
+        def _send_upstream(self, method, path, data):
+            url = bridge._turbo_url() + path
+            req = urllib.request.Request(
+                url, data=data, headers={"Content-Type": "application/json"},
+                method=method)
+            return urllib.request.urlopen(req, timeout=600)
+
+        def _relay(self, upstream):
+            """Stream the upstream response back verbatim (SSE + JSON both work)."""
+            self.send_response(upstream.status)
+            for k, v in upstream.getheaders():
+                if k.lower() in ("transfer-encoding", "connection", "content-length"):
+                    continue
+                self.send_header(k, v)
+            self.send_header("Connection", "close")
+            self.end_headers()
+            while True:
+                chunk = upstream.read(8192)
+                if not chunk:
+                    break
+                try:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    break
+
+        def _read_body(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            return self.rfile.read(n) if n else b""
+
+        def do_GET(self):
+            try:
+                self._relay(self._send_upstream("GET", self.path, None))
+            except Exception as e:
+                self.send_error(502, f"upstream error: {e}")
+
+        def do_POST(self):
+            raw = self._read_body()
+            if self.path.split("?")[0] != "/v1/chat/completions":
+                try:                         # passthrough everything else unchanged
+                    self._relay(self._send_upstream("POST", self.path, raw))
+                except Exception as e:
+                    self.send_error(502, f"upstream error: {e}")
+                return
+            try:
+                body = json.loads(raw or b"{}")
+            except ValueError:
+                self.send_error(400, "invalid JSON")
+                return
+            wing = bridge._wing_of(self.headers, body)
+            try:
+                body["messages"] = bridge._build_messages(body.get("messages", []), wing)
+            except Exception as e:
+                logger.debug("memory injection skipped (%s)", e)   # never block a chat
+            body["cache_prompt"] = True       # let llama-server reuse prefix KV
+            bridge._slot_call("restore", wing)
+            try:
+                up = self._send_upstream("POST", "/v1/chat/completions",
+                                         json.dumps(body).encode())
+                self._relay(up)
+            except Exception as e:
+                self.send_error(502, f"upstream error: {e}")
+                return
+            bridge._slot_call("save", wing)
+
+    return Handler
+
+
+def cmd_bridge():
+    """Run the MemPalace prompt-cache bridge in front of the Turbo server.
+    Additive + opt-in: it only injects a stable memory prefix and manages a
+    per-wing KV slot. Bypass it by pointing the client straight at Turbo
+    (:11435) — nothing changes."""
+    port = _conf_int("bridge_port", BRIDGE_PORT_DEFAULT)
+    if not _turbo_health():
+        logger.warning("Turbo upstream (%s) is DOWN — start it from the AI Mode "
+                       "Monitor (Turbo) or `genesi-ai-turbo serve <model>`. The "
+                       "bridge starts anyway and proxies once it's up.", _turbo_url())
+    if not _mempalace_bin():
+        logger.warning("mempalace not installed — running as a plain KV-slot proxy "
+                       "(no memory injection) until `genesi-mempalace install`.")
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), _make_handler())
+    logger.info("MemPalace bridge on http://127.0.0.1:%d  ->  %s (slots=%s, recall=%s)",
+                port, _turbo_url(), _conf().get("bridge_slots", "on"),
+                _conf().get("bridge_recall", "on"))
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        logger.info("bridge shutting down")
+        httpd.shutdown()
+    return 0
+
+
 COMMANDS = {
     "watch": cmd_watch, "mine": cmd_mine, "sweep": cmd_sweep,
     "status": cmd_status, "mcp": cmd_mcp, "install": cmd_install,
-    "doctor": cmd_doctor,
+    "doctor": cmd_doctor, "bridge": cmd_bridge,
 }
 
 

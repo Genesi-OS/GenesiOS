@@ -1,7 +1,9 @@
 # Prompt caching with MemPalace (memory + KV reuse)
 
-> Roadmap [2.7.1](./ROADMAP.md). Status: **design**. Detection/packaging shipped;
-> the bridge daemon is the remaining build item.
+> Roadmap [2.7.1](./ROADMAP.md). Status: **bridge built (skeleton), pending
+> on-device validation**. Detection/packaging shipped; the `genesi-mempalace
+> bridge` proxy is implemented and needs tuning against the real MemPalace recall
+> output + `llama-server` `/slots` API on the target.
 
 ## The idea in one paragraph
 
@@ -114,8 +116,9 @@ the bridge lands.
 
 ## Build checklist
 
-- [ ] `genesi-mempalace bridge` proxy (`/v1/chat/completions` → Turbo)
-- [ ] Two-tier prompt assembly (stable core-memory prefix + small recall tail)
-- [ ] Per-wing KV slot save/restore via `/slots`
-- [ ] Core-memory change detection → slot invalidation
+- [x] `genesi-mempalace bridge` proxy (`/v1/chat/completions` → Turbo, stdlib-only)
+- [x] Two-tier prompt assembly (stable core-memory prefix + small recall tail)
+- [x] Per-wing KV slot save/restore via `/slots`
+- [x] Core-memory change detection → slot invalidation (content hash + TTL)
+- [ ] Tune the MemPalace recall calls to the installed CLI's real output
 - [ ] Monitor toggle + TTFT-on-resume benchmark

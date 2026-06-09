@@ -1,0 +1,16 @@
+[Unit]
+Description=Genesi MemPalace prompt-cache bridge (memory + per-wing KV reuse)
+Documentation=https://github.com/zFreshy/GenesiOS
+# Opt-in. A PER-USER service: it talks to the user's MemPalace ($HOME) and the
+# Turbo llama-server. Enable per user with:
+#   systemctl --user enable --now genesi-mempalace-bridge.service
+# Then point your AI client at http://127.0.0.1:11436 instead of :11435.
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/genesi-mempalace bridge
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
