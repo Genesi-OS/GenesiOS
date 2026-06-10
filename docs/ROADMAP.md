@@ -14,7 +14,7 @@
 | **Phase 1 — Visual Identity** | ✅ Complete |
 | **Phase 2 — AI Mode (local AI optimizations)** | 🟩 ~90% (core shipping) |
 | **Phase 3 — Own Packages & Repository** | ✅ Operational (8 packages shipping) |
-| **Phase 4 — IDE & Dev Tools** (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) | ⬜ Pending |
+| **Phase 4 — IDE & Dev Tools** (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) | 🟦 Started (genesi-code fork created) |
 | **Phase 5 — Polish & Distribution** | ⬜ Pending |
 | **Phase 6 — Welcome & Control Center** (app installer + tweaks) | ⬜ Pending |
 
@@ -43,7 +43,7 @@ See [Build & Release Infrastructure](#build--release-infrastructure) for details
 1. **Phase 1** — Visual Identity ✅ **Complete**
 2. **Phase 2** — AI Mode (local AI optimizations) 🟩 **~90%**
 3. **Phase 3** — Own Packages & Repository (infrastructure) ✅ **Operational**
-4. **Phase 4** — IDE & Dev Tools (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) ⬜ Pending
+4. **Phase 4** — IDE & Dev Tools (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) 🟦 **Started**
 5. **Phase 5** — Polish & Distribution ⬜ Pending
 6. **Phase 6** — Genesi Welcome & Control Center ⬜ Pending
 
@@ -631,16 +631,32 @@ packages** built and published by CI.
 
 ### 4.1 Genesi Code — AI-native dev tool (fork of Warp)
 > Direction: fork **Warp** (Rust, AI-native terminal/dev tool) instead of
-> VS Code/Zed, so the AI workflow is first-class. (License/feasibility of a Warp
-> fork still to be confirmed; Zed is the fallback if it doesn't pan out.)
+> VS Code/Zed, so the AI workflow is first-class.
+>
+> **Feasibility CONFIRMED (2026-04):** Warp open-sourced its full terminal client
+> on GitHub — dual-licensed **AGPL-3.0** (core) + **MIT** (the `warpui`/`warpui_core`
+> UI crates). It's a Rust/Cargo app, buildable from source (`./script/bootstrap`
+> → `./script/run`). The fork lives at **[zFreshy/genesi-code](https://github.com/zFreshy/genesi-code)**
+> (fork of `warpdotdev/warp`, keeps the upstream link for pulling updates).
+>
+> **License note:** genesi-code inherits **AGPL-3.0** — it cannot be relicensed to
+> the OS's GPL-3.0, but the two are compatible and an AGPL package ships fine in a
+> GPL distro (a distro is an aggregate). Published modifications stay AGPL-3.0.
+>
+> **Delivery:** genesi-code is **installable via the Genesi Package Installer**, not
+> baked into the live ISO (keeps the ISO light; same plan for Genesi Hermes). A
+> Welcome-app pointer to install it is deferred to the polish phase.
 
-- [ ] Fork of Warp with Genesi branding + theme
+- [ ] Fork of Warp with Genesi branding + theme — `zFreshy/genesi-code` created;
+      branding pass (name → "Genesi Code", colors/theme, icon, `.desktop`) pending
 - [ ] Native integration with the local AI daemon (`genesi-aid`) — uses the
       machine's own Ollama models, fully local, no cloud
-- [ ] **AI Mode / Turbo aware** — when Code is driving a local model it triggers
-      AI Mode automatically and (ideally) routes through the shared Turbo daemon,
-      inheriting speculative decoding and the warm KV cache (see
-      [4.0](#40-shared-ai-mode-integration-the-glue))
+- [ ] **AI Mode / Turbo aware** — AI Mode auto-detection is **free**: the moment
+      Code drives a local model, `genesi-aid`'s existing process detection turns AI
+      Mode on (no app-side hook). Turbo is **opt-in from inside Code** — a one-click
+      "⚡ Turbo" button in the app starts/stops the Turbo daemon (`genesi-ai-turbo`
+      / `:11435`), so the user can flip speculative decoding + the warm KV cache
+      without leaving the editor (see [4.0](#40-shared-ai-mode-integration-the-glue))
 - [ ] **MemPalace integration — remembers every conversation.** The editor/terminal
       feeds project context **and every chat** into MemPalace and recalls them, so
       the AI in Code carries long-term memory across sessions and reboots — the same
