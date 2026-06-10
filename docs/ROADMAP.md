@@ -14,7 +14,7 @@
 | **Phase 1 — Visual Identity** | ✅ Complete |
 | **Phase 2 — AI Mode (local AI optimizations)** | 🟩 ~90% (core shipping) |
 | **Phase 3 — Own Packages & Repository** | ✅ Operational (8 packages shipping) |
-| **Phase 4 — IDE & Dev Tools** (Genesi Code, fork of Warp) | ⬜ Pending |
+| **Phase 4 — IDE & Dev Tools** (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) | ⬜ Pending |
 | **Phase 5 — Polish & Distribution** | ⬜ Pending |
 | **Phase 6 — Welcome & Control Center** (app installer + tweaks) | ⬜ Pending |
 
@@ -43,7 +43,7 @@ See [Build & Release Infrastructure](#build--release-infrastructure) for details
 1. **Phase 1** — Visual Identity ✅ **Complete**
 2. **Phase 2** — AI Mode (local AI optimizations) 🟩 **~90%**
 3. **Phase 3** — Own Packages & Repository (infrastructure) ✅ **Operational**
-4. **Phase 4** — IDE & Dev Tools (Genesi Code, fork of Warp) ⬜ Pending
+4. **Phase 4** — IDE & Dev Tools (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) ⬜ Pending
 5. **Phase 5** — Polish & Distribution ⬜ Pending
 6. **Phase 6** — Genesi Welcome & Control Center ⬜ Pending
 
@@ -582,6 +582,44 @@ packages** built and published by CI.
 
 ## PHASE 4: IDE & Dev Tools ⬜ PENDING
 > Developer-focused tools and integrations (secondary differentiator).
+>
+> Phase 4 ships **two AI-native front-ends** — **Genesi Code** (the dev tool, a
+> fork of Warp) and **Genesi Hermes** (the AI-agent desktop app, a fork of Hermes
+> Desktop). Neither is an isolated app: both are **first-class clients of the same
+> local-AI stack** Phase 2 already built, and they talk to **each other**. See
+> [4.0 Shared AI Mode integration](#40-shared-ai-mode-integration-the-glue) for
+> the contract that ties them into AI Mode, Turbo, and speculative decoding.
+
+### 4.0 Shared AI Mode integration (the glue)
+> **Design rule: any Genesi app that runs a local model is automatically a citizen
+> of AI Mode.** The moment Genesi Code or Genesi Hermes drives a local inference
+> backend, the whole Phase 2 machinery must light up for it — with **zero extra
+> setup from the user**.
+
+- [ ] **Auto-detection already exists, reuse it.** `genesi-aid` already detects
+      Ollama / llama.cpp / llama-server / vLLM / LocalAI running (see 2.1). When
+      Genesi Code or Genesi Hermes spawns or connects to one of those, AI Mode
+      switches on by itself — governor, VRAM/clock locks, thread placement,
+      background quieting, the works — and stands down when inference goes idle
+      (the warm/active/idle classifier in 2.6). No app-specific hook needed; it
+      falls out of the existing process detection.
+- [ ] **Point both apps at Genesi Turbo, not a private server.** Both Hermes and
+      Code speak the **OpenAI-compatible** API. The cleanest integration is to aim
+      them at the **always-warm shared Turbo daemon** (`llama-server` on `:11435`,
+      see 2.8.11 Tier 1) instead of each spawning its own — so they inherit full
+      GPU offload, the **q8 KV cache**, **prompt/KV reuse**, **speculative
+      decoding**, and the **persistent slot cache** for free, and they **share one
+      warm model + one KV cache** across apps (no per-app reload, no double-loading
+      on tight boxes).
+- [ ] **Surface the link in the UI.** When AI Mode / Turbo is active for a model an
+      app is using, the app shows it (a small "⚡ Turbo / AI Mode ON" indicator
+      reading `state.json`), so the user sees that Genesi is tuning the machine for
+      them. The AI Mode Monitor, conversely, lists Genesi Code / Hermes among the
+      detected AI clients.
+- [ ] **One install path for models.** Models installed/configured from the AI Mode
+      Monitor (the advisor's "biggest model that fits your VRAM", the `ollama pull`
+      one-click, the Turbo backend installer) are the **same models** Code and
+      Hermes then use — one catalog, one place to manage local AI for the whole OS.
 
 ### 4.1 Genesi Code — AI-native dev tool (fork of Warp)
 > Direction: fork **Warp** (Rust, AI-native terminal/dev tool) instead of
@@ -591,31 +629,76 @@ packages** built and published by CI.
 - [ ] Fork of Warp with Genesi branding + theme
 - [ ] Native integration with the local AI daemon (`genesi-aid`) — uses the
       machine's own Ollama models, fully local, no cloud
+- [ ] **AI Mode / Turbo aware** — when Code is driving a local model it triggers
+      AI Mode automatically and (ideally) routes through the shared Turbo daemon,
+      inheriting speculative decoding and the warm KV cache (see
+      [4.0](#40-shared-ai-mode-integration-the-glue))
 - [ ] **MemPalace integration**: the editor/terminal feeds project context into
       MemPalace and recalls it (the shared memory layer across all Genesi apps)
+- [ ] **Genesi Hermes bridge** — the agent models the user runs in Hermes are
+      reachable from Code (same local backend / `:11435` daemon), so an agent can
+      act on the current project from inside the editor; conversely Code can hand a
+      task off to a Hermes agent and **watch it work via Hermes' Office (Claw3d)
+      visual view** without leaving the dev flow (see 4.2)
 - [ ] Pre-wired for Git, Docker, and the popular languages
 - [ ] Desktop + menu shortcut
 
-### 4.2 Container widget in Plasma
+### 4.2 Genesi Hermes — AI-agent desktop app (fork of Hermes Desktop)
+> Fork of [Hermes Desktop](https://github.com/fathah/hermes-desktop) (Electron +
+> React/TypeScript, **MIT** — compatible with Genesi OS's GPL-3.0): a native
+> front-end for installing, configuring and talking to a self-improving AI agent
+> with tool use, memory, multi-platform messaging and a closed learning loop.
+>
+> **Why it's a perfect fit for Genesi OS:** Hermes already runs models **both
+> ways** — locally via OpenAI-compatible endpoints (Ollama, llama.cpp, vLLM,
+> LM Studio) **and** through API providers including **Hugging Face**, OpenRouter,
+> Anthropic, OpenAI, Gemini, Groq, etc. Genesi already owns the local side (AI
+> Mode, Turbo, the Monitor's model installer/advisor). Bolting Hermes on top means
+> the user **configures and installs the AI once, from the AI Mode Monitor**, and
+> then has a full agent desktop driving that exact local model — tuned by the OS.
+
+- [ ] Fork of Hermes Desktop with Genesi branding + theme (Plasma-native look)
+- [ ] **Default to the local Genesi stack** — pre-configure Hermes' local
+      OpenAI-compatible endpoint to the **Genesi Turbo daemon** (`:11435`) so out
+      of the box the agent runs on the machine's own GPU-offloaded, speculative,
+      warm model; Hugging Face / cloud providers remain available as opt-in
+- [ ] **AI Mode / Turbo aware** — running a local agent model auto-triggers AI Mode
+      and Turbo via the existing detection, same contract as Code
+      (see [4.0](#40-shared-ai-mode-integration-the-glue))
+- [ ] **Model install unified with the Monitor** — the models Hermes can run are
+      provisioned/recommended from the AI Mode Monitor (advisor + one-click pull),
+      not a separate downloader; one place to manage local AI for the OS
+- [ ] **MemPalace integration** — Hermes' memory system backs onto MemPalace, so
+      the agent shares the same persistent, on-device memory layer as Code and the
+      rest of Genesi
+- [ ] **Genesi Code bridge** — the agents/models running in Hermes are usable from
+      Genesi Code and vice-versa (shared local backend). The **Office (Claw3d) 3D
+      view** can be embedded/launched from Code so the developer watches the agent
+      work on the project live (see 4.1)
+- [ ] Desktop + menu shortcut; ship as the `genesi-hermes` package
+- [ ] License/feasibility check of the Hermes Desktop fork (MIT base is fine;
+      confirm bundled toolsets/providers don't drag incompatible deps)
+
+### 4.3 Container widget in Plasma
 - [ ] Taskbar widget showing running Docker containers
 - [ ] Start/Stop/Restart with one click
 - [ ] View container logs and mapped ports
 - [ ] CPU/RAM usage per container
 
-### 4.3 Project sandboxes (isolated workspaces)
+### 4.4 Project sandboxes (isolated workspaces)
 - [ ] Based on Distrobox/Toolbox
 - [ ] GUI to create/manage workspaces
 - [ ] Templates: "Java + Spring Boot", "React + Vite", "Python + FastAPI", etc.
 - [ ] Each workspace has its own isolated dependencies
 - [ ] Integration with Genesi IDE
 
-### 4.4 Network inspection
+### 4.5 Network inspection
 - [ ] mitmproxy pre-installed and configured
 - [ ] Simple GUI to intercept HTTP/HTTPS requests
 - [ ] Quick shortcut to enable/disable a debug proxy
 - [ ] Integration with the container widget (per-container traffic)
 
-### 4.5 Database explorer
+### 4.6 Database explorer
 - [ ] Beekeeper Studio or DBeaver pre-installed
 - [ ] Dolphin plugin to connect to databases
 - [ ] Support for PostgreSQL, MySQL, SQLite, MongoDB
@@ -683,7 +766,7 @@ packages** built and published by CI.
 - [ ] Genesi performance presets, including an AI Mode profile toggle
 
 ### 6.4 Integration
-- [ ] Launches the AI Mode Monitor (2.9) and Genesi Code (4.1)
+- [ ] Launches the AI Mode Monitor (2.9), Genesi Code (4.1) and Genesi Hermes (4.2)
 - [ ] MemPalace status surfaced here too
 
 ---
