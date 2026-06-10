@@ -22,6 +22,7 @@ PACKAGES=(
     "genesi-channel"
     "genesi-calamares"
     "genesi-welcome"
+    "genesi-code"
 )
 
 # Build each package

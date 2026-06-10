@@ -1,0 +1,57 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# Genesi Code — the Genesi OS code editor / agentic terminal (fork of Warp,
+# github.com/zFreshy/genesi-code, `genesi` branch). This package does NOT
+# compile the Rust workspace (that is a ~40 min, multi-GB build handled by the
+# fork's own GitHub Actions). Instead it pulls the prebuilt, release-mode binary
+# that genesi-code's CI publishes as a GitHub Release asset (release builds embed
+# all bundled assets via rust_embed, so the binary is self-contained). Bump
+# `pkgver` to the release tag you want to ship.
+pkgname=genesi-code
+pkgver=0.0.5
+pkgrel=1
+pkgdesc='Genesi Code - local-first code editor / agentic terminal for Genesi OS (Warp fork)'
+arch=('x86_64')
+url='https://github.com/zFreshy/genesi-code'
+license=('AGPL-3.0-or-later')
+# Runtime libs the release binary links against (GUI: wgpu/Vulkan + wayland/X11,
+# text: fontconfig/freetype, TLS: openssl). vulkan-icd-loader loads the system
+# Vulkan driver; vulkan-swrast (lavapipe) is the software fallback that lets the
+# editor render inside a VM / on a box with no GPU driver — the app now defaults
+# to the Vulkan backend, so a usable ICD must always be present.
+depends=(
+    'fontconfig'
+    'freetype2'
+    'libxkbcommon'
+    'libxkbcommon-x11'
+    'wayland'
+    'libx11'
+    'libxcb'
+    'openssl'
+    'zlib'
+    'vulkan-icd-loader'
+    'vulkan-swrast'
+)
+options=('!strip')  # release binary is already stripped by the build
+source=(
+    "genesi-code-${pkgver}-x86_64.tar.zst::https://github.com/zFreshy/genesi-code/releases/download/v${pkgver}/genesi-code-linux-x86_64.tar.zst"
+    'genesi-code.desktop'
+    'genesi-code.svg'
+)
+# The release asset is first-party (our own CI) and the version tag pins it, so
+# we don't carry a churning checksum here.
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP')
+
+package() {
+    # Self-contained release binary (assets embedded via rust_embed).
+    install -Dm755 "${srcdir}/genesi-code" "${pkgdir}/usr/bin/genesi-code"
+
+    # Launcher + icon. StartupWMClass matches the app_id the binary reports
+    # (dev.genesi.GenesiCode) so the taskbar groups the window correctly.
+    install -Dm644 "${srcdir}/genesi-code.desktop" \
+        "${pkgdir}/usr/share/applications/genesi-code.desktop"
+    install -Dm644 "${srcdir}/genesi-code.svg" \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/genesi-code.svg"
+}

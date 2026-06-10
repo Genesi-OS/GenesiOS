@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Genesi Code
+GenericName=Code Editor
+Comment=Local-first code editor and agentic terminal for Genesi OS
+Exec=genesi-code %U
+Icon=genesi-code
+StartupWMClass=dev.genesi.GenesiCode
+Terminal=false
+Categories=Development;IDE;TerminalEmulator;Utility;
+Keywords=code;editor;terminal;shell;developer;ide;genesi;
