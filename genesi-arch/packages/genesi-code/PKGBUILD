@@ -9,7 +9,7 @@
 # `pkgver` to the release tag you want to ship.
 pkgname=genesi-code
 pkgver=0.0.8
-pkgrel=2
+pkgrel=3
 pkgdesc='Genesi Code - local-first code editor / agentic terminal for Genesi OS (Warp fork)'
 arch=('x86_64')
 url='https://github.com/zFreshy/genesi-code'
@@ -30,6 +30,13 @@ depends=(
     'openssl'
     'vulkan-icd-loader'
     'vulkan-swrast'
+    # node + npm so the editor can auto-install its node-based language servers
+    # (typescript-language-server for JS/TS, pyright for Python). Without a
+    # system node the auto-install fails and the footer shows the server as
+    # "stopped" with no autocomplete. With node present it uses the system
+    # binary and the classic (non-AI) LSP completion works out of the box.
+    'nodejs'
+    'npm'
 )
 # NB: do NOT list `zlib` here. On CachyOS libz is provided by `zlib-ng-compat`
 # (installed by default); an explicit `zlib` dep makes the publish pipeline's
