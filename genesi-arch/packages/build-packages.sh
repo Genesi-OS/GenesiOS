@@ -22,7 +22,9 @@ PACKAGES=(
     "genesi-channel"
     "genesi-calamares"
     "genesi-welcome"
-    "genesi-code"
+    # genesi-code is published to the separate release-hosted [genesi-apps] repo
+    # (publish-apps.yml), NOT here — its 172 MB package exceeds GitHub's 100 MB
+    # git file limit and can't be committed to genesi-arch/repo.
 )
 
 # Build each package

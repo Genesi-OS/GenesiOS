@@ -165,6 +165,13 @@ X11DETECTEOF
         echo ">>> Pre-seeded [genesi] repo into live ISO /etc/pacman.conf"
     fi
 
+    # Same for [genesi-apps] — the release-hosted repo for large app packages
+    # (genesi-code) that can't live in the git tree (GitHub's 100 MB limit).
+    if ! grep -q '^\[genesi-apps\]' /etc/pacman.conf 2>/dev/null; then
+        printf '\n[genesi-apps]\nSigLevel = Optional TrustAll\nServer = https://github.com/zFreshy/GenesiOS/releases/download/apps-repo\n' >> /etc/pacman.conf
+        echo ">>> Pre-seeded [genesi-apps] repo into live ISO /etc/pacman.conf"
+    fi
+
     # genesi-calamares-branding ships /usr/share/calamares/branding/genesi/*,
     # the EXACT same files that the genesi-calamares package already installs.
     # Listing both in netinstall.yaml makes packages@online die with

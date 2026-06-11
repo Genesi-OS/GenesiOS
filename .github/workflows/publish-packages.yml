@@ -243,10 +243,10 @@ jobs:
             # to build in ~112s via test-packageinstaller.yml — well under the
             # 25-min per-package budget, so it won't stall the publish pipeline.
             "genesi-packageinstaller"
-            # Genesi Code (Warp fork, the OS code editor). Its PKGBUILD just
-            # downloads the prebuilt release binary from genesi-code's own CI
-            # (no Rust compile here), so it's fast and can't blow the time budget.
-            "genesi-code"
+            # NOTE: genesi-code is NOT built here. Its package is 172 MB, which
+            # exceeds GitHub's 100 MB git file limit, so it can't be committed to
+            # the git-hosted repo. It is built and published to the separate
+            # release-hosted [genesi-apps] repo by publish-apps.yml instead.
             # llama.cpp (Vulkan) — backs Genesi Turbo's `llama-server`. Verified
             # green via test-llama-cpp.yml (~10min, well under the 25-min budget).
             # Kept LAST so if its build ever flakes it can't block the others.

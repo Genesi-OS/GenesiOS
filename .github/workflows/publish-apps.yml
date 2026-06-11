@@ -1,0 +1,104 @@
+name: Build and Publish Apps Repo
+
+# Separate pacman repository for LARGE application packages (genesi-code is
+# 172 MB). The main repo ([genesi]) is hosted inside the git tree
+# (genesi-arch/repo/x86_64), but GitHub rejects files >100 MB in git, so big
+# apps cannot live there. This workflow builds them and publishes a
+# release-hosted pacman repo ([genesi-apps]) to a fixed GitHub Release
+# (assets can be up to 2 GB). It is intentionally independent of
+# publish-packages.yml so the in-OS update pipeline stays untouched.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'genesi-arch/packages/genesi-code/**'
+      - '.github/workflows/publish-apps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # Fixed release that backs the [genesi-apps] pacman repo. Assets are clobbered
+  # in place on every run, so the download URLs are stable.
+  APPS_TAG: apps-repo
+  DB_NAME: genesi-apps
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: cachyos/cachyos-v3:latest
+      options: --privileged
+
+    steps:
+      - name: Install git in container
+        run: pacman -Sy --needed --noconfirm git openssh
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Build app packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          # makepkg refuses to run as root, so build as an unprivileged user.
+          useradd -m -G wheel builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          pacman -Sy --needed --noconfirm base-devel
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+          mkdir -p "$GITHUB_WORKSPACE/genesi-arch/packages/apps-repo"
+          chown builder:builder "$GITHUB_WORKSPACE/genesi-arch/packages/apps-repo"
+
+          # Each app here ONLY downloads a prebuilt binary in its PKGBUILD, so
+          # `makepkg -d` (skip dep checks — runtime deps are recorded in the
+          # package and resolved at install time) needs nothing pre-installed.
+          APPS=(
+            "genesi-code"
+          )
+          for pkg in "${APPS[@]}"; do
+            echo "::group::Building $pkg"
+            cd "$GITHUB_WORKSPACE/genesi-arch/packages/$pkg"
+            rm -f ./*.pkg.tar.zst
+            runuser -u builder -- env \
+              PKGDEST="$GITHUB_WORKSPACE/genesi-arch/packages/apps-repo" \
+              makepkg -df --noconfirm --noprogressbar
+            echo "::endgroup::"
+          done
+
+          # Build the pacman database for the release-hosted repo.
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/apps-repo"
+          rm -f "${DB_NAME}".db* "${DB_NAME}".files*
+          repo-add "${DB_NAME}.db.tar.gz" ./*.pkg.tar.zst
+          # pacman fetches `<repo>.db` / `<repo>.files` (not the .tar.gz). On a
+          # real mirror those are symlinks to the tarballs; GitHub Release assets
+          # are flat files, so ship real copies under the bare names.
+          cp -f "${DB_NAME}.db.tar.gz"    "${DB_NAME}.db"
+          cp -f "${DB_NAME}.files.tar.gz" "${DB_NAME}.files"
+          ls -lh
+
+      - name: Publish to the apps-repo Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/apps-repo"
+          # Create the backing release once; ignore if it already exists.
+          gh release create "$APPS_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Genesi OS Apps Repository" \
+            --notes "Release-hosted pacman repo for large Genesi apps ([genesi-apps]). Assets are replaced in place each build." \
+            2>/dev/null || echo "Release $APPS_TAG already exists — updating assets."
+          # --clobber replaces the assets in place so the download URLs stay put.
+          gh release upload "$APPS_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            ./*.pkg.tar.zst \
+            "${DB_NAME}.db" "${DB_NAME}.db.tar.gz" \
+            "${DB_NAME}.files" "${DB_NAME}.files.tar.gz"
+          echo "Published [genesi-apps] -> https://github.com/${GITHUB_REPOSITORY}/releases/download/${APPS_TAG}/${DB_NAME}.db"
