@@ -33,8 +33,10 @@ jobs:
       options: --privileged
 
     steps:
-      - name: Install git in container
-        run: pacman -Sy --needed --noconfirm git openssh
+      - name: Install git + gh in container
+        # github-cli (gh) is NOT in the cachyos-v3 image and is needed by the
+        # publish step (gh release create/upload). Without it that step exits 127.
+        run: pacman -Sy --needed --noconfirm git openssh github-cli
 
       - name: Checkout repository
         uses: actions/checkout@v4
