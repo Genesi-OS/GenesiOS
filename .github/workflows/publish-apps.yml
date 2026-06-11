@@ -74,11 +74,13 @@ jobs:
           cd "$GITHUB_WORKSPACE/genesi-arch/packages/apps-repo"
           rm -f "${DB_NAME}".db* "${DB_NAME}".files*
           repo-add "${DB_NAME}.db.tar.gz" ./*.pkg.tar.zst
-          # pacman fetches `<repo>.db` / `<repo>.files` (not the .tar.gz). On a
-          # real mirror those are symlinks to the tarballs; GitHub Release assets
-          # are flat files, so ship real copies under the bare names.
-          cp -f "${DB_NAME}.db.tar.gz"    "${DB_NAME}.db"
-          cp -f "${DB_NAME}.files.tar.gz" "${DB_NAME}.files"
+          # pacman fetches `<repo>.db` / `<repo>.files` (not the .tar.gz). repo-add
+          # already created those as SYMLINKS to the tarballs; GitHub Release assets
+          # must be flat files, so replace the symlinks with real copies of the
+          # tarball content. --remove-destination deletes the symlink first (a plain
+          # `cp` would see "same file" since the link resolves to the source).
+          cp --remove-destination "${DB_NAME}.db.tar.gz"    "${DB_NAME}.db"
+          cp --remove-destination "${DB_NAME}.files.tar.gz" "${DB_NAME}.files"
           ls -lh
 
       - name: Publish to the apps-repo Release
