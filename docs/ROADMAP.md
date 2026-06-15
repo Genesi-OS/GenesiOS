@@ -14,7 +14,7 @@
 | **Phase 1 — Visual Identity** | ✅ Complete |
 | **Phase 2 — AI Mode (local AI optimizations)** | 🟩 ~90% (core shipping) |
 | **Phase 3 — Own Packages & Repository** | ✅ Operational (8 packages shipping) |
-| **Phase 4 — IDE & Dev Tools** (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) | 🟦 Started (genesi-code fork created) |
+| **Phase 4 — IDE & Dev Tools** (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) | 🟦 In progress — Genesi Code shipping (local AI agent + LSP); Hermes pending |
 | **Phase 5 — Polish & Distribution** | ⬜ Pending |
 | **Phase 6 — Welcome & Control Center** (app installer + tweaks) | ⬜ Pending |
 
@@ -43,7 +43,7 @@ See [Build & Release Infrastructure](#build--release-infrastructure) for details
 1. **Phase 1** — Visual Identity ✅ **Complete**
 2. **Phase 2** — AI Mode (local AI optimizations) 🟩 **~90%**
 3. **Phase 3** — Own Packages & Repository (infrastructure) ✅ **Operational**
-4. **Phase 4** — IDE & Dev Tools (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) 🟦 **Started**
+4. **Phase 4** — IDE & Dev Tools (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) 🟦 **In progress** (Genesi Code shipping)
 5. **Phase 5** — Polish & Distribution ⬜ Pending
 6. **Phase 6** — Genesi Welcome & Control Center ⬜ Pending
 
@@ -580,7 +580,7 @@ packages** built and published by CI.
 
 ---
 
-## PHASE 4: IDE & Dev Tools ⬜ PENDING
+## PHASE 4: IDE & Dev Tools 🟦 IN PROGRESS
 > Developer-focused tools and integrations (secondary differentiator).
 >
 > Phase 4 ships **two AI-native front-ends** — **Genesi Code** (the dev tool, a
@@ -647,28 +647,58 @@ packages** built and published by CI.
 > baked into the live ISO (keeps the ISO light; same plan for Genesi Hermes). A
 > Welcome-app pointer to install it is deferred to the polish phase.
 
-- [ ] Fork of Warp with Genesi branding + theme — `zFreshy/genesi-code` created;
-      branding pass (name → "Genesi Code", colors/theme, icon, `.desktop`) pending
-- [ ] Native integration with the local AI daemon (`genesi-aid`) — uses the
-      machine's own Ollama models, fully local, no cloud
-- [ ] **AI Mode / Turbo aware** — AI Mode auto-detection is **free**: the moment
-      Code drives a local model, `genesi-aid`'s existing process detection turns AI
-      Mode on (no app-side hook). Turbo is **opt-in from inside Code** — a one-click
-      "⚡ Turbo" button in the app starts/stops the Turbo daemon (`genesi-ai-turbo`
-      / `:11435`), so the user can flip speculative decoding + the warm KV cache
-      without leaving the editor (see [4.0](#40-shared-ai-mode-integration-the-glue))
-- [ ] **MemPalace integration — remembers every conversation.** The editor/terminal
-      feeds project context **and every chat** into MemPalace and recalls them, so
-      the AI in Code carries long-term memory across sessions and reboots — the same
-      shared memory layer Hermes and the rest of Genesi use (see
-      [4.0](#40-shared-ai-mode-integration-the-glue))
-- [ ] **Genesi Hermes bridge** — the agent models the user runs in Hermes are
-      reachable from Code (same local backend / `:11435` daemon), so an agent can
-      act on the current project from inside the editor; conversely Code can hand a
-      task off to a Hermes agent and **watch it work via Hermes' Office (Claw3d)
-      visual view** without leaving the dev flow (see 4.2)
-- [ ] Pre-wired for Git, Docker, and the popular languages
-- [ ] Desktop + menu shortcut
+**Status: 🟦 a working build ships today** (`v0.0.29`), installable via the Genesi
+Package Installer. The fork builds in CI → GitHub Release → the `genesi-code` package
+in the Genesi pacman repo. What works now vs. what's left for a 1.0:
+
+#### Shipping today
+- [x] **Fork rebranded "Genesi Code"** — welcome/onboarding strings, tagline, app_id,
+      Genesi-green leaf logo; sign-in UI hidden, premium upsells removed; runs **fully
+      logged-out** (no account, no cloud gate — Warp's cloud agent is left inert)
+- [x] **Build & delivery pipeline** — `genesi-build.yml` builds the Rust app in a
+      `cachyos-v3` container → GitHub Release `v0.0.X` → the `genesi-code` PKGBUILD
+      ships the prebuilt binary into the Genesi repo, with a VM-aware launcher
+      (software GL where a VM can't present hardware GL)
+- [x] **Classic LSP autocomplete (no AI)** for JS/TS, Python, Rust, Go, C/C++, HTML,
+      CSS, JSON — deterministic local language servers, install-on-demand from the
+      footer, with a generic file-extension→server mapping so more languages plug in
+- [x] **Login-free local AI panel** (Ctrl+Shift+G or the ⚡ button) — talks **directly**
+      to on-device Ollama (native `/api/chat`, **streaming**) or Genesi Turbo
+      (`:11435`, OpenAI SSE), no account; shows the live **AI Mode** badge (tokens/s)
+      and can force AI Mode on/off right from the panel
+- [x] **Workspace context (📎)** — auto-attaches the focused file / selection to the
+      prompt, like a normal AI IDE (toggleable)
+- [x] **Codebase agent** — the model can read the project (`read_file` / `list_files`
+      / `grep`), **run shell commands**, and **edit files** (SEARCH/REPLACE), each
+      gated by a per-action **Allow / Deny** prompt with an **AUTO** mode to skip it;
+      all bounded and path-safe to the project root
+
+#### Remaining for a 1.0 ("100%")
+- [ ] **A capable local model on capable hardware — the real gate.** The agent code
+      works, but a model that reliably drives tools needs ~3B+ (a *coder* model) and
+      the RAM/VRAM to run it. On a weak box a 7B OOMs — Ollama drops the connection
+      mid-reply — while a 0.5B is too small to follow the tool protocol. This is
+      **Phase 2's job**: the advisor picks the **biggest model that fits the VRAM**
+      (2.8.8), the **AI bundle** (6.2) installs a sensible default coder model, and
+      Turbo keeps it warm. Genesi Code itself works the moment a fitting model is
+      selected — nothing more to build app-side here.
+- [ ] **Live edit integration** — edits currently write to **disk**; route them
+      through the open editor buffer so they appear live and are undoable, plus a real
+      multi-file diff review before apply
+- [ ] **Stop / interrupt** a running generation or agent loop
+- [ ] **Default to the shared Turbo daemon** (`:11435`) so Code inherits GPU offload
+      + the shared warm KV cache (see [4.0](#40-shared-ai-mode-integration-the-glue));
+      the Turbo endpoint is already selectable, auto-default is pending
+- [ ] **MemPalace integration — remembers every conversation.** Persist & recall every
+      chat onto the shared MemPalace wing (see [4.0](#40-shared-ai-mode-integration-the-glue)
+      and 2.7); deferred until the agent UX is solid
+- [ ] **Generate-a-review with the local AI** — wire the existing code-review view to
+      the local model
+- [ ] **Genesi Hermes bridge** — hand a task to / from a Hermes agent over the same
+      local backend, and watch it via Hermes' Office (Claw3d) view (see 4.2)
+- [x] Desktop + menu shortcut — `.desktop` + leaf icon ship in the `genesi-code`
+      package _(KRunner/menu launch still flaky under `setsid`; runs fine from a
+      terminal / click — minor, deferred)_
 
 ### 4.2 Genesi Hermes — AI-agent desktop app (fork of Hermes Desktop)
 > Fork of [Hermes Desktop](https://github.com/fathah/hermes-desktop) (Electron +
