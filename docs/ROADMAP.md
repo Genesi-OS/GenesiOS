@@ -672,6 +672,17 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
       / `grep`), **run shell commands**, and **edit files** (SEARCH/REPLACE), each
       gated by a per-action **Allow / Deny** prompt with an **AUTO** mode to skip it;
       all bounded and path-safe to the project root
+- [x] **Polished agent transcript** — assistant replies render as **markdown**
+      (headings, lists, **bold**, `code`, fenced blocks) instead of raw markup; the
+      model's tool calls no longer flash as raw `<tool:…>` XML — each step is a clean,
+      collapsible **💭 Thought** / tool step, and `run_command` is shown as a
+      **terminal block** (`$ cmd` + captured output) rather than ugly inline text
+- [x] **Stop / interrupt** a running generation or agent loop — a ⏹ Stop control
+      (shown while in flight) bumps a turn-id so the detached stream callbacks no-op
+- [x] **Auto-default to the shared Turbo daemon** (`:11435`) when it's healthy and the
+      user hasn't picked an endpoint — Code then inherits GPU offload + the shared warm
+      KV cache for free (see [4.0](#40-shared-ai-mode-integration-the-glue)); a manual
+      endpoint choice still wins
 
 #### Remaining for a 1.0 ("100%")
 - [ ] **A capable local model on capable hardware — the real gate.** The agent code
@@ -685,10 +696,10 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 - [ ] **Live edit integration** — edits currently write to **disk**; route them
       through the open editor buffer so they appear live and are undoable, plus a real
       multi-file diff review before apply
-- [ ] **Stop / interrupt** a running generation or agent loop
-- [ ] **Default to the shared Turbo daemon** (`:11435`) so Code inherits GPU offload
-      + the shared warm KV cache (see [4.0](#40-shared-ai-mode-integration-the-glue));
-      the Turbo endpoint is already selectable, auto-default is pending
+- [ ] **Run commands in a real integrated-terminal pane** — `run_command` now renders
+      as a terminal block in the chat (and feeds the model the captured output); the
+      next step is dispatching it into an actual terminal tab/block so the user can
+      interact with long-running commands, with output streamed back to the agent
 - [ ] **Bring-your-own AI key (optional cloud models).** A settings screen to paste an
       API key — OpenAI / Anthropic / OpenRouter / Google, or any OpenAI-compatible
       custom endpoint — so the panel can use a **cloud** model as an *option* beside
