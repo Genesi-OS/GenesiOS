@@ -14,10 +14,19 @@ on:
     paths:
       - 'genesi-arch/packages/genesi-code/**'
       - '.github/workflows/publish-apps.yml'
-  # Auto-track new genesi-code releases: every few hours, pick up the latest
-  # build from the fork and republish it to [genesi-apps] so it surfaces in
-  # genesi-update without a manual pkgver bump. A no-op run (already published)
-  # skips the build (see the "Resolve latest genesi-code release" step).
+  # PRIMARY auto-track: the genesi-code fork's release workflow pings us via
+  # repository_dispatch the moment it publishes a new release, so the rebuild is
+  # immediate and reliable — unlike the cron below, which GitHub silently never
+  # fired (0 scheduled runs in the first 4 days), leaving [genesi-apps] stuck on
+  # an old version while genesi-update/the installer correctly saw "no update".
+  # Needs a PAT (secret GENESIOS_DISPATCH_TOKEN) in the fork repo. See the
+  # "Notify GenesiOS" step in zFreshy/genesi-code's build workflow.
+  repository_dispatch:
+    types: [genesi-code-release]
+  # BACKUP auto-track: every 6h pick up the latest fork release in case a
+  # dispatch is ever missed. A no-op run (already published) skips the build
+  # (see the "Resolve latest genesi-code release" step). Kept as a safety net;
+  # the repository_dispatch above is the path that actually fires on release.
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
