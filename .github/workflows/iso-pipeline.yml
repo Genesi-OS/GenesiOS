@@ -173,7 +173,12 @@ jobs:
       R2_BUCKET:            ${{ vars.R2_BUCKET }}
     container:
       image: cachyos/cachyos-v3:latest
-      options: --privileged            # mkarchiso usa loop/mount/squashfs
+      # --privileged: mkarchiso uses loop/mount/squashfs. -v /mnt:/mnt mounts the
+      # runner's LARGE ephemeral disk (~65 GB free) into the container so the
+      # build step can put mkarchiso's squashfs work dir there — the root disk
+      # (~20 GB) is too small and mksquashfs was failing with "No space left on
+      # device" (the redirect lives in "Preparar ambiente de build").
+      options: --privileged -v /mnt:/mnt
     steps:
       - name: 📥 Checkout (com submódulos)
         uses: actions/checkout@v4
@@ -182,11 +187,13 @@ jobs:
 
       - name: 💾 Liberar espaço em disco
         run: |
-          df -h / || true
-          rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
-                 /usr/local/lib/android "${AGENT_TOOLSDIRECTORY:-}" 2>/dev/null || true
+          df -h / /mnt || true
+          # NOTE: this runs INSIDE the cachyos container, so the host's
+          # preinstalled tooling (dotnet/android/ghc) isn't reachable here — the
+          # real win is redirecting the build dir to /mnt below. Still clear the
+          # pacman cache, which does live in the container.
           pacman -Scc --noconfirm || true
-          df -h / || true
+          df -h / /mnt || true
 
       - name: 🔧 Preparar ambiente de build
         run: |
@@ -228,6 +235,19 @@ jobs:
           echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # buildiso.sh hard-codes work_dir="genesi-arch/build" and out="genesi-arch/out",
+          # both on the runner's small root disk (~20 GB) — mksquashfs ran it out
+          # of space. Bind-mount those onto the large /mnt disk (mounted into the
+          # container via the job's container options) so the heavy squashfs work
+          # and the final ISO land there instead. Bind mounts survive the scripts'
+          # rm/mkdir of the dir CONTENTS, unlike a symlink.
+          mkdir -p /mnt/iso-build /mnt/iso-out
+          mkdir -p "$GITHUB_WORKSPACE/genesi-arch/build" "$GITHUB_WORKSPACE/genesi-arch/out"
+          mount --bind /mnt/iso-build "$GITHUB_WORKSPACE/genesi-arch/build"
+          mount --bind /mnt/iso-out   "$GITHUB_WORKSPACE/genesi-arch/out"
+          chown -R builder:builder /mnt/iso-build /mnt/iso-out
+          echo "Redirected build/out to /mnt:"; df -h / /mnt
 
       - name: 🏗️ Build da ISO
         run: |
