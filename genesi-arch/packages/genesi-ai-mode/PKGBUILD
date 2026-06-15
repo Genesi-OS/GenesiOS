@@ -134,7 +134,13 @@ pkgver=1.0.0
 # generating / warm·idle / standing-by under the AI Mode status. Forced ON/OFF
 # and explicit profiles still win. Pure detection change — all the optimization
 # and reversible-restore machinery is untouched.
-pkgrel=70
+# pkgrel 71: reliable Turbo on/off. `free_turbo_port` (CLI) and the Monitor's
+# `_stop_turbo` now SIGTERM the llama-server, WAIT for the socket to actually
+# release (polling /health / the port), then escalate to SIGKILL — so toggling
+# Turbo off then on no longer hits "already running" with a stuck server. The
+# Monitor also kills a stray Turbo it didn't start (e.g. one launched from a
+# terminal), which our tracked-PID-only stop used to leave running.
+pkgrel=71
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

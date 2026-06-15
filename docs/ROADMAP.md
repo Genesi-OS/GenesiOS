@@ -700,15 +700,25 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
       as a terminal block in the chat (and feeds the model the captured output); the
       next step is dispatching it into an actual terminal tab/block so the user can
       interact with long-running commands, with output streamed back to the agent
-- [ ] **Bring-your-own AI key (optional cloud models).** A settings screen to paste an
-      API key — OpenAI / Anthropic / OpenRouter / Google, or any OpenAI-compatible
-      custom endpoint — so the panel can use a **cloud** model as an *option* beside
-      the local-first default. The Warp fork already ships the BYOK plumbing
-      (`ApiKeys` + custom endpoints, already unlocked for logged-out use); this is
-      mostly wiring a simple key-entry UI to it. **Local stays the default** — the key
-      is purely opt-in, for when the user wants a bigger/faster model than the machine
-      can run, or a frontier model for hard tasks. Keys are stored in the OS keyring
-      (Secret Service) with the existing encrypted-file fallback — still on-device.
+- [x] **IDE-style AI panel — click-to-open model picker + cleaner controls.** The side
+      panel now reads like a real IDE assistant: the AI selector is a click-to-open
+      popup (on-device models + the Turbo endpoint, with a disabled "Cloud — coming
+      soon" slot), a dedicated ⚡ Turbo on/off toggle sits beside it, and the agent
+      toggles (🤖 Agent / AUTO / 📎) moved into a clean control strip above the compose
+      box. The old blind "cycle through chips" controls are gone. _First step of the
+      broader "evolve our Warp fork toward a full IDE look" direction — more to come._
+- [ ] **Bring-your-own AI key (optional cloud models).** Let the panel use a **cloud**
+      model as an *option* beside the local-first default. The Warp fork already ships
+      the BYOK plumbing (`ApiKeys` + custom endpoints, already unlocked for logged-out
+      use); this is mostly wiring the UI to it. **Planned UX (in the new picker):**
+      choosing the "Cloud" slot reveals a provider chooser — **Gemini / OpenAI /
+      Claude / HuggingFace / OpenRouter** (or any OpenAI-compatible custom endpoint);
+      picking one opens a small inline popup for the **API key**, and for HuggingFace a
+      **model** field — all in the panel, no separate settings screen. **Local stays
+      the default** — the key is purely opt-in, for when the user wants a bigger/faster
+      model than the machine can run, or a frontier model for hard tasks. Keys are
+      stored in the OS keyring (Secret Service) with the existing encrypted-file
+      fallback — still on-device.
 - [ ] **MemPalace integration — remembers every conversation.** Persist & recall every
       chat onto the shared MemPalace wing (see [4.0](#40-shared-ai-mode-integration-the-glue)
       and 2.7); deferred until the agent UX is solid

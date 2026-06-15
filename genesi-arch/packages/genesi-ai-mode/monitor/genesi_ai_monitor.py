@@ -354,6 +354,13 @@ class Backend(QObject):
                     p.kill()
                 except Exception:
                     pass
+        # Backstop: a llama-server may hold the Turbo port even when we didn't
+        # start it (e.g. the user ran `genesi-ai-turbo <model>` in a terminal),
+        # so our tracked proc is None and stopping would otherwise leave it
+        # running — the next "on" then sees the port busy and says "already
+        # running", which is the dumb on/off the user hit. Kill any stray Turbo
+        # server on our port and WAIT for the socket to actually free.
+        self._kill_stray_turbo()
         log, self._turbo_log = self._turbo_log, None
         if log:
             try:
@@ -362,6 +369,33 @@ class Backend(QObject):
                 pass
         self.turboReady.emit(False)
         self.turboStatus.emit("")
+
+    def _turbo_alive(self):
+        """Is a Turbo llama-server still answering on the port?"""
+        try:
+            with urllib.request.urlopen(TURBO + "/health", timeout=1) as r:
+                return r.status == 200
+        except Exception:
+            return False
+
+    def _kill_stray_turbo(self):
+        """SIGTERM any llama-server bound to the Turbo port (even one we didn't
+        start), wait for /health to go away, then SIGKILL if it's stubborn.
+        Without the wait, the next `_start_turbo` saw the port still busy and
+        refused — the on/off flakiness. Best-effort; needs pkill."""
+        if not shutil.which("pkill"):
+            return
+        pattern = "llama-server.*--port 11435"
+        subprocess.run(["pkill", "-f", pattern], check=False)
+        for _ in range(24):              # up to ~6s for a clean shutdown
+            if not self._turbo_alive():
+                return
+            time.sleep(0.25)
+        subprocess.run(["pkill", "-9", "-f", pattern], check=False)
+        for _ in range(16):              # up to ~4s after a force-kill
+            if not self._turbo_alive():
+                return
+            time.sleep(0.25)
 
     @staticmethod
     def _has_llama_server():

@@ -655,11 +655,31 @@ def port_busy(port=TURBO_PORT):
 
 
 def free_turbo_port():
-    """Best-effort: kill a stale llama-server holding our port."""
-    if shutil.which("pkill"):
-        subprocess.run(["pkill", "-f", f"llama-server.*--port {TURBO_PORT}"],
-                       check=False)
-        time.sleep(1.5)
+    """Free our port by stopping any llama-server holding it, and WAIT until the
+    socket is actually released.
+
+    The old version just fired `pkill` (SIGTERM) and slept 1.5s. llama-server
+    catches SIGTERM and unwinds the model + GPU context first, so it often still
+    held the port after the sleep — then the very next `serve` saw the port busy
+    and bailed with "already running", even though the user had just toggled
+    Turbo off. That's the flaky on/off the user hit. Now: SIGTERM, poll until the
+    port frees, then escalate to SIGKILL if it's still bound."""
+    if not shutil.which("pkill"):
+        return
+    pattern = f"llama-server.*--port {TURBO_PORT}"
+    subprocess.run(["pkill", "-f", pattern], check=False)
+    # Give it up to ~6s to shut down cleanly and release the socket.
+    for _ in range(24):
+        if not port_busy():
+            return
+        time.sleep(0.25)
+    # Still holding the port — force kill, then wait a final moment for the
+    # kernel to reclaim the socket.
+    subprocess.run(["pkill", "-9", "-f", pattern], check=False)
+    for _ in range(16):
+        if not port_busy():
+            return
+        time.sleep(0.25)
 
 
 def measure(n=256):
