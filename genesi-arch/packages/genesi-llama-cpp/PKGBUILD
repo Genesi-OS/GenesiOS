@@ -8,7 +8,7 @@
 # hardware; the CPU fallback (generic, GGML_NATIVE=OFF) keeps it portable.
 pkgname=genesi-llama-cpp
 pkgver=r0
-pkgrel=2
+pkgrel=3
 pkgdesc='llama.cpp (Vulkan) — local LLM inference backing Genesi Turbo'
 arch=('x86_64')
 url='https://github.com/ggml-org/llama.cpp'
@@ -39,11 +39,33 @@ build() {
     [ "$jobs" -gt "$(nproc)" ] && jobs=$(nproc)
     echo "genesi-llama-cpp: building with -j${jobs} (RAM ${mem_gb} GB)"
 
+    # CRITICAL — why this is NOT a plain `GGML_NATIVE=OFF` build:
+    #
+    # ggml's CMake force-enables GGML_AVX2 / GGML_FMA / GGML_F16C to ON by
+    # DEFAULT, independent of GGML_NATIVE. So even with GGML_NATIVE=OFF and the
+    # publish pipeline pinning CFLAGS to `-march=x86-64`, the ggml-cpu target
+    # still gets `-mavx2 -mfma -mf16c` and the binary executes AVX2 opcodes. On
+    # any CPU without AVX2 that's an instant `Illegal instruction (core dumped)`
+    # — which is exactly what killed `genesi-ai-turbo` on real hardware (it
+    # crashed both while serving AND during the `--list-devices` GPU probe, so
+    # Turbo never even detected the GPU and Genesi Code fell back to slow CPU
+    # ollama). Pinning the individual GGML_AVX* flags OFF would fix the crash but
+    # cripple inference on capable CPUs.
+    #
+    # The right answer is llama.cpp's own redistributable recipe: build the
+    # ggml-cpu backend as MULTIPLE dlopen-able variants (baseline x86-64, sse42,
+    # avx, avx2, avx512, …) and let ggml pick the best one the CPU actually
+    # supports AT RUNTIME. The main binary + loader stay pure baseline x86-64
+    # (run on any x86-64 CPU), while the heavy compute uses the fastest variant
+    # available — full speed where supported, never an illegal instruction where
+    # not. Needs GGML_BACKEND_DL=ON + GGML_NATIVE=OFF + shared libs.
     cmake -B build -S llama.cpp \
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DCMAKE_BUILD_TYPE=Release \
         -DGGML_VULKAN=ON \
         -DGGML_NATIVE=OFF \
+        -DGGML_BACKEND_DL=ON \
+        -DGGML_CPU_ALL_VARIANTS=ON \
         -DLLAMA_CURL=OFF \
         -DBUILD_SHARED_LIBS=ON
     cmake --build build --config Release -j"${jobs}"
