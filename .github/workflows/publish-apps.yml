@@ -14,6 +14,12 @@ on:
     paths:
       - 'genesi-arch/packages/genesi-code/**'
       - '.github/workflows/publish-apps.yml'
+  # Auto-track new genesi-code releases: every few hours, pick up the latest
+  # build from the fork and republish it to [genesi-apps] so it surfaces in
+  # genesi-update without a manual pkgver bump. A no-op run (already published)
+  # skips the build (see the "Resolve latest genesi-code release" step).
+  schedule:
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -48,7 +54,44 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Resolve latest genesi-code release
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Latest release tag of the fork (e.g. v0.0.30 -> 0.0.30). GITHUB_TOKEN
+          # can read another PUBLIC repo's releases; fall back to the public API.
+          LATEST=$(gh release view --repo zFreshy/genesi-code --json tagName -q .tagName 2>/dev/null | sed 's/^v//') || true
+          if [ -z "${LATEST:-}" ]; then
+            LATEST=$(curl -fsSL https://api.github.com/repos/zFreshy/genesi-code/releases/latest \
+              | grep -oP '"tag_name":\s*"v?\K[^"]+') || true
+          fi
+          if [ -z "${LATEST:-}" ]; then
+            echo "::error::could not resolve the latest genesi-code release"; exit 1
+          fi
+
+          # What's already published in [genesi-apps]? On the cron schedule, skip a
+          # no-op rebuild when it already matches (push / manual runs always build).
+          PUBLISHED=$(gh release view "$APPS_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            -q '.assets[].name' 2>/dev/null \
+            | grep -oP 'genesi-code-\K[0-9][0-9.]*(?=-[0-9]+-x86_64)' | head -1 || true)
+          echo "Latest genesi-code = ${LATEST}; published in [genesi-apps] = ${PUBLISHED:-none}"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${LATEST}" = "${PUBLISHED:-}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Already up to date — skipping the build."
+            exit 0
+          fi
+
+          # Pin the PKGBUILD to the latest release for THIS build (workspace only,
+          # not committed — the committed pkgver is just a manual fallback floor).
+          sed -i "s/^pkgver=.*/pkgver=${LATEST}/" \
+            "$GITHUB_WORKSPACE/genesi-arch/packages/genesi-code/PKGBUILD"
+          echo "Building genesi-code ${LATEST}"
+
       - name: Build app packages
+        if: steps.resolve.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -91,6 +134,7 @@ jobs:
           ls -lh
 
       - name: Publish to the apps-repo Release
+        if: steps.resolve.outputs.skip != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

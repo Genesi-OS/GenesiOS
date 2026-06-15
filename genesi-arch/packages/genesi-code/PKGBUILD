@@ -8,7 +8,11 @@
 # all bundled assets via rust_embed, so the binary is self-contained). Bump
 # `pkgver` to the release tag you want to ship.
 pkgname=genesi-code
-pkgver=0.0.9
+# Floor version. publish-apps.yml overrides this at build time to the LATEST
+# genesi-code GitHub Release (so every new build flows to the [genesi-apps] repo
+# and surfaces in genesi-update automatically). Bump it here only as a manual
+# fallback for a local `makepkg`.
+pkgver=0.0.30
 pkgrel=1
 pkgdesc='Genesi Code - local-first code editor / agentic terminal for Genesi OS (Warp fork)'
 arch=('x86_64')

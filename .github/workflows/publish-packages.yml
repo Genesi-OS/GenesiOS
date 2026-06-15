@@ -5,6 +5,9 @@ on:
     branches: [main, develop]
     paths:
       - 'genesi-arch/packages/**'
+      # genesi-code is NOT built here (172 MB, release-hosted via publish-apps.yml).
+      # Exclude it so bumping its PKGBUILD doesn't needlessly rebuild every package.
+      - '!genesi-arch/packages/genesi-code/**'
       - '.github/workflows/publish-packages.yml'
       - '.gitmodules'
       # Submodule gitlinks. PKGBUILDs source from these via
