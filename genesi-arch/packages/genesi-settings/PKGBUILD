@@ -36,7 +36,14 @@ pkgver=1.3.4
 # 2026-06-03 (30): add the Genesi AI Mode widget (org.genesi.aimode) to the
 # default panel appletsrc (applet 32, next to the AI Mode launcher). Static
 # config edit only — systemtray untouched. Rebuild to pull the new skel.
-pkgrel=30
+# 2026-06-16 (31): ship the flicker-free first-login theming. genesi-apply-theme
+# .sh no longer restarts kwin/plasmashell (the "2 piscadas" + wallpaper fade);
+# it reloads in place. ALSO fixes selected-item contrast: skel kdeglobals
+# [Colors:Selection] had bright-green bg + dark text (so selected text/icons
+# went near-black and vanished); now it matches the Genesi.colors scheme —
+# solid brand green (29,158,117) with white text. Both are pure skel changes,
+# so the package version MUST bump or `pacman -Syu` won't deliver them.
+pkgrel=31
 epoch=1
 groups=(genesi)
 arch=('any')
