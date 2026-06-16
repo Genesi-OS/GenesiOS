@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# genesi-sandboxes — isolated developer workspaces on top of Distrobox.
+#
+# Each "sandbox" is a Distrobox container with its own dependencies, integrated
+# with the host (HOME, GUI, terminal). Templates pre-install a stack so a fresh
+# "React + Vite" or "Python + FastAPI" box is one click away. This CLI is the
+# single source of truth; the GUI (genesi-sandboxes-gui) just drives it.
+set -euo pipefail
+
+# ---- templates --------------------------------------------------------------
+# id|label|image|packages(pacman, space-sep)|hint
+# All Arch-based so there is one package manager to reason about inside the box.
+read -r -d '' TEMPLATES <<'TPL' || true
+java|Java + Spring Boot|archlinux:latest|jdk-openjdk maven gradle|jdk-openjdk, Maven & Gradle
+node|React + Vite|archlinux:latest|nodejs npm|Node.js + npm — scaffold with: npm create vite@latest
+python|Python + FastAPI|archlinux:latest|python python-pip|Python + pip — then: pip install fastapi uvicorn
+go|Go|archlinux:latest|go|Go toolchain
+rust|Rust|archlinux:latest|rustup base-devel|rustup (run: rustup default stable)
+cpp|C / C++|archlinux:latest|base-devel cmake gdb clang|GCC/Clang, CMake, GDB
+plain|Plain Arch|archlinux:latest||Empty Arch box, add what you need
+TPL
+
+require_distrobox() {
+    command -v distrobox >/dev/null 2>&1 || {
+        echo "distrobox is not installed" >&2; exit 1; }
+}
+
+tpl_field() { # id field-index(1-based)
+    echo "$TEMPLATES" | awk -F'|' -v id="$1" -v f="$2" '$1==id{print $f; exit}'
+}
+
+case "${1:-list-json}" in
+  templates-json)
+    python3 - "$TEMPLATES" <<'PY'
+import json, sys
+rows = []
+for line in sys.argv[1].splitlines():
+    if not line.strip():
+        continue
+    p = (line.split("|") + [""]*5)[:5]
+    rows.append({"id": p[0], "label": p[1], "image": p[2],
+                 "packages": p[3], "hint": p[4]})
+print(json.dumps(rows))
+PY
+    ;;
+
+  list-json)
+    if ! command -v distrobox >/dev/null 2>&1; then
+        echo '{"distrobox":false,"boxes":[]}'; exit 0
+    fi
+    raw="$(distrobox list --no-color 2>/dev/null || true)"
+    python3 - "$raw" <<'PY'
+import json, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+boxes = []
+for i, line in enumerate(raw.splitlines()):
+    if "|" not in line:
+        continue
+    cols = [c.strip() for c in line.split("|")]
+    if i == 0 and cols and cols[0].upper() == "ID":
+        continue  # header
+    cols += [""] * (4 - len(cols))
+    cid, name, status, image = cols[:4]
+    boxes.append({"id": cid, "name": name, "status": status, "image": image,
+                  "running": status.lower().startswith("up")})
+boxes.sort(key=lambda b: b["name"])
+print(json.dumps({"distrobox": True, "boxes": boxes}))
+PY
+    ;;
+
+  create)
+    require_distrobox
+    name="${2:-}"; tpl="${3:-plain}"
+    [ -n "$name" ] || { echo "usage: genesi-sandboxes create <name> <template>" >&2; exit 2; }
+    image="$(tpl_field "$tpl" 3)"; [ -n "$image" ] || image="archlinux:latest"
+    pkgs="$(tpl_field "$tpl" 4)"
+    echo ">>> Creating sandbox '$name' from template '$tpl' ($image)…"
+    distrobox create --yes --name "$name" --image "$image"
+    # First enter triggers the container build; do it once up front.
+    distrobox enter --name "$name" -- true || true
+    if [ -n "$pkgs" ]; then
+        echo ">>> Installing: $pkgs"
+        distrobox enter --name "$name" -- sudo pacman -Syu --noconfirm $pkgs
+    fi
+    echo ">>> Sandbox '$name' is ready. Enter it with: genesi-sandboxes enter $name"
+    ;;
+
+  enter)
+    require_distrobox
+    [ -n "${2:-}" ] || { echo "usage: genesi-sandboxes enter <name>" >&2; exit 2; }
+    term="konsole -e"; command -v konsole >/dev/null 2>&1 || term="x-terminal-emulator -e"
+    exec $term distrobox enter --name "$2"
+    ;;
+
+  rm|remove)
+    require_distrobox
+    [ -n "${2:-}" ] || { echo "usage: genesi-sandboxes rm <name>" >&2; exit 2; }
+    distrobox stop --yes "$2" 2>/dev/null || true
+    exec distrobox rm --force "$2"
+    ;;
+
+  *)
+    echo "usage: genesi-sandboxes {templates-json|list-json|create <name> <tpl>|enter <name>|rm <name>}" >&2
+    exit 2
+    ;;
+esac

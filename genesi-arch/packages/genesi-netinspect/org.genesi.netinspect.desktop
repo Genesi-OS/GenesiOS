@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Network Inspector
+GenericName=HTTP/HTTPS Debug Proxy
+Comment=Intercept and inspect HTTP/HTTPS traffic with mitmproxy; toggles the system proxy automatically
+Exec=konsole --hold -e genesi-netinspect
+Icon=network-wired
+Terminal=false
+Categories=Development;Network;Qt;
+Keywords=proxy;mitmproxy;http;https;intercept;debug;network;
+StartupNotify=true

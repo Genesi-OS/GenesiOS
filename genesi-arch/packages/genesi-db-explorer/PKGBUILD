@@ -1,0 +1,36 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# Phase 4.6 — Database explorer. A launcher + Dolphin integration that opens the
+# best available DB client (DBeaver / Beekeeper for PostgreSQL, MySQL, SQLite,
+# Mongo, …), always falling back to DB Browser for SQLite, which ships by
+# default. Double-clicking a .sqlite/.db file in Dolphin opens it here.
+pkgname=genesi-db-explorer
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Database client launcher + Dolphin integration (PostgreSQL/MySQL/SQLite/…)'
+arch=('any')
+url='https://github.com/zFreshy/GenesiOS'
+license=('GPL-3.0-or-later')
+# sqlitebrowser is in the official repos and gives an always-present SQLite
+# viewer; a full multi-engine client (DBeaver/Beekeeper, AUR) is an optdepend
+# installed on demand from the Genesi Package Installer.
+depends=('sqlitebrowser')
+optdepends=(
+    'dbeaver: multi-engine client (PostgreSQL, MySQL, SQLite, …)'
+    'beekeeper-studio: modern multi-engine SQL client'
+    'kdialog: graphical error when no client is installed'
+)
+source=()
+sha256sums=()
+
+package() {
+    install -Dm755 "${startdir}/genesi-db" \
+        "$pkgdir/usr/local/bin/genesi-db"
+
+    install -Dm644 "${startdir}/org.genesi.dbexplorer.desktop" \
+        "$pkgdir/usr/share/applications/org.genesi.dbexplorer.desktop"
+
+    # Dolphin "Open in Genesi DB Explorer" for SQLite files
+    install -Dm644 "${startdir}/genesi-db-open.desktop" \
+        "$pkgdir/usr/share/kio/servicemenus/genesi-db-open.desktop"
+}

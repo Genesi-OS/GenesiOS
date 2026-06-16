@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# genesi-proxy — flip the desktop's HTTP/HTTPS traffic through a debug proxy
+# (mitmproxy at 127.0.0.1:8080 by default) and back, in one command.
+#
+# It configures BOTH paths most apps honour:
+#   * KDE / KIO  -> ~/.config/kioslaverc  (Plasma apps, Falkon, etc.)
+#   * env vars   -> ~/.config/environment.d/genesi-proxy.conf (CLI tools, most
+#                   GUI apps on next login) + prints export lines for this shell.
+# Reversible: `off` clears both. Nothing here needs root.
+set -euo pipefail
+
+HOST="${GENESI_PROXY_HOST:-127.0.0.1}"
+PORT="${GENESI_PROXY_PORT:-8080}"
+ENVD="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/genesi-proxy.conf"
+NOPROXY="localhost,127.0.0.1,::1"
+
+kw() { command -v kwriteconfig6 >/dev/null 2>&1 && kwriteconfig6 "$@" 2>/dev/null || true; }
+
+enable_kde() {
+    # ProxyType 1 = manually specified
+    kw --file kioslaverc --group "Proxy Settings" --key ProxyType 1
+    kw --file kioslaverc --group "Proxy Settings" --key httpProxy  "http://$HOST $PORT"
+    kw --file kioslaverc --group "Proxy Settings" --key httpsProxy "http://$HOST $PORT"
+    kw --file kioslaverc --group "Proxy Settings" --key NoProxyFor "$NOPROXY"
+    # Tell running KIO clients to reload (best effort).
+    command -v dbus-send >/dev/null 2>&1 && \
+        dbus-send --type=signal /KIO/Scheduler org.kde.KIO.Scheduler.reparseSlaveConfiguration string:'' 2>/dev/null || true
+}
+disable_kde() {
+    kw --file kioslaverc --group "Proxy Settings" --key ProxyType 0
+    command -v dbus-send >/dev/null 2>&1 && \
+        dbus-send --type=signal /KIO/Scheduler org.kde.KIO.Scheduler.reparseSlaveConfiguration string:'' 2>/dev/null || true
+}
+
+enable_env() {
+    mkdir -p "$(dirname "$ENVD")"
+    cat > "$ENVD" <<EOF
+# Written by genesi-proxy. Routes HTTP/HTTPS through the Genesi debug proxy.
+http_proxy=http://$HOST:$PORT
+https_proxy=http://$HOST:$PORT
+HTTP_PROXY=http://$HOST:$PORT
+HTTPS_PROXY=http://$HOST:$PORT
+no_proxy=$NOPROXY
+NO_PROXY=$NOPROXY
+EOF
+}
+disable_env() { rm -f "$ENVD"; }
+
+case "${1:-status}" in
+  on|enable)
+    enable_kde; enable_env
+    echo ">>> Debug proxy ON  -> $HOST:$PORT"
+    echo "    KDE/KIO apps: active now. CLI/other apps: 'export http_proxy=http://$HOST:$PORT' or re-login."
+    ;;
+  off|disable)
+    disable_kde; disable_env
+    echo ">>> Debug proxy OFF (re-login or unset http_proxy/https_proxy to clear this shell)"
+    ;;
+  toggle)
+    if [ -f "$ENVD" ]; then exec "$0" off; else exec "$0" on; fi
+    ;;
+  status)
+    if [ -f "$ENVD" ]; then echo "on ($HOST:$PORT)"; else echo "off"; fi
+    ;;
+  *)
+    echo "usage: genesi-proxy {on|off|toggle|status}" >&2; exit 2 ;;
+esac

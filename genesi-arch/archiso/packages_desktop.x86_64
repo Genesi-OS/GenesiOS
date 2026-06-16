@@ -36,6 +36,12 @@ genesi-ai-mode
 genesi-mempalace
 genesi-packageinstaller
 genesi-kde-settings
+# Phase 4.3 container widget — tiny (QML + a script; deps python/plasma already
+# present), so it ships on the live ISO too as a dev showcase. The heavier dev
+# tools (genesi-sandboxes/distrobox, genesi-netinspect/mitmproxy,
+# genesi-db-explorer/sqlitebrowser) arrive on the INSTALLED system via the
+# genesi-desktop meta, not the live medium, to keep the squashfs light.
+genesi-containers
 # NOTE: genesi-llama-cpp (Vulkan llama.cpp + Vulkan libs, tens of MB) and the
 # genesi-desktop meta are deliberately NOT on the live ISO — they belong on the
 # INSTALLED system (netinstall) only. On the live medium they just bloat the

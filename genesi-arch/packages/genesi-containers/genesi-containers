@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# genesi-containers — thin, engine-agnostic wrapper the Plasma widget drives.
+#
+# Speaks to whichever container engine is available (Docker preferred, Podman
+# fallback) and emits clean JSON for the widget to render. All the privileged
+# work stays in the engine; this is just a stable CLI the QML can call through
+# Plasma's Executable data source.
+set -euo pipefail
+
+# ---- engine detection -------------------------------------------------------
+detect_engine() {
+    if [ -n "${GENESI_CONTAINER_ENGINE:-}" ] && command -v "${GENESI_CONTAINER_ENGINE}" >/dev/null 2>&1; then
+        echo "${GENESI_CONTAINER_ENGINE}"; return 0
+    fi
+    # Prefer Docker only when its daemon actually answers; otherwise Podman
+    # (rootless, no daemon) is the better default on a dev desktop.
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        echo docker; return 0
+    fi
+    if command -v podman >/dev/null 2>&1; then
+        echo podman; return 0
+    fi
+    if command -v docker >/dev/null 2>&1; then
+        echo docker; return 0
+    fi
+    return 1
+}
+
+ENGINE="$(detect_engine || true)"
+
+# ---- commands ---------------------------------------------------------------
+case "${1:-list-json}" in
+  engine)
+    # Print the active engine (or "none"); used by the widget's empty state.
+    echo "${ENGINE:-none}"
+    ;;
+
+  list-json)
+    if [ -z "${ENGINE:-}" ]; then
+        echo '{"engine":"none","containers":[]}'
+        exit 0
+    fi
+    # Pull a tab-delimited table from the engine, then let python turn it into
+    # well-formed JSON (hand-rolling JSON in bash is a footgun with names/ports
+    # that contain quotes or commas).
+    raw="$("$ENGINE" ps -a \
+        --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}\t{{.Ports}}' \
+        2>/dev/null || true)"
+    ENGINE="$ENGINE" python3 - "$raw" <<'PY'
+import json, os, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+out = []
+for line in raw.splitlines():
+    if not line.strip():
+        continue
+    parts = line.split("\t")
+    parts += [""] * (6 - len(parts))
+    cid, name, image, state, status, ports = parts[:6]
+    st = (state or "").lower()
+    if not st:  # some docker versions leave State empty; infer from Status
+        st = "running" if status.lower().startswith("up") else "exited"
+    out.append({
+        "id": cid, "name": name, "image": image,
+        "state": st, "status": status, "ports": ports,
+        "running": st == "running",
+    })
+out.sort(key=lambda c: (not c["running"], c["name"]))
+print(json.dumps({"engine": os.environ.get("ENGINE", "none"), "containers": out}))
+PY
+    ;;
+
+  start|stop|restart)
+    [ -n "${ENGINE:-}" ] || { echo "no container engine" >&2; exit 1; }
+    [ -n "${2:-}" ] || { echo "usage: genesi-containers $1 <id>" >&2; exit 2; }
+    exec "$ENGINE" "$1" "$2"
+    ;;
+
+  logs)
+    [ -n "${ENGINE:-}" ] || { echo "no container engine" >&2; exit 1; }
+    [ -n "${2:-}" ] || { echo "usage: genesi-containers logs <id>" >&2; exit 2; }
+    # Open the logs in a terminal so it can stream/scroll. Fall back to plain
+    # output when no terminal is around (e.g. called non-interactively).
+    if command -v konsole >/dev/null 2>&1; then
+        exec konsole --hold -e "$ENGINE" logs -f --tail 200 "$2"
+    elif command -v x-terminal-emulator >/dev/null 2>&1; then
+        exec x-terminal-emulator -e "$ENGINE" logs -f --tail 200 "$2"
+    else
+        exec "$ENGINE" logs --tail 200 "$2"
+    fi
+    ;;
+
+  shell)
+    [ -n "${ENGINE:-}" ] || { echo "no container engine" >&2; exit 1; }
+    [ -n "${2:-}" ] || { echo "usage: genesi-containers shell <id>" >&2; exit 2; }
+    term="konsole -e"; command -v konsole >/dev/null 2>&1 || term="x-terminal-emulator -e"
+    exec $term "$ENGINE" exec -it "$2" sh -c 'command -v bash >/dev/null && exec bash || exec sh'
+    ;;
+
+  *)
+    echo "usage: genesi-containers {engine|list-json|start|stop|restart|logs|shell} [id]" >&2
+    exit 2
+    ;;
+esac

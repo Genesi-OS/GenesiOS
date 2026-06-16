@@ -1,0 +1,39 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# Phase 4.4 — Project sandboxes (isolated workspaces). A GUI + CLI on top of
+# Distrobox that spins up per-project containers with their own dependencies,
+# from ready-made templates (Java + Spring Boot, React + Vite, Python + FastAPI,
+# Go, Rust, C/C++). Each workspace is HOME/GUI/terminal-integrated via Distrobox.
+pkgname=genesi-sandboxes
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
+arch=('any')
+url='https://github.com/zFreshy/GenesiOS'
+license=('GPL-3.0-or-later')
+depends=('python' 'pyside6' 'qqc2-desktop-style' 'distrobox')
+optdepends=(
+    'podman: rootless container backend for Distrobox (recommended)'
+    'docker: alternative container backend for Distrobox'
+    'konsole: terminal used to enter a workspace'
+)
+source=()
+sha256sums=()
+
+package() {
+    # CLI (source of truth) + GUI launcher
+    install -Dm755 "${startdir}/genesi-sandboxes" \
+        "$pkgdir/usr/local/bin/genesi-sandboxes"
+    install -Dm755 "${startdir}/genesi-sandboxes-gui" \
+        "$pkgdir/usr/local/bin/genesi-sandboxes-gui"
+
+    # GUI app (PySide6 + Kirigami)
+    install -Dm644 "${startdir}/app/genesi_sandboxes.py" \
+        "$pkgdir/usr/share/genesi-sandboxes/app/genesi_sandboxes.py"
+    install -Dm644 "${startdir}/app/Main.qml" \
+        "$pkgdir/usr/share/genesi-sandboxes/app/Main.qml"
+
+    # Desktop entry
+    install -Dm644 "${startdir}/org.genesi.sandboxes.desktop" \
+        "$pkgdir/usr/share/applications/org.genesi.sandboxes.desktop"
+}

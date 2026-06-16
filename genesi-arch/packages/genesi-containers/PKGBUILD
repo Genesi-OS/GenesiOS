@@ -1,0 +1,33 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# Phase 4.3 — Container widget in Plasma. A panel applet that lists running/
+# stopped Docker or Podman containers with one-click start/stop/restart, logs,
+# a shell, and the mapped ports — engine auto-detected (Docker daemon if up,
+# else rootless Podman). The widget is a thin front-end over the
+# `genesi-containers` CLI, which is the only thing that talks to the engine.
+pkgname=genesi-containers
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Plasma 6 widget to monitor and control Docker/Podman containers'
+arch=('any')
+url='https://github.com/zFreshy/GenesiOS'
+license=('GPL-3.0-or-later')
+depends=('python' 'plasma-workspace')
+optdepends=(
+    'docker: container engine (daemon-based)'
+    'podman: container engine (rootless, no daemon)'
+    'konsole: open container logs and shells in a terminal'
+)
+source=()
+sha256sums=()
+
+package() {
+    # Engine-agnostic CLI the widget drives
+    install -Dm755 "${startdir}/genesi-containers" \
+        "$pkgdir/usr/local/bin/genesi-containers"
+
+    # Plasma 6 applet
+    install -dm755 "$pkgdir/usr/share/plasma/plasmoids/org.genesi.containers"
+    cp -r "${startdir}/plasmoid/"* \
+        "$pkgdir/usr/share/plasma/plasmoids/org.genesi.containers/"
+}

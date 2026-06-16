@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# genesi-netinspect — start the mitmproxy web UI (mitmweb) as the desktop's
+# HTTP/HTTPS debug proxy, flip the system proxy to it for the session, and flip
+# it back when the inspector closes.
+#
+# mitmweb listens on 127.0.0.1:8080 (proxy) and serves its UI on
+# 127.0.0.1:8081, opening it in the browser automatically.
+set -euo pipefail
+
+HOST=127.0.0.1
+PORT="${GENESI_PROXY_PORT:-8080}"
+WEBPORT="${GENESI_MITMWEB_PORT:-8081}"
+
+if ! command -v mitmweb >/dev/null 2>&1; then
+    msg="mitmproxy is not installed. Install it with: sudo pacman -S mitmproxy"
+    command -v kdialog >/dev/null 2>&1 && kdialog --error "$msg" || echo "$msg" >&2
+    exit 1
+fi
+
+cleanup() { GENESI_PROXY_PORT="$PORT" genesi-proxy off >/dev/null 2>&1 || true; }
+trap cleanup EXIT INT TERM
+
+# Route the desktop through mitmproxy for the duration of this session.
+GENESI_PROXY_PORT="$PORT" genesi-proxy on >/dev/null 2>&1 || true
+
+echo ">>> Genesi Network Inspector"
+echo "    proxy : $HOST:$PORT      UI: http://$HOST:$WEBPORT"
+echo "    First run: open http://mitm.it through the proxy to install the CA cert"
+echo "    so HTTPS can be decrypted. Close this window to turn the proxy back off."
+
+exec mitmweb \
+    --listen-host "$HOST" --listen-port "$PORT" \
+    --web-host "$HOST" --web-port "$WEBPORT" \
+    "$@"

@@ -768,30 +768,44 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 - [ ] License/feasibility check of the Hermes Desktop fork (MIT base is fine;
       confirm bundled toolsets/providers don't drag incompatible deps)
 
-### 4.3 Container widget in Plasma
-- [ ] Taskbar widget showing running Docker containers
-- [ ] Start/Stop/Restart with one click
-- [ ] View container logs and mapped ports
-- [ ] CPU/RAM usage per container
+### 4.3 Container widget in Plasma ✅ (package `genesi-containers`)
+> Plasma 6 applet + a thin `genesi-containers` CLI; engine auto-detected
+> (Docker daemon if up, else rootless Podman). Ships on the live ISO too.
+- [x] Taskbar widget showing running Docker (and Podman) containers
+- [x] Start/Stop/Restart with one click
+- [x] View container logs (in a terminal) and mapped ports; + one-click shell
+- [~] CPU/RAM usage per container — deferred (live `docker stats` streaming)
 
-### 4.4 Project sandboxes (isolated workspaces)
-- [ ] Based on Distrobox/Toolbox
-- [ ] GUI to create/manage workspaces
-- [ ] Templates: "Java + Spring Boot", "React + Vite", "Python + FastAPI", etc.
-- [ ] Each workspace has its own isolated dependencies
-- [ ] Integration with Genesi IDE
+### 4.4 Project sandboxes (isolated workspaces) ✅ (package `genesi-sandboxes`)
+> PySide6/Kirigami GUI + `genesi-sandboxes` CLI on top of Distrobox.
+- [x] Based on Distrobox
+- [x] GUI to create/manage workspaces (create from template, open terminal, delete)
+- [x] Templates: Java + Spring Boot, React + Vite, Python + FastAPI, Go, Rust,
+      C/C++, plain Arch
+- [x] Each workspace has its own isolated dependencies (a Distrobox container)
+- [~] Integration with Genesi IDE — deferred (open a workspace in Genesi Code)
 
-### 4.5 Network inspection
-- [ ] mitmproxy pre-installed and configured
-- [ ] Simple GUI to intercept HTTP/HTTPS requests
-- [ ] Quick shortcut to enable/disable a debug proxy
-- [ ] Integration with the container widget (per-container traffic)
+### 4.5 Network inspection ✅ (package `genesi-netinspect`)
+> Ships mitmproxy + `genesi-proxy on|off|toggle`, which flips both the KDE/KIO
+> proxy and the env-var proxy to 127.0.0.1:8080 (reversible).
+- [x] mitmproxy pre-installed and configured
+- [x] Simple GUI to intercept HTTP/HTTPS requests — launches the mitmweb UI and
+      routes the desktop through it, flipping the proxy back off on exit
+- [x] Quick shortcut to enable/disable a debug proxy — `genesi-proxy toggle`
+      CLI + a "Genesi Debug Proxy (toggle)" menu entry
+- [~] Integration with the container widget (per-container traffic) — deferred
 
-### 4.6 Database explorer
-- [ ] Beekeeper Studio or DBeaver pre-installed
-- [ ] Dolphin plugin to connect to databases
-- [ ] Support for PostgreSQL, MySQL, SQLite, MongoDB
-- [ ] Quick table and data visualization
+### 4.6 Database explorer ✅ (package `genesi-db-explorer`)
+> `genesi-db` launcher + Dolphin service menu. DB Browser for SQLite ships by
+> default (in the repos); a full multi-engine client (DBeaver/Beekeeper) is a
+> one-click install from the Genesi Package Installer and the launcher prefers it.
+- [x] Beekeeper Studio or DBeaver pre-installed — DB Browser for SQLite by
+      default; DBeaver/Beekeeper installable on demand, auto-preferred when present
+- [x] Dolphin plugin to connect to databases — "Open in Genesi DB Explorer"
+      service menu for .sqlite/.db files
+- [~] Support for PostgreSQL, MySQL, SQLite, MongoDB — SQLite out of the box;
+      PostgreSQL/MySQL via DBeaver; MongoDB needs a DBeaver driver (deferred)
+- [x] Quick table and data visualization — via the launched client
 
 ---
 

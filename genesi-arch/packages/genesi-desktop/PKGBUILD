@@ -15,7 +15,7 @@
 # genesi repo has all of them, so the dependencies resolve normally.
 pkgname=genesi-desktop
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -36,6 +36,11 @@ depends=(
     'genesi-darkly'
     'genesi-grub-theme'
     'genesi-fastfetch'
+    # Phase 4.3-4.6 developer tools (this OS targets programmers).
+    'genesi-containers'    # Plasma widget for Docker/Podman
+    'genesi-sandboxes'     # Distrobox workspaces with stack templates
+    'genesi-netinspect'    # mitmproxy HTTP/HTTPS debug proxy + toggle
+    'genesi-db-explorer'   # DB client launcher + Dolphin integration
 )
 
 package() {

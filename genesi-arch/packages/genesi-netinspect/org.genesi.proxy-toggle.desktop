@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Debug Proxy (toggle)
+GenericName=Toggle Debug Proxy
+Comment=Turn the HTTP/HTTPS debug proxy (127.0.0.1:8080) on or off
+Exec=sh -c 'genesi-proxy toggle && notify-send "Genesi Debug Proxy" "Now: $(genesi-proxy status)"'
+Icon=network-wired
+Terminal=false
+Categories=Development;Network;
+Keywords=proxy;toggle;debug;mitmproxy;
+StartupNotify=false

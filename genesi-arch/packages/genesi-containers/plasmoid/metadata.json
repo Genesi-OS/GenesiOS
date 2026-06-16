@@ -1,0 +1,20 @@
+{
+    "KPlugin": {
+        "Id": "org.genesi.containers",
+        "Name": "Genesi Containers",
+        "Description": "Monitor and control Docker/Podman containers from the panel",
+        "Icon": "docker",
+        "Authors": [
+            {
+                "Name": "Genesi OS Team",
+                "Email": "dev@genesios.org"
+            }
+        ],
+        "Category": "System Information",
+        "License": "GPL-3.0-or-later",
+        "Version": "1.0.0",
+        "Website": "https://github.com/zFreshy/GenesiOS"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "KPackageStructure": "Plasma/Applet"
+}

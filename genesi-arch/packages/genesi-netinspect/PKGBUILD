@@ -1,0 +1,33 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# Phase 4.5 — Network inspection. Ships mitmproxy pre-configured as a desktop
+# HTTP/HTTPS debug proxy: a one-click "Network Inspector" that starts mitmweb
+# and routes the desktop through it (flipping the system proxy back off on
+# exit), plus a `genesi-proxy on|off|toggle` shortcut and a panel/menu toggle.
+pkgname=genesi-netinspect
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='HTTP/HTTPS debug proxy (mitmproxy) with one-click desktop proxy toggle'
+arch=('any')
+url='https://github.com/zFreshy/GenesiOS'
+license=('GPL-3.0-or-later')
+depends=('mitmproxy')
+optdepends=(
+    'konsole: terminal the inspector runs in'
+    'kdialog: graphical error when mitmproxy is missing'
+    'libnotify: desktop notification on proxy toggle'
+)
+source=()
+sha256sums=()
+
+package() {
+    install -Dm755 "${startdir}/genesi-proxy" \
+        "$pkgdir/usr/local/bin/genesi-proxy"
+    install -Dm755 "${startdir}/genesi-netinspect" \
+        "$pkgdir/usr/local/bin/genesi-netinspect"
+
+    install -Dm644 "${startdir}/org.genesi.netinspect.desktop" \
+        "$pkgdir/usr/share/applications/org.genesi.netinspect.desktop"
+    install -Dm644 "${startdir}/org.genesi.proxy-toggle.desktop" \
+        "$pkgdir/usr/share/applications/org.genesi.proxy-toggle.desktop"
+}

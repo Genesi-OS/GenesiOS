@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/vnd.sqlite3;application/x-sqlite3;
+Actions=openInGenesiDB;
+X-KDE-Priority=TopLevel
+
+[Desktop Action openInGenesiDB]
+Name=Open in Genesi DB Explorer
+Icon=server-database
+Exec=genesi-db %f

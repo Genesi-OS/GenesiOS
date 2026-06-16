@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi DB Explorer
+GenericName=Database Client
+Comment=Browse and query PostgreSQL, MySQL, SQLite and more
+Exec=genesi-db %f
+Icon=server-database
+Terminal=false
+MimeType=application/vnd.sqlite3;application/x-sqlite3;
+Categories=Development;Database;
+Keywords=database;sql;postgres;mysql;sqlite;mongo;dbeaver;
+StartupNotify=true

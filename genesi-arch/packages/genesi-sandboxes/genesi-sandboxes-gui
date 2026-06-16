@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Launch the Genesi Sandboxes GUI (Qt6/Kirigami).
+exec python3 /usr/share/genesi-sandboxes/app/genesi_sandboxes.py "$@"

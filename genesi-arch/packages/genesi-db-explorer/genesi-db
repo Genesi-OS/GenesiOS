@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# genesi-db — open the best available database GUI, optionally on a file.
+#
+# Picks a full multi-engine client (DBeaver / Beekeeper: PostgreSQL, MySQL,
+# SQLite, Mongo, …) when installed; always falls back to DB Browser for SQLite,
+# which ships by default. A file argument (*.sqlite/*.db) opens straight away.
+set -euo pipefail
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+FILE="${1:-}"
+
+# Opening a concrete SQLite file? DB Browser is the most direct viewer.
+if [ -n "$FILE" ] && [ -f "$FILE" ]; then
+    case "$FILE" in
+        *.sqlite|*.sqlite3|*.db|*.db3)
+            if have sqlitebrowser; then exec sqlitebrowser "$FILE"; fi
+            ;;
+    esac
+    # Non-SQLite or no sqlitebrowser: hand the file to a full client if present.
+    if have dbeaver; then exec dbeaver "$FILE"; fi
+    if have beekeeper-studio; then exec beekeeper-studio "$FILE"; fi
+    if have sqlitebrowser; then exec sqlitebrowser "$FILE"; fi
+fi
+
+# No file (or fell through): launch whatever client is available.
+for client in dbeaver beekeeper-studio sqlitebrowser; do
+    if have "$client"; then exec "$client"; fi
+done
+
+msg="No database client found. Install one from the Genesi Package Installer (DBeaver or DB Browser for SQLite)."
+if have kdialog; then kdialog --error "$msg"; else echo "$msg" >&2; fi
+exit 1

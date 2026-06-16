@@ -255,6 +255,13 @@ jobs:
             # to build in ~112s via test-packageinstaller.yml — well under the
             # 25-min per-package budget, so it won't stall the publish pipeline.
             "genesi-packageinstaller"
+            # Phase 4.3-4.6 developer tools. Self-contained (scripts + QML +
+            # PySide6 apps, no genesi-* build deps), so they slot in anywhere
+            # before the meta-package.
+            "genesi-containers"
+            "genesi-sandboxes"
+            "genesi-netinspect"
+            "genesi-db-explorer"
             # NOTE: genesi-code is NOT built here. Its package is 172 MB, which
             # exceeds GitHub's 100 MB git file limit, so it can't be committed to
             # the git-hosted repo. It is built and published to the separate

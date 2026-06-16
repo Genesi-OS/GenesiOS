@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Sandboxes
+GenericName=Developer Workspaces
+Comment=Create and manage isolated developer workspaces (Distrobox) from templates
+Exec=genesi-sandboxes-gui
+Icon=distrobox
+Terminal=false
+Categories=Development;System;Qt;
+Keywords=distrobox;container;workspace;sandbox;dev;toolbox;
+StartupNotify=true
