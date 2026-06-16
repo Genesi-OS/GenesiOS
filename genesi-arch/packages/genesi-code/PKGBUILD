@@ -13,12 +13,18 @@ pkgname=genesi-code
 # and surfaces in genesi-update automatically). Bump it here only as a manual
 # fallback for a local `makepkg`.
 pkgver=0.0.30
+# pkgrel 3: FIX "app loads and closes / won't launch". The release tarball ships
+# TWO files — `genesi-code` (the launcher script from resources/linux/launcher)
+# and `genesi-code.bin` (the real ELF). The launcher resolves its own dir and
+# execs `<dir>/genesi-code.bin`, but package() only installed the script, never
+# the .bin — so launch died with "genesi-code.bin: No such file or directory"
+# (the script's exec line). Install the .bin alongside the script.
 # pkgrel 2: launcher (genesi-code.sh) redirects stdio to a log file + /dev/null
 # so a menu/KRunner launcher closing its stdout pipe can't SIGPIPE-kill the
 # detached app — fixes "opens from a terminal but not from the menu". (pkgver is
 # overridden to the latest release by publish-apps.yml; this pkgrel forces the
 # rebuilt package to supersede the same-version one already in [genesi-apps].)
-pkgrel=2
+pkgrel=3
 pkgdesc='Genesi Code - local-first code editor / agentic terminal for Genesi OS (Warp fork)'
 arch=('x86_64')
 url='https://github.com/zFreshy/genesi-code'
@@ -68,7 +74,12 @@ sha256sums=('SKIP'
 package() {
     # Self-contained release binary (assets embedded via rust_embed). Installed
     # under /usr/lib so the /usr/bin entry can be the launcher wrapper below.
+    # The release tarball ships the launcher script (`genesi-code`) AND the real
+    # ELF (`genesi-code.bin`) side by side; the script execs the .bin from its own
+    # directory, so BOTH must land in /usr/lib/genesi-code. Missing the .bin is
+    # what made the app "load and close" (exec of a nonexistent binary).
     install -Dm755 "${srcdir}/genesi-code" "${pkgdir}/usr/lib/genesi-code/genesi-code"
+    install -Dm755 "${srcdir}/genesi-code.bin" "${pkgdir}/usr/lib/genesi-code/genesi-code.bin"
 
     # Launcher wrapper on PATH: forces software GL inside a VM (where the GPU
     # path renders an invisible window), passes through on bare metal.
