@@ -12,7 +12,16 @@ pkgver=1.6.2
 # 2026-06-08 (2): added a "DEV / TESTE (NVIDIA + CUDA)" catalog category for
 # validating the Turbo CUDA backend on real NVIDIA hardware (driver + cuda +
 # ollama-cuda). Pairs with the genesi-dev-cuda-setup helper on the live ISO.
-pkgrel=2
+# 2026-06-16 (3): finish the rebrand of the user-facing strings. The launcher
+# entry still showed "CachyOS Gestor de Software" — the .desktop had stale
+# duplicate Name[pt_BR]/Comment[pt_BR] CachyOS lines (plus CachyOS Name[locale]
+# for every other language) that won over the Genesi ones. Cleaned the .desktop
+# to Genesi-only, and rebranded the remaining visible "CachyOS" text (the
+# flatpak-repo notice + the Help page). Internal identifiers (the cachyos-pi
+# binary, the cachyos_pi:: bridge namespace, the polkit action id, install
+# paths) are intentionally left as-is — renaming them is a build-breaking
+# cross-cutting change, not user-visible.
+pkgrel=3
 pkgdesc='Genesi OS Package Installer - one-click app, gaming and local-AI setup'
 arch=(x86_64 aarch64)
 url='https://github.com/zFreshy/genesi-packageinstaller'
