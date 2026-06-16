@@ -798,7 +798,12 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 ## PHASE 5: Polish & Distribution ⬜ PENDING
 > Final polish and public release.
 
-- [ ] Custom Calamares slideshow & imagery (branding package already in place)
+- [x] Custom Calamares slideshow & imagery — Genesi leaf logo/icon, three
+      branded slides, and a Genesi welcome image. Branding now has a **single
+      source of truth** (`genesi-calamares-config`): the `genesi-calamares-branding`
+      package and the live ISO read the exact same dir, so an installed system
+      can no longer fall back to CachyOS art; `customize_airootfs.sh` copies it
+      authoritatively (no fragile CachyOS overlay).
 - [ ] Official Genesi OS website
 - [ ] Complete end-user documentation
 - [ ] Download page with ISOs
