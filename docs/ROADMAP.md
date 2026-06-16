@@ -852,26 +852,49 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 > Support / Project links) but built around a one-click **App Installer** and a
 > **Tweaks/Settings** center. The everyday front door of Genesi OS.
 
-### 6.1 Welcome hub (Hello-style)
-- [ ] Shared codebase with the live-ISO welcome; a flag hides the installer and
-      shows the post-install features instead
-- [ ] Documentation / Support / Project sections (read-me, version info, wiki,
-      forum, contribute, donate) — like CachyOS Hello
-- [ ] Language selector + "open on startup" toggle
+### 6.1 Welcome hub (Hello-style) 🟦 (package `genesi-welcome`, pkgrel 4)
+> Reworked from the 4-button stub into a CachyOS-Hello-style hub. **One app, two
+> modes**, detected at runtime via `is_live()` (`/run/archiso` or `archiso`/
+> `copytoram` on the kernel cmdline).
+- [x] Shared codebase, live vs installed: the **"Install Genesi OS" button shows
+      ONLY on the live ISO**; the installed system hides it and is the everyday
+      hub. (Live also gets a "Repair installed system" tool — see 6.3.)
+- [x] Documentation / Support / Project sections — Read me, Wiki, Release info,
+      Forum/Issues, Software (→ App Installer), Get involved, Development, Donate
+      (currently point at the GitHub repo/wiki/issues until the docs site exists)
+- [x] Language selector (pt-BR / English, rebuilds the UI live) + "launch at
+      start" toggle (manages a per-user `~/.config/autostart` override)
+- [ ] Fuller i18n (more languages) and a real docs site to point the doc buttons at
 
-### 6.2 App Installer (one-click) ⭐ flagship
-- [ ] Curated catalog (browsers, dev tools, media, comms, …) — one click
-      installs, pacman/flatpak under the hood, with progress + rollback
-- [ ] **Gaming bundle**: one click installs GPU drivers + Steam + Proton/
-      ProtonUp + Lutris + MangoHud + gamemode (the CachyOS gaming set), with the
-      right driver auto-picked per detected GPU
-- [ ] **AI bundle (Genesi differentiator)**: one click installs Ollama + pulls a
-      default model — instant local AI, and AI Mode kicks in automatically
+### 6.2 App Installer (one-click) ⭐ flagship 🟦
+- [~] Curated catalog — the "Install Apps" button launches the **Genesi Package
+      Installer** (`genesi-packageinstaller`); a Genesi-curated, one-click
+      catalog with progress/rollback on top of it is still pending
+- [~] **Gaming bundle** — the Maintenance page's "Install Gaming Packages" pulls
+      the CachyOS gaming set (`cachyos-gaming-meta` + `cachyos-gaming-applications`);
+      per-GPU driver auto-pick + a dedicated one-click card still pending
+- [ ] **AI bundle (Genesi differentiator)** — one click installs Ollama + pulls a
+      default model so local AI + AI Mode work instantly (pending)
 
-### 6.3 Tweaks / Settings center
-- [ ] Basic system settings like CachyOS (drivers, kernel, services, mirrors,
-      shell, performance toggles) — safe, reversible, clearly described
-- [ ] Genesi performance presets, including an AI Mode profile toggle
+### 6.3 Tweaks / Maintenance center 🟦
+> A second page in the Welcome app (✕ back ↔ hub), modeled on CachyOS Hello's
+> fixes/tweaks screen. Each fix runs in a terminal (visible output + the sudo
+> prompt); service toggles reflect `systemctl is-enabled` and flip via pkexec.
+- [x] **Fixes**: Update System, Reinstall All Packages, Reset Keyrings,
+      `pacman-key --init`, Remove Pacman DB Lock, Clean Package Cache, Remove
+      Orphan Packages, Install Gaming Packages, Install Snapper Support, Refresh
+      Mirrors, Change DNS (systemd-resolved drop-in, reversible), Install SpoofDPI
+- [x] **Service toggles**: Profile-sync-daemon (user), Systemd-oomd, Bpftune,
+      Ananicy Cpp, Bluetooth
+- [x] **Applications**: launch the Package Installer and the Kernel Manager
+- [x] **🛟 Repair installed system (live ISO only)** — for when an install is too
+      out-of-date to boot: the user picks the root partition, and it mounts +
+      `arch-chroot`s in to `pacman-key --init/populate` + a full `pacman -Syu`,
+      then unmounts. (Interactive + guarded; the user confirms the partition.)
+- [ ] Genesi performance presets / AI Mode profile toggle surfaced here (the AI
+      Mode Monitor owns profiles today — link it in)
+- [ ] Move destructive fixes behind a confirm step + a richer settings UI
+      (drivers, kernel, shell) like a full control center
 
 ### 6.4 Integration
 - [ ] Launches the AI Mode Monitor (2.9), Genesi Code (4.1) and Genesi Hermes (4.2)

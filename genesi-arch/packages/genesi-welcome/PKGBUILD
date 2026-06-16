@@ -12,7 +12,14 @@ pkgver=1.0.0
 # 2026-06-03: bumped 2 -> 3. The "Modo IA" button was a dead stub (`pass`);
 # now it launches the AI Mode Monitor (genesi-ai-monitor), falling back to the
 # CLI status in a terminal.
-pkgrel=3
+# 2026-06-16: bumped 3 -> 4. CachyOS-Hello-style rework: the SAME app now
+# detects live-ISO vs installed (only the live medium shows "Install Genesi
+# OS"), adds Documentation/Support/Project link sections, a language selector,
+# a "launch at start" toggle, an "Install Apps" shortcut, and a Maintenance
+# page (update, reinstall all, reset keyrings, pacman-key --init, clear db lock,
+# clean cache, remove orphans, gaming bundle, Snapper, mirrors, DNS, SpoofDPI,
+# service toggles) plus a live-ISO "repair installed system" (chroot) helper.
+pkgrel=4
 pkgdesc="Welcome application for Genesi OS"
 arch=('any')
 url="https://github.com/zFreshy/GenesiOS"
