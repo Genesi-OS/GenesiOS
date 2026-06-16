@@ -786,14 +786,24 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 - [~] Integration with Genesi IDE — deferred (open a workspace in Genesi Code)
 
 ### 4.5 Network inspection ✅ (package `genesi-netinspect`)
-> Ships mitmproxy + `genesi-proxy on|off|toggle`, which flips both the KDE/KIO
-> proxy and the env-var proxy to 127.0.0.1:8080 (reversible).
+> **Genesi API Inspector** — a full HTTP/HTTPS interception workbench (the free,
+> scriptable Burp-Suite equivalent on Linux) built on mitmproxy/mitmweb. Plus
+> `genesi-proxy on|off|toggle`, which flips both the KDE/KIO and env-var proxy
+> to 127.0.0.1:8080 (reversible).
 - [x] mitmproxy pre-installed and configured
-- [x] Simple GUI to intercept HTTP/HTTPS requests — launches the mitmweb UI and
-      routes the desktop through it, flipping the proxy back off on exit
+- [x] Burp-style interception UI — live flow list, **intercept/pause + edit** a
+      request before it's sent, inspect request/response, and **replay/resend**
+      (Burp's "Repeater"); Python addons cover the "extensions" role. Launches
+      mitmweb and routes the desktop through it, flipping the proxy off on exit.
+- [x] **HTTPS/API decryption** — `genesi-netinspect cert` trusts the mitmproxy
+      CA system-wide (+ a "Trust certificate" desktop action); `untrust` reverses
+      it. Without it HTTPS can't be decrypted.
 - [x] Quick shortcut to enable/disable a debug proxy — `genesi-proxy toggle`
       CLI + a "Genesi Debug Proxy (toggle)" menu entry
-- [~] Integration with the container widget (per-container traffic) — deferred
+- [~] Per-app trust stores (Firefox/Java keep their own) + per-container traffic
+      integration with the container widget — deferred
+- [ ] Optional native Genesi UI over mitmproxy's addon API (Scanner/Intruder-
+      style helpers) if we ever outgrow mitmweb — mitmproxy stays the engine
 
 ### 4.6 Database explorer ✅ (package `genesi-db-explorer`)
 > `genesi-db` launcher + Dolphin service menu. DB Browser for SQLite ships by

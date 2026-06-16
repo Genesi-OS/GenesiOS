@@ -1,32 +1,84 @@
 #!/usr/bin/env bash
-# genesi-netinspect — start the mitmproxy web UI (mitmweb) as the desktop's
-# HTTP/HTTPS debug proxy, flip the system proxy to it for the session, and flip
-# it back when the inspector closes.
+# genesi-netinspect — Genesi API Inspector.
 #
-# mitmweb listens on 127.0.0.1:8080 (proxy) and serves its UI on
-# 127.0.0.1:8081, opening it in the browser automatically.
+# A full HTTP/HTTPS interception workbench (the free, scriptable Burp-Suite
+# equivalent on Linux) built on mitmproxy. mitmweb gives you the Burp-style
+# workflow: a live flow list, intercept/pause + edit a request before it goes
+# out, inspect request/response, and replay/resend (Burp's "Repeater"); Python
+# addons cover the "extensions" role.
+#
+# This wrapper makes it one-click: it routes the desktop through the proxy for
+# the session (and flips it back on exit), and can trust mitmproxy's CA system
+# wide so HTTPS/API traffic actually decrypts instead of erroring.
+#
+# Usage:
+#   genesi-netinspect            start the inspector (proxy on for the session)
+#   genesi-netinspect cert       trust the mitmproxy CA system-wide (HTTPS)
+#   genesi-netinspect untrust    remove the trusted CA again
 set -euo pipefail
 
 HOST=127.0.0.1
 PORT="${GENESI_PROXY_PORT:-8080}"
 WEBPORT="${GENESI_MITMWEB_PORT:-8081}"
+CA="$HOME/.mitmproxy/mitmproxy-ca-cert.pem"
+ANCHOR=/etc/ca-certificates/trust-source/anchors/genesi-mitmproxy.pem
 
-if ! command -v mitmweb >/dev/null 2>&1; then
-    msg="mitmproxy is not installed. Install it with: sudo pacman -S mitmproxy"
-    command -v kdialog >/dev/null 2>&1 && kdialog --error "$msg" || echo "$msg" >&2
+die() {
+    command -v kdialog >/dev/null 2>&1 && kdialog --error "$1" || echo "$1" >&2
     exit 1
-fi
+}
+
+command -v mitmweb >/dev/null 2>&1 || \
+    die "mitmproxy is not installed. Install it with: sudo pacman -S mitmproxy"
+
+ensure_ca() {
+    # mitmproxy generates its CA the first time any of its tools runs. Trigger
+    # that headlessly if we don't have a CA yet.
+    if [ ! -f "$CA" ]; then
+        echo ">>> Generating the mitmproxy CA…"
+        timeout 5 mitmdump --listen-port 0 -q >/dev/null 2>&1 || true
+    fi
+    [ -f "$CA" ] || die "Could not generate the mitmproxy CA (~/.mitmproxy)."
+}
+
+case "${1:-run}" in
+  cert)
+    ensure_ca
+    echo ">>> Trusting the mitmproxy CA system-wide (asks for your password)…"
+    sudo install -Dm644 "$CA" "$ANCHOR"
+    sudo update-ca-trust
+    echo ">>> Done. HTTPS/API traffic through the proxy now decrypts."
+    echo "    (Some apps with their own trust store — Firefox, Java — still need"
+    echo "     the CA imported separately.)"
+    exit 0
+    ;;
+  untrust)
+    echo ">>> Removing the trusted mitmproxy CA (asks for your password)…"
+    sudo rm -f "$ANCHOR"
+    sudo update-ca-trust
+    echo ">>> Removed."
+    exit 0
+    ;;
+  run) ;;
+  *) die "usage: genesi-netinspect {run|cert|untrust}" ;;
+esac
+
+ensure_ca
 
 cleanup() { GENESI_PROXY_PORT="$PORT" genesi-proxy off >/dev/null 2>&1 || true; }
 trap cleanup EXIT INT TERM
 
-# Route the desktop through mitmproxy for the duration of this session.
+# Route the desktop through the inspector for the duration of this session.
 GENESI_PROXY_PORT="$PORT" genesi-proxy on >/dev/null 2>&1 || true
 
-echo ">>> Genesi Network Inspector"
-echo "    proxy : $HOST:$PORT      UI: http://$HOST:$WEBPORT"
-echo "    First run: open http://mitm.it through the proxy to install the CA cert"
-echo "    so HTTPS can be decrypted. Close this window to turn the proxy back off."
+echo ">>> Genesi API Inspector (mitmproxy)"
+echo "    proxy : $HOST:$PORT        UI: http://$HOST:$WEBPORT"
+if ! [ -f "$ANCHOR" ]; then
+    echo "    HTTPS not decrypting? Run once:  genesi-netinspect cert"
+    echo "    (or open http://mitm.it through the proxy to install the CA per-app)"
+fi
+echo "    In the UI: pause/intercept + edit a request, inspect it, or replay it."
+echo "    Close this window to turn the proxy back off."
 
 exec mitmweb \
     --listen-host "$HOST" --listen-port "$PORT" \

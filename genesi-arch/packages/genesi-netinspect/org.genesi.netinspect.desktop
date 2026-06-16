@@ -1,11 +1,16 @@
 [Desktop Entry]
 Type=Application
-Name=Genesi Network Inspector
-GenericName=HTTP/HTTPS Debug Proxy
-Comment=Intercept and inspect HTTP/HTTPS traffic with mitmproxy; toggles the system proxy automatically
+Name=Genesi API Inspector
+GenericName=HTTP/HTTPS Interception Proxy
+Comment=Intercept, inspect, edit and replay HTTP/HTTPS & API traffic (Burp-style, powered by mitmproxy)
 Exec=konsole --hold -e genesi-netinspect
 Icon=network-wired
 Terminal=false
-Categories=Development;Network;Qt;
-Keywords=proxy;mitmproxy;http;https;intercept;debug;network;
+Categories=Development;Network;Security;
+Keywords=proxy;mitmproxy;http;https;api;intercept;burp;repeater;debug;network;
 StartupNotify=true
+Actions=trustca;
+
+[Desktop Action trustca]
+Name=Trust HTTPS interception certificate
+Exec=konsole --hold -e genesi-netinspect cert

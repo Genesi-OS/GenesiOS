@@ -1,13 +1,17 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 #
-# Phase 4.5 — Network inspection. Ships mitmproxy pre-configured as a desktop
-# HTTP/HTTPS debug proxy: a one-click "Network Inspector" that starts mitmweb
-# and routes the desktop through it (flipping the system proxy back off on
-# exit), plus a `genesi-proxy on|off|toggle` shortcut and a panel/menu toggle.
+# Phase 4.5 — Network inspection. "Genesi API Inspector": a full HTTP/HTTPS
+# interception workbench (the free, scriptable Burp-Suite equivalent on Linux)
+# built on mitmproxy/mitmweb — live flow list, intercept + edit a request,
+# inspect, and replay/resend (Burp's Repeater). The wrapper routes the desktop
+# through it for the session (flips back on exit), and `genesi-netinspect cert`
+# trusts the mitmproxy CA system-wide so HTTPS/API traffic actually decrypts.
+# Plus a `genesi-proxy on|off|toggle` shortcut and a panel/menu toggle.
+# pkgrel 2: rework into the Burp-style API Inspector + cert trust subcommand.
 pkgname=genesi-netinspect
 pkgver=1.0.0
-pkgrel=1
-pkgdesc='HTTP/HTTPS debug proxy (mitmproxy) with one-click desktop proxy toggle'
+pkgrel=2
+pkgdesc='Genesi API Inspector — Burp-style HTTP/HTTPS interception proxy (mitmproxy)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
 license=('GPL-3.0-or-later')

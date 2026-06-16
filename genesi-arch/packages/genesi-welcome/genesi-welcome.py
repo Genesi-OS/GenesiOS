@@ -501,7 +501,9 @@ class GenesiWelcome(QMainWindow):
             self.run_user(["genesi-ai-mode", "on"])
 
     def launch_pkginstaller(self):
-        for b in ("genesi-packageinstaller", "cachyos-packageinstaller"):
+        # The Genesi Package Installer binary is `cachyos-pi` (fork's internal
+        # name kept to avoid breaking its build); try the friendly names too.
+        for b in ("cachyos-pi", "genesi-packageinstaller", "cachyos-packageinstaller"):
             if shutil.which(b):
                 self.run_user([b]); return
         self.open_url(REPO)
