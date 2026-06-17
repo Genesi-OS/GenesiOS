@@ -19,7 +19,12 @@ pkgver=1.0.0
 # 0.55 failed to parse it and the broken `general {}` block cascaded into bogus
 # "dwindle:pseudotile does not exist" / "togglesplit dispatcher" errors on first
 # Hyprland launch. Now `rgba(00aaffee)`.
-pkgrel=2
+# pkgrel 3: (1) render caelestia under the Qt Quick SOFTWARE backend inside VMs
+# (systemd-detect-virt != none) — on VirtualBox the GPU/EGL path crashed
+# Quickshell to a black screen; real hardware still gets GPU rendering/blur.
+# (2) stop forcing the Genesi wallpaper — use caelestia's own default so its
+# Material You palette comes from the shipped caelestia look.
+pkgrel=3
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
