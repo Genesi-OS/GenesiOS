@@ -187,13 +187,28 @@ jobs:
 
       - name: 💾 Liberar espaço em disco
         run: |
-          df -h / /mnt || true
-          # NOTE: this runs INSIDE the cachyos container, so the host's
-          # preinstalled tooling (dotnet/android/ghc) isn't reachable here — the
-          # real win is redirecting the build dir to /mnt below. Still clear the
-          # pacman cache, which does live in the container.
+          echo "Before cleanup:"; df -h / /mnt || true
+          # CRITICAL: on the runners GitHub actually assigns here, /mnt is NOT a
+          # separate large disk — it's the SAME device as / (df shows /dev/root
+          # mounted at both / and /mnt). So the build/out bind-mount onto /mnt
+          # (below) buys ZERO extra space, and mkarchiso's peak need (uncompressed
+          # airootfs + pkg cache + squashfs + the ISO copy ~= 18-20 GB) overflows
+          # the ~15 GB free on the smaller runners. That's the
+          #   xorriso : FAILURE : Image size ... exceeds free space on media
+          # failure (run 27702399364, 2026-06-17): only 419 MB were left for the
+          # ISO write. It's intermittent because runner disk size varies per run.
+          #
+          # We run INSIDE the cachyos container, so the host's preinstalled junk
+          # (dotnet/android/ghc on /) isn't reachable. But the host's
+          # hostedtoolcache IS bind-mounted in as /__t — it holds ~8 GB of
+          # Python/Node/Go/etc. toolchains this ISO build never uses. Wiping it
+          # reclaims real space on /dev/root, the very disk the build writes to.
+          echo "🧹 Reclaiming the (unused) hostedtoolcache mounted at /__t…"
+          du -sh /__t 2>/dev/null || true
+          rm -rf /__t/* 2>/dev/null || true
+          # Also drop the container's pacman download cache.
           pacman -Scc --noconfirm || true
-          df -h / /mnt || true
+          echo "After cleanup:"; df -h / /mnt || true
 
       - name: 🔧 Preparar ambiente de build
         run: |
@@ -236,12 +251,15 @@ jobs:
           chown -R builder:builder "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-          # buildiso.sh hard-codes work_dir="genesi-arch/build" and out="genesi-arch/out",
-          # both on the runner's small root disk (~20 GB) — mksquashfs ran it out
-          # of space. Bind-mount those onto the large /mnt disk (mounted into the
-          # container via the job's container options) so the heavy squashfs work
-          # and the final ISO land there instead. Bind mounts survive the scripts'
-          # rm/mkdir of the dir CONTENTS, unlike a symlink.
+          # buildiso.sh hard-codes work_dir="genesi-arch/build" and out="genesi-arch/out".
+          # Bind-mount those onto /mnt so that IF the runner gives /mnt its own
+          # disk the heavy squashfs work + final ISO land there. NOTE: on most
+          # runners assigned here /mnt is the SAME device as / (see the disk-space
+          # step above), so this is a no-op for capacity — the real headroom comes
+          # from wiping the hostedtoolcache there, not from this redirect. Kept
+          # because it's harmless and still helps on the occasional split-disk
+          # runner. Bind mounts survive the scripts' rm/mkdir of the dir CONTENTS,
+          # unlike a symlink.
           mkdir -p /mnt/iso-build /mnt/iso-out
           mkdir -p "$GITHUB_WORKSPACE/genesi-arch/build" "$GITHUB_WORKSPACE/genesi-arch/out"
           mount --bind /mnt/iso-build "$GITHUB_WORKSPACE/genesi-arch/build"
