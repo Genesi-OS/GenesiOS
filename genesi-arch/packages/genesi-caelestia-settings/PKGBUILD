@@ -30,7 +30,11 @@ pkgver=1.0.0
 # default via /etc/skel qt6ct.conf + kdeglobals + gtk-3.0/settings.ini. Safe in
 # /etc/skel: genesi-kde-settings strips its own skel, so nothing conflicts. Icons
 # are CPU-rendered, so this is visible even under the VM software backend.
-pkgrel=4
+# pkgrel 5: default terminal kitty -> foot. kitty needs OpenGL and crashed to
+# nothing inside VirtualBox (same GL gap that black-screened Quickshell); foot is
+# a pure-software Wayland terminal that renders in VMs and is light on real
+# hardware, so SUPER+Return works everywhere.
+pkgrel=5
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -40,7 +44,8 @@ depends=(
     'caelestia-shell'
     'genesi-settings'          # ships /usr/share/wallpapers/genesi/wallpaper.png
     'polkit-kde-agent'
-    'kitty'                    # $terminal referenced by hyprland.conf
+    'foot'                     # $terminal in hyprland.conf — no-GL Wayland term
+                               # that renders in VMs (kitty needs OpenGL -> crash)
     'dolphin'                  # $fileManager
     'fuzzel'                   # launcher fallback + clipboard picker
     'cliphist'
