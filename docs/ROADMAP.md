@@ -850,8 +850,11 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 > Like CachyOS's installer — let the user pick their DE at install time.
 
 - [x] Add a "Choose your desktop" step to Calamares (the `packagechooser` module,
-      `method: netinstall-select`, with screenshots + descriptions) — already
-      present; extended with the Hyprland option
+      `method: netinstall-select`, with screenshots + descriptions). The
+      `packagechooser.conf` existed (inherited from CachyOS) but was **never wired
+      into `settings.conf`** — no `desktop` instance, not in the `show` sequence —
+      so the step never appeared and netinstall silently installed only Plasma.
+      Fixed: added the `packagechooser@desktop` instance + sequence step.
 - [x] **Option 1: KDE Plasma 6 (default)** — current Genesi setup: Klassy 14px
       rounded windows, Darkly glassmorphism, Ant-Dark popups, Kickoff menu
 - [x] **Option 2: Hyprland + caelestia-shell** — Wayland tiling compositor with
@@ -863,7 +866,27 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
       `genesi-libcava`, `genesi-materialyoucolor`, `genesi-ttf-rubik-vf`, plus
       `genesi-caelestia-settings` (Genesi Hyprland config/branding). `quickshell`
       is now in Arch [extra], so it is used directly (no `quickshell-git` build)
-- [ ] (Future) Additional options: GNOME, COSMIC, Sway, etc.
+- [ ] **Port the remaining DE options to Genesi** — the chooser still lists 10
+      entries inherited from CachyOS (CuteFish, Xfce4, Sway, Wayfire, i3 Window
+      Manager, GNOME, Openbox, bspwm, Kofuku edition, LXQT). They are **dead
+      placeholders today**: none has a matching group in `netinstall.yaml`, so with
+      `netinstall-select` picking one deselects KDE-Desktop and selects a
+      non-existent group → the install ends up with **no desktop**. Decision
+      (2026-06-17): keep them visible and port each one properly, same standard as
+      Plasma/Hyprland. Per DE that means:
+      - [ ] a real `netinstall.yaml` group (compositor/DE + its session +
+            display-manager bits) so the option actually installs a working desktop
+      - [ ] Genesi branding (wallpaper + Material-You/colour scheme, GRUB, SDDM,
+            fastfetch) consistent with the other DEs
+      - [ ] the Genesi apps suite carried over (welcome, updater, AI Mode Monitor,
+            package installer, dev tools) — these already come from the always-on
+            "Genesi OS" group, so mostly free
+      - [ ] DE-native equivalents of the Genesi **widgets** (AI Mode applet,
+            containers/Docker widget) where the toolkit allows; otherwise surface
+            them via their standalone apps
+      - [ ] `genesi-set-session.sh` extended to default the new DE's session
+      - [ ] a real screenshot for the chooser (replace the CachyOS-era image)
+      (Also future: COSMIC.)
 - [x] SDDM session entries auto-registered for whatever the user picked
       (`hyprland.desktop` ships with the `hyprland` package; `plasmax11` with
       Plasma — both land in the SDDM menu automatically)
@@ -880,11 +903,26 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
       (follow-up — welcome already installs and runs on both DEs)
 - [ ] Doc page explaining the DE choice and when each one shines
 
-> Known limitations / follow-ups: Hyprland (Wayland-only) can fail on a broken
-> Wayland stack in some VMs — pick Plasma there (same caveat as Plasma Wayland).
-> The AI Mode **Plasma widget** is Plasma-only; on Hyprland AI Mode is reached via
-> the Monitor app (a Quickshell equivalent is future work). The packagechooser
-> screenshot `images/hyprland.png` is a placeholder pending a real capture.
+> What the Hyprland option actually carries over (be precise — it is NOT a 1:1
+> clone of the Plasma experience):
+> - ✅ **Genesi apps**: welcome, update notifier, package installer, AI Mode
+>   (daemon + Monitor app), MemPalace, llama.cpp/Turbo, dev tools (containers,
+>   sandboxes, netinspect, db-explorer) — all from the always-on "Genesi OS" group.
+> - ✅ **Cross-DE branding**: Genesi wallpaper + Material-You scheme (set by the
+>   caelestia config), GRUB theme, SDDM, fastfetch greeting, os-release.
+> - ❌ **Plasma-only theming does NOT apply**: `genesi-klassy` (KWin window
+>   decoration), `genesi-darkly` (Plasma widget style/glassmorphism) and
+>   `genesi-kde-settings` are KWin/Plasma-specific — on Hyprland the look comes
+>   from caelestia-shell instead. They still install (they're in the shared group)
+>   but are inert under Hyprland.
+> - ❌ **Genesi Plasma widgets have no Hyprland equivalent yet**: the AI Mode
+>   applet and the containers/Docker widget are Plasma 6 applets. On Hyprland the
+>   AI Mode is reached via the Monitor app; Quickshell equivalents are future work
+>   (tracked above under the per-DE "widgets" item).
+>
+> Other caveats: Hyprland (Wayland-only) can fail on a broken Wayland stack in some
+> VMs — pick Plasma there. The chooser screenshot `images/hyprland.png` is a
+> placeholder pending a real capture.
 
 ---
 
