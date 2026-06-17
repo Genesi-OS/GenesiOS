@@ -18,4 +18,31 @@ post_upgrade() {
             systemctl restart "$service"
         fi
     done
+
+    fix_selection_contrast
+}
+
+# Heal the selected-item text colour on systems installed before the
+# readable-selection fix. The skel kdeglobals (white selected text) only seeds
+# NEW users; an existing ~/.config/kdeglobals keeps its old
+# [Colors:Selection] ForegroundNormal (dark -> near-black selected text, the
+# "can't read selected items in the Package Installer" bug). genesi-apply-theme
+# .sh can't fix it either: it self-deletes after the first login, and
+# plasma-apply-colorscheme is a no-op once "Genesi" is already the active
+# scheme. So force the selection foregrounds to white per existing user here,
+# on every `pacman -Syu`. Only the selection foreground keys are touched; the
+# rest of the user's palette is left alone. Takes effect on the next login (or
+# immediately for apps reopened afterwards).
+fix_selection_contrast() {
+    command -v kwriteconfig6 >/dev/null 2>&1 || return 0
+    local home u
+    for home in /home/*; do
+        [ -f "$home/.config/kdeglobals" ] || continue
+        u=$(stat -c %U "$home" 2>/dev/null) || continue
+        id "$u" >/dev/null 2>&1 || continue
+        runuser -u "$u" -- kwriteconfig6 --file kdeglobals \
+            --group "Colors:Selection" --key ForegroundNormal "255,255,255" 2>/dev/null || true
+        runuser -u "$u" -- kwriteconfig6 --file kdeglobals \
+            --group "Colors:Selection" --key ForegroundActive "255,255,255" 2>/dev/null || true
+    done
 }

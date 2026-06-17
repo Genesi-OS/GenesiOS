@@ -43,7 +43,15 @@ pkgver=1.3.4
 # went near-black and vanished); now it matches the Genesi.colors scheme —
 # solid brand green (29,158,117) with white text. Both are pure skel changes,
 # so the package version MUST bump or `pacman -Syu` won't deliver them.
-pkgrel=31
+# 2026-06-17 (32): the pkgrel-31 skel fix only reaches NEW users — an existing
+# ~/.config/kdeglobals keeps its old dark [Colors:Selection] foreground, so
+# systems installed before 31 still show near-black selected text (e.g. the
+# Package Installer). genesi-apply-theme.sh can't help (self-deletes; and
+# plasma-apply-colorscheme is a no-op once "Genesi" is active). Wire the
+# package install scriptlet (it was never referenced -> never ran) and add a
+# post_upgrade that forces the selection foregrounds to white per existing
+# user, so the fix reaches already-installed systems on `pacman -Syu`.
+pkgrel=32
 epoch=1
 groups=(genesi)
 arch=('any')
@@ -67,6 +75,11 @@ optdepends=('libluv: for topmem'
             'power-profiles-daemon: For game-performance')
 provides=('ntsync-common' 'cachyos-settings')
 conflicts=('cachyos-settings')
+# Scriptlet: enables the perf services on install and, on upgrade, heals the
+# selected-item text colour for users created before the readable-selection fix
+# (see the .install + the pkgrel-32 note above). This was previously NOT wired,
+# so it never ran.
+install=cachyos-settings.install
 
 package() {
   # Copy from the git repo
