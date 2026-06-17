@@ -398,6 +398,26 @@ jobs:
               fi
               exit 1
             fi
+
+            # Install just-built LEAF packages that LATER packages need at BUILD
+            # time. caelestia-shell's plugin/CMakeLists.txt runs
+            # pkg_check_modules(cava), which needs libcava's cava.pc on disk at
+            # configure time. genesi-libcava is built earlier in THIS run but
+            # isn't in any repo, and caelestia-shell builds with -d, so without
+            # this the configure step dies "Package 'cava' not found" (the cause
+            # of CI run #177 failing). These four repackage AUR libs/fonts under
+            # provides= and conflict with nothing pre-installed, so installing
+            # them into the build container is safe. The loop body runs as root
+            # (only makepkg drops to `builder`), so pacman -U works here.
+            case "$pkg" in
+              genesi-app2unit|genesi-libcava|genesi-materialyoucolor|genesi-ttf-rubik-vf)
+                builtpkg=$(ls -1t "repo/$pkg"-*.pkg.tar.zst 2>/dev/null | grep -v -- '-debug-' | head -1)
+                if [ -n "$builtpkg" ]; then
+                  echo "Installing $builtpkg into the build container (build-time dep for caelestia)"
+                  pacman -U --noconfirm --overwrite='*' "$builtpkg" \
+                    || echo "::warning::could not install $builtpkg into container"
+                fi ;;
+            esac
             echo "::endgroup::"
           done
 
