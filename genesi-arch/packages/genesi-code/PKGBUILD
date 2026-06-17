@@ -13,6 +13,13 @@ pkgname=genesi-code
 # and surfaces in genesi-update automatically). Bump it here only as a manual
 # fallback for a local `makepkg`.
 pkgver=0.0.30
+# pkgrel 5: FIX "runs from a terminal but loads-and-closes from the menu". The
+# pkgrel-4 plain symlink runs fine from a terminal but a menu/plasmoid launch
+# gives the app a stdout pipe that dies with the launcher's transient scope,
+# SIGPIPE-killing the app (it logs to stdout constantly) right after its window
+# appears. Restore a thin /usr/bin wrapper that redirects stdio to a log before
+# exec'ing the real launcher — but WITHOUT the `setsid` that broke pkgrel 2/3.
+# The redirect both keeps the app alive and leaves a crash log for next time.
 # pkgrel 4: FIX "opens when run directly, but `genesi-code` shows nothing". The
 # /usr/bin entry was a packaging wrapper that wrapped the real launcher in
 # `setsid -f ... >>log 2>&1`, detaching the app into a new session and killing
@@ -31,7 +38,7 @@ pkgver=0.0.30
 # detached app — fixes "opens from a terminal but not from the menu". (pkgver is
 # overridden to the latest release by publish-apps.yml; this pkgrel forces the
 # rebuilt package to supersede the same-version one already in [genesi-apps].)
-pkgrel=4
+pkgrel=5
 pkgdesc='Genesi Code - local-first code editor / agentic terminal for Genesi OS (Warp fork)'
 arch=('x86_64')
 url='https://github.com/zFreshy/genesi-code'
@@ -69,10 +76,12 @@ source=(
     "genesi-code-${pkgver}-x86_64.tar.zst::https://github.com/zFreshy/genesi-code/releases/download/v${pkgver}/genesi-code-linux-x86_64.tar.zst"
     'genesi-code.desktop'
     'genesi-code.svg'
+    'genesi-code.sh'
 )
 # The release asset is first-party (our own CI) and the version tag pins it, so
 # we don't carry a churning checksum here.
 sha256sums=('SKIP'
+            'SKIP'
             'SKIP'
             'SKIP')
 
@@ -86,17 +95,15 @@ package() {
     install -Dm755 "${srcdir}/genesi-code" "${pkgdir}/usr/lib/genesi-code/genesi-code"
     install -Dm755 "${srcdir}/genesi-code.bin" "${pkgdir}/usr/lib/genesi-code/genesi-code.bin"
 
-    # /usr/bin entry: a symlink to the release launcher, NOT a second wrapper.
-    # The launcher resolves its own location with `readlink -f "$0"` precisely so
-    # it can be symlinked onto PATH — invoking it through this symlink is byte-for
-    # -byte the same code path as running /usr/lib/genesi-code/genesi-code
-    # directly (which works). It already handles VM software-GL fallback and execs
-    # the sibling .bin. The previous packaging wrapper added `setsid -f` + a stdio
-    # redirect on top of this, which detached the process into a new session and
-    # broke the GUI launch ("opens when run directly, but `genesi-code` from the
-    # menu/terminal shows nothing"). Drop it and use the canonical launcher.
-    install -dm755 "${pkgdir}/usr/bin"
-    ln -s /usr/lib/genesi-code/genesi-code "${pkgdir}/usr/bin/genesi-code"
+    # /usr/bin entry: a thin wrapper that redirects stdio to a log, then execs
+    # the release launcher (which handles VM software-GL fallback + execs the
+    # .bin). The redirect is the fix for "runs from a terminal but loads-and-
+    # closes from the menu": a menu/plasmoid launch hands the app an stdout pipe
+    # that dies with the launcher's transient scope, and the app (which logs to
+    # stdout constantly) is then SIGPIPE-killed on its next write. NO `setsid`
+    # here — detaching is what broke the launch entirely last time; `exec` keeps
+    # the app as the scope's own process and we only swap its stdio.
+    install -Dm755 "${srcdir}/genesi-code.sh" "${pkgdir}/usr/bin/genesi-code"
 
     # Desktop entry + icon. StartupWMClass matches the app_id the binary reports
     # (dev.genesi.GenesiCode) so the taskbar groups the window correctly.
