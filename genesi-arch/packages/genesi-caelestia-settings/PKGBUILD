@@ -14,7 +14,12 @@
 # claiming that virtual here would make the two Genesi settings packages conflict.
 pkgname=genesi-caelestia-settings
 pkgver=1.0.0
-pkgrel=1
+# pkgrel 2: fix a malformed gradient color in hyprland.conf
+# (col.active_border had `rgba(00 aaff ee)` with spaces in the hex). Hyprland
+# 0.55 failed to parse it and the broken `general {}` block cascaded into bogus
+# "dwindle:pseudotile does not exist" / "togglesplit dispatcher" errors on first
+# Hyprland launch. Now `rgba(00aaffee)`.
+pkgrel=2
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
