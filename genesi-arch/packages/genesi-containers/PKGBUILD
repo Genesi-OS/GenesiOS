@@ -14,7 +14,12 @@ pkgver=1.0.0
 # needs no Plasma; only the optional plasmoid does, and it merely sits dormant in
 # /usr/share/plasma/plasmoids until a Plasma session loads it. So plasma-workspace
 # is now an optdepend (KDE installs already get it via the KDE-Desktop group).
-pkgrel=2
+# pkgrel 3: surface "permission denied" on the Docker socket instead of a silent
+# empty list. The CLI now emits {"error":"permission_denied"} when the engine
+# refuses (user not in the `docker` group), and the widget shows a "Permission
+# denied" placeholder with the usermod fix instead of a misleading "No
+# containers".
+pkgrel=3
 pkgdesc='Plasma 6 widget to monitor and control Docker/Podman containers'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

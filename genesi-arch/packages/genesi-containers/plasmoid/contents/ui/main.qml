@@ -52,11 +52,14 @@ PlasmoidItem {
         runner.exec(helper + " list-json")
     }
 
+    property string engineError: ""
+
     function parseList(stdout) {
         try {
             var obj = JSON.parse(stdout)
             root.engine = obj.engine || "none"
             root.containers = obj.containers || []
+            root.engineError = obj.error || ""
             var n = 0
             for (var i = 0; i < root.containers.length; i++)
                 if (root.containers[i].running) n++
@@ -64,6 +67,7 @@ PlasmoidItem {
         } catch (e) {
             root.engine = "none"
             root.containers = []
+            root.engineError = ""
             root.runningCount = 0
         }
     }
@@ -142,13 +146,17 @@ PlasmoidItem {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 visible: root.containers.length === 0
-                iconName: "docker"
-                text: root.engine === "none"
-                    ? "No container engine found"
-                    : "No containers"
-                explanation: root.engine === "none"
-                    ? "Install Docker or Podman from the Genesi Package Installer."
-                    : "Create one and it shows up here."
+                iconName: root.engineError === "permission_denied" ? "lock" : "docker"
+                text: root.engineError === "permission_denied"
+                    ? "Permission denied"
+                    : root.engine === "none"
+                        ? "No container engine found"
+                        : "No containers"
+                explanation: root.engineError === "permission_denied"
+                    ? "Run: sudo usermod -aG docker $USER — then log out and back in."
+                    : root.engine === "none"
+                        ? "Install Docker or Podman from the Genesi Package Installer."
+                        : "Create one and it shows up here."
             }
 
             QQC2.ScrollView {

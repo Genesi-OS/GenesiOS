@@ -43,9 +43,15 @@ case "${1:-list-json}" in
     # Pull a tab-delimited table from the engine, then let python turn it into
     # well-formed JSON (hand-rolling JSON in bash is a footgun with names/ports
     # that contain quotes or commas).
+    err_tmp="$(mktemp)"
     raw="$("$ENGINE" ps -a \
         --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}\t{{.Ports}}' \
-        2>/dev/null || true)"
+        2>"$err_tmp" || true)"
+    err_out="$(cat "$err_tmp"; rm -f "$err_tmp")"
+    if echo "$err_out" | grep -qi "permission denied"; then
+        echo '{"engine":"'"$ENGINE"'","containers":[],"error":"permission_denied"}'
+        exit 0
+    fi
     ENGINE="$ENGINE" python3 - "$raw" <<'PY'
 import json, os, sys
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
