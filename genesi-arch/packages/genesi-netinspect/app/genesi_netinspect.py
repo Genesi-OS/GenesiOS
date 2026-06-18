@@ -211,7 +211,10 @@ class GenesiAddon:
     # -- lifecycle ----------------------------------------------------------
     def running(self):
         self.master = ctx.master
-        self.backend._on_proxy_ready(PROXY_HOST, PROXY_PORT)
+        # Report the port mitmproxy ACTUALLY bound (it may have hopped off a
+        # busy 8080), so the desktop proxy + UI point at the real one.
+        self.backend._on_proxy_ready(ctx.options.listen_host or PROXY_HOST,
+                                     ctx.options.listen_port or PROXY_PORT)
 
     # -- in-scope helper ----------------------------------------------------
     def _in_scope(self, flow):
@@ -292,6 +295,26 @@ class GenesiAddon:
 
 # ───────────────────────────── proxy engine thread ─────────────────────────
 
+def _free_port(host, preferred, span=20):
+    """Return a bindable TCP port: the preferred one, or the next free port in
+    [preferred, preferred+span]. This is what makes the inspector resilient to a
+    busy 8080 (e.g. a docker container already publishes -p 8080:80) — instead
+    of dying with "address already in use" it quietly hops to 8081, 8082, …
+    Falls back to the preferred port if the whole range is taken (mitmproxy then
+    surfaces the bind error itself)."""
+    import socket
+    for p in range(preferred, preferred + span + 1):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind((host, p))
+            return p
+        except OSError:
+            continue
+        finally:
+            s.close()
+    return preferred
+
+
 class ProxyEngine(threading.Thread):
     def __init__(self, addon, host, port):
         super().__init__(daemon=True)
@@ -308,6 +331,8 @@ class ProxyEngine(threading.Thread):
 
     async def _main(self):
         self.loop = asyncio.get_running_loop()
+        # Hop to a free port if the preferred one is busy (busy 8080, etc.).
+        self.port = _free_port(self.host, self.port)
         opts = options.Options(listen_host=self.host, listen_port=self.port)
         try:
             self.master = DumpMaster(opts, with_termlog=False, with_dumper=False)
@@ -345,6 +370,12 @@ class Backend(QObject):
     repeaterResult = Signal(str)
     intruderRow = Signal(str)
     intruderDone = Signal(str)          # job id
+    # passive scanner
+    scannerFinding = Signal(str)        # {severity, title, detail, url} — was
+                                        # emitted (see GenesiAddon) but never
+                                        # declared, so findings raised
+                                        # AttributeError and the QML handler
+                                        # bound to a non-existent signal.
 
     def __init__(self):
         super().__init__()

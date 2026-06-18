@@ -28,6 +28,11 @@ ApplicationWindow {
     property int scanCount: 0
     property string proxyStatus: "starting…"
     property bool certTrusted: false
+    // The host/port mitmproxy ACTUALLY bound — may differ from PROXY_PORT when
+    // 8080 was busy and the engine hopped to 8081+. The engine label reads these
+    // so it never lies about where to point curl/your browser.
+    property string proxyHost: PROXY_HOST
+    property int proxyPort: PROXY_PORT
 
     background: Rectangle {
         gradient: Gradient {
@@ -216,7 +221,7 @@ ApplicationWindow {
                 Item { Layout.fillHeight: true }
                 Text {
                     Layout.fillWidth: true
-                    text: "engine: mitmproxy\n" + PROXY_HOST + ":" + PROXY_PORT
+                    text: "engine: mitmproxy\n" + proxyHost + ":" + proxyPort
                     color: theme.textLo; font.pixelSize: 11
                     horizontalAlignment: Text.AlignHCenter
                 }
@@ -703,7 +708,10 @@ ApplicationWindow {
     Connections {
         target: backend
 
-        function onProxyReady(host, port) { proxyStatus = "ready · " + host + ":" + port }
+        function onProxyReady(host, port) {
+            proxyHost = host; proxyPort = port
+            proxyStatus = "ready · " + host + ":" + port
+        }
         function onProxyError(msg)        { proxyStatus = "error: " + msg }
         function onCertTrusted(t)         { certTrusted = t }
         function onStatusMessage(m)       { proxyStatus = proxyStatus.indexOf("error") >= 0 ? proxyStatus : ("ready · " + m) }

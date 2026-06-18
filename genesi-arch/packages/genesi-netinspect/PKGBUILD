@@ -9,9 +9,16 @@
 # engine. The classic mitmweb UI stays available via `genesi-netinspect web`.
 # `genesi-netinspect cert` still trusts the mitmproxy CA system-wide, and
 # `genesi-proxy on|off|toggle` flips the desktop proxy.
+# pkgrel 4: two real fixes. (1) The passive Scanner never delivered findings —
+# the addon emitted a `scannerFinding` signal that was never declared on the
+# Backend, so it raised AttributeError and the QML handler bound to nothing;
+# now declared. (2) Port resilience — if 8080 is busy (e.g. a docker container
+# already publishes -p 8080:80) the engine now hops to the next free port
+# (8081, 8082, …) and reports the REAL bound port to the desktop proxy + UI,
+# instead of dying with "address already in use".
 pkgname=genesi-netinspect
 pkgver=1.0.0
-pkgrel=3
+pkgrel=4
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
