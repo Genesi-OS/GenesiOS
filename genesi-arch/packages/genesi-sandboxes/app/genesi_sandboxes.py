@@ -113,6 +113,16 @@ class Backend(QObject):
         except Exception as e:
             self.logLine.emit("error: %s" % e)
 
+    @Slot(str)
+    def openInCode(self, name):
+        # Open the workspace's project folder in Genesi Code (host-side IDE).
+        # Detached so the GUI never blocks on the editor process.
+        try:
+            subprocess.Popen([CLI, "code", name], start_new_session=True)
+            self.logLine.emit("Opening '%s' in Genesi Code…" % name)
+        except Exception as e:
+            self.logLine.emit("error: %s" % e)
+
 
 def main():
     app = QGuiApplication(sys.argv)

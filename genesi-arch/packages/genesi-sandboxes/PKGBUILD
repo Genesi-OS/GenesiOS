@@ -6,7 +6,15 @@
 # Go, Rust, C/C++). Each workspace is HOME/GUI/terminal-integrated via Distrobox.
 pkgname=genesi-sandboxes
 pkgver=1.0.0
-pkgrel=1
+# pkgrel 2: make it actually work when the backend is Docker, and wire the
+# Genesi Code integration. Distrobox now prefers podman (rootless, no group);
+# when only docker is present and the GUI's session predates `usermod -aG
+# docker`, the CLI runs distrobox under `sg docker` so creation/enter no longer
+# die with "permission denied ... docker.sock" (same plasmashell-child group
+# gap the containers widget hit). Each workspace also gets a host project folder
+# (~/Sandboxes/<name>, shared into the box) and an "Open in Genesi Code" action
+# that opens it in the IDE — the deferred 4.4 IDE integration, now shipping.
+pkgrel=2
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -16,6 +24,7 @@ optdepends=(
     'podman: rootless container backend for Distrobox (recommended)'
     'docker: alternative container backend for Distrobox'
     'konsole: terminal used to enter a workspace'
+    'genesi-code: open a workspace project folder in the Genesi Code IDE'
 )
 source=()
 sha256sums=()

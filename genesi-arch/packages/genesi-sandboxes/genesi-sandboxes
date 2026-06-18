@@ -7,6 +7,73 @@
 # single source of truth; the GUI (genesi-sandboxes-gui) just drives it.
 set -euo pipefail
 
+# Per-sandbox project directory on the host. HOME is shared into every Distrobox
+# container, so this same path is visible inside the box AND openable in Genesi
+# Code on the host — edit in the IDE, build inside the sandbox, one set of files.
+SANDBOX_ROOT="${GENESI_SANDBOX_ROOT:-$HOME/Sandboxes}"
+
+# ---- container backend ------------------------------------------------------
+# Distrobox needs a container manager. Podman (rootless) is the clean default:
+# no daemon, no group, nothing to misconfigure. We only fall back to Docker,
+# whose socket is group-owned by `docker` — and a GUI launched from a session
+# that predates `usermod -aG docker` (our exact case: the app is a plasmashell
+# child) gets EACCES on that socket. When Docker is the only option and the
+# session lacks the group but the user IS a member in /etc/group, we run
+# distrobox under `sg docker`, which switches the GID from membership with no
+# password and no re-login. Net effect: sandboxes "just work" right after the
+# user installs docker + is added to the group, instead of failing until logout.
+SG_DOCKER=""
+
+detect_backend() {
+    if [ -n "${DBX_CONTAINER_MANAGER:-}" ] && command -v "${DBX_CONTAINER_MANAGER}" >/dev/null 2>&1; then
+        echo "${DBX_CONTAINER_MANAGER}"; return 0
+    fi
+    if command -v podman >/dev/null 2>&1; then echo podman; return 0; fi
+    if command -v docker >/dev/null 2>&1; then echo docker; return 0; fi
+    echo ""
+}
+
+in_docker_group() {
+    [ "$(id -gn 2>/dev/null)" = docker ] && return 0
+    id -nG 2>/dev/null | tr ' ' '\n' | grep -qx docker && return 0
+    case ",$(getent group docker 2>/dev/null | cut -d: -f4)," in
+        *,"$(id -un 2>/dev/null)",*) return 0 ;;
+    esac
+    return 1
+}
+
+DBX_MGR="$(detect_backend)"
+if [ "$DBX_MGR" = docker ] && ! docker info >/dev/null 2>&1 && in_docker_group; then
+    SG_DOCKER=1
+fi
+
+# Run distrobox with the chosen backend, group-hopping for Docker when needed.
+dbx() {
+    if [ -n "$SG_DOCKER" ]; then
+        sg docker -c "$(printf '%q ' env DBX_CONTAINER_MANAGER=docker distrobox "$@")"
+    else
+        DBX_CONTAINER_MANAGER="${DBX_MGR:-podman}" distrobox "$@"
+    fi
+}
+
+# Same, but stages an argv array in EARGV for a terminal's `-e` payload (a
+# launched konsole is also a GUI child, so it needs the same group hop).
+dbx_argv() {
+    if [ -n "$SG_DOCKER" ]; then
+        EARGV=(sg docker -c "$(printf '%q ' env DBX_CONTAINER_MANAGER=docker distrobox "$@")")
+    else
+        EARGV=(env "DBX_CONTAINER_MANAGER=${DBX_MGR:-podman}" distrobox "$@")
+    fi
+}
+
+require_distrobox() {
+    command -v distrobox >/dev/null 2>&1 || {
+        echo "distrobox is not installed" >&2; exit 1; }
+    [ -n "$DBX_MGR" ] || {
+        echo "no container backend found — install podman (recommended) or docker" >&2
+        exit 1; }
+}
+
 # ---- templates --------------------------------------------------------------
 # id|label|image|packages(pacman, space-sep)|hint
 # All Arch-based so there is one package manager to reason about inside the box.
@@ -19,11 +86,6 @@ rust|Rust|archlinux:latest|rustup base-devel|rustup (run: rustup default stable)
 cpp|C / C++|archlinux:latest|base-devel cmake gdb clang|GCC/Clang, CMake, GDB
 plain|Plain Arch|archlinux:latest||Empty Arch box, add what you need
 TPL
-
-require_distrobox() {
-    command -v distrobox >/dev/null 2>&1 || {
-        echo "distrobox is not installed" >&2; exit 1; }
-}
 
 tpl_field() { # id field-index(1-based)
     echo "$TEMPLATES" | awk -F'|' -v id="$1" -v f="$2" '$1==id{print $f; exit}'
@@ -46,11 +108,16 @@ PY
 
   list-json)
     if ! command -v distrobox >/dev/null 2>&1; then
-        echo '{"distrobox":false,"boxes":[]}'; exit 0
+        echo '{"distrobox":false,"backend":"","hasCode":false,"boxes":[]}'; exit 0
     fi
-    raw="$(distrobox list --no-color 2>/dev/null || true)"
-    python3 - "$raw" <<'PY'
-import json, sys
+    has_code=false; if command -v genesi-code >/dev/null 2>&1; then has_code=true; fi
+    if [ -z "$DBX_MGR" ]; then
+        echo '{"distrobox":true,"backend":"none","hasCode":'"$has_code"',"boxes":[]}'
+        exit 0
+    fi
+    raw="$(dbx list --no-color 2>/dev/null || true)"
+    BACKEND="$DBX_MGR" HASCODE="$has_code" python3 - "$raw" <<'PY'
+import json, os, sys
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
 boxes = []
 for i, line in enumerate(raw.splitlines()):
@@ -64,7 +131,10 @@ for i, line in enumerate(raw.splitlines()):
     boxes.append({"id": cid, "name": name, "status": status, "image": image,
                   "running": status.lower().startswith("up")})
 boxes.sort(key=lambda b: b["name"])
-print(json.dumps({"distrobox": True, "boxes": boxes}))
+print(json.dumps({"distrobox": True,
+                  "backend": os.environ.get("BACKEND", "none"),
+                  "hasCode": os.environ.get("HASCODE") == "true",
+                  "boxes": boxes}))
 PY
     ;;
 
@@ -74,33 +144,51 @@ PY
     [ -n "$name" ] || { echo "usage: genesi-sandboxes create <name> <template>" >&2; exit 2; }
     image="$(tpl_field "$tpl" 3)"; [ -n "$image" ] || image="archlinux:latest"
     pkgs="$(tpl_field "$tpl" 4)"
+    echo ">>> Backend: $DBX_MGR${SG_DOCKER:+ (via sg docker)}"
     echo ">>> Creating sandbox '$name' from template '$tpl' ($image)…"
-    distrobox create --yes --name "$name" --image "$image"
+    dbx create --yes --name "$name" --image "$image"
     # First enter triggers the container build; do it once up front.
-    distrobox enter --name "$name" -- true || true
+    dbx enter --name "$name" -- true || true
     if [ -n "$pkgs" ]; then
         echo ">>> Installing: $pkgs"
-        distrobox enter --name "$name" -- sudo pacman -Syu --noconfirm $pkgs
+        dbx enter --name "$name" -- sudo pacman -Syu --noconfirm $pkgs
     fi
+    # Give the workspace a project directory on the host (shared into the box).
+    mkdir -p "$SANDBOX_ROOT/$name"
+    echo ">>> Project folder: $SANDBOX_ROOT/$name"
     echo ">>> Sandbox '$name' is ready. Enter it with: genesi-sandboxes enter $name"
     ;;
 
   enter)
     require_distrobox
     [ -n "${2:-}" ] || { echo "usage: genesi-sandboxes enter <name>" >&2; exit 2; }
+    # Land in the workspace's project folder (created on `create`; ensure it
+    # exists for boxes made before this feature). It's the same shared HOME path
+    # Genesi Code opens, so the terminal and the IDE share one working dir.
+    mkdir -p "$SANDBOX_ROOT/$2"
+    dbx_argv enter --name "$2" --additional-flags "--workdir=$SANDBOX_ROOT/$2"
     term="konsole -e"; command -v konsole >/dev/null 2>&1 || term="x-terminal-emulator -e"
-    exec $term distrobox enter --name "$2"
+    exec $term "${EARGV[@]}"
+    ;;
+
+  code)
+    # Open the workspace's project folder in Genesi Code (the host-side IDE).
+    [ -n "${2:-}" ] || { echo "usage: genesi-sandboxes code <name>" >&2; exit 2; }
+    command -v genesi-code >/dev/null 2>&1 || {
+        echo "Genesi Code is not installed" >&2; exit 1; }
+    mkdir -p "$SANDBOX_ROOT/$2"
+    exec genesi-code "$SANDBOX_ROOT/$2"
     ;;
 
   rm|remove)
     require_distrobox
     [ -n "${2:-}" ] || { echo "usage: genesi-sandboxes rm <name>" >&2; exit 2; }
-    distrobox stop --yes "$2" 2>/dev/null || true
-    exec distrobox rm --force "$2"
+    dbx stop --yes "$2" 2>/dev/null || true
+    dbx rm --force "$2"
     ;;
 
   *)
-    echo "usage: genesi-sandboxes {templates-json|list-json|create <name> <tpl>|enter <name>|rm <name>}" >&2
+    echo "usage: genesi-sandboxes {templates-json|list-json|create <name> <tpl>|enter <name>|code <name>|rm <name>}" >&2
     exit 2
     ;;
 esac

@@ -20,6 +20,8 @@ Kirigami.ApplicationWindow {
     property var boxes: []
     property var templates: []
     property bool hasDistrobox: true
+    property string backend: ""
+    property bool hasCode: false
     property bool busy: false
 
     Connections {
@@ -28,6 +30,8 @@ Kirigami.ApplicationWindow {
             try {
                 var o = JSON.parse(json)
                 win.hasDistrobox = !!o.distrobox
+                win.backend = o.backend || ""
+                win.hasCode = !!o.hasCode
                 win.boxes = o.boxes || []
             } catch (e) { win.boxes = [] }
         }
@@ -61,6 +65,14 @@ Kirigami.ApplicationWindow {
                 visible: !win.hasDistrobox
                 type: Kirigami.MessageType.Warning
                 text: "Distrobox is not installed. Install it from the Genesi Package Installer (distrobox + podman)."
+            }
+
+            // no container backend banner (distrobox present but no podman/docker)
+            Kirigami.InlineMessage {
+                Layout.fillWidth: true
+                visible: win.hasDistrobox && win.backend === "none"
+                type: Kirigami.MessageType.Warning
+                text: "No container backend found. Install podman (recommended, rootless) or docker from the Genesi Package Installer."
             }
 
             // --- create form -------------------------------------------------
@@ -118,7 +130,20 @@ Kirigami.ApplicationWindow {
             }
 
             // --- existing workspaces ----------------------------------------
-            Kirigami.Heading { level: 3; text: "Workspaces (" + win.boxes.length + ")" }
+            RowLayout {
+                Layout.fillWidth: true
+                Kirigami.Heading {
+                    level: 3
+                    text: "Workspaces (" + win.boxes.length + ")"
+                    Layout.fillWidth: true
+                }
+                QQC2.Label {
+                    visible: win.backend !== "" && win.backend !== "none"
+                    text: "backend: " + win.backend
+                    opacity: 0.6
+                    font: Kirigami.Theme.smallFont
+                }
+            }
 
             QQC2.ScrollView {
                 Layout.fillWidth: true
@@ -148,10 +173,21 @@ Kirigami.ApplicationWindow {
                                 }
                             }
                             QQC2.Button {
+                                text: "Genesi Code"
+                                icon.name: "genesi-code"
+                                visible: win.hasCode
+                                enabled: !win.busy
+                                onClicked: backend.openInCode(modelData.name)
+                                QQC2.ToolTip.text: "Open this workspace's project folder in Genesi Code"
+                                QQC2.ToolTip.visible: hovered
+                            }
+                            QQC2.Button {
                                 text: "Open"
                                 icon.name: "utilities-terminal"
                                 enabled: !win.busy
                                 onClicked: backend.enterSandbox(modelData.name)
+                                QQC2.ToolTip.text: "Open a terminal inside the sandbox (in its project folder)"
+                                QQC2.ToolTip.visible: hovered
                             }
                             QQC2.Button {
                                 icon.name: "edit-delete"
