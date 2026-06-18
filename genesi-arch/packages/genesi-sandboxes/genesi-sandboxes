@@ -42,10 +42,19 @@ in_docker_group() {
     return 1
 }
 
-DBX_MGR="$(detect_backend)"
-if [ "$DBX_MGR" = docker ] && ! docker info >/dev/null 2>&1 && in_docker_group; then
-    SG_DOCKER=1
-fi
+DBX_MGR=""
+# Detect the backend lazily — ONLY the commands that touch containers call this.
+# `templates-json` (which fills the GUI's template dropdown) must never run
+# `docker info`: a busy/over-loaded docker daemon makes it hang, the GUI's
+# 20s loadTemplates times out, and the dropdown shows up empty ("doesn't work").
+ensure_backend() {
+    [ -n "${_BACKEND_DONE:-}" ] && return 0
+    _BACKEND_DONE=1
+    DBX_MGR="$(detect_backend)"
+    if [ "$DBX_MGR" = docker ] && ! docker info >/dev/null 2>&1 && in_docker_group; then
+        SG_DOCKER=1
+    fi
+}
 
 # Run distrobox with the chosen backend, group-hopping for Docker when needed.
 dbx() {
@@ -69,6 +78,7 @@ dbx_argv() {
 require_distrobox() {
     command -v distrobox >/dev/null 2>&1 || {
         echo "distrobox is not installed" >&2; exit 1; }
+    ensure_backend
     [ -n "$DBX_MGR" ] || {
         echo "no container backend found — install podman (recommended) or docker" >&2
         exit 1; }
@@ -111,6 +121,7 @@ PY
         echo '{"distrobox":false,"backend":"","hasCode":false,"boxes":[]}'; exit 0
     fi
     has_code=false; if command -v genesi-code >/dev/null 2>&1; then has_code=true; fi
+    ensure_backend
     if [ -z "$DBX_MGR" ]; then
         echo '{"distrobox":true,"backend":"none","hasCode":'"$has_code"',"boxes":[]}'
         exit 0

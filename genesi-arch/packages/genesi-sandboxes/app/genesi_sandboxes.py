@@ -127,7 +127,11 @@ class Backend(QObject):
 def main():
     app = QGuiApplication(sys.argv)
     app.setApplicationName("Genesi Sandboxes")
-    app.setWindowIcon(QIcon.fromTheme("distrobox"))
+    app.setApplicationDisplayName("Genesi Sandboxes")
+    app.setOrganizationName("Genesi OS")
+    # Match the .desktop so the taskbar shows our name+icon, not "python3".
+    app.setDesktopFileName("org.genesi.sandboxes")
+    app.setWindowIcon(QIcon.fromTheme("genesi-sandboxes"))
     if not shutil.which(CLI):
         sys.stderr.write("genesi-sandboxes CLI not found in PATH\n")
 

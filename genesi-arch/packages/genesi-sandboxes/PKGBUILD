@@ -14,7 +14,12 @@ pkgver=1.0.0
 # gap the containers widget hit). Each workspace also gets a host project folder
 # (~/Sandboxes/<name>, shared into the box) and an "Open in Genesi Code" action
 # that opens it in the IDE — the deferred 4.4 IDE integration, now shipping.
-pkgrel=2
+# pkgrel 3: (1) backend detection is now LAZY — `templates-json` no longer runs
+# `docker info`, so a busy docker daemon can't make the template dropdown load
+# empty (the "doesn't work" report). (2) Taskbar identity — setDesktopFileName +
+# StartupWMClass + a real app icon (cube) so the window shows our name/logo, not
+# "python3".
+pkgrel=3
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -42,7 +47,9 @@ package() {
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-sandboxes/app/Main.qml"
 
-    # Desktop entry
+    # Desktop entry + branded app icon (taskbar/menu shows our cube, not python3)
     install -Dm644 "${startdir}/org.genesi.sandboxes.desktop" \
         "$pkgdir/usr/share/applications/org.genesi.sandboxes.desktop"
+    install -Dm644 "${startdir}/app/icons/logo.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-sandboxes.svg"
 }
