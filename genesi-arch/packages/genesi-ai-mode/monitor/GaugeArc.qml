@@ -13,6 +13,7 @@ Item {
     property color track: "#1E382E"
     property string big: ""           // centre big label (e.g. "42")
     property string small: ""         // centre small label (e.g. "%")
+    property string icon: ""          // centre icon (SVG path); overrides `big`
 
     implicitWidth: 62
     implicitHeight: 62
@@ -62,8 +63,17 @@ Item {
     Column {
         anchors.centerIn: parent
         spacing: -1
+        Image {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: g.icon.length > 0
+            source: g.icon.length > 0 ? Qt.resolvedUrl(g.icon) : ""
+            sourceSize.width: 24; sourceSize.height: 24
+            width: 24; height: 24
+            smooth: true
+        }
         QQC2.Label {
             anchors.horizontalCenter: parent.horizontalCenter
+            visible: g.icon.length === 0
             text: g.big
             font.bold: true
             font.pixelSize: 15

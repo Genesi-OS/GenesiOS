@@ -58,11 +58,13 @@ Item {
             border.width: 1
             border.color: b.isUser ? "transparent"
                         : b.isError ? "#E74C3C" : "#2A463B"
-            QQC2.Label {
+            Image {
                 anchors.centerIn: parent
-                text: b.isUser ? "🧑" : (b.isError ? "⚠" : "🤖")
-                font.pixelSize: 15
-                color: b.isError ? "#E74C3C" : "#EAF3EF"
+                source: Qt.resolvedUrl(b.isUser ? "icons/user.svg"
+                                     : b.isError ? "icons/alert.svg" : "icons/bot.svg")
+                sourceSize.width: 18; sourceSize.height: 18
+                width: 18; height: 18
+                smooth: true
             }
         }
 
@@ -132,15 +134,26 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 readonly property bool turbo: b.statsData && b.statsData.mode === "turbo"
                                 radius: 7; height: 22
-                                width: badgeLbl.implicitWidth + 18
+                                width: badgeRow.implicitWidth + 16
                                 color: turbo ? Qt.rgba(230/255, 126/255, 34/255, 0.18)
                                              : Qt.rgba(29/255, 158/255, 117/255, 0.16)
-                                QQC2.Label {
-                                    id: badgeLbl
+                                Row {
+                                    id: badgeRow
                                     anchors.centerIn: parent
-                                    text: modeBadge.turbo ? "⚡ Turbo" : "🦙 Ollama"
-                                    font.pixelSize: 10; font.bold: true
-                                    color: modeBadge.turbo ? "#F8B24D" : "#34D399"
+                                    spacing: 4
+                                    Image {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        source: Qt.resolvedUrl(modeBadge.turbo ? "icons/bolt.svg" : "icons/cpu.svg")
+                                        sourceSize.width: 12; sourceSize.height: 12
+                                        width: 12; height: 12; smooth: true
+                                    }
+                                    QQC2.Label {
+                                        id: badgeLbl
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: modeBadge.turbo ? "Turbo" : "Ollama"
+                                        font.pixelSize: 10; font.bold: true
+                                        color: modeBadge.turbo ? "#F8B24D" : "#34D399"
+                                    }
                                 }
                             }
                             Row {

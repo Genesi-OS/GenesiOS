@@ -664,7 +664,8 @@ Kirigami.ApplicationWindow {
                             GaugeArc {
                                 value: win.activeModel ? 1 : 0
                                 stroke: theme.purple
-                                big: win.activeModel ? "🚀" : "—"
+                                icon: win.activeModel ? "icons/rocket.svg" : ""
+                                big: win.activeModel ? "" : "—"
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true

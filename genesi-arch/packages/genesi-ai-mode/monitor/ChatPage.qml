@@ -158,7 +158,13 @@ Kirigami.Page {
                     width: 72; height: 72; radius: 20
                     color: theme.a(theme.green, 0.10)
                     border.color: theme.a(theme.green, 0.35); border.width: 1
-                    QQC2.Label { anchors.centerIn: parent; text: "💬"; font.pixelSize: 34 }
+                    Image {
+                        anchors.centerIn: parent
+                        source: Qt.resolvedUrl("icons/chat.svg")
+                        sourceSize.width: 38; sourceSize.height: 38
+                        width: 38; height: 38
+                        smooth: true
+                    }
                 }
                 QQC2.Label {
                     Layout.alignment: Qt.AlignHCenter
@@ -167,7 +173,7 @@ Kirigami.Page {
                 }
                 QQC2.Label {
                     Layout.alignment: Qt.AlignHCenter
-                    text: "Runs 100% on your hardware. Ask something below 👇"
+                    text: "Runs 100% on your hardware. Ask something below."
                     color: theme.textLo
                 }
             }
