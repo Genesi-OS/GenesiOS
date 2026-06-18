@@ -14,11 +14,14 @@ pkgver=1.0.0
 # needs no Plasma; only the optional plasmoid does, and it merely sits dormant in
 # /usr/share/plasma/plasmoids until a Plasma session loads it. So plasma-workspace
 # is now an optdepend (KDE installs already get it via the KDE-Desktop group).
-# pkgrel 3: surface "permission denied" on the Docker socket instead of a silent
-# empty list. The CLI now emits {"error":"permission_denied"} when the engine
-# refuses (user not in the `docker` group), and the widget shows a "Permission
-# denied" placeholder with the usermod fix instead of a misleading "No
-# containers".
+# pkgrel 3: make the widget actually see running containers, and explain itself
+# when it can't. The plasmoid runs inside plasmashell, whose session predates
+# `usermod -aG docker` — so docker calls hit EACCES and the panel showed "No
+# containers" while a terminal saw them fine. The CLI now transparently re-runs
+# docker under `sg docker` when the session lacks the group but the user is a
+# member (works with no re-login). If the user genuinely isn't a member, it
+# emits {"error":"permission_denied"} and the widget shows a "Permission
+# denied" placeholder with the usermod fix instead of a misleading empty list.
 pkgrel=3
 pkgdesc='Plasma 6 widget to monitor and control Docker/Podman containers'
 arch=('any')

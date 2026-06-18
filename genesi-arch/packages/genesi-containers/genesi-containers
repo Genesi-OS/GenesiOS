@@ -28,6 +28,50 @@ detect_engine() {
 
 ENGINE="$(detect_engine || true)"
 
+# ---- group-aware invocation -------------------------------------------------
+# Docker's socket is group-owned by `docker`. A user freshly added with
+# `usermod -aG docker` is a MEMBER in /etc/group, but a session started BEFORE
+# that — e.g. the running plasmashell that hosts this widget — still lacks the
+# group until the next login. So the same `docker ps` that works in a terminal
+# (which the user re-logged or ran `newgrp docker` in) gets EACCES from the
+# widget, and the panel shows "No containers" even though some are running.
+# Rather than force a logout, transparently re-run docker under `sg docker`
+# whenever the direct call is refused but the user is already a group member —
+# `sg` switches the GID using /etc/group membership, no password, no re-login.
+SG_DOCKER=""
+
+in_docker_group() {
+    [ "$(id -gn 2>/dev/null)" = docker ] && return 0
+    id -nG 2>/dev/null | tr ' ' '\n' | grep -qx docker && return 0
+    case ",$(getent group docker 2>/dev/null | cut -d: -f4)," in
+        *,"$(id -un 2>/dev/null)",*) return 0 ;;
+    esac
+    return 1
+}
+
+if [ "${ENGINE:-}" = docker ] && ! docker info >/dev/null 2>&1 && in_docker_group; then
+    SG_DOCKER=1
+fi
+
+# Run the engine directly, group-hopping only when needed (SG_DOCKER set).
+eng() {
+    if [ -n "$SG_DOCKER" ]; then
+        sg docker -c "$(printf '%q ' "$ENGINE" "$@")"
+    else
+        "$ENGINE" "$@"
+    fi
+}
+
+# Same, but stages an argv array in EARGV for use as a terminal's `-e` payload
+# (a launched konsole is also a plasmashell child, so it needs the hop too).
+eng_argv() {
+    if [ -n "$SG_DOCKER" ]; then
+        EARGV=(sg docker -c "$(printf '%q ' "$ENGINE" "$@")")
+    else
+        EARGV=("$ENGINE" "$@")
+    fi
+}
+
 # ---- commands ---------------------------------------------------------------
 case "${1:-list-json}" in
   engine)
@@ -44,7 +88,7 @@ case "${1:-list-json}" in
     # well-formed JSON (hand-rolling JSON in bash is a footgun with names/ports
     # that contain quotes or commas).
     err_tmp="$(mktemp)"
-    raw="$("$ENGINE" ps -a \
+    raw="$(eng ps -a \
         --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}\t{{.Ports}}' \
         2>"$err_tmp" || true)"
     err_out="$(cat "$err_tmp"; rm -f "$err_tmp")"
@@ -78,7 +122,7 @@ PY
   start|stop|restart)
     [ -n "${ENGINE:-}" ] || { echo "no container engine" >&2; exit 1; }
     [ -n "${2:-}" ] || { echo "usage: genesi-containers $1 <id>" >&2; exit 2; }
-    exec "$ENGINE" "$1" "$2"
+    eng "$1" "$2"
     ;;
 
   logs)
@@ -86,20 +130,22 @@ PY
     [ -n "${2:-}" ] || { echo "usage: genesi-containers logs <id>" >&2; exit 2; }
     # Open the logs in a terminal so it can stream/scroll. Fall back to plain
     # output when no terminal is around (e.g. called non-interactively).
+    eng_argv logs -f --tail 200 "$2"
     if command -v konsole >/dev/null 2>&1; then
-        exec konsole --hold -e "$ENGINE" logs -f --tail 200 "$2"
+        exec konsole --hold -e "${EARGV[@]}"
     elif command -v x-terminal-emulator >/dev/null 2>&1; then
-        exec x-terminal-emulator -e "$ENGINE" logs -f --tail 200 "$2"
+        exec x-terminal-emulator -e "${EARGV[@]}"
     else
-        exec "$ENGINE" logs --tail 200 "$2"
+        eng logs --tail 200 "$2"
     fi
     ;;
 
   shell)
     [ -n "${ENGINE:-}" ] || { echo "no container engine" >&2; exit 1; }
     [ -n "${2:-}" ] || { echo "usage: genesi-containers shell <id>" >&2; exit 2; }
+    eng_argv exec -it "$2" sh -c 'command -v bash >/dev/null && exec bash || exec sh'
     term="konsole -e"; command -v konsole >/dev/null 2>&1 || term="x-terminal-emulator -e"
-    exec $term "$ENGINE" exec -it "$2" sh -c 'command -v bash >/dev/null && exec bash || exec sh'
+    exec $term "${EARGV[@]}"
     ;;
 
   *)
