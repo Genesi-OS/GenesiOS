@@ -203,11 +203,45 @@ echo 'Disks / partitions:'; lsblk -f
 echo
 read -rp 'Root partition of the installed system (e.g. /dev/nvme0n1p2): ' ROOT
 [ -b "$ROOT" ] || { echo "Not a block device: $ROOT"; exit 1; }
+
+# 1) Filesystem check/repair FIRST. A root corrupted by an unclean shutdown
+#    won't mount ("Structure needs cleaning") — which used to abort the whole
+#    repair before it did anything. Repair the fs for its type up front.
+FSTYPE=$(sudo blkid -o value -s TYPE "$ROOT" 2>/dev/null || true)
+echo ">>> Filesystem on $ROOT: ${FSTYPE:-unknown}"
+case "$FSTYPE" in
+  xfs)
+    echo ">>> Repairing XFS (xfs_repair)…"
+    if ! sudo xfs_repair "$ROOT"; then
+        echo ">>> The XFS log is dirty and cannot be replayed from the live ISO."
+        echo ">>> Zeroing the log (xfs_repair -L) — recovers the fs, but may drop"
+        echo ">>> the most recent unsynced writes."
+        sudo xfs_repair -L "$ROOT"
+    fi
+    ;;
+  ext2|ext3|ext4)
+    echo ">>> Checking the ext filesystem (e2fsck -fy)…"
+    sudo e2fsck -fy "$ROOT" || true
+    ;;
+  btrfs)
+    echo ">>> Checking btrfs…"
+    sudo btrfs check "$ROOT" || true
+    ;;
+  *)
+    echo ">>> Unrecognised filesystem; skipping the fsck step." ;;
+esac
+
+# 2) Mount, then optionally refresh keys + upgrade packages.
 M=/mnt/genesi-repair
 sudo mkdir -p "$M"
+echo ">>> Mounting $ROOT …"
 sudo mount "$ROOT" "$M"
-echo ">>> Refreshing keyrings and upgrading inside the install…"
-sudo arch-chroot "$M" bash -c 'pacman-key --init; pacman-key --populate; pacman -Syu'
+echo ">>> Mounted OK."
+read -rp 'Also run a full package upgrade inside the install? [y/N]: ' DOUP
+if [ "$DOUP" = y ] || [ "$DOUP" = Y ]; then
+    echo ">>> Refreshing keyrings and upgrading inside the install…"
+    sudo arch-chroot "$M" bash -c 'pacman-key --init; pacman-key --populate; pacman -Syu'
+fi
 sudo umount -R "$M"
 echo '>>> Done. You can reboot into the installed system.'
 """

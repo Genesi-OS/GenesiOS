@@ -44,5 +44,10 @@ fix_selection_contrast() {
             --group "Colors:Selection" --key ForegroundNormal "255,255,255" 2>/dev/null || true
         runuser -u "$u" -- kwriteconfig6 --file kdeglobals \
             --group "Colors:Selection" --key ForegroundActive "255,255,255" 2>/dev/null || true
+        # Heal the odd grey button background (44,44,42) left by older Genesi
+        # color schemes — everything else in the scheme is the Genesi blue, so a
+        # grey button stood out. Force it to the brand blue per existing user.
+        runuser -u "$u" -- kwriteconfig6 --file kdeglobals \
+            --group "Colors:Button" --key BackgroundNormal "20,49,69" 2>/dev/null || true
     done
 }

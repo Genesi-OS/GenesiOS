@@ -23,18 +23,18 @@ QtObject {
     readonly property color sevLow:       "#E0B23A"
     readonly property color sevInfo:      "#3AAFE0"
 
-    // ── Surfaces (neutral system dark; green stays an accent only) ──
-    readonly property color bgTop:        "#1A1D1F"
-    readonly property color bgBottom:     "#141618"
-    readonly property color card:         "#1F2225"
-    readonly property color cardHi:       "#282C30"
-    readonly property color line:         "#31363B"
-    readonly property color lineHi:       "#3D434A"
+    // ── Surfaces (Genesi system blue-dark; green stays an accent only) ──
+    readonly property color bgTop:        "#0F2536"
+    readonly property color bgBottom:     "#0A1B29"
+    readonly property color card:         "#122E42"
+    readonly property color cardHi:       "#173A52"
+    readonly property color line:         "#21425A"
+    readonly property color lineHi:       "#2C5470"
 
     // ── Text ───────────────────────────────────────────────────────
-    readonly property color textHi:       "#EAEDEF"
-    readonly property color textMid:      "#A4ABAF"
-    readonly property color textLo:       "#6B7378"
+    readonly property color textHi:       "#EAEEF2"
+    readonly property color textMid:      "#A2B2BD"
+    readonly property color textLo:       "#647889"
 
     readonly property string mono: "monospace"
 

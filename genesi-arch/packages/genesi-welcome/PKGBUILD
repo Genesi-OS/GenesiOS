@@ -19,7 +19,11 @@ pkgver=1.0.0
 # page (update, reinstall all, reset keyrings, pacman-key --init, clear db lock,
 # clean cache, remove orphans, gaming bundle, Snapper, mirrors, DNS, SpoofDPI,
 # service toggles) plus a live-ISO "repair installed system" (chroot) helper.
-pkgrel=4
+# pkgrel 5: the repair helper now runs a filesystem check/repair (xfs_repair /
+# e2fsck / btrfs check) BEFORE mounting — a root corrupted by an unclean
+# shutdown ("Structure needs cleaning") no longer aborts the whole repair. The
+# in-chroot package upgrade is now an optional follow-up prompt.
+pkgrel=5
 pkgdesc="Welcome application for Genesi OS"
 arch=('any')
 url="https://github.com/zFreshy/GenesiOS"

@@ -26,7 +26,9 @@
 # closing the window no longer prints "RuntimeError: Event loop is closed".
 pkgname=genesi-netinspect
 pkgver=1.0.0
-pkgrel=6
+# pkgrel 7: app surfaces now use the Genesi system blue (the desktop's window
+# colour) instead of the neutral grey, so the app matches the rest of the OS.
+pkgrel=7
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
