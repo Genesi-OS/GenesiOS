@@ -54,10 +54,10 @@ Item {
             width: 34; height: 34; radius: 17
             color: b.isUser ? "#1D9E75"
                  : b.isError ? Qt.rgba(231/255, 76/255, 60/255, 0.18)
-                 : "#16271F"
+                 : "#22262A"
             border.width: 1
             border.color: b.isUser ? "transparent"
-                        : b.isError ? "#E74C3C" : "#2A463B"
+                        : b.isError ? "#E74C3C" : "#3A4146"
             Image {
                 anchors.centerIn: parent
                 source: Qt.resolvedUrl(b.isUser ? "icons/user.svg"
@@ -77,11 +77,11 @@ Item {
             implicitHeight: content.implicitHeight + 20
             color: b.isUser ? "#15694F"
                  : b.isError ? Qt.rgba(231/255, 76/255, 60/255, 0.10)
-                 : "#13241D"
+                 : "#1F2225"
             border.width: 1
             border.color: b.isUser ? Qt.rgba(52/255, 211/255, 153/255, 0.35)
                         : b.isError ? Qt.rgba(231/255, 76/255, 60/255, 0.5)
-                        : "#223A30"
+                        : "#31363B"
 
             Column {
                 id: content

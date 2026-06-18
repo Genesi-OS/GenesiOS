@@ -9,3 +9,4 @@ Terminal=false
 Categories=System;Monitor;Qt;
 Keywords=AI;Ollama;LLM;GPU;performance;monitor;
 StartupNotify=true
+StartupWMClass=org.genesi.aimonitor

@@ -164,7 +164,10 @@ pkgver=1.0.0
 # state chat glyph, and a rocket in the INFERENCE gauge. GaugeArc gained an
 # optional `icon` property (backward-compatible). Adds qt6-svg so QtQuick Image
 # rasterises them.
-pkgrel=74
+# pkgrel 75: neutral system-dark surfaces in the Monitor (Theme.qml + chat
+# bubbles) — green is now an accent only, not the whole background — and a
+# StartupWMClass on the .desktop so the taskbar groups it as Genesi, not python3.
+pkgrel=75
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
