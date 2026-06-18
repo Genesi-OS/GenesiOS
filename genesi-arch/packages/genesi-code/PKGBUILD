@@ -37,7 +37,9 @@ pkgver=0.0.30
 # detached app — fixes "opens from a terminal but not from the menu". (pkgver is
 # overridden to the latest release by publish-apps.yml; this pkgrel forces the
 # rebuilt package to supersede the same-version one already in [genesi-apps].)
-pkgrel=6
+# pkgrel 7: new app icon — the Genesi leaf with a </> at its heart (replaces the
+# old leaf+veins glyph). Pure icon swap; bump so the rebuilt package ships it.
+pkgrel=7
 pkgdesc='Genesi Code - local-first code editor / agentic terminal for Genesi OS (Warp fork)'
 arch=('x86_64')
 url='https://github.com/zFreshy/genesi-code'
