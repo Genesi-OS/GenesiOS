@@ -346,8 +346,13 @@ class ProxyEngine(threading.Thread):
             self.loop.call_soon_threadsafe(fn)
 
     def shutdown(self):
-        if self.master and self.loop:
-            self.loop.call_soon_threadsafe(self.master.shutdown)
+        # On window close the asyncio loop may already be torn down; guarding
+        # avoids the "RuntimeError: Event loop is closed" traceback on exit.
+        if self.master and self.loop and not self.loop.is_closed():
+            try:
+                self.loop.call_soon_threadsafe(self.master.shutdown)
+            except RuntimeError:
+                pass
 
 
 # ───────────────────────────── Qt backend bridge ───────────────────────────
@@ -560,8 +565,11 @@ def main():
     _silence_mitm_logging()
     app = QGuiApplication(sys.argv)
     app.setApplicationName("Genesi API Inspector")
+    app.setApplicationDisplayName("Genesi API Inspector")
     app.setOrganizationName("Genesi OS")
-    app.setWindowIcon(QIcon.fromTheme("network-wired"))
+    # Match the .desktop so the taskbar shows our name+icon, not "python3".
+    app.setDesktopFileName("org.genesi.netinspect")
+    app.setWindowIcon(QIcon.fromTheme("genesi-netinspect"))
 
     backend = Backend()
     engine = QQmlApplicationEngine()

@@ -19,9 +19,14 @@
 # pkgrel 5: visual identity pass — drop the placeholder emoji (🛰🔎🔁🎯🛡) for
 # a crafted Genesi SVG icon set (app/icons/, brand-green accented line icons)
 # in the header + nav rail. Adds qt6-svg so QtQuick Image renders them.
+# pkgrel 6: (1) taskbar identity — setDesktopFileName + StartupWMClass +
+# a real app icon (genesi-netinspect.svg) so the window shows our name/logo
+# instead of "python3". (2) Neutral system-dark surfaces (green is now an
+# accent only, not the whole background). (3) Guard the asyncio shutdown so
+# closing the window no longer prints "RuntimeError: Event loop is closed".
 pkgname=genesi-netinspect
 pkgver=1.0.0
-pkgrel=5
+pkgrel=6
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -61,6 +66,9 @@ package() {
 
     install -Dm644 "${startdir}/org.genesi.netinspect.desktop" \
         "$pkgdir/usr/share/applications/org.genesi.netinspect.desktop"
+    # Branded app icon (the inspector magnifier logo) for the taskbar / menu
+    install -Dm644 "${startdir}/app/icons/logo.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-netinspect.svg"
     install -Dm644 "${startdir}/org.genesi.proxy-toggle.desktop" \
         "$pkgdir/usr/share/applications/org.genesi.proxy-toggle.desktop"
 }
