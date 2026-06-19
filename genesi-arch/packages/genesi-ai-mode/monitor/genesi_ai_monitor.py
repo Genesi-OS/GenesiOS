@@ -779,10 +779,15 @@ class Backend(QObject):
 
 
 def main():
-    # Use Plasma's Qt Quick Controls style so the app inherits the system color
-    # scheme (incl. the dark Genesi theme) instead of the light Qt default.
-    # Needs qqc2-desktop-style; falls back silently to the default if absent.
-    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "org.kde.desktop")
+    # Use the Fusion Qt Quick Controls style, NOT org.kde.desktop. The desktop
+    # style delegates control drawing to the system QStyle (Darkly), and Darkly6
+    # SIGSEGVs when that QStyle is driven from QML — qqc2-desktop-style passes a
+    # null QWidget* to QStyle::drawControl and Darkly dereferences it, crashing
+    # the whole app on launch (DrKonqi backtrace: qqc2desktopstyleplugin ->
+    # QCommonStyle::drawControl -> darkly6). QWidget apps are unaffected (they
+    # pass a real widget). Fusion is self-drawn (no QStyle), so it can't hit the
+    # Darkly bug; QT_QPA_PLATFORMTHEME=kde still gives it the dark Genesi palette.
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
     os.environ.setdefault("QT_QPA_PLATFORMTHEME", "kde")
     # In a VM the guest GL stack (VMware/virtio/llvmpipe) frequently lies about
     # its capabilities, and Qt Quick's RHI hard-crashes (SIGSEGV) while creating
@@ -801,7 +806,7 @@ def main():
         pass
     try:
         from PySide6.QtQuickControls2 import QQuickStyle
-        QQuickStyle.setStyle("org.kde.desktop")
+        QQuickStyle.setStyle("Fusion")
     except ImportError:
         pass
 

@@ -38,7 +38,13 @@ pkgver=1.0.0
 # RHI/GL crash on VirtualBox/VMware SVGA), so it now falls back to
 # QT_QUICK_BACKEND=software when systemd-detect-virt reports a VM (like the
 # Monitor).
-pkgrel=6
+# pkgrel 7: the pkgrel-5/6 org.kde.desktop style was itself a crash trigger — it
+# delegates drawing to Darkly, and Darkly6 SIGSEGVs from QML (null QWidget* in
+# drawControl), so the window stopped opening at all. Switched to the Fusion
+# QQC2 style (self-drawn, no Darkly, dark via QT_QPA_PLATFORMTHEME=kde): the
+# ComboBox renders readable and the app launches. The Main.qml backend-shadow
+# fix (real empty-dropdown cause) and the VM software backend stay.
+pkgrel=7
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

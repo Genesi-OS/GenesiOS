@@ -182,7 +182,15 @@ pkgver=1.0.0
 # restores the previous scheme on off, leaving normal-mode glass exactly as it
 # was. (3) de-green the Monitor: its cards/gauges used a dark-green surface;
 # they now use the Genesi system blue so it matches the rest of the desktop.
-pkgrel=77
+# pkgrel 78: the Monitor still crashed on launch — not GL this time but the
+# Darkly style. The org.kde.desktop Qt Quick Controls style delegates drawing to
+# the system QStyle (Darkly), and Darkly6 SIGSEGVs when driven from QML (it
+# dereferences the null QWidget* qqc2-desktop-style passes to drawControl). So
+# the Monitor (and Sandboxes) never opened once that style was active. Switched
+# the QQC2 style to Fusion (self-drawn, no QStyle) — dark via QT_QPA_PLATFORMTHEME
+# =kde — which sidesteps the Darkly bug entirely. (pkgrel-77's VM software backend
+# is kept; it fixed the earlier GL crash that sat in front of this one.)
+pkgrel=78
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

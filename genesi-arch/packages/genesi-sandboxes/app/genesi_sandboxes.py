@@ -125,14 +125,14 @@ class Backend(QObject):
 
 
 def main():
-    # Use Plasma's Qt Quick Controls style so the app inherits the system color
-    # scheme (the dark Genesi theme) AND renders controls — notably the template
-    # ComboBox — with the proper desktop style. Without this the app falls back
-    # to the Basic QtQuick style, where the (unstyled) ComboBox paints as a flat
-    # accent-green box and its items are unreadable, so the template dropdown
-    # looked permanently empty ("no sandbox option appears"). Needs
-    # qqc2-desktop-style (a hard dependency); falls back silently if absent.
-    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "org.kde.desktop")
+    # Use the Fusion Qt Quick Controls style for a readable dark ComboBox without
+    # the org.kde.desktop style. The desktop style delegates drawing to the system
+    # QStyle (Darkly), and Darkly6 SIGSEGVs when driven from QML (it dereferences
+    # the null QWidget* that qqc2-desktop-style passes to drawControl) — that
+    # crashed this app on launch once org.kde.desktop was selected. The Basic
+    # default rendered the ComboBox as a flat accent-green box; Fusion is
+    # self-drawn (no Darkly), dark via QT_QPA_PLATFORMTHEME=kde, and can't crash.
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
     os.environ.setdefault("QT_QPA_PLATFORMTHEME", "kde")
     # In a VM the guest GL stack (VirtualBox/VMware SVGA) lies about its
     # capabilities and Qt Quick's RHI SIGSEGVs creating the GL context — the app
@@ -148,7 +148,7 @@ def main():
         pass
     try:
         from PySide6.QtQuickControls2 import QQuickStyle
-        QQuickStyle.setStyle("org.kde.desktop")
+        QQuickStyle.setStyle("Fusion")
     except ImportError:
         pass
 
