@@ -28,7 +28,12 @@ pkgname=genesi-netinspect
 pkgver=1.0.0
 # pkgrel 7: app surfaces now use the Genesi system blue (the desktop's window
 # colour) instead of the neutral grey, so the app matches the rest of the OS.
-pkgrel=7
+# pkgrel 8: don't crash on launch via the Darkly style. Like the Monitor and
+# Sandboxes, this Qt6/QML app picked up the org.kde.desktop QQC2 style, which
+# delegates drawing to Darkly — and Darkly6 SIGSEGVs from QML (null QWidget* in
+# drawControl). Force the Fusion QQC2 style (self-drawn, dark via the kde
+# platform theme) and fall back to the software backend in a VM.
+pkgrel=8
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

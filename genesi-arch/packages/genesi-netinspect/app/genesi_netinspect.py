@@ -563,6 +563,29 @@ def _silence_mitm_logging():
 
 def main():
     _silence_mitm_logging()
+    # Use the Fusion Qt Quick Controls style, NOT org.kde.desktop. The desktop
+    # style delegates control drawing to the system QStyle (Darkly), and Darkly6
+    # SIGSEGVs when driven from QML (it dereferences the null QWidget* that
+    # qqc2-desktop-style passes to QStyle::drawControl), crashing the app on
+    # launch. Fusion is self-drawn (no QStyle), so it can't hit the Darkly bug;
+    # QT_QPA_PLATFORMTHEME=kde still gives it the dark Genesi palette.
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
+    os.environ.setdefault("QT_QPA_PLATFORMTHEME", "kde")
+    # In a VM the guest GL stack lies and Qt Quick's RHI SIGSEGVs creating the GL
+    # context; fall back to the software scene graph when virtualized (bare metal
+    # keeps GPU rendering). A user QT_QUICK_BACKEND always wins (setdefault).
+    try:
+        if subprocess.run(["systemd-detect-virt", "--quiet"],
+                          timeout=4).returncode == 0:
+            os.environ.setdefault("QT_QUICK_BACKEND", "software")
+    except Exception:
+        pass
+    try:
+        from PySide6.QtQuickControls2 import QQuickStyle
+        QQuickStyle.setStyle("Fusion")
+    except ImportError:
+        pass
+
     app = QGuiApplication(sys.argv)
     app.setApplicationName("Genesi API Inspector")
     app.setApplicationDisplayName("Genesi API Inspector")
