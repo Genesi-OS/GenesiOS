@@ -134,6 +134,18 @@ def main():
     # qqc2-desktop-style (a hard dependency); falls back silently if absent.
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "org.kde.desktop")
     os.environ.setdefault("QT_QPA_PLATFORMTHEME", "kde")
+    # In a VM the guest GL stack (VirtualBox/VMware SVGA) lies about its
+    # capabilities and Qt Quick's RHI SIGSEGVs creating the GL context — the app
+    # crashes before the window appears. Fall back to the software scene graph
+    # when virtualized (bare metal keeps GPU rendering): no GPU needed, the whole
+    # UI still renders, and this app isn't perf-critical. A user QT_QUICK_BACKEND
+    # always wins (setdefault).
+    try:
+        if subprocess.run(["systemd-detect-virt", "--quiet"],
+                          timeout=4).returncode == 0:
+            os.environ.setdefault("QT_QUICK_BACKEND", "software")
+    except Exception:
+        pass
     try:
         from PySide6.QtQuickControls2 import QQuickStyle
         QQuickStyle.setStyle("org.kde.desktop")

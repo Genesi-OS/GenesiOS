@@ -28,7 +28,17 @@ pkgver=1.0.0
 # QT_QUICK_CONTROLS_STYLE=org.kde.desktop + QQuickStyle.setStyle (matching the
 # AI Mode Monitor), so the dropdown lists the templates and the app picks up the
 # Genesi theme. (qqc2-desktop-style is already a hard dependency.)
-pkgrel=5
+# pkgrel 6: the empty dropdown's REAL cause (the pkgrel-5 style fix was a wrong
+# diagnosis): Main.qml had `property string backend` shadowing the `backend`
+# context property (the Python object), so `Connections { target: backend }`
+# bound to the empty string — every signal handler (onTemplatesLoaded, ...) was
+# dead, so templates never loaded. Renamed it to `containerBackend`. Also fixed
+# `wrapMode: TextArea.Wrap` (ReferenceError) -> Text.Wrap and `logArea.length`
+# -> `logArea.text.length`. AND: the GUI SIGSEGV'd on launch in a VM (Qt Quick
+# RHI/GL crash on VirtualBox/VMware SVGA), so it now falls back to
+# QT_QUICK_BACKEND=software when systemd-detect-virt reports a VM (like the
+# Monitor).
+pkgrel=6
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

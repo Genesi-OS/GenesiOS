@@ -20,7 +20,11 @@ Kirigami.ApplicationWindow {
     property var boxes: []
     property var templates: []
     property bool hasDistrobox: true
-    property string backend: ""
+    // NB: must NOT be named `backend` — that would shadow the `backend` context
+    // property (the Python object), making `Connections { target: backend }` bind
+    // to this string instead. That broke every signal handler (templates never
+    // loaded -> empty dropdown). Keep this the container-engine name only.
+    property string containerBackend: ""
     property bool hasCode: false
     property bool busy: false
 
@@ -30,7 +34,7 @@ Kirigami.ApplicationWindow {
             try {
                 var o = JSON.parse(json)
                 win.hasDistrobox = !!o.distrobox
-                win.backend = o.backend || ""
+                win.containerBackend = o.backend || ""
                 win.hasCode = !!o.hasCode
                 win.boxes = o.boxes || []
             } catch (e) { win.boxes = [] }
@@ -70,7 +74,7 @@ Kirigami.ApplicationWindow {
             // no container backend banner (distrobox present but no podman/docker)
             Kirigami.InlineMessage {
                 Layout.fillWidth: true
-                visible: win.hasDistrobox && win.backend === "none"
+                visible: win.hasDistrobox && win.containerBackend === "none"
                 type: Kirigami.MessageType.Warning
                 text: "No container backend found. Install podman (recommended, rootless) or docker from the Genesi Package Installer."
             }
@@ -138,8 +142,8 @@ Kirigami.ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 QQC2.Label {
-                    visible: win.backend !== "" && win.backend !== "none"
-                    text: "backend: " + win.backend
+                    visible: win.containerBackend !== "" && win.containerBackend !== "none"
+                    text: "backend: " + win.containerBackend
                     opacity: 0.6
                     font: Kirigami.Theme.smallFont
                 }
@@ -203,11 +207,11 @@ Kirigami.ApplicationWindow {
             QQC2.ScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 120
-                visible: logArea.length > 0
+                visible: logArea.text.length > 0
                 QQC2.TextArea {
                     id: logArea
                     readOnly: true
-                    wrapMode: TextArea.Wrap
+                    wrapMode: Text.Wrap
                     font.family: "monospace"
                 }
             }
