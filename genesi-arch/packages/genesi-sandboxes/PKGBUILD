@@ -62,7 +62,11 @@ pkgver=1.0.0
 # (top sheen + bottom shade), an animated hover lift + brighten; GButton gained a
 # tactile press-scale. Kept SHADER-FREE so it still renders under the software
 # backend in VMs. Same GlassCard upgrade landed in the AI Monitor + API Inspector.
-pkgrel=9
+# pkgrel 10: the shared kit (Theme/GlassCard/GButton/StatusBanner) is no longer
+# kept in app/ — it's bundled at build from the new canonical genesi-ui-kit/ (one
+# source for the kit, copied in via a sibling ../ ref; NOT a published package, so
+# it doesn't trip the pipeline's no-inter-package-dep rule). No runtime change.
+pkgrel=10
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -91,8 +95,10 @@ package() {
         "$pkgdir/usr/share/genesi-sandboxes/app/genesi_sandboxes.py"
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-sandboxes/app/Main.qml"
+    # Shared Genesi UI kit — one canonical source, bundled in at build (see
+    # genesi-ui-kit/README.md for why it's not a dependency).
     for comp in Theme GlassCard GButton StatusBanner; do
-        install -Dm644 "${startdir}/app/${comp}.qml" \
+        install -Dm644 "${startdir}/../genesi-ui-kit/components/${comp}.qml" \
             "$pkgdir/usr/share/genesi-sandboxes/app/${comp}.qml"
     done
 

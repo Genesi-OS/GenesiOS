@@ -217,7 +217,11 @@ pkgver=1.0.0
 # (top sheen + bottom shade), an animated hover lift, and a hover brighten. Kept
 # SHADER-FREE on purpose so it still renders under QT_QUICK_BACKEND=software in
 # VMs. Same GlassCard upgrade landed in genesi-sandboxes + genesi-netinspect.
-pkgrel=82
+# pkgrel 83: Theme.qml + GlassCard.qml are no longer kept in monitor/ — they're
+# bundled at build from the new canonical genesi-ui-kit/ (one source for the
+# shared QML kit, copied in via a sibling ../ ref; NOT a published package, so it
+# doesn't trip the pipeline's no-inter-package-dep rule). No runtime change.
+pkgrel=83
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -301,9 +305,11 @@ package() {
     install -Dm644 "${startdir}/monitor/AdvisorPage.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/AdvisorPage.qml"
     # Shared UI building blocks (brand palette + reusable visual components)
-    install -Dm644 "${startdir}/monitor/Theme.qml" \
+    # Theme + GlassCard come from the shared Genesi UI kit (one canonical source,
+    # bundled in at build — see genesi-ui-kit/README.md for why it's not a dep).
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/Theme.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/Theme.qml"
-    install -Dm644 "${startdir}/monitor/GlassCard.qml" \
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/GlassCard.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/GlassCard.qml"
     install -Dm644 "${startdir}/monitor/GaugeArc.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/GaugeArc.qml"
