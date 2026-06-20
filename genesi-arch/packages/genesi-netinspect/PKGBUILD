@@ -43,7 +43,11 @@ pkgver=1.0.0
 # bundled at build from the new canonical genesi-ui-kit/ (one source for the
 # shared QML kit, copied in via a sibling ../ ref; NOT a published package, so it
 # doesn't trip the pipeline's no-inter-package-dep rule). No runtime change.
-pkgrel=10
+# pkgrel 11: shared kit is now ADAPTIVE (follows the system light/dark scheme via
+# Kirigami.Theme). The dark branch is byte-identical to before, so on Genesi's
+# default dark scheme the Inspector is unchanged; a light system would render it
+# light (untested — Inspector light pass TODO).
+pkgrel=11
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
