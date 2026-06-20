@@ -71,7 +71,13 @@ pkgver=1.0.0
 # plain folder path we passed wasn't a valid URL, so it was dropped and nothing
 # opened. Pass a file:// URL instead (genesi-code's uri::handle_incoming_uri ->
 # open_file spawns a new session with that directory as the working directory).
-pkgrel=11
+# pkgrel 12: Doquo-style redesign — two-pane layout (left sidebar with brand +
+# primary action + filters + backend status; content area with header, tabs,
+# search and a clean workspace list with per-row accent + a floating action
+# button). Create moved into a dialog. The shared kit is now ADAPTIVE: the app
+# follows the system light/dark scheme (Kirigami.Theme), so it's light on a light
+# system and dark on a dark one. UNVALIDATED on hardware (no Plasma/QML here).
+pkgrel=12
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
