@@ -44,14 +44,34 @@ pkgver=1.0.0
 # QQC2 style (self-drawn, no Darkly, dark via QT_QPA_PLATFORMTHEME=kde): the
 # ComboBox renders readable and the app launches. The Main.qml backend-shadow
 # fix (real empty-dropdown cause) and the VM software backend stay.
-pkgrel=7
+# pkgrel 8: big UX/looks pass.
+#  - LOOKS: full visual redesign sharing the AI Mode Monitor's design language
+#    (new Theme.qml + GlassCard.qml + GButton.qml + StatusBanner.qml — the pilot
+#    of a shared Genesi UI kit). Gradient background, glass cards, branded header,
+#    custom-drawn buttons + a template picker dialog (drops the flat Fusion combo).
+#  - DOCKER UX: the CLI now tells you what to do instead of leaking distrobox's
+#    raw "dial unix /var/run/docker.sock" error. ensure_backend classifies docker
+#    as ready / inactive (daemon stopped) / perm (not in group); create/enter
+#    abort early with the exact fix; list-json reports backendReady+backendIssue
+#    so the GUI shows a banner with a one-click "Start Docker" (pkexec systemctl
+#    enable --now docker). podman is now a HARD dep so the rootless, no-daemon
+#    backend is always present — sandboxes "just work" with zero setup.
+#  - GENESI CODE: openInCode now watches the launch and surfaces the real error
+#    if it crashes fast (e.g. no GPU in a VM) instead of hanging on "Opening…".
+# pkgrel 9: UI polish pass on the shared kit — GlassCard gained shader-free depth
+# (top sheen + bottom shade), an animated hover lift + brighten; GButton gained a
+# tactile press-scale. Kept SHADER-FREE so it still renders under the software
+# backend in VMs. Same GlassCard upgrade landed in the AI Monitor + API Inspector.
+pkgrel=9
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
 license=('GPL-3.0-or-later')
-depends=('python' 'pyside6' 'qqc2-desktop-style' 'distrobox')
+# podman is a HARD dep: rootless, no daemon, no group — it's the backend that
+# works with zero setup, so Distrobox always has one out of the box. docker stays
+# an optional alternative for users who prefer it.
+depends=('python' 'pyside6' 'qqc2-desktop-style' 'distrobox' 'podman')
 optdepends=(
-    'podman: rootless container backend for Distrobox (recommended)'
     'docker: alternative container backend for Distrobox'
     'konsole: terminal used to enter a workspace'
     'genesi-code: open a workspace project folder in the Genesi Code IDE'
@@ -66,11 +86,15 @@ package() {
     install -Dm755 "${startdir}/genesi-sandboxes-gui" \
         "$pkgdir/usr/local/bin/genesi-sandboxes-gui"
 
-    # GUI app (PySide6 + Kirigami)
+    # GUI app (PySide6 + Kirigami) — main window + shared Genesi UI kit
     install -Dm644 "${startdir}/app/genesi_sandboxes.py" \
         "$pkgdir/usr/share/genesi-sandboxes/app/genesi_sandboxes.py"
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-sandboxes/app/Main.qml"
+    for comp in Theme GlassCard GButton StatusBanner; do
+        install -Dm644 "${startdir}/app/${comp}.qml" \
+            "$pkgdir/usr/share/genesi-sandboxes/app/${comp}.qml"
+    done
 
     # Desktop entry + branded app icon (taskbar/menu shows our cube, not python3)
     install -Dm644 "${startdir}/org.genesi.sandboxes.desktop" \

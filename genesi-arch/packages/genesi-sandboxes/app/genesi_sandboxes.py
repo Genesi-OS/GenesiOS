@@ -9,7 +9,9 @@ lives in Main.qml; this is the QML engine plus a small backend object.
 import os
 import sys
 import json
+import time
 import shutil
+import tempfile
 import threading
 import subprocess
 
@@ -115,13 +117,65 @@ class Backend(QObject):
 
     @Slot(str)
     def openInCode(self, name):
-        # Open the workspace's project folder in Genesi Code (host-side IDE).
-        # Detached so the GUI never blocks on the editor process.
-        try:
-            subprocess.Popen([CLI, "code", name], start_new_session=True)
+        # Open the workspace's project folder in Genesi Code (host-side IDE),
+        # detached so the GUI never blocks on the editor. Genesi Code is a
+        # GPU-accelerated app (Warp fork) — in a VM without a working GPU it can
+        # crash instantly, which used to leave the GUI stuck on "Opening…" with
+        # no clue. So we watch the process for a few seconds: if it dies fast we
+        # surface the real error (stderr goes to a temp file, never a pipe, so a
+        # long-lived editor can't block on a full buffer).
+        def work():
+            errpath = None
+            try:
+                fd, errpath = tempfile.mkstemp(prefix="genesi-code-", suffix=".log")
+                os.close(fd)
+                werr = open(errpath, "w")
+                proc = subprocess.Popen([CLI, "code", name],
+                                        stdout=subprocess.DEVNULL, stderr=werr,
+                                        start_new_session=True)
+                werr.close()  # the child keeps its own duplicated fd
+            except Exception as e:
+                self.logLine.emit("error: %s" % e)
+                return
             self.logLine.emit("Opening '%s' in Genesi Code…" % name)
-        except Exception as e:
-            self.logLine.emit("error: %s" % e)
+            # ~3s grace: a healthy editor is still running; a fast non-zero exit
+            # means it failed to launch.
+            rc = None
+            for _ in range(12):
+                rc = proc.poll()
+                if rc is not None:
+                    break
+                time.sleep(0.25)
+            if rc is not None and rc != 0:
+                msg = ""
+                try:
+                    with open(errpath) as r:
+                        msg = r.read().strip()
+                except OSError:
+                    pass
+                tail = msg.splitlines()[-1] if msg else ("exited %d" % rc)
+                self.logLine.emit("Genesi Code couldn't open: %s" % tail)
+                self.logLine.emit("(If you're on a VM, Genesi Code needs a working "
+                                  "GPU — it runs fine on real hardware.)")
+            if rc is not None and errpath:
+                try:
+                    os.unlink(errpath)   # editor already gone; drop the log
+                except OSError:
+                    pass
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def startDocker(self):
+        # Enable + start the docker service (graphical polkit auth). The user is
+        # never told elsewhere that docker must be running; this is the one-click
+        # fix surfaced by the "Docker is installed but not running" banner.
+        if self._busy:
+            return
+        self.logLine.emit("=== starting Docker (enable + start) ===")
+        self._run_stream(
+            ["pkexec", "systemctl", "enable", "--now", "docker"],
+            "Docker started. Creating sandboxes should work now.")
 
 
 def main():

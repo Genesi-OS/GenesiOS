@@ -43,6 +43,16 @@ in_docker_group() {
 }
 
 DBX_MGR=""
+# "" = ready; "inactive" = docker installed but daemon stopped; "perm" = daemon
+# up but the user can't reach the socket (not in the docker group at all).
+DOCKER_ISSUE=""
+
+docker_daemon_active() {
+    systemctl is-active --quiet docker 2>/dev/null && return 0
+    systemctl is-active --quiet docker.socket 2>/dev/null && return 0
+    return 1
+}
+
 # Detect the backend lazily — ONLY the commands that touch containers call this.
 # `templates-json` (which fills the GUI's template dropdown) must never run
 # `docker info`: a busy/over-loaded docker daemon makes it hang, the GUI's
@@ -51,9 +61,48 @@ ensure_backend() {
     [ -n "${_BACKEND_DONE:-}" ] && return 0
     _BACKEND_DONE=1
     DBX_MGR="$(detect_backend)"
-    if [ "$DBX_MGR" = docker ] && ! docker info >/dev/null 2>&1 && in_docker_group; then
-        SG_DOCKER=1
+    [ "$DBX_MGR" = docker ] || return 0
+    # Docker is the backend — confirm we can actually reach the daemon, and if
+    # not, classify WHY so the GUI/CLI can tell the user exactly what to do
+    # (instead of leaking distrobox's raw "dial unix /var/run/docker.sock" error).
+    if docker info >/dev/null 2>&1; then
+        return 0                                   # reachable directly
     fi
+    if in_docker_group && sg docker -c 'docker info >/dev/null 2>&1' 2>/dev/null; then
+        SG_DOCKER=1; return 0                       # reachable via group hop
+    fi
+    if docker_daemon_active; then
+        DOCKER_ISSUE=perm
+    else
+        DOCKER_ISSUE=inactive
+    fi
+}
+
+# Stop create/enter early with an actionable message when Docker can't be reached
+# — the missing instruction users had to guess ("sudo systemctl start docker").
+assert_backend_ready() {
+    [ "$DBX_MGR" = docker ] || return 0
+    case "$DOCKER_ISSUE" in
+      inactive)
+        cat >&2 <<EOF
+Docker is installed but its service isn't running.
+Start it (and enable it on every boot) with:
+
+    sudo systemctl enable --now docker
+
+Tip: install podman for a rootless backend that needs no daemon or group setup:
+    sudo pacman -S podman
+EOF
+        exit 1 ;;
+      perm)
+        cat >&2 <<EOF
+Your user isn't allowed to talk to Docker yet.
+Add yourself to the docker group, then log out and back in:
+
+    sudo usermod -aG docker $(id -un)
+EOF
+        exit 1 ;;
+    esac
 }
 
 # Run distrobox with the chosen backend, group-hopping for Docker when needed.
@@ -82,6 +131,7 @@ require_distrobox() {
     [ -n "$DBX_MGR" ] || {
         echo "no container backend found — install podman (recommended) or docker" >&2
         exit 1; }
+    assert_backend_ready
 }
 
 # ---- templates --------------------------------------------------------------
@@ -118,12 +168,18 @@ PY
 
   list-json)
     if ! command -v distrobox >/dev/null 2>&1; then
-        echo '{"distrobox":false,"backend":"","hasCode":false,"boxes":[]}'; exit 0
+        echo '{"distrobox":false,"backend":"","backendReady":false,"backendIssue":"","hasCode":false,"boxes":[]}'; exit 0
     fi
     has_code=false; if command -v genesi-code >/dev/null 2>&1; then has_code=true; fi
     ensure_backend
     if [ -z "$DBX_MGR" ]; then
-        echo '{"distrobox":true,"backend":"none","hasCode":'"$has_code"',"boxes":[]}'
+        echo '{"distrobox":true,"backend":"none","backendReady":false,"backendIssue":"","hasCode":'"$has_code"',"boxes":[]}'
+        exit 0
+    fi
+    # When Docker can't be reached, DON'T run `dbx list` (it would just error);
+    # report the issue so the GUI shows the right banner instead of an empty list.
+    if [ -n "$DOCKER_ISSUE" ]; then
+        echo '{"distrobox":true,"backend":"'"$DBX_MGR"'","backendReady":false,"backendIssue":"'"$DOCKER_ISSUE"'","hasCode":'"$has_code"',"boxes":[]}'
         exit 0
     fi
     raw="$(dbx list --no-color 2>/dev/null || true)"
@@ -144,6 +200,8 @@ for i, line in enumerate(raw.splitlines()):
 boxes.sort(key=lambda b: b["name"])
 print(json.dumps({"distrobox": True,
                   "backend": os.environ.get("BACKEND", "none"),
+                  "backendReady": True,
+                  "backendIssue": "",
                   "hasCode": os.environ.get("HASCODE") == "true",
                   "boxes": boxes}))
 PY
