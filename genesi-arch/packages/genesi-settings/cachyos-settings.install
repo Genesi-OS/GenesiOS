@@ -88,6 +88,13 @@ fix_titlebar_uniformity() {
             runuser -u "$u" -- kwriteconfig6 --file kdeglobals --group WM \
                 --key "$key" "13,32,48" 2>/dev/null || true
         done
+        # An older AI-Mode helper could have left the user on the now-removed
+        # "Genesi-Solid" scheme; point them back at "Genesi" so the name resolves.
+        if [ "$(runuser -u "$u" -- kreadconfig6 --file kdeglobals --group General \
+                --key ColorScheme 2>/dev/null)" = "Genesi-Solid" ]; then
+            runuser -u "$u" -- kwriteconfig6 --file kdeglobals --group General \
+                --key ColorScheme "Genesi" 2>/dev/null || true
+        fi
 
         # klassyrc: let the titlebar inherit the (now opaque) [WM] colour and
         # match the inactive window outline to the active one.
