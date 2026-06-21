@@ -219,14 +219,31 @@ jobs:
           #    so fork() stops being denied (privileged container -> host /proc).
           sysctl -w vm.overcommit_memory=1 || echo "::warning::could not set overcommit"
           # 2) Real swap as a backstop so the OOM killer doesn't actually fire.
-          #    Always add it — the runner already ships a tiny /swapfile, so we
-          #    must NOT gate on 'swap exists' (that bug skipped it, 2026-06-09).
+          #    BEST-EFFORT only — overcommit=1 above is the real fix; never fail
+          #    the build over swap. 2026-06-21: a FIXED 16G swapfile hit "No space
+          #    left on device" on a low-disk runner (fallocate unsupported on the
+          #    overlay fs -> dd wrote real bytes -> ENOSPC -> set -e killed the
+          #    build). Now: size the swap to HALF the free disk (so dd can't fill
+          #    it) and treat every step as non-fatal, reclaiming a partial file.
+          set +e
           if [ ! -e /ci-swapfile ]; then
-            fallocate -l 16G /ci-swapfile 2>/dev/null || dd if=/dev/zero of=/ci-swapfile bs=1M count=16384
-            chmod 600 /ci-swapfile
-            mkswap /ci-swapfile
-            swapon /ci-swapfile || echo "::warning::swapon failed — relying on overcommit"
+            avail_mb=$(df --output=avail -m / 2>/dev/null | tail -1 | tr -d ' '); avail_mb=${avail_mb:-0}
+            want_mb=$(( avail_mb / 2 )); [ "$want_mb" -gt 16384 ] && want_mb=16384
+            if [ "$want_mb" -ge 2048 ]; then
+              fallocate -l "${want_mb}M" /ci-swapfile 2>/dev/null \
+                || dd if=/dev/zero of=/ci-swapfile bs=1M count="$want_mb" status=none
+              if [ -s /ci-swapfile ]; then
+                chmod 600 /ci-swapfile
+                mkswap /ci-swapfile >/dev/null 2>&1 && swapon /ci-swapfile \
+                  || echo "::warning::swapon failed — relying on overcommit"
+              fi
+              # reclaim a half-written / unused file so it can't starve the build
+              swapon --show 2>/dev/null | grep -q /ci-swapfile || rm -f /ci-swapfile
+            else
+              echo "::warning::low disk (${avail_mb}MB free) — no swapfile, relying on overcommit"
+            fi
           fi
+          set -e
           swapon --show || true
           free -h || true
 
