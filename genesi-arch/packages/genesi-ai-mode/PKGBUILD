@@ -225,7 +225,20 @@ pkgver=1.0.0
 # Kirigami.Theme). The dark branch is byte-identical to before, so on Genesi's
 # default dark scheme the Monitor is unchanged; a light system would render it
 # light (untested — Monitor light pass TODO).
-pkgrel=84
+# pkgrel 85: ship genesi-ai-tray — a standalone SNI system-tray applet so the AI
+# Mode widget exists OUTSIDE Plasma (the Hyprland + caelestia-shell session has no
+# plasmashell, so the plasmoid can't load there). Pure PyQt6 (no Plasma import);
+# left-click pops a frameless panel mirroring the plasmoid (live CPU/RAM/GPU bars,
+# status, Force ON/Auto/Force OFF, Open Monitor), right-click is a quick menu. It
+# registers as a StatusNotifierItem, so it shows in the caelestia bar's tray (and
+# the KDE tray, but KDE keeps using the plasmoid). Started from the caelestia
+# hyprland.conf via exec-once (Hyprland ignores /etc/xdg/autostart). The panel is
+# theme-adaptive: every surface/text colour is derived from QApplication.palette()
+# (qt6ct/kdeglobals — same colour-scheme source the Kirigami Monitor reads) and
+# re-applied live on a palette change, so it follows the system light/dark scheme
+# (only the brand green stays constant). New dep: python-pyqt6 (the tray's
+# toolkit; already on every install via genesi-update).
+pkgrel=85
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -246,7 +259,8 @@ license=('GPL-3.0-or-later')
 # `pacman -S` a package that isn't in any repo yet (and makepkg's dep check
 # would also fail) → aborting the whole publish. It's an optdepend for docs.
 # It conflicts with the AUR llama.cpp variants, so those are no longer listed.
-depends=('python' 'python-psutil' 'kirigami' 'pyside6' 'qqc2-desktop-style' 'qt6-svg')
+depends=('python' 'python-psutil' 'kirigami' 'pyside6' 'qqc2-desktop-style' 'qt6-svg'
+         'python-pyqt6')   # python-pyqt6: genesi-ai-tray (standalone SNI tray applet)
 optdepends=(
     'plasma-workspace: AI Mode Plasma 6 desktop widget (KDE/Plasma session only; pulled automatically by the KDE-Desktop install)'
     'power-profiles-daemon: switch to the performance power profile while AI runs'
@@ -267,6 +281,11 @@ package() {
     install -Dm755 "${startdir}/genesi-aid"      "$pkgdir/usr/local/bin/genesi-aid"
     install -Dm755 "${startdir}/genesi-ai-mode"  "$pkgdir/usr/local/bin/genesi-ai-mode"
     install -Dm755 "${startdir}/genesi-ai-turbo"  "$pkgdir/usr/local/bin/genesi-ai-turbo"
+
+    # Standalone SNI tray applet (the AI Mode widget for non-Plasma sessions, i.e.
+    # Hyprland + caelestia-shell). Started via exec-once from the caelestia
+    # hyprland.conf; works in any StatusNotifierItem host.
+    install -Dm755 "${startdir}/genesi-ai-tray"  "$pkgdir/usr/local/bin/genesi-ai-tray"
 
     # systemd service
     install -Dm644 "${startdir}/genesi-aid.service" \

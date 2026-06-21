@@ -34,7 +34,20 @@ pkgver=1.0.0
 # nothing inside VirtualBox (same GL gap that black-screened Quickshell); foot is
 # a pure-software Wayland terminal that renders in VMs and is light on real
 # hardware, so SUPER+Return works everywhere.
-pkgrel=5
+# pkgrel 6: fix the two on-screen Hyprland config errors for real. pkgrel 2 blamed
+# a malformed gradient colour — that was WRONG (the errors persisted on bare metal
+# after that fix). The real cause is Hyprland 0.54/0.55 breaking changes:
+#   * `dwindle:pseudotile` was REMOVED in 0.55 (pseudotile is per-window only now)
+#     -> dropped `pseudotile = true` from the dwindle {} block (line 88 error).
+#       Pseudotiling still works via the `pseudo` dispatcher (SUPER+P) already bound.
+#   * `togglesplit` stopped being a direct dispatcher in 0.54+ -> now sent via
+#     `layoutmsg, togglesplit` (line 113 "dispatcher does not exist" error).
+# Also: (a) tapping SUPER alone now opens the caelestia launcher (Windows-like;
+# bindr SUPER,SUPER_L), and (b) start the Genesi update-notifier tray from
+# hyprland.conf — Hyprland ignores /etc/xdg/autostart, so the shipped tray
+# .desktop never fired under this session and no tray icon appeared. New dep:
+# genesi-update (provides the `genesi-update --tray` SNI applet).
+pkgrel=6
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -43,6 +56,10 @@ depends=(
     'hyprland'
     'caelestia-shell'
     'genesi-settings'          # ships /usr/share/wallpapers/genesi/wallpaper.png
+    'genesi-update'            # `genesi-update --tray` SNI applet, started from
+                               # hyprland.conf (Hyprland ignores xdg/autostart)
+    'genesi-ai-mode'           # `genesi-ai-tray` SNI applet (AI Mode widget)
+    'genesi-containers'        # `genesi-containers-tray` SNI applet
     'polkit-kde-agent'
     'foot'                     # $terminal in hyprland.conf — no-GL Wayland term
                                # that renders in VMs (kitty needs OpenGL -> crash)

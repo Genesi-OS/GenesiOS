@@ -22,12 +22,23 @@ pkgver=1.0.0
 # member (works with no re-login). If the user genuinely isn't a member, it
 # emits {"error":"permission_denied"} and the widget shows a "Permission
 # denied" placeholder with the usermod fix instead of a misleading empty list.
-pkgrel=3
-pkgdesc='Plasma 6 widget to monitor and control Docker/Podman containers'
+# pkgrel 4: ship genesi-containers-tray — a standalone SNI system-tray applet so
+# the container widget exists OUTSIDE Plasma (the Hyprland + caelestia-shell
+# session has no plasmashell, so the plasmoid can't load there). Pure PyQt6 (no
+# Plasma import); its menu is rebuilt live (engine + containers) with start/stop/
+# restart/logs/shell per container — a thin front-end over the same
+# `genesi-containers` CLI the plasmoid drives. Registers as a StatusNotifierItem,
+# so it shows in the caelestia bar's tray (and the KDE tray, but KDE keeps the
+# plasmoid). Started from the caelestia hyprland.conf via exec-once (Hyprland
+# ignores /etc/xdg/autostart). New dep: python-pyqt6 (the tray's toolkit; already
+# on every install via genesi-update).
+pkgrel=4
+pkgdesc='Plasma 6 widget + tray applet to monitor and control Docker/Podman containers'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
 license=('GPL-3.0-or-later')
-depends=('python')
+depends=('python'
+         'python-pyqt6')   # python-pyqt6: genesi-containers-tray (standalone SNI tray)
 optdepends=(
     'plasma-workspace: the Plasma 6 container widget (KDE/Plasma session only; pulled automatically by the KDE-Desktop install)'
     'docker: container engine (daemon-based)'
@@ -41,6 +52,12 @@ package() {
     # Engine-agnostic CLI the widget drives
     install -Dm755 "${startdir}/genesi-containers" \
         "$pkgdir/usr/local/bin/genesi-containers"
+
+    # Standalone SNI tray applet (the container widget for non-Plasma sessions,
+    # i.e. Hyprland + caelestia-shell). Started via exec-once from the caelestia
+    # hyprland.conf; works in any StatusNotifierItem host.
+    install -Dm755 "${startdir}/genesi-containers-tray" \
+        "$pkgdir/usr/local/bin/genesi-containers-tray"
 
     # Plasma 6 applet
     install -dm755 "$pkgdir/usr/share/plasma/plasmoids/org.genesi.containers"
