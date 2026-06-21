@@ -57,7 +57,13 @@ pkgver=1.0.0
 # the file up once (.genesi-bak), only touches Genesi's shipped config, preserves
 # ownership. So now `pacman -Syu` (or the update notifier) + `hyprctl reload`
 # brings a running install fully up to date — no reinstall.
-pkgrel=7
+# pkgrel 8: fix a regression I shipped in pkgrel 6/7 — the AI-tray `windowrule`
+# lines used the OLD comma syntax (`windowrule = float, class:^(genesi-ai-tray)$`),
+# which Hyprland 0.55 rejects ("invalid field float: missing a value"): 0.55 made
+# the rule and its matchers SPACE-separated (`windowrule = float class:^(...)$`).
+# Corrected the skel config AND the .install now heals the comma form an earlier
+# upgrade already wrote to existing users (idempotent sed on windowrule lines).
+pkgrel=8
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
