@@ -238,7 +238,15 @@ pkgver=1.0.0
 # re-applied live on a palette change, so it follows the system light/dark scheme
 # (only the brand green stays constant). New dep: python-pyqt6 (the tray's
 # toolkit; already on every install via genesi-update).
-pkgrel=85
+# pkgrel 86: fix genesi-ai-tray crashing on launch (core-dumped, no icon). My
+# theme() used QApplication.palette().color(QPalette.ColorRole.Window); on the
+# installed PyQt6 the overloaded color() rejected the scoped ColorRole enum
+# ("argument 1 has unexpected type 'ColorRole'") and the palette-change handler
+# threw, aborting the process. Switched to QPalette's no-arg convenience brush
+# accessors (p.window().color(), p.windowText().color(), …) which sidestep the
+# overload entirely; muted is now derived by blending. Theme-adaptive behaviour
+# is unchanged.
+pkgrel=86
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

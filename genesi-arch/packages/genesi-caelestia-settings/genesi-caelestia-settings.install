@@ -15,7 +15,7 @@
 # and APPEND the tray/launcher/windowrule blocks only when they're missing. A
 # user's own edits elsewhere are untouched; re-running is idempotent.
 
-_migrate_user() {
+_migrate_hypr() {
     local cfg="$1" owner="$2"
     [ -f "$cfg" ] || return 0
     # Only Genesi's caelestia config (distinctive exec-once marker), and skip if
@@ -71,13 +71,36 @@ HYPR
     chown "$owner" "$cfg" "$cfg.genesi-bak" 2>/dev/null || true
 }
 
+# Dark palette for plain-Qt apps under Hyprland. The shipped qt6ct.conf used to
+# have custom_palette=false → qt6ct handed apps the default LIGHT palette (white
+# apps on a dark desktop). Flip ONLY that old default (a user's own choice is
+# left alone), point it at the Genesi dark scheme, and use the always-present
+# Fusion style. Does NOT touch kdeglobals, so a dual-DE user's KDE theme is safe.
+_migrate_qt6ct() {
+    local qt6="$1" owner="$2"
+    [ -f "$qt6" ] || return 0
+    grep -q '^custom_palette=false' "$qt6" || return 0
+    cp -n "$qt6" "$qt6.genesi-bak" 2>/dev/null || true
+    sed -i 's/^custom_palette=false/custom_palette=true/' "$qt6"
+    grep -q '^color_scheme_path=' "$qt6" \
+        || sed -i '/^\[Appearance\]/a color_scheme_path=/usr/share/qt6ct/colors/genesi-dark.conf' "$qt6"
+    sed -i 's/^style=Breeze$/style=Fusion/' "$qt6"
+    chown "$owner" "$qt6" "$qt6.genesi-bak" 2>/dev/null || true
+}
+
+_migrate_user() {
+    local home="$1" owner="$2"
+    _migrate_hypr   "$home/.config/hypr/hyprland.conf" "$owner"
+    _migrate_qt6ct  "$home/.config/qt6ct/qt6ct.conf"   "$owner"
+}
+
 _migrate_all() {
     local name pw uid gid gecos home shell
     while IFS=: read -r name pw uid gid gecos home shell; do
         [ "$uid" -ge 1000 ] 2>/dev/null && [ "$uid" -lt 65000 ] 2>/dev/null || continue
         case "$shell" in */nologin|*/false|"") continue ;; esac
         [ -d "$home" ] || continue
-        _migrate_user "$home/.config/hypr/hyprland.conf" "$uid:$gid"
+        _migrate_user "$home" "$uid:$gid"
     done < <(getent passwd)
 }
 

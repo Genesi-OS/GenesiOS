@@ -39,7 +39,7 @@ import subprocess
 import sys
 
 from PyQt6.QtCore import Qt, QTimer, QPoint, QEvent
-from PyQt6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPalette, QBrush
+from PyQt6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QBrush
 from PyQt6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QSystemTrayIcon,
     QMenu, QVBoxLayout, QWidget,
@@ -58,14 +58,25 @@ def _rgba(c: QColor, a: float) -> str:
 
 
 def theme():
-    """Snapshot the live palette into the handful of roles the panel uses."""
+    """Snapshot the live palette into the handful of roles the panel uses.
+
+    Uses QPalette's convenience brush accessors (p.window(), p.windowText(), …)
+    rather than p.color(role): PyQt6's overloaded color() rejected the scoped
+    ColorRole enum on some builds ("argument 1 has unexpected type 'ColorRole'"),
+    which crashed the tray on a palette change. The accessors take no enum arg."""
     p = QApplication.palette()
+    bg = p.window().color()
+    text = p.windowText().color()
+    # muted = halfway between text and background (reads on light and dark)
+    muted = QColor((text.red() + bg.red()) // 2,
+                   (text.green() + bg.green()) // 2,
+                   (text.blue() + bg.blue()) // 2)
     return {
-        "bg": p.color(QPalette.ColorRole.Window),
-        "text": p.color(QPalette.ColorRole.WindowText),
-        "muted": p.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText),
-        "button": p.color(QPalette.ColorRole.Button),
-        "btext": p.color(QPalette.ColorRole.ButtonText),
+        "bg": bg,
+        "text": text,
+        "muted": muted,
+        "button": p.button().color(),
+        "btext": p.buttonText().color(),
     }
 
 
@@ -123,7 +134,7 @@ class Bar(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w = self.width()
-        text_color = self.palette().color(QPalette.ColorRole.WindowText)
+        text_color = self.palette().windowText().color()
         # caption + readout row
         p.setPen(text_color)
         f = p.font(); f.setBold(True); p.setFont(f)

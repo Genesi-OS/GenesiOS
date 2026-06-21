@@ -63,7 +63,15 @@ pkgver=1.0.0
 # the rule and its matchers SPACE-separated (`windowrule = float class:^(...)$`).
 # Corrected the skel config AND the .install now heals the comma form an earlier
 # upgrade already wrote to existing users (idempotent sed on windowrule lines).
-pkgrel=8
+# pkgrel 9: fix plain-Qt apps rendering WHITE on the dark desktop. The shipped
+# qt6ct.conf had custom_palette=false + style=Breeze, so qt6ct gave non-KDE Qt
+# apps the default LIGHT palette (and Breeze can be absent on a Hyprland-only
+# install → silent fallback to light). Now ship a Genesi dark qt6ct colour scheme
+# (genesi-dark.conf → /usr/share/qt6ct/colors/) and point qt6ct.conf at it
+# (custom_palette=true, style=Fusion). The .install migration also flips an
+# existing user's old custom_palette=false config. Does NOT touch kdeglobals, so
+# a dual-DE user's KDE theme is left alone.
+pkgrel=9
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -89,8 +97,8 @@ depends=(
                                # shipped before -> magenta "missing icon" squares)
 )
 install='genesi-caelestia-settings.install'
-source=('hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+source=('hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini' 'genesi-dark.conf')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     # Default Hyprland config for new users. Hyprland reads
@@ -110,4 +118,10 @@ package() {
         "${pkgdir}/etc/skel/.config/kdeglobals"
     install -Dm644 "${srcdir}/gtk-settings.ini" \
         "${pkgdir}/etc/skel/.config/gtk-3.0/settings.ini"
+
+    # Genesi dark colour scheme for qt6ct (system-wide, referenced by qt6ct.conf
+    # custom_palette=true). Makes plain-Qt apps dark under Hyprland instead of the
+    # default light palette. KDE/KF6 apps are unaffected (they read kdeglobals).
+    install -Dm644 "${srcdir}/genesi-dark.conf" \
+        "${pkgdir}/usr/share/qt6ct/colors/genesi-dark.conf"
 }
