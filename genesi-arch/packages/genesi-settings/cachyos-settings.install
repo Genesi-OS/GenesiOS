@@ -9,6 +9,7 @@ post_install() {
         systemctl enable cachyos-iw-set-regdomain.path
     fi
     migrate_default_shell_fish
+    migrate_fish_greeting_dedup
 }
 
 post_upgrade() {
@@ -24,6 +25,28 @@ post_upgrade() {
     fix_titlebar_uniformity
     migrate_panel_widgets
     migrate_default_shell_fish
+    migrate_fish_greeting_dedup
+}
+
+# Stop the DOUBLE terminal greeting on systems seeded before the fix. The skel
+# config.fish ran `fastfetch -l small` on every interactive fish, but the branded
+# greeting is already shown once by genesi-fastfetch's vendor_conf.d — so older
+# ~/.config/fish/config.fish files show the greeting twice (the distro-detected
+# logo plus the branded Genesi one). New skel no longer runs fastfetch there;
+# strip the leftover invocation from existing users' configs here. Only the plain
+# `fastfetch -l small` line is removed (a user's own fastfetch lines are left
+# alone); the branded vendor_conf.d greeting is untouched.
+migrate_fish_greeting_dedup() {
+    local home u cfg
+    for home in /home/*; do
+        cfg="$home/.config/fish/config.fish"
+        [ -f "$cfg" ] || continue
+        grep -q 'fastfetch -l small' "$cfg" 2>/dev/null || continue
+        u=$(stat -c %U "$home" 2>/dev/null) || continue
+        id "$u" >/dev/null 2>&1 || continue
+        sed -i '/fastfetch -l small/d' "$cfg"
+        chown "$u" "$cfg" 2>/dev/null || true
+    done
 }
 
 # Switch existing regular users from the old default /bin/bash to fish — the new

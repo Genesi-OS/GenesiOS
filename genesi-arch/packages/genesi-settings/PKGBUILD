@@ -101,7 +101,13 @@ pkgver=1.3.4
 # /bin/bash to /usr/bin/fish on `pacman -Syu` — so CachyOS-style autosuggestions/
 # completions appear in konsole/foot without a reinstall. Only /bin/bash users are
 # touched (other shells kept); reversible via chsh.
-pkgrel=38
+# pkgrel 39: fix the DOUBLE terminal greeting. The skel config.fish ran a plain
+# `fastfetch -l small` on top of genesi-fastfetch's branded vendor_conf.d
+# greeting, so terminals showed two logos (distro-detected + Genesi). New skel no
+# longer runs fastfetch there (submodule bump); a new .install migration
+# (migrate_fish_greeting_dedup) strips the leftover line from existing users'
+# ~/.config/fish/config.fish on `pacman -Syu`.
+pkgrel=39
 epoch=1
 groups=(genesi)
 arch=('any')
