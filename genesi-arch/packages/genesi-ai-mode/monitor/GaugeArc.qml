@@ -4,13 +4,22 @@
  */
 import QtQuick
 import QtQuick.Controls as QQC2
+import org.kde.kirigami as Kirigami
 
 Item {
     id: g
 
+    // Follow the system scheme (see genesi-ui-kit/Theme.qml). No fixed brand blue.
+    readonly property color _bg: Kirigami.Theme.backgroundColor
+    readonly property color _txt: Kirigami.Theme.textColor
+    readonly property bool _dark: !((0.299 * _bg.r + 0.587 * _bg.g + 0.114 * _bg.b) >= 0.5)
+    readonly property color _white: "#ffffff"
+    readonly property color _black: "#000000"
+    function _mix(c, o, p) { return Qt.rgba(c.r + (o.r - c.r) * p, c.g + (o.g - c.g) * p, c.b + (o.b - c.b) * p, 1) }
+
     property real value: 0            // 0..1
-    property color stroke: "#1D9E75"
-    property color track: "#21425A"
+    property color stroke: Kirigami.Theme.highlightColor
+    property color track: _dark ? _mix(_bg, _white, 0.14) : _mix(_bg, _black, 0.12)
     property string big: ""           // centre big label (e.g. "42")
     property string small: ""         // centre small label (e.g. "%")
     property string icon: ""          // centre icon (SVG path); overrides `big`
@@ -83,14 +92,14 @@ Item {
             text: g.big
             font.bold: true
             font.pixelSize: 15
-            color: "#EAF3EF"
+            color: g._txt
         }
         QQC2.Label {
             anchors.horizontalCenter: parent.horizontalCenter
             visible: g.small.length > 0
             text: g.small
             font.pixelSize: 9
-            color: "#9DB3AB"
+            color: g._mix(g._txt, g._bg, 0.42)
         }
     }
 }

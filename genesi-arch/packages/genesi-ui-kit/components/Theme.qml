@@ -1,17 +1,24 @@
 /*
- * Genesi UI kit — central brand palette + helpers, shared by every Genesi
- * Qt6/QML app (AI Mode Monitor, Sandboxes, API Inspector, …).
+ * Genesi UI kit — central palette + helpers, shared by every Genesi Qt6/QML app
+ * (AI Mode Monitor, Sandboxes, API Inspector, …).
  *
- * ADAPTIVE: it follows the system (KDE) colour scheme. `dark` is derived from the
- * luminance of Kirigami.Theme.backgroundColor and defaults to TRUE on any
- * uncertainty, so the worst case is the existing dark look — never unreadable.
- * Every dark-branch value below is byte-identical to the pre-adaptive palette, so
- * on a dark system (Genesi's default) nothing changes; the light branch only
- * kicks in on a light system.
+ * SYSTEM-FOLLOWING: every structural colour (accent, surfaces, text) is derived
+ * live from the system scheme via Kirigami.Theme — NOT a fixed brand palette.
+ *   • On KDE/Plasma, Kirigami.Theme reflects the active Plasma colour scheme
+ *     (kdeglobals) — so the apps match the desktop accent out of the box.
+ *   • On Hyprland + caelestia, the apps run under qt6ct, into which
+ *     genesi-caelestia-theme-sync mirrors caelestia's Material You palette
+ *     (Highlight=primary, Window=surface, WindowText=onSurface). Kirigami.Theme
+ *     reads that QPalette, so the apps follow the bar's dynamic colour too.
+ *
+ * Result: no more hardcoded blue. `accent`/`green` = the system accent;
+ * surfaces are elevations of the system background. Only the *semantic* accents
+ * (red=error, orange=warn, blue=info/GET, …) stay fixed, because their meaning
+ * must not drift with the scheme.
  *
  * It's an Item (not a QtObject) only so Kirigami.Theme attaches; it draws
  * nothing. Instantiate once per root (`Theme { id: theme }`) and reference
- * theme.green etc.
+ * theme.accent / theme.card / theme.textHi etc.
  *
  * Canonical source: genesi-arch/packages/genesi-ui-kit/components/. Bundled into
  * each app at build (see README) — NOT a published package.
@@ -24,17 +31,39 @@ Item {
     visible: false
     width: 0; height: 0
 
-    // Follow the system scheme. dark = the system background is dark.
-    readonly property color sysBg: Kirigami.Theme.backgroundColor
-    readonly property real sysLum: 0.299 * sysBg.r + 0.587 * sysBg.g + 0.114 * sysBg.b
-    readonly property bool dark: !(sysLum >= 0.5)
+    // ── System inputs (live from the active scheme) ────────────────
+    readonly property color sysBg:     Kirigami.Theme.backgroundColor
+    readonly property color sysText:   Kirigami.Theme.textColor
+    readonly property color sysAccent: Kirigami.Theme.highlightColor
+    readonly property real  sysLum:    0.299 * sysBg.r + 0.587 * sysBg.g + 0.114 * sysBg.b
+    readonly property bool  dark:      !(sysLum >= 0.5)
 
-    // ── Genesi brand ───────────────────────────────────────────────
-    readonly property color green:       "#1D9E75"
-    readonly property color greenBright:  dark ? "#34D399" : "#15976B"
-    readonly property color greenDeep:    "#0F6E56"
+    // Colour constants (real color objects — a string "#fff" has no .r/.g/.b, so
+    // mix() must be fed colours, not string literals).
+    readonly property color white: "#ffffff"
+    readonly property color black: "#000000"
 
-    // ── Functional accents ─────────────────────────────────────────
+    // Linear blend of two colours (p in 0..1). Software-backend safe.
+    function mix(a, b, p) {
+        return Qt.rgba(a.r + (b.r - a.r) * p,
+                       a.g + (b.g - a.g) * p,
+                       a.b + (b.b - a.b) * p, 1)
+    }
+    // Elevation: surfaces brighten away from the background (toward white on
+    // dark schemes, toward white on light schemes too — i.e. lighter cards).
+    function elev(p) { return mix(sysBg, white, p) }
+    // Separators: nudge toward white on dark schemes, toward black on light.
+    function sep(p)  { return dark ? mix(sysBg, white, p) : mix(sysBg, black, p) }
+
+    // ── Accent (follows the system) ────────────────────────────────
+    // `green` is kept as a name for source compatibility but now IS the system
+    // accent — every app that referenced theme.green now tracks the scheme.
+    readonly property color accent:      sysAccent
+    readonly property color green:       sysAccent
+    readonly property color greenBright: dark ? Qt.lighter(sysAccent, 1.18) : Qt.darker(sysAccent, 1.12)
+    readonly property color greenDeep:   Qt.darker(sysAccent, 1.35)
+
+    // ── Functional / semantic accents (fixed — meaning must not drift) ──
     readonly property color turbo:        "#E67E22"
     readonly property color turboBright:   dark ? "#F8B24D" : "#D9781A"
     readonly property color purple:       "#9B59B6"
@@ -49,22 +78,22 @@ Item {
     readonly property color sevLow:       dark ? "#E0B23A" : "#B8860B"
     readonly property color sevInfo:      "#3AAFE0"
 
-    // ── Surfaces ───────────────────────────────────────────────────
-    readonly property color bgTop:    dark ? "#0F2536" : "#F6F7FB"
-    readonly property color bgBottom: dark ? "#0A1B29" : "#FFFFFF"
-    readonly property color card:     dark ? "#122E42" : "#FFFFFF"
-    readonly property color cardHi:   dark ? "#173A52" : "#F3F5F9"
-    readonly property color line:     dark ? "#21425A" : "#E7E9EF"
-    readonly property color lineHi:   dark ? "#2C5470" : "#D3D8E1"
+    // ── Surfaces (elevations of the system background) ─────────────
+    readonly property color bgBottom: sysBg
+    readonly property color bgTop:    elev(dark ? 0.05 : 0.02)
+    readonly property color card:     elev(dark ? 0.10 : 0.05)
+    readonly property color cardHi:   elev(dark ? 0.16 : 0.09)
+    readonly property color line:     sep(dark ? 0.12 : 0.10)
+    readonly property color lineHi:   sep(dark ? 0.20 : 0.16)
 
-    // ── Text ───────────────────────────────────────────────────────
-    readonly property color textHi:   dark ? "#EAEEF2" : "#1B2430"
-    readonly property color textMid:  dark ? "#A2B2BD" : "#5C6775"
-    readonly property color textLo:   dark ? "#647889" : "#97A1AE"
+    // ── Text (from the system foreground) ──────────────────────────
+    readonly property color textHi:   sysText
+    readonly property color textMid:  mix(sysText, sysBg, 0.35)
+    readonly property color textLo:   mix(sysText, sysBg, 0.58)
 
     readonly property string mono: "monospace"
 
-    // Re-alpha a colour: theme.a(theme.green, 0.15)
+    // Re-alpha a colour: theme.a(theme.accent, 0.15)
     function a(c, v) { return Qt.rgba(c.r, c.g, c.b, v) }
 
     function severityColor(sev) {
@@ -76,7 +105,7 @@ Item {
 
     function methodColor(m) {
         if (m === "GET")    return blue
-        if (m === "POST")   return green
+        if (m === "POST")   return accent
         if (m === "PUT" || m === "PATCH") return turbo
         if (m === "DELETE") return red
         return purple

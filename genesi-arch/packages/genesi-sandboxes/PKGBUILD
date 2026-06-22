@@ -91,7 +91,12 @@ pkgver=1.0.0
 #   cpp    -> main.cpp + CMakeLists.txt
 # Scaffolding is never fatal (offline still yields a usable box), skips a
 # non-empty folder, and prints the per-template run command. CLI-only change.
-pkgrel=13
+# pkgrel 14: the shared kit now follows the SYSTEM accent/colour instead of fixed
+# brand blue — Theme.qml/GlassCard.qml/GButton.qml derive accent from
+# Kirigami.Theme.highlightColor and surfaces from the system background. Matches
+# the Plasma scheme on KDE and caelestia's Material You on Hyprland (via qt6ct).
+# Rebuild to ship the rebundled kit.
+pkgrel=14
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

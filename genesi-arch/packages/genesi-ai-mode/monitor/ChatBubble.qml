@@ -7,6 +7,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
+import org.kde.kirigami as Kirigami
 
 Item {
     id: b
@@ -17,6 +18,19 @@ Item {
 
     readonly property bool isUser: role === "user"
     readonly property bool isError: role === "error"
+
+    // Follow the system scheme (see genesi-ui-kit/Theme.qml) — no fixed brand blue.
+    readonly property color _bg: Kirigami.Theme.backgroundColor
+    readonly property color _txt: Kirigami.Theme.textColor
+    readonly property color _accent: Kirigami.Theme.highlightColor
+    readonly property bool _dark: !((0.299 * _bg.r + 0.587 * _bg.g + 0.114 * _bg.b) >= 0.5)
+    readonly property color _white: "#ffffff"
+    readonly property color _black: "#000000"
+    function _mix(c, o, p) { return Qt.rgba(c.r + (o.r - c.r) * p, c.g + (o.g - c.g) * p, c.b + (o.b - c.b) * p, 1) }
+    function _a(c, v) { return Qt.rgba(c.r, c.g, c.b, v) }
+    readonly property color _card:   _mix(_bg, _white, _dark ? 0.10 : 0.05)
+    readonly property color _line:   _dark ? _mix(_bg, _white, 0.12) : _mix(_bg, _black, 0.12)
+    readonly property color _txtMid: _mix(_txt, _bg, 0.40)
 
     // Parsed stats (AI only). null when streaming or non-JSON (plain fallback).
     readonly property var statsData: {
@@ -52,12 +66,12 @@ Item {
         Rectangle {
             Layout.alignment: Qt.AlignTop
             width: 34; height: 34; radius: 17
-            color: b.isUser ? "#1D9E75"
+            color: b.isUser ? b._accent
                  : b.isError ? Qt.rgba(231/255, 76/255, 60/255, 0.18)
-                 : "#15344A"
+                 : b._card
             border.width: 1
             border.color: b.isUser ? "transparent"
-                        : b.isError ? "#E74C3C" : "#2C5470"
+                        : b.isError ? "#E74C3C" : b._line
             Image {
                 anchors.centerIn: parent
                 source: Qt.resolvedUrl(b.isUser ? "icons/user.svg"
@@ -75,13 +89,13 @@ Item {
             radius: 16
             implicitWidth: Math.min(Math.max(txt.implicitWidth, b.statsData ? 320 : 0) + 28, b.width * 0.74)
             implicitHeight: content.implicitHeight + 20
-            color: b.isUser ? "#15694F"
+            color: b.isUser ? b._mix(b._accent, b._bg, 0.55)
                  : b.isError ? Qt.rgba(231/255, 76/255, 60/255, 0.10)
-                 : "#122E42"
+                 : b._card
             border.width: 1
-            border.color: b.isUser ? Qt.rgba(52/255, 211/255, 153/255, 0.35)
+            border.color: b.isUser ? b._a(b._accent, 0.40)
                         : b.isError ? Qt.rgba(231/255, 76/255, 60/255, 0.5)
-                        : "#21425A"
+                        : b._line
 
             Column {
                 id: content
@@ -95,7 +109,7 @@ Item {
                     text: b.body.length > 0 ? b.body : "…"
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
-                    color: b.isError ? "#F1B0A8" : "#EAF3EF"
+                    color: b.isError ? "#F1B0A8" : b._txt
                     lineHeight: 1.15
                 }
 
@@ -106,7 +120,7 @@ Item {
                     text: b.stats
                     wrapMode: Text.Wrap
                     font.pixelSize: 11
-                    color: "#7FB8A2"
+                    color: b._txtMid
                 }
 
                 // ── rich stats panel ──
@@ -115,7 +129,7 @@ Item {
                     visible: b.statsData !== null
                     radius: 11
                     color: Qt.rgba(0, 0, 0, 0.22)
-                    border.color: "#21425A"; border.width: 1
+                    border.color: b._line; border.width: 1
                     implicitHeight: statsCol.implicitHeight + 18
 
                     Column {
@@ -136,7 +150,7 @@ Item {
                                 radius: 7; height: 22
                                 width: badgeRow.implicitWidth + 16
                                 color: turbo ? Qt.rgba(230/255, 126/255, 34/255, 0.18)
-                                             : Qt.rgba(29/255, 158/255, 117/255, 0.16)
+                                             : b._a(b._accent, 0.16)
                                 Row {
                                     id: badgeRow
                                     anchors.centerIn: parent
@@ -152,7 +166,7 @@ Item {
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: modeBadge.turbo ? "Turbo" : "Ollama"
                                         font.pixelSize: 10; font.bold: true
-                                        color: modeBadge.turbo ? "#F8B24D" : "#34D399"
+                                        color: modeBadge.turbo ? "#F8B24D" : b._accent
                                     }
                                 }
                             }
@@ -163,19 +177,19 @@ Item {
                                 QQC2.Label {
                                     text: b.statsData ? b.statsData.rate : ""
                                     font.bold: true; font.pixelSize: 17
-                                    color: "#EAF3EF"
+                                    color: b._txt
                                 }
                                 QQC2.Label {
                                     text: "tok/s"
                                     anchors.bottom: parent.bottom
                                     anchors.bottomMargin: 2
                                     font.pixelSize: 11
-                                    color: "#7FB8A2"
+                                    color: b._txtMid
                                 }
                             }
                         }
 
-                        Rectangle { width: parent.width; height: 1; color: "#21425A" }
+                        Rectangle { width: parent.width; height: 1; color: b._line }
 
                         // metric chips
                         Flow {
@@ -189,7 +203,7 @@ Item {
                                     height: 36
                                     width: chipCol.implicitWidth + 18
                                     color: Qt.rgba(1, 1, 1, 0.04)
-                                    border.color: "#21425A"; border.width: 1
+                                    border.color: b._line; border.width: 1
                                     Column {
                                         id: chipCol
                                         anchors.centerIn: parent
@@ -198,13 +212,13 @@ Item {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             text: modelData.value
                                             font.bold: true; font.pixelSize: 13
-                                            color: "#EAF3EF"
+                                            color: b._txt
                                         }
                                         QQC2.Label {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             text: modelData.label
                                             font.pixelSize: 9
-                                            color: "#7FB8A2"
+                                            color: b._txtMid
                                         }
                                     }
                                 }

@@ -1,9 +1,11 @@
 /*
  * Genesi UI kit — reusable "glass" surface card, shared across all Genesi apps.
- * ADAPTIVE: self-derives light/dark from the system scheme (Kirigami.Theme), so
- * it needs no `theme` passed in. The dark branch is byte-identical to the
- * pre-adaptive card (dark systems are unchanged); the light branch is a clean
- * white card with a soft border.
+ * SYSTEM-FOLLOWING: it self-derives every colour from the active scheme
+ * (Kirigami.Theme), so it needs no `theme` passed in — the surface is an
+ * elevation of the system background and the active border defaults to the
+ * system accent. On KDE that's the Plasma scheme; on Hyprland it's caelestia's
+ * Material You palette (mirrored into qt6ct by genesi-caelestia-theme-sync).
+ * No hardcoded brand blue anymore.
  *
  * Polish is deliberately SHADER-FREE (no MultiEffect / DropShadow): those go
  * blank under QT_QUICK_BACKEND=software, which the apps fall back to in VMs.
@@ -20,19 +22,26 @@ Rectangle {
     readonly property color sysBg: Kirigami.Theme.backgroundColor
     readonly property bool dark: !((0.299 * sysBg.r + 0.587 * sysBg.g + 0.114 * sysBg.b) >= 0.5)
 
-    property color accent: dark ? "#21425A" : "#E7E9EF"
+    // Same elevation/separator helpers as Theme.qml, kept local so the card stays
+    // self-contained (it takes no `theme`). _white/_black are real colours — mix
+    // must be fed colours, not string literals (a string has no .r/.g/.b).
+    readonly property color _white: "#ffffff"
+    readonly property color _black: "#000000"
+    function _mix(c, b, p) { return Qt.rgba(c.r + (b.r - c.r) * p, c.g + (b.g - c.g) * p, c.b + (b.b - c.b) * p, 1) }
+    function _elev(p) { return _mix(sysBg, _white, p) }
+    function _sep(p)  { return dark ? _mix(sysBg, _white, p) : _mix(sysBg, _black, p) }
+
+    property color accent: Kirigami.Theme.highlightColor
     property bool active: false
     property bool interactive: true
 
     radius: 18
-    color: dark ? (interactive && hov.hovered ? "#143A55" : "#122E42")
-                : (interactive && hov.hovered ? "#F3F5F9" : "#FFFFFF")
+    color: interactive && hov.hovered ? _elev(dark ? 0.14 : 0.07) : _elev(dark ? 0.10 : 0.05)
     Behavior on color { ColorAnimation { duration: 160 } }
 
     border.width: 1
     border.color: active ? accent
-                : dark ? (interactive && hov.hovered ? "#2C5470" : "#21425A")
-                       : (interactive && hov.hovered ? "#D3D8E1" : "#E7E9EF")
+                : (interactive && hov.hovered ? _sep(dark ? 0.20 : 0.16) : _sep(dark ? 0.12 : 0.10))
     Behavior on border.color { ColorAnimation { duration: 180 } }
 
     // Elevation: lift a touch on hover (2D translate — software-backend safe).

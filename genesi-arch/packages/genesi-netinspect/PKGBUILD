@@ -47,7 +47,12 @@ pkgver=1.0.0
 # Kirigami.Theme). The dark branch is byte-identical to before, so on Genesi's
 # default dark scheme the Inspector is unchanged; a light system would render it
 # light (untested — Inspector light pass TODO).
-pkgrel=11
+# pkgrel 12: shared kit now follows the SYSTEM accent/colour, not fixed brand
+# blue. Theme.qml/GlassCard.qml/GButton.qml derive accent from
+# Kirigami.Theme.highlightColor and surfaces from the system background — matching
+# the Plasma scheme on KDE and caelestia's Material You on Hyprland (via qt6ct).
+# Rebuild to ship the rebundled kit.
+pkgrel=12
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

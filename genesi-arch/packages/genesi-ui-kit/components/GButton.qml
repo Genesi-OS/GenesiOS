@@ -27,6 +27,11 @@ Item {
 
     readonly property bool danger: kind === "danger"
     readonly property color effAccent: danger ? (theme ? theme.red : "#E74C3C") : accent
+    // Contrast colour for text/icons painted ON a filled accent: black on a light
+    // accent, white on a dark one. Works for any scheme accent (no fixed brand
+    // green assumption) and any custom accent the caller passes in.
+    readonly property color onAccent:
+        (0.299 * effAccent.r + 0.587 * effAccent.g + 0.114 * effAccent.b) >= 0.6 ? "#0A0E12" : "#FFFFFF"
 
     implicitHeight: 34
     implicitWidth: row.implicitWidth + (root.text ? 28 : 18)
@@ -64,14 +69,14 @@ Item {
                 source: root.iconSource
                 Layout.preferredWidth: 16
                 Layout.preferredHeight: 16
-                color: kind === "filled" ? "#08130E" : root.effAccent
+                color: kind === "filled" ? root.onAccent : root.effAccent
             }
             QQC2.Label {
                 visible: root.text.length > 0
                 text: root.text
                 font.pixelSize: 13
                 font.bold: kind === "filled"
-                color: kind === "filled" ? "#08130E"
+                color: kind === "filled" ? root.onAccent
                      : (danger ? root.theme.red : (root.theme ? root.theme.textHi : "#EAEEF2"))
             }
         }

@@ -266,7 +266,15 @@ pkgver=1.0.0
 # _installed_backend() detects cuda/vulkan via pacman -Qq; the "Backend" button
 # in the Turbo card is now always visible (not just when missing) so you can open
 # the CUDA/Vulkan chooser any time.
-pkgrel=89
+# pkgrel 90: apps follow the SYSTEM accent/colour, no more fixed brand blue. The
+# shared kit (Theme.qml/GlassCard.qml/GButton.qml) now derives accent from
+# Kirigami.Theme.highlightColor and surfaces from the system background — so the
+# Monitor matches the Plasma scheme on KDE and caelestia's Material You palette on
+# Hyprland (mirrored into qt6ct by genesi-caelestia-theme-sync). The AI-Mode-only
+# components ChatBubble.qml/GaugeArc.qml were also de-hardcoded the same way
+# (system bg/accent/text; only error-red + Turbo-orange stay fixed). Rebuild to
+# ship the rebundled kit + retheme.
+pkgrel=90
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
