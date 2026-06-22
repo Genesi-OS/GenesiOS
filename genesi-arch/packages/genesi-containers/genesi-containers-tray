@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
 # genesi-containers-tray — standalone system-tray applet for Genesi Containers.
 #
-# WHY THIS EXISTS
-#   The container panel widget is a Plasma 6 plasmoid (plasmoid/), which only
-#   loads inside plasmashell. The Hyprland + caelestia-shell session has no
-#   Plasma, so this exposes the same control surface as a StatusNotifierItem (SNI)
-#   tray icon — caelestia's bar hosts SNIs, and Qt's QSystemTrayIcon registers as
-#   one when a watcher is present. Kept deliberately "simple": the icon's menu is
-#   rebuilt live (engine + containers) each time it opens, with start/stop/
-#   restart/logs/shell per container — a thin front-end over the same
-#   `genesi-containers` CLI the plasmoid drives. Pure PyQt6, no Plasma import, so
-#   it runs under a bare Wayland compositor. Works in the KDE tray too, but KDE
-#   users get the plasmoid, so this is started only on Hyprland.
+# WHY libappindicator (Gtk) AND NOT Qt's QSystemTrayIcon:
+#   On Hyprland + caelestia (a Quickshell bar), Qt 6.11's QSystemTrayIcon SNI is
+#   broken: it registers the item with the StatusNotifierWatcher but doesn't serve
+#   its properties to the host (Quickshell's GetAll never readies the item, and a
+#   sibling tray even crashed fatally in the DBus path). Apps that use
+#   libappindicator (Spotify, Discord) show fine in the same bar — so this applet
+#   uses libayatana-appindicator (the proven SNI implementation) instead.
+#
+#   It's a thin front-end over the same `genesi-containers` CLI the Plasma widget
+#   drives. Menu is rebuilt on a timer (engine + live container list) with
+#   start/stop/restart/logs/shell per container. Pure Gtk/gi — no Plasma, no Qt.
 import json
 import signal
 import subprocess
-import sys
 
-from PyQt6.QtGui import QCursor, QIcon
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+import gi
 
-APP_ID = "genesi-containers-tray"
+gi.require_version("Gtk", "3.0")
+try:
+    gi.require_version("AyatanaAppIndicator3", "0.1")
+    from gi.repository import AyatanaAppIndicator3 as AppIndicator
+except (ValueError, ImportError):       # fall back to the older libappindicator
+    gi.require_version("AppIndicator3", "0.1")
+    from gi.repository import AppIndicator3 as AppIndicator
+from gi.repository import GLib, Gtk
 
 
 def cli_json(*args):
@@ -47,91 +52,82 @@ def cli_run(*args):
         pass
 
 
+def _item(label, enabled=True, on_activate=None):
+    mi = Gtk.MenuItem(label=label)
+    mi.set_sensitive(enabled)
+    if on_activate:
+        mi.connect("activate", lambda _w: on_activate())
+    return mi
+
+
 class Tray:
-    def __init__(self, app):
-        self.app = app
-        icon = QIcon.fromTheme("docker")
-        if icon.isNull():
-            icon = QIcon.fromTheme("application-x-executable")
-        self.tray = QSystemTrayIcon(icon)
-        self.tray.setToolTip("Genesi Containers")
+    def __init__(self):
+        self.ind = AppIndicator.Indicator.new(
+            "genesi-containers-tray", "docker",
+            AppIndicator.IndicatorCategory.APPLICATION_STATUS)
+        self.ind.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+        self.ind.set_title("Genesi Containers")
+        self.rebuild()
+        # dbusmenu has no reliable "about to show" via the host, so refresh the
+        # list on a light timer (the CLI call is cheap).
+        GLib.timeout_add_seconds(5, self._tick)
 
-        self.menu = QMenu()
-        self.menu.aboutToShow.connect(self._rebuild)
-        self.tray.setContextMenu(self.menu)
-        # left-click also opens the (rebuilt) menu, so it behaves like a button
-        self.tray.activated.connect(self._activated)
-        self.tray.show()
+    def _tick(self):
+        self.rebuild()
+        return True  # keep the timer running
 
-    def _activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            # tray.geometry() is empty under Wayland, so anchor at the cursor
-            # (Hyprland reports it) — the SNI host handles right-click itself.
-            self._rebuild()
-            self.menu.popup(QCursor.pos())
-
-    def _rebuild(self):
-        self.menu.clear()
+    def rebuild(self):
         data = cli_json("list-json")
         engine = data.get("engine", "none")
         containers = data.get("containers", [])
         error = data.get("error")
 
-        header = self.menu.addAction(f"Engine: {engine}")
-        header.setEnabled(False)
-        self.menu.addSeparator()
+        menu = Gtk.Menu()
+        menu.append(_item(f"Engine: {engine}", enabled=False))
+        menu.append(Gtk.SeparatorMenuItem())
 
         if engine == "none":
-            a = self.menu.addAction("No container engine (install docker or podman)")
-            a.setEnabled(False)
+            menu.append(_item("No container engine (install docker or podman)", False))
         elif error == "permission_denied":
-            a = self.menu.addAction("Permission denied — run: sudo usermod -aG docker $USER")
-            a.setEnabled(False)
+            menu.append(_item("Permission denied — sudo usermod -aG docker $USER", False))
         elif not containers:
-            a = self.menu.addAction("No containers")
-            a.setEnabled(False)
+            menu.append(_item("No containers", False))
         else:
             running = sum(1 for c in containers if c.get("running"))
-            self.tray.setToolTip(
+            self.ind.set_title(
                 f"Genesi Containers — {running}/{len(containers)} running ({engine})")
             for c in containers:
                 cid = c.get("id", "")
                 name = c.get("name", cid[:12] or "?")
                 dot = "🟢" if c.get("running") else "⚪"
-                sub = self.menu.addMenu(f"{dot} {name}")
-                status = sub.addAction(c.get("status", ""))
-                status.setEnabled(False)
-                ports = c.get("ports")
-                if ports:
-                    pa = sub.addAction(ports); pa.setEnabled(False)
-                sub.addSeparator()
+                sub = Gtk.Menu()
+                sub.append(_item(c.get("status", ""), False))
+                if c.get("ports"):
+                    sub.append(_item(c["ports"], False))
+                sub.append(Gtk.SeparatorMenuItem())
                 if c.get("running"):
-                    sub.addAction("Stop").triggered.connect(
-                        lambda _=False, i=cid: (cli_run("stop", i)))
-                    sub.addAction("Restart").triggered.connect(
-                        lambda _=False, i=cid: (cli_run("restart", i)))
+                    sub.append(_item("Stop", on_activate=lambda i=cid: cli_run("stop", i)))
+                    sub.append(_item("Restart", on_activate=lambda i=cid: cli_run("restart", i)))
                 else:
-                    sub.addAction("Start").triggered.connect(
-                        lambda _=False, i=cid: (cli_run("start", i)))
-                sub.addSeparator()
-                sub.addAction("Logs").triggered.connect(
-                    lambda _=False, i=cid: (cli_run("logs", i)))
-                sub.addAction("Shell").triggered.connect(
-                    lambda _=False, i=cid: (cli_run("shell", i)))
+                    sub.append(_item("Start", on_activate=lambda i=cid: cli_run("start", i)))
+                sub.append(Gtk.SeparatorMenuItem())
+                sub.append(_item("Logs", on_activate=lambda i=cid: cli_run("logs", i)))
+                sub.append(_item("Shell", on_activate=lambda i=cid: cli_run("shell", i)))
+                parent = Gtk.MenuItem(label=f"{dot} {name}")
+                parent.set_submenu(sub)
+                menu.append(parent)
 
-        self.menu.addSeparator()
-        self.menu.addAction("Refresh").triggered.connect(self._rebuild)
-        self.menu.addAction("Quit").triggered.connect(self.app.quit)
+        menu.append(Gtk.SeparatorMenuItem())
+        menu.append(_item("Refresh", on_activate=self.rebuild))
+        menu.append(_item("Quit", on_activate=Gtk.main_quit))
+        menu.show_all()
+        self.ind.set_menu(menu)
 
 
 def main():
     signal.signal(signal.SIGINT, signal.SIG_DFL)
-    app = QApplication(sys.argv)
-    app.setApplicationName(APP_ID)
-    app.setDesktopFileName(APP_ID)
-    app.setQuitOnLastWindowClosed(False)
-    Tray(app)
-    sys.exit(app.exec())
+    Tray()
+    Gtk.main()
 
 
 if __name__ == "__main__":

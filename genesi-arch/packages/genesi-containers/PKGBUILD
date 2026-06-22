@@ -35,13 +35,23 @@ pkgver=1.0.0
 # pkgrel 5: ship genesi-containers-tray.desktop (NoDisplay) matching the tray's
 # app_id, so xdg-desktop-portal resolves its app info ("App info not found for
 # 'genesi-containers-tray'") and the SNI host can resolve its icon/identity.
-pkgrel=5
+# pkgrel 6: rewrite the tray on libappindicator (Gtk) instead of Qt's
+# QSystemTrayIcon. Diagnosed on hardware: Qt 6.11's QSystemTrayIcon SNI registers
+# the item but doesn't serve its properties to the Quickshell host (the item
+# never readies, a sibling even crashed fatally in the DBus path), so it never
+# showed in the caelestia bar — while libappindicator apps (Spotify/Discord) show
+# fine there. Now uses libayatana-appindicator via gi (the proven SNI path),
+# menu-based with the same live engine/containers + start/stop/restart/logs/shell.
+# Deps swap python-pyqt6 -> python-gobject + libayatana-appindicator + gtk3.
+pkgrel=6
 pkgdesc='Plasma 6 widget + tray applet to monitor and control Docker/Podman containers'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
 license=('GPL-3.0-or-later')
 depends=('python'
-         'python-pyqt6')   # python-pyqt6: genesi-containers-tray (standalone SNI tray)
+         # genesi-containers-tray (standalone libappindicator/Gtk SNI applet —
+         # Qt's QSystemTrayIcon is broken with Quickshell on Qt 6.11)
+         'python-gobject' 'libayatana-appindicator' 'gtk3')
 optdepends=(
     'plasma-workspace: the Plasma 6 container widget (KDE/Plasma session only; pulled automatically by the KDE-Desktop install)'
     'docker: container engine (daemon-based)'
