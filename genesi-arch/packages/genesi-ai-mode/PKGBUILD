@@ -253,7 +253,11 @@ pkgver=1.0.0
 # _apply_theme run far enough to trigger it). Removed the changeEvent handler;
 # the theme is applied on construction and re-applied each time the popup opens
 # (popup_at), which still tracks a system light/dark switch between opens.
-pkgrel=87
+# pkgrel 88: ship genesi-ai-tray.desktop (NoDisplay) matching the tray's app_id.
+# Without it Qt logged "Could not register app ID: App info not found for
+# 'genesi-ai-tray'" and the SNI host had no app info to resolve the icon — a
+# likely reason the tray icon never appeared in the caelestia bar.
+pkgrel=88
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -301,6 +305,11 @@ package() {
     # Hyprland + caelestia-shell). Started via exec-once from the caelestia
     # hyprland.conf; works in any StatusNotifierItem host.
     install -Dm755 "${startdir}/genesi-ai-tray"  "$pkgdir/usr/local/bin/genesi-ai-tray"
+    # .desktop matching the tray's app_id so xdg-desktop-portal can resolve its
+    # app info (kills "App info not found for 'genesi-ai-tray'") and the SNI host
+    # can read its icon/identity. NoDisplay — it's a background applet.
+    install -Dm644 "${startdir}/genesi-ai-tray.desktop" \
+        "$pkgdir/usr/share/applications/genesi-ai-tray.desktop"
 
     # systemd service
     install -Dm644 "${startdir}/genesi-aid.service" \

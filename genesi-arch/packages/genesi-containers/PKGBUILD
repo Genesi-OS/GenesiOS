@@ -32,7 +32,10 @@ pkgver=1.0.0
 # plasmoid). Started from the caelestia hyprland.conf via exec-once (Hyprland
 # ignores /etc/xdg/autostart). New dep: python-pyqt6 (the tray's toolkit; already
 # on every install via genesi-update).
-pkgrel=4
+# pkgrel 5: ship genesi-containers-tray.desktop (NoDisplay) matching the tray's
+# app_id, so xdg-desktop-portal resolves its app info ("App info not found for
+# 'genesi-containers-tray'") and the SNI host can resolve its icon/identity.
+pkgrel=5
 pkgdesc='Plasma 6 widget + tray applet to monitor and control Docker/Podman containers'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -58,6 +61,11 @@ package() {
     # hyprland.conf; works in any StatusNotifierItem host.
     install -Dm755 "${startdir}/genesi-containers-tray" \
         "$pkgdir/usr/local/bin/genesi-containers-tray"
+    # .desktop matching the tray's app_id so xdg-desktop-portal can resolve its
+    # app info (kills "App info not found for 'genesi-containers-tray'") and the
+    # SNI host can read its icon/identity. NoDisplay — it's a background applet.
+    install -Dm644 "${startdir}/genesi-containers-tray.desktop" \
+        "$pkgdir/usr/share/applications/genesi-containers-tray.desktop"
 
     # Plasma 6 applet
     install -dm755 "$pkgdir/usr/share/plasma/plasmoids/org.genesi.containers"

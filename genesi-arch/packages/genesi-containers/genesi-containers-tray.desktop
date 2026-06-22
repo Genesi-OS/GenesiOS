@@ -1,0 +1,16 @@
+[Desktop Entry]
+# Background SNI tray applet (not a launcher) — NoDisplay keeps it out of menus.
+# The basename MUST match the app_id genesi-containers-tray sets via
+# setDesktopFileName, so xdg-desktop-portal can resolve "App info" for it
+# (otherwise Qt logs "Could not register app ID: App info not found for
+# 'genesi-containers-tray'") and the StatusNotifierItem host (caelestia bar) can
+# read the app's icon/identity.
+Type=Application
+Name=Genesi Containers Tray
+Comment=Docker/Podman containers tray applet
+Exec=genesi-containers-tray
+Icon=docker
+Categories=System;Utility;
+NoDisplay=true
+StartupWMClass=genesi-containers-tray
+X-GNOME-Autostart-enabled=true
