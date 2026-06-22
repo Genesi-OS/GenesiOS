@@ -86,7 +86,14 @@ pkgver=1.0.0
 # scheme change. The static genesi-dark.conf stays as the no-scheme fallback.
 # (KF6/Dolphin reads kdeglobals, not qt6ct — a dual-DE-risky follow-up.) The
 # .install migration adds the exec-once for existing users.
-pkgrel=11
+# pkgrel 12: the white/light theme toggle now works out of the box. caelestia
+# ships "catppuccin mocha", a DARK-ONLY flavour, so toggling light failed with
+# 'Scheme "catppuccin mocha" does not have a light mode.' (reported on a fresh
+# install). "dynamic" (Material You from the wallpaper) is the only scheme that
+# supports BOTH modes, so a marker-guarded first-login exec-once sets the scheme
+# to dynamic once (retried, since dynamic needs the wallpaper set first). It never
+# overrides a scheme the user later picks. The .install migrates existing users.
+pkgrel=12
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
