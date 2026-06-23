@@ -107,7 +107,14 @@ pkgver=1.3.4
 # longer runs fastfetch there (submodule bump); a new .install migration
 # (migrate_fish_greeting_dedup) strips the leftover line from existing users'
 # ~/.config/fish/config.fish on `pacman -Syu`.
-pkgrel=39
+# pkgrel 40: fix the broken GParted desktop shortcut. The skel Desktop/.desktop
+# called `gparted-pkexec` (a Debian/Ubuntu name) — on Arch the gparted package
+# ships only /usr/bin/gparted (which self-elevates via pkexec), so the icon died
+# with "Não foi possível encontrar o programa 'gparted-pkexec'". Exec is now
+# `gparted`. Pairs with the archiso `removeun` fix (gparted was also being
+# stripped from the installed system post-Calamares). Bumps the submodule pointer
+# (the .desktop lives there).
+pkgrel=40
 epoch=1
 groups=(genesi)
 arch=('any')

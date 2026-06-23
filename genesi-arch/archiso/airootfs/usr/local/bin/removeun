@@ -15,7 +15,6 @@ local _files_to_remove=(
 
 _clean_packages() {
 local _packages_to_remove=(
-  gparted
   grsync
   cachyos-calamares-grub
   cachyos-calamares-systemd
