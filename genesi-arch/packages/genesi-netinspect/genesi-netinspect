@@ -16,6 +16,11 @@
 #                                Repeater/Intruder/Scanner over mitmproxy)
 #   genesi-netinspect gui        same as above, explicit
 #   genesi-netinspect web        the classic mitmweb UI (proxy on for the session)
+#   genesi-netinspect browser    open a pre-configured Chromium (Burp-style): its
+#                                traffic goes through the proxy + trusts our CA,
+#                                in an isolated profile — WITHOUT touching the
+#                                system proxy. Assumes the engine is already up
+#                                (GUI or `web`).
 #   genesi-netinspect cert       trust the mitmproxy CA system-wide (HTTPS)
 #   genesi-netinspect untrust    remove the trusted CA again
 set -euo pipefail
@@ -25,10 +30,30 @@ PORT="${GENESI_PROXY_PORT:-8080}"
 WEBPORT="${GENESI_MITMWEB_PORT:-8081}"
 CA="$HOME/.mitmproxy/mitmproxy-ca-cert.pem"
 ANCHOR=/etc/ca-certificates/trust-source/anchors/genesi-mitmproxy.pem
+CHROMIUM_BINS=(chromium chromium-browser google-chrome-stable google-chrome \
+               brave brave-browser vivaldi-stable microsoft-edge microsoft-edge-stable)
 
 die() {
     command -v kdialog >/dev/null 2>&1 && kdialog --error "$1" || echo "$1" >&2
     exit 1
+}
+
+find_chromium() {
+    local b
+    for b in "${CHROMIUM_BINS[@]}"; do
+        command -v "$b" >/dev/null 2>&1 && { echo "$b"; return 0; }
+    done
+    return 1
+}
+
+# Base64(SHA-256(SPKI)) of the mitmproxy CA — for Chromium's per-CA cert
+# exception (--ignore-certificate-errors-spki-list). Empty if openssl is missing.
+ca_spki() {
+    command -v openssl >/dev/null 2>&1 || return 0
+    openssl x509 -in "$CA" -noout -pubkey 2>/dev/null \
+        | openssl pkey -pubin -outform der 2>/dev/null \
+        | openssl dgst -sha256 -binary 2>/dev/null \
+        | openssl base64 2>/dev/null
 }
 
 command -v mitmweb >/dev/null 2>&1 || \
@@ -66,8 +91,29 @@ case "${1:-gui}" in
     echo ">>> Removed."
     exit 0
     ;;
+  browser)
+    ensure_ca
+    chrome="$(find_chromium)" || \
+        die "No Chromium-family browser found. Install one, e.g.: sudo pacman -S chromium"
+    profile="${XDG_DATA_HOME:-$HOME/.local/share}/genesi-netinspect/browser-profile"
+    mkdir -p "$profile"
+    spki="$(ca_spki || true)"
+    args=(
+        "--proxy-server=http://$HOST:$PORT"
+        "--proxy-bypass-list=<-loopback>"
+        "--user-data-dir=$profile"
+        --no-first-run --no-default-browser-check --new-window about:blank
+    )
+    [ -n "$spki" ] && args=("--ignore-certificate-errors-spki-list=$spki" "${args[@]}")
+    echo ">>> Opening $chrome pre-configured for the inspector at $HOST:$PORT"
+    echo "    (isolated profile, HTTPS trusted via the mitmproxy CA — no system proxy change)"
+    if [ -z "$spki" ]; then
+        echo "    NOTE: openssl missing — HTTPS sites may warn; run 'genesi-netinspect cert' or accept per-site."
+    fi
+    exec "$chrome" "${args[@]}"
+    ;;
   web|run) ;;
-  *) die "usage: genesi-netinspect {gui|web|cert|untrust}" ;;
+  *) die "usage: genesi-netinspect {gui|web|browser|cert|untrust}" ;;
 esac
 
 ensure_ca

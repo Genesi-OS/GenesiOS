@@ -138,6 +138,8 @@ Item {
             "insp.httpsHelp": "HTTPS not decrypting?",
             "insp.trustCert": "Trust HTTPS cert",
             "insp.caTrusted": "✓ CA trusted",
+            "insp.openBrowser": "Open Browser",
+            "insp.openBrowserTip": "Launch a pre-configured browser routed through the inspector (no system-wide proxy)",
             // Sandboxes
             "sb.newWorkspace": "New workspace",
             "sb.removeWorkspace": "Remove workspace",
@@ -242,6 +244,8 @@ Item {
             "insp.httpsHelp": "HTTPS não descriptografando?",
             "insp.trustCert": "Confiar no cert HTTPS",
             "insp.caTrusted": "✓ CA confiável",
+            "insp.openBrowser": "Abrir navegador",
+            "insp.openBrowserTip": "Abre um navegador pré-configurado já apontado pro inspector (sem mexer no proxy do sistema)",
             // Sandboxes
             "sb.newWorkspace": "Novo workspace",
             "sb.removeWorkspace": "Remover workspace",

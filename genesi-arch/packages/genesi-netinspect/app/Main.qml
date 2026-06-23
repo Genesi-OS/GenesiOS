@@ -29,6 +29,9 @@ ApplicationWindow {
     property int scanCount: 0
     property string proxyStatus: "starting…"
     property bool certTrusted: false
+    // Whether a Chromium-family browser exists to pre-configure (Burp-style).
+    property bool hasBrowser: false
+    Component.onCompleted: hasBrowser = backend.hasBrowser()
     // The host/port mitmproxy ACTUALLY bound — may differ from PROXY_PORT when
     // 8080 was busy and the engine hopped to 8081+. The engine label reads these
     // so it never lies about where to point curl/your browser.
@@ -163,6 +166,15 @@ ApplicationWindow {
                 flat: certTrusted
                 enabledX: !certTrusted
                 onClicked: backend.trustCert()
+            }
+            // Burp-style "open a pre-configured browser": a Chromium pointed at
+            // this engine's port + our CA, in an isolated profile. No system-proxy
+            // flip, so it can't strand the desktop. Hidden if no Chromium exists.
+            PillButton {
+                visible: hasBrowser
+                text: i18n.t("insp.openBrowser")
+                accent: theme.blue
+                onClicked: backend.openBrowser()
             }
             // Language switch (EN / PT, live)
             Rectangle {

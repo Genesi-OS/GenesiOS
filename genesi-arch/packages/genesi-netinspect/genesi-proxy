@@ -62,6 +62,33 @@ case "${1:-status}" in
   status)
     if [ -f "$ENVD" ]; then echo "on ($HOST:$PORT)"; else echo "off"; fi
     ;;
+  heal)
+    # Self-recover from an ORPHANED debug proxy. If we're "on" but nothing is
+    # actually listening at the proxy address, the inspector died without
+    # cleaning up (crash, kill, logout, reboot) and the desktop is stranded with
+    # no internet (ERR_PROXY_CONNECTION_FAILED). Turn it off in that case.
+    # No-op when already off or when the proxy is genuinely live. Meant to run at
+    # login (see org.genesi.proxy-heal.desktop autostart).
+    if [ ! -f "$ENVD" ]; then
+        echo "heal: proxy already off — nothing to do"; exit 0
+    fi
+    # The engine may have hopped off a busy 8080; trust the port persisted in the
+    # conf, falling back to the defaults.
+    chost="$HOST"; cport="$PORT"
+    line="$(sed -n 's#^https_proxy=http://\([^:]*\):\([0-9]*\).*#\1 \2#p' "$ENVD" | head -1)"
+    if [ -n "$line" ]; then chost="${line% *}"; cport="${line#* }"; fi
+    # Pure-bash reachability probe (no nc/ss dependency). Connection refused on
+    # loopback is instant; the timeout guards an unexpectedly slow host.
+    if timeout 2 bash -c "exec 3<>/dev/tcp/$chost/$cport" 2>/dev/null; then
+        echo "heal: proxy live at $chost:$cport — nothing to do"; exit 0
+    fi
+    disable_kde; disable_env
+    echo ">>> Orphaned debug proxy at $chost:$cport cleared (nothing was listening there)."
+    command -v notify-send >/dev/null 2>&1 && \
+        notify-send -a "Genesi API Inspector" "Debug proxy recovered" \
+          "The interception proxy was left on but isn't running. Your connection is back to normal." \
+          2>/dev/null || true
+    ;;
   *)
-    echo "usage: genesi-proxy {on|off|toggle|status}" >&2; exit 2 ;;
+    echo "usage: genesi-proxy {on|off|toggle|status|heal}" >&2; exit 2 ;;
 esac

@@ -56,7 +56,20 @@ pkgver=1.0.0
 # via the shared genesi-ui-kit I18n.qml (bundled in like Theme/GlassCard); header
 # chrome strings now go through i18n.t(). The nav rail (Proxy/Repeater/Intruder/
 # Scanner) already provided the icon sidebar. Deep per-lane i18n is a follow-up.
-pkgrel=13
+# pkgrel 14: two things. (A) ORPHANED-PROXY FIX — the GUI flips the desktop proxy
+# on (genesi-proxy on) but only reverted it on a clean Qt quit (aboutToQuit), so a
+# crash/kill/logout left the desktop stranded behind a dead proxy (Chromium showed
+# ERR_PROXY_CONNECTION_FAILED with nothing listening). Now: the GUI restores the
+# proxy idempotently from aboutToQuit + atexit + SIGTERM/SIGINT/SIGHUP (with a
+# QTimer pump so Python signal handlers fire under Qt's loop), AND a new
+# `genesi-proxy heal` runs at login (org.genesi.proxy-heal.desktop autostart) to
+# clear an orphaned proxy if the conf says "on" but nothing is listening.
+# (B) BURP-STYLE BROWSER — `genesi-netinspect browser` and an in-app "Open Browser"
+# button launch a pre-configured Chromium: routed through the engine's ACTUAL bound
+# port, trusting only the mitmproxy CA via an SPKI exception
+# (--ignore-certificate-errors-spki-list), in an isolated profile. It never touches
+# the system proxy, so HTTPS decrypts without `cert` and it can't strand the desktop.
+pkgrel=14
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'
@@ -65,7 +78,9 @@ depends=('mitmproxy' 'python' 'pyside6' 'qqc2-desktop-style' 'qt6-svg')
 optdepends=(
     'konsole: terminal for the classic mitmweb UI and cert trust'
     'kdialog: graphical error when mitmproxy is missing'
-    'libnotify: desktop notification on proxy toggle'
+    'libnotify: desktop notification on proxy toggle / recovery'
+    'chromium: pre-configured Burp-style browser (Open Browser / `browser`)'
+    'openssl: per-CA HTTPS trust for the standalone `browser` command'
 )
 source=()
 sha256sums=()
@@ -105,4 +120,8 @@ package() {
         "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-netinspect.svg"
     install -Dm644 "${startdir}/org.genesi.proxy-toggle.desktop" \
         "$pkgdir/usr/share/applications/org.genesi.proxy-toggle.desktop"
+    # Login autostart: self-recover from an orphaned debug proxy (crash/kill/
+    # logout) so the desktop is never stranded behind a dead proxy.
+    install -Dm644 "${startdir}/org.genesi.proxy-heal.desktop" \
+        "$pkgdir/etc/xdg/autostart/org.genesi.proxy-heal.desktop"
 }

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Debug-Proxy Recovery
+Comment=Clears an orphaned interception proxy left on after a crash, so the desktop is never stranded with no internet
+Exec=genesi-proxy heal
+Icon=network-wired
+Terminal=false
+NoDisplay=true
+X-KDE-autostart-phase=1
+Categories=Development;Network;
+Keywords=proxy;recover;heal;mitmproxy;
+StartupNotify=false

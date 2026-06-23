@@ -27,6 +27,10 @@ import sys
 import json
 import time
 import shutil
+import atexit
+import signal
+import base64
+import hashlib
 import asyncio
 import threading
 import subprocess
@@ -54,8 +58,47 @@ except ImportError:
 PROXY_HOST = os.environ.get("GENESI_PROXY_HOST", "127.0.0.1")
 PROXY_PORT = int(os.environ.get("GENESI_PROXY_PORT", "8080"))
 
+CA_CERT = os.path.expanduser("~/.mitmproxy/mitmproxy-ca-cert.pem")
+
+# Chromium-family browsers we can pre-configure as a Burp-style "embedded
+# browser" (proxy + per-CA cert exception, isolated profile). First one found wins.
+_CHROMIUM_BINS = (
+    "chromium", "chromium-browser", "google-chrome-stable", "google-chrome",
+    "brave", "brave-browser", "vivaldi-stable", "microsoft-edge", "microsoft-edge-stable",
+)
+
 
 # ───────────────────────────── helpers ─────────────────────────────────────
+
+def _find_chromium():
+    """Path of the first Chromium-family browser we can drive, or None."""
+    for b in _CHROMIUM_BINS:
+        p = shutil.which(b)
+        if p:
+            return p
+    return None
+
+
+def _ca_spki_sha256_b64():
+    """Base64(SHA-256(SubjectPublicKeyInfo)) of the mitmproxy CA — the value
+    Chromium's --ignore-certificate-errors-spki-list wants. This lets a
+    pre-configured browser trust ONLY our interception CA (exactly that one key),
+    instead of trusting the CA system-wide. Returns None if the CA isn't there
+    yet. Uses `cryptography`, a hard dependency of mitmproxy (always present)."""
+    if not os.path.exists(CA_CERT):
+        return None
+    try:
+        from cryptography import x509
+        from cryptography.hazmat.primitives import serialization
+        with open(CA_CERT, "rb") as fh:
+            cert = x509.load_pem_x509_certificate(fh.read())
+        spki = cert.public_key().public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo)
+        return base64.b64encode(hashlib.sha256(spki).digest()).decode("ascii")
+    except Exception:                                           # noqa: BLE001
+        return None
+
 
 def _render_raw_request(req) -> str:
     """A flow's request as an editable raw HTTP message."""
@@ -405,12 +448,21 @@ class Backend(QObject):
         self.certTrusted.emit(self._cert_is_trusted())
         self.proxyReady.emit(host, port)
 
+    def restore_proxy(self):
+        """Flip the desktop proxy back off. Idempotent and cheap — safe to call
+        from aboutToQuit, atexit, AND a signal handler, so a crash/kill/logout
+        never leaves the desktop stranded behind a dead proxy (the bug where the
+        browser showed ERR_PROXY_CONNECTION_FAILED with no inspector running)."""
+        if not self._desktop_proxied:
+            return
+        self._desktop_proxied = False
+        try:
+            subprocess.run(["genesi-proxy", "off"], capture_output=True, timeout=10)
+        except Exception:                                       # noqa: BLE001
+            pass
+
     def shutdown(self):
-        if self._desktop_proxied:
-            try:
-                subprocess.run(["genesi-proxy", "off"], capture_output=True, timeout=10)
-            except Exception:                                   # noqa: BLE001
-                pass
+        self.restore_proxy()
         self.engine.shutdown()
 
     # -- intercept controls -------------------------------------------------
@@ -554,6 +606,51 @@ class Backend(QObject):
         except Exception as e:                                  # noqa: BLE001
             self.statusMessage.emit("could not launch cert trust: %s" % e)
 
+    @Slot(result=bool)
+    def hasBrowser(self):
+        return _find_chromium() is not None
+
+    @Slot()
+    def openBrowser(self):
+        """Burp-style "open browser": launch a pre-configured Chromium that
+        routes through THIS engine's actual bound port and trusts our CA via an
+        SPKI exception — in an isolated profile. It does NOT touch the system
+        proxy, so it can never strand the desktop (no orphaned-proxy risk), and
+        HTTPS decrypts even without `genesi-netinspect cert`."""
+        chrome = _find_chromium()
+        if not chrome:
+            self.statusMessage.emit(
+                "No Chromium-family browser found — install chromium.")
+            return
+        host = self.engine.host or PROXY_HOST
+        port = self.engine.port or PROXY_PORT
+        profile = os.path.join(
+            os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")),
+            "genesi-netinspect", "browser-profile")
+        try:
+            os.makedirs(profile, exist_ok=True)
+        except OSError:
+            pass
+        args = [
+            chrome,
+            "--proxy-server=http://%s:%d" % (host, port),
+            # Force loopback through the proxy too (intercept local dev servers).
+            "--proxy-bypass-list=<-loopback>",
+            "--user-data-dir=%s" % profile,
+            "--no-first-run", "--no-default-browser-check",
+            "--new-window", "about:blank",
+        ]
+        spki = _ca_spki_sha256_b64()
+        if spki:
+            # Trust exactly our CA's key — not a blanket --ignore-certificate-errors.
+            args.insert(3, "--ignore-certificate-errors-spki-list=%s" % spki)
+        try:
+            subprocess.Popen(args, start_new_session=True)
+            self.statusMessage.emit(
+                "Opened a pre-configured browser → %s:%d" % (host, port))
+        except Exception as e:                                  # noqa: BLE001
+            self.statusMessage.emit("could not open browser: %s" % e)
+
 
 def _silence_mitm_logging():
     # mitmproxy logs to the root logger; keep our stdout clean.
@@ -607,6 +704,35 @@ def main():
 
     backend.start()
     app.aboutToQuit.connect(backend.shutdown)
+
+    # Belt-and-suspenders proxy cleanup. aboutToQuit only fires on a clean Qt
+    # quit; it does NOT cover SIGTERM (logout/shutdown), SIGHUP (session end) or
+    # a hard exit. Register the same idempotent restore on atexit + those
+    # signals so the desktop proxy is flipped back off no matter how we die.
+    atexit.register(backend.restore_proxy)
+
+    def _on_signal(signum, _frame):
+        backend.restore_proxy()
+        # Re-raise with the default handler so the process still terminates.
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    for _sig in ("SIGTERM", "SIGINT", "SIGHUP"):
+        s = getattr(signal, _sig, None)
+        if s is not None:
+            try:
+                signal.signal(s, _on_signal)
+            except (ValueError, OSError):
+                pass
+
+    # Python signal handlers only run between bytecodes; while Qt's C++ event
+    # loop is blocked they'd never fire. A heartbeat timer hands control back to
+    # the interpreter often enough for the handlers above to run.
+    from PySide6.QtCore import QTimer
+    _pump = QTimer()
+    _pump.start(300)
+    _pump.timeout.connect(lambda: None)
+
     sys.exit(app.exec())
 
 
