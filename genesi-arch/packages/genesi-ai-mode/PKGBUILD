@@ -279,7 +279,11 @@ pkgver=1.0.0
 # in the header — both driven by the new shared genesi-ui-kit I18n.qml (bundled in
 # like Theme/GlassCard). All Monitor dashboard strings now go through i18n.t().
 # Logic (Turbo/benchmark/advisor) untouched.
-pkgrel=91
+# pkgrel 92: finish the i18n pass — the shared I18n instance is now threaded into
+# ChatPage + AdvisorPage (so the language switch stays in sync across pages), and
+# the Chat/Models pages, the backend/model-picker dialogs and tooltips all go
+# through i18n.t() too. Dictionary expanded (chat/advisor/dialog keys).
+pkgrel=92
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/zFreshy/GenesiOS'

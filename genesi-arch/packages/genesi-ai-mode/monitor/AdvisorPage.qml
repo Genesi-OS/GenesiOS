@@ -14,6 +14,8 @@ Kirigami.Page {
     padding: 0
 
     Theme { id: theme }
+    // Shared I18n instance passed in from Main (keeps the language switch in sync).
+    property var i18n
     property bool pulling: false
 
     background: Rectangle {
@@ -29,7 +31,7 @@ Kirigami.Page {
         if (page.pulling || m.length === 0)
             return
         page.pulling = true
-        status.text = "starting download of " + m + " …"
+        status.text = i18n.t("adv.startingPre") + m + " …"
         backend.pullModel(m)
     }
 
@@ -94,7 +96,7 @@ Kirigami.Page {
                             verticalAlignment: TextInput.AlignVCenter
                             background: null
                             color: theme.textHi
-                            placeholderText: "e.g. llama3.2:3b   or   llama3.1:8b"
+                            placeholderText: i18n.t("adv.placeholder")
                             placeholderTextColor: theme.textLo
                             enabled: !page.pulling
                             onAccepted: page.pull()
@@ -113,7 +115,7 @@ Kirigami.Page {
                             anchors.centerIn: parent
                             spacing: 6
                             Kirigami.Icon { source: "download"; width: 16; height: 16; color: pullBtn.canPull ? "#08130E" : theme.textLo }
-                            QQC2.Label { id: pullLbl; text: page.pulling ? "Downloading…" : "Download"; font.bold: true; color: pullBtn.canPull ? "#08130E" : theme.textLo }
+                            QQC2.Label { id: pullLbl; text: page.pulling ? i18n.t("adv.downloading") : i18n.t("adv.download"); font.bold: true; color: pullBtn.canPull ? "#08130E" : theme.textLo }
                         }
                         MouseArea { anchors.fill: parent; enabled: pullBtn.canPull; cursorShape: Qt.PointingHandCursor; onClicked: page.pull() }
                     }
@@ -144,12 +146,12 @@ Kirigami.Page {
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
                     Kirigami.Icon { source: "help-about"; color: theme.green; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
-                    QQC2.Label { text: "Which model fits your hardware"; font.bold: true; font.pixelSize: 14; color: theme.textHi }
+                    QQC2.Label { text: i18n.t("adv.title"); font.bold: true; font.pixelSize: 14; color: theme.textHi }
                     Item { Layout.fillWidth: true }
                     QQC2.ToolButton {
                         icon.name: "view-refresh"
                         onClicked: page.reload()
-                        QQC2.ToolTip.text: "Reload"
+                        QQC2.ToolTip.text: i18n.t("adv.reload")
                         QQC2.ToolTip.visible: hovered
                     }
                 }

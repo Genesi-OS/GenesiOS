@@ -604,7 +604,7 @@ Kirigami.ApplicationWindow {
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: { win.turboModel = win.turboRecommend; win.turboModelLocked = true }
-                                        QQC2.ToolTip.text: "Use the largest model that runs 100% in your VRAM (full offload, no CPU spill)"
+                                        QQC2.ToolTip.text: i18n.t("tip.recVram")
                                         QQC2.ToolTip.visible: containsMouse
                                     }
                                 }
@@ -818,9 +818,9 @@ Kirigami.ApplicationWindow {
                             wrapMode: Text.WordWrap
                             color: theme.textLo
                             font.pixelSize: 12
-                            text: "Compares generation speed (tokens/s) with AI Mode OFF and ON, "
-                                + "on model " + (win.turboModel || win.activeModel || win.firstInstalledModel || "llama3.2")
-                                + ". Takes ~1 min (runs twice)."
+                            text: i18n.t("bench.descPre")
+                                + (win.turboModel || win.activeModel || win.firstInstalledModel || "llama3.2")
+                                + i18n.t("bench.descPost")
                         }
 
                         // live progress
@@ -909,17 +909,17 @@ Kirigami.ApplicationWindow {
         }
 
         // ───────────────────────── 2. CHAT ─────────────────────────
-        ChatPage { id: chatPage }
+        ChatPage { id: chatPage; i18n: i18n }
 
         // ───────────────────────── 3. MODELOS ─────────────────────────
-        AdvisorPage { id: advisorPage }
+        AdvisorPage { id: advisorPage; i18n: i18n }
         }
     }
 
     // ════════════ BACKEND CHOICE DIALOG (Vulkan ⇄ CUDA) ════════════
     Kirigami.PromptDialog {
         id: backendDialog
-        title: "Install the Turbo backend"
+        title: i18n.t("dlg.backendTitle")
         standardButtons: Kirigami.Dialog.Cancel
         preferredWidth: Kirigami.Units.gridUnit * 28
 
@@ -929,7 +929,7 @@ Kirigami.ApplicationWindow {
             QQC2.Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: win.backendReason || "Choose the Turbo inference engine (llama-server)."
+                text: win.backendReason || i18n.t("dlg.backendIntro")
                 color: theme.textMid
             }
 
@@ -953,13 +953,13 @@ Kirigami.ApplicationWindow {
                             visible: win.backendRecommend === "vulkan"
                             radius: 6; height: 18; width: recVk.implicitWidth + 14
                             color: theme.a(theme.green, 0.25)
-                            QQC2.Label { id: recVk; anchors.centerIn: parent; text: "Recommended"; font.pixelSize: 10; color: theme.greenBright }
+                            QQC2.Label { id: recVk; anchors.centerIn: parent; text: i18n.t("dlg.recommended"); font.pixelSize: 10; color: theme.greenBright }
                         }
                         Item { Layout.fillWidth: true }
                     }
                     QQC2.Label {
                         Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.textMid; font.pixelSize: 12
-                        text: "Universal: runs on any GPU (AMD, Intel, NVIDIA open/NVK). It's Genesi's ready-to-go backend (genesi-llama-cpp, lightweight, ~tens of MB). Best choice for most people and for the live ISO."
+                        text: i18n.t("dlg.vulkanDesc")
                     }
                 }
                 MouseArea {
@@ -988,23 +988,23 @@ Kirigami.ApplicationWindow {
                             visible: win.backendRecommend === "cuda"
                             radius: 6; height: 18; width: recCu.implicitWidth + 14
                             color: theme.a(theme.turbo, 0.25)
-                            QQC2.Label { id: recCu; anchors.centerIn: parent; text: "Recommended"; font.pixelSize: 10; color: theme.turboBright }
+                            QQC2.Label { id: recCu; anchors.centerIn: parent; text: i18n.t("dlg.recommended"); font.pixelSize: 10; color: theme.turboBright }
                         }
                         Item { Layout.fillWidth: true }
                     }
                     QQC2.Label {
                         Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.textMid; font.pixelSize: 12
-                        text: "NVIDIA only, with the proprietary driver active. ~1.5–2× faster than Vulkan, but it's a heavy AUR build (llama.cpp-cuda, pulls CUDA). Best on an installed system, not the RAM-backed live ISO."
+                        text: i18n.t("dlg.cudaDesc")
                     }
                     QQC2.Label {
                         visible: win.backendRecommend === "cuda" && !win.backendNvWorks
                         Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 11; color: theme.red
-                        text: "⚠ nvidia-smi isn't responding here — install the proprietary NVIDIA driver first, otherwise CUDA won't run."
+                        text: i18n.t("dlg.cudaWarn")
                     }
                     QQC2.Label {
                         visible: !win.backendAur
                         Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 11; color: theme.textLo
-                        text: "Requires an AUR helper (paru/yay) installed."
+                        text: i18n.t("dlg.aurNeed")
                     }
                 }
                 MouseArea {
@@ -1020,7 +1020,7 @@ Kirigami.ApplicationWindow {
     // user chose — never one auto-grabbed from whatever Ollama happened to load.
     Kirigami.PromptDialog {
         id: turboModelDialog
-        title: "Which model for Turbo?"
+        title: i18n.t("dlg.turboTitle")
         standardButtons: Kirigami.Dialog.Cancel
         preferredWidth: Kirigami.Units.gridUnit * 26
 
@@ -1044,8 +1044,8 @@ Kirigami.ApplicationWindow {
                 color: theme.textMid
                 font.pixelSize: 12
                 text: win.installedModels.length > 0
-                    ? "Pick the model Turbo should serve. It stays on this one until you turn Turbo off or pick another."
-                    : "No local models found. Pull one first (Chat page) or run: ollama pull llama3.2"
+                    ? i18n.t("dlg.turboPick")
+                    : i18n.t("dlg.turboNone")
             }
 
             Repeater {
@@ -1078,7 +1078,7 @@ Kirigami.ApplicationWindow {
                             color: theme.a(theme.turbo, 0.25)
                             QQC2.Label {
                                 id: recPk; anchors.centerIn: parent
-                                text: "fits your GPU"; font.pixelSize: 10; color: theme.turboBright
+                                text: i18n.t("dlg.fitsGpu"); font.pixelSize: 10; color: theme.turboBright
                             }
                         }
                     }
@@ -1092,7 +1092,7 @@ Kirigami.ApplicationWindow {
 
             QQC2.Button {
                 Layout.fillWidth: true
-                text: "Start Turbo on this model"
+                text: i18n.t("dlg.startTurbo")
                 enabled: turboModelDialog.selected.length > 0
                 onClicked: {
                     win.turboModel = turboModelDialog.selected

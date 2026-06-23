@@ -15,6 +15,9 @@ Kirigami.Page {
     padding: 0
 
     Theme { id: theme }
+    // The shared I18n instance is passed in from Main so the language switch
+    // stays in sync across pages (a per-page instance wouldn't update live).
+    property var i18n
 
     property bool busy: false
     property int currentAi: -1
@@ -31,7 +34,7 @@ Kirigami.Page {
     // Short one-line summary for the top status label (full data lives in the
     // bubble's stats panel). `s` is the JSON stats string from the backend.
     function shortStats(s) {
-        if (!s || s.length === 0) return "ready"
+        if (!s || s.length === 0) return i18n.t("chat.ready")
         try {
             var d = JSON.parse(s)
             return (d.mode === "turbo" ? "⚡ " : "") + d.rate + " tok/s  ·  " + d.eval + " tokens"
@@ -48,7 +51,7 @@ Kirigami.Page {
         chatModel.append({ "role": "ai", "body": "", "stats": "" })
         page.currentAi = chatModel.count - 1
         page.busy = true
-        statsLabel.text = "generating…"
+        statsLabel.text = i18n.t("chat.generating")
         backend.sendPrompt(modelCombo.currentText, q)
         input.text = ""
         chatList.positionViewAtEnd()
@@ -82,8 +85,8 @@ Kirigami.Page {
         function onChatError(e) {
             if (page.currentAi >= 0 && chatModel.get(page.currentAi).body.length === 0)
                 chatModel.remove(page.currentAi)   // drop the empty AI placeholder
-            chatModel.append({ "role": "error", "body": e + "  — is Ollama running?", "stats": "" })
-            statsLabel.text = "error"
+            chatModel.append({ "role": "error", "body": e + i18n.t("chat.ollamaRunning"), "stats": "" })
+            statsLabel.text = i18n.t("chat.error")
             page.busy = false
             page.currentAi = -1
             chatList.positionViewAtEnd()
@@ -109,7 +112,7 @@ Kirigami.Page {
                 anchors.rightMargin: Kirigami.Units.largeSpacing
                 spacing: Kirigami.Units.smallSpacing
 
-                QQC2.Label { text: "Model"; color: theme.textMid; font.pixelSize: 12 }
+                QQC2.Label { text: i18n.t("chat.model"); color: theme.textMid; font.pixelSize: 12 }
                 QQC2.ComboBox {
                     id: modelCombo
                     Layout.preferredWidth: Kirigami.Units.gridUnit * 12
@@ -117,7 +120,7 @@ Kirigami.Page {
                 QQC2.ToolButton {
                     icon.name: "view-refresh"
                     onClicked: backend.loadModels()
-                    QQC2.ToolTip.text: "Reload models"
+                    QQC2.ToolTip.text: i18n.t("chat.reload")
                     QQC2.ToolTip.visible: hovered
                 }
                 Item { Layout.fillWidth: true }
@@ -139,8 +142,7 @@ Kirigami.Page {
             Layout.margins: Kirigami.Units.largeSpacing
             visible: false
             type: Kirigami.MessageType.Warning
-            text: "No Ollama models found. Run `ollama pull llama3.2` " +
-                  "and make sure the service is up (`systemctl enable --now ollama`)."
+            text: i18n.t("chat.noModels")
         }
 
         // ── Conversation ──
@@ -168,12 +170,12 @@ Kirigami.Page {
                 }
                 QQC2.Label {
                     Layout.alignment: Qt.AlignHCenter
-                    text: "Chat with the local AI"
+                    text: i18n.t("chat.emptyTitle")
                     font.bold: true; font.pixelSize: 16; color: theme.textHi
                 }
                 QQC2.Label {
                     Layout.alignment: Qt.AlignHCenter
-                    text: "Runs 100% on your hardware. Ask something below."
+                    text: i18n.t("chat.emptySub")
                     color: theme.textLo
                 }
             }
@@ -228,7 +230,7 @@ Kirigami.Page {
                         verticalAlignment: TextInput.AlignVCenter
                         background: null
                         color: theme.textHi
-                        placeholderText: "Ask the AI something…"
+                        placeholderText: i18n.t("chat.placeholder")
                         placeholderTextColor: theme.textLo
                         enabled: !page.busy
                         onAccepted: page.send()
