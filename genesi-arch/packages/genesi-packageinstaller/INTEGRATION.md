@@ -8,7 +8,7 @@ bundles.
 ## Status
 - [x] Genesi catalog drafted — `pkglist.yaml`
 - [x] PKGBUILD drafted (mirrors upstream cmake/llvm recipe + catalog overlay)
-- [ ] Fork created: `zFreshy/genesi-packageinstaller`  ← **user action**
+- [ ] Fork created: `Genesi-OS/genesi-packageinstaller`  ← **user action**
 - [ ] Fork added as submodule `genesi-packageinstaller-full`
 - [ ] Branding in the fork: name `genesi-pi`, icon, desktop file, "CachyOS" →
       "Genesi" strings, About text, repo URLs

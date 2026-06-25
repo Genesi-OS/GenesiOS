@@ -103,7 +103,7 @@ pkgver=1.0.0
 pkgrel=15
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
-url='https://github.com/zFreshy/GenesiOS'
+url='https://github.com/Genesi-OS/GenesiOS'
 license=('GPL-3.0-or-later')
 # podman is a HARD dep: rootless, no daemon, no group — it's the backend that
 # works with zero setup, so Distrobox always has one out of the box. docker stays

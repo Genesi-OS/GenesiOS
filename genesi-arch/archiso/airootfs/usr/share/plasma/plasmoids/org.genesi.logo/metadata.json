@@ -13,7 +13,7 @@
         "Category": "Utilities",
         "License": "GPL-3.0",
         "Version": "1.0.0",
-        "Website": "https://github.com/zFreshy/GenesiOS"
+        "Website": "https://github.com/Genesi-OS/GenesiOS"
     },
     "X-Plasma-API-Minimum-Version": "6.0",
     "KPackageStructure": "Plasma/Applet"

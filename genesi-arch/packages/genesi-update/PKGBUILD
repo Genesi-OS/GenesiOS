@@ -1,5 +1,5 @@
 # Maintainer: Genesi OS Team
-# Source: https://github.com/zFreshy/genesi-update (fork of CachyOS/cachy-update)
+# Source: https://github.com/Genesi-OS/genesi-update (fork of CachyOS/cachy-update)
 pkgname=genesi-update
 pkgver=1.0.0
 # 2026-06-01 (2): add genesi-update.install — enable genesi-update.timer for all
@@ -9,7 +9,7 @@ pkgrel=2
 pkgdesc="Interactive update notifier & applier for Genesi OS with systray applet"
 install='genesi-update.install'
 arch=('any')
-url="https://github.com/zFreshy/genesi-update"
+url="https://github.com/Genesi-OS/genesi-update"
 license=('GPL-3.0-or-later')
 depends=(
     'bash'
@@ -42,7 +42,7 @@ makedepends=('make' 'scdoc' 'gettext')
 provides=('genesi-update')
 conflicts=('genesi-updater')
 replaces=('genesi-updater')
-source=("git+https://github.com/zFreshy/genesi-update.git#branch=main")
+source=("git+https://github.com/Genesi-OS/genesi-update.git#branch=main")
 sha256sums=('SKIP')
 
 build() {

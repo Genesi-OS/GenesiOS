@@ -58,7 +58,7 @@ trap_exit() {
 generate_motd() {
     cat << 'EOF' > ${src_dir}/archiso/airootfs/etc/motd
 This ISO is based on Arch Linux and CachyOS technologies, built for [38;2;29;158;117mGenesi OS[0m.
-https://github.com/zFreshy/GenesiOS
+https://github.com/Genesi-OS/GenesiOS
 
 [38;2;29;158;117mGenesi OS[0m uses CachyOS optimized packages and kernel.
 Calamares is used as GUI installer.

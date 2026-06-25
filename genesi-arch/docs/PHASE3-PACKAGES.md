@@ -116,7 +116,7 @@ Example pacman.conf:
 ```ini
 [genesi]
 SigLevel = Optional TrustAll
-Server = https://github.com/zFreshy/GenesiOS/releases/download/packages/$arch
+Server = https://github.com/Genesi-OS/GenesiOS/releases/download/packages/$arch
 ```
 
 ## Migration Path

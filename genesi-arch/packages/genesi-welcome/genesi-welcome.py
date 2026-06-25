@@ -28,7 +28,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QPixmap
 
 AUTOSTART = os.path.expanduser("~/.config/autostart/genesi-welcome.desktop")
-REPO = "https://github.com/zFreshy/GenesiOS"
+REPO = "https://github.com/Genesi-OS/GenesiOS"
 
 
 def is_live():

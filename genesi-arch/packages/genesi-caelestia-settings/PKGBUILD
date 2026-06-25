@@ -96,7 +96,7 @@ pkgver=1.0.0
 pkgrel=12
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
-url='https://github.com/zFreshy/GenesiOS'
+url='https://github.com/Genesi-OS/GenesiOS'
 license=('GPL-3.0-or-later')
 depends=(
     'hyprland'

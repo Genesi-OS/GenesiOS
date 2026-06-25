@@ -7,7 +7,7 @@ pkgdesc='Genesi OS KDE Plasma Settings with Glassmorphism'
 pkgver=4.9
 pkgrel=6
 arch=('any')
-url="https://github.com/zFreshy/genesi-pkgbuilds"
+url="https://github.com/Genesi-OS/genesi-pkgbuilds"
 license=(GPL-1.0-only)
 depends=('ttf-fantasque-nerd'
     'noto-fonts'
@@ -17,7 +17,7 @@ depends=('ttf-fantasque-nerd'
 makedepends=('coreutils' 'git')
 provides=('cachyos-desktop-settings' 'cachyos-kde-settings')
 conflicts=('cachyos-desktop-settings' 'cachyos-kde-settings')
-source=("git+https://github.com/zFreshy/genesi-pkgbuilds.git")
+source=("git+https://github.com/Genesi-OS/genesi-pkgbuilds.git")
 sha512sums=('SKIP')
 
 package() {

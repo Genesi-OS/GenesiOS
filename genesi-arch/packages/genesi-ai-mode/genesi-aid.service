@@ -1,6 +1,6 @@
 [Unit]
 Description=Genesi AI Daemon - Automatic AI Optimizations
-Documentation=https://github.com/zFreshy/GenesiOS
+Documentation=https://github.com/Genesi-OS/GenesiOS
 # Run after static sysctl is applied so the values we capture as "original"
 # are the real boot defaults, not a half-initialized state.
 After=systemd-sysctl.service

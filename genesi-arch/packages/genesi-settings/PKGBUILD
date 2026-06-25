@@ -121,8 +121,8 @@ arch=('any')
 license=(GPL-1.0-only)
 makedepends=('coreutils' 'git')
 pkgdesc='Genesi OS - System Settings'
-url="https://github.com/zFreshy/genesi-settings"
-source=("git+https://github.com/zFreshy/genesi-settings.git")
+url="https://github.com/Genesi-OS/genesi-settings"
+source=("git+https://github.com/Genesi-OS/genesi-settings.git")
 sha256sums=('SKIP')
 depends=(
   zram-generator

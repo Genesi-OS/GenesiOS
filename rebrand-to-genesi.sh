@@ -44,9 +44,9 @@ echo "🔗 Step 3: Replacing URLs..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Replace URLs
-find . -type f -not -path "./.git/*" -exec sed -i 's|https://cachyos.org|https://github.com/zFreshy/GenesiOS|g' {} + 2>/dev/null || true
-find . -type f -not -path "./.git/*" -exec sed -i 's|https://discuss.cachyos.org|https://github.com/zFreshy/GenesiOS/issues|g' {} + 2>/dev/null || true
-find . -type f -not -path "./.git/*" -exec sed -i 's|https://paste.cachyos.org|https://github.com/zFreshy/GenesiOS|g' {} + 2>/dev/null || true
+find . -type f -not -path "./.git/*" -exec sed -i 's|https://cachyos.org|https://github.com/Genesi-OS/GenesiOS|g' {} + 2>/dev/null || true
+find . -type f -not -path "./.git/*" -exec sed -i 's|https://discuss.cachyos.org|https://github.com/Genesi-OS/GenesiOS/issues|g' {} + 2>/dev/null || true
+find . -type f -not -path "./.git/*" -exec sed -i 's|https://paste.cachyos.org|https://github.com/Genesi-OS/GenesiOS|g' {} + 2>/dev/null || true
 
 echo "✅ URLs replaced"
 echo ""

@@ -16,13 +16,13 @@ Thank you for your interest in contributing to Genesi OS! This document provides
 
 1. **Check existing issues**: Someone might already be working on it
 2. **Read the roadmap**: See [ROADMAP.md](docs/ROADMAP.md)
-3. **Join discussions**: Ask questions in [Discussions](https://github.com/zFreshy/GenesiOS/discussions)
+3. **Join discussions**: Ask questions in [Discussions](https://github.com/Genesi-OS/GenesiOS/discussions)
 
 ## 🐛 Reporting Bugs
 
 ### Before Reporting
 
-- Search [existing issues](https://github.com/zFreshy/GenesiOS/issues)
+- Search [existing issues](https://github.com/Genesi-OS/GenesiOS/issues)
 - Test on latest version
 - Check if it's a CachyOS/Arch issue
 
@@ -84,7 +84,7 @@ Mockups, examples, or references.
 
 ```bash
 # Clone repository
-git clone https://github.com/zFreshy/GenesiOS
+git clone https://github.com/Genesi-OS/GenesiOS
 cd GenesiOS
 
 # Install dependencies (on CachyOS/Arch)
@@ -261,7 +261,7 @@ By contributing, you agree that your contributions will be licensed under GPL-3.
 
 ## ❓ Questions?
 
-- Open a [Discussion](https://github.com/zFreshy/GenesiOS/discussions)
+- Open a [Discussion](https://github.com/Genesi-OS/GenesiOS/discussions)
 - Check [FAQ](docs/faq.md)
 - Read [Documentation](docs/)
 

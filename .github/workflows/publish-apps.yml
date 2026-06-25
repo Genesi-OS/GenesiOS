@@ -20,7 +20,7 @@ on:
   # fired (0 scheduled runs in the first 4 days), leaving [genesi-apps] stuck on
   # an old version while genesi-update/the installer correctly saw "no update".
   # Needs a PAT (secret GENESIOS_DISPATCH_TOKEN) in the fork repo. See the
-  # "Notify GenesiOS" step in zFreshy/genesi-code's build workflow.
+  # "Notify GenesiOS" step in Genesi-OS/genesi-code's build workflow.
   repository_dispatch:
     types: [genesi-code-release]
   # BACKUP auto-track: every 6h pick up the latest fork release in case a
@@ -72,9 +72,9 @@ jobs:
           set -euo pipefail
           # Latest release tag of the fork (e.g. v0.0.30 -> 0.0.30). GITHUB_TOKEN
           # can read another PUBLIC repo's releases; fall back to the public API.
-          LATEST=$(gh release view --repo zFreshy/genesi-code --json tagName -q .tagName 2>/dev/null | sed 's/^v//') || true
+          LATEST=$(gh release view --repo Genesi-OS/genesi-code --json tagName -q .tagName 2>/dev/null | sed 's/^v//') || true
           if [ -z "${LATEST:-}" ]; then
-            LATEST=$(curl -fsSL https://api.github.com/repos/zFreshy/genesi-code/releases/latest \
+            LATEST=$(curl -fsSL https://api.github.com/repos/Genesi-OS/genesi-code/releases/latest \
               | grep -oP '"tag_name":\s*"v?\K[^"]+') || true
           fi
           if [ -z "${LATEST:-}" ]; then

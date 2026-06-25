@@ -1,7 +1,7 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 #
 # Genesi Code — the Genesi OS code editor / agentic terminal (fork of Warp,
-# github.com/zFreshy/genesi-code, `genesi` branch). This package does NOT
+# github.com/Genesi-OS/genesi-code, `genesi` branch). This package does NOT
 # compile the Rust workspace (that is a ~40 min, multi-GB build handled by the
 # fork's own GitHub Actions). Instead it pulls the prebuilt, release-mode binary
 # that genesi-code's CI publishes as a GitHub Release asset (release builds embed
@@ -46,7 +46,7 @@ pkgver=0.0.30
 pkgrel=8
 pkgdesc='Genesi Code - local-first code editor / agentic terminal for Genesi OS (Warp fork)'
 arch=('x86_64')
-url='https://github.com/zFreshy/genesi-code'
+url='https://github.com/Genesi-OS/genesi-code'
 license=('AGPL-3.0-or-later')
 # Runtime libs the release binary links against (GUI: wgpu/Vulkan + wayland/X11,
 # text: fontconfig/freetype, TLS: openssl). vulkan-icd-loader loads the system
@@ -78,7 +78,7 @@ depends=(
 # unresolvable conflict: "zlib and zlib-ng-compat are in conflict".
 options=('!strip')  # release binary is already stripped by the build
 source=(
-    "genesi-code-${pkgver}-x86_64.tar.zst::https://github.com/zFreshy/genesi-code/releases/download/v${pkgver}/genesi-code-linux-x86_64.tar.zst"
+    "genesi-code-${pkgver}-x86_64.tar.zst::https://github.com/Genesi-OS/genesi-code/releases/download/v${pkgver}/genesi-code-linux-x86_64.tar.zst"
     'genesi-code.desktop'
     'genesi-code.svg'
 )

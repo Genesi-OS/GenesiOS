@@ -46,7 +46,7 @@ pkgver=1.0.0
 pkgrel=6
 pkgdesc='Plasma 6 widget + tray applet to monitor and control Docker/Podman containers'
 arch=('any')
-url='https://github.com/zFreshy/GenesiOS'
+url='https://github.com/Genesi-OS/GenesiOS'
 license=('GPL-3.0-or-later')
 depends=('python'
          # genesi-containers-tray (standalone libappindicator/Gtk SNI applet —

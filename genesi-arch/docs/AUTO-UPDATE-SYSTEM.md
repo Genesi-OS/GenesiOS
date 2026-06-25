@@ -301,7 +301,7 @@ systemctl list-timers
 sudo pacman -Syy
 
 # Verificar se repo está acessível
-curl -I https://github.com/zFreshy/GenesiOS/releases/download/packages-latest/genesi.db.tar.gz
+curl -I https://github.com/Genesi-OS/GenesiOS/releases/download/packages-latest/genesi.db.tar.gz
 
 # Verificar pacman.conf
 cat /etc/pacman.conf | grep -A 2 "\[genesi\]"

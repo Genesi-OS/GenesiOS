@@ -636,7 +636,7 @@ packages** built and published by CI.
 > **Feasibility CONFIRMED (2026-04):** Warp open-sourced its full terminal client
 > on GitHub — dual-licensed **AGPL-3.0** (core) + **MIT** (the `warpui`/`warpui_core`
 > UI crates). It's a Rust/Cargo app, buildable from source (`./script/bootstrap`
-> → `./script/run`). The fork lives at **[zFreshy/genesi-code](https://github.com/zFreshy/genesi-code)**
+> → `./script/run`). The fork lives at **[Genesi-OS/genesi-code](https://github.com/Genesi-OS/genesi-code)**
 > (fork of `warpdotdev/warp`, keeps the upstream link for pulling updates).
 >
 > **License note:** genesi-code inherits **AGPL-3.0** — it cannot be relicensed to

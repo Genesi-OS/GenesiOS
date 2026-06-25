@@ -8,7 +8,7 @@ pkgrel=4
 pkgdesc='Distribution-independent installer framework - Genesi OS Edition'
 arch=('x86_64')
 license=(GPL-3.0-or-later)
-url="https://github.com/zFreshy/genesi-calamares"
+url="https://github.com/Genesi-OS/genesi-calamares"
 depends=(
     'boost-libs'
     'ckbcomp'
@@ -61,7 +61,7 @@ backup=('usr/share/calamares/modules/bootloader.conf'
 # out of it, so "../../../wallpapers/logo/GenesiOSLogoNoBg.png" failed with
 # "was not found in the build directory and is not a URL" (publish-packages #131,
 # 2026-06-05). The file is a copy of wallpapers/logo/GenesiOSLogoNoBg.png.
-source=("git+https://github.com/zFreshy/genesi-calamares.git"
+source=("git+https://github.com/Genesi-OS/genesi-calamares.git"
         "GenesiOSLogoNoBg.png")
 sha256sums=('SKIP' 'SKIP')
 

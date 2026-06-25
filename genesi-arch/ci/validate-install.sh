@@ -57,7 +57,7 @@ grep -q '^\[genesi\]' /etc/pacman.conf || cat >> /etc/pacman.conf <<'EOF'
 
 [genesi]
 SigLevel = Never
-Server = https://raw.githubusercontent.com/zFreshy/GenesiOS/main/genesi-arch/repo/x86_64
+Server = https://raw.githubusercontent.com/Genesi-OS/GenesiOS/main/genesi-arch/repo/x86_64
 EOF
 grep -q '^\[multilib\]' /etc/pacman.conf || cat >> /etc/pacman.conf <<'EOF'
 

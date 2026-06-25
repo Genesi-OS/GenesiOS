@@ -18,7 +18,7 @@ pkgver=1.0.0
 pkgrel=2
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
-url='https://github.com/zFreshy/GenesiOS'
+url='https://github.com/Genesi-OS/GenesiOS'
 license=('GPL-3.0-or-later')
 # The full default Genesi component set for an INSTALLED system. Installer-only
 # packages (genesi-calamares, genesi-calamares-branding) are deliberately NOT

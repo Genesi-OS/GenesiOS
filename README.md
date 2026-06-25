@@ -9,8 +9,8 @@ A CachyOS-based, developer-first OS with a stunning KDE Plasma desktop. It provi
 [![License](https://img.shields.io/badge/License-GPL--3.0-1D9E75.svg)](LICENSE)
 [![Based on](https://img.shields.io/badge/Based%20on-CachyOS-blue.svg)](https://cachyos.org)
 [![Desktop](https://img.shields.io/badge/Desktop-KDE%20Plasma%206-1d99f3.svg)](https://kde.org/plasma-desktop/)
-[![ISO Pipeline](https://img.shields.io/github/actions/workflow/status/zFreshy/GenesiOS/iso-pipeline.yml?label=ISO%20build&branch=main)](https://github.com/zFreshy/GenesiOS/actions/workflows/iso-pipeline.yml)
-[![Packages](https://img.shields.io/github/actions/workflow/status/zFreshy/GenesiOS/publish-packages.yml?label=packages&branch=main)](https://github.com/zFreshy/GenesiOS/actions/workflows/publish-packages.yml)
+[![ISO Pipeline](https://img.shields.io/github/actions/workflow/status/Genesi-OS/GenesiOS/iso-pipeline.yml?label=ISO%20build&branch=main)](https://github.com/Genesi-OS/GenesiOS/actions/workflows/iso-pipeline.yml)
+[![Packages](https://img.shields.io/github/actions/workflow/status/Genesi-OS/GenesiOS/publish-packages.yml?label=packages&branch=main)](https://github.com/Genesi-OS/GenesiOS/actions/workflows/publish-packages.yml)
 
 [Download](#-download) • [Features](#-features) • [How it works](#-how-it-works) • [Build](#-building-from-source) • [Roadmap](docs/ROADMAP.md) • [Contributing](#-contributing)
 
@@ -77,11 +77,11 @@ When inference stops, every change is reverted so your compiler can have the res
 ## 📥 Download
 
 > **Status:** active development. ISOs are produced by the
-> [ISO pipeline](https://github.com/zFreshy/GenesiOS/actions/workflows/iso-pipeline.yml)
+> [ISO pipeline](https://github.com/Genesi-OS/GenesiOS/actions/workflows/iso-pipeline.yml)
 > on every qualifying push (as build artifacts) and attached to a GitHub Release
 > on each `v*` tag.
 
-- **Tagged releases:** [github.com/zFreshy/GenesiOS/releases](https://github.com/zFreshy/GenesiOS/releases)
+- **Tagged releases:** [github.com/Genesi-OS/GenesiOS/releases](https://github.com/Genesi-OS/GenesiOS/releases)
 - **Latest CI build:** open the most recent successful **Genesi ISO Pipeline** run and download the `genesi-os-iso` artifact.
 
 ### System requirements
@@ -211,8 +211,8 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the detailed, per-feature breakdown.
 
 Contributions are welcome:
 
-- 🐛 **Report bugs** — [open an issue](https://github.com/zFreshy/GenesiOS/issues/new)
-- 💡 **Suggest features** — [open an issue](https://github.com/zFreshy/GenesiOS/issues/new)
+- 🐛 **Report bugs** — [open an issue](https://github.com/Genesi-OS/GenesiOS/issues/new)
+- 💡 **Suggest features** — [open an issue](https://github.com/Genesi-OS/GenesiOS/issues/new)
 - 🔧 **Submit PRs** — see [CONTRIBUTING.md](CONTRIBUTING.md)
 - ⭐ **Star the repo** — it genuinely helps
 

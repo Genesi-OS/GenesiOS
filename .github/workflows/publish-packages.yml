@@ -11,7 +11,7 @@ on:
       - '.github/workflows/publish-packages.yml'
       - '.gitmodules'
       # Submodule gitlinks. PKGBUILDs source from these via
-      # `source=("git+https://github.com/zFreshy/genesi-*.git")` (cloning
+      # `source=("git+https://github.com/Genesi-OS/genesi-*.git")` (cloning
       # HEAD of the submodule's upstream branch), so a bare submodule
       # pointer bump in this repo MUST rebuild the packages or `repo/x86_64`
       # ships stale content. Without these paths, every change like

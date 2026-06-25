@@ -24,14 +24,14 @@ pkgver=1.6.2
 pkgrel=3
 pkgdesc='Genesi OS Package Installer - one-click app, gaming and local-AI setup'
 arch=(x86_64 aarch64)
-url='https://github.com/zFreshy/genesi-packageinstaller'
+url='https://github.com/Genesi-OS/genesi-packageinstaller'
 license=(GPL-3.0-or-later)
 depends=('qt6-base' 'polkit')
 makedepends=('cmake' 'ninja' 'git' 'polkit-qt6' 'qt6-tools' 'cargo' 'lld' 'clang' 'llvm')
 provides=('cachyos-packageinstaller')
 conflicts=('cachyos-packageinstaller')
 groups=('genesi')
-source=("genesi-packageinstaller::git+https://github.com/zFreshy/genesi-packageinstaller.git#branch=develop")
+source=("genesi-packageinstaller::git+https://github.com/Genesi-OS/genesi-packageinstaller.git#branch=develop")
 sha256sums=('SKIP')
 
 prepare() {

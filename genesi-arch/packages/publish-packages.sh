@@ -32,7 +32,7 @@ if ! gh auth status &> /dev/null; then
     exit 1
 fi
 
-echo "Repository: zFreshy/GenesiOS"
+echo "Repository: Genesi-OS/GenesiOS"
 echo "Release tag: $RELEASE_TAG"
 echo "Packages to upload:"
 ls -lh "$REPO_DIR"/*.pkg.tar.zst "$REPO_DIR"/genesi.db.tar.gz "$REPO_DIR"/genesi.files.tar.gz 2>/dev/null || true
@@ -48,7 +48,7 @@ fi
 # Create release if it doesn't exist
 echo ">>> Creating/updating release..."
 gh release create "$RELEASE_TAG" \
-    --repo zFreshy/GenesiOS \
+    --repo Genesi-OS/GenesiOS \
     --title "Genesi OS Packages - $(date +%Y-%m-%d)" \
     --notes "Genesi OS package repository
 
@@ -60,7 +60,7 @@ $(cd "$REPO_DIR" && ls -1 *.pkg.tar.zst | sed 's/^/- /')
 # Add repository to /etc/pacman.conf
 [genesi]
 SigLevel = Optional TrustAll
-Server = https://github.com/zFreshy/GenesiOS/releases/download/$RELEASE_TAG/\$arch
+Server = https://github.com/Genesi-OS/GenesiOS/releases/download/$RELEASE_TAG/\$arch
 
 # Update and install
 sudo pacman -Sy
@@ -72,7 +72,7 @@ sudo pacman -S genesi-settings genesi-kde-settings genesi-ai-mode
 echo ">>> Uploading packages..."
 cd "$REPO_DIR"
 gh release upload "$RELEASE_TAG" \
-    --repo zFreshy/GenesiOS \
+    --repo Genesi-OS/GenesiOS \
     --clobber \
     *.pkg.tar.zst \
     genesi.db.tar.gz \
@@ -81,7 +81,7 @@ gh release upload "$RELEASE_TAG" \
 echo ""
 echo "=== Publish Complete ==="
 echo "Repository URL:"
-echo "https://github.com/zFreshy/GenesiOS/releases/tag/$RELEASE_TAG"
+echo "https://github.com/Genesi-OS/GenesiOS/releases/tag/$RELEASE_TAG"
 echo ""
 echo "Users can now update with:"
 echo "sudo pacman -Syu"

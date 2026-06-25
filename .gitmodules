@@ -1,27 +1,27 @@
 [submodule "genesi-settings-full"]
 	path = genesi-settings-full
-	url = https://github.com/zFreshy/genesi-settings.git
+	url = https://github.com/Genesi-OS/genesi-settings.git
 [submodule "cachyos-pkgbuilds"]
 	path = cachyos-pkgbuilds
-	url = https://github.com/zFreshy/genesi-pkgbuilds.git
+	url = https://github.com/Genesi-OS/genesi-pkgbuilds.git
 [submodule "genesi-welcome-full"]
 	path = genesi-welcome-full
-	url = https://github.com/zFreshy/genesi-welcome.git
+	url = https://github.com/Genesi-OS/genesi-welcome.git
 [submodule "cachyos-calamares-full"]
 	path = cachyos-calamares-full
-	url = https://github.com/zFreshy/genesi-calamares.git
+	url = https://github.com/Genesi-OS/genesi-calamares.git
 [submodule "cachyos-live-iso-full"]
 	path = cachyos-live-iso-full
-	url = https://github.com/zFreshy/genesi-live-iso.git
+	url = https://github.com/Genesi-OS/genesi-live-iso.git
 [submodule "cachyos-kernel-manager-full"]
 	path = cachyos-kernel-manager-full
-	url = https://github.com/zFreshy/genesi-kernel-manager.git
+	url = https://github.com/Genesi-OS/genesi-kernel-manager.git
 [submodule "genesi-calamares-config-full"]
 	path = genesi-calamares-config-full
-	url = https://github.com/zFreshy/genesi-calamares-config.git
+	url = https://github.com/Genesi-OS/genesi-calamares-config.git
 [submodule "genesi-update-full"]
 	path = genesi-update-full
-	url = https://github.com/zFreshy/genesi-update.git
+	url = https://github.com/Genesi-OS/genesi-update.git
 [submodule "genesi-packageinstaller-full"]
 	path = genesi-packageinstaller-full
-	url = https://github.com/zFreshy/genesi-packageinstaller.git
+	url = https://github.com/Genesi-OS/genesi-packageinstaller.git

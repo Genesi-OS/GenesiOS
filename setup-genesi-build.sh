@@ -57,7 +57,7 @@ find . -type f -not -path "./.git/*" -exec sed -i 's/#3daee9/#00ff9f/g' {} + 2>/
 find . -type f -not -path "./.git/*" -exec sed -i 's/#232629/#0a0f0d/g' {} + 2>/dev/null || true
 
 # URL replacements
-find . -type f -not -path "./.git/*" -exec sed -i 's|https://cachyos.org|https://github.com/zFreshy/GenesiOS|g' {} + 2>/dev/null || true
+find . -type f -not -path "./.git/*" -exec sed -i 's|https://cachyos.org|https://github.com/Genesi-OS/GenesiOS|g' {} + 2>/dev/null || true
 
 echo "✅ Branding applied"
 echo ""

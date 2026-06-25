@@ -38,7 +38,7 @@ This creates `repo/` with all packages and database.
 ### 2. Upload to GitHub Releases
 
 #### Manual Method
-1. Go to https://github.com/zFreshy/GenesiOS/releases
+1. Go to https://github.com/Genesi-OS/GenesiOS/releases
 2. Create new release (e.g., `packages-v1.0.0`)
 3. Upload all files from `repo/`:
    - `genesi-settings-*.pkg.tar.zst`
@@ -112,7 +112,7 @@ The ISO already includes the Genesi repository in `/etc/pacman.conf`:
 ```ini
 [genesi]
 SigLevel = Optional TrustAll
-Server = https://github.com/zFreshy/GenesiOS/releases/download/packages/x86_64
+Server = https://github.com/Genesi-OS/GenesiOS/releases/download/packages/x86_64
 ```
 
 ### Manual Setup (Existing Arch/CachyOS)
@@ -125,7 +125,7 @@ sudo tee -a /etc/pacman.conf << 'EOF'
 
 [genesi]
 SigLevel = Optional TrustAll
-Server = https://github.com/zFreshy/GenesiOS/releases/download/packages/x86_64
+Server = https://github.com/Genesi-OS/GenesiOS/releases/download/packages/x86_64
 EOF
 
 # 2. Update database
@@ -189,7 +189,7 @@ For better performance, add mirrors:
 ```ini
 [genesi]
 SigLevel = Optional TrustAll
-Server = https://github.com/zFreshy/GenesiOS/releases/download/packages/x86_64
+Server = https://github.com/Genesi-OS/GenesiOS/releases/download/packages/x86_64
 Server = https://mirror1.genesios.org/$arch
 Server = https://mirror2.genesios.org/$arch
 ```
@@ -222,7 +222,7 @@ Server = https://...
 sudo pacman -Syy
 
 # Check if repo is accessible
-curl -I https://github.com/zFreshy/GenesiOS/releases/download/packages/x86_64/genesi.db.tar.gz
+curl -I https://github.com/Genesi-OS/GenesiOS/releases/download/packages/x86_64/genesi.db.tar.gz
 ```
 
 ### Repository not found

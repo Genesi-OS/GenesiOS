@@ -250,7 +250,7 @@ Kirigami.ApplicationWindow {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     if (modelData.label === "Refresh") backend.refresh()
-                                    else Qt.openUrlExternally("https://github.com/zFreshy/GenesiOS")
+                                    else Qt.openUrlExternally("https://github.com/Genesi-OS/GenesiOS")
                                 }
                             }
                         }

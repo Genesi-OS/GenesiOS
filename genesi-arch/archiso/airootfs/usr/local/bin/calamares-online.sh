@@ -84,7 +84,7 @@ main() {
             -e 's/shortVersionedName:.*CachyOS/shortVersionedName: Genesi OS/' \
             -e 's/bootLoaderEntryName:.*CachyOS/bootLoaderEntryName: Genesi OS/' \
             -e 's/componentName:.*cachyos/componentName:     genesi/' \
-            -e 's|https://cachyos.org|https://github.com/zFreshy/GenesiOS|g' \
+            -e 's|https://cachyos.org|https://github.com/Genesi-OS/GenesiOS|g' \
             /usr/share/calamares/branding/genesi/branding.desc
     fi
     # Also copy to /etc path

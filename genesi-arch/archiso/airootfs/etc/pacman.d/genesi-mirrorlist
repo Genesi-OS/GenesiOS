@@ -4,7 +4,7 @@
 ##
 
 # GitHub Releases (Primary Mirror)
-Server = https://github.com/zFreshy/genesi-pkgbuilds/releases/download/packages/$arch
+Server = https://github.com/Genesi-OS/genesi-pkgbuilds/releases/download/packages/$arch
 
 # Fallback to Arch Linux mirrors for base packages
 Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch

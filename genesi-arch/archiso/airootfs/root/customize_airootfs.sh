@@ -161,14 +161,14 @@ X11DETECTEOF
     # from boot. shellprocess-before-online.conf re-asserts it after pacstrap
     # using @@ROOT@@ in case the target's pacman.conf was clobbered.
     if ! grep -q '^\[genesi\]' /etc/pacman.conf 2>/dev/null; then
-        printf '\n[genesi]\nSigLevel = Optional TrustAll\nServer = https://raw.githubusercontent.com/zFreshy/GenesiOS/main/genesi-arch/repo/x86_64\n' >> /etc/pacman.conf
+        printf '\n[genesi]\nSigLevel = Optional TrustAll\nServer = https://raw.githubusercontent.com/Genesi-OS/GenesiOS/main/genesi-arch/repo/x86_64\n' >> /etc/pacman.conf
         echo ">>> Pre-seeded [genesi] repo into live ISO /etc/pacman.conf"
     fi
 
     # Same for [genesi-apps] — the release-hosted repo for large app packages
     # (genesi-code) that can't live in the git tree (GitHub's 100 MB limit).
     if ! grep -q '^\[genesi-apps\]' /etc/pacman.conf 2>/dev/null; then
-        printf '\n[genesi-apps]\nSigLevel = Optional TrustAll\nServer = https://github.com/zFreshy/GenesiOS/releases/download/apps-repo\n' >> /etc/pacman.conf
+        printf '\n[genesi-apps]\nSigLevel = Optional TrustAll\nServer = https://github.com/Genesi-OS/GenesiOS/releases/download/apps-repo\n' >> /etc/pacman.conf
         echo ">>> Pre-seeded [genesi-apps] repo into live ISO /etc/pacman.conf"
     fi
 
@@ -390,9 +390,9 @@ ID=genesi
 ID_LIKE=arch
 BUILD_ID=rolling
 ANSI_COLOR="38;2;29;158;117"
-HOME_URL="https://github.com/zFreshy/GenesiOS"
-SUPPORT_URL="https://github.com/zFreshy/GenesiOS/issues"
-BUG_REPORT_URL="https://github.com/zFreshy/GenesiOS/issues"
+HOME_URL="https://github.com/Genesi-OS/GenesiOS"
+SUPPORT_URL="https://github.com/Genesi-OS/GenesiOS/issues"
+BUG_REPORT_URL="https://github.com/Genesi-OS/GenesiOS/issues"
 LOGO=genesi
 OSRELEASE
 
@@ -474,8 +474,8 @@ fi
 # Patch the cachyos-hello config if it exists
 if [ -f /etc/cachyos-hello.conf ]; then
     sed -i 's/CachyOS/Genesi OS/g' /etc/cachyos-hello.conf
-    sed -i 's/cachyos\.org/github.com\/zFreshy\/GenesiOS/g' /etc/cachyos-hello.conf
-    sed -i 's/discuss\.cachyos\.org/github.com\/zFreshy\/GenesiOS\/issues/g' /etc/cachyos-hello.conf
+    sed -i 's/cachyos\.org/github.com\/Genesi-OS\/GenesiOS/g' /etc/cachyos-hello.conf
+    sed -i 's/discuss\.cachyos\.org/github.com\/Genesi-OS\/GenesiOS\/issues/g' /etc/cachyos-hello.conf
 fi
 
 # Remove cachyos-hello binary (it has hardcoded CachyOS text that can't be changed)
@@ -531,13 +531,13 @@ find /usr/share/calamares /etc/calamares -type f -name "settings*.conf" -exec se
 if [ -d /etc/calamares ]; then
     find /etc/calamares -type f \( -name "*.conf" -o -name "*.qml" -o -name "*.yml" -o -name "*.yaml" -o -name "*.desc" \) -exec sed -i \
         -e 's/CachyOS/Genesi OS/g' \
-        -e 's|https://cachyos.org|https://github.com/zFreshy/GenesiOS|g' \
+        -e 's|https://cachyos.org|https://github.com/Genesi-OS/GenesiOS|g' \
         {} + 2>/dev/null || true
 fi
 if [ -d /usr/share/calamares ]; then
     find /usr/share/calamares -type f \( -name "*.conf" -o -name "*.qml" -o -name "*.yml" -o -name "*.yaml" -o -name "*.desc" \) -exec sed -i \
         -e 's/CachyOS/Genesi OS/g' \
-        -e 's|https://cachyos.org|https://github.com/zFreshy/GenesiOS|g' \
+        -e 's|https://cachyos.org|https://github.com/Genesi-OS/GenesiOS|g' \
         {} + 2>/dev/null || true
 fi
 

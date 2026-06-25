@@ -20,7 +20,7 @@ This guide will walk you through installing Genesi OS on your computer.
 
 ## 📥 Step 1: Download Genesi OS
 
-1. Go to [Releases](https://github.com/zFreshy/GenesiOS/releases/latest)
+1. Go to [Releases](https://github.com/Genesi-OS/GenesiOS/releases/latest)
 2. Download `genesi-*.iso` (latest version)
 3. Download `genesi-*.iso.sha256` (checksum)
 
@@ -272,8 +272,8 @@ sudo pacman -S nvidia nvidia-utils
 
 ## 💬 Need Help?
 
-- [GitHub Issues](https://github.com/zFreshy/GenesiOS/issues)
-- [Discussions](https://github.com/zFreshy/GenesiOS/discussions)
+- [GitHub Issues](https://github.com/Genesi-OS/GenesiOS/issues)
+- [Discussions](https://github.com/Genesi-OS/GenesiOS/discussions)
 - [Arch Wiki](https://wiki.archlinux.org/) (for general Arch questions)
 
 ---

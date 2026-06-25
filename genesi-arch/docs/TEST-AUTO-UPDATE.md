@@ -206,10 +206,10 @@ git commit -m "test: bump genesi-updater version"
 git push origin arch-base
 
 # Aguardar GitHub Actions (~5-10 min)
-# Ver em: https://github.com/zFreshy/GenesiOS/actions
+# Ver em: https://github.com/Genesi-OS/GenesiOS/actions
 
 # Verificar release criado
-# Ver em: https://github.com/zFreshy/GenesiOS/releases
+# Ver em: https://github.com/Genesi-OS/GenesiOS/releases
 ```
 
 **Resultado esperado**:

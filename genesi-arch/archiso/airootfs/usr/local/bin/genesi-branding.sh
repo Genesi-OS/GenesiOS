@@ -34,9 +34,9 @@ ID=genesi
 ID_LIKE=arch
 BUILD_ID=rolling
 ANSI_COLOR="38;2;29;158;117"
-HOME_URL="https://github.com/zFreshy/GenesiOS"
-SUPPORT_URL="https://github.com/zFreshy/GenesiOS/issues"
-BUG_REPORT_URL="https://github.com/zFreshy/GenesiOS/issues"
+HOME_URL="https://github.com/Genesi-OS/GenesiOS"
+SUPPORT_URL="https://github.com/Genesi-OS/GenesiOS/issues"
+BUG_REPORT_URL="https://github.com/Genesi-OS/GenesiOS/issues"
 LOGO=genesi
 OSRELEASE
 
@@ -85,7 +85,7 @@ if [ -d /usr/share/calamares/branding/cachyos ]; then
             -e 's/shortVersionedName:.*CachyOS/shortVersionedName: Genesi OS/' \
             -e 's/bootLoaderEntryName:.*CachyOS/bootLoaderEntryName: Genesi OS/' \
             -e 's/componentName:.*cachyos/componentName:     genesi/' \
-            -e 's|https://cachyos.org|https://github.com/zFreshy/GenesiOS|g' \
+            -e 's|https://cachyos.org|https://github.com/Genesi-OS/GenesiOS|g' \
             /usr/share/calamares/branding/genesi/branding.desc
     fi
 

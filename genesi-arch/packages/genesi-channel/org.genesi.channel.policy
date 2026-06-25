@@ -4,7 +4,7 @@
  "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
 <policyconfig>
   <vendor>Genesi OS</vendor>
-  <vendor_url>https://github.com/zFreshy/GenesiOS</vendor_url>
+  <vendor_url>https://github.com/Genesi-OS/GenesiOS</vendor_url>
 
   <action id="org.genesi.channel.set">
     <description>Switch the Genesi update channel</description>

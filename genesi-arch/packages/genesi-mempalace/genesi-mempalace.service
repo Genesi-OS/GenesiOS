@@ -1,6 +1,6 @@
 [Unit]
 Description=Genesi MemPalace — local AI memory indexer (per-user)
-Documentation=https://github.com/zFreshy/GenesiOS
+Documentation=https://github.com/Genesi-OS/GenesiOS
 # A USER service (systemctl --user): the palace lives in the user's $HOME, so
 # this must run as the user, never as root. The Genesi install enables it per
 # user (see genesi-mempalace.install / the Monitor's one-click setup).

@@ -48,7 +48,7 @@ for pkg in "${PACKAGES[@]}"; do
     PKG_REL=$(grep "^pkgrel=" PKGBUILD | cut -d= -f2 | tr -d "'" | tr -d '"')
 
     # genesi-* packages MUST always rebuild because their PKGBUILDs use
-    # `source=("git+https://github.com/zFreshy/genesi-*.git")` cloning
+    # `source=("git+https://github.com/Genesi-OS/genesi-*.git")` cloning
     # HEAD without pinning a commit AND pkgrel is hand-managed. The
     # previous "skip if .pkg.tar.zst exists" check meant the FIRST build
     # of genesi-settings/genesi-kde-settings/etc. won, and every ISO

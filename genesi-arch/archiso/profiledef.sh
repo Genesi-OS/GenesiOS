@@ -3,7 +3,7 @@
 
 iso_name="genesi"
 iso_label="GENESI_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
-iso_publisher="Genesi OS <https://github.com/zFreshy/GenesiOS>"
+iso_publisher="Genesi OS <https://github.com/Genesi-OS/GenesiOS>"
 iso_application="Genesi OS Live/Install DVD"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"
 install_dir="arch"

@@ -9,7 +9,7 @@ pkgdesc='Welcome screen for Genesi OS'
 arch=('x86_64')
 groups=('genesi')
 license=('GPL-3.0-or-later')
-url='https://github.com/zFreshy/genesi-welcome'
+url='https://github.com/Genesi-OS/genesi-welcome'
 depends=(
   glib2
   gtk3
@@ -27,7 +27,7 @@ makedepends=(
 )
 provides=('cachyos-hello')
 conflicts=('cachyos-hello')
-source=("git+https://github.com/zFreshy/genesi-welcome.git")
+source=("git+https://github.com/Genesi-OS/genesi-welcome.git")
 sha512sums=('SKIP')
 
 build() {

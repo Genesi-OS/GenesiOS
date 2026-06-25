@@ -9,7 +9,7 @@ pkgver=1.0.0
 pkgrel=1
 pkgdesc='Database client launcher + Dolphin integration (PostgreSQL/MySQL/SQLite/…)'
 arch=('any')
-url='https://github.com/zFreshy/GenesiOS'
+url='https://github.com/Genesi-OS/GenesiOS'
 license=('GPL-3.0-or-later')
 # sqlitebrowser is in the official repos and gives an always-present SQLite
 # viewer; a full multi-engine client (DBeaver/Beekeeper, AUR) is an optdepend

@@ -11,7 +11,7 @@ sudo pacman -S base-devel git
 
 ```bash
 # Clone repository
-git clone https://github.com/zFreshy/GenesiOS
+git clone https://github.com/Genesi-OS/GenesiOS
 cd GenesiOS/genesi-arch/packages
 
 # Build all packages

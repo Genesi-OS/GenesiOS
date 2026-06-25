@@ -216,7 +216,7 @@ Yes! See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ### Where is the source code?
 
-[GitHub: zFreshy/GenesiOS](https://github.com/zFreshy/GenesiOS)
+[GitHub: Genesi-OS/GenesiOS](https://github.com/Genesi-OS/GenesiOS)
 
 ### How do I build Genesi OS from source?
 
@@ -253,11 +253,11 @@ Genesis in Portuguese/Italian. Represents a new beginning for AI-optimized Linux
 
 ### Who develops Genesi OS?
 
-Open source project by the Genesi OS Team. See [Contributors](https://github.com/zFreshy/GenesiOS/graphs/contributors).
+Open source project by the Genesi OS Team. See [Contributors](https://github.com/Genesi-OS/GenesiOS/graphs/contributors).
 
 ### Is there a Discord/Forum?
 
-Coming soon! For now, use [GitHub Discussions](https://github.com/zFreshy/GenesiOS/discussions).
+Coming soon! For now, use [GitHub Discussions](https://github.com/Genesi-OS/GenesiOS/discussions).
 
 ### Can I donate?
 
@@ -267,6 +267,6 @@ Not yet, but we appreciate stars on GitHub! ⭐
 
 ## Still have questions?
 
-- [GitHub Discussions](https://github.com/zFreshy/GenesiOS/discussions)
-- [GitHub Issues](https://github.com/zFreshy/GenesiOS/issues)
+- [GitHub Discussions](https://github.com/Genesi-OS/GenesiOS/discussions)
+- [GitHub Issues](https://github.com/Genesi-OS/GenesiOS/issues)
 - [Documentation](../README.md)

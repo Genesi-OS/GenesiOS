@@ -26,7 +26,7 @@ pkgver=1.0.0
 pkgrel=2
 pkgdesc='Genesi OS MemPalace integration - local-first long-term AI memory (per-user indexer + MCP entry point)'
 arch=('any')
-url='https://github.com/zFreshy/GenesiOS'
+url='https://github.com/Genesi-OS/GenesiOS'
 license=('GPL-3.0-or-later')
 # `uv` provisions the isolated mempalace env (upstream-recommended). python is
 # the launcher runtime. mempalace itself is NOT a pacman dep: it's a per-user
