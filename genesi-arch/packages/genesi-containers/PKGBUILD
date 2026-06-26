@@ -43,7 +43,12 @@ pkgver=1.0.0
 # fine there. Now uses libayatana-appindicator via gi (the proven SNI path),
 # menu-based with the same live engine/containers + start/stop/restart/logs/shell.
 # Deps swap python-pyqt6 -> python-gobject + libayatana-appindicator + gtk3.
-pkgrel=6
+# pkgrel 7: fix the broken-placeholder tray icon. The applet asked for the icon
+# named "docker", which doesn't exist under the default theme (Tela-circle) / when
+# docker isn't installed, so the bar drew a broken image. Now ships a Docker-style
+# whale SVG as genesi-containers.svg in hicolor (the universal fallback) and the
+# tray + .desktop reference "genesi-containers", so it resolves in any theme.
+pkgrel=7
 pkgdesc='Plasma 6 widget + tray applet to monitor and control Docker/Podman containers'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -76,6 +81,12 @@ package() {
     # SNI host can read its icon/identity. NoDisplay — it's a background applet.
     install -Dm644 "${startdir}/genesi-containers-tray.desktop" \
         "$pkgdir/usr/share/applications/genesi-containers-tray.desktop"
+
+    # Tray icon (Docker-style whale). Installed into hicolor so it resolves as a
+    # named icon ("genesi-containers") under any theme — replaces the bare "docker"
+    # name that rendered as a broken placeholder.
+    install -Dm644 "${startdir}/genesi-containers.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-containers.svg"
 
     # Plasma 6 applet
     install -dm755 "$pkgdir/usr/share/plasma/plasmoids/org.genesi.containers"

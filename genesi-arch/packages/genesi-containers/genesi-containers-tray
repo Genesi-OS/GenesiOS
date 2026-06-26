@@ -62,8 +62,13 @@ def _item(label, enabled=True, on_activate=None):
 
 class Tray:
     def __init__(self):
+        # "genesi-containers" (shipped into hicolor by this package) instead of
+        # "docker": the bare "docker" name has no icon under the default theme
+        # (Tela-circle) / when docker isn't installed, so the tray rendered a
+        # broken-image placeholder. hicolor is the universal fallback, so our
+        # named icon resolves everywhere.
         self.ind = AppIndicator.Indicator.new(
-            "genesi-containers-tray", "docker",
+            "genesi-containers-tray", "genesi-containers",
             AppIndicator.IndicatorCategory.APPLICATION_STATUS)
         self.ind.set_status(AppIndicator.IndicatorStatus.ACTIVE)
         self.ind.set_title("Genesi Containers")
