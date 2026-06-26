@@ -1,83 +1,43 @@
 #!/usr/bin/env python3
 # genesi-ai-tray — standalone system-tray applet for Genesi AI Mode.
 #
-# WHY THIS EXISTS
-#   The rich AI Mode widget (live CPU/RAM/GPU + on/auto/off + "Open Monitor") is
-#   a Plasma 6 plasmoid (plasmoid-aimode/), which ONLY loads inside plasmashell.
-#   The Hyprland + caelestia-shell session has no Plasma, so that widget can't
-#   appear there. caelestia's bar is a StatusNotifierItem (SNI) host, so this app
-#   exposes the same UX as a real SNI tray icon (Qt's QSystemTrayIcon registers
-#   as an SNI when a watcher — caelestia, or Plasma — is present). Left-click pops
-#   a frameless panel that mirrors the plasmoid (CPU/RAM/GPU bars, status,
-#   controls, Open Monitor); right-click is a quick menu. It also works in the KDE
-#   tray, but KDE users get the plasmoid, so this is started only on Hyprland.
+# WHY libappindicator (Gtk) AND NOT Qt's QSystemTrayIcon:
+#   The rich AI Mode widget (live CPU/RAM/GPU + on/auto/off + "Open Monitor") is a
+#   Plasma 6 plasmoid (plasmoid-aimode/), which ONLY loads inside plasmashell. The
+#   Hyprland + caelestia-shell session has no Plasma, so this exposes the same UX
+#   in a tray applet. It USED to be PyQt6 (QSystemTrayIcon), but Qt 6.11's SNI is
+#   broken with the caelestia (Quickshell) bar: it registers the item with the
+#   StatusNotifierWatcher but never serves its properties to the host, so the icon
+#   never appeared (and the DBus path could crash) — the exact problem that forced
+#   genesi-containers-tray onto libappindicator (pkgrel 6). libappindicator apps
+#   (Spotify, Discord, the Genesi Containers tray) show fine in the same bar, so
+#   this applet now uses libayatana-appindicator (the proven SNI path) too.
 #
-#   Pure PyQt6 (no Kirigami / Plasma import) so it runs under a bare Wayland
-#   compositor. Same toolkit the genesi-update tray uses, so the SNI path is
-#   already proven on Genesi.
-#
-# THEMING
-#   The panel follows the system light/dark scheme by deriving ALL of its
-#   surface/text colours from QApplication.palette() (fed by qt6ct/kdeglobals —
-#   the same colour-scheme source the Kirigami Monitor reads, so the two stay in
-#   sync). On Genesi's default scheme palette.Window IS the system blue, so it
-#   looks identical to the hand-tuned colours it replaced, and a light scheme
-#   renders it light. Only the brand green (AI-active accent) is constant. It
-#   re-applies live on a palette change.
+#   appindicator is menu-only (no arbitrary popup), so the plasmoid's live bars
+#   become menu rows refreshed on a timer; the on/auto/off controls + Open Monitor
+#   are menu actions driving the same `genesi-ai-mode` CLI / genesi-ai-monitor.
 #
 # DATA MODEL (single source of truth: the genesi-aid daemon)
 #   State : /run/genesi-ai-mode/state.json  (read directly — cheap, no fork)
-#     ai_mode_active, force_mode (on|auto|off), aggressive,
-#     metrics{cpu_percent, ram_used_mb, ram_total_mb, gpus[{vendor,util}]},
-#     ollama[], tokens_per_second
-#   Control: `genesi-ai-mode on|off|auto`   (world-writable runtime flag, no sudo)
+#   Control: `genesi-ai-mode on|auto|off`   (world-writable runtime flag, no sudo)
 #   Monitor: setsid -f /usr/local/bin/genesi-ai-monitor
 import json
-import shutil
 import signal
 import subprocess
-import sys
 
-from PyQt6.QtCore import Qt, QTimer, QPoint
-from PyQt6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QBrush
-from PyQt6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QSystemTrayIcon,
-    QMenu, QVBoxLayout, QWidget,
-)
+import gi
+
+gi.require_version("Gtk", "3.0")
+try:
+    gi.require_version("AyatanaAppIndicator3", "0.1")
+    from gi.repository import AyatanaAppIndicator3 as AppIndicator
+except (ValueError, ImportError):       # fall back to the older libappindicator
+    gi.require_version("AppIndicator3", "0.1")
+    from gi.repository import AppIndicator3 as AppIndicator
+from gi.repository import GLib, Gtk
 
 STATE_PATH = "/run/genesi-ai-mode/state.json"
-GREEN = "#1D9E75"          # Genesi brand green — the only constant (AI-active accent)
-
-# app_id / WM_CLASS — hyprland.conf floats + sizes the popup by this class.
-APP_ID = "genesi-ai-tray"
-
-
-def _rgba(c: QColor, a: float) -> str:
-    """CSS rgba() string from a QColor at alpha fraction `a`."""
-    return f"rgba({c.red()},{c.green()},{c.blue()},{a:.3f})"
-
-
-def theme():
-    """Snapshot the live palette into the handful of roles the panel uses.
-
-    Uses QPalette's convenience brush accessors (p.window(), p.windowText(), …)
-    rather than p.color(role): PyQt6's overloaded color() rejected the scoped
-    ColorRole enum on some builds ("argument 1 has unexpected type 'ColorRole'"),
-    which crashed the tray on a palette change. The accessors take no enum arg."""
-    p = QApplication.palette()
-    bg = p.window().color()
-    text = p.windowText().color()
-    # muted = halfway between text and background (reads on light and dark)
-    muted = QColor((text.red() + bg.red()) // 2,
-                   (text.green() + bg.green()) // 2,
-                   (text.blue() + bg.blue()) // 2)
-    return {
-        "bg": bg,
-        "text": text,
-        "muted": muted,
-        "button": p.button().color(),
-        "btext": p.buttonText().color(),
-    }
+MONITOR = "/usr/local/bin/genesi-ai-monitor"
 
 
 def read_state():
@@ -95,6 +55,7 @@ def set_mode(mode):
         subprocess.Popen(
             ["genesi-ai-mode", mode],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
     except Exception:
         pass
@@ -102,298 +63,103 @@ def set_mode(mode):
 
 def open_monitor():
     """Launch the standalone Monitor detached (survives this process)."""
-    exe = "/usr/local/bin/genesi-ai-monitor"
     try:
-        if shutil.which("setsid"):
-            subprocess.Popen(["setsid", "-f", exe],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            subprocess.Popen([exe], start_new_session=True,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(["setsid", "-f", MONITOR],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
-        pass
+        try:
+            subprocess.Popen([MONITOR], start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
 
-class Bar(QWidget):
-    """A thin labelled progress bar (CPU / RAM / GPU). Colours come from the
-    widget palette at paint time, so it tracks the system theme for free."""
-
-    def __init__(self, caption):
-        super().__init__()
-        self.caption = caption
-        self.value = 0.0          # 0..1 fill fraction
-        self.text = "—"           # right-aligned readout
-        self.setFixedHeight(34)
-
-    def update_value(self, frac, text):
-        self.value = max(0.0, min(1.0, frac))
-        self.text = text
-        self.update()
-
-    def paintEvent(self, _ev):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w = self.width()
-        text_color = self.palette().windowText().color()
-        # caption + readout row
-        p.setPen(text_color)
-        f = p.font(); f.setBold(True); p.setFont(f)
-        p.drawText(0, 0, w, 16, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                   self.caption)
-        p.drawText(0, 0, w, 16, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                   self.text)
-        # track (text colour at low alpha → works on light and dark)
-        track_y, track_h = 22, 6
-        track = QColor(text_color); track.setAlpha(40)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(track)
-        p.drawRoundedRect(0, track_y, w, track_h, 3, 3)
-        # fill (brand green, constant)
-        if self.value > 0:
-            fill_w = int(w * self.value)
-            p.setBrush(QBrush(QColor(GREEN)))
-            p.drawRoundedRect(0, track_y, max(fill_w, 6), track_h, 3, 3)
-        p.end()
-
-
-class Popup(QFrame):
-    """Frameless panel mirroring the AI Mode plasmoid. Polls while visible and
-    re-themes on a palette change."""
-
-    def __init__(self):
-        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
-        self.setObjectName("aiPopup")
-        self.setFixedWidth(320)
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
-
-        # header: status dot + title + status text
-        head = QHBoxLayout(); head.setSpacing(8)
-        self.dot = QLabel("●"); self.dot.setObjectName("dot")
-        self.title = QLabel("Genesi AI Mode"); self.title.setObjectName("title")
-        head.addWidget(self.dot); head.addWidget(self.title); head.addStretch(1)
-        root.addLayout(head)
-        self.status = QLabel("AI Mode: —"); self.status.setObjectName("muted")
-        root.addWidget(self.status)
-
-        # metric bars
-        self.cpu = Bar("CPU"); self.ram = Bar("RAM")
-        root.addWidget(self.cpu); root.addWidget(self.ram)
-        self.gpu_bars = []
-        self.gpu_box = QVBoxLayout(); self.gpu_box.setSpacing(8)
-        root.addLayout(self.gpu_box)
-
-        # model / tokens line
-        self.model = QLabel("—"); self.model.setObjectName("muted")
-        root.addWidget(self.model)
-
-        # open monitor
-        self.openb = QPushButton("Open AI Mode Monitor"); self.openb.setObjectName("open")
-        self.openb.clicked.connect(lambda: (open_monitor(), self.hide()))
-        root.addWidget(self.openb)
-
-        # controls
-        ctl = QHBoxLayout(); ctl.setSpacing(8)
-        self.b_on = QPushButton("Force ON")
-        self.b_auto = QPushButton("Auto")
-        self.b_off = QPushButton("Force OFF")
-        self.b_on.clicked.connect(lambda: self._set("on"))
-        self.b_auto.clicked.connect(lambda: self._set("auto"))
-        self.b_off.clicked.connect(lambda: self._set("off"))
-        for b in (self.b_on, self.b_auto, self.b_off):
-            ctl.addWidget(b)
-        root.addLayout(ctl)
-
-        self.timer = QTimer(self)
-        self.timer.setInterval(2000)
-        self.timer.timeout.connect(self.refresh)
-
-        self._apply_theme()
-
-    # ── theming ────────────────────────────────────────────────────────────────
-    def _apply_theme(self):
-        t = theme()
-        self.setStyleSheet(f"""
-            QFrame#aiPopup {{
-                background: {t['bg'].name()};
-                border: 1px solid {_rgba(t['text'], 0.12)};
-                border-radius: 14px;
-            }}
-            QLabel {{ color: {t['text'].name()}; }}
-            QLabel#title {{ font-size: 15px; font-weight: 700; }}
-            QLabel#muted {{ color: {t['muted'].name()}; font-size: 12px; }}
-            QPushButton {{
-                background: {_rgba(t['text'], 0.06)}; color: {t['btext'].name()};
-                border: 1px solid {_rgba(t['text'], 0.12)};
-                border-radius: 8px; padding: 7px 8px;
-            }}
-            QPushButton:hover {{ background: {_rgba(t['text'], 0.14)}; }}
-            QPushButton#open {{
-                background: {GREEN}; border: none; font-weight: 700; color: white;
-            }}
-            QPushButton#open:hover {{ background: #25b888; }}
-            QPushButton[sel="1"] {{ border: 1px solid {GREEN}; color: {GREEN}; }}
-        """)
-        # re-stamp selection state (stylesheet reset clears the dynamic property look)
-        self.refresh()
-
-    # NOTE: do NOT re-apply the theme from a changeEvent/PaletteChange handler.
-    # setStyleSheet() itself emits a PaletteChange, so handling it re-entered
-    # _apply_theme endlessly → RecursionError that crashed the tray on launch.
-    # The theme is (re)applied on construction and every time the popup opens
-    # (popup_at), which covers a system light/dark switch between opens.
-
-    # ── data ────────────────────────────────────────────────────────────────────
-    def _set(self, mode):
-        set_mode(mode)
-        QTimer.singleShot(250, self.refresh)
-
-    def _mark(self, force_mode):
-        for b, m in ((self.b_on, "on"), (self.b_auto, "auto"), (self.b_off, "off")):
-            b.setProperty("sel", "1" if force_mode == m else "0")
-            b.style().unpolish(b); b.style().polish(b)
-
-    def refresh(self):
-        s = read_state()
-        active = bool(s.get("ai_mode_active"))
-        force = s.get("force_mode", "auto")
-        agg = bool(s.get("aggressive"))
-        muted = theme()["muted"].name()
-        accent = GREEN if active else muted
-        self.dot.setStyleSheet(f"color:{accent}; font-size:16px;")
-        if active:
-            label = ("ON (forced)" if force == "on"
-                     else "ON (max)" if agg else "ON (battery-safe)")
-        else:
-            label = "OFF (forced)" if force == "off" else "OFF"
-        self.status.setText(f"AI Mode: {label}")
-        self._mark(force)
-
-        m = s.get("metrics", {}) or {}
-        cpu = m.get("cpu_percent")
-        self.cpu.update_value((cpu or 0) / 100.0,
-                              f"{cpu:.1f}%" if isinstance(cpu, (int, float)) else "—")
-        ru, rt = m.get("ram_used_mb"), m.get("ram_total_mb")
-        if ru is not None and rt:
-            self.ram.update_value(ru / rt, f"{ru} / {rt} MB")
-        else:
-            self.ram.update_value(0, "—")
-
-        gpus = m.get("gpus", []) or []
-        # (re)build GPU bars to match the live GPU list
-        while len(self.gpu_bars) < len(gpus):
-            b = Bar("GPU"); self.gpu_bars.append(b); self.gpu_box.addWidget(b)
-        for i, b in enumerate(self.gpu_bars):
-            if i < len(gpus):
-                g = gpus[i]; util = g.get("util")
-                b.caption = "GPU " + str(g.get("vendor", "?"))
-                b.update_value((util or 0) / 100.0,
-                               f"{util}%" if util is not None else "—")
-                b.show()
-            else:
-                b.hide()
-
-        ollama = s.get("ollama") or []
-        tps = s.get("tokens_per_second")
-        txt = "Local model loaded" if ollama else "No model loaded"
-        if tps:
-            txt += f" · {tps} tok/s"
-        self.model.setText(txt)
-
-    # ── show/hide ────────────────────────────────────────────────────────────────
-    def popup_at(self, global_pos):
-        self._apply_theme()   # re-read the system palette each time it opens
-        self.adjustSize()
-        # place above-and-left of the click so it doesn't cover the bar (Wayland
-        # ignores this; the hyprland.conf windowrule positions it there instead)
-        x = global_pos.x() - self.width() + 20
-        y = global_pos.y() - self.height() - 12
-        self.move(QPoint(max(x, 8), max(y, 8)))
-        self.show()
-        self.raise_()
-        self.activateWindow()
-        self.timer.start()
-
-    def hideEvent(self, _ev):
-        self.timer.stop()
+def _item(label, enabled=True, on_activate=None):
+    mi = Gtk.MenuItem(label=label)
+    mi.set_sensitive(enabled)
+    if on_activate:
+        mi.connect("activate", lambda _w: on_activate())
+    return mi
 
 
 class Tray:
-    def __init__(self, app):
-        self.app = app
-        self.popup = Popup()
+    def __init__(self):
+        # genesi-ai-monitor icon is shipped into hicolor by this package, so it
+        # resolves in any icon theme (hicolor is the universal fallback).
+        self.ind = AppIndicator.Indicator.new(
+            "genesi-ai-tray", "genesi-ai-monitor",
+            AppIndicator.IndicatorCategory.APPLICATION_STATUS)
+        self.ind.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+        self.ind.set_title("Genesi AI Mode")
+        self.rebuild()
+        # dbusmenu has no reliable "about to show" via the host, so refresh the
+        # menu (and the live metrics in it) on a light timer.
+        GLib.timeout_add_seconds(3, self._tick)
 
-        icon = QIcon.fromTheme("genesi-ai-monitor")
-        if icon.isNull():
-            icon = QIcon.fromTheme("cpu")
-        self.tray = QSystemTrayIcon(icon)
-        self.tray.setToolTip("Genesi AI Mode")
+    def _tick(self):
+        self.rebuild()
+        return True  # keep the timer running
 
-        menu = QMenu()      # QMenu follows the app palette, so it's theme-aware
-        self.act_status = QAction("AI Mode"); self.act_status.setEnabled(False)
-        menu.addAction(self.act_status)
-        menu.addSeparator()
-        a_on = menu.addAction("Force ON"); a_on.triggered.connect(lambda: set_mode("on"))
-        a_au = menu.addAction("Auto"); a_au.triggered.connect(lambda: set_mode("auto"))
-        a_of = menu.addAction("Force OFF"); a_of.triggered.connect(lambda: set_mode("off"))
-        menu.addSeparator()
-        a_mon = menu.addAction("Open AI Mode Monitor")
-        a_mon.triggered.connect(open_monitor)
-        menu.addSeparator()
-        a_q = menu.addAction("Quit"); a_q.triggered.connect(app.quit)
-        menu.aboutToShow.connect(self._refresh_menu)
-        self.tray.setContextMenu(menu)
-
-        self.tray.activated.connect(self._activated)
-        self.tray.show()
-
-        # keep the tooltip live even when nothing is open
-        self.tip_timer = QTimer()
-        self.tip_timer.setInterval(3000)
-        self.tip_timer.timeout.connect(self._refresh_tip)
-        self.tip_timer.start()
-        self._refresh_tip()
-
-    def _refresh_tip(self):
+    def rebuild(self):
         s = read_state()
+        menu = Gtk.Menu()
+
         if not s:
-            self.tray.setToolTip("Genesi AI Mode — daemon offline")
-            return
-        m = s.get("metrics", {}) or {}
-        cpu = m.get("cpu_percent")
-        on = "ON" if s.get("ai_mode_active") else "OFF"
-        cpu_s = f" · CPU {cpu:.0f}%" if isinstance(cpu, (int, float)) else ""
-        self.tray.setToolTip(f"Genesi AI Mode: {on}{cpu_s}")
-
-    def _refresh_menu(self):
-        s = read_state()
-        on = "ON" if s.get("ai_mode_active") else "OFF"
-        self.act_status.setText(f"AI Mode: {on}  (force={s.get('force_mode', 'auto')})")
-
-    def _activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            if self.popup.isVisible():
-                self.popup.hide()
+            self.ind.set_title("Genesi AI Mode — daemon offline")
+            menu.append(_item("AI Mode — daemon offline", False))
+            force = None
+        else:
+            active = bool(s.get("ai_mode_active"))
+            force = s.get("force_mode", "auto")
+            agg = bool(s.get("aggressive"))
+            if active:
+                state = ("ON (forced)" if force == "on"
+                         else "ON (max)" if agg else "ON (battery-safe)")
             else:
-                self.popup.popup_at(QCursor.pos())
+                state = "OFF (forced)" if force == "off" else "OFF"
+            self.ind.set_title(f"Genesi AI Mode: {state}")
+            menu.append(_item(f"AI Mode: {state}", False))
+
+            m = s.get("metrics", {}) or {}
+            cpu = m.get("cpu_percent")
+            if isinstance(cpu, (int, float)):
+                menu.append(_item(f"CPU: {cpu:.0f}%", False))
+            ru, rt = m.get("ram_used_mb"), m.get("ram_total_mb")
+            if ru is not None and rt:
+                menu.append(_item(f"RAM: {ru} / {rt} MB", False))
+            for g in (m.get("gpus") or []):
+                util = g.get("util")
+                vendor = g.get("vendor", "?")
+                menu.append(_item(
+                    f"GPU {vendor}: {util}%" if util is not None else f"GPU {vendor}",
+                    False))
+            ollama = s.get("ollama") or []
+            tps = s.get("tokens_per_second")
+            model = "Local model loaded" if ollama else "No model loaded"
+            if tps:
+                model += f" · {tps} tok/s"
+            menu.append(_item(model, False))
+
+        menu.append(Gtk.SeparatorMenuItem())
+        # active force-mode marked with a dot
+        menu.append(_item(("● " if force == "on" else "   ") + "Force ON",
+                          on_activate=lambda: set_mode("on")))
+        menu.append(_item(("● " if force == "auto" else "   ") + "Auto",
+                          on_activate=lambda: set_mode("auto")))
+        menu.append(_item(("● " if force == "off" else "   ") + "Force OFF",
+                          on_activate=lambda: set_mode("off")))
+        menu.append(Gtk.SeparatorMenuItem())
+        menu.append(_item("Open AI Mode Monitor", on_activate=open_monitor))
+        menu.append(Gtk.SeparatorMenuItem())
+        menu.append(_item("Quit", on_activate=Gtk.main_quit))
+        menu.show_all()
+        self.ind.set_menu(menu)
 
 
 def main():
     signal.signal(signal.SIGINT, signal.SIG_DFL)
-    app = QApplication(sys.argv)
-    app.setApplicationName(APP_ID)
-    app.setDesktopFileName(APP_ID)        # sets the Wayland app_id (WM_CLASS)
-    app.setQuitOnLastWindowClosed(False)  # tray-only app: don't quit when popup hides
-
-    if not QSystemTrayIcon.isSystemTrayAvailable():
-        # No SNI host yet (bar still starting). Qt re-registers once the watcher
-        # appears, so we don't bail — just continue.
-        pass
-
-    Tray(app)
-    sys.exit(app.exec())
+    Tray()
+    Gtk.main()
 
 
 if __name__ == "__main__":

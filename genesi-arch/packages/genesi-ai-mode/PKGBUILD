@@ -283,7 +283,16 @@ pkgver=1.0.0
 # ChatPage + AdvisorPage (so the language switch stays in sync across pages), and
 # the Chat/Models pages, the backend/model-picker dialogs and tooltips all go
 # through i18n.t() too. Dictionary expanded (chat/advisor/dialog keys).
-pkgrel=92
+# pkgrel 93: fix genesi-ai-tray NEVER appearing in the caelestia (Hyprland) bar.
+# It was the last PyQt6 QSystemTrayIcon applet, and Qt 6.11's SNI is broken with
+# the Quickshell host — it registers but never serves its properties, so the icon
+# never shows (this is the "sibling [that] crashed fatally in the DBus path"
+# called out in genesi-containers pkgrel 6). Rewrote it on libayatana-appindicator
+# (Gtk), the proven SNI path the containers tray already uses: same daemon state +
+# on/auto/off + Open Monitor, now as live menu rows (appindicator is menu-only).
+# Deps swap python-pyqt6 -> python-gobject + libayatana-appindicator + gtk3 (the
+# Monitor uses pyside6, not pyqt6, so nothing else needed pyqt6).
+pkgrel=93
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -305,7 +314,9 @@ license=('GPL-3.0-or-later')
 # would also fail) → aborting the whole publish. It's an optdepend for docs.
 # It conflicts with the AUR llama.cpp variants, so those are no longer listed.
 depends=('python' 'python-psutil' 'kirigami' 'pyside6' 'qqc2-desktop-style' 'qt6-svg'
-         'python-pyqt6')   # python-pyqt6: genesi-ai-tray (standalone SNI tray applet)
+         # genesi-ai-tray (standalone SNI tray applet) — libappindicator/Gtk, NOT
+         # Qt's QSystemTrayIcon (broken with the caelestia/Quickshell bar on Qt 6.11)
+         'python-gobject' 'libayatana-appindicator' 'gtk3')
 optdepends=(
     'plasma-workspace: AI Mode Plasma 6 desktop widget (KDE/Plasma session only; pulled automatically by the KDE-Desktop install)'
     'power-profiles-daemon: switch to the performance power profile while AI runs'
