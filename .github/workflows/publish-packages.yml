@@ -115,6 +115,14 @@ jobs:
           # dep check (-d, see MAKEPKG_NODEPS below), and nothing actually needs
           # these at build time — only at install time, where the genesi repo
           # resolves them via provides.
+          #
+          # `llama.cpp` is the same case: genesi-desktop depends on the VIRTUAL
+          # `llama.cpp` provide (so EITHER genesi-llama-cpp or llama.cpp-cuda
+          # satisfies it — letting users switch to the CUDA backend without
+          # breaking the meta-package). That provide is produced by THIS run's
+          # genesi-llama-cpp and isn't a real package name in any repo, so
+          # `pacman -S llama.cpp` would fail with "target not found: llama.cpp".
+          # genesi-desktop builds with `makepkg -d`, so it never needs it here.
           DEPS=$(
             for pkgbuild in genesi-arch/packages/*/PKGBUILD; do
               bash -c "
@@ -125,7 +133,7 @@ jobs:
               "
             done \
               | sed -E 's/[<>=].*//' \
-              | grep -vE '^(genesi-.*|app2unit|libcava|python-materialyoucolor|ttf-rubik-vf|caelestia-cli|caelestia-shell)$' \
+              | grep -vE '^(genesi-.*|app2unit|libcava|python-materialyoucolor|ttf-rubik-vf|caelestia-cli|caelestia-shell|llama\.cpp)$' \
               | sort -u \
               | grep -v '^$' \
               | tr '\n' ' '
