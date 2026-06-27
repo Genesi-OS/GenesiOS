@@ -571,8 +571,13 @@ class Backend(QObject):
             try:
                 self._turbo_log = tempfile.NamedTemporaryFile(
                     "w", delete=False, suffix=".log").name
+                # Always pass an EXPLICIT spec flag so the UI toggle is
+                # authoritative: without it, `serve` would AUTO-enable spec on a
+                # CUDA build and the user's "off" choice would be silently ignored.
+                # (Bare terminal use with no flag still gets the CUDA auto-default.)
                 proc = subprocess.Popen(
-                    ["genesi-ai-turbo", "serve", model] + (["--spec"] if spec else []),
+                    ["genesi-ai-turbo", "serve", model]
+                    + (["--spec"] if spec else ["--no-spec"]),
                     stdout=subprocess.DEVNULL, stderr=open(self._turbo_log, "w"))
                 self._turbo_proc = proc
             except Exception as e:

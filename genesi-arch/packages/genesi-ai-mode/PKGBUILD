@@ -292,7 +292,34 @@ pkgver=1.0.0
 # on/auto/off + Open Monitor, now as live menu rows (appindicator is menu-only).
 # Deps swap python-pyqt6 -> python-gobject + libayatana-appindicator + gtk3 (the
 # Monitor uses pyside6, not pyqt6, so nothing else needed pyqt6).
-pkgrel=93
+# pkgrel 94: faster Turbo on CUDA + CUDA-backend swap unblocked. (1) genesi-ai-turbo
+# now AUTO-enables speculative decoding when the installed llama-server is the CUDA
+# build (the proven win on a mature driver) and keeps it OFF on Vulkan/NVK (where it
+# can regress) — new backend_is_cuda() probes `llama-server --list-devices` for a
+# CUDA device. Pin with GENESI_TURBO_SPEC=1 / GENESI_TURBO_NO_SPEC=1 or --spec/--no-
+# spec; it still self-drops the draft when the target spills VRAM, so it only engages
+# when it helps. (2) Monitor defaults the ⚡ toggle ON the first time it detects a CUDA
+# backend (sticky after that). (3) The VRAM-spill warning now tells the user the model
+# is partly on CPU and points at `recommend` / a smaller quant (so a 14B on an 8 GB
+# card is explained, not silently slow). NOTE: the CUDA backend swap itself is
+# unblocked by genesi-desktop pkgrel 3, which depends on the `llama.cpp` provide
+# instead of the `genesi-llama-cpp` name (so llama.cpp-cuda can replace it).
+# pkgrel 95: roadmap 2.8.11 push — the "big brain, small-card" batch. (1) MoE
+# expert-offload: genesi-ai-turbo reads the GGUF header (new stdlib gguf_meta())
+# to detect Mixture-of-Experts models and, when one spills VRAM, keeps ALL
+# attention on the GPU (-ngl 999) and pushes only the expert tensors to CPU RAM
+# (--n-cpu-moe K, K computed from VRAM via expert_count/block_count; env
+# GENESI_TURBO_NCMOE). Only a few experts fire per token, so a ~30B-A3B runs at
+# ~7B speed on an 8 GB card — the out-of-the-box win no OS ships by default.
+# (2) Advisor `recommend` now also prints a MoE "power pick" (gpt-oss:20b /
+# qwen3:30b-a3b) gated on system RAM. (3) ZRAM AI swap (Tier 4 "Ideia 3"):
+# genesi-aid brings up a high-priority zstd zram swap on the aggressive path so
+# memory pressure compresses in RAM instead of freezing on SSD swap; opt-in
+# advanced.conf `zram_ai`, fully reversible (swapoff+reset). (4) always_warm_turbo
+# now warms the advisor's VRAM-fit model instead of a hardcoded llama3.2:latest.
+# See ROADMAP 2.8.11 Tier 2/4 (microarch auto-dispatch + hardware auto-tune also
+# marked done; Medusa/EAGLE documented as upstream-blocked, MoE is its stand-in).
+pkgrel=95
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

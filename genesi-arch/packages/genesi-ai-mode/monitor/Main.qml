@@ -30,6 +30,11 @@ Kirigami.ApplicationWindow {
     property string activeModel: (st.ollama && st.ollama.length > 0) ? st.ollama[0].name : ""
     property bool turboRequested: false
     property bool turboSpec: false        // use speculative decoding for Turbo?
+    // One-shot guard: we default turboSpec ON the FIRST time we learn the backend
+    // is CUDA (spec is the proven win there). After that the user's toggle wins —
+    // re-opening the backend dialog re-emits backendAdvice and must not flip it.
+    property bool turboSpecInit: false
+    property string backendCurrent: ""    // installed backend: cuda | vulkan | ""
     property bool turboNeedsInstall: false
     property string turboStatusText: ""
 
@@ -85,7 +90,7 @@ Kirigami.ApplicationWindow {
         if (turboRequested && turboModel) backend.setTurbo(true, turboModel, turboSpec)
     }
 
-    Component.onCompleted: { backend.loadModels(); backend.recommendTurboModel() }
+    Component.onCompleted: { backend.loadModels(); backend.recommendTurboModel(); backend.backendInfo() }
 
     Connections {
         target: backend
@@ -103,6 +108,14 @@ Kirigami.ApplicationWindow {
             win.backendNvWorks = a.nvidia_works || false
             win.backendHasNvidia = a.has_nvidia || false
             win.backendAur = a.aur || ""
+            win.backendCurrent = a.current || ""
+            // First time we see a CUDA backend, default ⚡ speculative ON (it's the
+            // real Turbo win on CUDA; harmless on models that spill VRAM — the CLI
+            // drops the draft then). Only once, so the user's toggle stays sticky.
+            if (!win.turboSpecInit) {
+                win.turboSpecInit = true
+                if (a.current === "cuda") win.turboSpec = true
+            }
         }
         // Seed a default Turbo model from the installed list, so Turbo can start
         // even before the first Ollama prompt (otherwise activeModel stays empty

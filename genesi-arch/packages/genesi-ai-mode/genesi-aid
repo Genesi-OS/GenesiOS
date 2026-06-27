@@ -789,8 +789,72 @@ class AIOptimizer:
                 adv["sched_ext"] = {"running": prev[0], "sched": prev[1],
                                     "mode": prev[2]}
                 self.applied.append(f"sched-ext: {sched} ({mode})")
+        # ZRAM AI swap (roadmap 2.8.11 Tier 4 / "Ideia 3"): bring up a compressed-
+        # RAM swap device at HIGH priority while AI Mode runs aggressively, so that
+        # when a big model + the browser exhaust RAM, cold pages compress in RAM
+        # instead of stalling the desktop on slow SSD swap (the Windows-style
+        # "freeze" when switching between the browser and the AI). Fully torn down
+        # on disable. Opt-in; silent no-op without the zram module + tools, so it
+        # can never hurt a machine that lacks them. Value: `on` (default size =
+        # half RAM, capped 16G) or an explicit size like `8G`.
+        zr = conf.get("zram_ai", "off")
+        if (zr not in ("", "off", "0", "false", "no")
+                and shutil.which("zramctl") and shutil.which("mkswap")
+                and shutil.which("swapon")):
+            if zr in ("on", "1", "true", "yes"):
+                ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+                size = f"{int(min(max(ram_gb / 2, 1), 16))}G"
+            else:
+                size = zr.upper()
+            dev = self._zram_setup(size)
+            if dev:
+                adv["zram_ai"] = dev
+                self.applied.append(f"ZRAM AI swap: {size} ({dev})")
         if adv:
             o["advanced"] = adv
+
+    @staticmethod
+    def _zram_setup(size):
+        """Create a zstd-compressed zram device of `size`, make it swap, and
+        swapon at high priority (so the kernel prefers compressed RAM over disk).
+        Returns the /dev/zramN path on success, else None. Never raises."""
+        try:
+            subprocess.run(["modprobe", "zram"], capture_output=True, timeout=10)
+            # Prefer zstd; fall back to no explicit algorithm if unsupported.
+            for args in (["zramctl", "--find", "--size", size, "--algorithm", "zstd"],
+                         ["zramctl", "--find", "--size", size]):
+                r = subprocess.run(args, capture_output=True, text=True, timeout=15)
+                if r.returncode == 0:
+                    dev = (r.stdout or "").strip().splitlines()
+                    dev = dev[-1].strip() if dev else ""
+                    break
+            else:
+                return None
+            if not dev.startswith("/dev/"):
+                return None
+            if subprocess.run(["mkswap", dev], capture_output=True,
+                              timeout=15).returncode != 0:
+                subprocess.run(["zramctl", "--reset", dev], capture_output=True)
+                return None
+            if subprocess.run(["swapon", "--priority", "100", dev],
+                              capture_output=True, timeout=15).returncode != 0:
+                subprocess.run(["zramctl", "--reset", dev], capture_output=True)
+                return None
+            logger.info("ZRAM AI swap up: %s (%s)", dev, size)
+            return dev
+        except Exception as e:
+            logger.debug("zram setup failed: %s", e)
+            return None
+
+    @staticmethod
+    def _zram_teardown(dev):
+        """swapoff + reset the zram device created by _zram_setup. Best-effort."""
+        try:
+            subprocess.run(["swapoff", dev], capture_output=True, timeout=15)
+            subprocess.run(["zramctl", "--reset", dev], capture_output=True, timeout=10)
+            logger.info("ZRAM AI swap removed: %s", dev)
+        except Exception as e:
+            logger.debug("zram teardown failed: %s", e)
 
     @staticmethod
     def _scx_run(args):
@@ -835,6 +899,9 @@ class AIOptimizer:
                                "-m", sx.get("mode") or "auto"])
             else:
                 self._scx_run(["stop"])
+        zdev = adv.get("zram_ai")
+        if zdev:
+            self._zram_teardown(zdev)
 
     def changes_summary(self):
         """2.8.8: structured before/after of exactly what AI Mode changed,
@@ -882,6 +949,8 @@ class AIOptimizer:
         sx = adv.get("sched_ext")
         if isinstance(sx, dict):
             add("sched-ext", sx.get("sched") or "default", "throughput scheduler")
+        if adv.get("zram_ai"):
+            add("ZRAM AI swap", "off", "high-priority compressed RAM")
         return out
 
     # ── transitions ──────────────────────────────────────────────────────────
@@ -1521,10 +1590,21 @@ class AIOptimizer:
         conf = self._advanced_conf()
         if conf.get("always_warm_turbo") in ("on", "1", "true", "yes"):
             if not hasattr(self, "_warm_proc") or self._warm_proc.poll() is not None:
-                logger.info("Spawning Always-Warm Turbo daemon...")
-                # Run as nobody or root. Running as root is fine since it's an inference server.
+                # Warm the model that actually fits THIS machine's VRAM (the
+                # advisor's pick) rather than a hardcoded one that may not fit /
+                # may not be pulled. Falls back to a small model if recommend fails.
+                model = "llama3.2:3b"
+                try:
+                    r = subprocess.run(["genesi-ai-turbo", "recommend"],
+                                       capture_output=True, text=True, timeout=30)
+                    t = (r.stdout or "").strip().splitlines()
+                    if t and t[0].strip():
+                        model = t[0].strip()
+                except Exception:
+                    pass
+                logger.info("Spawning Always-Warm Turbo daemon (%s)…", model)
                 self._warm_proc = subprocess.Popen(
-                    ["genesi-ai-turbo", "serve", "llama3.2:latest"],
+                    ["genesi-ai-turbo", "serve", model],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                 )
         else:

@@ -382,9 +382,14 @@ once and gates every optimizer on detected capabilities.
 >       Turbo offloads via Vulkan while ollama on nouveau has no CUDA and stays on
 >       CPU — not speculative decoding.) Since it's now a switch the user owns,
 >       this is no longer a blocker — anyone can flip it on and compare with
->       `genesi-ai-turbo bench`. _Optional future polish: auto-default spec ON
->       only where it's proven to help (e.g. a mature CUDA driver), keeping plain
->       offload on Vulkan/NVK._
+>       `genesi-ai-turbo bench`. _**DONE (pkgrel 94): auto-default spec on CUDA.**
+>       `serve` now AUTO-enables speculative decoding when the installed
+>       `llama-server` is the CUDA build (`backend_is_cuda()` probes
+>       `--list-devices` for a CUDA device) and keeps it OFF on Vulkan/NVK, where it
+>       regresses. The Monitor defaults the ⚡ toggle ON the first time it sees a
+>       CUDA backend (sticky after), and always passes an explicit `--spec`/
+>       `--no-spec` so the toggle stays authoritative. Pin with `GENESI_TURBO_SPEC`
+>       / `GENESI_TURBO_NO_SPEC`. Self-drops the draft when the target spills VRAM._
 >       _**Validar sem instalar no disco:** a ISO tem uma entrada de boot
 >       "Genesi OS [DEV/TESTE] NVIDIA + CUDA" (overlay 20G, nouveau bloqueado) +
 >       o helper `genesi-dev-cuda-setup` (atalho "Genesi DEV: NVIDIA + CUDA") que
@@ -439,8 +444,12 @@ once and gates every optimizer on detected capabilities.
       resident; if both don't fit, Turbo drops the draft and runs plain GPU
       offload (still far faster than CPU); on CPU-only it drops the draft too
       (a CPU draft is a net loss). Never OOMs the GPU.
-- [ ] **Guard CPU+GPU split on low system RAM.** On 4 GB RAM, don't spill big
-      layers to CPU (it OOMs) — prefer a smaller model that fits VRAM fully.
+- [x] **Guard CPU+GPU split on low system RAM.** When a model spills VRAM, Turbo
+      checks free system RAM first and prints a `DANGER: System RAM too low to
+      safely offload` warning instead of blindly spilling into an OOM; the advisor
+      (`recommend`) steers to a model that fits VRAM fully, and for big brains the
+      MoE expert-offload (Tier 4) avoids dense CPU spill entirely. _(hard refuse-to-
+      start on tiny RAM still possible as a follow-up; today it warns + advises.)_
 - [x] q8/q4 KV cache + modest context keep more in VRAM (Turbo ships q8 KV +
       `GENESI_TURBO_CTX`). Memory coordination (Turbo unloads Ollama) already
       avoids double-loading on tight boxes.
@@ -452,11 +461,17 @@ once and gates every optimizer on detected capabilities.
       "Turbo never came up". Now the Monitor **unloads Ollama's keep-alive model
       (`keep_alive=0`) before** starting Turbo, and **Force OFF releases it too**
       so RAM returns to baseline instead of lingering ~15 min. _(shipped)_
-- [ ] **Always-warm shared inference daemon.** One persistent `llama-server`
+- [~] **Always-warm shared inference daemon.** One persistent `llama-server`
       (the Turbo `:11435`, already OpenAI-compatible) that **every app uses** —
       no per-app reload, and a **shared prefix/KV cache** across apps. An app
       can't assume a system daemon; an OS can. Managed by `genesi-aid` as a
-      socket-activated/long-lived unit.
+      socket-activated/long-lived unit. _**Partial:** opt-in `always_warm_turbo`
+      in `advanced.conf` — `genesi-aid` keeps a Turbo server warm on the advisor's
+      VRAM-fit model (was hardcoded to `llama3.2:latest`; now uses `recommend`).
+      Since all Genesi apps already point at `:11435` (Genesi Code does today),
+      they share that one warm model + KV cache. Remaining: make it the DEFAULT via
+      a socket-activated systemd unit (currently a background process the daemon
+      spawns), so it survives independently and starts on first connection._
 - [ ] **Predictive preload at login/idle.** `genesi-aid` warms the user's
       most-used model at low priority when the machine is idle, so the first
       prompt is instant (vs ~2 min cold load today). RAM-gated; integrates with
@@ -479,13 +494,20 @@ once and gates every optimizer on detected capabilities.
       felt zero-cold-start win._
 
 **Tier 2 — real throughput the OS uniquely controls**
-- [ ] **Microarch-optimal `llama.cpp` build + auto-dispatch.** CachyOS is already
-      x86-64-v3/v4; ship the best ISA (AVX-512/VNNI, Intel **AMX** where present)
-      and auto-select per detected CPU. A real, measurable prefill/decode gain an
-      app can't assume.
-- [ ] **Hardware auto-tune for Turbo.** Auto-set `--threads` = physical cores,
-      pin with `--cpu-mask`/cpuset, NUMA placement, auto `-ngl` from VRAM, plus
-      governor/power already done by AI Mode. (Builds on 2.8.4 + 2.8.7.)
+- [x] **Microarch-optimal `llama.cpp` build + auto-dispatch.** `genesi-llama-cpp`
+      builds the ggml-cpu backend as MULTIPLE dlopen-able ISA variants
+      (`GGML_CPU_ALL_VARIANTS=ON` + `GGML_BACKEND_DL=ON`, baseline → sse42 → avx →
+      avx2 → avx512 …) and ggml picks the fastest one the CPU supports **at
+      runtime**, while the loader stays pure baseline x86-64 (no illegal-instruction
+      crash on old CPUs). So the best ISA (AVX-512/VNNI where present) is used
+      automatically per machine — exactly this item, the safe way. _(AMX is a
+      further upstream ggml backend; tracked there.)_
+- [x] **Hardware auto-tune for Turbo.** `--threads` = fast/physical cores
+      (`_performance_cores`, hybrid-P/E-aware), AI processes pinned to the perf
+      cores by `genesi-aid` (cpuset affinity, 2.8.4), auto `-ngl` from VRAM (full
+      vs `-ngl auto` vs MoE expert-offload via the advisor's fit math), and
+      governor/power by AI Mode. NUMA placement (`numactl`) on multi-socket is the
+      one remaining sub-item (no-op on the single-socket consumer target).
 
 **Tier 3 — Algorithmic decode wins (Revolutionary)**
 - [x] **N-gram / prompt-lookup speculation** (no draft model needed) — great for
@@ -504,13 +526,35 @@ once and gates every optimizer on detected capabilities.
 - [ ] **🌟 Ideia 1: Native Medusa / EAGLE Integration** — Em vez de 2 modelos (principal + draft),
       carrega um **único modelo** com múltiplas "cabeças extras" de especulação. Gera ganhos
       massivos (3x a 4x) de velocidade de resposta sem dobrar o consumo de VRAM.
+      _**Status: bloqueado upstream, não é uma flag.** O `llama-server` ainda não expõe EAGLE/
+      Medusa de forma estável a partir dos GGUFs que o ollama baixa (precisa de pesos das
+      cabeças + suporte no servidor). Não dá pra "ligar" sem mentir. O substituto entregue
+      hoje com o MESMO objetivo (ganho grande de decode sem dobrar VRAM) é o **MoE
+      expert-offload** no Tier 4 + o auto-spec no CUDA. Reavaliar quando o EAGLE entrar no
+      master do llama.cpp; aí vira detecção via `--help` igual aos outros flags de spec._
 
 **Tier 4 — Memory & ZRAM OS-Pinning (Revolutionary)**
-- [ ] **🌟 Ideia 3: ZRAM AI Pinning (`mlock` + ZRAM)** — Para PCs de 8GB ou sem placa dedicada:
-      criar um bloco de ZRAM (RAM comprimida pelo Kernel) e "pinar" (`mlock`) o modelo de IA
-      lá dentro. A IA fica hiper-comprimida e nunca vai pro SSD (swap), garantindo trocas
-      instantâneas entre navegador e IA sem o clássico "congelamento" do Windows.
-- [ ] Smart partial offload when VRAM can't hold the whole model.
+- [x] **🌟 Ideia 3: ZRAM AI swap** — Para PCs de 8GB ou sem placa dedicada: enquanto o AI
+      Mode roda agressivo, `genesi-aid` sobe um dispositivo de **ZRAM** (RAM comprimida com
+      zstd) como swap de **alta prioridade**, então sob pressão de memória (modelo grande +
+      navegador) as páginas frias **comprimem na RAM em vez de travar no SSD** — acaba o
+      "congelamento" estilo Windows ao alternar navegador↔IA. Totalmente reversível
+      (`swapoff` + reset no disable). Opt-in via `advanced.conf` (`zram_ai = on` ou um tamanho
+      como `8G`); no-op silencioso sem o módulo zram/zramctl. _Nota: "pinar com `mlock`" foi
+      descartado de propósito — `mlock` IMPEDE swap, o oposto do objetivo; o ganho real é o
+      swap comprimido em RAM de alta prioridade._
+- [x] **🌟 MoE expert-offload (a jogada fora-da-caixa, novo item).** Rodar um **Mixture-of-
+      Experts** (ex. `qwen3:30b-a3b`, `gpt-oss:20b`) — "esperto como um 30B", mas só ~3B
+      ativos por token. Quando não cabe na VRAM, o Turbo mantém **toda a atenção na GPU**
+      (`-ngl 999`) e empurra só os tensores de **experts** pra RAM (`--n-cpu-moe K`, K
+      calculado pela VRAM lendo `expert_count`/`block_count` do header GGUF). Como só alguns
+      experts disparam por token, transmiti-los da RAM custa muito menos que derramar camadas
+      densas pela PCIe → **cérebro grande na velocidade de um pequeno** numa placa de 8GB. O
+      `recommend` sugere o maior MoE que cabe (gate por RAM); `GENESI_TURBO_NCMOE` força o
+      split. _Nenhum OS faz isso por padrão. Ganho a validar em hardware._
+- [x] **Smart partial offload when VRAM can't hold the whole model** — denso: `-ngl auto`
+      (máximo de camadas que a VRAM segura, nunca um 999 cego que dá OOM); MoE: o
+      expert-offload acima.
 
 > **Honest framing for marketing:** lead with *"local AI answers instantly and
 > tunes itself — no setup"* (warm daemon + preload + auto-tune + microarch build),

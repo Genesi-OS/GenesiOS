@@ -35,9 +35,14 @@ Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
   GENESI_TURBO_DRAFT_P=0.6       stop drafting below this acceptance probability
   GENESI_TURBO_SLOT_PATH=<dir>   where to persist prompt/KV slots to disk
   GENESI_TURBO_NO_SLOT_CACHE=1   disable persistent prompt/KV cache to disk
-  GENESI_TURBO_SPEC=1            opt into speculative decoding on `serve` (default
-                                 off: serve uses plain full GPU offload, the
-                                 reliable win; spec can regress on Vulkan/NVK)
+  GENESI_TURBO_SPEC=1            force speculative decoding ON for `serve`
+  GENESI_TURBO_NO_SPEC=1         force speculative decoding OFF for `serve`
+                                 Default (neither set): AUTO — spec is ON when the
+                                 installed llama-server is the CUDA build (the
+                                 proven win on a mature driver) and OFF on Vulkan/
+                                 NVK (where the draft+verify can cost more than
+                                 plain offload saves). It also self-disables when
+                                 the target model spills VRAM (no draft then).
   GENESI_TURBO_FORCE_DRAFT=1     force the draft even on CPU-only (usually slower)
 """
 import os
@@ -316,6 +321,114 @@ def _detect_vram_mb():
     return _nvidia_vram_mb() or _vulkan_vram_mb()
 
 
+_BACKEND_CACHE = None
+
+
+def backend_is_cuda():
+    """True when the installed llama-server is the CUDA build.
+
+    Speculative decoding is the proven Turbo win on the mature CUDA driver, so on
+    a CUDA build `serve` enables it by default; on the Vulkan build (genesi-llama-
+    cpp, which runs on any GPU incl. nouveau/NVK) it can REGRESS, so it stays off.
+    We tell them apart by the device backend llama.cpp itself reports: the CUDA
+    build lists `CUDA0: ...`, the Vulkan build lists `Vulkan0: ...`. Cached. Honour
+    GENESI_TURBO_NO_SPEC / GENESI_TURBO_SPEC at the call site, not here."""
+    global _BACKEND_CACHE
+    if _BACKEND_CACHE is not None:
+        return _BACKEND_CACHE
+    _BACKEND_CACHE = False
+    binp = llama_bin("llama-server")
+    if binp:
+        try:
+            r = subprocess.run([binp, "--list-devices"],
+                               capture_output=True, text=True, timeout=20)
+            text = (r.stdout or "") + (r.stderr or "")
+            # Match a real CUDA device line, not just the word "cuda" in help.
+            _BACKEND_CACHE = bool(re.search(r"\bCUDA\d", text))
+        except Exception:
+            _BACKEND_CACHE = False
+    return _BACKEND_CACHE
+
+
+# GGUF metadata value types (https://github.com/ggml-org/ggml gguf spec).
+_GGUF_SCALAR = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1,
+                10: 8, 11: 8, 12: 8}     # type -> byte size
+_GGUF_FMT = {0: "B", 1: "b", 2: "H", 3: "h", 4: "I", 5: "i", 6: "f",
+             7: "?", 10: "Q", 11: "q", 12: "d"}
+_GGUF_STRING = 8
+_GGUF_ARRAY = 9
+
+
+def gguf_meta(path, suffixes):
+    """Read selected metadata keys from a GGUF file header WITHOUT loading the
+    model. Returns {suffix: value} for any key whose name ends with one of
+    `suffixes` (e.g. '.expert_count', '.block_count'). Pure stdlib, bounded, and
+    fully defensive — a malformed/partial header yields {} so callers fall back
+    to their default behaviour. We need this to spot Mixture-of-Experts models
+    (expert_count > 1): their huge expert tensors can be streamed from CPU RAM
+    cheaply (only a few experts fire per token), so a ~30B-A3B can run at ~7B
+    speed on an 8 GB card instead of crawling when dense layers spill over PCIe."""
+    import struct
+    found = {}
+    try:
+        f = open(path, "rb")
+    except OSError:
+        return found
+    with f:
+        if f.read(4) != b"GGUF":
+            return found
+        try:
+            ver = struct.unpack("<I", f.read(4))[0]
+            cfmt = "<Q" if ver >= 2 else "<I"     # v2/v3 counts are 64-bit
+            csz = 8 if ver >= 2 else 4
+            f.read(csz)                            # tensor_count (skip)
+            n_kv = struct.unpack(cfmt, f.read(csz))[0]
+        except Exception:
+            return found
+
+        def rd_str():
+            ln = struct.unpack(cfmt, f.read(csz))[0]
+            return f.read(ln)
+
+        def skip(vt):
+            if vt in _GGUF_SCALAR:
+                f.seek(_GGUF_SCALAR[vt], 1)
+            elif vt == _GGUF_STRING:
+                rd_str()
+            elif vt == _GGUF_ARRAY:
+                et = struct.unpack("<I", f.read(4))[0]
+                n = struct.unpack(cfmt, f.read(csz))[0]
+                if et in _GGUF_SCALAR:
+                    f.seek(_GGUF_SCALAR[et] * n, 1)        # fast-skip numeric arrays
+                else:
+                    for _ in range(n):
+                        skip(et)
+            else:
+                raise ValueError("bad gguf type")
+
+        def read(vt):
+            if vt in _GGUF_SCALAR:
+                return struct.unpack("<" + _GGUF_FMT[vt], f.read(_GGUF_SCALAR[vt]))[0]
+            if vt == _GGUF_STRING:
+                return rd_str().decode("utf-8", "replace")
+            raise ValueError("unread gguf type")
+
+        try:
+            for _ in range(min(int(n_kv), 100000)):
+                key = rd_str().decode("utf-8", "replace")
+                vt = struct.unpack("<I", f.read(4))[0]
+                hit = next((s for s in suffixes if key.endswith(s)), None)
+                if hit is not None and vt != _GGUF_ARRAY:
+                    found[hit] = read(vt)
+                else:
+                    skip(vt)
+                if len(found) >= len(suffixes):
+                    break
+        except Exception:
+            pass
+    return found
+
+
 _HELP_CACHE = None
 
 
@@ -359,6 +472,41 @@ RECOMMEND_MODELS = [
     ("qwen2.5:14b", 14.8), ("qwen2.5:32b", 32.5),
 ]
 
+# MoE "power picks" (ollama tag -> total params B, active params B). These run
+# FAR bigger brains than a dense model that fits VRAM, because only the active
+# experts compute per token — Turbo keeps attention on the GPU and streams the
+# cold experts from RAM (--n-cpu-moe). Constraint is system RAM (to hold the
+# experts), not VRAM. Biggest last.
+MOE_MODELS = [
+    ("gpt-oss:20b",    21.0, 3.6),
+    ("qwen3:30b-a3b",  30.0, 3.3),
+]
+
+
+def _total_ram_gb():
+    """Total system RAM in GB from /proc/meminfo, or 0.0."""
+    try:
+        for line in open("/proc/meminfo"):
+            if line.startswith("MemTotal:"):
+                return int(line.split()[1]) / (1024.0 * 1024.0)
+    except Exception:
+        pass
+    return 0.0
+
+
+def recommend_moe(vram_mb, ram_gb):
+    """Biggest MoE whose experts fit in system RAM and whose attention fits VRAM,
+    or None. The win: ~30B-class quality at ~7B speed on a small card."""
+    if vram_mb < 4000:                 # need a bit of VRAM for attention + KV
+        return None
+    ram_budget = ram_gb * 0.7          # leave headroom for the OS + apps
+    best = None
+    for tag, total, active in MOE_MODELS:
+        total_gb = total * 4.8 / 8.0   # Q4 GGUF size ≈ params * bpw / 8
+        if total_gb <= ram_budget and (best is None or total > best[1]):
+            best = (tag, total, active)
+    return best
+
 
 def recommend_model():
     """Advisor → Turbo model pick: the BIGGEST model whose Q4_K_M weights fit
@@ -386,6 +534,14 @@ def cmd_recommend():
     else:
         print(":: no GPU/VRAM detected → small CPU-friendly model recommended: "
               f"{tag}", file=sys.stderr)
+    # MoE power pick: a much bigger brain that still runs fast here via expert
+    # offload (only stdout stays machine-readable; this is human advice).
+    moe = recommend_moe(vram_mb, _total_ram_gb())
+    if moe:
+        print(f":: power pick (MoE): {moe[0]} — {moe[1]:.0f}B brain, only "
+              f"~{moe[2]:.0f}B active/token, so Turbo runs it at small-model speed "
+              f"(experts streamed from RAM). Pull it and run Turbo as usual.",
+              file=sys.stderr)
 
 
 def _performance_cores(fallback):
@@ -462,6 +618,17 @@ def server_cmd(main_gguf, draft_gguf):
     fits_main = main_gb <= budget_gb if budget_gb > 0 else False
     fits_both = (main_gb + draft_gb) <= budget_gb if budget_gb > 0 else False
 
+    # Mixture-of-Experts detection. A MoE model only activates a few experts per
+    # token, so when it doesn't fit VRAM we DON'T spill random dense layers over
+    # the slow PCIe bus — we keep all attention on the GPU and push just the
+    # expert (FFN) tensors to CPU RAM (`--n-cpu-moe K`). Result: big-model brains
+    # at near-small-model speed on a small card. Reading the GGUF header is cheap
+    # and defensive (any failure -> {} -> we fall back to plain partial offload).
+    moe = gguf_meta(main_gguf, (".expert_count", ".block_count"))
+    is_moe = int(moe.get(".expert_count") or 0) > 1
+    n_cpu_moe = None            # how many layers' experts to keep on CPU (MoE)
+    ncmoe_flag = None           # the flag name this llama.cpp build supports
+
     # Decide WHERE we run and HOW MANY layers go on the GPU. ngl_value:
     #   None  -> CPU only
     #   "999" -> full offload (the whole model fits in VRAM, fastest)
@@ -480,16 +647,46 @@ def server_cmd(main_gguf, draft_gguf):
         else:
             if vram_gb > 0:
                 print(f"   [!] WARNING: Model ({main_gb:.1f}GB) exceeds safe VRAM budget ({budget_gb:.1f}GB).", flush=True)
+                print("       Part of it runs on the CPU, so decode will be SLOW no "
+                      "matter the backend. For full-GPU speed pick a model that "
+                      "fits — see `genesi-ai-turbo recommend` — or pull a smaller "
+                      "quant (e.g. a q3_K_M / IQ4_XS tag) of this model.", flush=True)
             free_ram_gb = (ram_mb / 1024.0) * 0.6
             if ram_mb > 0 and main_gb > free_ram_gb:
                 print("   [!] DANGER: System RAM is too low to safely offload. Expect severe lag or OOM.", flush=True)
             if draft_gguf:
                 print("   [!] Draft model dropped: the target model is already spilling VRAM.", flush=True)
                 draft_gguf = None            # never speculate when the target spills
-            if vram_gb > 2.0:
-                # Partial offload: fit as many layers as the VRAM holds instead
-                # of forcing all of them. 'auto' needs a recent llama.cpp; older
-                # builds fall back to the previous behaviour (force all layers).
+            if is_moe and vram_gb > 2.0:
+                # MoE expert-offload (the out-of-the-box win): keep ALL attention
+                # layers on the GPU (-ngl 999) and move just enough layers' EXPERT
+                # tensors to CPU RAM to fit the VRAM budget. Only a couple of
+                # experts fire per token, so streaming them from RAM costs far less
+                # than spilling whole dense layers over PCIe.
+                ncmoe_flag = _pick_flag(_llama_help(), "--n-cpu-moe", "--cpu-moe")
+            if is_moe and ncmoe_flag and vram_gb > 2.0:
+                blocks = int(moe.get(".block_count") or 0)
+                # ≈90% of a big MoE's bytes are expert tensors; size per layer.
+                per_layer = (main_gb * 0.9 / blocks) if blocks > 0 else 0.0
+                if ncmoe_flag == "--n-cpu-moe" and per_layer > 0:
+                    over = max(main_gb - budget_gb, 0.0)
+                    k = int(over / per_layer) + 2            # +headroom for KV/ctx
+                    k = max(1, min(blocks, k))
+                    n_cpu_moe = _env_int("GENESI_TURBO_NCMOE", k)
+                    print(f"   [moe] Mixture-of-Experts: experts of {n_cpu_moe}/{blocks} "
+                          f"layers on CPU RAM, attention 100% on GPU — big-model "
+                          f"brains at small-model speed.", flush=True)
+                else:
+                    # Build only exposes the all-or-nothing --cpu-moe (all experts
+                    # on CPU). Still a huge win vs random dense spill.
+                    n_cpu_moe = -1                            # sentinel: --cpu-moe
+                    print("   [moe] Mixture-of-Experts: all expert tensors on CPU "
+                          "RAM, attention 100% on GPU (--cpu-moe).", flush=True)
+                ngl_value = "999"            # all attention layers on the GPU
+            elif vram_gb > 2.0:
+                # Dense model: partial offload — fit as many layers as the VRAM
+                # holds instead of forcing all of them. 'auto' needs a recent
+                # llama.cpp; older builds force all layers.
                 ngl_value = "auto" if "--gpu-layers" in _llama_help() and "auto" in _llama_help() else "999"
     else:
         # CPU-only. Running a second (draft) model on the same cores almost
@@ -545,6 +742,15 @@ def server_cmd(main_gguf, draft_gguf):
 
     if ngl_value:
         cmd += ["-ngl", ngl_value]
+
+    # MoE expert-offload flag (set above when a Mixture-of-Experts model spills
+    # VRAM): --n-cpu-moe K keeps K layers' experts on CPU RAM; --cpu-moe keeps
+    # them all there. Attention stays on the GPU via -ngl 999.
+    if n_cpu_moe is not None and ncmoe_flag:
+        if ncmoe_flag == "--n-cpu-moe" and n_cpu_moe > 0:
+            cmd += ["--n-cpu-moe", str(n_cpu_moe)]
+        else:
+            cmd += ["--cpu-moe"]
 
     # mlock: pin the model in RAM (no swap/reclaim) for steady CPU inference.
     # Opt-in only — risky on low-RAM machines and the live ISO (RAM-backed fs),
@@ -810,13 +1016,17 @@ def main():
     # Default: spec OFF (plain full GPU offload, the reliable win). Opt in with
     # --spec/--speculative, or globally with GENESI_TURBO_SPEC=1.
     spec = _env_flag("GENESI_TURBO_SPEC")
+    # Did the user (or env) pin spec explicitly? If not, `serve` decides AUTO from
+    # the backend: ON for the CUDA build (the proven win), OFF for Vulkan/NVK.
+    spec_pinned = (_env_flag("GENESI_TURBO_SPEC")
+                   or _env_flag("GENESI_TURBO_NO_SPEC"))
     pos = []
     for a in argv:
         al = a.lower()
         if al in ("--spec", "--speculative"):
-            spec = True
+            spec, spec_pinned = True, True
         elif al in ("--no-spec", "--no-speculative"):
-            spec = False
+            spec, spec_pinned = False, True
         else:
             pos.append(a)
     if not pos:
@@ -826,6 +1036,12 @@ def main():
     if action == "recommend":
         cmd_recommend()
         return
+    # AUTO spec: with nothing pinned, default to speculative decoding on a CUDA
+    # build (it pays off there) and plain offload on Vulkan/NVK (where it can
+    # regress). The draft is still dropped automatically if the target spills
+    # VRAM, so this only ever engages when it can actually help.
+    if not spec_pinned and backend_is_cuda():
+        spec = True
     if action in ("bench", "serve"):
         if not rest:
             sys.exit(f"usage: genesi-ai-turbo {action} <model> [draft-model] [--spec]")
