@@ -111,10 +111,43 @@ _migrate_qt6ct() {
     chown "$owner" "$qt6" "$qt6.genesi-bak" 2>/dev/null || true
 }
 
+# Disable caelestia-cli's terminal colour-sequence application (theme.enableTerm).
+# It writes OSC colour escapes to every /dev/pts on each scheme change (which fires
+# on every wallpaper change under the dynamic scheme); on this setup those escapes
+# surface as a "system message" notification dumping the raw rgb sequences. New
+# users get cli.json from /etc/skel; existing users are merged here. We MERGE (only
+# set theme.enableTerm=false) so a user's other cli.json keys are preserved.
+_migrate_cli_json() {
+    local cli="$1" owner="$2"
+    python3 - "$cli" <<'PY' || return 0
+import json, os, sys
+p = sys.argv[1]
+try:
+    with open(p) as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        data = {}
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    data = {}
+theme = data.get("theme")
+if not isinstance(theme, dict):
+    theme = {}
+    data["theme"] = theme
+if theme.get("enableTerm") is False:
+    sys.exit(0)  # already disabled — leave the file untouched
+theme["enableTerm"] = False
+os.makedirs(os.path.dirname(p), exist_ok=True)
+with open(p, "w") as f:
+    json.dump(data, f, indent=2)
+PY
+    chown "$owner" "$(dirname "$cli")" "$cli" 2>/dev/null || true
+}
+
 _migrate_user() {
     local home="$1" owner="$2"
-    _migrate_hypr   "$home/.config/hypr/hyprland.conf" "$owner"
-    _migrate_qt6ct  "$home/.config/qt6ct/qt6ct.conf"   "$owner"
+    _migrate_hypr     "$home/.config/hypr/hyprland.conf"     "$owner"
+    _migrate_qt6ct    "$home/.config/qt6ct/qt6ct.conf"       "$owner"
+    _migrate_cli_json "$home/.config/caelestia/cli.json"     "$owner"
 }
 
 _migrate_all() {

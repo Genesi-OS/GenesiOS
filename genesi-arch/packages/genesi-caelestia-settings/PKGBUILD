@@ -93,7 +93,15 @@ pkgver=1.0.0
 # supports BOTH modes, so a marker-guarded first-login exec-once sets the scheme
 # to dynamic once (retried, since dynamic needs the wallpaper set first). It never
 # overrides a scheme the user later picks. The .install migrates existing users.
-pkgrel=12
+# pkgrel 13: stop the colour-sequence notification spam on wallpaper change. On a
+# scheme change (which fires on EVERY wallpaper change under the dynamic scheme),
+# caelestia-cli's apply_terms writes OSC terminal colour escapes to every /dev/pts
+# (theme.enableTerm, default on). On this setup those escapes surface as a "system
+# message" notification dumping the raw rgb sequences — annoying. Ship a caelestia
+# cli.json with theme.enableTerm=false (terminals keep their own colours; foot's
+# default is fine) via /etc/skel, and the .install merges it into existing users'
+# cli.json without clobbering their other keys.
+pkgrel=13
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -120,8 +128,8 @@ depends=(
 )
 install='genesi-caelestia-settings.install'
 source=('hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini' 'genesi-dark.conf'
-        'genesi-caelestia-theme-sync')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+        'genesi-caelestia-theme-sync' 'cli.json')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     # Default Hyprland config for new users. Hyprland reads
@@ -154,4 +162,11 @@ package() {
     # hyprland.conf. Falls back to the static genesi-dark.conf when no scheme.
     install -Dm755 "${srcdir}/genesi-caelestia-theme-sync" \
         "${pkgdir}/usr/local/bin/genesi-caelestia-theme-sync"
+
+    # caelestia-cli config: disable terminal colour-sequence application so a
+    # scheme/wallpaper change doesn't spam the "system message" notification with
+    # raw OSC rgb sequences (see the pkgrel 13 note). New users get it from skel;
+    # existing users are migrated by the .install.
+    install -Dm644 "${srcdir}/cli.json" \
+        "${pkgdir}/etc/skel/.config/caelestia/cli.json"
 }
