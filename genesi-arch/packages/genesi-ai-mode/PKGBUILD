@@ -326,7 +326,20 @@ pkgver=1.0.0
 # enabled). genesi-aid's manage_always_warm now drives this unit (systemctl
 # start/stop) instead of spawning a child process — single owner of :11435, no
 # port race, survives a daemon restart, restarts on failure (StartLimit-guarded).
-pkgrel=96
+# pkgrel 97: three fixes from real bare-metal testing. (1) TIME_WAIT port bug —
+# toggling Turbo OFF then ON within ~1-2 min failed as "already running" and told
+# the user to pkill a port with nothing on it: port_busy() bind()'d without
+# SO_REUSEADDR, so the just-closed socket lingering in TIME_WAIT looked "busy".
+# Now sets SO_REUSEADDR -> True only for a LIVE listener. (2) Turbo crashing on
+# models ollama can run (e.g. a MoE whose --n-cpu-moe trips our llama-server's
+# loader: "wrong number of tensors") — `serve` now degrades gracefully via a
+# fallback ladder (optimised -> no-MoE -> plain offload), so it lands on what
+# ollama does instead of dying; new GENESI_TURBO_NO_MOE escape hatch. (3) Turbo ==
+# ollama for fitting models now that ollama uses the GPU is EXPECTED (same engine);
+# Turbo's edge is speculative decoding + MoE — expanded the draft catalogue
+# (gemma3->gemma3:1b, gemma2->gemma2:2b, family-exact so tokenizers match) so spec
+# actually fires for more models and Turbo is genuinely faster than plain ollama.
+pkgrel=97
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

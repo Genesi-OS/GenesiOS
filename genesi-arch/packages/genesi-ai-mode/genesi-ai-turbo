@@ -29,6 +29,12 @@ Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
   GENESI_TURBO_BATCH=2048        logical prefill batch
   GENESI_TURBO_CACHE_REUSE=256   min prefix chunk reused across requests (KV)
   GENESI_TURBO_MLOCK=1           pin model in RAM (opt-in; risky on low RAM)
+  GENESI_TURBO_NCMOE=<n>         MoE: force N layers' experts onto CPU RAM (auto
+                                 by VRAM otherwise; only used for MoE models that
+                                 spill VRAM)
+  GENESI_TURBO_NO_MOE=1          disable MoE expert-offload (fall back to plain
+                                 partial offload; `serve` also auto-falls-back to
+                                 this if --n-cpu-moe trips the model loader)
   GENESI_TURBO_THREADS=<n>       CPU inference threads (default: fast/perf cores)
   GENESI_TURBO_DRAFT_MAX=8       max tokens the draft proposes (speculative only)
   GENESI_TURBO_DRAFT_MIN=1       min draft length — floor for dynamic draft length
@@ -60,7 +66,11 @@ import urllib.request
 TURBO_PORT = 11435
 PROMPT = "Explain how a CPU instruction pipeline works, in about 200 words."
 
-# (family substring in the target tag -> a tiny, same-tokenizer draft model)
+# (family substring in the target tag -> a tiny, SAME-tokenizer draft model)
+# The draft MUST share the target's vocab/tokenizer or speculation gets near-zero
+# acceptance (or fails), so map each family to its OWN smallest member — never a
+# cross-generation draft (e.g. gemma3 must use gemma3:1b, NOT gemma2). Longest /
+# most-specific prefixes first (pick_draft uses startswith).
 DRAFT_FOR = [
     ("llama3.3", "llama3.2:1b"),
     ("llama3.1", "llama3.2:1b"),
@@ -69,6 +79,8 @@ DRAFT_FOR = [
     ("qwen2.5",  "qwen2.5:0.5b"),
     ("qwen2",    "qwen2.5:0.5b"),
     ("qwen3",    "qwen3:0.6b"),
+    ("gemma3",   "gemma3:1b"),
+    ("gemma2",   "gemma2:2b"),
 ]
 TINY = (":0.5b", ":0.6b", ":1b", ":1.5b")
 
@@ -625,7 +637,8 @@ def server_cmd(main_gguf, draft_gguf):
     # at near-small-model speed on a small card. Reading the GGUF header is cheap
     # and defensive (any failure -> {} -> we fall back to plain partial offload).
     moe = gguf_meta(main_gguf, (".expert_count", ".block_count"))
-    is_moe = int(moe.get(".expert_count") or 0) > 1
+    is_moe = (int(moe.get(".expert_count") or 0) > 1
+              and not _env_flag("GENESI_TURBO_NO_MOE"))
     n_cpu_moe = None            # how many layers' experts to keep on CPU (MoE)
     ncmoe_flag = None           # the flag name this llama.cpp build supports
 
@@ -851,8 +864,18 @@ def turbo_healthy():
 
 
 def port_busy(port=TURBO_PORT):
-    """True if something already holds 127.0.0.1:<port>."""
+    """True only if something is ACTIVELY LISTENING on 127.0.0.1:<port>.
+
+    We set SO_REUSEADDR before bind. Without it, a just-stopped llama-server
+    leaves the port in TIME_WAIT (the kernel holds 127.0.0.1:11435 for ~1-2 min
+    for its closed client connections), so a plain bind() fails with EADDRINUSE
+    and we'd WRONGLY report "busy" — that's the "toggle Turbo off then on within a
+    few minutes fails as if it's already running, and pkill finds nothing on the
+    port" bug. SO_REUSEADDR lets bind succeed over a TIME_WAIT remnant, so this
+    returns True only for a LIVE listener. (llama-server's HTTP backend also binds
+    with SO_REUSEADDR, so it can re-take the port immediately too.)"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind(("127.0.0.1", port))
             return False
@@ -967,6 +990,70 @@ def cmd_bench(main, draft):
         print("  (incomplete — run `genesi-ai-turbo serve %s` to see server logs)" % main)
 
 
+def _serve_with_fallback(main_g, draft_g):
+    """Launch the Turbo server, degrading GRACEFULLY if an optimisation makes it
+    fail to load. Some models load in ollama (its own bundled llama.cpp) but trip
+    our system llama-server — usually `--n-cpu-moe` (MoE expert-offload) or a draft
+    model. Instead of just dying with a scary loader error, we try the optimised
+    command and, if it doesn't come up, retry without the riskier extras, ending
+    with plain full/auto offload (exactly what ollama does). The final, plainest
+    variant is exec'd so the steady-state process is llama-server itself (clean
+    stop / health / port handling). For an already-plain command (no MoE, no
+    draft) this is a single exec — zero behaviour change from before."""
+    full = server_cmd(main_g, draft_g)
+    if not full:
+        return
+    variants = [("optimised", full)]
+    risky = ("--n-cpu-moe" in full) or ("--cpu-moe" in full) or bool(draft_g)
+    if ("--n-cpu-moe" in full) or ("--cpu-moe" in full):
+        os.environ["GENESI_TURBO_NO_MOE"] = "1"
+        nomoe = server_cmd(main_g, draft_g)
+        os.environ.pop("GENESI_TURBO_NO_MOE", None)
+        if nomoe and nomoe != full:
+            variants.append(("no-MoE offload", nomoe))
+    if draft_g:
+        os.environ["GENESI_TURBO_NO_MOE"] = "1"
+        plain = server_cmd(main_g, None)
+        os.environ.pop("GENESI_TURBO_NO_MOE", None)
+        if plain and all(plain != c for _, c in variants):
+            variants.append(("plain offload", plain))
+
+    last = len(variants) - 1
+    for i, (label, cmd) in enumerate(variants):
+        if risky:
+            print(f":: Genesi Turbo: trying {label}…", flush=True)
+        print("   " + " ".join(cmd), flush=True)
+        if i == last:
+            os.execvp(cmd[0], cmd)            # final attempt becomes the process
+            return
+        log = tempfile.NamedTemporaryFile("w", delete=False, suffix=".log").name
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                stderr=open(log, "w"))
+        ok, end = False, time.time() + 900    # a big model can take minutes to load
+        while time.time() < end:
+            if turbo_healthy():
+                ok = True
+                break
+            if proc.poll() is not None:       # process exited = load failed
+                break
+            time.sleep(1)
+        if ok:
+            print(f":: Genesi Turbo up ({label}). API: "
+                  f"http://127.0.0.1:{TURBO_PORT}/v1   Ctrl-C to stop", flush=True)
+            try:
+                proc.wait()
+            except KeyboardInterrupt:
+                stop(proc)
+            return
+        print(f"[!] {label} failed to come up — falling back:\n{_tail(log)}",
+              file=sys.stderr, flush=True)
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        free_turbo_port()
+
+
 def cmd_serve(main, draft, spec=False):
     # Port already taken? This is common — the Monitor or a previous terminal
     # already started Turbo. If it's healthy, reuse it (don't fail to bind).
@@ -984,8 +1071,7 @@ def cmd_serve(main, draft, spec=False):
     main_g = ensure(main)
     if not main_g:
         sys.exit(f"could not resolve/pull {main}")
-    cmd = server_cmd(main_g, None)
-    if not cmd:
+    if not server_cmd(main_g, None):
         sys.exit("llama-server not found — install the Genesi Vulkan build:\n"
                  "  sudo pacman -S genesi-llama-cpp   (ships llama.cpp + Vulkan)")
     # Default Turbo = plain full GPU offload, the reliable proven win (GPU >> CPU
@@ -998,13 +1084,13 @@ def cmd_serve(main, draft, spec=False):
     if draft is None and (spec or _env_flag("GENESI_TURBO_SPEC")):
         draft = pick_draft(main)
     draft_g = ensure(draft) if draft else None
-    cmd = server_cmd(main_g, draft_g)
     print(f":: Genesi Turbo serving {main}" +
           (f" + draft {draft} (speculative)" if draft_g
            else " (full GPU offload)"))
     print(f"   API: http://127.0.0.1:{TURBO_PORT}/v1   (OpenAI-compatible)  Ctrl-C to stop")
-    print("   " + " ".join(cmd), flush=True)
-    os.execvp(cmd[0], cmd)
+    # Launch with graceful degradation: if MoE/draft trips the loader, fall back
+    # to plain offload (what ollama does) instead of dying on a model ollama runs.
+    _serve_with_fallback(main_g, draft_g)
 
 
 def main():
