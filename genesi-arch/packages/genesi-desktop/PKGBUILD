@@ -15,7 +15,7 @@
 # genesi repo has all of them, so the dependencies resolve normally.
 pkgname=genesi-desktop
 pkgver=1.0.0
-pkgrel=2
+pkgrel=3
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -27,7 +27,15 @@ depends=(
     'genesi-settings'
     'genesi-kde-settings'
     'genesi-ai-mode'
-    'genesi-llama-cpp'
+    # The Turbo backend is depended on by its VIRTUAL provide `llama.cpp`, NOT by
+    # the concrete `genesi-llama-cpp` name. Both genesi-llama-cpp (Vulkan, the
+    # shipped default) AND llama.cpp-cuda (AUR, the faster NVIDIA build) provide
+    # `llama.cpp` and conflict with each other. A by-NAME dep here made switching
+    # to CUDA impossible: removing genesi-llama-cpp to install llama.cpp-cuda
+    # tripped "removing genesi-llama-cpp breaks dependency required by
+    # genesi-desktop" and aborted the whole transaction. Depending on the provide
+    # lets EITHER backend satisfy the meta-package, so the swap just works.
+    'llama.cpp'
     'genesi-update'
     'genesi-channel'
     'genesi-welcome'
