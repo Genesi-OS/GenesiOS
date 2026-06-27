@@ -355,7 +355,17 @@ pkgver=1.0.0
 # no-op on 8 GB — helps bigger cards / smaller targets). ROADMAP: marked n-gram-on-
 # GPU done; added PowerInfer (activation sparsity), continuous batching on the warm
 # daemon, and true REST retrieval-decode as research items.
-pkgrel=98
+# pkgrel 99: spill-spec — Turbo's biggest lever over plain ollama for a model too
+# big for the card. OPT-IN, CUDA only (GENESI_TURBO_SPILL_SPEC=1): keep the tiny
+# GPU-resident draft EVEN when the target spills VRAM. The spilled layers stream
+# over the slow PCIe bus once per forward pass; speculative verification checks K
+# draft tokens per pass, so K accepted tokens cost ~1 PCIe weight-stream instead
+# of K — amortization plain autoregressive ollama can't do. Default behaviour
+# unchanged (still drops the draft when spilling), so this can't regress anyone
+# who doesn't set the flag; user benches it on the real card before we consider
+# making it default. (n-gram-on-GPU + graceful MoE fallback + expanded draft
+# catalogue already shipped in 97/98.)
+pkgrel=99
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

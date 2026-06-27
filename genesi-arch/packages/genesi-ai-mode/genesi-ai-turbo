@@ -48,6 +48,13 @@ Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
                                  self-draft (Q2) of the model for speculation
                                  (opt-in; modest ~1.1-1.3x and only if both fit
                                  VRAM, so usually a no-op on an 8 GB card)
+  GENESI_TURBO_SPILL_SPEC=1      CUDA opt-in: keep the GPU draft EVEN when the
+                                 target spills VRAM. Speculative verification reads
+                                 the CPU-resident layers over PCIe once per batch,
+                                 so K accepted tokens cost ~1 weight-stream — the
+                                 one decode win plain ollama can't match on a model
+                                 too big for the card. ~0.4 GB VRAM; bench it (can
+                                 OOM a very full card; lower GENESI_TURBO_UBATCH)
   GENESI_TURBO_DRAFT_MAX=8       max tokens the draft proposes (speculative only)
   GENESI_TURBO_DRAFT_MIN=1       min draft length — floor for dynamic draft length
   GENESI_TURBO_DRAFT_P=0.6       stop drafting below this acceptance probability
@@ -721,9 +728,26 @@ def server_cmd(main_gguf, draft_gguf):
             free_ram_gb = (ram_mb / 1024.0) * 0.6
             if ram_mb > 0 and main_gb > free_ram_gb:
                 print("   [!] DANGER: System RAM is too low to safely offload. Expect severe lag or OOM.", flush=True)
-            if draft_gguf:
+            if (draft_gguf and not is_moe and backend_is_cuda()
+                    and _env_flag("GENESI_TURBO_SPILL_SPEC")):
+                # OPT-IN, CUDA only — Turbo's biggest remaining lever over plain
+                # ollama for a model too big for the card. Normally we drop the
+                # draft when the target spills (no VRAM for both). But the spilled
+                # layers live in CPU RAM and stream over the SLOW PCIe bus once per
+                # forward pass; speculative VERIFICATION checks K draft tokens in a
+                # single pass, so the expensive PCIe weight-stream is amortized —
+                # K accepted tokens cost ~1 stream instead of K. Autoregressive
+                # ollama can't do this. The draft is tiny (~0.4 GB, GPU-resident
+                # via -ngld below), costing one fewer target layer on the GPU — a
+                # trivial price for up to ~2x decode on a spilling model. Kept on
+                # CUDA only (it regressed on Vulkan/NVK). Verify with `bench`.
+                print("   [spill-spec] target spills VRAM but keeping the GPU draft: "
+                      "speculative verification amortizes the slow PCIe weight reads "
+                      "(CUDA opt-in). Bench it; unset GENESI_TURBO_SPILL_SPEC if it "
+                      "regresses or OOMs.", flush=True)
+            elif draft_gguf:
                 print("   [!] Draft model dropped: the target model is already spilling VRAM.", flush=True)
-                draft_gguf = None            # never speculate when the target spills
+                draft_gguf = None            # default: don't speculate when spilling
             if is_moe and vram_gb > 2.0:
                 # MoE expert-offload (the out-of-the-box win): keep ALL attention
                 # layers on the GPU (-ngl 999) and move just enough layers' EXPERT
