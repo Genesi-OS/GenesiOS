@@ -47,6 +47,17 @@ main() {
             echo ">>> Genesi Calamares modules copied"
         fi
         
+        # Copy packagechooser preview images (DE chooser screenshots). Upstream
+        # cachyos-calamares ships /etc/calamares/images/*.png; without this our
+        # custom kde.png/hyprland.png never override the stock CachyOS art.
+        if [ -d /root/genesi-calamares-config-full/etc/calamares/images ]; then
+            sudo mkdir -p /etc/calamares/images
+            sudo mkdir -p /usr/share/calamares/images
+            sudo cp -rf /root/genesi-calamares-config-full/etc/calamares/images/* /etc/calamares/images/
+            sudo cp -rf /root/genesi-calamares-config-full/etc/calamares/images/* /usr/share/calamares/images/
+            echo ">>> Genesi Calamares chooser images copied"
+        fi
+
         # Copy settings.conf
         if [ -f /root/genesi-calamares-config-full/etc/calamares/settings.conf ]; then
             sudo cp -f /root/genesi-calamares-config-full/etc/calamares/settings.conf /etc/calamares/
