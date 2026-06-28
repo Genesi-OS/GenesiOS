@@ -195,7 +195,20 @@ X11DETECTEOF
         cp -rf /root/genesi-calamares-config-full/etc/calamares/modules/* /usr/share/calamares/modules/
         echo ">>> Calamares modules copied to /etc and /usr/share (overwritten)"
     fi
-    
+
+    # Copy packagechooser preview images to BOTH locations (OVERWRITE). The
+    # upstream cachyos-calamares package ships /etc/calamares/images/*.png (the
+    # DE chooser screenshots). Without this step our custom kde.png/hyprland.png
+    # in the submodule never reach the ISO and the chooser shows the stock
+    # CachyOS art. Same single-source-of-truth pattern as modules/branding.
+    if [ -d /root/genesi-calamares-config-full/etc/calamares/images ]; then
+        mkdir -p /etc/calamares/images
+        mkdir -p /usr/share/calamares/images
+        cp -rf /root/genesi-calamares-config-full/etc/calamares/images/* /etc/calamares/images/
+        cp -rf /root/genesi-calamares-config-full/etc/calamares/images/* /usr/share/calamares/images/
+        echo ">>> Calamares chooser images copied to /etc and /usr/share (overwritten)"
+    fi
+
     # Copy settings.conf to BOTH locations (OVERWRITE)
     if [ -f /root/genesi-calamares-config-full/etc/calamares/settings.conf ]; then
         cp -f /root/genesi-calamares-config-full/etc/calamares/settings.conf /etc/calamares/
