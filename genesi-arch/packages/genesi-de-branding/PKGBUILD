@@ -17,10 +17,14 @@ pkgdesc="Genesi OS look (wallpaper, dark theme, accent, launchers) for GNOME/Xfc
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"
 license=('GPL3')
-# The wallpaper it points at ships in genesi-settings
-# (/usr/share/wallpapers/genesi/wallpaper.png).
-depends=('genesi-settings' 'adw-gtk-theme' 'papirus-icon-theme')
-optdepends=('picom: rounded corners + blur on Xfce (real hardware only)'
+depends=('adw-gtk-theme' 'papirus-icon-theme')
+# genesi-settings is NOT a hard dep: it's a genesi-* package that isn't in any
+# repo yet at build time (makepkg would fail "Could not resolve all
+# dependencies"), and it's always installed anyway via the always-on Genesi OS
+# netinstall group. genesi-de-apply.sh guards the wallpaper path, so its absence
+# just means no wallpaper is set — nothing breaks.
+optdepends=('genesi-settings: Genesi wallpaper at /usr/share/wallpapers/genesi/wallpaper.png'
+            'picom: rounded corners + blur on Xfce (real hardware only)'
             'genesi-code: pinned developer editor launcher'
             'genesi-containers: containers tray applet')
 groups=('genesi')
