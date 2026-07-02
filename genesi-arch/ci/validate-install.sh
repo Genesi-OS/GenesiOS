@@ -126,6 +126,9 @@ def all_pkgs(node):            # every package in a subtree, ignoring selection
         out += all_pkgs(sg)
     return out
 
+def is_critical(*nodes):       # critical unless someone in the chain says False
+    return all(n.get("critical") is not False for n in nodes)
+
 for grp in net:
     name = grp.get("name", "?")
     if selected(grp):
@@ -133,9 +136,10 @@ for grp in net:
         # selected:false subgroups inside a selected group are opt-in too
         for sg in grp.get("subgroups", []) or []:
             if not selected(sg):
-                optin.append((f"{name} / {sg.get('name','?')}", all_pkgs(sg)))
+                optin.append((f"{name} / {sg.get('name','?')}",
+                              is_critical(grp, sg), all_pkgs(sg)))
     else:
-        optin.append((name, all_pkgs(grp)))
+        optin.append((name, is_critical(grp), all_pkgs(grp)))
 
 def dedupe(seq, exclude=()):   # keep order, drop dups and anything excluded
     seen, out = set(exclude), []
@@ -152,10 +156,11 @@ with open(f_def, "w") as fh:
 with open(f_soft, "w") as fh:
     fh.write("\n".join(soft) + ("\n" if soft else ""))
 with open(f_opt, "w") as fh:
-    for name, ps in optin:
+    for name, crit, ps in optin:
         ps = sorted(set(ps))
         if ps:
-            fh.write(name + "\t" + " ".join(ps) + "\n")
+            fh.write(name + "\t" + ("HARD" if crit else "SOFT")
+                     + "\t" + " ".join(ps) + "\n")
 PY
 
 mapfile -t BASE    < /tmp/_base.txt
@@ -205,8 +210,16 @@ fi
 # Opt-in groups: dry-run each on top of base. Distinguish a real dependency
 # conflict (fail) from merely-missing packages (warn).
 # ---------------------------------------------------------------------------
-note "Opt-in groups - dependency dry-run (conflict=fail, missing=warn)"
-while IFS=$'\t' read -r gname gpkgs; do
+# A dependency CONFLICT always fails. For merely-missing packages the verdict
+# depends on the group's `critical` flag, because that is exactly what Calamares
+# does: a critical:true group whose pacman -S hits "target not found" ABORTS the
+# whole install (that's how xfce4-datetime-plugin, dropped from the repos, broke
+# a real DE install even though this check only warned). So:
+#   HARD (critical:true, e.g. the DE groups) -> missing pkg FAILS the build.
+#   SOFT (critical:false)                    -> missing pkg only WARNs (Calamares
+#                 continues without it, e.g. a stale kernel entry pruned upstream).
+note "Opt-in groups - dependency dry-run (conflict=fail; missing: HARD=fail, SOFT=warn)"
+while IFS=$'\t' read -r gname gcrit gpkgs; do
   [ -n "$gname" ] || continue
   # shellcheck disable=SC2086
   if pacman -Sp --needed --noconfirm "${BASE[@]}" $gpkgs >/dev/null 2>/tmp/_err </dev/null; then
@@ -215,6 +228,9 @@ while IFS=$'\t' read -r gname gpkgs; do
     bad "opt-in: $gname has a DEPENDENCY CONFLICT (install-breaker)"
     grep -iE 'unable to satisfy|could not satisfy|conflict|cannot resolve' /tmp/_err \
       | sed 's/^/      /' | head -10
+  elif [ "$gcrit" = "HARD" ]; then
+    bad "opt-in: $gname (critical:true) has MISSING packages — would ABORT the install"
+    grep -iE 'target not found' /tmp/_err | sed 's/^/      /' | head -10
   else
     warn "opt-in: $gname has missing/removed packages (stale netinstall entry, not blocking)"
     grep -iE 'target not found' /tmp/_err | sed 's/^/      /' | head -10
