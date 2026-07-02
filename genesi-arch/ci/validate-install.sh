@@ -129,6 +129,18 @@ def all_pkgs(node):            # every package in a subtree, ignoring selection
 def is_critical(*nodes):       # critical unless someone in the chain says False
     return all(n.get("critical") is not False for n in nodes)
 
+def hard_gate(grp, *extra):
+    # A missing package only breaks a REAL install if the group is BOTH critical
+    # AND actually reachable in the installer. A `hidden: true` group is never
+    # appended to the selectable tree (it lives in m_hiddenItems, installed only
+    # when it carries its OWN selected:true), so a hidden opt-in (selected:false)
+    # group can never be picked — its missing packages can't abort any install.
+    # Hence the vestigial hidden:true kernel groups (linux-cachyos-cfs/pds/tt,
+    # pruned upstream) must only WARN, while the reachable hidden:false DE groups
+    # (the whole point of this gate) hard-fail on a missing package.
+    reachable = not grp.get("hidden", False)
+    return reachable and is_critical(grp, *extra)
+
 for grp in net:
     name = grp.get("name", "?")
     if selected(grp):
@@ -137,9 +149,9 @@ for grp in net:
         for sg in grp.get("subgroups", []) or []:
             if not selected(sg):
                 optin.append((f"{name} / {sg.get('name','?')}",
-                              is_critical(grp, sg), all_pkgs(sg)))
+                              hard_gate(grp, sg), all_pkgs(sg)))
     else:
-        optin.append((name, is_critical(grp), all_pkgs(grp)))
+        optin.append((name, hard_gate(grp), all_pkgs(grp)))
 
 def dedupe(seq, exclude=()):   # keep order, drop dups and anything excluded
     seen, out = set(exclude), []
@@ -211,13 +223,15 @@ fi
 # conflict (fail) from merely-missing packages (warn).
 # ---------------------------------------------------------------------------
 # A dependency CONFLICT always fails. For merely-missing packages the verdict
-# depends on the group's `critical` flag, because that is exactly what Calamares
-# does: a critical:true group whose pacman -S hits "target not found" ABORTS the
-# whole install (that's how xfce4-datetime-plugin, dropped from the repos, broke
-# a real DE install even though this check only warned). So:
-#   HARD (critical:true, e.g. the DE groups) -> missing pkg FAILS the build.
-#   SOFT (critical:false)                    -> missing pkg only WARNs (Calamares
-#                 continues without it, e.g. a stale kernel entry pruned upstream).
+# is HARD/SOFT as computed by hard_gate() above (critical:true AND reachable,
+# i.e. hidden:false). Rationale: Calamares aborts the whole install when a
+# reachable critical:true group hits "target not found" — that's how
+# xfce4-datetime-plugin (dropped from the repos) broke a real DE install even
+# though this check only warned. So:
+#   HARD (reachable critical group, e.g. the DE groups) -> missing pkg FAILS.
+#   SOFT (critical:false, OR unreachable hidden:true)   -> missing pkg only WARNs
+#                 (Calamares can't install it anyway, e.g. the vestigial
+#                 hidden:true kernel groups with schedulers pruned upstream).
 note "Opt-in groups - dependency dry-run (conflict=fail; missing: HARD=fail, SOFT=warn)"
 while IFS=$'\t' read -r gname gcrit gpkgs; do
   [ -n "$gname" ] || continue
