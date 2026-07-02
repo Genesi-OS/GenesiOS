@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Desktop Branding
+Comment=Apply the Genesi look (wallpaper, theme, launchers) to this desktop
+Exec=/usr/bin/genesi-de-apply
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+# Only the GTK desktops Genesi paints — KDE/Hyprland have their own branding.
+OnlyShowIn=GNOME;XFCE;X-Cinnamon;MATE;

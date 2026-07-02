@@ -1,0 +1,38 @@
+# Maintainer: Genesi OS Team
+#
+# Genesi "coat of paint" for the CachyOS-imported GTK desktops
+# (GNOME/Xfce/Cinnamon/MATE). Unlike genesi-kde-settings / genesi-caelestia-
+# settings — which are whole DE config bundles — this is a single, DE-agnostic
+# integration package: a login-time autostart script (genesi-de-apply) that
+# detects the running desktop and applies the Genesi wallpaper, a dark GTK
+# theme, the green accent, nice icons and the essential launchers.
+#
+# WHY login-time instead of /etc/skel: skel only seeds NEW users, so existing
+# accounts (and systems updated via `genesi update`) would never get the look.
+# Running from /etc/xdg/autostart covers every user, new and existing.
+pkgname=genesi-de-branding
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Genesi OS look (wallpaper, dark theme, accent, launchers) for GNOME/Xfce/Cinnamon/MATE"
+arch=('any')
+url="https://github.com/Genesi-OS/GenesiOS"
+license=('GPL3')
+# The wallpaper it points at ships in genesi-settings
+# (/usr/share/wallpapers/genesi/wallpaper.png).
+depends=('genesi-settings' 'adw-gtk-theme' 'papirus-icon-theme')
+optdepends=('picom: rounded corners + blur on Xfce (real hardware only)'
+            'genesi-code: pinned developer editor launcher'
+            'genesi-containers: containers tray applet')
+groups=('genesi')
+source=('genesi-de-apply.sh'
+        'genesi-de-branding.desktop'
+        'picom-genesi.conf')
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP')
+
+package() {
+    install -Dm755 genesi-de-apply.sh        "$pkgdir/usr/bin/genesi-de-apply"
+    install -Dm644 genesi-de-branding.desktop "$pkgdir/etc/xdg/autostart/genesi-de-branding.desktop"
+    install -Dm644 picom-genesi.conf          "$pkgdir/etc/genesi/picom-genesi.conf"
+}

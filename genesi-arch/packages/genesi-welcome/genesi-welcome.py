@@ -147,7 +147,20 @@ QFrame#card {
     background-color: rgba(20,49,69,0.55);
     border: 1px solid rgba(29,158,117,0.4); border-radius: 15px;
 }
-QComboBox, QCheckBox { color: #E6F1EE; }
+QCheckBox { color: #E6F1EE; }
+/* The combo needs an explicit dark background: on the GTK desktops
+   (GNOME/Xfce/Cinnamon/MATE) the widget otherwise inherits the system's light
+   palette, giving unreadable light text on a white field/popup. */
+QComboBox {
+    color: #E6F1EE; background-color: #143145;
+    border: 1px solid rgba(29,158,117,0.4); border-radius: 6px; padding: 3px 8px;
+}
+QComboBox:hover { border-color: #1D9E75; }
+QComboBox QAbstractItemView {
+    color: #E6F1EE; background-color: #0D2030;
+    selection-background-color: #1D9E75; selection-color: #06121A;
+    border: 1px solid rgba(29,158,117,0.4); outline: none;
+}
 QScrollArea { border: none; }
 """
 

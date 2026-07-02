@@ -29,7 +29,15 @@ pkgver=1.0.0
 # (#0D2030, the same the color scheme gives Dolphin/Konsole) for the root and a
 # neutral blue card surface (green kept only as a thin accent border); KWin then
 # applies the same glass/blur to it as to every other window.
-pkgrel=6
+# pkgrel 7: two fixes for the GTK desktops (GNOME/Xfce/Cinnamon/MATE, added to
+# the installer 2026-07-02). (a) The ~/Desktop launcher was shipped 0644, so
+# those file managers flagged it as an "untrusted application launcher" on
+# double-click; ship the Desktop copy executable (0755), which Xfce/MATE/
+# Cinnamon accept as a valid launcher. (b) The language QComboBox only set a
+# text colour, so on the GTK DEs it rendered light-on-white (unreadable) —
+# fixed in genesi-welcome.py by giving the combo + its popup an explicit dark
+# background.
+pkgrel=7
 pkgdesc="Welcome application for Genesi OS"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"
@@ -46,7 +54,9 @@ sha256sums=('SKIP'
 package() {
     install -Dm755 genesi-welcome.py "$pkgdir/usr/bin/genesi-welcome"
     install -Dm644 genesi-welcome.desktop "$pkgdir/usr/share/applications/genesi-welcome.desktop"
-    install -Dm644 genesi-welcome.desktop "$pkgdir/etc/skel/Desktop/genesi-welcome.desktop"
+    # Executable (0755) so Xfce/MATE/Cinnamon treat the ~/Desktop copy as a
+    # trusted launcher instead of warning "untrusted application launcher".
+    install -Dm755 genesi-welcome.desktop "$pkgdir/etc/skel/Desktop/genesi-welcome.desktop"
     
     # Auto-start for live ISO
     install -Dm644 genesi-welcome.desktop "$pkgdir/etc/xdg/autostart/genesi-welcome.desktop"
