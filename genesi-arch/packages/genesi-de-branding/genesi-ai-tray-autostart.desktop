@@ -1,0 +1,14 @@
+[Desktop Entry]
+# genesi-de-branding autostarts the AI Mode SNI tray applet on the GTK desktops.
+# KDE uses the Plasma widget and Hyprland starts it from caelestia's exec-once,
+# so this entry is scoped to GNOME/Xfce/Cinnamon/MATE only. TryExec skips it
+# silently when genesi-ai-mode isn't installed.
+Type=Application
+Name=Genesi AI Mode Tray
+Comment=AI Mode status tray applet
+Exec=/usr/local/bin/genesi-ai-tray
+TryExec=/usr/local/bin/genesi-ai-tray
+Icon=genesi-ai-monitor
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=GNOME;XFCE;X-Cinnamon;MATE;

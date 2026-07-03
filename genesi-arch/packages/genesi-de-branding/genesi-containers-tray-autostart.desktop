@@ -1,0 +1,14 @@
+[Desktop Entry]
+# genesi-de-branding autostarts the Containers SNI tray applet on the GTK
+# desktops. KDE uses the Plasma widget and Hyprland starts it from caelestia's
+# exec-once, so this entry is scoped to GNOME/Xfce/Cinnamon/MATE only. TryExec
+# skips it silently when genesi-containers isn't installed.
+Type=Application
+Name=Genesi Containers Tray
+Comment=Docker/Podman containers tray applet
+Exec=/usr/local/bin/genesi-containers-tray
+TryExec=/usr/local/bin/genesi-containers-tray
+Icon=genesi-containers
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=GNOME;XFCE;X-Cinnamon;MATE;

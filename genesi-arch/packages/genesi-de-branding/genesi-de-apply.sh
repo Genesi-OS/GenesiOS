@@ -16,7 +16,7 @@
 # fight the user's own tweaks on every single login.
 set -u
 
-VERSION=1
+VERSION=2
 WALL="/usr/share/wallpapers/genesi/wallpaper.png"
 ACCENT="#1D9E75"          # Genesi brand green
 GTK_THEME="adw-gtk3-dark" # from adw-gtk-theme
@@ -59,6 +59,10 @@ apply_gnome() {
     [ -n "$WALL" ] && {
         gsettings set org.gnome.desktop.background picture-uri "file://$WALL" 2>/dev/null || true
         gsettings set org.gnome.desktop.background picture-uri-dark "file://$WALL" 2>/dev/null || true
+        # Without picture-options set to something other than 'none' GNOME shows
+        # a flat colour even with a valid picture-uri — this was why the wallpaper
+        # didn't apply on GNOME.
+        gsettings set org.gnome.desktop.background picture-options 'zoom' 2>/dev/null || true
         gsettings set org.gnome.desktop.screensaver picture-uri "file://$WALL" 2>/dev/null || true
     }
     gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
@@ -66,11 +70,19 @@ apply_gnome() {
     gsettings set org.gnome.desktop.interface icon-theme "$ICON_THEME" 2>/dev/null || true
     gsettings set org.gnome.desktop.interface accent-color 'green' 2>/dev/null || true  # GNOME 47+
     _append_fav org.gnome.shell favorite-apps genesi-code.desktop
+    # GNOME has NO system tray by default, so the AI Mode / Containers SNI
+    # applets can't show. Enable the AppIndicator extension (shipped via the
+    # GNOME netinstall group) so they get a StatusNotifier host. Best-effort:
+    # no-op if the extension isn't installed.
+    _append_fav org.gnome.shell enabled-extensions appindicatorsupport@rgcjonas.gmail.com
 }
 
 apply_cinnamon() {
     have gsettings || return 0
-    [ -n "$WALL" ] && gsettings set org.cinnamon.desktop.background picture-uri "file://$WALL" 2>/dev/null || true
+    [ -n "$WALL" ] && {
+        gsettings set org.cinnamon.desktop.background picture-uri "file://$WALL" 2>/dev/null || true
+        gsettings set org.cinnamon.desktop.background picture-options 'zoom' 2>/dev/null || true
+    }
     gsettings set org.cinnamon.desktop.interface gtk-theme "$GTK_THEME" 2>/dev/null || true
     gsettings set org.cinnamon.desktop.interface icon-theme "$ICON_THEME" 2>/dev/null || true
     gsettings set org.cinnamon.theme name "$GTK_THEME" 2>/dev/null || true
@@ -94,14 +106,28 @@ apply_xfce() {
     xfconf-query -c xsettings   -p /Net/ThemeName      -s "$GTK_THEME"  2>/dev/null || true
     xfconf-query -c xsettings   -p /Net/IconThemeName  -s "$ICON_THEME" 2>/dev/null || true
     xfconf-query -c xfwm4       -p /general/theme      -s "Default"     2>/dev/null || true
-    # Wallpaper: set it on every connected monitor/workspace property Xfce exposes
-    if [ -n "$WALL" ] && have xfconf-query; then
-        xfconf-query -c xfce4-desktop -l 2>/dev/null | grep -E '/last-image$' | while read -r prop; do
-            xfconf-query -c xfce4-desktop -p "$prop" -s "$WALL" 2>/dev/null || true
-        done
-        # first-boot fallback: the property tree may not exist yet
-        xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor0/workspace0/last-image \
-            -n -t string -s "$WALL" 2>/dev/null || true
+    # Wallpaper. Xfce stores it per monitor under a path keyed by the REAL
+    # monitor name (e.g. .../monitorVirtual-1/...), so hardcoding "monitor0"
+    # doesn't work. Enumerate every existing */last-image property and set it +
+    # its image-style (5 = zoomed). The backdrop tree is created by xfdesktop at
+    # session start, which can race this autostart, so retry once after a short
+    # wait if nothing is found yet, then reload xfdesktop to pick it up.
+    if [ -n "$WALL" ]; then
+        props="$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep -E '/last-image$')"
+        [ -z "$props" ] && { sleep 3; props="$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep -E '/last-image$')"; }
+        if [ -n "$props" ]; then
+            printf '%s\n' "$props" | while read -r prop; do
+                xfconf-query -c xfce4-desktop -p "$prop" -s "$WALL" 2>/dev/null || true
+                xfconf-query -c xfce4-desktop -p "${prop%/last-image}/image-style" -s 5 2>/dev/null || true
+            done
+        else
+            # No backdrop tree at all: create one for the first real monitor.
+            mon="$(xfconf-query -c xfce4-desktop -l 2>/dev/null | sed -nE 's#(/backdrop/screen0/[^/]+)/.*#\1#p' | head -1)"
+            [ -n "$mon" ] || mon="/backdrop/screen0/monitor0"
+            xfconf-query -c xfce4-desktop -p "$mon/workspace0/last-image" -n -t string -s "$WALL" 2>/dev/null || true
+            xfconf-query -c xfce4-desktop -p "$mon/workspace0/image-style" -n -t int -s 5 2>/dev/null || true
+        fi
+        have xfdesktop && xfdesktop --reload 2>/dev/null &
     fi
     # Rounded corners + blur via picom — but NOT inside a VM, where compositing
     # over software rendering (VirtualBox/VMSVGA) tears or stalls. Real hardware
