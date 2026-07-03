@@ -5,7 +5,15 @@ _gitname=genesi-pkgbuilds
 pkgname=genesi-kde-settings
 pkgdesc='Genesi OS KDE Plasma Settings with Glassmorphism'
 pkgver=4.9
-pkgrel=6
+# pkgrel 7: stop claiming the generic `cachyos-desktop-settings` provide/conflict.
+# Every CachyOS DE-settings package (cachyos-i3wm-settings, cachyos-niri-noctalia,
+# cachyos-wayfire-settings, …) also provides+conflicts cachyos-desktop-settings —
+# it's a "only one desktop-settings" singleton. Because genesi-kde-settings is
+# installed on Plasma, selecting KDE alongside any of those WMs aborted the
+# install with "X and genesi-kde-settings are in conflict". We only need to
+# replace the KDE-specific cachyos-kde-settings, so keep that and drop the
+# generic one; now genesi-kde-settings coexists with a CachyOS WM's settings.
+pkgrel=7
 arch=('any')
 url="https://github.com/Genesi-OS/genesi-pkgbuilds"
 license=(GPL-1.0-only)
@@ -15,8 +23,8 @@ depends=('ttf-fantasque-nerd'
     'capitaine-cursors'
 )
 makedepends=('coreutils' 'git')
-provides=('cachyos-desktop-settings' 'cachyos-kde-settings')
-conflicts=('cachyos-desktop-settings' 'cachyos-kde-settings')
+provides=('cachyos-kde-settings')
+conflicts=('cachyos-kde-settings')
 source=("git+https://github.com/Genesi-OS/genesi-pkgbuilds.git")
 sha512sums=('SKIP')
 

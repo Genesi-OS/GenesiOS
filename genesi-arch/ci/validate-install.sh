@@ -232,11 +232,17 @@ fi
 #   SOFT (critical:false, OR unreachable hidden:true)   -> missing pkg only WARNs
 #                 (Calamares can't install it anyway, e.g. the vestigial
 #                 hidden:true kernel groups with schedulers pruned upstream).
-note "Opt-in groups - dependency dry-run (conflict=fail; missing: HARD=fail, SOFT=warn)"
+#
+# Each DE group is resolved on top of BASE + DEFAULT (the always-on Genesi OS
+# set, incl. the genesi-desktop meta), NOT bare BASE — that's what a real single
+# -DE install actually installs. Testing bare base missed the conflict where
+# cachyos-niri-noctalia (and every cachyos-*-settings) collides with
+# genesi-kde-settings over the cachyos-desktop-settings singleton.
+note "Opt-in groups - dependency dry-run on base+default (conflict=fail; missing: HARD=fail, SOFT=warn)"
 while IFS=$'\t' read -r gname gcrit gpkgs; do
   [ -n "$gname" ] || continue
   # shellcheck disable=SC2086
-  if pacman -Sp --needed --noconfirm "${BASE[@]}" $gpkgs >/dev/null 2>/tmp/_err </dev/null; then
+  if pacman -Sp --needed --noconfirm "${BASE[@]}" "${DEFAULT[@]}" $gpkgs >/dev/null 2>/tmp/_err </dev/null; then
     ok "opt-in: $gname resolves"
   elif grep -qiE 'unable to satisfy|could not satisfy|in conflict|cannot resolve.*dependency' /tmp/_err; then
     bad "opt-in: $gname has a DEPENDENCY CONFLICT (install-breaker)"

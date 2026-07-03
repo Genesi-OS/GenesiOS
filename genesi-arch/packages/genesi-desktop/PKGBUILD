@@ -15,7 +15,13 @@
 # genesi repo has all of them, so the dependencies resolve normally.
 pkgname=genesi-desktop
 pkgver=1.0.0
-pkgrel=3
+# pkgrel 4: drop the KDE-only theming (genesi-kde-settings/klassy/darkly) from
+# the meta. The meta is installed on EVERY desktop, so pulling genesi-kde-settings
+# everywhere made it collide with the CachyOS WM settings on non-KDE installs
+# (i3/niri/wayfire/… all provide+conflict cachyos-desktop-settings). Those three
+# are KWin/Plasma-specific and are now installed by the KDE-Desktop netinstall
+# group instead, so KDE still gets them and other desktops stay clean.
+pkgrel=4
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -25,7 +31,8 @@ license=('GPL-3.0-or-later')
 # here — they belong on the live ISO, not the target.
 depends=(
     'genesi-settings'
-    'genesi-kde-settings'
+    # genesi-kde-settings is KDE-only and now lives in the KDE-Desktop netinstall
+    # group (see pkgrel 4 note) — NOT here, or it lands on every desktop.
     'genesi-ai-mode'
     # The Turbo backend is depended on by its VIRTUAL provide `llama.cpp`, NOT by
     # the concrete `genesi-llama-cpp` name. Both genesi-llama-cpp (Vulkan, the
@@ -40,8 +47,8 @@ depends=(
     'genesi-channel'
     'genesi-welcome'
     'genesi-packageinstaller'
-    'genesi-klassy'
-    'genesi-darkly'
+    # genesi-klassy (KWin decoration) + genesi-darkly (widget style) are
+    # KDE-only too — installed by the KDE-Desktop netinstall group, not here.
     'genesi-grub-theme'
     'genesi-fastfetch'
     # Phase 4.3-4.6 developer tools (this OS targets programmers).
