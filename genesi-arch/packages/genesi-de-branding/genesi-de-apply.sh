@@ -16,7 +16,7 @@
 # fight the user's own tweaks on every single login.
 set -u
 
-VERSION=2
+VERSION=3
 WALL="/usr/share/wallpapers/genesi/wallpaper.png"
 ACCENT="#1D9E75"          # Genesi brand green
 GTK_THEME="adw-gtk3-dark" # from adw-gtk-theme
@@ -26,7 +26,7 @@ MARK="${XDG_CONFIG_HOME:-$HOME/.config}/genesi/de-branding.applied"
 # ── only run on the GTK desktops we brand ──────────────────────────────────
 de="$(printf '%s' "${XDG_CURRENT_DESKTOP:-}" | tr '[:upper:]' '[:lower:]')"
 case "$de" in
-    *xfce*|*gnome*|*cinnamon*|*mate*) : ;;
+    *xfce*|*gnome*|*cinnamon*|*mate*|*lxde*|*budgie*) : ;;
     *) exit 0 ;;   # KDE / Hyprland / anything else: leave it alone
 esac
 
@@ -139,11 +139,64 @@ apply_xfce() {
     fi
 }
 
+apply_budgie() {
+    # Budgie uses GNOME's gsettings backend for the background + interface.
+    have gsettings || return 0
+    [ -n "$WALL" ] && {
+        gsettings set org.gnome.desktop.background picture-uri "file://$WALL" 2>/dev/null || true
+        gsettings set org.gnome.desktop.background picture-uri-dark "file://$WALL" 2>/dev/null || true
+        gsettings set org.gnome.desktop.background picture-options 'zoom' 2>/dev/null || true
+    }
+    gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface gtk-theme "$GTK_THEME" 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface icon-theme "$ICON_THEME" 2>/dev/null || true
+}
+
+apply_lxde() {
+    # LXDE has no gsettings daemon — theme via the plain GTK config files that
+    # lxappearance/lxsession read. Best-effort; guarded by the VERSION marker so
+    # it only seeds once and doesn't stomp later user tweaks.
+    mkdir -p "$HOME/.config/gtk-3.0" 2>/dev/null || true
+    cat > "$HOME/.config/gtk-3.0/settings.ini" 2>/dev/null <<EOF || true
+[Settings]
+gtk-theme-name=$GTK_THEME
+gtk-icon-theme-name=$ICON_THEME
+gtk-application-prefer-dark-theme=1
+EOF
+    cat > "$HOME/.gtkrc-2.0" 2>/dev/null <<EOF || true
+gtk-theme-name="$GTK_THEME"
+gtk-icon-theme-name="$ICON_THEME"
+EOF
+    mkdir -p "$HOME/.config/lxsession/LXDE" 2>/dev/null || true
+    cat > "$HOME/.config/lxsession/LXDE/desktop.conf" 2>/dev/null <<EOF || true
+[GTK]
+sNet/ThemeName=$GTK_THEME
+sNet/IconThemeName=$ICON_THEME
+iGtk/ToolbarStyle=3
+iNet/EnableEventSounds=0
+EOF
+    # Wallpaper: pcmanfm is LXDE's desktop manager. Set it live AND persist it.
+    if [ -n "$WALL" ]; then
+        have pcmanfm && pcmanfm --set-wallpaper="$WALL" --wallpaper-mode=stretch 2>/dev/null || true
+        mkdir -p "$HOME/.config/pcmanfm/LXDE" 2>/dev/null || true
+        cat > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf" 2>/dev/null <<EOF || true
+[*]
+wallpaper_mode=stretch
+wallpaper=$WALL
+desktop_bg=#0d2030
+desktop_fg=#e6f1ee
+show_wm_menu=0
+EOF
+    fi
+}
+
 case "$de" in
+    *budgie*)   apply_budgie ;;   # before *gnome* — XDG_CURRENT_DESKTOP is "Budgie:GNOME"
     *gnome*)    apply_gnome ;;
     *cinnamon*) apply_cinnamon ;;
     *mate*)     apply_mate ;;
     *xfce*)     apply_xfce ;;
+    *lxde*)     apply_lxde ;;
 esac
 
 echo "$VERSION" > "$MARK" 2>/dev/null || true
