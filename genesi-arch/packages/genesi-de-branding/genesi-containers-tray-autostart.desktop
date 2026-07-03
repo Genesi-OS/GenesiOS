@@ -11,4 +11,7 @@ TryExec=/usr/local/bin/genesi-containers-tray
 Icon=genesi-containers
 NoDisplay=true
 X-GNOME-Autostart-enabled=true
-OnlyShowIn=GNOME;XFCE;X-Cinnamon;MATE;
+# Everywhere except KDE (plasmoid) — Hyprland ignores autostart (caelestia
+# exec-once handles it). NotShowIn avoids the Cinnamon X-Cinnamon/Cinnamon
+# token mismatch that kept the tray from starting there.
+NotShowIn=KDE;

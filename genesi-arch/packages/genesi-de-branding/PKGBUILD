@@ -18,7 +18,11 @@ pkgver=1.0.0
 # (per-monitor property path + reload); (c) enable the GNOME AppIndicator
 # extension so GNOME — which has no tray by default — can host the applets.
 # VERSION in genesi-de-apply.sh bumped to 2 so it re-applies on upgrade.
-pkgrel=2
+# pkgrel 3: the tray + branding autostarts used OnlyShowIn=...;X-Cinnamon;...,
+# but Cinnamon reports X-Cinnamon OR Cinnamon depending on version, so nothing
+# ran there. Switch all three to NotShowIn=KDE; (run on every non-KDE session;
+# Hyprland ignores autostart), which fixes Cinnamon and covers future DEs.
+pkgrel=3
 pkgdesc="Genesi OS look (wallpaper, dark theme, accent, launchers) for GNOME/Xfce/Cinnamon/MATE"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"

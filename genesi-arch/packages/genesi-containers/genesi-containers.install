@@ -1,0 +1,12 @@
+post_install() {
+    post_upgrade
+}
+
+post_upgrade() {
+    # Refresh the hicolor icon cache so the tray applet's "genesi-containers"
+    # icon resolves on GTK panels (Xfce/Cinnamon/MATE). Without this the SNI
+    # host reads a stale cache that predates our scalable/apps/genesi-containers.svg
+    # and renders a broken-image placeholder — even though caelestia's Quickshell
+    # host (which resolves the SVG directly) shows it fine.
+    gtk-update-icon-cache -ftq usr/share/icons/hicolor 2>/dev/null || true
+}

@@ -6,5 +6,9 @@ Exec=/usr/bin/genesi-de-apply
 Terminal=false
 NoDisplay=true
 X-GNOME-Autostart-enabled=true
-# Only the GTK desktops Genesi paints — KDE/Hyprland have their own branding.
-OnlyShowIn=GNOME;XFCE;X-Cinnamon;MATE;
+# Run everywhere EXCEPT KDE (which has its own branding). NotShowIn is more
+# robust than enumerating OnlyShowIn tokens (Cinnamon reports X-Cinnamon OR
+# Cinnamon depending on version, which broke the match). Hyprland ignores
+# /etc/xdg/autostart, so it won't double-run there. The apply script itself
+# still only acts on GNOME/Xfce/Cinnamon/MATE and no-ops elsewhere.
+NotShowIn=KDE;

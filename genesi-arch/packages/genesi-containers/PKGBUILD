@@ -48,7 +48,13 @@ pkgver=1.0.0
 # docker isn't installed, so the bar drew a broken image. Now ships a Docker-style
 # whale SVG as genesi-containers.svg in hicolor (the universal fallback) and the
 # tray + .desktop reference "genesi-containers", so it resolves in any theme.
-pkgrel=7
+# pkgrel 8: the tray icon still drew a broken placeholder on the GTK panels
+# (Xfce/Cinnamon) even though caelestia's Quickshell host showed it — the
+# package had no .install, so the hicolor icon cache was never refreshed after
+# adding genesi-containers.svg and the SNI host read a stale cache. Add an
+# install scriptlet that runs gtk-update-icon-cache (matches genesi-ai-mode,
+# whose tray icon already resolved because it ships one).
+pkgrel=8
 pkgdesc='Plasma 6 widget + tray applet to monitor and control Docker/Podman containers'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -63,6 +69,7 @@ optdepends=(
     'podman: container engine (rootless, no daemon)'
     'konsole: open container logs and shells in a terminal'
 )
+install=genesi-containers.install
 source=()
 sha256sums=()
 
