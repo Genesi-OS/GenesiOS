@@ -114,7 +114,17 @@ pkgver=1.3.4
 # `gparted`. Pairs with the archiso `removeun` fix (gparted was also being
 # stripped from the installed system post-Calamares). Bumps the submodule pointer
 # (the .desktop lives there).
-pkgrel=40
+# pkgrel 41: RESTORE the window glass. pkgrel-37 (submodule 869acf0) stripped ALL
+# alpha from Genesi.colors + skel kdeglobals so windows were painted fully opaque,
+# sourcing glass only from the KWin translucency effect — for a since-abandoned
+# "opaque in AI Mode" feature (AI Mode now KEEPS the glass, kwin-helper is a no-op).
+# On Plasma 6 the effect does NOT dim a fully-active window, so windows came up
+# 100% opaque (no glass, square-looking) — user-reported. Revert 869acf0 (alpha back:
+# kdeglobals [WM]/Window/View 230, Tooltip/Button 235; Genesi.colors [WM]/Window/View
+# 200, Tooltip/Complementary 180) so Darkly bakes the translucency again. The .install
+# fix_titlebar_uniformity, which STRIPPED existing users' alpha on upgrade, now WRITES
+# it back instead. Bumps the submodule pointer (the seeded configs live there).
+pkgrel=41
 epoch=1
 groups=(genesi)
 arch=('any')

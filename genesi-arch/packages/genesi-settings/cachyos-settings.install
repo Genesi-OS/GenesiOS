@@ -118,22 +118,28 @@ fix_titlebar_uniformity() {
         u=$(stat -c %U "$home" 2>/dev/null) || continue
         id "$u" >/dev/null 2>&1 || continue
 
-        # Paint windows fully OPAQUE: strip the alpha from every window/view/
-        # button/tooltip surface and the titlebar ([WM]). Darkly bakes a window's
-        # translucency at creation from these alphas, so leaving any alpha here
-        # means AI Mode can never make windows fully solid. The glass is sourced
-        # from the KWin translucency effect instead (below).
-        for grp in "Colors:Window" "Colors:View" "Colors:Tooltip" "Colors:Complementary"; do
+        # Restore the window GLASS: put the alpha back on every window/view/
+        # tooltip/complementary surface and the titlebar ([WM]). Darkly bakes a
+        # window's translucency at creation from these alphas ([WM] activeBackground
+        # + [Colors:Window] BackgroundNormal are the triggers), so this alpha is
+        # exactly what makes windows see-through. The old code STRIPPED it for a
+        # since-abandoned "opaque in AI Mode" feature; AI Mode now KEEPS the glass
+        # (kwin-helper is a no-op), so we heal existing users back to translucent.
+        for grp in "Colors:Window" "Colors:View" "Colors:Complementary"; do
             runuser -u "$u" -- kwriteconfig6 --file kdeglobals --group "$grp" \
-                --key BackgroundNormal "13,32,48" 2>/dev/null || true
+                --key BackgroundNormal "13,32,48,230" 2>/dev/null || true
             runuser -u "$u" -- kwriteconfig6 --file kdeglobals --group "$grp" \
-                --key BackgroundAlternate "18,45,64" 2>/dev/null || true
+                --key BackgroundAlternate "18,45,64,230" 2>/dev/null || true
         done
+        runuser -u "$u" -- kwriteconfig6 --file kdeglobals --group "Colors:Tooltip" \
+            --key BackgroundNormal "13,32,48,235" 2>/dev/null || true
+        runuser -u "$u" -- kwriteconfig6 --file kdeglobals --group "Colors:Tooltip" \
+            --key BackgroundAlternate "18,45,64,235" 2>/dev/null || true
         runuser -u "$u" -- kwriteconfig6 --file kdeglobals --group "Colors:Button" \
-            --key BackgroundAlternate "18,45,64" 2>/dev/null || true
+            --key BackgroundAlternate "18,45,64,235" 2>/dev/null || true
         for key in activeBackground activeBlend inactiveBackground inactiveBlend; do
             runuser -u "$u" -- kwriteconfig6 --file kdeglobals --group WM \
-                --key "$key" "13,32,48" 2>/dev/null || true
+                --key "$key" "13,32,48,230" 2>/dev/null || true
         done
         # An older AI-Mode helper could have left the user on the now-removed
         # "Genesi-Solid" scheme; point them back at "Genesi" so the name resolves.
@@ -154,19 +160,16 @@ fix_titlebar_uniformity() {
                 --key WindowOutlineCustomColorInactive "13,32,48" 2>/dev/null || true
         done
 
-        # kwinrc: the translucency effect is now the SINGLE glass source. Keep it
-        # on and set a tasteful window-wide opacity (Decoration == ActiveOpacity
-        # so the titlebar matches the body). The AI Mode helper toggles it live.
+        # kwinrc: keep the translucency + blur effects enabled. They frost the
+        # scheme-alpha glass and dim inactive/dialogs/menus; the active-window
+        # transparency itself comes from the restored scheme alpha above (Darkly),
+        # NOT from the effect (the effect doesn't dim a fully-active window).
         runuser -u "$u" -- kwriteconfig6 --file kwinrc --group Plugins \
             --key translucencyEnabled true 2>/dev/null || true
         runuser -u "$u" -- kwriteconfig6 --file kwinrc --group Plugins \
             --key kwin4_effect_translucencyEnabled true 2>/dev/null || true
-        runuser -u "$u" -- kwriteconfig6 --file kwinrc --group Effect-Translucency \
-            --key ActiveOpacity 82 2>/dev/null || true
-        runuser -u "$u" -- kwriteconfig6 --file kwinrc --group Effect-Translucency \
-            --key InactiveOpacity 78 2>/dev/null || true
-        runuser -u "$u" -- kwriteconfig6 --file kwinrc --group Effect-Translucency \
-            --key Decoration 82 2>/dev/null || true
+        runuser -u "$u" -- kwriteconfig6 --file kwinrc --group Plugins \
+            --key blurEnabled true 2>/dev/null || true
     done
 }
 
