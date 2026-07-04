@@ -293,6 +293,10 @@ jobs:
             # applies the Genesi wallpaper, dark theme, accent and launchers.
             # No-ops on KDE/Hyprland (they have their own branding).
             "genesi-de-branding"
+            # Genesi rebrand of cachyos-openbox-settings (tint2 + jgmenu + picom
+            # + nitrogen). Openbox ships no config of its own, so without this the
+            # session is a bare black screen. Just downloads a tarball + rebrands.
+            "genesi-openbox-settings"
             # Genesi fork of the CachyOS package installer (Qt6 + Rust). Verified
             # to build in ~112s via test-packageinstaller.yml — well under the
             # 25-min per-package budget, so it won't stall the publish pipeline.
