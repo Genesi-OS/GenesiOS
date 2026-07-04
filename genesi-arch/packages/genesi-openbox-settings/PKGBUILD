@@ -8,7 +8,9 @@
 _cachyver=1.0.4
 pkgname=genesi-openbox-settings
 pkgver=1.0.4
-pkgrel=1
+# pkgrel 2: nitrogen was dropped from the repos (target not found), so set the
+# wallpaper via feh in the openbox autostart instead.
+pkgrel=2
 pkgdesc='Genesi OS Openbox settings (tint2, jgmenu, picom, dark theme)'
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"
@@ -43,9 +45,18 @@ package() {
         sed -i 's/CachyOS/Genesi OS/g' "$f" 2>/dev/null || true
     done
 
-    # nitrogen restores the desktop wallpaper from bg-saved.cfg at openbox
-    # autostart — repoint it at the Genesi wallpaper (shipped by genesi-settings).
+    # Wallpaper: nitrogen was dropped from the Arch/CachyOS repos, so the config's
+    # `nitrogen --restore` can't run. Set it with feh (in the Openbox group)
+    # instead — neutralise the nitrogen line in the openbox autostart and make
+    # sure a feh line points at the Genesi wallpaper.
+    local _wall="/usr/share/wallpapers/genesi/wallpaper.png"
+    find "$pkgdir" -path '*openbox/autostart' 2>/dev/null | while read -r f; do
+        sed -i "s#nitrogen --restore.*#feh --bg-scale $_wall \&#" "$f" 2>/dev/null || true
+        grep -q "wallpapers/genesi/wallpaper.png" "$f" 2>/dev/null \
+            || printf '\nfeh --bg-scale %s &\n' "$_wall" >> "$f" 2>/dev/null || true
+    done
+    # If nitrogen ever returns, keep its saved config pointing at ours too.
     find "$pkgdir" -name 'bg-saved.cfg' 2>/dev/null | while read -r f; do
-        sed -i 's#^file=.*#file=/usr/share/wallpapers/genesi/wallpaper.png#' "$f" 2>/dev/null || true
+        sed -i "s#^file=.*#file=$_wall#" "$f" 2>/dev/null || true
     done
 }
