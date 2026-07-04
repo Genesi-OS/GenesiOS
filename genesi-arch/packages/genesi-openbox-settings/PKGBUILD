@@ -15,25 +15,14 @@ url="https://github.com/Genesi-OS/GenesiOS"
 license=(GPL-1.0-only)
 makedepends=('coreutils')
 # Mirrors cachyos-openbox-settings' deps — the config references all of these
-# (tint2 panel, nitrogen wallpaper, rofi/jgmenu menus, dunst, the urxvt terminal,
-# the nord GTK theme, …). genesi-settings is NOT hard-depended (it's a genesi-*
-# pkg not in any repo at build time); its wallpaper is always present via the
-# base group and the config points at the path.
-depends=('cachyos-zsh-config'
-    'cachyos-alacritty-config'
-    'picom-ibhagwan-git'
-    'ttf-fantasque-nerd'
-    'noto-fonts' 'noto-fonts-emoji'
-    'ttf-fira-sans'
-    'char-white'
-    'dunst' 'nitrogen' 'openbox' 'rofi' 'rxvt-unicode-truecolor-wide-glyphs' 'tint2' 'obmenu-generator' 'perl-gtk3'
-    'mpd' 'mpc' 'ncmpcpp'
-    'alsa-utils' 'brightnessctl' 'imagemagick' 'scrot' 'w3m' 'wireless_tools' 'xclip' 'xsettingsd' 'xss-lock'
-    'thunar' 'thunar-archive-plugin' 'thunar-volman' 'ffmpegthumbnailer' 'tumbler'
-    'gsimplecal' 'mpv' 'parcellite' 'pavucontrol' 'viewnior' 'xfce4-power-manager'
-    'capitaine-cursors'
-    'polkit-gnome'
-    'cachyos-nord-gtk-theme-git')
+# NO runtime depends on purpose: this package only COPIES config files, so it
+# needs nothing to build — and declaring the tools broke CI. The "install build
+# deps" step pre-installs every depends[], and picom-ibhagwan-git (AUR) +
+# nitrogen weren't in the build container, failing the whole publish. The tools
+# the config references (openbox, tint2, nitrogen, picom, rofi, dunst, the nord
+# GTK theme, a terminal, …) are installed by the Openbox NETINSTALL group, which
+# resolves against the full target repos.
+depends=()
 install=$pkgname.install
 # Replace the CachyOS package. Deliberately do NOT claim the generic
 # cachyos-desktop-settings singleton (see genesi-kde-settings pkgrel 7) — only
