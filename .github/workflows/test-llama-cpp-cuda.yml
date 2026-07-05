@@ -76,10 +76,12 @@ jobs:
 
           cd "$GITHUB_WORKSPACE/genesi-arch/packages/genesi-llama-cpp-cuda"
           start=$(date +%s)
-          # 50-min ceiling: CUDA compiles one kernel set per pinned arch, so it's
-          # heavier than the Vulkan build. If it overruns, trim GENESI_CUDA_ARCHS
-          # in the PKGBUILD (drop older arches) before wiring it into publish.
-          if timeout 3000 runuser -u builder -- \
+          # 2h ceiling: CUDA compiles one kernel set per pinned arch and ggml-cuda
+          # has hundreds of template instances, so it's far heavier than the
+          # Vulkan build (the first attempt reached 44% in 50 min at -j2). The
+          # PKGBUILD now parallelizes by CPU and trims arches; this generous
+          # ceiling just lets a full run FINISH so we learn the real wall time.
+          if timeout 7200 runuser -u builder -- \
               env PATH="/opt/cuda/bin:$PATH" makepkg -f --noconfirm --noprogressbar; then
             rc=0
           else
