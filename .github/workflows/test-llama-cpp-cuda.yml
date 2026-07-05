@@ -105,3 +105,15 @@ jobs:
             echo "::error::package is missing usr/bin/llama-server"
             exit 1
           fi
+
+      - name: Upload the built package (for on-hardware testing)
+        # Retain the .pkg.tar.zst as a downloadable artifact so it can be tested
+        # on a real NVIDIA box with `sudo pacman -U <file>` — no repo needed. This
+        # is the fast path to validate CUDA speedups before the package is wired
+        # into a release-hosted repo ([genesi-apps]) for the Monitor's 1-click.
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesi-llama-cpp-cuda-pkg
+          path: genesi-arch/packages/genesi-llama-cpp-cuda/*.pkg.tar.zst
+          retention-days: 14
+          if-no-files-found: error
