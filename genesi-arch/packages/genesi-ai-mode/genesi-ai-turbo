@@ -48,13 +48,29 @@ Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
                                  self-draft (Q2) of the model for speculation
                                  (opt-in; modest ~1.1-1.3x and only if both fit
                                  VRAM, so usually a no-op on an 8 GB card)
-  GENESI_TURBO_SPILL_SPEC=1      CUDA opt-in: keep the GPU draft EVEN when the
-                                 target spills VRAM. Speculative verification reads
-                                 the CPU-resident layers over PCIe once per batch,
-                                 so K accepted tokens cost ~1 weight-stream — the
-                                 one decode win plain ollama can't match on a model
-                                 too big for the card. ~0.4 GB VRAM; bench it (can
-                                 OOM a very full card; lower GENESI_TURBO_UBATCH)
+  GENESI_TURBO_FIT=1             Genesi Fit: if the model would SPILL VRAM,
+                                 requantize it DOWN to the best quant that fits
+                                 100% on the GPU and serve that. A spilling model
+                                 crawls at CPU/PCIe bandwidth; a slightly-lower
+                                 quant that FITS runs at full GPU speed (spec then
+                                 stacks on top) — usually a far bigger win than the
+                                 small quality cost. One-off llama-quantize, cached
+                                 in ~/.cache/genesi-turbo/fitted. Opt-in (quality
+                                 tradeoff). No-op if it already fits / nothing fits.
+  GENESI_TURBO_SPILL_SPEC=1      keep the GPU draft EVEN when the target spills
+                                 VRAM. Speculative verification reads the CPU-
+                                 resident layers over PCIe once per batch, so K
+                                 accepted tokens cost ~1 weight-stream — a decode
+                                 win plain ollama can't match on a too-big model
+                                 (measured +29% on a spilling 14B). DEFAULT ON for
+                                 CUDA (disable: GENESI_TURBO_NO_SPILL_SPEC); opt-in
+                                 on Vulkan/NVK where it regressed. ~0.4 GB VRAM.
+  GENESI_TURBO_NO_SPILL_SPEC=1   disable spill-spec on CUDA (see above)
+  GENESI_TURBO_DRAFT_MAX=8       max tokens the draft proposes (speculative only)
+  GENESI_TURBO_DRAFT_MIN=1       min draft length — floor for dynamic draft length
+  GENESI_TURBO_DRAFT_P=0.6       stop drafting below this acceptance probability
+  GENESI_TURBO_SLOT_PATH=<dir>   where to persist prompt/KV slots to disk
+  GENESI_TURBO_NO_SLOT_CACHE=1   disable persistent prompt/KV cache to disk
   GENESI_TURBO_DRAFT_MAX=8       max tokens the draft proposes (speculative only)
   GENESI_TURBO_DRAFT_MIN=1       min draft length — floor for dynamic draft length
   GENESI_TURBO_DRAFT_P=0.6       stop drafting below this acceptance probability
@@ -337,6 +353,86 @@ def self_draft_path(main_gguf):
     print("   [!] self-draft quantize did not produce a model — skipping.",
           file=sys.stderr)
     return None
+
+
+# GGUF general.file_type enum -> effective bits-per-weight, for common quants.
+# Used by Genesi Fit to size a requantized model without loading it. Unknown
+# types fall back to Q4_K_M's ~4.8 bpw (the ollama default).
+_FT_BPW = {0: 32.0, 1: 16.0, 2: 4.5, 3: 4.5, 7: 8.5, 8: 5.5, 9: 6.0,
+           10: 2.6, 11: 3.4, 12: 3.9, 13: 4.3, 14: 4.5, 15: 4.8, 16: 5.5,
+           17: 5.6, 18: 6.6, 19: 3.4, 20: 4.6}
+# Candidate fit targets, best quality first. (llama-quantize name, ~bpw). We
+# pick the LARGEST (best) one whose output fits VRAM.
+_FIT_QUANTS = [("IQ4_XS", 4.25), ("Q3_K_M", 3.9), ("IQ3_XXS", 3.06),
+               ("Q2_K", 2.6)]
+
+
+def fit_path(main_gguf, budget_gb):
+    """Genesi Fit — requantize a SPILLING model DOWN to the best quant that fits
+    100% in VRAM, cached. A spilling model decodes at slow CPU-RAM/PCIe bandwidth;
+    a slightly-lower quant that FITS decodes at full GPU bandwidth, which is
+    usually a FAR bigger win than the small quality cost (and spec then stacks on
+    top). Opt-in (GENESI_TURBO_FIT=1) because it trades a little quality; returns
+    the fitted GGUF path, or None if it already fits / nothing fits / no
+    llama-quantize. Built once with llama-quantize, cached under
+    ~/.cache/genesi-turbo/fitted."""
+    if not _env_flag("GENESI_TURBO_FIT"):
+        return None
+    qbin = llama_bin("llama-quantize")
+    if not qbin or budget_gb <= 0:
+        return None
+    try:
+        src_gb = os.path.getsize(main_gguf) / (1024**3)
+    except OSError:
+        return None
+    # Already fits with a little KV headroom? Fit is unnecessary.
+    if src_gb <= budget_gb - 0.3:
+        return None
+    ft = gguf_meta(main_gguf, (".file_type",)).get(".file_type")
+    src_bpw = _FT_BPW.get(int(ft) if ft is not None else -1, 4.8)
+    # Largest target quant whose projected output fits VRAM (minus KV headroom).
+    target = None
+    for name, bpw in _FIT_QUANTS:
+        if bpw >= src_bpw:                 # never requantize up or sideways
+            continue
+        out_gb = src_gb * (bpw / src_bpw)
+        if out_gb <= budget_gb - 0.3:
+            target = (name, out_gb)
+            break
+    if not target:
+        return None                        # even Q2_K wouldn't fit — leave it spilled
+    name, out_gb = target
+    cache = os.path.expanduser("~/.cache/genesi-turbo/fitted")
+    try:
+        os.makedirs(cache, exist_ok=True)
+    except OSError:
+        return None
+    out = os.path.join(cache, os.path.basename(main_gguf) + f".{name}.gguf")
+    if os.path.isfile(out) and os.path.getsize(out) > 0:
+        return out
+    print(f":: Genesi Fit: requantizing to {name} (~{out_gb:.1f} GB, fits your "
+          f"VRAM) — one-off, a couple minutes → {out}", flush=True)
+    try:
+        r = subprocess.run([qbin, main_gguf, out, name], timeout=3600)
+    except Exception as e:
+        print(f"   [!] Genesi Fit quantize failed: {e}", file=sys.stderr)
+        return None
+    if r.returncode == 0 and os.path.isfile(out):
+        return out
+    try:
+        os.remove(out)
+    except OSError:
+        pass
+    print("   [!] Genesi Fit did not produce a model — serving the original.",
+          file=sys.stderr)
+    return None
+
+
+def _vram_budget_gb():
+    """VRAM available for weights (GB): largest GPU minus overhead/KV headroom.
+    Mirrors server_cmd's budget so Genesi Fit targets the same fit test."""
+    vram_gb = _detect_vram_mb() / 1024.0
+    return max(vram_gb - 1.2, 0.0) if vram_gb >= 1.0 else 0.0
 
 
 def llama_bin(name):
@@ -778,26 +874,34 @@ def server_cmd(main_gguf, draft_gguf):
                       "matter the backend. For full-GPU speed pick a model that "
                       "fits — see `genesi-ai-turbo recommend` — or pull a smaller "
                       "quant (e.g. a q3_K_M / IQ4_XS tag) of this model.", flush=True)
+                if not _env_flag("GENESI_TURBO_FIT"):
+                    print("       → or set GENESI_TURBO_FIT=1 to AUTO-FIT this model to "
+                          "your VRAM (Genesi Fit requantizes it to the best quant that "
+                          "fits → full-GPU speed, small quality tradeoff).", flush=True)
             free_ram_gb = (ram_mb / 1024.0) * 0.6
             if ram_mb > 0 and main_gb > free_ram_gb:
                 print("   [!] DANGER: System RAM is too low to safely offload. Expect severe lag or OOM.", flush=True)
-            if (draft_gguf and not is_moe and backend_is_cuda()
-                    and _env_flag("GENESI_TURBO_SPILL_SPEC")):
-                # OPT-IN, CUDA only — Turbo's biggest remaining lever over plain
-                # ollama for a model too big for the card. Normally we drop the
-                # draft when the target spills (no VRAM for both). But the spilled
-                # layers live in CPU RAM and stream over the SLOW PCIe bus once per
-                # forward pass; speculative VERIFICATION checks K draft tokens in a
-                # single pass, so the expensive PCIe weight-stream is amortized —
-                # K accepted tokens cost ~1 stream instead of K. Autoregressive
-                # ollama can't do this. The draft is tiny (~0.4 GB, GPU-resident
-                # via -ngld below), costing one fewer target layer on the GPU — a
-                # trivial price for up to ~2x decode on a spilling model. Kept on
-                # CUDA only (it regressed on Vulkan/NVK). Verify with `bench`.
+            # spill-spec: keep the tiny GPU draft EVEN when the target spills VRAM.
+            # DEFAULT ON for CUDA now (measured +29% on a spilling qwen2.5:14b on an
+            # RTX 3050: 9.0 -> 11.7 tok/s, 37/54 draft tokens accepted) — disable
+            # with GENESI_TURBO_NO_SPILL_SPEC. Still opt-in on Vulkan/NVK
+            # (GENESI_TURBO_SPILL_SPEC=1) where it regressed.
+            spill_spec = (_env_flag("GENESI_TURBO_SPILL_SPEC")
+                          or (backend_is_cuda()
+                              and not _env_flag("GENESI_TURBO_NO_SPILL_SPEC")))
+            if draft_gguf and not is_moe and spill_spec:
+                # Turbo's biggest lever over plain ollama for a model too big for
+                # the card. The spilled layers live in CPU RAM and stream over the
+                # SLOW PCIe bus once per forward pass; speculative VERIFICATION
+                # checks K draft tokens in a single pass, so the expensive PCIe
+                # weight-stream is amortized — K accepted tokens cost ~1 stream
+                # instead of K. Autoregressive ollama can't do this. The draft is
+                # tiny (~0.4 GB, GPU-resident via -ngld below), costing one fewer
+                # target layer on the GPU — a trivial price for the measured win.
                 print("   [spill-spec] target spills VRAM but keeping the GPU draft: "
-                      "speculative verification amortizes the slow PCIe weight reads "
-                      "(CUDA opt-in). Bench it; unset GENESI_TURBO_SPILL_SPEC if it "
-                      "regresses or OOMs.", flush=True)
+                      "speculative verification amortizes the slow PCIe weight reads. "
+                      "Disable with GENESI_TURBO_NO_SPILL_SPEC if it regresses/OOMs.",
+                      flush=True)
             elif draft_gguf:
                 print("   [!] Draft model dropped: the target model is already spilling VRAM.", flush=True)
                 draft_gguf = None            # default: don't speculate when spilling
@@ -874,15 +978,17 @@ def server_cmd(main_gguf, draft_gguf):
     # would only add KV pressure with no shared-weight win). Pin/disable with
     # GENESI_TURBO_PARALLEL.
     n_parallel = _env_int("GENESI_TURBO_PARALLEL", int(tune.get("parallel") or 0))
-    if n_parallel <= 0:                          # 0 / unset -> auto by headroom
+    if n_parallel <= 0:                          # 0 / unset -> auto, CONSERVATIVE
         n_parallel = 1
+        # Extra slots only help CONCURRENT clients; for a single chat they add KV
+        # (total_ctx = ctx*N) and cont-batching scheduling, which measurably slowed
+        # single-stream decode. So auto adds AT MOST one extra slot, and only with
+        # generous headroom left AFTER that slot's KV — single-stream latency must
+        # never regress for throughput nobody's using. Heavy multi-agent workloads
+        # (Genesi Code) should pin GENESI_TURBO_PARALLEL=4 explicitly.
         if ngl_value == "999" and fits_main and not is_moe:
-            head = budget_gb - main_gb           # VRAM left for the extra slots
-            if head > 4.0:
-                n_parallel = 4
-            elif head > 2.5:
-                n_parallel = 3
-            elif head > 1.2:
+            kv_per_slot = 0.5                     # GB, generous q8 KV @ 4k upper bound
+            if (budget_gb - main_gb) > (2.0 + kv_per_slot):
                 n_parallel = 2
     n_parallel = max(1, min(n_parallel, 8))
     total_ctx = ctx * n_parallel                 # per-slot ctx preserved
@@ -1296,6 +1402,16 @@ def cmd_serve(main, draft, spec=False):
     if not server_cmd(main_g, None):
         sys.exit("llama-server not found — install the Genesi Vulkan build:\n"
                  "  sudo pacman -S genesi-llama-cpp   (ships llama.cpp + Vulkan)")
+    # Genesi Fit (opt-in, GENESI_TURBO_FIT=1): if this model would SPILL VRAM,
+    # requantize it down to the best quant that fits 100% on the GPU and serve
+    # THAT — full-GPU speed beats a spilling higher quant, and spec still stacks
+    # on top (same tokenizer/family, so pick_draft below still matches). No-op
+    # when the model already fits or nothing smaller fits.
+    fitted = fit_path(main_g, _vram_budget_gb())
+    if fitted:
+        print(f":: Genesi Fit: serving a VRAM-fitted quant → {os.path.basename(fitted)} "
+              f"(instead of the spilling original)")
+        main_g = fitted
     # Default Turbo = plain full GPU offload, the reliable proven win (GPU >> CPU
     # is where the big speedup comes from). Speculative decoding is a MAYBE-win:
     # it helps on a mature driver (CUDA) but can REGRESS on Vulkan/NVK, where the
