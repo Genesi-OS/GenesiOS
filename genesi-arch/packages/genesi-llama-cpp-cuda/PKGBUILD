@@ -37,9 +37,14 @@ pkgver() {
 build() {
     # CUDA compiles one kernel set PER target GPU architecture, so an unbounded
     # arch list balloons both build time and package size. Pin the consumer
-    # GeForce arches Genesi users actually run: 61=GTX10, 75=RTX20/GTX16,
-    # 86=RTX30, 89=RTX40, 120=RTX50 (Blackwell). Override with GENESI_CUDA_ARCHS.
-    local archs="${GENESI_CUDA_ARCHS:-61;75;86;89;120}"
+    # GeForce arches Genesi users actually run: 75=RTX20/GTX16, 86=RTX30,
+    # 89=RTX40, 120=RTX50 (Blackwell). Override with GENESI_CUDA_ARCHS.
+    #
+    # NOTE: no Pascal (compute_6x / GTX 10) — CUDA 13 (what Arch ships now)
+    # DROPPED support for it, so nvcc aborts the whole compiler check on the
+    # first unsupported arch ("nvcc fatal: Unsupported gpu architecture
+    # 'compute_61'"). GTX 10 cards keep the universal Vulkan build instead.
+    local archs="${GENESI_CUDA_ARCHS:-75;86;89;120}"
 
     # Same RAM-aware parallelism cap as the Vulkan build: the compile forks a
     # heavy job per TU and can exhaust the CI runner's RAM ("Cannot allocate
