@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""
+Genesi AI Autotuner — the machine calibrates its own inference overnight.
+
+Turbo's server_cmd ships GOOD heuristics (ubatch 1024 on GPU, q8_0 KV, flash-attn,
+P-core threads…), but the truly-fastest knobs are HARDWARE-specific: the best
+n_ubatch, whether f16 or q8_0 KV wins, whether flash-attn helps, and the ideal
+thread count differ per GPU/CPU/model. No static default can know them. So this
+tool sweeps them with llama.cpp's own `llama-bench` on the REAL model and REAL
+hardware, picks the fastest decode config, and writes it to a per-(model,machine)
+profile that genesi-ai-turbo reads as its defaults next launch.
+
+  genesi-ai-tune               tune the most-recently-used model (or the advisor's)
+  genesi-ai-tune <model>       tune a specific ollama tag
+  genesi-ai-tune --gguf PATH   tune a specific GGUF file directly
+  genesi-ai-tune --force       skip the idle/AC gate (run it now)
+  genesi-ai-tune --show        print the current profile and exit
+
+Designed to run from genesi-ai-tune.timer (nightly, low priority). It refuses to
+run unless the machine is idle and on AC (a bench pins the GPU for a minute), and
+it NEVER touches a running Turbo server — it launches its own short-lived
+llama-bench processes and exits. Fully reversible: it only writes a JSON profile;
+delete it (or set GENESI_TURBO_NO_TUNE=1) to fall back to the heuristics.
+"""
+import os
+import re
+import sys
+import json
+import time
+import shutil
+import subprocess
+
+PROFILE_SYS = "/var/lib/genesi-ai-mode/tune.json"
+PROFILE_USER = os.path.expanduser("~/.cache/genesi-turbo/tune.json")
+WARM_MRU = "/var/lib/genesi-ai-mode/warm.json"
+STATE = "/run/genesi-ai-mode/state.json"
+
+
+def _which(name):
+    for c in (name, "/usr/bin/" + name, "/usr/local/bin/" + name):
+        b = shutil.which(c) or (c if os.path.exists(c) else None)
+        if b:
+            return b
+    return None
+
+
+def _profile_path():
+    """Where to write: the shared system profile if writable (the timer runs as
+    root and Turbo, however launched, reads it), else the per-user cache."""
+    d = os.path.dirname(PROFILE_SYS)
+    if os.path.isdir(d) and os.access(d, os.W_OK):
+        return PROFILE_SYS
+    try:
+        os.makedirs(os.path.dirname(PROFILE_USER), exist_ok=True)
+    except OSError:
+        pass
+    return PROFILE_USER
+
+
+def _load(path):
+    try:
+        return json.load(open(path))
+    except Exception:
+        return {}
+
+
+def _detect_vram_mb():
+    """Total VRAM (MiB) of the largest GPU, or 0 — mirror genesi-ai-turbo's logic
+    (nvidia-smi first, then the Vulkan backend) so the hardware signature matches
+    exactly what server_cmd computes."""
+    smi = _which("nvidia-smi")
+    if smi:
+        try:
+            out = subprocess.run(
+                [smi, "--query-gpu=memory.total",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5).stdout
+            best = max((int(v) for v in out.split() if v.strip().isdigit()),
+                       default=0)
+            if best:
+                return best
+        except Exception:
+            pass
+    binp = _which("llama-server")
+    if binp:
+        try:
+            r = subprocess.run([binp, "--list-devices"],
+                               capture_output=True, text=True, timeout=20)
+            text = (r.stdout or "") + (r.stderr or "")
+            return max((int(m.group(1))
+                        for m in re.finditer(r"\((\d+)\s*MiB", text)), default=0)
+        except Exception:
+            pass
+    return 0
+
+
+def _hw_sig():
+    """The hardware signature server_cmd keys tuned profiles by. Ask
+    genesi-ai-turbo for it (single source of truth) so the key we WRITE is
+    exactly the key it will LOOK UP — even if our own VRAM probe would land in a
+    different GB bucket. Fall back to computing it locally (identical formula)
+    only if the CLI isn't callable."""
+    turbo = _which("genesi-ai-turbo")
+    if turbo:
+        try:
+            r = subprocess.run([turbo, "hw-sig"], capture_output=True,
+                               text=True, timeout=25)
+            s = (r.stdout or "").strip()
+            if s:
+                return s
+        except Exception:
+            pass
+    return f"v{_detect_vram_mb() // 1024}c{os.cpu_count() or 0}"
+
+
+def _has_gpu():
+    return _detect_vram_mb() > 0 or _which("nvidia-smi") is not None
+
+
+# ── run gate ────────────────────────────────────────────────────────────────
+def _on_ac():
+    """True if on AC power (or no battery at all — a desktop). Best-effort."""
+    base = "/sys/class/power_supply"
+    try:
+        entries = os.listdir(base)
+    except OSError:
+        return True                       # can't tell -> don't block
+    has_batt = False
+    for e in entries:
+        try:
+            t = open(f"{base}/{e}/type").read().strip()
+        except OSError:
+            continue
+        if t == "Mains":
+            try:
+                if open(f"{base}/{e}/online").read().strip() == "1":
+                    return True
+            except OSError:
+                pass
+        if t == "Battery":
+            has_batt = True
+    return not has_batt                   # no mains-online found: OK iff desktop
+
+
+def _turbo_busy():
+    """Is a Turbo server actively generating right now? We must not steal the GPU
+    from a live session. Checks the /slots endpoint for a processing slot."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11435/slots", timeout=2) as r:
+            slots = json.loads(r.read())
+        return any((s.get("is_processing") or s.get("state") in (1, 2))
+                   for s in (slots if isinstance(slots, list) else []))
+    except Exception:
+        return False                      # no server / no endpoint -> not busy
+
+
+def _system_idle():
+    """Loose idle check: no Turbo generation in flight. (The timer already only
+    fires at a quiet hour; we just guard against an active session.)"""
+    return not _turbo_busy()
+
+
+# ── model resolution ──────────────────────────────────────────────────────────
+def _resolve_gguf(args):
+    # Explicit --gguf wins.
+    if "--gguf" in args:
+        i = args.index("--gguf")
+        if i + 1 < len(args):
+            p = args[i + 1]
+            return p if os.path.isfile(p) else None
+    # A positional ollama tag.
+    tags = [a for a in args if not a.startswith("-")]
+    if tags:
+        return _tag_to_gguf(tags[0])
+    # The most-recently-used model file the daemon recorded. warm.json is
+    # {"models": [{"files": {path: size}, "last_used": ts}, …]}, newest first —
+    # tune the biggest weight file of the newest entry (that's the model itself,
+    # not a projector/adapter shard).
+    mru = _load(WARM_MRU)
+    models = mru.get("models") if isinstance(mru, dict) else None
+    if isinstance(models, list):
+        for entry in models:
+            files = (entry or {}).get("files") if isinstance(entry, dict) else None
+            if not isinstance(files, dict):
+                continue
+            cands = [p for p in files if isinstance(p, str) and os.path.isfile(p)]
+            if cands:
+                return max(cands, key=lambda p: files.get(p) or 0)
+    # Fall back to the advisor's biggest-fits-VRAM pick.
+    turbo = _which("genesi-ai-turbo")
+    if turbo:
+        try:
+            r = subprocess.run([turbo, "recommend"], capture_output=True,
+                               text=True, timeout=30)
+            tag = (r.stdout or "").strip().splitlines()
+            if tag:
+                return _tag_to_gguf(tag[0].strip())
+        except Exception:
+            pass
+    return None
+
+
+def _tag_to_gguf(tag):
+    turbo = _which("genesi-ai-turbo")
+    if not turbo:
+        return None
+    try:
+        r = subprocess.run([turbo, "gguf-path", tag], capture_output=True,
+                           text=True, timeout=30)
+        p = (r.stdout or "").strip()
+        return p if p and os.path.isfile(p) else None
+    except Exception:
+        return None
+
+
+# ── the sweep ─────────────────────────────────────────────────────────────────
+def _bench(binp, gguf, extra):
+    """Run one llama-bench invocation (matrix expanded by comma-lists in `extra`)
+    and return its parsed JSON rows, or []."""
+    # -fa is supplied by the sweep matrix (`extra`), never here, so we don't pass
+    # it twice; CPU sweeps omit it and get llama-bench's default.
+    cmd = [binp, "-m", gguf, "-o", "json", "-r", "2", "-p", "512", "-n", "128"] \
+        + extra
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+    except Exception as e:
+        print(f"   [!] llama-bench failed: {e}", file=sys.stderr)
+        return []
+    txt = (r.stdout or "").strip()
+    # llama-bench prints a JSON array; be tolerant of leading log lines.
+    start = txt.find("[")
+    if start < 0:
+        print("   [!] llama-bench produced no JSON", file=sys.stderr)
+        if r.stderr:
+            print("   " + r.stderr.strip().splitlines()[-1], file=sys.stderr)
+        return []
+    try:
+        return json.loads(txt[start:])
+    except Exception:
+        return []
+
+
+def _tg_rows(rows):
+    """Keep only the text-generation rows (n_gen > 0, n_prompt == 0): decode
+    tokens/s is what the user feels; prefill (pp) is a separate concern."""
+    out = []
+    for r in rows:
+        try:
+            if int(r.get("n_gen", 0)) > 0 and int(r.get("n_prompt", 0)) == 0:
+                out.append(r)
+        except Exception:
+            pass
+    return out
+
+
+def tune(gguf):
+    binp = _which("llama-bench")
+    if not binp:
+        sys.exit("llama-bench not found — install genesi-llama-cpp "
+                 "(it ships llama-bench alongside llama-server).")
+    gpu = _has_gpu()
+    print(f":: tuning {os.path.basename(gguf)}  ({'GPU' if gpu else 'CPU'})",
+          flush=True)
+
+    best = None                           # (tokens_per_s, config-dict)
+    if gpu:
+        # GPU: sweep physical batch (n_ubatch) x flash-attn x KV type, full
+        # offload. Each is a real bandwidth/compute trade the GPU decides. KV is
+        # swept as MATCHED k==v pairs (two runs) because server_cmd applies one
+        # type to both — an unmatched llama-bench combo (q8_0/f16) can't be
+        # reproduced, so we never generate one.
+        matrix = [
+            ["-ngl", "999", "-ub", "512,1024,2048", "-fa", "0,1",
+             "-ctk", "f16", "-ctv", "f16"],
+            ["-ngl", "999", "-ub", "512,1024,2048", "-fa", "0,1",
+             "-ctk", "q8_0", "-ctv", "q8_0"],
+        ]
+    else:
+        # CPU: sweep thread count x physical batch; KV/flash-attn stay at the
+        # llama.cpp defaults (q8_0 KV + forced FA REGRESS on CPU).
+        ncpu = os.cpu_count() or 8
+        half = max(1, ncpu // 2)
+        matrix = [
+            ["-ngl", "0", "-t", f"{half},{ncpu}", "-ub", "256,512"],
+        ]
+
+    rows = []
+    for extra in matrix:
+        rows += _bench(binp, gguf, extra)
+    tg = _tg_rows(rows)
+    if not tg:
+        sys.exit("no usable benchmark results — try `genesi-ai-tune --force` "
+                 "manually to see llama-bench's output.")
+
+    for r in tg:
+        ts = float(r.get("avg_ts") or 0.0)
+        if ts <= 0:
+            continue
+        # Only trust rows we can actually reproduce: server_cmd sets one KV type
+        # for both k and v, so ignore any unmatched pair.
+        if r.get("type_k") and r.get("type_v") and r["type_k"] != r["type_v"]:
+            continue
+        cfg = {}
+        if r.get("n_ubatch"):
+            cfg["ubatch"] = int(r["n_ubatch"])
+        # llama-bench reports flash_attn as bool/int and KV types as strings.
+        if "flash_attn" in r:
+            cfg["fa"] = "on" if int(r.get("flash_attn") or 0) else "off"
+        if r.get("type_k"):
+            cfg["kv"] = str(r["type_k"])
+        if not gpu and r.get("n_threads"):
+            cfg["threads"] = int(r["n_threads"])
+        if best is None or ts > best[0]:
+            best = (ts, cfg)
+
+    if not best:
+        sys.exit("benchmark rows had no positive tokens/s — nothing to save.")
+
+    ts, cfg = best
+    print(f":: winner: {ts:.1f} tok/s  ->  {cfg}", flush=True)
+    _save(gguf, cfg, ts)
+    return cfg
+
+
+def _save(gguf, cfg, ts):
+    path = _profile_path()
+    db = _load(path)
+    if not isinstance(db, dict):
+        db = {}
+    key = os.path.basename(gguf)
+    sig = _hw_sig()
+    entry = dict(cfg)
+    entry["_tok_s"] = round(ts, 1)
+    entry["_tuned_at"] = int(time.time())
+    db.setdefault(key, {})[sig] = entry
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(db, f, indent=2, sort_keys=True)
+        os.replace(tmp, path)
+        try:
+            os.chmod(path, 0o644)         # world-readable: Turbo may run as user
+        except OSError:
+            pass
+        print(f":: saved profile -> {path}  [{key} / {sig}]", flush=True)
+    except OSError as e:
+        sys.exit(f"could not write profile {path}: {e}")
+
+
+def _show():
+    for path in (PROFILE_SYS, PROFILE_USER):
+        db = _load(path)
+        if db:
+            print(f"# {path}")
+            print(json.dumps(db, indent=2, sort_keys=True))
+
+
+def main():
+    args = sys.argv[1:]
+    if "-h" in args or "--help" in args:
+        print(__doc__)
+        return
+    if "--show" in args:
+        _show()
+        return
+    force = "--force" in args
+    if not force:
+        if not _on_ac():
+            print(":: on battery — skipping autotune (run with --force to override)")
+            return
+        if not _system_idle():
+            print(":: a Turbo session is active — skipping autotune this cycle")
+            return
+    gguf = _resolve_gguf(args)
+    if not gguf:
+        sys.exit("no model to tune — pull one, run it once, or pass a tag/--gguf.")
+    tune(gguf)
+
+
+if __name__ == "__main__":
+    main()

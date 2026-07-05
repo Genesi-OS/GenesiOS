@@ -333,6 +333,52 @@ class Backend(QObject):
     def stopChat(self):
         self._stop = True
 
+    @Slot(str)
+    def warmPrefix(self, text):
+        """Prefill-as-you-type. While the user is STILL TYPING, warm the model's
+        KV cache for the prompt-so-far, so that when they hit Enter the prefill is
+        already done and the first token comes back almost instantly (TTFT ≈ 0).
+
+        This is the payoff of an OS that OWNS the text box: only we know what the
+        user is about to send before they send it. Runs only under Turbo (the
+        shared llama-server, where we control KV reuse via cache_prompt +
+        --cache-reuse). Fire-and-forget, deduped, and skipped while a real
+        generation is in flight so it never contends with it. The warm request
+        emits a single throwaway token; llama-server then routes the real request
+        to the slot whose cached prompt shares the longest prefix, reusing the
+        typed-so-far KV. With continuous batching (--parallel) the warm request
+        even uses its own slot, so it never blocks anything."""
+        if not self._turbo:
+            return
+        text = (text or "").strip()
+        if len(text) < 12:                      # too short to be worth prefilling
+            return
+        if text == getattr(self, "_last_warm_text", None):
+            return
+        if getattr(self, "_warm_inflight", False):
+            return                              # let the in-flight warm finish
+        self._last_warm_text = text
+        self._warm_inflight = True
+
+        def work():
+            try:
+                body = json.dumps({
+                    "messages": [{"role": "user", "content": text}],
+                    "stream": False,
+                    "max_tokens": 1,            # just prefill; the token is discarded
+                    "cache_prompt": True,
+                    "temperature": 0,
+                }).encode()
+                req = urllib.request.Request(
+                    TURBO + "/v1/chat/completions", data=body,
+                    headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=30).read()
+            except Exception:
+                pass                            # warming is best-effort; never errors
+            finally:
+                self._warm_inflight = False
+        threading.Thread(target=work, daemon=True).start()
+
     # ── Turbo (speculative decoding via genesi-ai-turbo) ─────────────────────
     @Slot(bool, str, bool)
     def setTurbo(self, on, model, spec=False):

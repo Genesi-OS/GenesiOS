@@ -69,6 +69,21 @@ Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
                                  plain offload saves). It also self-disables when
                                  the target model spills VRAM (no draft then).
   GENESI_TURBO_FORCE_DRAFT=1     force the draft even on CPU-only (usually slower)
+  GENESI_TURBO_PARALLEL=<n>      continuous batching: serve N concurrent
+                                 sequences from ONE loaded model, so Genesi Code
+                                 agents + other Genesi apps + the prefill-as-you-
+                                 type warm requests all share the SAME weights in
+                                 VRAM and decode in parallel (aggregate tokens/s
+                                 scales ~with N — the weight read is amortized
+                                 across the batch). 0/unset = AUTO by VRAM
+                                 headroom (stays 1 when the model spills or on
+                                 CPU). Total KV = ctx * N.
+  GENESI_TURBO_FA=on|off|auto    override flash-attention (default: on for GPU,
+                                 auto for CPU)
+  GENESI_TURBO_KV=q8_0|f16|...   override the KV cache type (default: q8_0 on GPU,
+                                 f16 on CPU)
+  GENESI_TURBO_NO_TUNE=1         ignore the autotuned per-machine profile written
+                                 by genesi-ai-tune (use the built-in heuristics)
 """
 import os
 import re
@@ -649,6 +664,44 @@ def _performance_cores(fallback):
         return fallback
 
 
+TUNE_PROFILE_PATHS = (
+    "/var/lib/genesi-ai-mode/tune.json",
+    os.path.expanduser("~/.cache/genesi-turbo/tune.json"),
+)
+
+
+def _hw_sig():
+    """A coarse hardware signature so an autotuned profile only applies to the
+    machine it was measured on. VRAM bucket (GB) + logical CPU count — cheap and
+    stable across reboots; two boxes with the same signature will tune alike."""
+    return f"v{_detect_vram_mb() // 1024}c{os.cpu_count() or 0}"
+
+
+def load_tune_profile(main_gguf):
+    """Best autotuned server params for THIS model on THIS machine, or {}.
+
+    genesi-ai-tune measures the real hardware with llama-bench (sweeping ubatch /
+    flash-attn / KV type / threads) and writes the winning knobs per (model,
+    hardware signature). We read them here and feed them as the DEFAULTS for the
+    matching flags, so a machine that self-calibrated overnight beats the generic
+    heuristic. Precedence stays: explicit GENESI_TURBO_* env > tuned profile >
+    built-in default. Fully defensive — any missing file / parse error yields {}
+    so the heuristic stands. Disable entirely with GENESI_TURBO_NO_TUNE=1."""
+    if _env_flag("GENESI_TURBO_NO_TUNE"):
+        return {}
+    key = os.path.basename(main_gguf or "")
+    sig = _hw_sig()
+    for p in TUNE_PROFILE_PATHS:
+        try:
+            db = json.load(open(p))
+        except Exception:
+            continue
+        ent = (db.get(key) or {}).get(sig)
+        if isinstance(ent, dict):
+            return ent
+    return {}
+
+
 def server_cmd(main_gguf, draft_gguf):
     binp = llama_bin("llama-server")
     if not binp:
@@ -793,17 +846,50 @@ def server_cmd(main_gguf, draft_gguf):
     # GPU offload active (full or partial) gates the GPU-only tunings below.
     use_ngl_999 = ngl_value is not None
 
+    # Autotuned per-machine profile (genesi-ai-tune), if one exists for this
+    # model + hardware. Its values become the DEFAULTS below; an explicit env var
+    # still wins (precedence: env > tuned > heuristic).
+    tune = load_tune_profile(main_gguf)
+
     ctx = _env_int("GENESI_TURBO_CTX", 4096)
     # Prefill (reading the prompt) is compute-bound, so a bigger physical batch
     # (n_ubatch / -ub) reads the prompt in fewer, fatter passes. Larger -ub costs
     # more compute-buffer memory, so default to a modest bump only on GPU and the
-    # llama.cpp default (512) on CPU. Env-overridable for on-HW tuning.
-    batch = _env_int("GENESI_TURBO_BATCH", 2048)
-    ubatch = _env_int("GENESI_TURBO_UBATCH", 1024 if gpu else 512)
-    threads = _env_int("GENESI_TURBO_THREADS", _performance_cores(phys_cores))
+    # llama.cpp default (512) on CPU. Env-overridable for on-HW tuning; a tuned
+    # profile overrides the heuristic default.
+    batch = _env_int("GENESI_TURBO_BATCH", int(tune.get("batch") or 2048))
+    ubatch = _env_int("GENESI_TURBO_UBATCH",
+                      int(tune.get("ubatch") or (1024 if gpu else 512)))
+    threads = _env_int("GENESI_TURBO_THREADS",
+                       int(tune.get("threads") or _performance_cores(phys_cores)))
+
+    # Continuous batching (OS-wide throughput). One loaded model serves N
+    # concurrent sequences from separate slots, so multiple Genesi apps / Genesi
+    # Code agents — and the prefill-as-you-type warm requests — share the SAME
+    # weights in VRAM and decode in parallel: aggregate tokens/s scales ~with N
+    # because the expensive per-token weight read is amortized across the batch.
+    # Each slot keeps the full per-request context (total KV = ctx * N), so we
+    # only raise N above 1 when the model is FULLY offloaded and there's clear
+    # VRAM headroom; a spilling or CPU-bound model stays single-slot (extra slots
+    # would only add KV pressure with no shared-weight win). Pin/disable with
+    # GENESI_TURBO_PARALLEL.
+    n_parallel = _env_int("GENESI_TURBO_PARALLEL", int(tune.get("parallel") or 0))
+    if n_parallel <= 0:                          # 0 / unset -> auto by headroom
+        n_parallel = 1
+        if ngl_value == "999" and fits_main and not is_moe:
+            head = budget_gb - main_gb           # VRAM left for the extra slots
+            if head > 4.0:
+                n_parallel = 4
+            elif head > 2.5:
+                n_parallel = 3
+            elif head > 1.2:
+                n_parallel = 2
+    n_parallel = max(1, min(n_parallel, 8))
+    total_ctx = ctx * n_parallel                 # per-slot ctx preserved
+
     cmd = [binp, "-m", main_gguf, "--host", "127.0.0.1",
            "--port", str(TURBO_PORT),
-           "-c", str(ctx),
+           "-c", str(total_ctx),
            "-b", str(batch),               # logical prefill batch
            "-ub", str(ubatch),             # physical prefill batch (n_ubatch)
            # KV-cache reuse: keep matching prefix chunks across requests via KV
@@ -811,6 +897,15 @@ def server_cmd(main_gguf, draft_gguf):
            # (near-instant on the 2nd+ message). Pure win, negligible memory.
            "--cache-reuse", str(_env_int("GENESI_TURBO_CACHE_REUSE", 256)),
            "--threads", str(threads)]
+
+    # Enable the extra slots + continuous batching when N > 1. cont-batching is
+    # default-on in recent llama.cpp; add the explicit flag only on builds that
+    # still expose it (older ones default it off), gated on --help so we never
+    # pass a removed argument.
+    if n_parallel > 1:
+        cmd += ["--parallel", str(n_parallel)]
+        if "--cont-batching" in _llama_help():
+            cmd += ["--cont-batching"]
            # NOTE: NO --prompt-cache / --prompt-cache-all here. Those are
            # llama-CLI (main) flags; llama-server rejects them with
            #   error: invalid argument: --prompt-cache
@@ -824,12 +919,19 @@ def server_cmd(main_gguf, draft_gguf):
     # has to be de-quantized every single step and CPU flash-attn isn't faster —
     # both REGRESS tokens/s. So: GPU gets -fa on + q8_0 KV; CPU gets f16 KV
     # (llama.cpp default, no flag) and lets llama.cpp auto-decide flash-attn.
-    if use_ngl_999:
-        cmd += ["-fa", "on",                 # flash attention (decode + prefill)
-                "--cache-type-k", "q8_0",    # 8-bit KV halves KV bandwidth on GPU
-                "--cache-type-v", "q8_0"]
-    else:
-        cmd += ["-fa", "auto"]               # CPU: f16 KV (default) + auto FA
+    # Heuristic default: GPU -> -fa on + q8_0 KV; CPU -> auto FA + f16 KV. A tuned
+    # profile or an explicit env var (GENESI_TURBO_FA / GENESI_TURBO_KV) overrides
+    # either — the autotuner sometimes finds f16 KV faster on a big card, etc.
+    fa = (os.environ.get("GENESI_TURBO_FA", "").strip()
+          or str(tune.get("fa") or "").strip()
+          or ("on" if use_ngl_999 else "auto"))
+    cmd += ["-fa", fa]
+    kv = (os.environ.get("GENESI_TURBO_KV", "").strip()
+          or str(tune.get("kv") or "").strip()
+          or ("q8_0" if use_ngl_999 else ""))
+    if kv:
+        cmd += ["--cache-type-k", kv,        # quantized KV halves KV bandwidth
+                "--cache-type-v", kv]
 
     if ngl_value:
         cmd += ["-ngl", ngl_value]
@@ -1054,6 +1156,12 @@ def cmd_bench(main, draft):
     if not draft_g:
         sys.exit(f"could not resolve/pull draft {draft}")
 
+    # bench measures SINGLE-STREAM decode, so pin one slot: extra idle slots
+    # would only reserve VRAM (and bench has no fallback chain to recover an OOM
+    # that `serve` would). A user who explicitly exported GENESI_TURBO_PARALLEL
+    # still gets theirs (setdefault).
+    os.environ.setdefault("GENESI_TURBO_PARALLEL", "1")
+
     results = {}
     for label, dg in (("no-spec", None), ("turbo (spec)", draft_g)):
         print(f":: starting {label} ...", flush=True)
@@ -1117,6 +1225,20 @@ def _serve_with_fallback(main_g, draft_g):
         os.environ.pop("GENESI_TURBO_NO_MOE", None)
         if plain and all(plain != c for _, c in variants):
             variants.append(("plain offload", plain))
+
+    # Final safety net: if any variant still asks for multiple slots, the extra
+    # per-slot KV could tip a full card into OOM. Continuous batching is a
+    # throughput win, never worth failing to start over — so keep a single-slot,
+    # no-draft, no-MoE version as the last resort the user always boots into.
+    if any("--parallel" in c for _, c in variants):
+        os.environ["GENESI_TURBO_PARALLEL"] = "1"
+        os.environ["GENESI_TURBO_NO_MOE"] = "1"
+        solo = server_cmd(main_g, None)
+        os.environ.pop("GENESI_TURBO_PARALLEL", None)
+        os.environ.pop("GENESI_TURBO_NO_MOE", None)
+        if solo and all(solo != c for _, c in variants):
+            variants.append(("single-slot offload", solo))
+        risky = True
 
     last = len(variants) - 1
     for i, (label, cmd) in enumerate(variants):
@@ -1229,6 +1351,23 @@ def main():
     action, rest = pos[0], pos[1:]
     if action == "recommend":
         cmd_recommend()
+        return
+    # Resolve an ollama tag to its GGUF blob path (used by genesi-ai-tune so the
+    # autotuner benches the exact file Turbo would serve). Prints the path on
+    # stdout, exits non-zero if it can't be resolved.
+    if action == "gguf-path":
+        if not rest:
+            sys.exit("usage: genesi-ai-turbo gguf-path <model>")
+        p = gguf_path(rest[0])
+        if not p:
+            sys.exit(1)
+        print(p)
+        return
+    # The hardware signature server_cmd keys tuned profiles by. genesi-ai-tune
+    # calls this so it writes under the EXACT key server_cmd will look up — no
+    # risk of the two computing a different VRAM bucket and silently missing.
+    if action == "hw-sig":
+        print(_hw_sig())
         return
     # AUTO spec: with nothing pinned, default to speculative decoding on a CUDA
     # build (it pays off there) and plain offload on Vulkan/NVK (where it can

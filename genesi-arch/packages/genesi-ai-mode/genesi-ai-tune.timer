@@ -1,0 +1,17 @@
+[Unit]
+Description=Genesi AI Autotuner schedule (nightly self-calibration)
+Documentation=https://github.com/Genesi-OS/GenesiOS
+
+[Timer]
+# Run in the small hours, when the machine is most likely idle + on AC. The
+# service itself still re-checks AC/idle and bails out otherwise, so a laptop
+# awake at 3am on battery simply skips this cycle.
+OnCalendar=*-*-* 03:30:00
+# Machines that were asleep/off at 03:30 still get calibrated shortly after the
+# next boot instead of waiting a whole day.
+Persistent=true
+# Spread the run so a fleet doesn't all bench at once (harmless locally too).
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

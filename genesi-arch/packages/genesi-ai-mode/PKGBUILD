@@ -365,7 +365,24 @@ pkgver=1.0.0
 # who doesn't set the flag; user benches it on the real card before we consider
 # making it default. (n-gram-on-GPU + graceful MoE fallback + expanded draft
 # catalogue already shipped in 97/98.)
-pkgrel=99
+# pkgrel 100: three OS-wide inference wins (benefit EVERY Genesi app on the shared
+# Turbo :11435, not just the Monitor). (1) CONTINUOUS BATCHING — one loaded model
+# serves N concurrent slots (--parallel, auto by VRAM headroom, GENESI_TURBO_
+# PARALLEL to pin), so Genesi Code's agents + other apps + the new prefill warm
+# requests share the SAME weights and decode in parallel: aggregate tokens/s
+# scales ~with N. Each slot keeps full per-request context (total KV = ctx*N),
+# raised above 1 only for a fully-offloaded model with headroom (spilling/CPU
+# stays 1). (2) NIGHTLY AUTOTUNER — new genesi-ai-tune + .timer sweeps ubatch/
+# flash-attn/KV-type/threads with llama-bench on the REAL model+hardware and
+# writes the fastest config to /var/lib/genesi-ai-mode/tune.json, which
+# server_cmd reads as its defaults (env still overrides; GENESI_TURBO_NO_TUNE=1
+# to ignore). Self-gates on AC+idle, Nice=15/idle-IO, never steals a live GPU.
+# (3) PREFILL-AS-YOU-TYPE — the Monitor warms the KV prefix while you type (see
+# genesi_ai_monitor.py) so TTFT is ~0 on send; the pattern is a plain cache_prompt
+# call any Genesi app can adopt. New knobs: GENESI_TURBO_FA / GENESI_TURBO_KV to
+# override flash-attn/KV type (autotuner uses these). New hidden `genesi-ai-turbo
+# gguf-path <tag>` resolves a model file for the tuner.
+pkgrel=100
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -410,6 +427,10 @@ package() {
     install -Dm755 "${startdir}/genesi-aid"      "$pkgdir/usr/local/bin/genesi-aid"
     install -Dm755 "${startdir}/genesi-ai-mode"  "$pkgdir/usr/local/bin/genesi-ai-mode"
     install -Dm755 "${startdir}/genesi-ai-turbo"  "$pkgdir/usr/local/bin/genesi-ai-turbo"
+    # Nightly autotuner: sweeps ubatch/flash-attn/KV/threads with llama-bench on
+    # THIS hardware and writes the winning knobs to tune.json, which
+    # genesi-ai-turbo reads as its defaults (env vars still override).
+    install -Dm755 "${startdir}/genesi-ai-tune"  "$pkgdir/usr/local/bin/genesi-ai-tune"
 
     # Standalone SNI tray applet (the AI Mode widget for non-Plasma sessions, i.e.
     # Hyprland + caelestia-shell). Started via exec-once from the caelestia
@@ -430,6 +451,13 @@ package() {
     # starts/stops it) or `systemctl enable --now genesi-turbo.service`.
     install -Dm644 "${startdir}/genesi-turbo.service" \
         "$pkgdir/usr/lib/systemd/system/genesi-turbo.service"
+
+    # Nightly autotuner service + timer (self-calibration). The timer is enabled
+    # in .install; the service self-gates on AC + idle so it never steals the GPU.
+    install -Dm644 "${startdir}/genesi-ai-tune.service" \
+        "$pkgdir/usr/lib/systemd/system/genesi-ai-tune.service"
+    install -Dm644 "${startdir}/genesi-ai-tune.timer" \
+        "$pkgdir/usr/lib/systemd/system/genesi-ai-tune.timer"
 
     # Runtime dir for user<->daemon IPC (world-writable, on tmpfs)
     install -Dm644 "${startdir}/genesi-ai-mode.tmpfiles.conf" \

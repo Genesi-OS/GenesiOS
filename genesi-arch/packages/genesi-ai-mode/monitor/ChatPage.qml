@@ -31,6 +31,19 @@ Kirigami.Page {
 
     Component.onCompleted: backend.loadModels()
 
+    // Debounce for prefill-as-you-type: fires ~450ms after the user stops typing
+    // and warms the KV cache for the current text (Turbo only; the backend
+    // no-ops otherwise). Cheap and best-effort — makes the next send() instant.
+    Timer {
+        id: warmTimer
+        interval: 450
+        repeat: false
+        onTriggered: {
+            if (!page.busy && input.text.trim().length >= 12)
+                backend.warmPrefix(input.text)
+        }
+    }
+
     // Short one-line summary for the top status label (full data lives in the
     // bubble's stats panel). `s` is the JSON stats string from the backend.
     function shortStats(s) {
@@ -234,6 +247,11 @@ Kirigami.Page {
                         placeholderTextColor: theme.textLo
                         enabled: !page.busy
                         onAccepted: page.send()
+                        // Prefill-as-you-type: debounce keystrokes and warm the
+                        // KV cache for the prompt-so-far, so send() is near-instant
+                        // (TTFT ≈ 0). onTextEdited fires only on USER edits, so
+                        // clearing the field after send() won't trigger a warm.
+                        onTextEdited: warmTimer.restart()
                     }
                 }
 

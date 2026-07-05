@@ -7,6 +7,10 @@ post_install() {
     systemctl daemon-reload 2>/dev/null || true
     echo "==> Enabling genesi-aid service..."
     systemctl enable genesi-aid.service 2>/dev/null || true
+    # Nightly self-calibration (autotuner). The timer only fires the bench when
+    # the machine is idle + on AC, so enabling it by default is safe.
+    echo "==> Enabling nightly AI autotuner timer..."
+    systemctl enable genesi-ai-tune.timer 2>/dev/null || true
     echo "==> AI Mode is ready. Start now with: sudo systemctl start genesi-aid"
 }
 
@@ -16,6 +20,8 @@ post_upgrade() {
     echo "==> Restarting genesi-aid service..."
     systemctl daemon-reload 2>/dev/null || true
     systemctl restart genesi-aid.service 2>/dev/null || true
+    # Enable the autotuner timer for systems upgrading from a build without it.
+    systemctl enable genesi-ai-tune.timer 2>/dev/null || true
     # Aplica as novas permissões de leitura no diretório de modelos do Ollama
     systemctl try-restart ollama.service 2>/dev/null || true
 }
@@ -26,4 +32,6 @@ pre_remove() {
     systemctl disable genesi-aid.service 2>/dev/null || true
     # Also tear down the optional always-warm Turbo unit so it isn't orphaned.
     systemctl disable --now genesi-turbo.service 2>/dev/null || true
+    # And the nightly autotuner timer.
+    systemctl disable --now genesi-ai-tune.timer 2>/dev/null || true
 }
