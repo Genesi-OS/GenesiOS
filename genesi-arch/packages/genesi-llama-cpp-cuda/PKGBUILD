@@ -1,0 +1,83 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# llama.cpp with the CUDA backend — the FAST path for NVIDIA GPUs with the
+# proprietary driver. On an NVIDIA card CUDA runs ~1.5-2x faster than the Vulkan
+# build (genesi-llama-cpp) AND unlocks speculative decoding by default in Genesi
+# Turbo (genesi-ai-turbo's backend_is_cuda() gate), so decode gets the full
+# stacked win. This is the prebuilt drop-in that turns "install CUDA backend"
+# from a ~40-min AUR source compile into a fast `pacman -S` — Genesi ships both
+# builds to the [genesi] repo and swaps to this one on NVIDIA+proprietary boxes.
+#
+# It provides+conflicts 'llama.cpp' exactly like the Vulkan build, so it is a
+# clean 1:1 replacement: same /usr/bin/llama-server, same OpenAI API, everything
+# in Genesi that talks to :11435 (Turbo, the Monitor, Genesi Code) keeps working.
+# NOT shipped on the live ISO (NVIDIA-only + heavy); it lands post-install only.
+pkgname=genesi-llama-cpp-cuda
+pkgver=r0
+pkgrel=1
+pkgdesc='llama.cpp (CUDA) — fast NVIDIA local LLM inference backing Genesi Turbo'
+arch=('x86_64')
+url='https://github.com/ggml-org/llama.cpp'
+license=('MIT')
+# cuda provides libcudart/libcublas at runtime; the proprietary driver
+# (nvidia-utils, already present wherever this is installed) provides libcuda.
+depends=('cuda' 'gcc-libs' 'glibc')
+makedepends=('git' 'cmake' 'cuda')
+provides=('llama.cpp')
+conflicts=('llama.cpp' 'llama.cpp-vulkan' 'llama.cpp-cuda' 'llama.cpp-git'
+           'genesi-llama-cpp')
+source=("git+https://github.com/ggml-org/llama.cpp.git")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd llama.cpp
+    git describe --tags --abbrev=0 2>/dev/null | sed 's/^b/r/' || echo "r0"
+}
+
+build() {
+    # CUDA compiles one kernel set PER target GPU architecture, so an unbounded
+    # arch list balloons both build time and package size. Pin the consumer
+    # GeForce arches Genesi users actually run: 61=GTX10, 75=RTX20/GTX16,
+    # 86=RTX30, 89=RTX40, 120=RTX50 (Blackwell). Override with GENESI_CUDA_ARCHS.
+    local archs="${GENESI_CUDA_ARCHS:-61;75;86;89;120}"
+
+    # Same RAM-aware parallelism cap as the Vulkan build: the compile forks a
+    # heavy job per TU and can exhaust the CI runner's RAM ("Cannot allocate
+    # memory / Failed to fork process"). ~1 job per 6 GB (min 1); big local
+    # machines still scale.
+    local mem_gb jobs
+    mem_gb=$(free -g | awk '/^Mem:/{print $2}' 2>/dev/null || echo 8)
+    jobs=$(( mem_gb / 6 )); [ "$jobs" -lt 1 ] && jobs=1
+    [ "$jobs" -gt "$(nproc)" ] && jobs=$(nproc)
+    echo "genesi-llama-cpp-cuda: building with -j${jobs} (RAM ${mem_gb} GB), CUDA archs=${archs}"
+
+    # Arch's cuda toolkit lives in /opt/cuda; make nvcc discoverable.
+    export PATH="/opt/cuda/bin:$PATH"
+
+    # Why GGML_NATIVE=OFF + GGML_BACKEND_DL=ON + GGML_CPU_ALL_VARIANTS=ON (SAME
+    # as the Vulkan build): ggml's CMake force-enables GGML_AVX2/FMA/F16C by
+    # default, so even a "generic" build emits AVX2 opcodes → "Illegal
+    # instruction (core dumped)" on any CPU without AVX2 (this crashed Turbo AND
+    # its --list-devices GPU probe). The redistributable recipe keeps the main
+    # binary + loader pure baseline x86-64 and dlopens the fastest CPU variant at
+    # runtime — full speed where supported, never an illegal instruction where
+    # not. The CUDA backend rides on top of that for the GPU path.
+    cmake -B build -S llama.cpp \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DGGML_CUDA=ON \
+        -DCMAKE_CUDA_COMPILER=/opt/cuda/bin/nvcc \
+        -DCMAKE_CUDA_ARCHITECTURES="${archs}" \
+        -DGGML_NATIVE=OFF \
+        -DGGML_BACKEND_DL=ON \
+        -DGGML_CPU_ALL_VARIANTS=ON \
+        -DLLAMA_CURL=OFF \
+        -DBUILD_SHARED_LIBS=ON
+    cmake --build build --config Release -j"${jobs}"
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm644 llama.cpp/LICENSE \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

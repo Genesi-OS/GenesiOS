@@ -1,0 +1,63 @@
+#!/bin/sh
+# Genesi AI Mode — one-time CUDA backend offer at login.
+#
+# On an NVIDIA machine with the proprietary driver active but still running the
+# Vulkan Turbo backend, this pops ONE desktop notification telling the user the
+# faster CUDA backend is available, with a button that opens the AI Mode Monitor
+# (where the one-click install lives). Self-contained on purpose: it does NOT
+# touch the genesi-aid daemon — it does its own cheap detection in the user
+# session (where nvidia-smi actually works post-install, unlike the live ISO).
+#
+# Shows AT MOST once per user (a stamp file), never on AMD/Intel/nouveau, and is
+# a silent no-op without a graphical session / notify-send. Dismissible forever.
+set -eu
+
+STAMP_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/genesi-ai-mode"
+STAMP="$STAMP_DIR/cuda-offer-shown"
+
+# Already offered once? Never nag again.
+[ -e "$STAMP" ] && exit 0
+
+# Need a graphical session + a notification tool; otherwise quietly do nothing.
+[ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ] || exit 0
+command -v notify-send >/dev/null 2>&1 || exit 0
+
+# Give the notification daemon and the NVIDIA driver a moment after login.
+sleep 20
+
+# CUDA only pays off with the proprietary/open NVIDIA driver actually loaded.
+# nvidia-smi returning 0 is the ground truth (fails under nouveau/NVK).
+command -v nvidia-smi >/dev/null 2>&1 || exit 0
+nvidia-smi >/dev/null 2>&1 || exit 0
+
+# Only offer if we're on the Vulkan backend and CUDA isn't already installed.
+if pacman -Qq genesi-llama-cpp-cuda >/dev/null 2>&1 \
+   || pacman -Qq llama.cpp-cuda >/dev/null 2>&1; then
+    exit 0                       # already on CUDA — nothing to offer
+fi
+pacman -Qq genesi-llama-cpp >/dev/null 2>&1 || exit 0   # not even on Vulkan yet
+
+# Record the offer up front so a crash/close can't make it loop next login.
+mkdir -p "$STAMP_DIR" 2>/dev/null || true
+: > "$STAMP" 2>/dev/null || true
+
+TITLE="GPU NVIDIA detectada"
+BODY="Ative o backend CUDA no Modo IA — inferência local ~1.5-2x mais rápida."
+
+# Prefer an actionable notification (button opens the Monitor). --action is a
+# newer libnotify feature; if this build lacks it the call errors, so fall back
+# to a plain informational popup. The actionable form blocks until clicked or
+# timed out, which is fine — we're a backgrounded autostart.
+if choice=$(notify-send --app-name="Genesi AI Mode" --icon=cpu \
+        --urgency=normal --expire-time=20000 \
+        --action=open="Abrir Modo IA" \
+        "$TITLE" "$BODY" 2>/dev/null); then
+    if [ "$choice" = "open" ]; then
+        command -v genesi-ai-monitor >/dev/null 2>&1 && genesi-ai-monitor >/dev/null 2>&1 &
+    fi
+else
+    notify-send --app-name="Genesi AI Mode" --icon=cpu \
+        "$TITLE" "$BODY — abra o Modo IA para ativar." 2>/dev/null || true
+fi
+
+exit 0

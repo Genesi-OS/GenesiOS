@@ -382,7 +382,20 @@ pkgver=1.0.0
 # call any Genesi app can adopt. New knobs: GENESI_TURBO_FA / GENESI_TURBO_KV to
 # override flash-attn/KV type (autotuner uses these). New hidden `genesi-ai-turbo
 # gguf-path <tag>` resolves a model file for the tuner.
-pkgrel=100
+# pkgrel 101: CUDA backend made a fast one-click, plus a proactive offer. The
+# biggest tokens/s lever on NVIDIA (~1.5-2x + auto-spec) was gated behind a
+# ~40-min AUR source build nobody waited for, so users silently stayed on Vulkan
+# (Turbo ~= ollama). Now: (1) the Monitor's CUDA button installs the PREBUILT
+# genesi-llama-cpp-cuda from the [genesi] repo via pkexec pacman (seconds),
+# falling back to the AUR llama.cpp-cuda build only if the prebuilt isn't
+# published yet; _installed_backend() recognizes the prebuilt as 'cuda' and the
+# Vulkan swap removes it too. (2) New genesi-ai-cuda-notify login autostart pops
+# ONE desktop notification on NVIDIA+proprietary-driver boxes still on Vulkan,
+# opening the Monitor on click (self-contained, never touches genesi-aid, shows
+# once, silent on AMD/Intel/nouveau). The prebuilt package + its dispatch CI
+# (test-llama-cpp-cuda.yml) ship in genesi-arch/packages/genesi-llama-cpp-cuda;
+# wire it into publish-packages.yml only after that dispatch build goes green.
+pkgrel=101
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -526,4 +539,11 @@ package() {
         "$pkgdir/usr/local/bin/genesi-ai-kwin-helper"
     install -Dm644 "${startdir}/genesi-ai-kwin-helper.desktop" \
         "$pkgdir/etc/xdg/autostart/genesi-ai-kwin-helper.desktop"
+
+    # One-time CUDA-backend offer at login (NVIDIA + proprietary driver only).
+    # Self-contained detection in the user session; opens the Monitor on click.
+    install -Dm755 "${startdir}/genesi-ai-cuda-notify" \
+        "$pkgdir/usr/local/bin/genesi-ai-cuda-notify"
+    install -Dm644 "${startdir}/genesi-ai-cuda-notify.desktop" \
+        "$pkgdir/etc/xdg/autostart/genesi-ai-cuda-notify.desktop"
 }

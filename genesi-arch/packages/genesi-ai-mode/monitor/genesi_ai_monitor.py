@@ -459,7 +459,8 @@ class Backend(QObject):
                                       capture_output=True, timeout=6).returncode == 0
             except Exception:
                 return False
-        if has("llama.cpp-cuda"):
+        # Either the prebuilt Genesi CUDA package or the AUR one counts as CUDA.
+        if has("genesi-llama-cpp-cuda") or has("llama.cpp-cuda"):
             return "cuda"
         if has("genesi-llama-cpp"):
             return "vulkan"
@@ -698,11 +699,11 @@ class Backend(QObject):
         from the genesi repo (~tens of MB), via pkexec (graphical auth). Universal:
         runs on any GPU (AMD/Intel/NVIDIA, incl. nouveau/NVK).
 
-        kind="cuda": llama.cpp-cuda from the AUR (a source build that pulls CUDA)
-        via the user's AUR helper. ~1.5–2× faster, but NVIDIA + proprietary driver
-        only, and a heavy build — best run on an INSTALLED system, not the RAM-
-        backed live ISO. Best-effort: if no AUR helper is present we print the
-        manual command instead of failing silently."""
+        kind="cuda": the prebuilt genesi-llama-cpp-cuda from the [genesi] repo
+        (fast pacman install), falling back to an AUR llama.cpp-cuda source build
+        only if the prebuilt isn't published yet. ~1.5–2× faster than Vulkan, but
+        NVIDIA + proprietary driver only — best on an INSTALLED system, not the
+        RAM-backed live ISO. See _install_cuda_backend()."""
         kind = "cuda" if str(kind).lower() == "cuda" else "vulkan"
         # Only short-circuit when the REQUESTED backend is already the active one.
         # If the other one is installed, fall through and SWITCH to the request.
@@ -728,7 +729,7 @@ class Backend(QObject):
                 # dependency check (nothing hard-depends on llama.cpp here).
                 p = subprocess.run(
                     ["pkexec", "sh", "-c",
-                     "pacman -Rdd --noconfirm llama.cpp-cuda 2>/dev/null; "
+                     "pacman -Rdd --noconfirm genesi-llama-cpp-cuda llama.cpp-cuda 2>/dev/null; "
                      "pacman -Sy --needed --noconfirm genesi-llama-cpp"],
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, timeout=900)
@@ -747,23 +748,58 @@ class Backend(QObject):
         threading.Thread(target=work, daemon=True).start()
 
     def _install_cuda_backend(self):
-        """Build/install llama.cpp-cuda from the AUR via the user's AUR helper.
-        Heavy (pulls CUDA + base-devel) and NVIDIA-only — opt-in. Surfaces a clear
-        manual command when no helper exists."""
-        helper = self._aur_helper()
-        if not helper:
-            self.turboStatus.emit(
-                "CUDA needs an AUR helper (paru/yay). Install paru and "
-                "run: paru -S llama.cpp-cuda")
-            return
+        """Install the CUDA Turbo backend, preferring the PREBUILT Genesi package.
+
+        Two paths, fast first:
+          1. genesi-llama-cpp-cuda from the [genesi] repo via pkexec pacman — a
+             prebuilt drop-in (~seconds to install), no compiler, graphical auth.
+             This is the fast path once the package is published to the repo.
+          2. Fallback: llama.cpp-cuda from the AUR via the user's helper — a heavy
+             source build (~40 min, pulls CUDA + base-devel). Used only when the
+             prebuilt isn't in the repos yet (e.g. before it lands in publish).
+        Both are NVIDIA + proprietary-driver only; we warn if nvidia-smi is dead
+        but still proceed (the driver may just not be loaded in this session)."""
         if not self._nvidia_smi_works():
             self.turboStatus.emit(
                 "Warning: nvidia-smi isn't responding — CUDA only runs with the "
                 "proprietary NVIDIA driver active. Installing anyway…")
 
+        def _finish_ok(msg="CUDA backend installed ✓ — turn Turbo on again"):
+            self.turboNeedsInstall.emit(False)
+            self.turboStatus.emit(msg)
+
         def work():
+            # ── Path 1: prebuilt repo package via pkexec pacman ──────────────
+            if shutil.which("pkexec"):
+                self.turboStatus.emit(
+                    "installing genesi-llama-cpp-cuda (prebuilt)… "
+                    "(authorize in the dialog)")
+                try:
+                    # Remove the Vulkan build first (both provide llama.cpp, so
+                    # they conflict), then install the prebuilt CUDA one. -Rdd
+                    # skips the dep check (nothing hard-depends on llama.cpp here).
+                    p = subprocess.run(
+                        ["pkexec", "sh", "-c",
+                         "pacman -Rdd --noconfirm genesi-llama-cpp 2>/dev/null; "
+                         "pacman -Sy --needed --noconfirm genesi-llama-cpp-cuda"],
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        text=True, timeout=1800)
+                    if p.returncode == 0 and self._has_llama_server():
+                        _finish_ok()
+                        return
+                except Exception:
+                    pass  # fall through to the AUR source build
+
+            # ── Path 2: AUR source build (fallback) ──────────────────────────
+            helper = self._aur_helper()
+            if not helper:
+                self.turboStatus.emit(
+                    "CUDA prebuilt not available yet and no AUR helper (paru/yay) "
+                    "to build it. Install paru, or: sudo pacman -S genesi-llama-cpp-cuda")
+                return
             self.turboStatus.emit(
-                f"building llama.cpp-cuda via {helper}… (heavy, may take a while)")
+                f"prebuilt not in repo yet — building llama.cpp-cuda via "
+                f"{helper}… (heavy, may take a while)")
             try:
                 p = subprocess.run(
                     [helper, "-S", "--needed", "--noconfirm", "llama.cpp-cuda"],
@@ -773,8 +809,7 @@ class Backend(QObject):
                 self.turboStatus.emit("CUDA install failed: " + str(e))
                 return
             if p.returncode == 0 and self._has_llama_server():
-                self.turboNeedsInstall.emit(False)
-                self.turboStatus.emit("CUDA backend installed ✓ — turn Turbo on again")
+                _finish_ok()
             else:
                 last = ""
                 if p.stdout:

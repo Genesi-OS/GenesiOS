@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi AI Mode — CUDA backend offer
+Comment=One-time offer to install the faster CUDA Turbo backend on NVIDIA
+Exec=genesi-ai-cuda-notify
+Icon=cpu
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=KDE;GNOME;XFCE;X-Cinnamon;MATE;Hyprland;
