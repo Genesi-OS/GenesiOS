@@ -172,6 +172,13 @@ X11DETECTEOF
         echo ">>> Pre-seeded [genesi-apps] repo into live ISO /etc/pacman.conf"
     fi
 
+    # Same for [genesi-cuda] — the release-hosted repo for the prebuilt CUDA
+    # llama.cpp (genesi-llama-cpp-cuda, >100 MB), pulled on demand by AI Mode.
+    if ! grep -q '^\[genesi-cuda\]' /etc/pacman.conf 2>/dev/null; then
+        printf '\n[genesi-cuda]\nSigLevel = Optional TrustAll\nServer = https://github.com/Genesi-OS/GenesiOS/releases/download/cuda-repo\n' >> /etc/pacman.conf
+        echo ">>> Pre-seeded [genesi-cuda] repo into live ISO /etc/pacman.conf"
+    fi
+
     # genesi-calamares-branding ships /usr/share/calamares/branding/genesi/*,
     # the EXACT same files that the genesi-calamares package already installs.
     # Listing both in netinstall.yaml makes packages@online die with

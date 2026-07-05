@@ -1,4 +1,19 @@
+# Ensure the release-hosted [genesi-cuda] repo is configured, so AI Mode's
+# "switch to CUDA" button can `pacman -S genesi-llama-cpp-cuda` (the prebuilt
+# ~122 MB package that can't live in the git-hosted [genesi] repo). Idempotent;
+# new installs already get it from the ISO's pacman.conf, this covers existing
+# systems upgrading into a build that has the CUDA package. NVIDIA-only download,
+# and only ever pulled on demand — merely having the repo configured costs
+# nothing.
+_seed_cuda_repo() {
+    if ! grep -q '^\[genesi-cuda\]' /etc/pacman.conf 2>/dev/null; then
+        printf '\n[genesi-cuda]\nSigLevel = Optional TrustAll\nServer = https://github.com/Genesi-OS/GenesiOS/releases/download/cuda-repo\n' >> /etc/pacman.conf 2>/dev/null \
+            && echo "==> Added [genesi-cuda] repo to /etc/pacman.conf" || true
+    fi
+}
+
 post_install() {
+    _seed_cuda_repo
     echo "==> Creating AI Mode runtime directory..."
     systemd-tmpfiles --create /usr/lib/tmpfiles.d/genesi-ai-mode.conf 2>/dev/null || true
     echo "==> Applying AI Mode sysctl tuning..."
@@ -15,6 +30,7 @@ post_install() {
 }
 
 post_upgrade() {
+    _seed_cuda_repo
     systemd-tmpfiles --create /usr/lib/tmpfiles.d/genesi-ai-mode.conf 2>/dev/null || true
     sysctl --system >/dev/null 2>&1 || true
     echo "==> Restarting genesi-aid service..."

@@ -409,7 +409,18 @@ pkgver=1.0.0
 # was too aggressive (up to 4 slots), whose extra KV + scheduling slowed single-
 # stream decode — now auto adds at most ONE extra slot and only with clear VRAM
 # headroom after its KV; heavy multi-agent should pin GENESI_TURBO_PARALLEL.
-pkgrel=102
+# pkgrel 103: CUDA button productionized via an ISOLATED release-hosted repo.
+# The prebuilt genesi-llama-cpp-cuda (122 MB) can't live in the git [genesi] repo
+# and must NOT share [genesi-apps] with genesi-code (whose publish rebuilds its
+# db from scratch and would clobber it). New dedicated [genesi-cuda] repo (tag
+# cuda-repo, db genesi-cuda), published by .github/workflows/publish-llama-cpp-
+# cuda.yml (manual/path-triggered; immutable assets like publish-apps). The repo
+# is preconfigured in the ISO's pacman.conf(.d)/pacman-target.conf/customize_
+# airootfs, and this package's .install seeds it into /etc/pacman.conf on
+# existing systems (idempotent). Net effect: the Monitor's "switch to CUDA"
+# button + login notifier now install via a plain `pacman -S genesi-llama-cpp-
+# cuda` (seconds), no AUR compile, no manual pacman -U.
+pkgrel=103
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
