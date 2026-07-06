@@ -337,9 +337,9 @@ Kirigami.ApplicationWindow {
 
                 Repeater {
                     model: [
-                        { "icon": "view-list-icons", "key": "nav.dashboard" },
-                        { "icon": "mail-message",    "key": "nav.chat" },
-                        { "icon": "server-database", "key": "nav.models" }
+                        { "icon": "icons/nav-dashboard.svg", "key": "nav.dashboard" },
+                        { "icon": "icons/nav-chat.svg",      "key": "nav.chat" },
+                        { "icon": "icons/nav-models.svg",    "key": "nav.models" }
                     ]
                     delegate: Rectangle {
                         required property int index
@@ -350,10 +350,13 @@ Kirigami.ApplicationWindow {
                         color: sel ? theme.a(theme.green, 0.16)
                              : (navMa.containsMouse ? theme.a(theme.textHi, 0.06) : "transparent")
                         Behavior on color { ColorAnimation { duration: 150 } }
+                        // Brand mask icon, tinted by the system scheme (selected =
+                        // accent, idle = muted text) so it still follows the theme.
                         Kirigami.Icon {
                             anchors.centerIn: parent
-                            source: modelData.icon
-                            width: 22; height: 22
+                            source: Qt.resolvedUrl(modelData.icon)
+                            isMask: true
+                            width: 21; height: 21
                             color: sel ? theme.greenBright : theme.textMid
                         }
                         MouseArea {
@@ -405,6 +408,8 @@ Kirigami.ApplicationWindow {
                     Layout.rightMargin: Kirigami.Units.largeSpacing
                     accent: theme.green
                     active: win.active
+                    wash: true               // signature accent tint (system accent)
+                    entranceDelay: 0
 
                     RowLayout {
                         anchors.fill: parent
@@ -449,7 +454,8 @@ Kirigami.ApplicationWindow {
                                          : st.profile === "battery" ? i18n.t("hero.onBattery")
                                          : st.aggressive ? i18n.t("hero.onMax") : i18n.t("hero.onEconomy"))
                                       : i18n.t("hero.off")
-                                font.bold: true; font.pixelSize: 21
+                                font.family: theme.display
+                                font.bold: true; font.pixelSize: 22; font.letterSpacing: 0.2
                                 color: theme.textHi
                             }
                             QQC2.Label {
@@ -518,6 +524,7 @@ Kirigami.ApplicationWindow {
                     Layout.rightMargin: Kirigami.Units.largeSpacing
                     accent: theme.turbo
                     active: win.turboRequested
+                    entranceDelay: 70
 
                     RowLayout {
                         anchors.fill: parent
@@ -674,6 +681,7 @@ Kirigami.ApplicationWindow {
                     GlassCard {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 116
+                        entranceDelay: 140
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: Kirigami.Units.largeSpacing
@@ -698,6 +706,7 @@ Kirigami.ApplicationWindow {
                     GlassCard {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 116
+                        entranceDelay: 175
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: Kirigami.Units.largeSpacing
@@ -722,6 +731,7 @@ Kirigami.ApplicationWindow {
                     GlassCard {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 116
+                        entranceDelay: 210
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: Kirigami.Units.largeSpacing
@@ -747,6 +757,7 @@ Kirigami.ApplicationWindow {
                 GlassCard {
                     Layout.fillWidth: true
                     Layout.preferredHeight: implicitHeight
+                    entranceDelay: 260
                     implicitHeight: optLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing
@@ -791,6 +802,7 @@ Kirigami.ApplicationWindow {
                 GlassCard {
                     Layout.fillWidth: true
                     Layout.preferredHeight: implicitHeight
+                    entranceDelay: 320
                     implicitHeight: benchLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing

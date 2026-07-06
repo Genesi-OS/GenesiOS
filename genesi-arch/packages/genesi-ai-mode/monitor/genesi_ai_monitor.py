@@ -20,7 +20,7 @@ import urllib.request
 
 try:
     from PySide6.QtCore import QObject, Slot, Signal, QUrl
-    from PySide6.QtGui import QGuiApplication, QIcon
+    from PySide6.QtGui import QGuiApplication, QIcon, QFont, QFontDatabase
     from PySide6.QtQml import QQmlApplicationEngine
 except ImportError:
     sys.stderr.write(
@@ -927,6 +927,19 @@ def main():
     app.setOrganizationName("Genesi OS")
     app.setDesktopFileName("org.genesi.aimonitor")
     app.setWindowIcon(QIcon.fromTheme("cpu"))
+
+    # Brand typography: use Rubik (genesi-ttf-rubik-vf, shipped by default) as the
+    # app-wide UI font so every QML label picks it up at once — no per-Label edit.
+    # Falls back silently to the system sans if Rubik isn't installed (dev boxes).
+    # Keep the current point size (don't shrink the UI); only swap the family.
+    try:
+        if "Rubik" in QFontDatabase.families():
+            f = app.font()
+            f.setFamily("Rubik")
+            f.setStyleStrategy(QFont.PreferAntialias)
+            app.setFont(f)
+    except Exception:
+        pass
 
     engine = QQmlApplicationEngine()
     backend = Backend()

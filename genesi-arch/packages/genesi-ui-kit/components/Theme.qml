@@ -93,6 +93,26 @@ Item {
 
     readonly property string mono: "monospace"
 
+    // ── Brand typography (Rubik — genesi-ttf-rubik-vf, shipped by default) ──
+    // The app also installs Rubik as the QGuiApplication font, so plain Labels
+    // inherit it; these tokens are for explicit display/heading use. If Rubik
+    // isn't installed (a dev box) Qt silently falls back to the system sans, so
+    // referencing them is always safe.
+    readonly property string sans:    "Rubik"
+    readonly property string display: "Rubik"
+
+    // ── GPU capability gate ────────────────────────────────────────
+    // True only on a real GPU scene-graph (OpenGL/Vulkan/Metal/D3D11). In a VM
+    // the apps fall back to the software backend (QT_QUICK_BACKEND=software),
+    // where shader effects (soft shadow / blur / glow) are unsupported and
+    // crash-prone — gate every such effect on this so a VM renders the flat (but
+    // still gradient-shaded) path. Unknown/Software both resolve to false.
+    readonly property bool fancy: {
+        var api = GraphicsInfo.api
+        return api === GraphicsInfo.OpenGL || api === GraphicsInfo.Vulkan
+            || api === GraphicsInfo.Metal  || api === GraphicsInfo.Direct3D11
+    }
+
     // Re-alpha a colour: theme.a(theme.accent, 0.15)
     function a(c, v) { return Qt.rgba(c.r, c.g, c.b, v) }
 
