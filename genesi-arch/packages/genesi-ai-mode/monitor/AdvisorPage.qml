@@ -105,29 +105,64 @@ Kirigami.Page {
 
                     Rectangle {
                         id: pullBtn
-                        readonly property bool canPull: !page.pulling && modelInput.text.trim().length > 0
+                        readonly property bool hasModel: modelInput.text.trim().length > 0
+                        readonly property bool canPull: !page.pulling && hasModel
                         implicitWidth: pullLbl.implicitWidth + 34
                         implicitHeight: 42
                         radius: 21
-                        color: canPull ? theme.green : theme.a(theme.textHi, 0.10)
+                        color: page.pulling ? theme.a(theme.green, 0.22)
+                             : (hasModel ? theme.a(theme.green, 0.18) : theme.a(theme.textHi, 0.10))
+                        border.width: 1
+                        border.color: page.pulling || hasModel ? theme.a(theme.green, 0.44) : theme.line
                         Behavior on color { ColorAnimation { duration: 150 } }
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
-                            Kirigami.Icon { source: "download"; width: 16; height: 16; color: pullBtn.canPull ? "#08130E" : theme.textLo }
-                            QQC2.Label { id: pullLbl; text: page.pulling ? i18n.t("adv.downloading") : i18n.t("adv.download"); font.bold: true; color: pullBtn.canPull ? "#08130E" : theme.textLo }
+                            QQC2.Label {
+                                text: page.pulling ? "..." : "↓"
+                                font.bold: true
+                                font.pixelSize: 18
+                                color: page.pulling || pullBtn.hasModel ? theme.greenBright : theme.textLo
+                            }
+                            QQC2.Label {
+                                id: pullLbl
+                                text: page.pulling ? i18n.t("adv.downloading") : i18n.t("adv.download")
+                                font.bold: true
+                                color: page.pulling || pullBtn.hasModel ? theme.textHi : theme.textLo
+                            }
                         }
                         MouseArea { anchors.fill: parent; enabled: pullBtn.canPull; cursorShape: Qt.PointingHandCursor; onClicked: page.pull() }
                     }
                 }
 
-                QQC2.Label {
-                    id: status
+                Rectangle {
                     Layout.fillWidth: true
-                    visible: text.length > 0
-                    color: theme.greenBright
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
+                    visible: status.text.length > 0 || page.pulling
+                    implicitHeight: 34
+                    radius: 10
+                    color: theme.a(theme.green, page.pulling ? 0.14 : 0.08)
+                    border.width: 1
+                    border.color: theme.a(theme.green, page.pulling ? 0.40 : 0.22)
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        spacing: 8
+                        QQC2.BusyIndicator {
+                            running: page.pulling
+                            visible: page.pulling
+                            Layout.preferredWidth: 18
+                            Layout.preferredHeight: 18
+                        }
+                        QQC2.Label {
+                            id: status
+                            Layout.fillWidth: true
+                            text: ""
+                            color: theme.textHi
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                    }
                 }
             }
         }
