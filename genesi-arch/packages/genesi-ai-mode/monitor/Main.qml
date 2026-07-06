@@ -166,7 +166,7 @@ Kirigami.ApplicationWindow {
     Rectangle {
         anchors.fill: parent
         color: theme.bgBottom
-        z: -100
+        z: 0
     }
 
     // ════════════════════════ HEADER ════════════════════════
@@ -326,6 +326,7 @@ Kirigami.ApplicationWindow {
 
     // ════════════════════════ CONTENT ════════════════════════
     RowLayout {
+        z: 1
         anchors.fill: parent
         anchors.margins: Kirigami.Units.largeSpacing
         spacing: Kirigami.Units.largeSpacing
