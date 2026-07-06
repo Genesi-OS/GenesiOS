@@ -163,6 +163,12 @@ Kirigami.ApplicationWindow {
 
     globalDrawer: null
 
+    Rectangle {
+        anchors.fill: parent
+        color: theme.bgBottom
+        z: -100
+    }
+
     // ════════════════════════ HEADER ════════════════════════
     header: QQC2.ToolBar {
         implicitHeight: 50
@@ -346,11 +352,12 @@ Kirigami.ApplicationWindow {
                         color: theme.a(theme.violet, 0.20)
                         border.width: 1
                         border.color: theme.a(theme.violet, 0.45)
-                        Image {
+                        Kirigami.Icon {
                             anchors.centerIn: parent
                             source: Qt.resolvedUrl("icons/logo.svg")
-                            sourceSize.width: 20; sourceSize.height: 20
-                            width: 20; height: 20; smooth: true
+                            isMask: true
+                            width: 20; height: 20
+                            color: theme.greenBright
                         }
                     }
                     ColumnLayout {
@@ -467,23 +474,27 @@ Kirigami.ApplicationWindow {
                     Layout.fillWidth: true
                     implicitHeight: 112
                     radius: 14
-                    color: theme.a(theme.red, 0.11)
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: theme.a(theme.violet, 0.22) }
+                        GradientStop { position: 1.0; color: theme.a(theme.green, 0.10) }
+                    }
                     border.width: 1
-                    border.color: theme.a(theme.red, 0.22)
+                    border.color: theme.a(theme.violet, 0.32)
                     Rectangle {
                         anchors.left: parent.left
                         anchors.bottom: parent.bottom
                         width: parent.width
                         height: 42
                         radius: parent.radius
-                        color: theme.a(theme.red, 0.16)
+                        color: theme.a(theme.textHi, 0.055)
                     }
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 4
-                        QQC2.Label { text: "Local-first AI"; color: theme.textHi; font.bold: true; font.pixelSize: 12 }
-                        QQC2.Label { Layout.fillWidth: true; text: "Monitor, chat and tune models without leaving Genesi."; color: theme.textMid; wrapMode: Text.WordWrap; font.pixelSize: 10 }
+                        QQC2.Label { text: "Memory Palace"; color: theme.textHi; font.bold: true; font.pixelSize: 12 }
+                        QQC2.Label { Layout.fillWidth: true; text: "Chat history will live here when the shared memory layer lands."; color: theme.textMid; wrapMode: Text.WordWrap; font.pixelSize: 10 }
                         Item { Layout.fillHeight: true }
                         Rectangle {
                             Layout.preferredHeight: 26
@@ -503,7 +514,7 @@ Kirigami.ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: 18
-            color: theme.bgTop
+            color: theme.card
             border.width: 1
             border.color: theme.lineHi
             clip: true
@@ -1083,6 +1094,7 @@ Kirigami.ApplicationWindow {
                 anchors.fill: parent
                 anchors.margins: Kirigami.Units.largeSpacing
                 spacing: Kirigami.Units.largeSpacing
+                visible: false
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -1226,6 +1238,274 @@ Kirigami.ApplicationWindow {
                         spacing: 8
                         Rectangle { width: 8; height: 8; radius: 4; color: win.active ? theme.greenBright : theme.textLo }
                         QQC2.Label { text: win.active ? "AI Mode online" : "AI Mode idle"; color: theme.textHi; font.bold: true; font.pixelSize: 11; Layout.fillWidth: true }
+                    }
+                }
+            }
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.largeSpacing
+                spacing: Kirigami.Units.largeSpacing
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    QQC2.Label {
+                        text: "AI Module"
+                        color: theme.textHi
+                        font.bold: true
+                        font.pixelSize: 15
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        text: "Quick controls for the local inference stack."
+                        color: theme.textLo
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 88
+                    radius: 16
+                    color: theme.a(theme.green, win.active ? 0.16 : 0.08)
+                    border.width: 1
+                    border.color: win.active ? theme.a(theme.green, 0.42) : theme.line
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 13
+                        spacing: 7
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Rectangle {
+                                width: 28; height: 28; radius: 9
+                                color: theme.a(theme.green, win.active ? 0.24 : 0.11)
+                                Kirigami.Icon { anchors.centerIn: parent; source: "cpu"; width: 16; height: 16; color: win.active ? theme.greenBright : theme.textLo }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: -1
+                                QQC2.Label { text: "AI Mode"; color: theme.textHi; font.bold: true; font.pixelSize: 12 }
+                                QQC2.Label {
+                                    text: win.forceMode === "auto" ? "Auto: " + (win.active ? "active now" : "standing by")
+                                         : win.forceMode === "on" ? "Forced ON" : "Forced OFF"
+                                    color: theme.textLo
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                            }
+                            Rectangle {
+                                id: aiModeSwitch
+                                readonly property bool switchOn: win.forceMode === "auto" ? win.active : win.forceMode === "on"
+                                width: 42; height: 24; radius: 12
+                                color: switchOn ? theme.green : theme.a(theme.textHi, 0.16)
+                                Rectangle {
+                                    width: 18; height: 18; radius: 9
+                                    y: 3
+                                    x: aiModeSwitch.switchOn ? 21 : 3
+                                    color: theme.textHi
+                                    Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: backend.setMode(aiModeSwitch.switchOn ? "off" : "on")
+                                }
+                            }
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            text: "Use Auto in the top bar when you want Genesi to decide."
+                            color: theme.textLo
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 84
+                    radius: 16
+                    color: theme.a(theme.turbo, win.turboRequested ? 0.18 : 0.08)
+                    border.width: 1
+                    border.color: win.turboRequested ? theme.a(theme.turbo, 0.48) : theme.line
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 13
+                        spacing: 7
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Rectangle {
+                                width: 28; height: 28; radius: 9
+                                color: theme.a(theme.turbo, 0.18)
+                                Kirigami.Icon { anchors.centerIn: parent; source: Qt.resolvedUrl("icons/bolt.svg"); isMask: true; width: 16; height: 16; color: theme.turboBright }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: -1
+                                QQC2.Label { text: "Turbo"; color: theme.textHi; font.bold: true; font.pixelSize: 12 }
+                                QQC2.Label {
+                                    text: win.turboRequested ? (win.turboModel || "Serving selected model") : "Pick a model before starting"
+                                    color: theme.textLo
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                            }
+                            Rectangle {
+                                id: turboSwitch
+                                width: 42; height: 24; radius: 12
+                                color: win.turboRequested ? theme.turbo : theme.a(theme.textHi, 0.16)
+                                Rectangle {
+                                    width: 18; height: 18; radius: 9
+                                    y: 3
+                                    x: win.turboRequested ? 21 : 3
+                                    color: theme.textHi
+                                    Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (win.turboRequested) {
+                                            win.turboRequested = false
+                                            win.turboModelLocked = false
+                                        } else {
+                                            backend.loadModels()
+                                            turboModelDialog.openPicker()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            text: win.turboStatusText.length > 0 ? win.turboStatusText : "Full GPU offload for local chat."
+                            color: win.turboRequested ? theme.turboBright : theme.textLo
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 78
+                    radius: 16
+                    color: theme.a(theme.purple, win.turboSpec ? 0.16 : 0.07)
+                    border.width: 1
+                    border.color: win.turboSpec ? theme.a(theme.purple, 0.46) : theme.line
+                    opacity: win.turboRequested ? 0.58 : 1.0
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 13
+                        spacing: 7
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Rectangle {
+                                width: 28; height: 28; radius: 9
+                                color: theme.a(theme.purple, 0.18)
+                                Kirigami.Icon { anchors.centerIn: parent; source: "media-playback-start"; width: 15; height: 15; color: theme.purpleBright }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: -1
+                                QQC2.Label { text: "Speculative"; color: theme.textHi; font.bold: true; font.pixelSize: 12 }
+                                QQC2.Label {
+                                    text: win.turboRequested ? "Locked while Turbo is running" : (win.turboSpec ? "Enabled for next Turbo start" : "Disabled for next Turbo start")
+                                    color: theme.textLo
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                            }
+                            Rectangle {
+                                id: specSwitch
+                                width: 42; height: 24; radius: 12
+                                color: win.turboSpec ? theme.purple : theme.a(theme.textHi, 0.16)
+                                Rectangle {
+                                    width: 18; height: 18; radius: 9
+                                    y: 3
+                                    x: win.turboSpec ? 21 : 3
+                                    color: theme.textHi
+                                    Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: !win.turboRequested
+                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ForbiddenCursor
+                                    onClicked: win.turboSpec = !win.turboSpec
+                                }
+                            }
+                        }
+                    }
+                }
+
+                QQC2.Label {
+                    text: "Workspace shortcuts"
+                    color: theme.textLo
+                    font.pixelSize: 10
+                    font.letterSpacing: 1.1
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Repeater {
+                        model: [
+                            { "name": "Dashboard", "tab": 0, "icon": "icons/nav-dashboard.svg" },
+                            { "name": "AI Chat", "tab": 1, "icon": "icons/nav-chat.svg" },
+                            { "name": "Models", "tab": 2, "icon": "icons/nav-models.svg" }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool sel: win.currentTab === modelData.tab
+                            Layout.fillWidth: true
+                            implicitHeight: 36
+                            radius: 10
+                            color: sel ? theme.a(theme.green, 0.14) : (shortcutMa.containsMouse ? theme.a(theme.textHi, 0.055) : theme.a(theme.textHi, 0.025))
+                            border.width: 1
+                            border.color: sel ? theme.a(theme.green, 0.38) : theme.line
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
+                                Kirigami.Icon { source: Qt.resolvedUrl(modelData.icon); isMask: true; Layout.preferredWidth: 15; Layout.preferredHeight: 15; color: sel ? theme.greenBright : theme.textLo }
+                                QQC2.Label { text: modelData.name; color: sel ? theme.textHi : theme.textMid; font.bold: sel; font.pixelSize: 11; Layout.fillWidth: true }
+                            }
+                            MouseArea { id: shortcutMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.currentTab = modelData.tab }
+                        }
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 46
+                    radius: 14
+                    color: theme.a(win.active ? theme.green : theme.textHi, win.active ? 0.13 : 0.045)
+                    border.width: 1
+                    border.color: win.active ? theme.a(theme.green, 0.34) : theme.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 8
+                        Rectangle { width: 8; height: 8; radius: 4; color: win.active ? theme.greenBright : theme.textLo }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: -2
+                            QQC2.Label { text: win.active ? "AI Mode online" : "AI Mode idle"; color: theme.textHi; font.bold: true; font.pixelSize: 11 }
+                            QQC2.Label { text: win.profileMode + " profile"; color: theme.textLo; font.pixelSize: 9 }
+                        }
                     }
                 }
             }
