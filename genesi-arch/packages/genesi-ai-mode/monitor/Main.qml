@@ -6,10 +6,10 @@ import org.kde.kirigami as Kirigami
 Kirigami.ApplicationWindow {
     id: win
     title: "Genesi AI Mode Monitor"
-    width: Kirigami.Units.gridUnit * 44
-    height: Kirigami.Units.gridUnit * 37
-    minimumWidth: Kirigami.Units.gridUnit * 38
-    minimumHeight: Kirigami.Units.gridUnit * 30
+    width: Kirigami.Units.gridUnit * 64
+    height: Kirigami.Units.gridUnit * 42
+    minimumWidth: Kirigami.Units.gridUnit * 52
+    minimumHeight: Kirigami.Units.gridUnit * 34
     color: theme.bgBottom
 
     Theme { id: theme }
@@ -165,12 +165,13 @@ Kirigami.ApplicationWindow {
 
     // ════════════════════════ HEADER ════════════════════════
     header: QQC2.ToolBar {
+        implicitHeight: 50
         background: Rectangle {
             color: theme.bgTop
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
         }
         contentItem: RowLayout {
-            spacing: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.smallSpacing
             Item { width: Kirigami.Units.smallSpacing }
 
             // ── Brand mark ──
@@ -187,8 +188,8 @@ Kirigami.ApplicationWindow {
             }
             ColumnLayout {
                 spacing: -2
-                QQC2.Label { text: "AI Mode"; font.bold: true; font.pixelSize: 15; color: theme.textHi }
-                QQC2.Label { text: "GENESI"; font.pixelSize: 9; font.letterSpacing: 2; color: theme.green }
+                QQC2.Label { text: "Genesi AI"; font.bold: true; font.pixelSize: 15; color: theme.textHi }
+                QQC2.Label { text: "MODE MONITOR"; font.pixelSize: 9; font.letterSpacing: 2; color: theme.green }
             }
 
             Item { Layout.fillWidth: true }
@@ -320,20 +321,70 @@ Kirigami.ApplicationWindow {
     // ════════════════════════ CONTENT ════════════════════════
     RowLayout {
         anchors.fill: parent
-        spacing: 0
+        anchors.margins: Kirigami.Units.largeSpacing
+        spacing: Kirigami.Units.largeSpacing
 
         // ──────────────────────── SIDEBAR (nav) ────────────────────────
         Rectangle {
             Layout.fillHeight: true
-            Layout.preferredWidth: 60
-            color: theme.bgTop
-            Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: theme.line }
+            Layout.preferredWidth: 218
+            radius: 18
+            color: theme.card
+            border.width: 1
+            border.color: theme.lineHi
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.topMargin: Kirigami.Units.largeSpacing
-                anchors.bottomMargin: Kirigami.Units.largeSpacing
-                spacing: Kirigami.Units.smallSpacing
+                anchors.margins: Kirigami.Units.largeSpacing
+                spacing: Kirigami.Units.largeSpacing
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+                    Rectangle {
+                        width: 34; height: 34; radius: 10
+                        color: theme.a(theme.violet, 0.20)
+                        border.width: 1
+                        border.color: theme.a(theme.violet, 0.45)
+                        Image {
+                            anchors.centerIn: parent
+                            source: Qt.resolvedUrl("icons/logo.svg")
+                            sourceSize.width: 20; sourceSize.height: 20
+                            width: 20; height: 20; smooth: true
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: -2
+                        QQC2.Label { text: "Genesi"; font.bold: true; font.pixelSize: 14; color: theme.textHi }
+                        QQC2.Label { text: win.active ? "AI Mode active" : "AI Mode standby"; font.pixelSize: 10; color: win.active ? theme.greenBright : theme.textLo }
+                    }
+                    Kirigami.Icon { source: "configure"; Layout.preferredWidth: 15; Layout.preferredHeight: 15; color: theme.textLo }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 34
+                    radius: 9
+                    color: theme.a(theme.textHi, 0.045)
+                    border.width: 1
+                    border.color: theme.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        spacing: 7
+                        Kirigami.Icon { source: "search"; Layout.preferredWidth: 14; Layout.preferredHeight: 14; color: theme.textLo }
+                        QQC2.Label { text: "Search monitor..."; color: theme.textLo; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight }
+                    }
+                }
+
+                QQC2.Label {
+                    text: "FEATURES"
+                    color: theme.textLo
+                    font.pixelSize: 10
+                    font.letterSpacing: 1.1
+                }
 
                 Repeater {
                     model: [
@@ -345,19 +396,33 @@ Kirigami.ApplicationWindow {
                         required property int index
                         required property var modelData
                         readonly property bool sel: win.currentTab === index
-                        Layout.alignment: Qt.AlignHCenter
-                        width: 40; height: 40; radius: 12
+                        Layout.fillWidth: true
+                        height: 38; radius: 10
                         color: sel ? theme.a(theme.green, 0.16)
                              : (navMa.containsMouse ? theme.a(theme.textHi, 0.06) : "transparent")
                         Behavior on color { ColorAnimation { duration: 150 } }
                         // Brand mask icon, tinted by the system scheme (selected =
                         // accent, idle = muted text) so it still follows the theme.
                         Kirigami.Icon {
-                            anchors.centerIn: parent
+                            anchors.left: parent.left
+                            anchors.leftMargin: 11
+                            anchors.verticalCenter: parent.verticalCenter
                             source: Qt.resolvedUrl(modelData.icon)
                             isMask: true
                             width: 21; height: 21
                             color: sel ? theme.greenBright : theme.textMid
+                        }
+                        QQC2.Label {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 42
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: i18n.t(modelData.key)
+                            color: sel ? theme.textHi : theme.textMid
+                            font.bold: sel
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
                         }
                         MouseArea {
                             id: navMa
@@ -372,14 +437,79 @@ Kirigami.ApplicationWindow {
                     }
                 }
 
+                QQC2.Label {
+                    text: "CHAT HISTORY"
+                    color: theme.textLo
+                    font.pixelSize: 10
+                    font.letterSpacing: 1.1
+                    Layout.topMargin: Kirigami.Units.smallSpacing
+                }
+
+                Repeater {
+                    model: [
+                        "Performance tuning",
+                        "Model recommendation",
+                        "Turbo backend setup"
+                    ]
+                    delegate: QQC2.Label {
+                        required property string modelData
+                        Layout.fillWidth: true
+                        text: modelData
+                        color: theme.textLo
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                    }
+                }
+
                 Item { Layout.fillHeight: true }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 112
+                    radius: 14
+                    color: theme.a(theme.red, 0.11)
+                    border.width: 1
+                    border.color: theme.a(theme.red, 0.22)
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 42
+                        radius: parent.radius
+                        color: theme.a(theme.red, 0.16)
+                    }
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 4
+                        QQC2.Label { text: "Local-first AI"; color: theme.textHi; font.bold: true; font.pixelSize: 12 }
+                        QQC2.Label { Layout.fillWidth: true; text: "Monitor, chat and tune models without leaving Genesi."; color: theme.textMid; wrapMode: Text.WordWrap; font.pixelSize: 10 }
+                        Item { Layout.fillHeight: true }
+                        Rectangle {
+                            Layout.preferredHeight: 26
+                            Layout.preferredWidth: inviteLbl.implicitWidth + 24
+                            radius: 13
+                            color: theme.textHi
+                            QQC2.Label { id: inviteLbl; anchors.centerIn: parent; text: "Open chat"; color: theme.bgBottom; font.bold: true; font.pixelSize: 10 }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.currentTab = 1 }
+                        }
+                    }
+                }
             }
         }
 
         // ──────────────────────── PAGES ────────────────────────
-        StackLayout {
+        Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            radius: 18
+            color: theme.bgTop
+            border.width: 1
+            border.color: theme.lineHi
+            clip: true
+
+        StackLayout {
+            anchors.fill: parent
             currentIndex: win.currentTab
 
         // ───────────────────────── 1. PAINEL ─────────────────────────
@@ -938,6 +1068,167 @@ Kirigami.ApplicationWindow {
 
         // ───────────────────────── 3. MODELOS ─────────────────────────
         AdvisorPage { id: advisorPage; i18n: i18n }
+        }
+        }
+
+        Rectangle {
+            Layout.fillHeight: true
+            Layout.preferredWidth: 250
+            radius: 18
+            color: theme.card
+            border.width: 1
+            border.color: theme.lineHi
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.largeSpacing
+                spacing: Kirigami.Units.largeSpacing
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    QQC2.Label { text: "AI Module"; color: theme.textHi; font.bold: true; font.pixelSize: 14 }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 32
+                        radius: 8
+                        color: theme.a(theme.red, 0.16)
+                        border.width: 1
+                        border.color: theme.a(theme.red, 0.35)
+                        RowLayout {
+                            id: modelBadge
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            spacing: 6
+                            Kirigami.Icon { source: Qt.resolvedUrl("icons/bolt.svg"); isMask: true; Layout.preferredWidth: 13; Layout.preferredHeight: 13; color: theme.red }
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                text: win.turboRequested ? "Turbo" : (win.activeModel ? win.activeModel : "Local AI")
+                                color: win.turboRequested ? theme.turboBright : theme.textHi
+                                font.bold: true
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                                maximumLineCount: 1
+                            }
+                            Kirigami.Icon { source: "go-down"; Layout.preferredWidth: 12; Layout.preferredHeight: 12; color: theme.textLo }
+                        }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.currentTab = 2 }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 0
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 34
+                        color: theme.a(theme.textHi, 0.07)
+                        radius: 9
+                        QQC2.Label { anchors.centerIn: parent; text: "TOOLS"; color: theme.textHi; font.bold: true; font.pixelSize: 11 }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 34
+                        color: "transparent"
+                        QQC2.Label { anchors.centerIn: parent; text: "MODELS"; color: theme.textLo; font.pixelSize: 11 }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.currentTab = 2 }
+                    }
+                }
+
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    text: "Command AI turns local models into system actions, benchmarks and hardware tuning."
+                    wrapMode: Text.WordWrap
+                    color: theme.textLo
+                    font.pixelSize: 11
+                }
+
+                QQC2.Label { text: "Your Projects"; color: theme.textHi; font.bold: true; font.pixelSize: 13 }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Repeater {
+                        model: [
+                            { "name": "Monitor Dashboard", "tab": 0, "icon": "icons/nav-dashboard.svg" },
+                            { "name": "AI Chat", "tab": 1, "icon": "icons/nav-chat.svg" },
+                            { "name": "Model Advisor", "tab": 2, "icon": "icons/nav-models.svg" }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool sel: win.currentTab === modelData.tab
+                            Layout.fillWidth: true
+                            implicitHeight: 34
+                            radius: 9
+                            color: sel ? theme.a(theme.green, 0.14) : (projMa.containsMouse ? theme.a(theme.textHi, 0.05) : "transparent")
+                            border.width: sel ? 1 : 0
+                            border.color: theme.a(theme.green, 0.34)
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 9
+                                anchors.rightMargin: 9
+                                spacing: 8
+                                Kirigami.Icon { source: Qt.resolvedUrl(modelData.icon); isMask: true; Layout.preferredWidth: 15; Layout.preferredHeight: 15; color: sel ? theme.greenBright : theme.textLo }
+                                QQC2.Label { text: modelData.name; color: sel ? theme.textHi : theme.textMid; font.bold: sel; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight }
+                            }
+                            MouseArea { id: projMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.currentTab = modelData.tab }
+                        }
+                    }
+                }
+
+                QQC2.Label { text: "Integrate Apps"; color: theme.textLo; font.pixelSize: 10; Layout.topMargin: Kirigami.Units.smallSpacing }
+
+                Repeater {
+                    model: [
+                        { "name": "Ollama", "sub": win.firstInstalledModel ? "Models available" : "Install a model first", "on": win.firstInstalledModel.length > 0 },
+                        { "name": "Turbo", "sub": win.turboRequested ? "Serving " + win.turboModel : "GPU backend ready", "on": win.turboRequested },
+                        { "name": "Advisor", "sub": "Hardware-aware picks", "on": true }
+                    ]
+                    delegate: RowLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 8
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: -1
+                            QQC2.Label { text: modelData.name; color: theme.textHi; font.pixelSize: 11; font.bold: true }
+                            QQC2.Label { text: modelData.sub; color: theme.textLo; font.pixelSize: 9; elide: Text.ElideRight; Layout.fillWidth: true }
+                        }
+                        Rectangle {
+                            width: 24; height: 14; radius: 7
+                            color: modelData.on ? theme.a(theme.green, 0.50) : theme.a(theme.textHi, 0.12)
+                            Rectangle {
+                                width: 10; height: 10; radius: 5
+                                y: 2
+                                x: modelData.on ? 12 : 2
+                                color: modelData.on ? theme.greenBright : theme.textLo
+                            }
+                        }
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 42
+                    radius: 12
+                    color: win.active ? theme.a(theme.green, 0.14) : theme.a(theme.textHi, 0.05)
+                    border.width: 1
+                    border.color: win.active ? theme.a(theme.green, 0.40) : theme.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 8
+                        Rectangle { width: 8; height: 8; radius: 4; color: win.active ? theme.greenBright : theme.textLo }
+                        QQC2.Label { text: win.active ? "AI Mode online" : "AI Mode idle"; color: theme.textHi; font.bold: true; font.pixelSize: 11; Layout.fillWidth: true }
+                    }
+                }
+            }
         }
     }
 
