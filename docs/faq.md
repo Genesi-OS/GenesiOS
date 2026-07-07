@@ -8,7 +8,7 @@ Genesi OS is an Arch-based Linux distribution optimized for local AI development
 
 ### Is Genesi OS free?
 
-Yes! Genesi OS is completely free and open source (GPL-3.0 license).
+Yes! Genesi OS is completely free and open source (AGPL-3.0 license).
 
 ### What makes Genesi OS different?
 

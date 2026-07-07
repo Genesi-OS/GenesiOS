@@ -257,7 +257,7 @@ We plan to support multiple languages. Stay tuned!
 
 ## 📜 License
 
-By contributing, you agree that your contributions will be licensed under GPL-3.0.
+By contributing, you agree that your contributions will be licensed under AGPL-3.0.
 
 ## ❓ Questions?
 

@@ -164,7 +164,7 @@ A systemd service that monitors AI processes and tunes the system automatically.
 ### 2.7 Integrated MemPalace
 [MemPalace](https://github.com/MemPalace/mempalace) is a local-first AI memory
 system — it stores conversations and context locally with semantic search,
-nothing leaves the machine. License MIT (compatible with Genesi OS's GPL-3.0).
+nothing leaves the machine. License MIT (compatible with Genesi OS's AGPL-3.0).
 **Official sources only**: the GitHub repo, the PyPI package `mempalace`, and
 mempalaceofficial.com — other domains (`.tech`, `.net`, …) are impostors that
 may ship malware, so Genesi provisions strictly from the PyPI package.
@@ -725,9 +725,10 @@ packages** built and published by CI.
 > → `./script/run`). The fork lives at **[Genesi-OS/genesi-code](https://github.com/Genesi-OS/genesi-code)**
 > (fork of `warpdotdev/warp`, keeps the upstream link for pulling updates).
 >
-> **License note:** genesi-code inherits **AGPL-3.0** — it cannot be relicensed to
-> the OS's GPL-3.0, but the two are compatible and an AGPL package ships fine in a
-> GPL distro (a distro is an aggregate). Published modifications stay AGPL-3.0.
+> **License note:** genesi-code inherits **AGPL-3.0**, which matches the OS's own
+> AGPL-3.0 license. The GPL-3.0 components in the CachyOS/Arch base are compatible,
+> and an AGPL package ships fine in the distro (a distro is an aggregate).
+> Published modifications stay AGPL-3.0.
 >
 > **Delivery:** genesi-code is **installable via the Genesi Package Installer**, not
 > baked into the live ISO (keeps the ISO light; same plan for Genesi Hermes). A
@@ -818,7 +819,7 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 
 ### 4.2 Genesi Hermes — AI-agent desktop app (fork of Hermes Desktop)
 > Fork of [Hermes Desktop](https://github.com/fathah/hermes-desktop) (Electron +
-> React/TypeScript, **MIT** — compatible with Genesi OS's GPL-3.0): a native
+> React/TypeScript, **MIT** — compatible with Genesi OS's AGPL-3.0): a native
 > front-end for installing, configuring and talking to a self-improving AI agent
 > with tool use, memory, multi-platform messaging and a closed learning loop.
 >
@@ -1157,4 +1158,4 @@ system that:
 
 Why it fits Genesi OS: persistent memory for local AI, automatic project-context
 indexing, zero cloud, and IDE integration via MCP. License: MIT (compatible with
-Genesi OS's GPL-3.0).
+Genesi OS's AGPL-3.0).

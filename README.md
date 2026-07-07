@@ -6,7 +6,7 @@
 
 A CachyOS-based, developer-first OS with a stunning KDE Plasma desktop. It provides a lightning-fast out-of-the-box coding environment and automatically tunes the system to its absolute limits the moment you start running local AI models to assist your workflow.
 
-[![License](https://img.shields.io/badge/License-GPL--3.0-1D9E75.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-1D9E75.svg)](LICENSE)
 [![Based on](https://img.shields.io/badge/Based%20on-CachyOS-blue.svg)](https://cachyos.org)
 [![Desktop](https://img.shields.io/badge/Desktop-KDE%20Plasma%206-1d99f3.svg)](https://kde.org/plasma-desktop/)
 [![ISO Pipeline](https://img.shields.io/github/actions/workflow/status/Genesi-OS/GenesiOS/iso-pipeline.yml?label=ISO%20build&branch=main)](https://github.com/Genesi-OS/GenesiOS/actions/workflows/iso-pipeline.yml)
@@ -233,8 +233,13 @@ Special thanks to the CachyOS team and the Arch community.
 
 ## 📜 License
 
-Genesi OS is licensed under the [GNU General Public License v3.0](LICENSE)
-(GPL-3.0-or-later), the same license as CachyOS.
+Genesi OS is licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(AGPL-3.0-or-later).
+
+Genesi OS builds on CachyOS and Arch Linux. Bundled third-party packages and
+inherited components (such as the CachyOS-derived Calamares config) retain their
+own licenses — mostly GPL-3.0, which is compatible with AGPL-3.0. A Linux
+distribution is an aggregate, so each component keeps its original license.
 
 ---
 
