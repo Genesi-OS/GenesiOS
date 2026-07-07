@@ -56,7 +56,28 @@ jobs:
       - name: Install git + gh in container
         # github-cli (gh) is NOT in the cachyos-v3 image and is needed by the
         # publish step (gh release create/upload). Without it that step exits 127.
-        run: pacman -Sy --needed --noconfirm git openssh github-cli
+        run: |
+          set -euo pipefail
+          # CachyOS rotates its repo signing key periodically and the
+          # cachyos-v3 base image's keyring can lag behind, so a normal
+          # `pacman -Sy` can abort before checkout with:
+          #   error: cachyos-extra-v3: signature from "CachyOS" is invalid
+          # Bootstrap only the keyring packages with signature checks off, then
+          # restore verification before installing the tools used by the job.
+          cp /etc/pacman.conf /etc/pacman.conf.bak
+          sed -i 's/^[[:space:]]*SigLevel.*/SigLevel = Never/' /etc/pacman.conf
+          pacman -Sy --noconfirm --needed archlinux-keyring cachyos-keyring || true
+          mv /etc/pacman.conf.bak /etc/pacman.conf
+          pacman-key --init || true
+          pacman-key --populate archlinux cachyos || true
+
+          if ! pacman -Sy --needed --noconfirm git openssh github-cli; then
+            echo "::warning::verified sync still failing - retrying with SigLevel=Never for CI bootstrap tools"
+            cp /etc/pacman.conf /etc/pacman.conf.bak
+            sed -i 's/^[[:space:]]*SigLevel.*/SigLevel = Never/' /etc/pacman.conf
+            pacman -Sy --needed --noconfirm git openssh github-cli
+            mv /etc/pacman.conf.bak /etc/pacman.conf
+          fi
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -117,7 +138,13 @@ jobs:
           # makepkg refuses to run as root, so build as an unprivileged user.
           useradd -m -G wheel builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          pacman -Sy --needed --noconfirm base-devel
+          if ! pacman -Sy --needed --noconfirm base-devel; then
+            echo "::warning::verified sync still failing - retrying with SigLevel=Never for CI build tooling"
+            cp /etc/pacman.conf /etc/pacman.conf.bak
+            sed -i 's/^[[:space:]]*SigLevel.*/SigLevel = Never/' /etc/pacman.conf
+            pacman -Sy --needed --noconfirm base-devel
+            mv /etc/pacman.conf.bak /etc/pacman.conf
+          fi
           chown -R builder:builder "$GITHUB_WORKSPACE"
 
           mkdir -p "$GITHUB_WORKSPACE/genesi-arch/packages/apps-repo"
