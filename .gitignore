@@ -8,6 +8,9 @@ genesi-arch/out/
 *.log
 *~
 
+# genesi-code build cache (Cargo target dir, multi-GB)
+.tmp-genesi-code-target/
+
 # System files
 .DS_Store
 Thumbs.db
