@@ -109,7 +109,12 @@ pkgver=1.0.0
 # ~10% see-through (wallpaper bleeding through the body, cards floating solid on
 # top). Matches Genesi Welcome's opaque surface. (Rebuild picks up the bundled
 # genesi-ui-kit change.)
-pkgrel=17
+# pkgrel 18: fix green-on-green invisible text. The "GENESI OS" eyebrow badge, the
+# selected filter tab and the "running" tag painted the accent (green/greenBright)
+# onto their own accent-tinted wash, so the text vanished (empty green pills). They
+# now use the new Theme.accentText token (a light-mint, high-contrast accent) so
+# the label reads while keeping the brand hue. Bundled genesi-ui-kit change.
+pkgrel=18
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

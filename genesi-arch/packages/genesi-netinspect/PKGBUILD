@@ -78,7 +78,11 @@ pkgver=1.0.0
 # opaque instead of ~10% see-through (wallpaper bleeding through the body while
 # the panes stayed solid). Matches Genesi Welcome's opaque surface. (Rebuild
 # picks up the bundled genesi-ui-kit change.)
-pkgrel=16
+# pkgrel 17: fix green-on-green invisible text on the nav rail. The selected lane
+# (Proxy/Repeater/Intruder/Scanner) painted greenBright onto its own green-tinted
+# highlight, so the label vanished (the selected item showed only its icon). It now
+# uses the new Theme.accentText token (light-mint, high-contrast). Bundled kit change.
+pkgrel=17
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

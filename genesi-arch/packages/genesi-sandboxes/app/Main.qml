@@ -279,7 +279,7 @@ Kirigami.ApplicationWindow {
                             Rectangle {
                                 radius: 6; implicitHeight: 18; implicitWidth: planLbl.implicitWidth + 16
                                 color: theme.a(theme.green, 0.15)
-                                QQC2.Label { id: planLbl; anchors.centerIn: parent; text: "GENESI OS"; font.pixelSize: 9; font.letterSpacing: 1.5; color: theme.green; font.bold: true }
+                                QQC2.Label { id: planLbl; anchors.centerIn: parent; text: "GENESI OS"; font.pixelSize: 9; font.letterSpacing: 1.5; color: theme.accentText; font.bold: true }
                             }
                             QQC2.Label { text: "Dev Workspaces"; font.bold: true; font.pixelSize: 26; color: theme.textHi }
                             QQC2.Label { text: "Isolated, container-backed environments — one per project."; color: theme.textMid; font.pixelSize: 13 }
@@ -355,7 +355,7 @@ Kirigami.ApplicationWindow {
                                     id: tabLbl
                                     anchors.centerIn: parent
                                     text: modelData.label
-                                    color: parent.sel ? theme.greenBright : theme.textMid
+                                    color: parent.sel ? theme.accentText : theme.textMid
                                     font.bold: parent.sel
                                     font.pixelSize: 13
                                 }
@@ -459,7 +459,7 @@ Kirigami.ApplicationWindow {
                                         Rectangle {
                                             radius: 6; implicitHeight: 17; implicitWidth: tagLbl.implicitWidth + 14
                                             color: theme.a(modelData.running ? theme.green : theme.textLo, 0.15)
-                                            QQC2.Label { id: tagLbl; anchors.centerIn: parent; text: modelData.running ? "running" : "stopped"; font.pixelSize: 10; color: modelData.running ? theme.greenBright : theme.textLo }
+                                            QQC2.Label { id: tagLbl; anchors.centerIn: parent; text: modelData.running ? "running" : "stopped"; font.pixelSize: 10; color: modelData.running ? theme.accentText : theme.textMid }
                                         }
                                     }
                                     QQC2.Label {

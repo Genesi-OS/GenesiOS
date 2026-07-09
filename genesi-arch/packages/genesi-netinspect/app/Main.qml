@@ -283,7 +283,7 @@ ApplicationWindow {
                             }
                             Text {
                                 text: modelData.t
-                                color: page === modelData.n ? theme.greenBright : theme.textMid
+                                color: page === modelData.n ? theme.accentText : theme.textMid
                                 font.pixelSize: 14
                                 font.bold: page === modelData.n
                             }

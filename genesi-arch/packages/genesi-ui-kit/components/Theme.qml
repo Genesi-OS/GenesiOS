@@ -63,6 +63,16 @@ Item {
     readonly property color greenBright: dark ? Qt.lighter(sysAccent, 1.18) : Qt.darker(sysAccent, 1.12)
     readonly property color greenDeep:   Qt.darker(sysAccent, 1.35)
 
+    // Legible accent text for use ON an accent-TINTED surface (a chip/badge/nav
+    // item filled with theme.a(accent, 0.15)). Painting the raw accent — or even
+    // greenBright — onto its own faint wash gives green-on-green: the classic
+    // Genesi "selected item / GENESI OS badge is an empty green rectangle, text
+    // invisible" bug. This pushes the accent hard toward white (dark schemes) or
+    // black (light schemes) so it stays readable over the wash while keeping the
+    // brand hue — the light-mint eyebrow look of Genesi Welcome (#7FD9BD).
+    readonly property color accentText: dark ? mix(sysAccent, white, 0.55)
+                                             : mix(sysAccent, black, 0.45)
+
     // ── Functional / semantic accents (fixed — meaning must not drift) ──
     readonly property color turbo:        "#E67E22"
     readonly property color turboBright:   dark ? "#F8B24D" : "#D9781A"
