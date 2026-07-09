@@ -21,7 +21,11 @@ pkgver=1.0.0
 # (i3/niri/wayfire/… all provide+conflict cachyos-desktop-settings). Those three
 # are KWin/Plasma-specific and are now installed by the KDE-Desktop netinstall
 # group instead, so KDE still gets them and other desktops stay clean.
-pkgrel=4
+# pkgrel 5: add genesi-snapshots (the "indestructible OS" — automatic Btrfs
+# restore points before every update + one-click rollback). In the meta so it
+# reaches BOTH fresh installs and existing systems on `pacman -Syu`. It no-ops on
+# a non-Btrfs root, so it's safe to ship to everyone.
+pkgrel=5
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -56,6 +60,9 @@ depends=(
     'genesi-sandboxes'     # Distrobox workspaces with stack templates
     'genesi-netinspect'    # mitmproxy HTTP/HTTPS debug proxy + toggle
     'genesi-db-explorer'   # DB client launcher + Dolphin integration
+    # "Indestructible OS": snapper + snap-pac + grub-btrfs, wired ENXUTO, with a
+    # branded manager app. No-op on non-Btrfs roots.
+    'genesi-snapshots'
 )
 
 package() {

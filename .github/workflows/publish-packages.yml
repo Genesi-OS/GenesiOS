@@ -342,6 +342,10 @@ jobs:
             "genesi-sandboxes"
             "genesi-netinspect"
             "genesi-db-explorer"
+            # "Indestructible OS" — effortless Btrfs snapshots (snapper + snap-pac
+            # + grub-btrfs) + a branded manager app. Self-contained (its deps are
+            # all real repo packages), so it slots in with the other dev tools.
+            "genesi-snapshots"
             # Roadmap 5.1 — "Hyprland + caelestia-shell" desktop option. These
             # repackage AUR-only software (quickshell itself is now in Arch
             # [extra], so it is NOT rebuilt here) so the Calamares netinstall can

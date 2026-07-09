@@ -1,0 +1,29 @@
+post_install() {
+    # Wire the first-boot setup: enable it (runs on every boot until fully set
+    # up, then short-circuits) and try to run it now on a live system. Both are
+    # no-ops / harmless during a Calamares chroot install (no running systemd).
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable genesi-snapshots-setup.service >/dev/null 2>&1 || true
+    systemctl start  genesi-snapshots-setup.service >/dev/null 2>&1 || true
+    gtk-update-icon-cache -ftq /usr/share/icons/hicolor 2>/dev/null || true
+
+    cat <<'MSG'
+Genesi Snapshots installed.
+  • A restore point is now taken automatically before every system update.
+  • On a broken boot, pick a snapshot in the GRUB menu to go back.
+  • Manage restore points anytime from the "Genesi Snapshots" app.
+Protection finishes arming on the next reboot.
+MSG
+}
+
+post_upgrade() {
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable genesi-snapshots-setup.service >/dev/null 2>&1 || true
+    # Re-run so a newly-added piece (e.g. grub-btrfs) gets wired on upgrade too.
+    systemctl start genesi-snapshots-setup.service >/dev/null 2>&1 || true
+    gtk-update-icon-cache -ftq /usr/share/icons/hicolor 2>/dev/null || true
+}
+
+pre_remove() {
+    systemctl disable --now genesi-snapshots-setup.service >/dev/null 2>&1 || true
+}

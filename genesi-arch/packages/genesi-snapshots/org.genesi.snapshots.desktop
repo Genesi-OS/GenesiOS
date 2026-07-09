@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Snapshots
+GenericName=System Restore Points
+Comment=Automatic Btrfs protection before every update, with one-click rollback
+Name[pt_BR]=Genesi Snapshots
+GenericName[pt_BR]=Pontos de Restauração
+Comment[pt_BR]=Proteção Btrfs automática antes de cada atualização, com rollback em um clique
+Exec=genesi-snapshots-gui
+Icon=genesi-snapshots
+Terminal=false
+Categories=System;Settings;Qt;
+Keywords=snapshot;backup;btrfs;snapper;restore;rollback;recovery;timeshift;
+Keywords[pt_BR]=snapshot;backup;btrfs;restaurar;recuperar;rollback;seguranca;
+StartupNotify=true
+StartupWMClass=org.genesi.snapshots

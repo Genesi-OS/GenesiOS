@@ -1,0 +1,70 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# The "indestructible OS" — effortless Btrfs snapshots for laypeople.
+#
+# Genesi's default install is already Btrfs (subvolumes @, @home, @log, … with
+# zstd). This package turns that into invisible protection:
+#   * snap-pac   — an automatic pre/post snapshot around EVERY pacman
+#                  transaction (the hidden "snapshot before each update");
+#   * grub-btrfs — those snapshots show up in the GRUB menu, so a broken boot
+#                  always has a "go back to yesterday" entry;
+#   * snapper    — the config + cleanup, tuned ENXUTO (no periodic timeline
+#                  snapshots, aggressive number cleanup) so the disk footprint
+#                  stays tiny (snapshots are Btrfs CoW: near-zero until data
+#                  diverges).
+# A first-boot systemd oneshot (genesi-snapshots-setup) bootstraps and tunes the
+# snapper config idempotently, and a branded PySide6/QML app lets the user create
+# manual snapshots, roll back in one click, and see the protection status.
+#
+# No Calamares/partition changes are needed: snapper create-config makes the
+# /.snapshots subvolume itself on first boot, so this ships as a pure package.
+pkgname=genesi-snapshots
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('GPL-3.0-or-later')
+# snapper + snap-pac = the automatic update protection; btrfs-progs for the
+# subvolume ops; grub-btrfs = the boot-menu recovery entries (the default Genesi
+# install uses GRUB); polkit so the GUI can create/rollback via pkexec; pyside6 +
+# qqc2-desktop-style for the app (same stack as the AI Monitor / Sandboxes).
+depends=('snapper' 'snap-pac' 'grub-btrfs' 'btrfs-progs'
+         'python' 'pyside6' 'qqc2-desktop-style' 'polkit')
+groups=('genesi')
+install="${pkgname}.install"
+source=()
+sha256sums=()
+
+package() {
+    # CLI (source of truth) — /usr/bin so pkexec can run it by absolute path.
+    install -Dm755 "${startdir}/genesi-snapshots" \
+        "$pkgdir/usr/bin/genesi-snapshots"
+    # GUI launcher
+    install -Dm755 "${startdir}/genesi-snapshots-gui" \
+        "$pkgdir/usr/local/bin/genesi-snapshots-gui"
+
+    # First-boot setup: script + systemd oneshot
+    install -Dm755 "${startdir}/genesi-snapshots-setup.sh" \
+        "$pkgdir/usr/lib/genesi/genesi-snapshots-setup"
+    install -Dm644 "${startdir}/genesi-snapshots-setup.service" \
+        "$pkgdir/usr/lib/systemd/system/genesi-snapshots-setup.service"
+
+    # GUI app (PySide6 + QML) + the shared Genesi UI kit, bundled at build from
+    # the canonical genesi-ui-kit/ (one source, copied in — NOT a dependency; see
+    # genesi-ui-kit/README.md for why).
+    install -Dm644 "${startdir}/app/genesi_snapshots.py" \
+        "$pkgdir/usr/share/genesi-snapshots/app/genesi_snapshots.py"
+    install -Dm644 "${startdir}/app/Main.qml" \
+        "$pkgdir/usr/share/genesi-snapshots/app/Main.qml"
+    for comp in Theme GlassCard GButton StatusBanner I18n; do
+        install -Dm644 "${startdir}/../genesi-ui-kit/components/${comp}.qml" \
+            "$pkgdir/usr/share/genesi-snapshots/app/${comp}.qml"
+    done
+
+    # Desktop entry + branded shield icon
+    install -Dm644 "${startdir}/org.genesi.snapshots.desktop" \
+        "$pkgdir/usr/share/applications/org.genesi.snapshots.desktop"
+    install -Dm644 "${startdir}/app/icons/logo.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-snapshots.svg"
+}

@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# genesi-snapshots — the "indestructible OS" backbone.
+#
+# A thin, JSON-speaking wrapper over snapper (+ snap-pac + grub-btrfs) so the
+# Genesi Snapshots GUI can list / create / delete / roll back Btrfs snapshots
+# without every caller having to know snapper's flags. This CLI is the single
+# source of truth; the GUI (genesi-snapshots-gui) just drives it.
+#
+# Design goals (user asked for "o mais leve possível"):
+#   * snapshots are Btrfs CoW — near-zero disk until data diverges;
+#   * snap-pac makes an automatic pre/post snapshot around EVERY pacman
+#     transaction (the invisible "snapshot before each update");
+#   * grub-btrfs exposes those snapshots in the GRUB menu ("go back to
+#     yesterday" on a broken boot);
+#   * NO periodic timeline snapshots — only update snapshots + manual ones,
+#     with aggressive cleanup (see genesi-snapshots-setup).
+#
+# Read-only commands run as any user; mutating ones (create/delete/rollback)
+# need root and are meant to be invoked via pkexec by the GUI.
+set -euo pipefail
+
+CONFIG="${GENESI_SNAPPER_CONFIG:-root}"
+
+need_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "this action needs root — run via pkexec/sudo" >&2
+        exit 13
+    fi
+}
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+root_is_btrfs() {
+    [ "$(findmnt -no FSTYPE / 2>/dev/null || true)" = btrfs ]
+}
+
+snapper_configured() {
+    have snapper || return 1
+    snapper list-configs 2>/dev/null | awk 'NR>2{print $1}' | grep -qx "$CONFIG"
+}
+
+# ---- status -----------------------------------------------------------------
+# One-shot health object for the GUI header: is the machine protected, and by
+# what. Everything is best-effort so the GUI never blocks.
+status_json() {
+    local btrfs=false configured=false snap_pac=false grub_btrfs=false
+    local count=0 used="0"
+    root_is_btrfs && btrfs=true
+    snapper_configured && configured=true
+    # snap-pac ships the pacman hooks; presence of the hook == updates are covered
+    { [ -f /usr/share/libalpm/hooks/05-snapper-pre.hook ] \
+        || [ -f /usr/share/libalpm/hooks/zz-snapper.hook ] \
+        || pacman -Qq snap-pac >/dev/null 2>&1; } && snap_pac=true
+    # grub-btrfs: watcher that regenerates the GRUB submenu on new snapshots
+    { systemctl is-enabled grub-btrfsd.service >/dev/null 2>&1 \
+        || systemctl is-active grub-btrfsd.service >/dev/null 2>&1; } && grub_btrfs=true
+
+    if [ "$configured" = true ]; then
+        count="$(snapper -c "$CONFIG" list 2>/dev/null | awk 'NR>2 && $1 ~ /^[0-9]+$/' | wc -l | tr -d ' ')"
+        # Total space the snapshots actually occupy (exclusive), best-effort.
+        used="$(snapper -c "$CONFIG" list --columns used-space 2>/dev/null \
+                | awk 'NR>2{print $0}' | tr -d ' ' | grep -v '^$' | paste -sd+ - 2>/dev/null || true)"
+        [ -z "$used" ] && used="—"
+    fi
+
+    cat <<JSON
+{"btrfs":$btrfs,"configured":$configured,"snapPac":$snap_pac,"grubBtrfs":$grub_btrfs,"count":${count:-0},"config":"$CONFIG"}
+JSON
+}
+
+# ---- list -------------------------------------------------------------------
+# Parse snapper's output into JSON. We drive snapper with an explicit --columns
+# set and parse defensively (its table spacing varies by version) via python.
+list_json() {
+    if ! snapper_configured; then
+        echo '{"configured":false,"snapshots":[]}'
+        return 0
+    fi
+    local raw
+    raw="$(snapper -c "$CONFIG" --csvout list \
+            --columns number,type,date,description,cleanup,userdata 2>/dev/null || true)"
+    if [ -z "$raw" ]; then
+        # Older snapper without --csvout: fall back to the plain table.
+        raw="$(snapper -c "$CONFIG" list \
+                --columns number,type,date,description,cleanup 2>/dev/null || true)"
+        GENESI_SNAP_FORMAT=table
+    fi
+    GENESI_SNAP_FORMAT="${GENESI_SNAP_FORMAT:-csv}" python3 - "$raw" <<'PY'
+import csv, io, json, os, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+fmt = os.environ.get("GENESI_SNAP_FORMAT", "csv")
+rows = []
+if fmt == "csv":
+    rdr = csv.DictReader(io.StringIO(raw))
+    for r in rdr:
+        num = (r.get("number") or "").strip()
+        if not num.isdigit():
+            continue
+        rows.append({
+            "number": int(num),
+            "type": (r.get("type") or "").strip(),
+            "date": (r.get("date") or "").strip(),
+            "description": (r.get("description") or "").strip(),
+            "cleanup": (r.get("cleanup") or "").strip(),
+        })
+else:
+    for line in raw.splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if not parts or not parts[0].isdigit():
+            continue
+        parts += [""] * (5 - len(parts))
+        rows.append({
+            "number": int(parts[0]),
+            "type": parts[1],
+            "date": parts[2],
+            "description": parts[3],
+            "cleanup": parts[4],
+        })
+rows.sort(key=lambda s: s["number"], reverse=True)
+print(json.dumps({"configured": True, "snapshots": rows}))
+PY
+}
+
+case "${1:-status-json}" in
+  status-json) status_json ;;
+  list-json)   list_json ;;
+
+  create)
+    need_root
+    desc="${2:-Manual snapshot}"
+    # cleanup=number so manual snapshots are pruned by the same aggressive
+    # NUMBER cleanup as the update snapshots (no unbounded growth).
+    snapper -c "$CONFIG" create --description "$desc" \
+        --cleanup-algorithm number --userdata "genesi=manual"
+    echo "created"
+    ;;
+
+  delete)
+    need_root
+    [ -n "${2:-}" ] || { echo "usage: genesi-snapshots delete <number>" >&2; exit 2; }
+    snapper -c "$CONFIG" delete "$2"
+    echo "deleted"
+    ;;
+
+  rollback)
+    need_root
+    [ -n "${2:-}" ] || { echo "usage: genesi-snapshots rollback <number>" >&2; exit 2; }
+    # snapper rollback makes <number> the new default subvolume on next boot,
+    # snapshotting the current state first (so a rollback is itself undoable).
+    snapper -c "$CONFIG" rollback "$2"
+    echo "rolled-back"
+    ;;
+
+  *)
+    echo "usage: genesi-snapshots {status-json|list-json|create <desc>|delete <n>|rollback <n>}" >&2
+    exit 2
+    ;;
+esac

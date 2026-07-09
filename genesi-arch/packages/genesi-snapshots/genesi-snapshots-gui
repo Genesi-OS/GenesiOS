@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Launch the Genesi Snapshots GUI (Qt6/PySide6).
+exec python3 /usr/share/genesi-snapshots/app/genesi_snapshots.py "$@"

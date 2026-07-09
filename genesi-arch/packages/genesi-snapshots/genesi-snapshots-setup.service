@@ -1,0 +1,17 @@
+[Unit]
+Description=Genesi Snapshots first-boot setup (snapper + grub-btrfs, ENXUTO profile)
+# Needs the real root filesystem and a populated system; run late.
+After=local-fs.target snapperd.service
+Wants=local-fs.target
+
+[Service]
+Type=oneshot
+# The script is idempotent and self-healing: it short-circuits fast once fully
+# set up, but re-runs the missing bits if e.g. grub-btrfs gets installed later.
+ExecStart=/usr/lib/genesi/genesi-snapshots-setup
+RemainAfterExit=yes
+# Never let a setup hiccup wedge the boot.
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
