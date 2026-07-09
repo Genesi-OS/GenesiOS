@@ -459,7 +459,15 @@ pkgver=1.0.0
 # renamed GENERAL/HISTORY, history rows gained icons, the selected nav item gained
 # a bright-green accent rail, and the right-panel status footer gained a sparkline
 # and a capitalised profile name.
-pkgrel=107
+# pkgrel 108: chat history + MemPalace integration. Conversations now persist as
+# JSON under ~/.config/genesi-ai-monitor/sessions/; the sidebar HISTORY rail lists
+# them (New chat + click-to-reopen), always-on and cheap (local files only). The
+# Memory Palace card gains a "Remember everything" toggle: OFF (default) leaves
+# chat pointed straight at Turbo/Ollama; ON registers the sessions dir for the
+# genesi-mempalace indexer, starts the per-user indexer + recall bridge, and routes
+# chat through the bridge (:11436) so the model recalls past conversations — gated
+# because it grows the prompt. Same transcript-dir pattern Genesi Code uses.
+pkgrel=108
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

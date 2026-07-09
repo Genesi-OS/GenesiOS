@@ -22,6 +22,25 @@ Kirigami.ApplicationWindow {
     property string activity: "idle"   // active | warm | idle (smart auto-detect)
     property int currentTab: 0
 
+    // ── chat history (sidebar HISTORY rail) + MemPalace recall ──
+    property var sessions: []          // [{id,title,updated,count}] newest-first
+    property bool recall: false        // "AI remembers everything" (heavier, opt-in)
+
+    function refreshSessions() {
+        try { sessions = JSON.parse(backend.listSessions()) } catch (e) { sessions = [] }
+    }
+    function relTime(ts) {
+        if (!ts) return ""
+        var d = Date.now() / 1000 - ts
+        if (d < 60)     return "now"
+        if (d < 3600)   return Math.floor(d / 60) + "m"
+        if (d < 86400)  return Math.floor(d / 3600) + "h"
+        if (d < 604800) return Math.floor(d / 86400) + "d"
+        return Math.floor(d / 604800) + "w"
+    }
+    function openSession(sid) { chatPage.loadSessionInto(sid); win.currentTab = 1 }
+    function newChat() { chatPage.newChat(); win.currentTab = 1 }
+
     // ── Turbo integration ───────────────────────────────────────────────────
     // activeModel = the model Ollama currently has LOADED (live, from /api/ps).
     // It drives the dashboard "AI ativa" card and FLICKERS as Ollama loads/evicts
@@ -90,10 +109,15 @@ Kirigami.ApplicationWindow {
         if (turboRequested && turboModel) backend.setTurbo(true, turboModel, turboSpec)
     }
 
-    Component.onCompleted: { backend.loadModels(); backend.recommendTurboModel(); backend.backendInfo() }
+    Component.onCompleted: {
+        backend.loadModels(); backend.recommendTurboModel(); backend.backendInfo()
+        win.refreshSessions()
+        try { win.recall = JSON.parse(backend.mempalaceState()).recall || false } catch (e) {}
+    }
 
     Connections {
         target: backend
+        function onSessionsChanged() { win.refreshSessions() }
         function onTurboNeedsInstall(need) {
             win.turboNeedsInstall = need
             if (need) win.turboRequested = false
@@ -459,36 +483,56 @@ Kirigami.ApplicationWindow {
                     Layout.topMargin: Kirigami.Units.smallSpacing
                 }
 
-                Repeater {
-                    model: [
-                        { "icon": "clock",             "label": "Performance tuning" },
-                        { "icon": "view-list-details", "label": "Model recommendation" },
-                        { "icon": "view-refresh",      "label": "Turbo backend setup" }
-                    ]
-                    delegate: RowLayout {
-                        required property var modelData
-                        Layout.fillWidth: true
-                        spacing: 8
-                        Kirigami.Icon {
-                            source: modelData.icon
-                            Layout.preferredWidth: 14; Layout.preferredHeight: 14
-                            color: theme.textLo
-                        }
-                        QQC2.Label {
-                            Layout.fillWidth: true
-                            text: modelData.label
-                            color: theme.textLo
-                            font.pixelSize: 11
-                            elide: Text.ElideRight
-                        }
+                // + New chat
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 30
+                    radius: 8
+                    color: newChatMa.containsMouse ? theme.a(theme.green, 0.14) : theme.a(theme.textHi, 0.04)
+                    border.width: 1; border.color: theme.a(theme.green, 0.30)
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; spacing: 8
+                        Kirigami.Icon { source: "list-add"; Layout.preferredWidth: 13; Layout.preferredHeight: 13; color: theme.greenBright }
+                        QQC2.Label { Layout.fillWidth: true; text: "New chat"; color: theme.textHi; font.pixelSize: 11; font.bold: true }
                     }
+                    MouseArea { id: newChatMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.newChat() }
+                }
+
+                // saved conversations (newest-first, from ~/.config/genesi-ai-monitor/sessions)
+                Repeater {
+                    model: win.sessions
+                    delegate: Rectangle {
+                        required property var modelData
+                        readonly property bool sel: chatPage.sessionId === modelData.id && win.currentTab === 1
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 30
+                        radius: 8
+                        color: sel ? theme.a(theme.green, 0.14)
+                             : (histMa.containsMouse ? theme.a(theme.textHi, 0.05) : "transparent")
+                        RowLayout {
+                            anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 7
+                            Kirigami.Icon { source: Qt.resolvedUrl("icons/chat.svg"); isMask: true; Layout.preferredWidth: 13; Layout.preferredHeight: 13; color: parent.parent.sel ? theme.greenBright : theme.textLo }
+                            QQC2.Label { Layout.fillWidth: true; text: modelData.title; color: parent.parent.sel ? theme.textHi : theme.textMid; font.pixelSize: 11; elide: Text.ElideRight }
+                            QQC2.Label { text: win.relTime(modelData.updated); color: theme.textLo; font.pixelSize: 9 }
+                        }
+                        MouseArea { id: histMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.openSession(modelData.id) }
+                    }
+                }
+
+                QQC2.Label {
+                    visible: win.sessions.length === 0
+                    Layout.fillWidth: true
+                    text: "No chats yet — start one in AI Chat."
+                    color: theme.textLo
+                    font.pixelSize: 10
+                    wrapMode: Text.WordWrap
                 }
 
                 Item { Layout.fillHeight: true }
 
                 Rectangle {
                     Layout.fillWidth: true
-                    implicitHeight: 112
+                    implicitHeight: mpCol.implicitHeight + 24
                     radius: 14
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
@@ -497,28 +541,53 @@ Kirigami.ApplicationWindow {
                     }
                     border.width: 1
                     border.color: theme.a(theme.violet, 0.32)
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.bottom: parent.bottom
-                        width: parent.width
-                        height: 42
-                        radius: parent.radius
-                        color: theme.a(theme.textHi, 0.055)
-                    }
                     ColumnLayout {
-                        anchors.fill: parent
+                        id: mpCol
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                         anchors.margins: 12
-                        spacing: 4
+                        spacing: 8
                         QQC2.Label { text: "Memory Palace"; color: theme.textHi; font.bold: true; font.pixelSize: 12 }
-                        QQC2.Label { Layout.fillWidth: true; text: "Chat history will live here when the shared memory layer lands."; color: theme.textMid; wrapMode: Text.WordWrap; font.pixelSize: 10 }
-                        Item { Layout.fillHeight: true }
+
+                        // "AI remembers everything" — opt-in recall (heavier: grows the
+                        // prompt + needs Turbo). Off = chat runs exactly as before.
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: -1
+                                QQC2.Label { text: "Remember everything"; color: theme.textHi; font.pixelSize: 11; font.bold: true }
+                                QQC2.Label { Layout.fillWidth: true; text: win.recall ? "Recalling past chats" : "Off — lighter"; color: theme.textLo; font.pixelSize: 9; elide: Text.ElideRight }
+                            }
+                            Rectangle {
+                                width: 40; height: 22; radius: 11
+                                color: win.recall ? theme.violet : theme.a(theme.textHi, 0.16)
+                                Behavior on color { ColorAnimation { duration: 160 } }
+                                Rectangle {
+                                    width: 16; height: 16; radius: 8; y: 3
+                                    x: win.recall ? 21 : 3
+                                    color: theme.textHi
+                                    Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.recall = (backend.setRecall(!win.recall) === "on")
+                                    QQC2.ToolTip.text: "Injects your past conversations into the model so it remembers across chats. Heavier (grows the prompt) and needs Turbo — that's why it's off by default."
+                                    QQC2.ToolTip.visible: containsMouse
+                                    QQC2.ToolTip.delay: 300
+                                }
+                            }
+                        }
+
                         Rectangle {
                             Layout.preferredHeight: 26
                             Layout.preferredWidth: inviteLbl.implicitWidth + 24
                             radius: 13
                             color: theme.textHi
-                            QQC2.Label { id: inviteLbl; anchors.centerIn: parent; text: "Open chat"; color: theme.bgBottom; font.bold: true; font.pixelSize: 10 }
-                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.currentTab = 1 }
+                            QQC2.Label { id: inviteLbl; anchors.centerIn: parent; text: "New chat"; color: theme.bgBottom; font.bold: true; font.pixelSize: 10 }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.newChat() }
                         }
                     }
                 }

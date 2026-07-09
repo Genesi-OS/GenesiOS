@@ -21,6 +21,9 @@ Kirigami.Page {
 
     property bool busy: false
     property int currentAi: -1
+    // Persisted-session id ("" = a fresh, not-yet-saved chat). Set by the sidebar
+    // HISTORY rail when reopening a chat, and by persist() after the first save.
+    property string sessionId: ""
 
     background: Rectangle {
         gradient: Gradient {
@@ -70,6 +73,40 @@ Kirigami.Page {
         chatList.positionViewAtEnd()
     }
 
+    // ── session persistence (feeds the sidebar HISTORY rail; swept by MemPalace
+    //    once the user turns on "remember"). Local JSON, cheap, always on. ──
+    function _serialize() {
+        var arr = []
+        for (var i = 0; i < chatModel.count; i++) {
+            var m = chatModel.get(i)
+            if (m.role === "error") continue
+            arr.push({ "role": m.role, "body": m.body, "stats": m.stats || "" })
+        }
+        return JSON.stringify(arr)
+    }
+    function persist() {
+        if (chatModel.count === 0) return
+        page.sessionId = backend.saveSession(page.sessionId, modelCombo.currentText, _serialize())
+    }
+    function loadSessionInto(sid) {
+        var s = {}
+        try { s = JSON.parse(backend.loadSession(sid)) } catch (e) { return }
+        chatModel.clear()
+        var msgs = s.messages || []
+        for (var i = 0; i < msgs.length; i++)
+            chatModel.append({ "role": msgs[i].role, "body": msgs[i].body, "stats": msgs[i].stats || "" })
+        page.sessionId = s.id || sid
+        page.currentAi = -1
+        page.busy = false
+        chatList.positionViewAtEnd()
+    }
+    function newChat() {
+        chatModel.clear()
+        page.sessionId = ""
+        page.currentAi = -1
+        input.text = ""
+    }
+
     Connections {
         target: backend
         function onTurboStatus(s) { statsLabel.text = s }
@@ -94,6 +131,7 @@ Kirigami.Page {
             page.busy = false
             page.currentAi = -1
             chatList.positionViewAtEnd()
+            page.persist()          // save the conversation into the HISTORY rail
         }
         function onChatError(e) {
             if (page.currentAi >= 0 && chatModel.get(page.currentAi).body.length === 0)

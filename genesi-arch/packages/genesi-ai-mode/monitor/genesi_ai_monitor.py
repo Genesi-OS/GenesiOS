@@ -31,6 +31,11 @@ except ImportError:
 STATE_FILE = "/run/genesi-ai-mode/state.json"
 OLLAMA = "http://127.0.0.1:11434"
 TURBO = "http://127.0.0.1:11435"      # genesi-ai-turbo's llama-server
+BRIDGE = "http://127.0.0.1:11436"     # genesi-mempalace recall bridge (opt-in)
+# One JSON file per conversation. This is what the HISTORY rail reads and — once
+# the user turns on "remember" — what genesi-mempalace `watch` sweeps into the
+# palace (same pattern Genesi Code uses with ~/.config/genesi-code/sessions).
+SESSIONS_DIR = os.path.expanduser("~/.config/genesi-ai-monitor/sessions")
 
 
 class Backend(QObject):
@@ -51,6 +56,7 @@ class Backend(QObject):
     benchProgress = Signal(str)    # human-readable step ("warming up …", "AI Mode ON …")
     benchDone = Signal(str)        # JSON: {model, off_rate, on_rate, delta_pct, rows[], raw}
     benchError = Signal(str)
+    sessionsChanged = Signal()     # a chat session was saved/removed -> refresh HISTORY
 
     def __init__(self):
         super().__init__()
@@ -61,6 +67,7 @@ class Backend(QObject):
         self._turbo_log = None       # captured stderr of the serve subprocess
         self._turbo_spec = False     # is the running Turbo using speculative decoding?
         self._bench_running = False  # a benchmark is in flight (guard re-entry)
+        self._recall = False         # route chat through the mempalace recall bridge?
 
     @Slot(result=str)
     def state(self):
@@ -287,7 +294,11 @@ class Backend(QObject):
             "max_tokens": 512,
             "cache_prompt": True,
         }).encode()
-        req = urllib.request.Request(TURBO + "/v1/chat/completions", data=body,
+        # When "remember" is on, talk to the mempalace bridge instead of Turbo
+        # directly: it injects recalled memory + restores the per-wing KV slot,
+        # then proxies to Turbo. Off by default (it grows the prompt = heavier).
+        base = BRIDGE if self._recall else TURBO
+        req = urllib.request.Request(base + "/v1/chat/completions", data=body,
                                      headers={"Content-Type": "application/json"})
         timings = {}
         try:
@@ -332,6 +343,154 @@ class Backend(QObject):
     @Slot()
     def stopChat(self):
         self._stop = True
+
+    # ── chat history (local sessions) + MemPalace long-term memory ───────────
+    # Each conversation is one JSON file under SESSIONS_DIR. The HISTORY rail
+    # reads that dir directly (cheap, always on). Turning on "remember" registers
+    # the dir for the mempalace indexer and flips chat onto the recall bridge —
+    # the heavier bit (it grows the prompt), so it stays opt-in.
+    def _sessions_dir(self):
+        os.makedirs(SESSIONS_DIR, exist_ok=True)
+        return SESSIONS_DIR
+
+    @Slot(result=str)
+    def listSessions(self):
+        """Newest-first list for the HISTORY rail: [{id,title,updated,count}]."""
+        out = []
+        try:
+            for name in os.listdir(self._sessions_dir()):
+                if not name.endswith(".json"):
+                    continue
+                try:
+                    with open(os.path.join(SESSIONS_DIR, name)) as f:
+                        s = json.load(f)
+                    out.append({"id": s.get("id") or name[:-5],
+                                "title": s.get("title") or "Chat",
+                                "updated": s.get("updated") or 0,
+                                "count": len(s.get("messages") or [])})
+                except Exception:
+                    continue
+        except OSError:
+            pass
+        out.sort(key=lambda x: x["updated"], reverse=True)
+        return json.dumps(out)
+
+    @Slot(str, result=str)
+    def loadSession(self, sid):
+        try:
+            with open(os.path.join(self._sessions_dir(), sid + ".json")) as f:
+                return f.read()
+        except Exception:
+            return "{}"
+
+    @Slot(str, str, str, result=str)
+    def saveSession(self, sid, model, messages_json):
+        """Persist a conversation; returns its (possibly new) id. An empty chat is
+        never written, so an opened-but-unused tab leaves no ghost session. The
+        title is the first user line."""
+        try:
+            msgs = json.loads(messages_json) if messages_json else []
+        except Exception:
+            msgs = []
+        if not msgs:
+            return sid or ""
+        if not sid:
+            sid = str(int(time.time() * 1000))
+        title = ""
+        for m in msgs:
+            if m.get("role") == "user" and (m.get("body") or "").strip():
+                title = m["body"].strip().replace("\n", " ")[:60]
+                break
+        now = time.time()
+        path = os.path.join(self._sessions_dir(), sid + ".json")
+        created = now
+        try:
+            with open(path) as f:
+                created = json.load(f).get("created", now)
+        except Exception:
+            pass
+        data = {"id": sid, "title": title or "Chat", "model": model,
+                "created": created, "updated": now, "messages": msgs}
+        try:
+            tmp = path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp, path)
+        except OSError:
+            return sid
+        self.sessionsChanged.emit()
+        return sid
+
+    @Slot(str)
+    def deleteSession(self, sid):
+        try:
+            os.unlink(os.path.join(self._sessions_dir(), sid + ".json"))
+            self.sessionsChanged.emit()
+        except OSError:
+            pass
+
+    @staticmethod
+    def _mempalace_bin():
+        b = shutil.which("genesi-mempalace") or "/usr/local/bin/genesi-mempalace"
+        return b if os.path.exists(b) else None
+
+    @Slot(result=str)
+    def mempalaceState(self):
+        """For the Memory Palace card: is the layer available, and is recall on."""
+        return json.dumps({
+            "available": self._mempalace_bin() is not None,
+            "recall": self._recall,
+        })
+
+    @Slot(bool, result=str)
+    def setRecall(self, on):
+        """Toggle 'AI remembers everything'. OFF (default) points chat straight at
+        Turbo/Ollama — zero extra cost. ON registers our sessions dir for the
+        mempalace indexer, brings up the per-user indexer + recall bridge, and
+        routes chat through the bridge so the model gets its past conversations
+        recalled (this grows the prompt — hence the toggle)."""
+        self._recall = bool(on)
+        if not self._recall:
+            return "off"
+        if not self._mempalace_bin():
+            self._recall = False
+            return "unavailable"
+        self._register_transcript_dir()
+        for unit in ("genesi-mempalace.service", "genesi-mempalace-bridge.service"):
+            try:
+                subprocess.run(["systemctl", "--user", "enable", "--now", unit],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=15)
+            except Exception:
+                pass
+        return "on"
+
+    def _register_transcript_dir(self):
+        """Idempotently add SESSIONS_DIR to the user's mempalace transcript_dirs so
+        `watch`/`sweep` indexes our chats (~/.config/genesi-mempalace/config.conf)."""
+        cfg = os.path.expanduser("~/.config/genesi-mempalace/config.conf")
+        try:
+            os.makedirs(os.path.dirname(cfg), exist_ok=True)
+            lines = []
+            if os.path.exists(cfg):
+                with open(cfg) as f:
+                    lines = f.read().splitlines()
+            found = False
+            for i, ln in enumerate(lines):
+                if ln.strip().startswith("transcript_dirs"):
+                    found = True
+                    val = ln.split("=", 1)[1].strip() if "=" in ln else ""
+                    parts = [p.strip() for p in val.split(",") if p.strip()]
+                    if SESSIONS_DIR not in parts:
+                        parts.append(SESSIONS_DIR)
+                        lines[i] = "transcript_dirs = " + ", ".join(parts)
+                    break
+            if not found:
+                lines.append("transcript_dirs = " + SESSIONS_DIR)
+            with open(cfg, "w") as f:
+                f.write("\n".join(lines) + "\n")
+        except OSError:
+            pass
 
     @Slot(str)
     def warmPrefix(self, text):
