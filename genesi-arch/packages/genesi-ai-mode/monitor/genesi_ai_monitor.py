@@ -249,17 +249,28 @@ class Backend(QObject):
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str, str)
-    def sendPrompt(self, model, prompt):
+    def sendPrompt(self, model, messages_json):
+        """`messages_json` is the FULL conversation so far ([{role,content}], roles
+        user/assistant). Sending the whole thread — not just the latest line — is
+        what gives the model in-conversation memory; without it every turn was
+        stateless (the "it never remembers my name even in the same chat" bug).
+        Cross-conversation memory is a separate, opt-in layer (the recall bridge)."""
         self._stop = False
+        try:
+            messages = json.loads(messages_json)
+        except Exception:
+            messages = []
         target = self._chat_turbo if self._turbo else self._chat_ollama
-        threading.Thread(target=target, args=(model, prompt), daemon=True).start()
+        threading.Thread(target=target, args=(model, messages), daemon=True).start()
 
-    def _chat_ollama(self, model, prompt):
+    def _chat_ollama(self, model, messages):
         if not self._ensure_ollama():
             self.chatError.emit("Ollama isn't running (systemctl start ollama)")
             return
-        body = json.dumps({"model": model, "prompt": prompt, "stream": True}).encode()
-        req = urllib.request.Request(OLLAMA + "/api/generate", data=body,
+        # /api/chat (not /api/generate) so Ollama keeps the multi-turn context and
+        # applies the model's chat template to the whole thread.
+        body = json.dumps({"model": model, "messages": messages, "stream": True}).encode()
+        req = urllib.request.Request(OLLAMA + "/api/chat", data=body,
                                      headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=600) as r:
@@ -270,7 +281,7 @@ class Backend(QObject):
                     if not raw:
                         continue
                     obj = json.loads(raw.decode())
-                    tok = obj.get("response", "")
+                    tok = (obj.get("message") or {}).get("content", "")
                     if tok:
                         self.chatToken.emit(tok)
                     if obj.get("done"):
@@ -280,7 +291,7 @@ class Backend(QObject):
         except Exception as e:
             self.chatError.emit(str(e))
 
-    def _chat_turbo(self, model, prompt):
+    def _chat_turbo(self, model, messages):
         # Talk to llama-server's OpenAI-compatible /v1/chat/completions so the
         # SERVER applies the model's chat template (system/user/assistant turns +
         # the correct stop tokens). The native /completion endpoint does NOT
@@ -289,7 +300,7 @@ class Backend(QObject):
         # "AI goes crazy / infinite garbage" seen ONLY in Turbo. The loaded model
         # + draft are already on the server, so `model` is informational here.
         body = json.dumps({
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "stream": True,
             "max_tokens": 512,
             "cache_prompt": True,

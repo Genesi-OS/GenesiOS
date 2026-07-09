@@ -64,11 +64,19 @@ Kirigami.Page {
         if (page.busy || q.length === 0 || modelCombo.currentText.length === 0)
             return
         chatModel.append({ "role": "user", "body": q, "stats": "" })
+        // Send the WHOLE thread (not just this line) so the model has context —
+        // this is what makes it remember earlier turns in the same conversation.
+        var msgs = []
+        for (var i = 0; i < chatModel.count; i++) {
+            var m = chatModel.get(i)
+            if (m.role === "error" || !m.body || m.body.length === 0) continue
+            msgs.push({ "role": m.role === "ai" ? "assistant" : "user", "content": m.body })
+        }
         chatModel.append({ "role": "ai", "body": "", "stats": "" })
         page.currentAi = chatModel.count - 1
         page.busy = true
         statsLabel.text = i18n.t("chat.generating")
-        backend.sendPrompt(modelCombo.currentText, q)
+        backend.sendPrompt(modelCombo.currentText, JSON.stringify(msgs))
         input.text = ""
         chatList.positionViewAtEnd()
     }

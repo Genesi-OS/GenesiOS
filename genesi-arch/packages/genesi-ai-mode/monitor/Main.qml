@@ -502,20 +502,43 @@ Kirigami.ApplicationWindow {
                 Repeater {
                     model: win.sessions
                     delegate: Rectangle {
+                        id: histItem
                         required property var modelData
                         readonly property bool sel: chatPage.sessionId === modelData.id && win.currentTab === 1
                         Layout.fillWidth: true
                         Layout.preferredHeight: 30
                         radius: 8
                         color: sel ? theme.a(theme.green, 0.14)
-                             : (histMa.containsMouse ? theme.a(theme.textHi, 0.05) : "transparent")
+                             : ((histMa.containsMouse || delMa.containsMouse) ? theme.a(theme.textHi, 0.05) : "transparent")
                         RowLayout {
                             anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 7
-                            Kirigami.Icon { source: Qt.resolvedUrl("icons/chat.svg"); isMask: true; Layout.preferredWidth: 13; Layout.preferredHeight: 13; color: parent.parent.sel ? theme.greenBright : theme.textLo }
-                            QQC2.Label { Layout.fillWidth: true; text: modelData.title; color: parent.parent.sel ? theme.textHi : theme.textMid; font.pixelSize: 11; elide: Text.ElideRight }
-                            QQC2.Label { text: win.relTime(modelData.updated); color: theme.textLo; font.pixelSize: 9 }
+                            Kirigami.Icon { source: Qt.resolvedUrl("icons/chat.svg"); isMask: true; Layout.preferredWidth: 13; Layout.preferredHeight: 13; color: histItem.sel ? theme.greenBright : theme.textLo }
+                            QQC2.Label { Layout.fillWidth: true; text: histItem.modelData.title; color: histItem.sel ? theme.textHi : theme.textMid; font.pixelSize: 11; elide: Text.ElideRight }
+                            QQC2.Label { text: win.relTime(histItem.modelData.updated); color: theme.textLo; font.pixelSize: 9 }
                         }
-                        MouseArea { id: histMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.openSession(modelData.id) }
+                        MouseArea { id: histMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.openSession(histItem.modelData.id) }
+                        // delete — revealed on hover; declared after histMa so it wins the click in its area
+                        Rectangle {
+                            visible: histMa.containsMouse || delMa.containsMouse
+                            anchors.right: parent.right; anchors.rightMargin: 5
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 20; height: 20; radius: 6
+                            color: delMa.containsMouse ? theme.a(theme.red, 0.22) : theme.a(theme.textHi, 0.08)
+                            Kirigami.Icon { anchors.centerIn: parent; source: "edit-delete"; width: 12; height: 12; color: delMa.containsMouse ? theme.red : theme.textLo }
+                            MouseArea {
+                                id: delMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (chatPage.sessionId === histItem.modelData.id) chatPage.newChat()
+                                    backend.deleteSession(histItem.modelData.id)
+                                }
+                                QQC2.ToolTip.text: "Delete chat"
+                                QQC2.ToolTip.visible: containsMouse
+                                QQC2.ToolTip.delay: 400
+                            }
+                        }
                     }
                 }
 
