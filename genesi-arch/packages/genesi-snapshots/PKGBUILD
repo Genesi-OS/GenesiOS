@@ -20,7 +20,10 @@
 # /.snapshots subvolume itself on first boot, so this ships as a pure package.
 pkgname=genesi-snapshots
 pkgver=1.0.0
-pkgrel=1
+# pkgrel 2: fix the GUI failing to load — Main.qml assigned font.pixelSize (an
+# int property) a fractional 11.5, so QML aborted with "int expected" and the
+# window never opened. Now 12.
+pkgrel=2
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -188,7 +188,7 @@ QQC2.ApplicationWindow {
                                         color: on ? theme.accentText : theme.textLo
                                     }
                                     QQC2.Label {
-                                        text: label; font.pixelSize: 11.5; font.bold: true
+                                        text: label; font.pixelSize: 12; font.bold: true
                                         color: on ? theme.accentText : theme.textLo
                                     }
                                 }
@@ -291,7 +291,7 @@ QQC2.ApplicationWindow {
                                 Layout.fillWidth: true
                                 text: (modelData.description || "—") + "   ·   " + (modelData.date || "")
                                 elide: Text.ElideRight
-                                font.pixelSize: 11.5; color: theme.textLo
+                                font.pixelSize: 12; color: theme.textLo
                             }
                         }
                         // actions
