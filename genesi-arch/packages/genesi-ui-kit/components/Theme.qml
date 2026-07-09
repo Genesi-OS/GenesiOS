@@ -55,23 +55,27 @@ Item {
     // Separators: nudge toward white on dark schemes, toward black on light.
     function sep(p)  { return dark ? mix(sysBg, white, p) : mix(sysBg, black, p) }
 
-    // ── Accent (follows the system) ────────────────────────────────
-    // `green` is kept as a name for source compatibility but now IS the system
-    // accent — every app that referenced theme.green now tracks the scheme.
-    readonly property color accent:      sysAccent
-    readonly property color green:       sysAccent
-    readonly property color greenBright: dark ? Qt.lighter(sysAccent, 1.18) : Qt.darker(sysAccent, 1.12)
-    readonly property color greenDeep:   Qt.darker(sysAccent, 1.35)
+    // ── Accent (FIXED brand palette — matches the AI Mode Monitor mockup) ──
+    // Product decision (2026-07): the green accent no longer follows the Plasma
+    // scheme — it's pinned to the mockup's emerald so every Genesi app reads the
+    // same green regardless of the user's system accent. Only the SURFACES
+    // (bg/card/line) and text still derive from the scheme, so the app keeps the
+    // system's dark background while the brand colour stays put. (sysAccent above
+    // is retained for `dark`/luminance helpers but no longer drives the accent.)
+    readonly property color accent:      "#1FBE6A"
+    readonly property color green:       "#1FBE6A"   // primary emerald
+    readonly property color greenBright: "#34D989"   // gauges, dots, active text
+    readonly property color greenDeep:   "#0F7A47"   // logo/brand-mark gradient foot
 
     // Legible accent text for use ON an accent-TINTED surface (a chip/badge/nav
     // item filled with theme.a(accent, 0.15)). Painting the raw accent — or even
     // greenBright — onto its own faint wash gives green-on-green: the classic
     // Genesi "selected item / GENESI OS badge is an empty green rectangle, text
-    // invisible" bug. This pushes the accent hard toward white (dark schemes) or
-    // black (light schemes) so it stays readable over the wash while keeping the
+    // invisible" bug. This lifts the fixed green hard toward white (dark schemes)
+    // or black (light schemes) so it stays readable over the wash while keeping the
     // brand hue — the light-mint eyebrow look of Genesi Welcome (#7FD9BD).
-    readonly property color accentText: dark ? mix(sysAccent, white, 0.55)
-                                             : mix(sysAccent, black, 0.45)
+    readonly property color accentText: dark ? mix(green, white, 0.55)
+                                             : mix(green, black, 0.45)
 
     // ── Functional / semantic accents (fixed — meaning must not drift) ──
     readonly property color turbo:        "#E67E22"

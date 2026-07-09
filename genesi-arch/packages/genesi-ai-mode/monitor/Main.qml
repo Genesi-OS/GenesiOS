@@ -388,7 +388,7 @@ Kirigami.ApplicationWindow {
                 }
 
                 QQC2.Label {
-                    text: "FEATURES"
+                    text: "GENERAL"
                     color: theme.textLo
                     font.pixelSize: 10
                     font.letterSpacing: 1.1
@@ -409,6 +409,15 @@ Kirigami.ApplicationWindow {
                         color: sel ? theme.a(theme.green, 0.16)
                              : (navMa.containsMouse ? theme.a(theme.textHi, 0.06) : "transparent")
                         Behavior on color { ColorAnimation { duration: 150 } }
+                        // Selected accent rail (left) — the mockup's bright-green bar.
+                        Rectangle {
+                            visible: sel
+                            width: 3; radius: 1.5
+                            height: parent.height - 16
+                            anchors.left: parent.left; anchors.leftMargin: 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: theme.greenBright
+                        }
                         // Brand mask icon, tinted by the system scheme (selected =
                         // accent, idle = muted text) so it still follows the theme.
                         Kirigami.Icon {
@@ -446,7 +455,7 @@ Kirigami.ApplicationWindow {
                 }
 
                 QQC2.Label {
-                    text: "CHAT HISTORY"
+                    text: "HISTORY"
                     color: theme.textLo
                     font.pixelSize: 10
                     font.letterSpacing: 1.1
@@ -455,17 +464,26 @@ Kirigami.ApplicationWindow {
 
                 Repeater {
                     model: [
-                        "Performance tuning",
-                        "Model recommendation",
-                        "Turbo backend setup"
+                        { "icon": "clock",             "label": "Performance tuning" },
+                        { "icon": "view-list-details", "label": "Model recommendation" },
+                        { "icon": "view-refresh",      "label": "Turbo backend setup" }
                     ]
-                    delegate: QQC2.Label {
-                        required property string modelData
+                    delegate: RowLayout {
+                        required property var modelData
                         Layout.fillWidth: true
-                        text: modelData
-                        color: theme.textLo
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
+                        spacing: 8
+                        Kirigami.Icon {
+                            source: modelData.icon
+                            Layout.preferredWidth: 14; Layout.preferredHeight: 14
+                            color: theme.textLo
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            text: modelData.label
+                            color: theme.textLo
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
                     }
                 }
 
@@ -1505,7 +1523,24 @@ Kirigami.ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: -2
                             QQC2.Label { text: win.active ? "AI Mode online" : "AI Mode idle"; color: theme.textHi; font.bold: true; font.pixelSize: 11 }
-                            QQC2.Label { text: win.profileMode + " profile"; color: theme.textLo; font.pixelSize: 9 }
+                            QQC2.Label { text: (win.profileMode.charAt(0).toUpperCase() + win.profileMode.slice(1)) + " profile"; color: theme.textLo; font.pixelSize: 9 }
+                        }
+                        // mini activity sparkline (shader-free bar strip) — mockup accent
+                        Row {
+                            id: statusSpark
+                            height: 16
+                            spacing: 2
+                            Layout.alignment: Qt.AlignVCenter
+                            Repeater {
+                                model: [6, 10, 7, 13, 9, 15, 8, 11]
+                                delegate: Rectangle {
+                                    required property int modelData
+                                    width: 3; radius: 1.5
+                                    height: modelData
+                                    y: statusSpark.height - height
+                                    color: win.active ? theme.greenBright : theme.a(theme.textHi, 0.28)
+                                }
+                            }
                         }
                     }
                 }

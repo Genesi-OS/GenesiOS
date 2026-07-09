@@ -114,7 +114,10 @@ pkgver=1.0.0
 # onto their own accent-tinted wash, so the text vanished (empty green pills). They
 # now use the new Theme.accentText token (a light-mint, high-contrast accent) so
 # the label reads while keeping the brand hue. Bundled genesi-ui-kit change.
-pkgrel=18
+# pkgrel 19: pick up the fixed brand emerald. Theme.qml's green accent is now a
+# pinned brand colour (mockup emerald) instead of the Plasma accent, so Sandboxes
+# renders the same green as the AI Mode Monitor. Bundled genesi-ui-kit change.
+pkgrel=19
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
