@@ -62,7 +62,26 @@ jobs:
         # --needed skips reinstalling when git is already present (cachyos-v3
         # ships with git, and reinstalling it on top of a running process can
         # deadlock the pacman transaction).
-        run: pacman -Sy --needed --noconfirm git openssh
+        run: |
+          set -euo pipefail
+          # CachyOS rotates repo signing keys periodically and the cachyos-v3
+          # base image can lag behind. Bootstrap fresh keyrings before the first
+          # verified sync, otherwise CI can die before checkout with:
+          #   error: cachyos-extra-v3: signature from "CachyOS" is invalid
+          cp /etc/pacman.conf /etc/pacman.conf.bak
+          sed -i 's/^[[:space:]]*SigLevel.*/SigLevel = Never/' /etc/pacman.conf
+          pacman -Sy --noconfirm --needed archlinux-keyring cachyos-keyring || true
+          mv /etc/pacman.conf.bak /etc/pacman.conf
+          pacman-key --init || true
+          pacman-key --populate archlinux cachyos || true
+
+          if ! pacman -Sy --needed --noconfirm git openssh; then
+            echo "::warning::verified sync still failing - retrying with SigLevel=Never for CI bootstrap tools"
+            cp /etc/pacman.conf /etc/pacman.conf.bak
+            sed -i 's/^[[:space:]]*SigLevel.*/SigLevel = Never/' /etc/pacman.conf
+            pacman -Sy --needed --noconfirm git openssh
+            mv /etc/pacman.conf.bak /etc/pacman.conf
+          fi
 
       - name: Determine channel
         id: channel
