@@ -79,7 +79,18 @@ Item {
     readonly property color sevInfo:      "#3AAFE0"
 
     // ── Surfaces (elevations of the system background) ─────────────
-    readonly property color bgBottom: sysBg
+    // bgBottom is the app's base fill (window + scroll backgrounds). It MUST be
+    // fully opaque: the Genesi colour scheme bakes ALPHA into the Window colour
+    // (kdeglobals BackgroundNormal=13,32,48,230 → alpha ~0.90) for the desktop
+    // "glass" look, and Kirigami.Theme.backgroundColor carries that alpha. Used
+    // raw, it makes the whole app body ~10% see-through — the bright wallpaper
+    // bleeds through the window body (and washes out light text) while the cards,
+    // built from elev()/mix() (which force alpha 1), stay solid. That mismatch is
+    // the "only the top is glass, the rest is transparent / invisible text" bug.
+    // Genesi Welcome dodges it by hard-setting an opaque #0D2030; we do the same
+    // here by stripping the scheme alpha. KWin still frosts the window edge, so we
+    // keep the glass feel without the translucent, low-contrast body.
+    readonly property color bgBottom: Qt.rgba(sysBg.r, sysBg.g, sysBg.b, 1)
     readonly property color bgTop:    elev(dark ? 0.05 : 0.02)
     readonly property color card:     elev(dark ? 0.10 : 0.05)
     readonly property color cardHi:   elev(dark ? 0.16 : 0.09)

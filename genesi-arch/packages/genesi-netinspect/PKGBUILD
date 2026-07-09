@@ -73,7 +73,12 @@ pkgver=1.0.0
 # response tabs are now custom drawn with Theme colours instead of Fusion TabButton
 # defaults (selected text stays visible), and raw editors/text fields use explicit
 # themed selection colours.
-pkgrel=15
+# pkgrel 16: opaque app body. The shared Theme.qml now strips the colour-scheme
+# alpha from bgBottom, so the Inspector window/flow-table base fill is fully
+# opaque instead of ~10% see-through (wallpaper bleeding through the body while
+# the panes stayed solid). Matches Genesi Welcome's opaque surface. (Rebuild
+# picks up the bundled genesi-ui-kit change.)
+pkgrel=16
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

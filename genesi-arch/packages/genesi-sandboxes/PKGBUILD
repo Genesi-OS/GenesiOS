@@ -104,7 +104,12 @@ pkgver=1.0.0
 # GButton text/icons now stay white on dark schemes (no black "New workspace"
 # labels on dark accent surfaces), and text fields use explicit themed selection
 # colours so selected text remains readable.
-pkgrel=16
+# pkgrel 17: opaque app body. The shared Theme.qml now strips the colour-scheme
+# alpha from bgBottom, so the window/list base fill is fully opaque instead of
+# ~10% see-through (wallpaper bleeding through the body, cards floating solid on
+# top). Matches Genesi Welcome's opaque surface. (Rebuild picks up the bundled
+# genesi-ui-kit change.)
+pkgrel=17
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
