@@ -92,24 +92,21 @@ Item {
     readonly property color sevLow:       dark ? "#E0B23A" : "#B8860B"
     readonly property color sevInfo:      "#3AAFE0"
 
-    // ── Surfaces (elevations of the system background) ─────────────
-    // bgBottom is the app's base fill (window + scroll backgrounds). It MUST be
-    // fully opaque: the Genesi colour scheme bakes ALPHA into the Window colour
-    // (kdeglobals BackgroundNormal=13,32,48,230 → alpha ~0.90) for the desktop
-    // "glass" look, and Kirigami.Theme.backgroundColor carries that alpha. Used
-    // raw, it makes the whole app body ~10% see-through — the bright wallpaper
-    // bleeds through the window body (and washes out light text) while the cards,
-    // built from elev()/mix() (which force alpha 1), stay solid. That mismatch is
-    // the "only the top is glass, the rest is transparent / invisible text" bug.
-    // Genesi Welcome dodges it by hard-setting an opaque #0D2030; we do the same
-    // here by stripping the scheme alpha. KWin still frosts the window edge, so we
-    // keep the glass feel without the translucent, low-contrast body.
-    readonly property color bgBottom: Qt.rgba(sysBg.r, sysBg.g, sysBg.b, 1)
-    readonly property color bgTop:    elev(dark ? 0.05 : 0.02)
-    readonly property color card:     elev(dark ? 0.10 : 0.05)
-    readonly property color cardHi:   elev(dark ? 0.16 : 0.09)
-    readonly property color line:     sep(dark ? 0.12 : 0.10)
-    readonly property color lineHi:   sep(dark ? 0.20 : 0.16)
+    // ── Surfaces (FIXED dark palette — colour-picked from the AI Monitor mockup) ──
+    // Product decision (2026-07): the window background and card colours are pinned,
+    // not derived from the Plasma scheme. The mockup uses a near-black navy for the
+    // window and a slightly-lifted panel for cards/sidebar; the user colour-picked
+    // #040b17 (bg) and #0d1623 (cards). Opaque — KWin still frosts the window edge,
+    // so the glass feel survives without a translucent, low-contrast body. (sysBg/
+    // elev/sep above stay defined for the accent helpers; they no longer drive
+    // these surfaces.) GlassCard.qml pins the same #040b17 base so its cards land on
+    // ~#0d1623 too.
+    readonly property color bgBottom: "#040b17"   // window / scroll base
+    readonly property color bgTop:    "#0a1220"   // header / raised base
+    readonly property color card:     "#0d1623"   // sidebar, panels, card base
+    readonly property color cardHi:   "#16223a"   // hover / raised chips, search fields
+    readonly property color line:     "#1b2740"   // subtle separators / borders
+    readonly property color lineHi:   "#27374f"   // stronger borders
 
     // ── Text (from the system foreground) ──────────────────────────
     readonly property color textHi:   sysText

@@ -181,16 +181,13 @@ Kirigami.ApplicationWindow {
             Item { width: Kirigami.Units.smallSpacing }
 
             // ── Brand mark ──
-            Rectangle {
-                width: 34; height: 34; radius: 10
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: theme.greenBright }
-                    GradientStop { position: 1.0; color: theme.greenDeep }
-                }
-                Kirigami.Icon {
-                    anchors.centerIn: parent
-                    source: "cpu"; width: 19; height: 19; color: "#08130E"
-                }
+            // App brand mark — the Genesi AI Mode Monitor symbol (leaf logo),
+            // standalone in the brand green, matching the mockup header.
+            Kirigami.Icon {
+                source: Qt.resolvedUrl("icons/logo.svg")
+                isMask: true
+                Layout.preferredWidth: 30; Layout.preferredHeight: 30
+                color: theme.greenBright
             }
             ColumnLayout {
                 spacing: -2
@@ -593,7 +590,8 @@ Kirigami.ApplicationWindow {
                                 color: win.active ? theme.a(theme.green, 0.14) : "transparent"
                                 Kirigami.Icon {
                                     anchors.centerIn: parent
-                                    source: "cpu"; width: 28; height: 28
+                                    source: Qt.resolvedUrl("icons/bot.svg"); isMask: true
+                                    width: 30; height: 30
                                     color: win.active ? theme.greenBright : theme.textLo
                                 }
                             }
@@ -1391,9 +1389,9 @@ Kirigami.ApplicationWindow {
                     Layout.fillWidth: true
                     implicitHeight: 88
                     radius: 16
-                    color: theme.a(theme.green, win.active ? 0.16 : 0.08)
+                    color: theme.a(theme.green, win.active ? 0.22 : 0.12)
                     border.width: 1
-                    border.color: win.active ? theme.a(theme.green, 0.42) : theme.line
+                    border.color: win.active ? theme.a(theme.greenBright, 0.78) : theme.a(theme.green, 0.34)
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 13
@@ -1403,8 +1401,8 @@ Kirigami.ApplicationWindow {
                             spacing: 8
                             Rectangle {
                                 width: 28; height: 28; radius: 9
-                                color: theme.a(theme.green, win.active ? 0.24 : 0.11)
-                                Kirigami.Icon { anchors.centerIn: parent; source: "cpu"; width: 16; height: 16; color: win.active ? theme.greenBright : theme.textLo }
+                                color: theme.a(theme.greenBright, win.active ? 0.28 : 0.16)
+                                Kirigami.Icon { anchors.centerIn: parent; source: Qt.resolvedUrl("icons/bot.svg"); isMask: true; width: 16; height: 16; color: win.active ? theme.greenBright : theme.textLo }
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true
@@ -1452,9 +1450,9 @@ Kirigami.ApplicationWindow {
                     Layout.fillWidth: true
                     implicitHeight: 84
                     radius: 16
-                    color: theme.a(theme.turbo, win.turboRequested ? 0.18 : 0.08)
+                    color: theme.a(theme.turbo, win.turboRequested ? 0.24 : 0.12)
                     border.width: 1
-                    border.color: win.turboRequested ? theme.a(theme.turbo, 0.48) : theme.line
+                    border.color: win.turboRequested ? theme.a(theme.turboBright, 0.80) : theme.a(theme.turbo, 0.34)
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 13
@@ -1464,7 +1462,7 @@ Kirigami.ApplicationWindow {
                             spacing: 8
                             Rectangle {
                                 width: 28; height: 28; radius: 9
-                                color: theme.a(theme.turbo, 0.18)
+                                color: theme.a(theme.turboBright, 0.24)
                                 Kirigami.Icon { anchors.centerIn: parent; source: Qt.resolvedUrl("icons/bolt.svg"); isMask: true; width: 16; height: 16; color: theme.turboBright }
                             }
                             ColumnLayout {
@@ -1519,9 +1517,9 @@ Kirigami.ApplicationWindow {
                     Layout.fillWidth: true
                     implicitHeight: 78
                     radius: 16
-                    color: theme.a(theme.purple, win.turboSpec ? 0.16 : 0.07)
+                    color: theme.a(theme.purple, win.turboSpec ? 0.22 : 0.11)
                     border.width: 1
-                    border.color: win.turboSpec ? theme.a(theme.purple, 0.46) : theme.line
+                    border.color: win.turboSpec ? theme.a(theme.purpleBright, 0.80) : theme.a(theme.purple, 0.34)
                     opacity: win.turboRequested ? 0.58 : 1.0
                     ColumnLayout {
                         anchors.fill: parent
@@ -1532,7 +1530,7 @@ Kirigami.ApplicationWindow {
                             spacing: 8
                             Rectangle {
                                 width: 28; height: 28; radius: 9
-                                color: theme.a(theme.purple, 0.18)
+                                color: theme.a(theme.purpleBright, 0.24)
                                 Kirigami.Icon { anchors.centerIn: parent; source: "media-playback-start"; width: 15; height: 15; color: theme.purpleBright }
                             }
                             ColumnLayout {

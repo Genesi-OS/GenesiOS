@@ -28,7 +28,9 @@ import org.kde.kirigami as Kirigami
 Rectangle {
     id: card
 
-    readonly property color sysBg: Kirigami.Theme.backgroundColor
+    // Pinned to the mockup's window base (#040b17); the elevation gradient below
+    // lifts it to ~#0d1623 for the card body. (Matches Theme.qml's fixed palette.)
+    readonly property color sysBg: "#040b17"
     readonly property bool dark: !((0.299 * sysBg.r + 0.587 * sysBg.g + 0.114 * sysBg.b) >= 0.5)
 
     // Elevation/separator helpers (kept local so the card takes no `theme`).
