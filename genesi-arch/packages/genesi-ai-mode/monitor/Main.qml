@@ -547,12 +547,7 @@ Kirigami.ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: availableWidth
-            background: Rectangle {
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: theme.bgTop }
-                    GradientStop { position: 1.0; color: theme.bgBottom }
-                }
-            }
+            background: Rectangle { color: theme.bgBottom }
 
             ColumnLayout {
                 width: parent.width
@@ -697,7 +692,8 @@ Kirigami.ApplicationWindow {
                             border.color: theme.a(theme.turbo, 0.55); border.width: 1
                             Kirigami.Icon {
                                 anchors.centerIn: parent
-                                source: "lightning"; width: 26; height: 26
+                                source: Qt.resolvedUrl("icons/bolt.svg"); isMask: true
+                                width: 24; height: 24
                                 color: theme.turboBright
                             }
                         }
@@ -737,13 +733,36 @@ Kirigami.ApplicationWindow {
                                         QQC2.ToolTip.visible: containsMouse
                                     }
                                 }
-                                QQC2.Button {
-                                    // Always available: when a backend is missing it installs one;
-                                    // when one is present it lets you SWITCH between Vulkan and CUDA
-                                    // (the dialog shows which is active + recommends per hardware).
-                                    text: win.turboNeedsInstall ? i18n.t("turbo.installBackend") : i18n.t("turbo.backend")
-                                    icon.name: "download"
-                                    onClicked: { backend.backendInfo(); backendDialog.open() }
+                                // Always available: when a backend is missing it installs one;
+                                // when one is present it lets you SWITCH between Vulkan and CUDA
+                                // (the dialog shows which is active + recommends per hardware).
+                                // Custom rounded pill (the flat Fusion QQC2.Button looked out of place).
+                                Rectangle {
+                                    id: backendBtn
+                                    implicitHeight: 30
+                                    implicitWidth: backendRow.implicitWidth + 24
+                                    radius: 9
+                                    color: backendMa.containsMouse ? theme.cardHi : theme.a(theme.textHi, 0.06)
+                                    border.width: 1; border.color: theme.line
+                                    Behavior on color { ColorAnimation { duration: 140 } }
+                                    RowLayout {
+                                        id: backendRow
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        Kirigami.Icon { source: "download"; Layout.preferredWidth: 14; Layout.preferredHeight: 14; color: theme.textMid }
+                                        QQC2.Label {
+                                            text: win.turboNeedsInstall ? i18n.t("turbo.installBackend") : i18n.t("turbo.backend")
+                                            color: theme.textHi; font.pixelSize: 12
+                                        }
+                                        Kirigami.Icon { source: "go-down"; Layout.preferredWidth: 12; Layout.preferredHeight: 12; color: theme.textLo }
+                                    }
+                                    MouseArea {
+                                        id: backendMa
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: { backend.backendInfo(); backendDialog.open() }
+                                    }
                                 }
                             }
                             QQC2.Label {
@@ -840,24 +859,38 @@ Kirigami.ApplicationWindow {
                     // CPU
                     GlassCard {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 116
+                        Layout.preferredHeight: 128
                         entranceDelay: 140
-                        RowLayout {
+                        ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: Kirigami.Units.largeSpacing
-                            spacing: Kirigami.Units.largeSpacing
-                            GaugeArc {
-                                value: win.metrics().cpu_percent !== undefined ? win.metrics().cpu_percent / 100.0 : 0
-                                stroke: theme.green
-                                big: win.metrics().cpu_percent !== undefined ? Math.round(win.metrics().cpu_percent) + "" : "—"
-                                small: win.metrics().cpu_percent !== undefined ? "%" : ""
-                            }
-                            ColumnLayout {
+                            spacing: Kirigami.Units.smallSpacing
+                            RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 2
+                                spacing: 8
+                                Rectangle {
+                                    width: 26; height: 26; radius: 8
+                                    color: theme.a(theme.green, 0.16)
+                                    Kirigami.Icon { anchors.centerIn: parent; source: "cpu"; width: 15; height: 15; color: theme.greenBright }
+                                }
                                 QQC2.Label { text: i18n.t("card.cpu"); font.bold: true; font.pixelSize: 11; font.letterSpacing: 1; color: theme.green }
-                                QQC2.Label { text: win.metrics().cpu_percent !== undefined ? win.metrics().cpu_percent.toFixed(1) + "%" : "—"; font.bold: true; font.pixelSize: 18; color: theme.textHi }
-                                QQC2.Label { text: (win.hw().physical_cores || "?") + " " + i18n.t("u.cores") + " · " + (win.hw().logical_cores || "?") + " " + i18n.t("u.threads"); color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                                Item { Layout.fillWidth: true }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.largeSpacing
+                                GaugeArc {
+                                    value: win.metrics().cpu_percent !== undefined ? win.metrics().cpu_percent / 100.0 : 0
+                                    stroke: theme.green
+                                    big: win.metrics().cpu_percent !== undefined ? Math.round(win.metrics().cpu_percent) + "" : "—"
+                                    small: win.metrics().cpu_percent !== undefined ? "%" : ""
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    QQC2.Label { text: win.metrics().cpu_percent !== undefined ? win.metrics().cpu_percent.toFixed(1) + "%" : "—"; font.bold: true; font.pixelSize: 18; color: theme.textHi }
+                                    QQC2.Label { text: (win.hw().physical_cores || "?") + " " + i18n.t("u.cores") + " · " + (win.hw().logical_cores || "?") + " " + i18n.t("u.threads"); color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                                }
                             }
                         }
                     }
@@ -865,24 +898,38 @@ Kirigami.ApplicationWindow {
                     // MEMORY
                     GlassCard {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 116
+                        Layout.preferredHeight: 128
                         entranceDelay: 175
-                        RowLayout {
+                        ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: Kirigami.Units.largeSpacing
-                            spacing: Kirigami.Units.largeSpacing
-                            GaugeArc {
-                                value: win.metrics().ram_total_mb ? (win.metrics().ram_used_mb || 0) / win.metrics().ram_total_mb : 0
-                                stroke: theme.blue
-                                big: win.metrics().ram_total_mb ? Math.round(((win.metrics().ram_used_mb || 0) / win.metrics().ram_total_mb) * 100) + "" : "—"
-                                small: win.metrics().ram_total_mb ? "%" : ""
-                            }
-                            ColumnLayout {
+                            spacing: Kirigami.Units.smallSpacing
+                            RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 2
+                                spacing: 8
+                                Rectangle {
+                                    width: 26; height: 26; radius: 8
+                                    color: theme.a(theme.blue, 0.16)
+                                    Kirigami.Icon { anchors.centerIn: parent; source: "media-flash"; width: 15; height: 15; color: theme.blue }
+                                }
                                 QQC2.Label { text: i18n.t("card.memory"); font.bold: true; font.pixelSize: 11; font.letterSpacing: 1; color: theme.blue }
-                                QQC2.Label { text: win.metrics().ram_total_mb ? (Math.round((win.metrics().ram_used_mb || 0) / 102.4) / 10).toFixed(1) + " / " + Math.round(win.metrics().ram_total_mb / 1024) + " GB" : "—"; font.bold: true; font.pixelSize: 18; color: theme.textHi }
-                                QQC2.Label { text: (win.metrics().ram_used_mb || 0) + " " + i18n.t("u.inUse"); color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                                Item { Layout.fillWidth: true }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.largeSpacing
+                                GaugeArc {
+                                    value: win.metrics().ram_total_mb ? (win.metrics().ram_used_mb || 0) / win.metrics().ram_total_mb : 0
+                                    stroke: theme.blue
+                                    big: win.metrics().ram_total_mb ? Math.round(((win.metrics().ram_used_mb || 0) / win.metrics().ram_total_mb) * 100) + "" : "—"
+                                    small: win.metrics().ram_total_mb ? "%" : ""
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    QQC2.Label { text: win.metrics().ram_total_mb ? (Math.round((win.metrics().ram_used_mb || 0) / 102.4) / 10).toFixed(1) + " / " + Math.round(win.metrics().ram_total_mb / 1024) + " GB" : "—"; font.bold: true; font.pixelSize: 18; color: theme.textHi }
+                                    QQC2.Label { text: (win.metrics().ram_used_mb || 0) + " " + i18n.t("u.inUse"); color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                                }
                             }
                         }
                     }
@@ -890,24 +937,38 @@ Kirigami.ApplicationWindow {
                     // INFERENCE
                     GlassCard {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 116
+                        Layout.preferredHeight: 128
                         entranceDelay: 210
-                        RowLayout {
+                        ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: Kirigami.Units.largeSpacing
-                            spacing: Kirigami.Units.largeSpacing
-                            GaugeArc {
-                                value: win.activeModel ? 1 : 0
-                                stroke: theme.purple
-                                icon: win.activeModel ? "icons/rocket.svg" : ""
-                                big: win.activeModel ? "" : "—"
-                            }
-                            ColumnLayout {
+                            spacing: Kirigami.Units.smallSpacing
+                            RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 2
+                                spacing: 8
+                                Rectangle {
+                                    width: 26; height: 26; radius: 8
+                                    color: theme.a(theme.purple, 0.16)
+                                    Kirigami.Icon { anchors.centerIn: parent; source: Qt.resolvedUrl("icons/rocket.svg"); isMask: true; width: 15; height: 15; color: theme.purpleBright }
+                                }
                                 QQC2.Label { text: i18n.t("card.inference"); font.bold: true; font.pixelSize: 11; font.letterSpacing: 1; color: theme.purpleBright }
-                                QQC2.Label { text: win.activeModel ? (st.tokens_per_second ? st.tokens_per_second + " t/s" : i18n.t("u.active")) : "—"; font.bold: true; font.pixelSize: 18; color: theme.textHi }
-                                QQC2.Label { text: win.activeModel ? win.activeModel : i18n.t("u.noModel"); color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                                Item { Layout.fillWidth: true }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.largeSpacing
+                                GaugeArc {
+                                    value: win.activeModel ? 1 : 0
+                                    stroke: theme.purple
+                                    icon: win.activeModel ? "icons/rocket.svg" : ""
+                                    big: win.activeModel ? "" : "—"
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    QQC2.Label { text: win.activeModel ? (st.tokens_per_second ? st.tokens_per_second + " t/s" : i18n.t("u.active")) : "—"; font.bold: true; font.pixelSize: 18; color: theme.textHi }
+                                    QQC2.Label { text: win.activeModel ? win.activeModel : i18n.t("u.noModel"); color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                                }
                             }
                         }
                     }
@@ -918,7 +979,7 @@ Kirigami.ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: implicitHeight
                     entranceDelay: 260
-                    implicitHeight: optLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
+                    implicitHeight: optLayout.implicitHeight + (Kirigami.Units.largeSpacing + 8) * 2
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing
 
@@ -927,12 +988,16 @@ Kirigami.ApplicationWindow {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.top: parent.top
-                        anchors.margins: Kirigami.Units.largeSpacing
-                        spacing: Kirigami.Units.smallSpacing
+                        anchors.margins: Kirigami.Units.largeSpacing + 8
+                        spacing: Kirigami.Units.smallSpacing + 2
 
                         RowLayout {
-                            spacing: Kirigami.Units.smallSpacing
-                            Kirigami.Icon { source: "configure"; color: theme.green; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
+                            spacing: Kirigami.Units.smallSpacing + 2
+                            Rectangle {
+                                width: 30; height: 30; radius: 9
+                                color: theme.a(theme.green, 0.16)
+                                Kirigami.Icon { anchors.centerIn: parent; source: "configure"; width: 17; height: 17; color: theme.greenBright }
+                            }
                             QQC2.Label {
                                 text: win.active ? i18n.t("opt.applied") : i18n.t("opt.inactive")
                                 font.bold: true; font.pixelSize: 15; color: theme.textHi
@@ -963,49 +1028,87 @@ Kirigami.ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: implicitHeight
                     entranceDelay: 320
-                    implicitHeight: benchLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
+                    implicitHeight: benchLayout.implicitHeight + (Kirigami.Units.largeSpacing + 8) * 2
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing
-                    accent: theme.blue
+                    accent: theme.purple
 
                     ColumnLayout {
                         id: benchLayout
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.top: parent.top
-                        anchors.margins: Kirigami.Units.largeSpacing
-                        spacing: Kirigami.Units.smallSpacing
+                        anchors.margins: Kirigami.Units.largeSpacing + 8
+                        spacing: Kirigami.Units.smallSpacing + 2
 
+                        // header: title + description on the LEFT, Run button on the RIGHT
                         RowLayout {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-                            Kirigami.Icon { source: "speedometer"; color: theme.blue; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
-                            QQC2.Label {
-                                text: i18n.t("bench.title")
-                                font.bold: true; font.pixelSize: 15; color: theme.textHi
-                            }
-                            Item { Layout.fillWidth: true }
-                            QQC2.BusyIndicator {
-                                running: win.benchRunning
-                                visible: win.benchRunning
-                                Layout.preferredWidth: 22; Layout.preferredHeight: 22
-                            }
-                            QQC2.Button {
-                                text: win.benchRunning ? i18n.t("bench.measuring") : i18n.t("bench.run")
-                                icon.name: "speedometer"
-                                enabled: !win.benchRunning
-                                onClicked: backend.runBench(win.turboModel || win.activeModel || win.firstInstalledModel || "llama3.2")
-                            }
-                        }
+                            spacing: Kirigami.Units.largeSpacing
 
-                        QQC2.Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            color: theme.textLo
-                            font.pixelSize: 12
-                            text: i18n.t("bench.descPre")
-                                + (win.turboModel || win.activeModel || win.firstInstalledModel || "llama3.2")
-                                + i18n.t("bench.descPost")
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                RowLayout {
+                                    spacing: Kirigami.Units.smallSpacing + 2
+                                    Rectangle {
+                                        width: 30; height: 30; radius: 9
+                                        color: theme.a(theme.purple, 0.16)
+                                        Kirigami.Icon { anchors.centerIn: parent; source: "speedometer"; width: 17; height: 17; color: theme.purpleBright }
+                                    }
+                                    QQC2.Label {
+                                        text: i18n.t("bench.title")
+                                        font.bold: true; font.pixelSize: 15; color: theme.textHi
+                                    }
+                                }
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    color: theme.textLo
+                                    font.pixelSize: 12
+                                    text: i18n.t("bench.descPre")
+                                        + (win.turboModel || win.activeModel || win.firstInstalledModel || "llama3.2")
+                                        + i18n.t("bench.descPost")
+                                }
+                            }
+
+                            // Run benchmark — signature purple gradient pill (Memory Palace vibe)
+                            Rectangle {
+                                id: benchBtn
+                                Layout.alignment: Qt.AlignVCenter
+                                implicitHeight: 42
+                                implicitWidth: benchBtnRow.implicitWidth + 34
+                                radius: 12
+                                opacity: win.benchRunning ? 0.6 : (benchBtnMa.containsMouse ? 1.0 : 0.94)
+                                Behavior on opacity { NumberAnimation { duration: 140 } }
+                                gradient: Gradient {
+                                    orientation: Gradient.Horizontal
+                                    GradientStop { position: 0.0; color: theme.violet }
+                                    GradientStop { position: 1.0; color: theme.purple }
+                                }
+                                RowLayout {
+                                    id: benchBtnRow
+                                    anchors.centerIn: parent
+                                    spacing: 8
+                                    QQC2.BusyIndicator {
+                                        running: win.benchRunning; visible: win.benchRunning
+                                        Layout.preferredWidth: 18; Layout.preferredHeight: 18
+                                    }
+                                    Kirigami.Icon { visible: !win.benchRunning; source: "speedometer"; Layout.preferredWidth: 16; Layout.preferredHeight: 16; color: "#FFFFFF" }
+                                    QQC2.Label {
+                                        text: win.benchRunning ? i18n.t("bench.measuring") : i18n.t("bench.run")
+                                        color: "#FFFFFF"; font.bold: true; font.pixelSize: 13
+                                    }
+                                }
+                                MouseArea {
+                                    id: benchBtnMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    enabled: !win.benchRunning
+                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: backend.runBench(win.turboModel || win.activeModel || win.firstInstalledModel || "llama3.2")
+                                }
+                            }
                         }
 
                         // live progress
