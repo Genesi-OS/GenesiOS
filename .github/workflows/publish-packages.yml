@@ -259,12 +259,14 @@ jobs:
           #    the build over swap. 2026-06-21: a FIXED 16G swapfile hit "No space
           #    left on device" on a low-disk runner (fallocate unsupported on the
           #    overlay fs -> dd wrote real bytes -> ENOSPC -> set -e killed the
-          #    build). Now: size the swap to HALF the free disk (so dd can't fill
-          #    it) and treat every step as non-fatal, reclaiming a partial file.
+          #    build). Keep the swap deliberately small: reserving half of the
+          #    runner disk starved later source builds (Calamares/Klassy) and
+          #    crashed the Actions worker itself with ENOSPC. Overcommit above
+          #    is the primary fix; swap is only a modest backstop.
           set +e
           if [ ! -e /ci-swapfile ]; then
             avail_mb=$(df --output=avail -m / 2>/dev/null | tail -1 | tr -d ' '); avail_mb=${avail_mb:-0}
-            want_mb=$(( avail_mb / 2 )); [ "$want_mb" -gt 16384 ] && want_mb=16384
+            want_mb=$(( avail_mb / 4 )); [ "$want_mb" -gt 4096 ] && want_mb=4096
             if [ "$want_mb" -ge 2048 ]; then
               fallocate -l "${want_mb}M" /ci-swapfile 2>/dev/null \
                 || dd if=/dev/zero of=/ci-swapfile bs=1M count="$want_mb" status=none
@@ -294,6 +296,16 @@ jobs:
           cd "$GITHUB_WORKSPACE/genesi-arch/packages"
           mkdir -p repo
           chown builder:builder repo
+
+          # Every run rebuilds the complete repository. Keeping the checked-in
+          # binary registry duplicates all packages while the fresh artifacts
+          # accumulate in packages/repo, wasting several GB on the runner.
+          rm -rf "$GITHUB_WORKSPACE/genesi-arch/repo/x86_64"
+
+          # Keep downloaded sources outside package directories so each
+          # package's source cache can be reclaimed immediately after build.
+          mkdir -p "$GITHUB_WORKSPACE/.ci-sources"
+          chown builder:builder "$GITHUB_WORKSPACE/.ci-sources"
 
           PACKAGES=(
             "genesi-settings"
@@ -430,6 +442,7 @@ jobs:
               if timeout 1500 bash -c "cd '$pkg' && rm -f *.pkg.tar.zst && \
                 runuser -u builder -- env \
                   PKGDEST='$GITHUB_WORKSPACE/genesi-arch/packages/repo' \
+                  SRCDEST='$GITHUB_WORKSPACE/.ci-sources/$pkg' \
                   makepkg -f $MAKEPKG_NODEPS --noconfirm --noprogressbar --log"; then
                 rc=0
                 break
@@ -444,14 +457,16 @@ jobs:
               break
             done
 
-            # If makepkg --log produced output, dump it so we see the real failure
-            for log in "$pkg"/*.log; do
-              [ -f "$log" ] || continue
-              echo "::group::makepkg log: $log"
-              cat "$log"
-              echo "::endgroup::"
-            done
             if [ "$rc" -ne 0 ]; then
+              # Successful makepkg logs can be enormous (Klassy alone emits
+              # thousands of install lines), inflating the runner's diagnostic
+              # log. Only print them when they are needed to explain a failure.
+              for log in "$pkg"/*.log; do
+                [ -f "$log" ] || continue
+                echo "::group::makepkg log: $log"
+                cat "$log"
+                echo "::endgroup::"
+              done
               if [ "$rc" -eq 124 ]; then
                 echo "::error::Package $pkg timed out after 25 minutes"
               else
@@ -490,8 +505,16 @@ jobs:
                     || echo "::warning::could not install $builtpkg into container"
                 fi ;;
             esac
+
+            # The final package is already safe in packages/repo. Source trees,
+            # fakeroot package trees, downloaded archives and success logs are
+            # disposable and otherwise accumulate until the runner disk fills.
+            rm -rf "$pkg/src" "$pkg/pkg" "$GITHUB_WORKSPACE/.ci-sources/$pkg"
+            rm -f "$pkg"/*.log
             echo "::endgroup::"
           done
+
+          rm -rf "$GITHUB_WORKSPACE/.ci-sources"
 
           cd repo
           rm -f genesi.db* genesi.files*
