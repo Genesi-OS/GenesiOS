@@ -85,7 +85,9 @@ pkgver=1.0.0
 # pkgrel 18: pick up the fixed brand emerald. Theme.qml's green accent is now a
 # pinned brand colour (mockup emerald) instead of the Plasma accent, so the
 # Inspector renders the same green as the AI Mode Monitor. Bundled kit change.
-pkgrel=18
+# pkgrel 19: pick up the pinned dark mockup palette (#040b17 bg / #0d1623 cards)
+# from the shared kit, so the Inspector matches the redesigned AI Mode Monitor.
+pkgrel=19
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -117,7 +117,9 @@ pkgver=1.0.0
 # pkgrel 19: pick up the fixed brand emerald. Theme.qml's green accent is now a
 # pinned brand colour (mockup emerald) instead of the Plasma accent, so Sandboxes
 # renders the same green as the AI Mode Monitor. Bundled genesi-ui-kit change.
-pkgrel=19
+# pkgrel 20: pick up the pinned dark mockup palette (#040b17 bg / #0d1623 cards)
+# from the shared kit, so Sandboxes matches the redesigned AI Mode Monitor.
+pkgrel=20
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
