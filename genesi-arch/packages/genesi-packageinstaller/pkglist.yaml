@@ -87,6 +87,12 @@
     - "p7zip unrar unzip"
     - flatpak
 
+- name: "Kernel"
+  packages:
+    # CachyOS Kernel Manager — GUI to build/install/switch CachyOS kernels and
+    # tune build options. Binary: cachyos-kernel-manager.
+    - cachyos-kernel-manager
+
 # ⚠ DEV / TESTE — não é pra usuário final. Pacotes pra validar o backend CUDA do
 # Genesi Turbo numa máquina NVIDIA com driver proprietário/aberto. Instalar os
 # pacotes NÃO carrega o módulo nem liga nada — na sessão live use o atalho
