@@ -100,7 +100,11 @@ pkgver=1.0.0
 # via the shared genesi-ui-kit I18n.qml (added to the bundled-components loop);
 # sidebar/filters/banners/dialog titles now go through i18n.t(). The sidebar
 # (brand + New workspace + All/Running/Stopped filters) was already in place.
-pkgrel=15
+# pkgrel 16: fix dark-theme contrast after the system-colour pass. Filled
+# GButton text/icons now stay white on dark schemes (no black "New workspace"
+# labels on dark accent surfaces), and text fields use explicit themed selection
+# colours so selected text remains readable.
+pkgrel=16
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

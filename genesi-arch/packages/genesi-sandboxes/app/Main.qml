@@ -386,6 +386,8 @@ Kirigami.ApplicationWindow {
                                 placeholderText: "Search workspaces…"
                                 color: theme.textHi
                                 placeholderTextColor: theme.textLo
+                                selectedTextColor: theme.white
+                                selectionColor: theme.a(theme.green, 0.72)
                                 background: null
                                 onTextChanged: win.query = text
                             }
@@ -582,6 +584,8 @@ Kirigami.ApplicationWindow {
                     enabled: !win.busy
                     color: theme.textHi
                     placeholderTextColor: theme.textLo
+                    selectedTextColor: theme.white
+                    selectionColor: theme.a(theme.green, 0.72)
                     background: Rectangle {
                         radius: 9
                         color: theme.a(theme.textHi, 0.04)

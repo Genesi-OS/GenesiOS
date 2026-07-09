@@ -22,6 +22,7 @@ ApplicationWindow {
 
     // ── shared state ───────────────────────────────────────────────
     property int page: 0
+    property int detailTab: 0
     property string selectedId: ""
     property string repeaterBaseId: ""
     property string intruderBaseId: ""
@@ -93,6 +94,36 @@ ApplicationWindow {
         }
     }
 
+    component SegTab: Rectangle {
+        id: st
+        property string text: ""
+        property int index: 0
+        readonly property bool selected: win.detailTab === index
+        implicitHeight: 26
+        implicitWidth: lbl.implicitWidth + 34
+        radius: 7
+        color: selected ? theme.a(theme.green, theme.dark ? 0.24 : 0.18)
+              : (ma.containsMouse ? theme.a(theme.textHi, theme.dark ? 0.07 : 0.05) : "transparent")
+        border.width: 1
+        border.color: selected ? theme.a(theme.green, 0.55) : theme.line
+        Behavior on color { ColorAnimation { duration: 120 } }
+        Text {
+            id: lbl
+            anchors.centerIn: parent
+            text: st.text
+            color: st.selected ? theme.textHi : theme.textMid
+            font.pixelSize: 12
+            font.bold: st.selected
+        }
+        MouseArea {
+            id: ma
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: win.detailTab = st.index
+        }
+    }
+
     component RawView: Rectangle {
         id: rv
         property alias text: ta.text
@@ -113,6 +144,8 @@ ApplicationWindow {
                 font.family: theme.mono
                 font.pixelSize: 12
                 selectByMouse: true
+                selectedTextColor: theme.white
+                selectionColor: theme.a(theme.green, 0.72)
                 background: null
                 placeholderText: ""
             }
@@ -333,6 +366,8 @@ ApplicationWindow {
                                 verticalAlignment: TextInput.AlignVCenter
                                 color: theme.textHi
                                 font.pixelSize: 12
+                                selectedTextColor: theme.white
+                                selectionColor: theme.a(theme.green, 0.72)
                                 placeholderText: "Scope filter — host substring (blank = all)"
                                 background: null
                                 onEditingFinished: backend.setScope(text)
@@ -481,12 +516,11 @@ ApplicationWindow {
                                 spacing: 8
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    TabBar {
-                                        id: detailTabs
+                                    Row {
                                         Layout.fillWidth: true
-                                        background: null
-                                        TabButton { text: "Request";  width: 110 }
-                                        TabButton { text: "Response"; width: 110 }
+                                        spacing: 4
+                                        SegTab { text: "Request"; index: 0 }
+                                        SegTab { text: "Response"; index: 1 }
                                     }
                                     PillButton {
                                         text: "→ Repeater"; flat: true; accent: theme.purple
@@ -511,7 +545,7 @@ ApplicationWindow {
                                 StackLayout {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    currentIndex: detailTabs.currentIndex
+                                    currentIndex: win.detailTab
                                     RawView { id: detailReq }
                                     RawView { id: detailResp }
                                 }

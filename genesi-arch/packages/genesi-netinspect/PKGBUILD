@@ -69,7 +69,11 @@ pkgver=1.0.0
 # port, trusting only the mitmproxy CA via an SPKI exception
 # (--ignore-certificate-errors-spki-list), in an isolated profile. It never touches
 # the system proxy, so HTTPS decrypts without `cert` and it can't strand the desktop.
-pkgrel=14
+# pkgrel 15: fix dark-theme readability after the system-colour pass. The request/
+# response tabs are now custom drawn with Theme colours instead of Fusion TabButton
+# defaults (selected text stays visible), and raw editors/text fields use explicit
+# themed selection colours.
+pkgrel=15
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
