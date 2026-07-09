@@ -209,10 +209,19 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          # The cachyos-v3 container compiles with -march=x86-64-v3 (AVX2/FMA/
-          # BMI2), and its rust.conf uses target-cpu=native (= the GitHub
-          # runner's CPU, frequently AVX-512). Both bake instructions that
-          # older/consumer bare-metal CPUs may lack.
+          # The cachyos-v3 container's makepkg.conf compiles C/C++ with
+          # -march=native (= the GitHub runner's CPU, frequently AVX-512), and
+          # its rust.conf uses target-cpu=native. Both bake instructions that
+          # older/consumer bare-metal CPUs and VMs may lack.
+          #
+          # 2026-07-09: reproduced again — cachyos-pi (genesi-packageinstaller)
+          # SIGILL'd on an AVX2-only VirtualBox VM. Disassembly at the faulting
+          # PC showed EVEX AVX-512 (vpbroadcastq %rax,%ymm / vpgatherdq {%k1}).
+          # Root cause: the old sed below only rewrote `-march=x86-64-vN` and
+          # NEVER matched `-march=native`, so every C/C++ package kept whatever
+          # ISA the build runner happened to have -> non-deterministic
+          # "works on one CI run, SIGILLs on the next". The `-march=[^ "]+`
+          # catch-all now pins ANY march value (native, v3, v4, …) to baseline.
           #
           # The [genesi] repo (pacman.conf) ships a SINGLE build to EVERY
           # machine — unlike the [cachyos] repo which has per-arch v1/v3/v4
@@ -227,7 +236,7 @@ jobs:
           for f in /etc/makepkg.conf /etc/makepkg.conf.d/*.conf; do
             [ -f "$f" ] || continue
             sed -i -E \
-              -e 's/-march=x86-64-v[0-9]+/-march=x86-64/g' \
+              -e 's/-march=[^ "]+/-march=x86-64/g' \
               -e 's/-mtune=[^ "]+/-mtune=generic/g' \
               -e 's/(-C[[:space:]]*target-cpu=)[^ "]+/\1x86-64/g' \
               "$f"
