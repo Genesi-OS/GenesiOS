@@ -62,8 +62,8 @@ Rectangle {
 
     // Surface: a soft top→bottom elevation gradient (premium depth, shader-free).
     gradient: Gradient {
-        GradientStop { position: 0.0; color: card._elev((card.dark ? 0.14 : 0.065) + card._hb * (card.dark ? 0.06 : 0.03)) }
-        GradientStop { position: 1.0; color: card._elev((card.dark ? 0.07 : 0.030) + card._hb * (card.dark ? 0.04 : 0.02)) }
+        GradientStop { position: 0.0; color: card._elev((card.dark ? 0.055 : 0.065) + card._hb * (card.dark ? 0.05 : 0.03)) }
+        GradientStop { position: 1.0; color: card._elev((card.dark ? 0.032 : 0.030) + card._hb * (card.dark ? 0.035 : 0.02)) }
     }
 
     border.width: 1
