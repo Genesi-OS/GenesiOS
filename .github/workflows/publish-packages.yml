@@ -312,10 +312,16 @@ jobs:
             # applies the Genesi wallpaper, dark theme, accent and launchers.
             # No-ops on KDE/Hyprland (they have their own branding).
             "genesi-de-branding"
-            # Genesi rebrand of cachyos-openbox-settings (tint2 + jgmenu + picom
-            # + nitrogen). Openbox ships no config of its own, so without this the
-            # session is a bare black screen. Just downloads a tarball + rebrands.
-            "genesi-openbox-settings"
+            # NOTE: genesi-openbox-settings was REMOVED here (2026-07-09). Openbox
+            # is no longer a selectable DE in the Calamares chooser, nothing
+            # depends on the package (not genesi-desktop, no netinstall group), so
+            # it was built + committed to the git repo but installed by nobody.
+            # Worse, the upstream cachyos-openbox-settings tarball bundles two
+            # FULL icon themes (Papirus-Custom + Papirus-Dark-Custom = ~125k
+            # files), and makepkg processing all of them under fakeroot on the
+            # runner's overlayfs blew past the 25-min per-package timeout and
+            # hung the whole publish. Re-add (and prune the bundled icon themes)
+            # only if Openbox comes back as a real DE option.
             # Genesi fork of the CachyOS package installer (Qt6 + Rust). Verified
             # to build in ~112s via test-packageinstaller.yml — well under the
             # 25-min per-package budget, so it won't stall the publish pipeline.
