@@ -26,7 +26,10 @@ pkgver=1.0.0
 # pkgrel 3: reliable rollback for Genesi's explicit subvol=/@ layout, retain
 # only snap-pac's latest before/after pair, brand the GRUB recovery submenu and
 # ship the shared opaque-tonal button contrast fix.
-pkgrel=3
+# pkgrel 4: rebundle the shared UI kit — GButton is now self-sufficient, so
+# tonal/danger/ghost buttons stop rendering as unreadable white pills when the
+# `theme` id doesn't resolve in a delegate/Popup (opaque blends, null-safe).
+pkgrel=4
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

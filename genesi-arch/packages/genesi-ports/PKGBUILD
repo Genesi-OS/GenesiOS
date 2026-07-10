@@ -1,7 +1,7 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 pkgname=genesi-ports
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -33,6 +33,19 @@ Item {
     readonly property color onAccent: root.theme && root.theme.dark ? "#FFFFFF"
         : ((0.299 * effAccent.r + 0.587 * effAccent.g + 0.114 * effAccent.b) >= 0.6 ? "#0A0E12" : "#FFFFFF")
 
+    // SELF-SUFFICIENT colours — never dereference `theme` in a colour binding.
+    // When a GButton is used inside a delegate/Popup where the `theme` id doesn't
+    // resolve, `theme` arrives null; a binding like `root.theme.mix(...)` then
+    // THROWS, the Rectangle.color binding fails, and Qt falls back to the default
+    // white fill — that's the "white pill with unreadable text" bug across the
+    // apps (tonal/danger use blends; filled survived because it uses effAccent,
+    // which already has a non-theme fallback). These locals blend/tint with a
+    // dark fallback base so the button renders correctly with OR without a theme.
+    readonly property color _base:   root.theme ? root.theme.card   : "#0d1623"
+    readonly property color _textHi: root.theme ? root.theme.textHi : "#EAEEF2"
+    readonly property color _red:    root.theme ? root.theme.red    : "#E74C3C"
+    function _mix(a, b, p) { return Qt.rgba(a.r + (b.r - a.r) * p, a.g + (b.g - a.g) * p, a.b + (b.b - a.b) * p, 1) }
+
     implicitHeight: 34
     implicitWidth: row.implicitWidth + (root.text ? 28 : 18)
     // Keep disabled actions readable. Some Qt software-rendering paths flatten
@@ -52,17 +65,17 @@ Item {
             if (kind === "filled")
                 return ma.containsMouse ? Qt.lighter(root.effAccent, 1.12) : root.effAccent
             if (kind === "ghost")
-                return ma.containsMouse ? root.theme.a(root.effAccent, 0.16) : "transparent"
+                return ma.containsMouse ? root._mix(root._base, root.effAccent, 0.16) : "transparent"
             if (danger)
-                return root.theme.mix(root.theme.card, root.effAccent,
-                                      ma.containsMouse ? 0.28 : 0.14)
+                return root._mix(root._base, root.effAccent, ma.containsMouse ? 0.28 : 0.14)
             // tonal
-            return root.theme.mix(root.theme.card, root.effAccent,
-                                  ma.containsMouse ? 0.30 : 0.17)
+            return root._mix(root._base, root.effAccent, ma.containsMouse ? 0.30 : 0.17)
         }
         border.width: kind === "filled" ? 0 : 1
-        border.color: danger ? root.theme.a(root.effAccent, 0.55)
-                    : (kind === "ghost" ? "transparent" : root.theme.a(root.effAccent, 0.45))
+        // Opaque border blend (same reason as the fill) — a translucent border on
+        // a rounded rect also mis-renders white on the software backend.
+        border.color: kind === "ghost" ? "transparent"
+                    : root._mix(root._base, root.effAccent, danger ? 0.55 : 0.45)
         Behavior on color { ColorAnimation { duration: 140 } }
 
         RowLayout {
@@ -82,7 +95,7 @@ Item {
                 font.pixelSize: 13
                 font.bold: kind === "filled"
                 color: kind === "filled" ? root.onAccent
-                     : (danger ? root.theme.red : (root.theme ? root.theme.textHi : "#EAEEF2"))
+                     : (danger ? root._red : root._textHi)
             }
         }
     }

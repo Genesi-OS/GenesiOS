@@ -475,7 +475,7 @@ pkgver=1.0.0
 # memory works regardless of the recall toggle (which stays for CROSS-conversation
 # recall). HISTORY rows gained a hover delete button (backend.deleteSession).
 # pkgrel 110: shared GButton uses opaque tonal fills for VM-safe contrast.
-pkgrel=110
+pkgrel=111
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
