@@ -272,6 +272,14 @@ restore_into() {
         die "could not reattach snapshot history; original system restored"
     fi
 
+    # The restored @ carries the grub.cfg frozen into the snapshot — it lists
+    # snapshots that no longer exist and omits newer ones. Since /boot lives inside
+    # @ we cannot fix the running grub.cfg (that is the OLD @, about to be dropped);
+    # instead flag the NEW @ so genesi-snapshots-setup regenerates the menu on the
+    # next boot. grub-btrfsd also self-heals on later snapshot events.
+    mkdir -p "$root_path/var/lib/genesi" 2>/dev/null || true
+    : > "$root_path/var/lib/genesi/regen-grub" 2>/dev/null || true
+
     sync
     if [ "$live" = 1 ]; then
         # The running mount still references the old subvolume ID until reboot.

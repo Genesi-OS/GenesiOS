@@ -28,8 +28,23 @@ command -v snapper >/dev/null 2>&1 || { log "snapper missing — skip"; exit 0; 
 CONFIG=root
 DONE_MARKER=/var/lib/genesi/snapshots-setup.done
 # Bump to force the config-tuning steps to re-run on existing systems (the fast
-# path below otherwise short-circuits). v3: NUMBER_LIMIT 2 -> 5.
-SETUP_VERSION=3
+# path below otherwise short-circuits). v3: NUMBER_LIMIT 2 -> 5. v4: GRUB snapshot
+# titles lead with date + type (readable auto-snapshot names).
+SETUP_VERSION=4
+
+# Post-restore GRUB regen (runs BEFORE the fast-path short-circuit). A restore
+# activates a copy of a snapshot as the new @, and because /boot lives inside @
+# that @ carries the grub.cfg frozen when the snapshot was taken — it lists
+# snapshots that were since deleted and omits newer ones. restore_into drops this
+# flag into the new @ so the very first boot after a restore rebuilds the menu.
+REGEN_FLAG=/var/lib/genesi/regen-grub
+if [ -e "$REGEN_FLAG" ]; then
+    if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
+        log "post-restore: regenerating the GRUB snapshot menu"
+        grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+    fi
+    rm -f "$REGEN_FLAG" 2>/dev/null || true
+fi
 
 # Fast path: fully set up already (config present AND, if GRUB is in use, the
 # watcher is enabled). Re-runs cheaply otherwise so a later grub-btrfs install
@@ -107,8 +122,12 @@ if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
     }
     set_config_value "$GRUB_BTRFS_CONFIG" GRUB_BTRFS_SUBMENUNAME \
         '"Genesi Recovery - My system broke"'
+    # Lead with date + type so the auto snapshots are scannable in the menu: a
+    # layperson sees "2026-07-10 10:59  post  …" instead of the raw pacman command
+    # line first. (grub-btrfs cannot translate pre/post, but date+type already
+    # tells them which is newest and whether it is before/after an update.)
     set_config_value "$GRUB_BTRFS_CONFIG" GRUB_BTRFS_TITLE_FORMAT \
-        '("description" "date" "snapshot")'
+        '("date" "type" "description")'
     set_config_value "$GRUB_BTRFS_CONFIG" GRUB_BTRFS_LIMIT '"12"'
 
     # A recovery entry is useless if the boot menu is hidden. Keep a short

@@ -43,7 +43,13 @@ pkgver=1.0.0
 # restoring one bakes the stale lock in and every update then fails. New
 # genesi-pacman-unlock.service clears a stale db.lck at boot (guarded: never
 # touches a lock a running pacman holds).
-pkgrel=7
+# pkgrel 8: the GRUB snapshot menu was stale (showed deleted snapshots, hid new
+# ones). Root cause: grub-btrfsd dies at boot because `inotifywait` is missing —
+# add the inotify-tools dep. Also, since /boot lives inside @, a restore brings
+# back the snapshot's frozen grub.cfg: restore_into now flags a one-shot GRUB
+# regen on the next boot (genesi-snapshots-setup), and the recovery submenu leads
+# with date + type so the auto snapshots are readable (SETUP_VERSION 4).
+pkgrel=8
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -52,7 +58,11 @@ license=('GPL-3.0-or-later')
 # subvolume ops; grub-btrfs = the boot-menu recovery entries (the default Genesi
 # install uses GRUB); polkit so the GUI can create/rollback via pkexec; pyside6 +
 # qqc2-desktop-style for the app (same stack as the AI Monitor / Sandboxes).
-depends=('snapper' 'snap-pac' 'grub-btrfs' 'btrfs-progs'
+# inotify-tools: grub-btrfsd shells out to `inotifywait` to watch /.snapshots;
+# without it the daemon dies at boot ("inotifywait was not found, exiting") and
+# the GRUB snapshot menu never regenerates. grub-btrfs itself does NOT depend on
+# it, so we must.
+depends=('snapper' 'snap-pac' 'grub-btrfs' 'btrfs-progs' 'inotify-tools'
          'python' 'pyside6' 'qqc2-desktop-style' 'polkit')
 groups=('genesi')
 install="${pkgname}.install"
