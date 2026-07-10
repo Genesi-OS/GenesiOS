@@ -765,7 +765,36 @@ else
 fi
 
 # ============================================================
-# 10. Install Klassy window decoration (AUR workaround)
+# 10. Verify packaged Klassy + Darkly
+# ============================================================
+# These are real [genesi] packages now and are listed in
+# packages_desktop.x86_64. This makes the live session use the exact same
+# plugins as an installed system. ISO #281 tried to build them here after a
+# pacman -Sy, but mkarchiso deliberately made the keyring non-writable; the
+# dependency install failed, cmake was absent and the script continued with
+# configs that referenced plugins which did not exist.
+echo ">>> Verifying packaged Klassy + Darkly plugins..."
+pacman -Q genesi-klassy genesi-darkly
+
+KLASSY_PLUGIN="$(find /usr/lib/qt6/plugins -type f -iname 'klassydecoration.so' -print -quit 2>/dev/null)"
+DARKLY_STYLE="$(find /usr/lib/qt6/plugins/styles -type f -iname 'darkly*' -print -quit 2>/dev/null)"
+if [ -z "$KLASSY_PLUGIN" ]; then
+    echo ">>> ERROR: genesi-klassy is installed but klassydecoration.so is missing"
+    exit 1
+fi
+if [ ! -d /usr/share/plasma/desktoptheme/darkly ] || [ -z "$DARKLY_STYLE" ]; then
+    echo ">>> ERROR: genesi-darkly is installed but its desktoptheme or Qt6 style is missing"
+    exit 1
+fi
+echo ">>> Klassy plugin: $KLASSY_PLUGIN"
+echo ">>> Darkly style:  $DARKLY_STYLE"
+echo ">>> Darkly theme:  /usr/share/plasma/desktoptheme/darkly"
+
+# The old in-chroot source builds are retained temporarily as unreachable
+# reference code. The packaged verification above is authoritative.
+if false; then
+# ============================================================
+# Legacy: build Klassy from source inside the ISO
 # ============================================================
 # Klassy gives us native rounded corners (configurable 0-20px) on every
 # window without an external compositor or custom Aurorae. Genesi's
@@ -913,6 +942,7 @@ if [ -d /tmp/Darkly ]; then
 else
     echo ">>> WARNING: Failed to clone Darkly repository (skipping)."
 fi
+fi # disabled legacy Klassy/Darkly source builds
 
 # ============================================================
 # 12. Install Ant-Dark Plasma desktoptheme from source

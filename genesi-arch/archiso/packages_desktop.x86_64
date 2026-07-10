@@ -26,6 +26,11 @@ genesi-channel
 # Calamares branding, etc. — shellprocess@copy_genesi has no source to
 # copy from and the installed system ends up vanilla Plasma.
 genesi-settings
+# Use the exact same packaged theme plugins as the installed system. Building
+# these again inside customize_airootfs is fragile (the mkarchiso chroot has a
+# read-only pacman keyring) and let ISO #281 ship the configs without binaries.
+genesi-klassy
+genesi-darkly
 genesi-calamares-branding
 genesi-welcome
 genesi-ai-mode
