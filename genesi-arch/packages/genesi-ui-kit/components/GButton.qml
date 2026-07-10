@@ -35,7 +35,10 @@ Item {
 
     implicitHeight: 34
     implicitWidth: row.implicitWidth + (root.text ? 28 : 18)
-    opacity: enabled ? 1.0 : 0.45
+    // Keep disabled actions readable. Some Qt software-rendering paths flatten
+    // translucent rectangles against white before applying Item opacity; a
+    // very low opacity then produced the white-on-white buttons seen in VMs.
+    opacity: enabled ? 1.0 : 0.72
 
     // Tactile press feedback (2D scale — software-backend safe, no shaders).
     scale: ma.pressed ? 0.95 : 1.0
@@ -51,9 +54,11 @@ Item {
             if (kind === "ghost")
                 return ma.containsMouse ? root.theme.a(root.effAccent, 0.16) : "transparent"
             if (danger)
-                return ma.containsMouse ? root.theme.a(root.effAccent, 0.22) : root.theme.a(root.effAccent, 0.10)
+                return root.theme.mix(root.theme.card, root.effAccent,
+                                      ma.containsMouse ? 0.28 : 0.14)
             // tonal
-            return ma.containsMouse ? root.theme.a(root.effAccent, 0.26) : root.theme.a(root.effAccent, 0.14)
+            return root.theme.mix(root.theme.card, root.effAccent,
+                                  ma.containsMouse ? 0.30 : 0.17)
         }
         border.width: kind === "filled" ? 0 : 1
         border.color: danger ? root.theme.a(root.effAccent, 0.55)

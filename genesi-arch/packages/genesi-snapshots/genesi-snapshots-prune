@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Runs after snap-pac's post-transaction hook. Only automatic pre/post snapshots
+# use the NUMBER cleanup algorithm; manual and baseline restore points do not.
+set -u
+
+command -v snapper >/dev/null 2>&1 || exit 0
+snapper list-configs 2>/dev/null | awk 'NR>2{print $1}' | grep -qx root || exit 0
+snapper -c root cleanup number >/dev/null 2>&1 || true
+exit 0

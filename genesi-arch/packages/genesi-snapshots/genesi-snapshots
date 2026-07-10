@@ -30,6 +30,11 @@ need_root() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+die() {
+    echo "$*" >&2
+    exit 1
+}
+
 root_is_btrfs() {
     [ "$(findmnt -no FSTYPE / 2>/dev/null || true)" = btrfs ]
 }
@@ -128,10 +133,11 @@ case "${1:-status-json}" in
   create)
     need_root
     desc="${2:-Manual snapshot}"
-    # cleanup=number so manual snapshots are pruned by the same aggressive
-    # NUMBER cleanup as the update snapshots (no unbounded growth).
+    # Manual restore points belong to the user. NUMBER cleanup is reserved for
+    # snap-pac's automatic pre/post pair, so cleanup can keep exactly the latest
+    # before + after update without silently deleting manual snapshots.
     snapper -c "$CONFIG" create --description "$desc" \
-        --cleanup-algorithm number --userdata "genesi=manual"
+        --userdata "genesi=manual"
     echo "created"
     ;;
 
@@ -145,10 +151,112 @@ case "${1:-status-json}" in
   rollback)
     need_root
     [ -n "${2:-}" ] || { echo "usage: genesi-snapshots rollback <number>" >&2; exit 2; }
-    # snapper rollback makes <number> the new default subvolume on next boot,
-    # snapshotting the current state first (so a rollback is itself undoable).
-    snapper -c "$CONFIG" rollback "$2"
-    echo "rolled-back"
+    number="$2"
+    [[ "$number" =~ ^[1-9][0-9]*$ ]] || die "snapshot number must be greater than zero"
+
+    # A stock snapper rollback only changes Btrfs' DEFAULT subvolume. Genesi's
+    # Calamares layout intentionally boots an explicit `subvol=/@` from fstab,
+    # so changing the default either fails ambit detection or appears to work
+    # but boots @ again. For that layout, prepare a writable copy under the
+    # exact subvolume name the boot configuration already expects. The current
+    # root is retained as a one-step emergency backup.
+    root_options="$(findmnt -no OPTIONS / 2>/dev/null || true)"
+    root_subvol="$(printf '%s' "$root_options" | tr ',' '\n' \
+        | sed -n 's|^subvol=/\?||p' | head -n1)"
+
+    if [ -z "$root_subvol" ]; then
+        # Layouts booting the Btrfs default subvolume can use snapper's native
+        # rollback. Force classic ambit because Arch/Genesi does not provide
+        # openSUSE's ambit metadata and auto-detection otherwise returns failed.
+        snapper -c "$CONFIG" --ambit classic rollback "$number"
+        echo "rolled-back"
+        exit 0
+    fi
+
+    case "/$root_subvol/" in
+      */../*|*/./*) die "unsafe root subvolume path: $root_subvol" ;;
+    esac
+
+    source_spec="$(findmnt -no SOURCE / 2>/dev/null || true)"
+    device="${source_spec%%\[*}"
+    [ -b "$device" ] || die "cannot determine the Btrfs root device"
+
+    top="$(mktemp -d /run/genesi-btrfs.XXXXXX)"
+    mounted=false
+    cleanup_mount() {
+        if [ "$mounted" = true ]; then
+            umount "$top" >/dev/null 2>&1 || true
+        fi
+        rmdir "$top" >/dev/null 2>&1 || true
+    }
+    trap cleanup_mount EXIT
+    mount -t btrfs -o subvolid=5 "$device" "$top" \
+        || die "could not mount the Btrfs top level"
+    mounted=true
+
+    root_path="$top/$root_subvol"
+    snapshot_path="$root_path/.snapshots/$number/snapshot"
+    btrfs subvolume show "$root_path" >/dev/null 2>&1 \
+        || die "configured root subvolume '$root_subvol' was not found"
+    btrfs subvolume show "$snapshot_path" >/dev/null 2>&1 \
+        || die "snapshot #$number is not available on disk"
+
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    parent="$(dirname "$root_subvol")"
+    name="$(basename "$root_subvol")"
+    [ "$parent" = "." ] && parent=""
+    prefix="${parent:+$parent/}"
+    new_path="$top/${prefix}${name}.genesi-restore-new-$stamp"
+    old_path="$top/${prefix}${name}.genesi-before-restore-$stamp"
+    hold_path="$top/${prefix}.genesi-snapshots-$stamp"
+
+    [ ! -e "$new_path" ] && [ ! -e "$old_path" ] && [ ! -e "$hold_path" ] \
+        || die "a restore staging path already exists; try again in one second"
+
+    btrfs subvolume snapshot "$snapshot_path" "$new_path" >/dev/null \
+        || die "could not create the writable restore copy"
+
+    # /.snapshots is itself a nested subvolume and is not included in a root
+    # snapshot. Move it aside while @ is exchanged, then attach it to the new
+    # root so history and GRUB recovery entries survive the restore.
+    if ! mv "$root_path/.snapshots" "$hold_path"; then
+        btrfs subvolume delete "$new_path" >/dev/null 2>&1 || true
+        die "could not preserve snapshot history"
+    fi
+    if ! mv "$root_path" "$old_path"; then
+        mv "$hold_path" "$root_path/.snapshots" >/dev/null 2>&1 || true
+        btrfs subvolume delete "$new_path" >/dev/null 2>&1 || true
+        die "could not stage the current system for restore"
+    fi
+    if ! mv "$new_path" "$root_path"; then
+        mv "$old_path" "$root_path" >/dev/null 2>&1 || true
+        mv "$hold_path" "$root_path/.snapshots" >/dev/null 2>&1 || true
+        btrfs subvolume delete "$new_path" >/dev/null 2>&1 || true
+        die "could not activate the restored system; original system kept"
+    fi
+
+    rmdir "$root_path/.snapshots" >/dev/null 2>&1 || true
+    if ! mv "$hold_path" "$root_path/.snapshots"; then
+        # Roll back the exchange if preserving history cannot be completed.
+        failed_path="$top/${prefix}${name}.genesi-restore-failed-$stamp"
+        mv "$root_path" "$failed_path" >/dev/null 2>&1 || true
+        mv "$old_path" "$root_path" >/dev/null 2>&1 || true
+        rmdir "$root_path/.snapshots" >/dev/null 2>&1 || true
+        mv "$hold_path" "$root_path/.snapshots" >/dev/null 2>&1 || true
+        btrfs subvolume delete "$failed_path" >/dev/null 2>&1 || true
+        die "could not reattach snapshot history; original system restored"
+    fi
+
+    sync
+    # The running mount still references the old subvolume ID until reboot.
+    # Re-mount snapshot history there so snapper/the GUI remain usable during
+    # that short window; the new @ sees it naturally after reboot.
+    mkdir -p /.snapshots
+    mountpoint -q /.snapshots \
+        || mount -t btrfs -o "subvol=$root_subvol/.snapshots" \
+            "$device" /.snapshots >/dev/null 2>&1 \
+        || true
+    echo "rolled-back (previous system kept as ${old_path#$top/})"
     ;;
 
   *)

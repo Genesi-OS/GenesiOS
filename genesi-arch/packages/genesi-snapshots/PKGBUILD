@@ -23,7 +23,10 @@ pkgver=1.0.0
 # pkgrel 2: fix the GUI failing to load — Main.qml assigned font.pixelSize (an
 # int property) a fractional 11.5, so QML aborted with "int expected" and the
 # window never opened. Now 12.
-pkgrel=2
+# pkgrel 3: reliable rollback for Genesi's explicit subvol=/@ layout, retain
+# only snap-pac's latest before/after pair, brand the GRUB recovery submenu and
+# ship the shared opaque-tonal button contrast fix.
+pkgrel=3
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -50,8 +53,12 @@ package() {
     # First-boot setup: script + systemd oneshot
     install -Dm755 "${startdir}/genesi-snapshots-setup.sh" \
         "$pkgdir/usr/lib/genesi/genesi-snapshots-setup"
+    install -Dm755 "${startdir}/genesi-snapshots-prune" \
+        "$pkgdir/usr/lib/genesi/genesi-snapshots-prune"
     install -Dm644 "${startdir}/genesi-snapshots-setup.service" \
         "$pkgdir/usr/lib/systemd/system/genesi-snapshots-setup.service"
+    install -Dm644 "${startdir}/zzzz-genesi-snapshots-prune.hook" \
+        "$pkgdir/usr/share/libalpm/hooks/zzzz-genesi-snapshots-prune.hook"
 
     # GUI app (PySide6 + QML) + the shared Genesi UI kit, bundled at build from
     # the canonical genesi-ui-kit/ (one source, copied in — NOT a dependency; see

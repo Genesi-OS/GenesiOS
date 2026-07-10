@@ -298,13 +298,13 @@ QQC2.ApplicationWindow {
                         GButton {
                             theme: theme; kind: "tonal"; accent: theme.green
                             text: i18n.t("snap.restore"); iconSource: "edit-undo"
-                            enabled: !win.busy
+                            enabled: !win.busy && modelData.number > 0
                             tooltip: i18n.t("snap.restoreTip")
                             onClicked: { confirm.num = modelData.number; confirm.desc = modelData.description || ""; confirm.open() }
                         }
                         GButton {
                             theme: theme; kind: "danger"; iconSource: "user-trash"
-                            enabled: !win.busy
+                            enabled: !win.busy && modelData.number > 0
                             tooltip: i18n.t("snap.delete")
                             onClicked: backend.deleteSnapshot(modelData.number)
                         }

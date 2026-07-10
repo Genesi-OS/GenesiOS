@@ -87,7 +87,8 @@ pkgver=1.0.0
 # Inspector renders the same green as the AI Mode Monitor. Bundled kit change.
 # pkgrel 19: pick up the pinned dark mockup palette (#040b17 bg / #0d1623 cards)
 # from the shared kit, so the Inspector matches the redesigned AI Mode Monitor.
-pkgrel=19
+# pkgrel 20: shared GButton uses opaque tonal fills for VM-safe contrast.
+pkgrel=20
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

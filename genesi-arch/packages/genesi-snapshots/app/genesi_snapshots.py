@@ -81,11 +81,14 @@ class Backend(QObject):
                     # pkexec: user dismissed the auth dialog
                     self.actionDone.emit("cancelled")
                 else:
-                    self.logLine.emit(err or "exit %d" % proc.returncode)
-                    self.actionDone.emit("failed")
+                    detail = err or out or "exit %d" % proc.returncode
+                    self.logLine.emit(detail)
+                    # Surface the useful last line instead of an opaque
+                    # "failed" toast. Keep it short enough for the QML banner.
+                    self.actionDone.emit(detail.splitlines()[-1][:110])
             except Exception as e:
                 self.logLine.emit("error: %s" % e)
-                self.actionDone.emit("failed")
+                self.actionDone.emit("Error: %s" % str(e)[:100])
             finally:
                 self._set_busy(False)
                 self.refresh()

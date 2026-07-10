@@ -119,7 +119,8 @@ pkgver=1.0.0
 # renders the same green as the AI Mode Monitor. Bundled genesi-ui-kit change.
 # pkgrel 20: pick up the pinned dark mockup palette (#040b17 bg / #0d1623 cards)
 # from the shared kit, so Sandboxes matches the redesigned AI Mode Monitor.
-pkgrel=20
+# pkgrel 21: shared GButton uses opaque tonal fills for VM-safe contrast.
+pkgrel=21
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

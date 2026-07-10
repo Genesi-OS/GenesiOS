@@ -124,7 +124,10 @@ pkgver=1.3.4
 # 200, Tooltip/Complementary 180) so Darkly bakes the translucency again. The .install
 # fix_titlebar_uniformity, which STRIPPED existing users' alpha on upgrade, now WRITES
 # it back instead. Bumps the submodule pointer (the seeded configs live there).
-pkgrel=41
+# pkgrel 42: make the default Plasma shell theme inherit Genesi's explicit
+# white highlighted text/icon palette. Existing systems commonly remain on
+# desktoptheme=default, so only fixing Genesi.colors did not affect panel menus.
+pkgrel=42
 epoch=1
 groups=(genesi)
 arch=('any')
@@ -162,6 +165,13 @@ package() {
   cp -rf "${srcdir}/${_gitname}/etc" "$pkgdir"
   install -d "$pkgdir/usr"
   cp -rf "${srcdir}/${_gitname}/usr" "$pkgdir"
+
+  # Plasma Shell defaults to desktoptheme/default unless a user explicitly
+  # selected genesi-plasma. Ship the same palette in that fallback so hovered
+  # panel-menu actions use white text/icons on the green highlight.
+  install -Dm644 \
+    "$pkgdir/usr/share/plasma/desktoptheme/genesi-plasma/colors" \
+    "$pkgdir/usr/share/plasma/desktoptheme/default/colors"
   
   # Make the theme applicator + panel migration scripts executable
   chmod +x "$pkgdir/usr/bin/genesi-apply-theme.sh" 2>/dev/null || true

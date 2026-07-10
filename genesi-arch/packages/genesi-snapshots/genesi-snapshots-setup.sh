@@ -27,11 +27,12 @@ command -v snapper >/dev/null 2>&1 || { log "snapper missing — skip"; exit 0; 
 
 CONFIG=root
 DONE_MARKER=/var/lib/genesi/snapshots-setup.done
+SETUP_VERSION=2
 
 # Fast path: fully set up already (config present AND, if GRUB is in use, the
 # watcher is enabled). Re-runs cheaply otherwise so a later grub-btrfs install
 # still gets wired. grub-mkconfig is the only heavy step; the marker gates it.
-if [ -f "$DONE_MARKER" ] \
+if [ "$(cat "$DONE_MARKER" 2>/dev/null || true)" = "$SETUP_VERSION" ] \
    && snapper list-configs 2>/dev/null | awk 'NR>2{print $1}' | grep -qx "$CONFIG"; then
     exit 0
 fi
@@ -57,16 +58,16 @@ fi
 # ---- 2. tune the config ENXUTO (light) --------------------------------------
 # TIMELINE_CREATE=no  -> no hourly/daily periodic snapshots (leanest profile).
 # snap-pac still snapshots around every pacman transaction.
-# NUMBER_LIMIT small  -> keep only a handful of snapshots; CoW keeps them cheap
-#                        but this caps worst-case divergence on disk.
+# NUMBER_LIMIT=2      -> snap-pac's latest before/after update pair only.
+# Manual snapshots have no cleanup algorithm and are never counted here.
 log "applying ENXUTO (light) snapshot policy"
 snapper -c "$CONFIG" set-config \
     TIMELINE_CREATE=no \
     TIMELINE_CLEANUP=yes \
     NUMBER_CLEANUP=yes \
-    NUMBER_MIN_AGE=1800 \
-    NUMBER_LIMIT=8 \
-    NUMBER_LIMIT_IMPORTANT=8 \
+    NUMBER_MIN_AGE=0 \
+    NUMBER_LIMIT=2 \
+    NUMBER_LIMIT_IMPORTANT=2 \
     EMPTY_PRE_POST_CLEANUP=yes 2>/dev/null || log "set-config partial (older snapper?)"
 
 # Let the 'users' see/manage snapshots without sudo for read-only ops: allow the
@@ -86,6 +87,32 @@ systemctl disable --now snapper-timeline.timer 2>/dev/null || true
 # grub-btrfsd watches /.snapshots and regenerates the GRUB submenu on change so
 # a broken boot always has selectable snapshots. Only meaningful with GRUB.
 if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
+    # Make recovery visible and understandable to non-technical users. The
+    # grub-btrfs submenu is otherwise named after the distro and snapshot rows
+    # lead with implementation details instead of their useful description.
+    GRUB_BTRFS_CONFIG=/etc/default/grub-btrfs/config
+    set_config_value() {
+        local file="$1" key="$2" value="$3"
+        [ -f "$file" ] || return 0
+        if grep -q "^[#[:space:]]*${key}=" "$file" 2>/dev/null; then
+            sed -i "s|^[#[:space:]]*${key}=.*|${key}=${value}|" "$file"
+        else
+            printf '%s=%s\n' "$key" "$value" >> "$file"
+        fi
+    }
+    set_config_value "$GRUB_BTRFS_CONFIG" GRUB_BTRFS_SUBMENUNAME \
+        '"Genesi Recovery - My system broke"'
+    set_config_value "$GRUB_BTRFS_CONFIG" GRUB_BTRFS_TITLE_FORMAT \
+        '("description" "date" "snapshot")'
+    set_config_value "$GRUB_BTRFS_CONFIG" GRUB_BTRFS_LIMIT '"12"'
+
+    # A recovery entry is useless if the boot menu is hidden. Keep a short
+    # eight-second window: normal boots remain quick, but a layperson has time
+    # to choose the plainly named recovery option.
+    GRUB_DEFAULTS=/etc/default/grub
+    set_config_value "$GRUB_DEFAULTS" GRUB_TIMEOUT_STYLE 'menu'
+    set_config_value "$GRUB_DEFAULTS" GRUB_TIMEOUT '8'
+
     if systemctl enable --now grub-btrfsd.service 2>/dev/null; then
         # Seed the submenu once so the entries exist before the first new snapshot.
         grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
@@ -102,13 +129,14 @@ fi
 if [ "$(snapper -c "$CONFIG" list 2>/dev/null | awk 'NR>2 && $1 ~ /^[0-9]+$/' | wc -l)" -eq 0 ]; then
     log "creating Genesi baseline snapshot"
     snapper -c "$CONFIG" create --description "Genesi baseline" \
-        --cleanup-algorithm number --userdata "genesi=baseline" 2>/dev/null || true
+        --userdata "genesi=baseline" 2>/dev/null || true
 fi
 
 # Only mark complete when every applicable step worked, so a missing piece
 # (e.g. grub-btrfs installed later) gets picked up on a subsequent boot.
 if [ "$fully_ok" -eq 1 ]; then
-    install -Dm644 /dev/null "$DONE_MARKER" 2>/dev/null || true
+    install -d "$(dirname "$DONE_MARKER")" 2>/dev/null || true
+    printf '%s\n' "$SETUP_VERSION" > "$DONE_MARKER" 2>/dev/null || true
     log "done — system is protected (ENXUTO profile)"
 else
     log "partial setup — will finish wiring on the next boot"
