@@ -5,6 +5,8 @@ post_install() {
     systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl enable genesi-snapshots-setup.service >/dev/null 2>&1 || true
     systemctl start  genesi-snapshots-setup.service >/dev/null 2>&1 || true
+    # Clear stale pacman locks left inside restored "pre" snapshots, every boot.
+    systemctl enable genesi-pacman-unlock.service >/dev/null 2>&1 || true
     gtk-update-icon-cache -ftq /usr/share/icons/hicolor 2>/dev/null || true
 
     cat <<'MSG'
@@ -19,6 +21,7 @@ MSG
 post_upgrade() {
     systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl enable genesi-snapshots-setup.service >/dev/null 2>&1 || true
+    systemctl enable genesi-pacman-unlock.service >/dev/null 2>&1 || true
     # Re-run so a newly-added piece (e.g. grub-btrfs) gets wired on upgrade too.
     # RemainAfterExit keeps the oneshot active after its first run, therefore a
     # plain start is a no-op on upgrades; restart is required for migrations.
@@ -28,4 +31,5 @@ post_upgrade() {
 
 pre_remove() {
     systemctl disable --now genesi-snapshots-setup.service >/dev/null 2>&1 || true
+    systemctl disable --now genesi-pacman-unlock.service >/dev/null 2>&1 || true
 }

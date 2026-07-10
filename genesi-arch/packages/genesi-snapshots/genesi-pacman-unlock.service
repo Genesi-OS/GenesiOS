@@ -1,0 +1,22 @@
+[Unit]
+Description=Clear a stale pacman lock inherited from a restored snapshot
+Documentation=man:pacman(8)
+After=local-fs.target
+Before=multi-user.target
+# A pacman database lock cannot legitimately survive a reboot: any db.lck present
+# at boot is stale. The usual source on Genesi is restoring (or booting) a
+# snap-pac "pre" snapshot — it is frozen the instant before a pacman transaction,
+# while pacman still holds /var/lib/pacman/db.lck, so the lock file is baked into
+# that snapshot. Without this, a layperson who rolls back hits "unable to lock
+# database" on every update, forever.
+ConditionPathExists=/var/lib/pacman/db.lck
+
+[Service]
+Type=oneshot
+# Belt-and-suspenders: never remove a lock a real pacman is holding. There is no
+# pacman this early in boot, so at boot the lock is always stale; the guard just
+# makes the unit safe to start at any time.
+ExecStart=/usr/bin/bash -c 'pgrep -x pacman >/dev/null 2>&1 || rm -f /var/lib/pacman/db.lck'
+
+[Install]
+WantedBy=multi-user.target

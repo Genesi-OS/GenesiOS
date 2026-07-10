@@ -38,7 +38,12 @@ pkgver=1.0.0
 # "Restore this system" card, and a new `restore-booted` promotes the booted
 # snapshot back to the writable @ (reusing the subvol-exchange rollback, which is
 # safe on a read-only /). Normal per-snapshot actions are locked while in recovery.
-pkgrel=6
+# pkgrel 7: fix the recurring "unable to lock database" after a rollback. A
+# snap-pac "pre" snapshot is frozen while pacman holds /var/lib/pacman/db.lck, so
+# restoring one bakes the stale lock in and every update then fails. New
+# genesi-pacman-unlock.service clears a stale db.lck at boot (guarded: never
+# touches a lock a running pacman holds).
+pkgrel=7
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -69,6 +74,10 @@ package() {
         "$pkgdir/usr/lib/genesi/genesi-snapshots-prune"
     install -Dm644 "${startdir}/genesi-snapshots-setup.service" \
         "$pkgdir/usr/lib/systemd/system/genesi-snapshots-setup.service"
+    # Boot-time stale pacman-lock cleaner (restoring a snap-pac "pre" snapshot
+    # bakes in /var/lib/pacman/db.lck — see the unit header).
+    install -Dm644 "${startdir}/genesi-pacman-unlock.service" \
+        "$pkgdir/usr/lib/systemd/system/genesi-pacman-unlock.service"
     install -Dm644 "${startdir}/zzzz-genesi-snapshots-prune.hook" \
         "$pkgdir/usr/share/libalpm/hooks/zzzz-genesi-snapshots-prune.hook"
 
