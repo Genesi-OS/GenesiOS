@@ -8,9 +8,16 @@
 # the project source at /proc/PID/cwd by framework convention (Next.js/Express/
 # FastAPI/Flask/Django/Spring/Rails/Go) so it works with no spec at all, (4) a
 # GET-only liveness probe as fallback. All localhost, no destructive methods.
+# pkgrel 4: make inspection side-effect-safe. pkgrel 3 probed the network first,
+# hitting app routes like GET /api — which crashes a backend whose handler does
+# req.json() on an empty body. Now source discovery runs FIRST (zero requests),
+# the only unconditional request is a benign GET /, no probe path lives under
+# /api/, and the network fallback runs only when source yields nothing. The CLI
+# also auto-resolves the PID from the port, so source discovery works even
+# without the GUI passing it.
 pkgname=genesi-ports
 pkgver=1.0.0
-pkgrel=3
+pkgrel=4
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

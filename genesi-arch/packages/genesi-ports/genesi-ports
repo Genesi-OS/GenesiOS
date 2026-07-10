@@ -218,15 +218,21 @@ def collect():
 # introspection is read-only), and source parsing only reads files (no exec).
 _SSL_CTX = ssl._create_unverified_context()
 
+# Well-known spec locations. Deliberately NONE under "/api/…": a GET there could
+# hit an application catch-all route (e.g. Next's /api/[...]) that reads the body
+# and crashes on empty input. "/api-docs" is fine — it is not under "/api/".
 OPENAPI_PATHS = (
     "/openapi.json", "/swagger.json", "/swagger/v1/swagger.json",
-    "/v3/api-docs", "/api-docs", "/api/openapi.json", "/openapi",
-    "/swagger/doc.json", "/q/openapi", "/api-docs.json", "/docs/json",
+    "/v3/api-docs", "/api-docs", "/api-docs.json", "/openapi",
+    "/swagger/doc.json", "/q/openapi", "/docs/json",
 )
-GRAPHQL_PATHS = ("/graphql", "/api/graphql", "/query", "/v1/graphql")
+GRAPHQL_PATHS = ("/graphql", "/api/graphql")
+# GET-only liveness probes, and ONLY well-known infrastructure paths that don't
+# read a request body — never application routes like /api (a GET there can hit a
+# handler that does req.json() and crash the backend on an empty body).
 PROBE_PATHS = (
-    "/", "/health", "/healthz", "/api", "/status", "/metrics",
-    "/version", "/docs", "/actuator/health",
+    "/health", "/healthz", "/livez", "/readyz", "/ping",
+    "/metrics", "/actuator/health",
 )
 _INTROSPECTION = json.dumps({
     "query": "{__schema{queryType{fields{name}} mutationType{fields{name}}}}"
@@ -521,7 +527,34 @@ def discover(port, address="127.0.0.1", pid=0):
     result = {"reachable": False, "scheme": "", "server": "", "title": "",
               "openapi": "", "kind": "", "root": "", "specUrl": "", "endpoints": []}
 
-    # scheme: try http and https roots at once, prefer http
+    # Resolve the owning PID from the port when the caller didn't supply one, so
+    # source discovery works even when invoked as `inspect-json <port>`.
+    if not pid:
+        try:
+            for row in collect():
+                if row.get("port") == port and row.get("pid"):
+                    pid = row["pid"]
+                    break
+        except Exception:
+            pid = 0
+
+    endpoints = []
+
+    # 1. SOURCE FIRST. Read the project's routes straight from disk (via
+    #    /proc/PID/cwd + the framework's own conventions). This makes NO request
+    #    to the backend, so it can never disturb it — the primary path for a local
+    #    dev server, and the reason a fragile route can't be tripped.
+    if pid:
+        info = process_info(pid)
+        stack = infer_stack(info.get("process", ""), info.get("command", ""))
+        found, root = routes_from_source(pid, stack)
+        if found:
+            result["kind"] = "source"
+            result["root"] = root
+            endpoints.extend(found)
+
+    # 2. Identity + scheme via a single GET / — the safest possible request (it's
+    #    what a browser opening the page does). Never an app route, never a body.
     roots = _fetch_many((
         ("http", "http://%s:%d/" % (host_url, port), "GET", None, None),
         ("https", "https://%s:%d/" % (host_url, port), "GET", None, None),
@@ -541,21 +574,16 @@ def discover(port, address="127.0.0.1", pid=0):
             result["reachable"] = True
             break
 
-    endpoints = []
-    probe_eps = []
-    if scheme:
+    # 3. NETWORK FALLBACK — only when the source gave us nothing (remote host,
+    #    another user's process, or an unrecognized stack). Static spec files
+    #    first, then a single GraphQL introspection, then a GET-only health probe.
+    #    Never writes; never guesses application routes.
+    if not endpoints and scheme:
         base = "%s://%s:%d" % (scheme, host_url, port)
-        specs = []
-        for sp in OPENAPI_PATHS:
-            specs.append(("oa:" + sp, base + sp, "GET", None, None))
-        for pp in PROBE_PATHS:
-            specs.append(("pb:" + pp, base + pp, "GET", None, None))
-        for gp in GRAPHQL_PATHS:
-            specs.append(("gq:" + gp, base + gp, "POST", _INTROSPECTION,
-                          {"Content-Type": "application/json"}))
-        fetched = _fetch_many(specs, timeout=0.85, workers=12)
 
-        # 1. OpenAPI/Swagger — first spec that parses wins
+        fetched = _fetch_many(
+            (("oa:" + sp, base + sp, "GET", None, None) for sp in OPENAPI_PATHS),
+            timeout=0.85, workers=12)
         for sp in OPENAPI_PATHS:
             res = fetched.get("oa:" + sp)
             if not res or res[0] >= 400:
@@ -567,7 +595,7 @@ def discover(port, address="127.0.0.1", pid=0):
             if not isinstance(data, dict):
                 continue
             parsed = _parse_openapi(data)
-            if parsed:
+            if parsed and parsed["endpoints"]:
                 result["kind"] = "openapi"
                 result["openapi"] = parsed["version"]
                 result["specUrl"] = sp
@@ -576,10 +604,13 @@ def discover(port, address="127.0.0.1", pid=0):
                 endpoints.extend(parsed["endpoints"])
                 break
 
-        # 2. GraphQL introspection (if no OpenAPI)
         if not endpoints:
+            gql = _fetch_many(
+                (("gq:" + gp, base + gp, "POST", _INTROSPECTION,
+                  {"Content-Type": "application/json"}) for gp in GRAPHQL_PATHS),
+                timeout=0.85, workers=4)
             for gp in GRAPHQL_PATHS:
-                res = fetched.get("gq:" + gp)
+                res = gql.get("gq:" + gp)
                 if not res:
                     continue
                 try:
@@ -594,27 +625,15 @@ def discover(port, address="127.0.0.1", pid=0):
                     endpoints.extend(fields)
                     break
 
-        # 4. liveness probes (always merged for a live-status hint)
-        for pp in PROBE_PATHS:
-            res = fetched.get("pb:" + pp)
-            if not res or res[0] == 404:
-                continue
-            probe_eps.append({"method": "GET", "path": pp, "status": res[0], "source": "probe"})
-
-    # 3. source-derived routes when the network gave us no real endpoint list
-    if not endpoints and pid:
-        info = process_info(pid)
-        stack = infer_stack(info.get("process", ""), info.get("command", ""))
-        found, root = routes_from_source(pid, stack)
-        if found:
-            result["kind"] = result["kind"] or "source"
-            result["root"] = root
-            endpoints.extend(found)
-
-    known = {(e["method"], e["path"]) for e in endpoints}
-    for e in probe_eps:
-        if (e["method"], e["path"]) not in known:
-            endpoints.append(e)
+        if not endpoints:
+            health = _fetch_many(
+                (("pb:" + pp, base + pp, "GET", None, None) for pp in PROBE_PATHS),
+                timeout=0.6, workers=8)
+            for pp in PROBE_PATHS:
+                res = health.get("pb:" + pp)
+                if not res or res[0] == 404:
+                    continue
+                endpoints.append({"method": "GET", "path": pp, "status": res[0], "source": "probe"})
 
     seen = set()
     unique = []
