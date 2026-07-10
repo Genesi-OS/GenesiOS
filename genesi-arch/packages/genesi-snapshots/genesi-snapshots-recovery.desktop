@@ -1,0 +1,14 @@
+[Desktop Entry]
+# Autostart that opens Genesi Snapshots ONLY when the machine booted a read-only
+# recovery snapshot. The wrapper self-gates via `genesi-snapshots recovery-json`,
+# so on a normal boot it exits immediately and nothing is shown. Broadly scoped
+# (KDE/GNOME/Xfce/…); Hyprland ignores /etc/xdg/autostart, but that audience is
+# technical enough to open the app themselves.
+Type=Application
+Name=Genesi Snapshots Recovery
+Comment=Opens Genesi Snapshots automatically when booted into a recovery snapshot
+Exec=/usr/lib/genesi/genesi-snapshots-recovery-autostart
+TryExec=/usr/bin/genesi-snapshots
+Icon=genesi-snapshots
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

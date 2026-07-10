@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Auto-open Genesi Snapshots at login, but ONLY when the system booted a
+# read-only grub-btrfs snapshot (recovery mode). A layperson who picked a
+# snapshot in the GRUB menu has no cue that they are in recovery — or that
+# "Restore this system" is one click away — so surface the app for them.
+# On a normal boot recovery-json returns recovery:false and this is a no-op.
+command -v genesi-snapshots >/dev/null 2>&1 || exit 0
+case "$(genesi-snapshots recovery-json 2>/dev/null)" in
+    *'"recovery":true'*) exec /usr/local/bin/genesi-snapshots-gui ;;
+esac
+exit 0

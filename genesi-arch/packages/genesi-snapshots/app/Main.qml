@@ -306,15 +306,18 @@ QQC2.ApplicationWindow {
             }
 
             // ── banners ────────────────────────────────────────────
+            // Suppressed in recovery: we are demonstrably on a Btrfs snapshot
+            // there (the recovery card proves it), and a transient empty status
+            // read must not flash a misleading "Root isn't Btrfs" over it.
             StatusBanner {
                 theme: theme; accent: theme.red
-                icon: "drive-harddisk"; visible: !win.st.btrfs
+                icon: "drive-harddisk"; visible: !win.st.btrfs && !win.inRecovery
                 title: i18n.t("snap.noBtrfsTitle"); body: i18n.t("snap.noBtrfsBody")
             }
             StatusBanner {
                 theme: theme; accent: theme.turbo
                 icon: "clock"; busy: win.busy
-                visible: win.st.btrfs && !win.st.configured
+                visible: win.st.btrfs && !win.st.configured && !win.inRecovery
                 title: i18n.t("snap.armingTitle"); body: i18n.t("snap.armingBody")
             }
 

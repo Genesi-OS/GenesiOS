@@ -49,7 +49,11 @@ pkgver=1.0.0
 # back the snapshot's frozen grub.cfg: restore_into now flags a one-shot GRUB
 # regen on the next boot (genesi-snapshots-setup), and the recovery submenu leads
 # with date + type so the auto snapshots are readable (SETUP_VERSION 4).
-pkgrel=8
+# pkgrel 9: make recovery discoverable for laypeople — auto-open the app at login
+# when booted into a recovery snapshot (self-gating autostart), and stop the
+# "Root isn't Btrfs" banner from flashing over the recovery card on a transient
+# empty status read.
+pkgrel=9
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -102,6 +106,14 @@ package() {
         install -Dm644 "${startdir}/../genesi-ui-kit/components/${comp}.qml" \
             "$pkgdir/usr/share/genesi-snapshots/app/${comp}.qml"
     done
+
+    # Auto-open the app at login when booted into a recovery snapshot — a layperson
+    # has no other cue they are in read-only recovery. The wrapper self-gates via
+    # recovery-json, so it is a no-op on every normal boot.
+    install -Dm755 "${startdir}/genesi-snapshots-recovery-autostart" \
+        "$pkgdir/usr/lib/genesi/genesi-snapshots-recovery-autostart"
+    install -Dm644 "${startdir}/genesi-snapshots-recovery.desktop" \
+        "$pkgdir/etc/xdg/autostart/genesi-snapshots-recovery.desktop"
 
     # Desktop entry + branded shield icon
     install -Dm644 "${startdir}/org.genesi.snapshots.desktop" \
