@@ -776,7 +776,13 @@ echo ">>> Building Klassy window decoration from source..."
 # with "CMAKE_C_COMPILER not set" if these aren't present. Live ISO ships
 # without a compiler by default, so we must add it explicitly.
 # Logging un-silenced so missing deps surface in build output.
-pacman -S --noconfirm --needed \
+# -Sy (sync DBs) is REQUIRED: once the [genesi-cuda] repo was added to
+# pacman.conf, a bare `pacman -S` aborts the whole transaction with
+# "database file for 'genesi-cuda' does not exist (use '-Sy')" — its DB was
+# never synced in this chroot — so cmake/KF6 never install and Klassy+Darkly
+# silently fail to build, shipping a bare (no rounded corners, no glass) live
+# ISO. Reproduced 2026-07-09 (ISO run 29059033089). -Sy fixes it.
+pacman -Sy --noconfirm --needed \
     base-devel \
     cmake extra-cmake-modules qt6-base qt6-tools \
     kcmutils kdecoration kguiaddons ki18n kcoreaddons \
@@ -836,7 +842,9 @@ DARKLY_LOG=/var/log/genesi-darkly-build.log
 # deps. Pre-install the full set so every component builds. Missing this is
 # why ISOs shipped with widgetStyle=Darkly in kdeglobals but no Darkly.so on
 # disk — Qt fell back to Breeze and glassmorphism never showed.
-pacman -S --noconfirm --needed \
+# -Sy for the same reason as the Klassy deps above (the [genesi-cuda] repo's
+# DB must be synced or `pacman -S` aborts and Darkly never builds → Breeze).
+pacman -Sy --noconfirm --needed \
     qt6-svg qt6-declarative qt6-5compat \
     kiconthemes kpackage kio kirigami knotifications kcolorscheme \
     breeze-icons \
