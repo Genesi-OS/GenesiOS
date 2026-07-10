@@ -1,7 +1,12 @@
 import QtQuick 2.15
 import QtQuick.Layouts 1.15
 import QtQuick.Controls 2.15
-import SddmComponents 2.0
+// NOTE: do NOT import SddmComponents — it exports its own Button/ComboBox (with
+// no `background`/`contentItem`) that SHADOW the QtQuick.Controls 2 ones this
+// theme customises, causing "Cannot assign to non-existent property background"
+// and the theme failing to load (falls back to Breeze). The greeter context
+// objects (sddm, userModel, sessionModel, keyboard) come from SDDM directly, not
+// from this import, so dropping it is safe.
 
 Rectangle {
     id: root
