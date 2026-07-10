@@ -1,0 +1,35 @@
+#!/bin/bash
+# Keep Breeze SDDM's password mask visible with Genesi's light text palette.
+set -u
+
+qml="${GENESI_SDDM_LOGIN_QML:-/usr/share/sddm/themes/breeze/Login.qml}"
+marker='Genesi SDDM password contrast'
+
+[ -f "$qml" ] || exit 0
+grep -qF "$marker" "$qml" && exit 0
+grep -qE '^[[:space:]]*id:[[:space:]]*passwordBox[[:space:]]*$' "$qml" || {
+    echo "genesi-settings: Breeze passwordBox not found; leaving theme untouched" >&2
+    exit 0
+}
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+
+awk -v marker="$marker" '
+    {
+        print
+        if (!patched && $0 ~ /^[[:space:]]*id:[[:space:]]*passwordBox[[:space:]]*$/) {
+            match($0, /[^ \t]/)
+            indent = substr($0, 1, RSTART - 1)
+            print indent "// " marker
+            print indent "color: \"#173247\""
+            print indent "selectionColor: \"#1D9E75\""
+            print indent "selectedTextColor: \"#FFFFFF\""
+            patched = 1
+        }
+    }
+    END { if (!patched) exit 42 }
+' "$qml" > "$tmp" || exit 0
+
+install -m 644 "$tmp" "$qml"
+echo "genesi-settings: fixed Breeze SDDM password contrast"

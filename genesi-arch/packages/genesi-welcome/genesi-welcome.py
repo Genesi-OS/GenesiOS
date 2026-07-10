@@ -346,7 +346,12 @@ class GenesiWelcome(QMainWindow):
             ("settings", "settings_d", self.launch_settings, False),
             ("aimode", "aimode_d", self.launch_ai_mode, False),
             ("apps", "apps_d", self.launch_pkginstaller, False),
-            ("gaming_tile", "gaming_tile_d", self.launch_gaming, False),
+        ]
+        # The live medium is for installing and repairing Genesi. Keep the
+        # optional, download-heavy gaming stack exclusive to installed systems.
+        if not self.live:
+            actions.append(("gaming_tile", "gaming_tile_d", self.launch_gaming, False))
+        actions += [
             ("tweaks", "tweaks_d", lambda: self.stack.setCurrentIndex(1), False),
             ("community", "community_d", lambda: self.open_url(REPO), False),
         ]

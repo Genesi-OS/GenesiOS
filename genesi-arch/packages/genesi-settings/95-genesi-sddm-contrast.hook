@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/share/sddm/themes/breeze/Login.qml
+
+[Action]
+Description = Reapplying Genesi login-screen contrast...
+When = PostTransaction
+Exec = /usr/lib/genesi/genesi-fix-sddm-contrast

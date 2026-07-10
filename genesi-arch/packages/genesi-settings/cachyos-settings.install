@@ -10,6 +10,7 @@ post_install() {
     fi
     migrate_default_shell_fish
     migrate_fish_greeting_dedup
+    fix_sddm_contrast
 }
 
 post_upgrade() {
@@ -26,6 +27,11 @@ post_upgrade() {
     migrate_panel_widgets
     migrate_default_shell_fish
     migrate_fish_greeting_dedup
+    fix_sddm_contrast
+}
+
+fix_sddm_contrast() {
+    /usr/lib/genesi/genesi-fix-sddm-contrast 2>/dev/null || true
 }
 
 # Stop the DOUBLE terminal greeting on systems seeded before the fix. The skel
