@@ -152,7 +152,7 @@ jobs:
               "
             done \
               | sed -E 's/[<>=].*//' \
-              | grep -vE '^(genesi-.*|app2unit|libcava|python-materialyoucolor|ttf-rubik-vf|caelestia-cli|caelestia-shell|llama\.cpp)$' \
+              | grep -vE '^(genesi-.*|app2unit|libcava|python-materialyoucolor|ttf-rubik-vf|caelestia-cli|caelestia-shell|llama\.cpp|cachyos-gaming-meta|cachyos-gaming-applications)$' \
               | sort -u \
               | grep -v '^$' \
               | tr '\n' ' '
@@ -351,6 +351,7 @@ jobs:
             # PySide6 apps, no genesi-* build deps), so they slot in anywhere
             # before the meta-package.
             "genesi-containers"
+            "genesi-ports"
             "genesi-sandboxes"
             "genesi-netinspect"
             "genesi-db-explorer"
@@ -358,6 +359,9 @@ jobs:
             # + grub-btrfs) + a branded manager app. Self-contained (its deps are
             # all real repo packages), so it slots in with the other dev tools.
             "genesi-snapshots"
+            # Optional gaming meta/autoconfig. Built with -d so CI does not
+            # install the entire Steam/Lutris/Proton stack into the builder.
+            "genesi-gaming"
             # Roadmap 5.1 — "Hyprland + caelestia-shell" desktop option. These
             # repackage AUR-only software (quickshell itself is now in Arch
             # [extra], so it is NOT rebuilt here) so the Calamares netinstall can
@@ -427,7 +431,7 @@ jobs:
             # install-time resolution from the genesi repo still applies.
             MAKEPKG_NODEPS=""
             case "$pkg" in
-              genesi-desktop|genesi-caelestia-cli|genesi-caelestia-shell|genesi-caelestia-settings)
+              genesi-desktop|genesi-gaming|genesi-caelestia-cli|genesi-caelestia-shell|genesi-caelestia-settings)
                 MAKEPKG_NODEPS="-d" ;;
             esac
 

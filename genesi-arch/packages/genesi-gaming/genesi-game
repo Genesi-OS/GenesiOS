@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Launch any game with Genesi's default performance stack.
+# Steam launch option: genesi-game %command%
+set -e
+
+[ "$#" -gt 0 ] || {
+    echo "usage: genesi-game <game> [arguments...]" >&2
+    exit 2
+}
+
+cmd=("$@")
+if command -v mangohud >/dev/null 2>&1 && [ "${GENESI_MANGOHUD:-1}" != 0 ]; then
+    cmd=(mangohud "${cmd[@]}")
+fi
+
+# game-performance temporarily selects the performance power profile/governor
+# and restores the previous profile after the game exits. Do not stack
+# gamemoderun by default: GameMode renice conflicts with Genesi's ananicy-cpp.
+if command -v game-performance >/dev/null 2>&1; then
+    exec game-performance "${cmd[@]}"
+fi
+exec "${cmd[@]}"

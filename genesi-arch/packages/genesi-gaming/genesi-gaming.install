@@ -1,0 +1,32 @@
+_seed_user() {
+    local home="$1" owner="$2" group="$3" src=/usr/share/genesi-gaming/skel
+    [ -d "$home" ] && [ -d "$src" ] || return 0
+    install -d -o "$owner" -g "$group" \
+        "$home/.config/MangoHud" "$home/.config/environment.d" 2>/dev/null || true
+    if [ ! -e "$home/.config/MangoHud/MangoHud.conf" ]; then
+        install -m644 -o "$owner" -g "$group" "$src/.config/MangoHud/MangoHud.conf" \
+            "$home/.config/MangoHud/MangoHud.conf" 2>/dev/null || true
+    fi
+    if [ ! -e "$home/.config/gamemode.ini" ]; then
+        install -m644 -o "$owner" -g "$group" "$src/.config/gamemode.ini" \
+            "$home/.config/gamemode.ini" 2>/dev/null || true
+    fi
+    install -m644 -o "$owner" -g "$group" \
+        "$src/.config/environment.d/90-genesi-gaming.conf" \
+        "$home/.config/environment.d/90-genesi-gaming.conf" 2>/dev/null || true
+}
+
+post_install() {
+    local home owner group
+    for home in /home/*; do
+        [ -d "$home" ] || continue
+        owner="$(stat -c %U "$home" 2>/dev/null)" || continue
+        group="$(stat -c %G "$home" 2>/dev/null)" || continue
+        id "$owner" >/dev/null 2>&1 || continue
+        _seed_user "$home" "$owner" "$group"
+    done
+    gtk-update-icon-cache -ftq /usr/share/icons/hicolor 2>/dev/null || true
+    echo 'Genesi Gaming ready. Steam launch option: genesi-game %command%'
+}
+
+post_upgrade() { post_install; }

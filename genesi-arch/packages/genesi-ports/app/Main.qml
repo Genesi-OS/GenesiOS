@@ -1,0 +1,475 @@
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls as QQC2
+import QtQuick.Window
+import org.kde.kirigami as Kirigami
+
+QQC2.ApplicationWindow {
+    id: win
+    width: 1120
+    height: 700
+    minimumWidth: 900
+    minimumHeight: 580
+    visible: true
+    title: "Genesi PortScope"
+    color: theme.bgBottom
+
+    property var listeners: []
+    property var selected: null
+    property var inspection: ({ reachable: false, endpoints: [] })
+    property string protocolFilter: "all"
+    property string scopeFilter: "any"
+    property string query: ""
+    property bool busy: false
+    property bool hasRestricted: false
+    property bool privilegedView: false
+    property string toast: ""
+
+    Theme { id: theme }
+
+    function filtered() {
+        var out = []
+        var q = query.toLowerCase()
+        for (var i = 0; i < listeners.length; i++) {
+            var item = listeners[i]
+            if (protocolFilter !== "all" && item.proto !== protocolFilter) continue
+            if (scopeFilter !== "any" && item.scope !== scopeFilter) continue
+            var hay = (item.port + " " + item.process + " " + item.command + " "
+                       + item.stack + " " + item.address).toLowerCase()
+            if (q && hay.indexOf(q) < 0) continue
+            out.push(item)
+        }
+        return out
+    }
+
+    function select(item) {
+        selected = item
+        inspection = ({ reachable: false, endpoints: [] })
+    }
+
+    Connections {
+        target: backend
+        function onListenersLoaded(raw) {
+            try {
+                var data = JSON.parse(raw)
+                win.listeners = data.listeners || []
+                win.hasRestricted = false
+                for (var r = 0; r < win.listeners.length; r++)
+                    if (!win.listeners[r].pid) win.hasRestricted = true
+                if (win.selected) {
+                    var replacement = null
+                    for (var i = 0; i < win.listeners.length; i++)
+                        if (win.listeners[i].id === win.selected.id) replacement = win.listeners[i]
+                    win.selected = replacement
+                }
+            } catch (e) { win.listeners = [] }
+        }
+        function onInspectionLoaded(raw) {
+            try { win.inspection = JSON.parse(raw) } catch (e) {
+                win.inspection = ({ reachable: false, endpoints: [] })
+            }
+        }
+        function onBusyChanged(value) { win.busy = value }
+        function onMessage(value) { win.toast = value; toastTimer.restart() }
+    }
+
+    Timer { interval: 12000; running: win.visible && !win.privilegedView; repeat: true; onTriggered: backend.refresh() }
+    Timer { id: toastTimer; interval: 4200; onTriggered: win.toast = "" }
+
+    Rectangle {
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0; color: theme.bgTop }
+            GradientStop { position: 1; color: theme.bgBottom }
+        }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 74
+            color: theme.card
+            border.width: 0
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 22
+                anchors.rightMargin: 22
+                spacing: 14
+                Rectangle {
+                    width: 42; height: 42; radius: 8
+                    color: theme.mix(theme.card, theme.green, 0.20)
+                    border.width: 1; border.color: theme.a(theme.green, 0.55)
+                    Kirigami.Icon {
+                        anchors.centerIn: parent; width: 23; height: 23
+                        source: "network-connect"; color: theme.greenBright
+                    }
+                }
+                ColumnLayout {
+                    spacing: 1
+                    QQC2.Label {
+                        text: "PortScope"
+                        color: theme.textHi; font.family: theme.display
+                        font.pixelSize: 22; font.bold: true
+                    }
+                    QQC2.Label {
+                        text: "Ports, processes and local endpoints"
+                        color: theme.textMid; font.pixelSize: 12
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                Rectangle {
+                    width: 260; height: 38; radius: 7
+                    color: theme.cardHi; border.width: 1; border.color: theme.lineHi
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 11; anchors.rightMargin: 8
+                        Kirigami.Icon { source: "search"; width: 16; height: 16; color: theme.textMid }
+                        QQC2.TextField {
+                            Layout.fillWidth: true; background: null
+                            placeholderText: "Port, PID, process or stack"
+                            color: theme.textHi; placeholderTextColor: theme.textLo
+                            selectedTextColor: theme.white; selectionColor: theme.green
+                            onTextChanged: win.query = text
+                        }
+                    }
+                }
+                GButton {
+                    visible: win.hasRestricted
+                    theme: theme; kind: "tonal"; accent: theme.turbo
+                    iconSource: "lock"; tooltip: "Authenticate to reveal system-owned processes"
+                    enabled: !win.busy
+                    onClicked: { win.privilegedView = true; backend.refreshPrivileged() }
+                }
+                GButton {
+                    theme: theme; kind: "ghost"; iconSource: "view-refresh"
+                    tooltip: "Refresh listeners"; enabled: !win.busy
+                    onClicked: { win.privilegedView = false; backend.refresh() }
+                }
+            }
+        }
+
+        Rectangle { Layout.fillWidth: true; height: 1; color: theme.line }
+
+        RowLayout {
+            Layout.fillWidth: true; Layout.fillHeight: true
+            spacing: 0
+
+            Rectangle {
+                Layout.preferredWidth: 205; Layout.fillHeight: true
+                color: theme.card
+                ColumnLayout {
+                    anchors.fill: parent; anchors.margins: 14; spacing: 8
+                    QQC2.Label { text: "OVERVIEW"; color: theme.textLo; font.pixelSize: 11; font.bold: true }
+                    Rectangle {
+                        Layout.fillWidth: true; height: 72; radius: 7
+                        color: theme.mix(theme.card, theme.green, 0.12)
+                        border.width: 1; border.color: theme.a(theme.green, 0.35)
+                        Column {
+                            anchors.centerIn: parent; spacing: 1
+                            QQC2.Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: win.listeners.length; color: theme.greenBright
+                                font.pixelSize: 28; font.bold: true
+                            }
+                            QQC2.Label { text: "listening sockets"; color: theme.textMid; font.pixelSize: 11 }
+                        }
+                    }
+
+                    QQC2.Label { text: "PROTOCOL"; color: theme.textLo; font.pixelSize: 11; font.bold: true; Layout.topMargin: 8 }
+                    Repeater {
+                        model: [
+                            { key: "all", label: "All listeners", icon: "network-server" },
+                            { key: "tcp", label: "TCP", icon: "network-wired" },
+                            { key: "udp", label: "UDP", icon: "network-wireless" }
+                        ]
+                        delegate: Rectangle {
+                            Layout.fillWidth: true; height: 38; radius: 6
+                            color: win.protocolFilter === modelData.key
+                                   ? theme.mix(theme.card, theme.green, 0.18) : "transparent"
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: win.protocolFilter = modelData.key
+                            }
+                            RowLayout {
+                                anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 8
+                                Kirigami.Icon {
+                                    source: modelData.icon; width: 17; height: 17
+                                    color: win.protocolFilter === modelData.key ? theme.greenBright : theme.textMid
+                                }
+                                QQC2.Label {
+                                    text: modelData.label; Layout.fillWidth: true
+                                    color: win.protocolFilter === modelData.key ? theme.textHi : theme.textMid
+                                    font.bold: win.protocolFilter === modelData.key
+                                }
+                            }
+                        }
+                    }
+
+                    QQC2.Label { text: "EXPOSURE"; color: theme.textLo; font.pixelSize: 11; font.bold: true; Layout.topMargin: 8 }
+                    Repeater {
+                        model: [
+                            { key: "any", label: "Any scope" },
+                            { key: "local", label: "Localhost only" },
+                            { key: "network", label: "Network interface" },
+                            { key: "all", label: "All interfaces" }
+                        ]
+                        delegate: Rectangle {
+                            property string actualKey: modelData.key
+                            Layout.fillWidth: true; height: 34; radius: 6
+                            color: win.scopeFilter === actualKey ? theme.cardHi : "transparent"
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: win.scopeFilter = actualKey
+                            }
+                            QQC2.Label {
+                                anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.label; color: win.scopeFilter === actualKey ? theme.textHi : theme.textMid
+                            }
+                        }
+                    }
+                    Item { Layout.fillHeight: true }
+                    StatusBanner {
+                        Layout.fillWidth: true; theme: theme; accent: theme.blue
+                        icon: "dialog-information"; title: "On demand"
+                        body: "HTTP probing runs only when requested."
+                    }
+                }
+            }
+
+            Rectangle { width: 1; Layout.fillHeight: true; color: theme.line }
+
+            Item {
+                Layout.fillWidth: true; Layout.fillHeight: true
+                RowLayout {
+                    anchors.fill: parent; anchors.margins: 16; spacing: 14
+
+                    ColumnLayout {
+                        Layout.fillWidth: true; Layout.fillHeight: true; spacing: 9
+                        RowLayout {
+                            Layout.fillWidth: true
+                            QQC2.Label {
+                                text: "Listening now"; color: theme.textHi
+                                font.pixelSize: 18; font.bold: true
+                            }
+                            Item { Layout.fillWidth: true }
+                            QQC2.Label { text: win.filtered().length + " shown"; color: theme.textLo }
+                        }
+
+                        QQC2.ScrollView {
+                            Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+                            ListView {
+                                id: portList
+                                model: win.filtered()
+                                spacing: 7
+                                delegate: GlassCard {
+                                    width: ListView.view ? ListView.view.width : 400
+                                    height: 72; interactive: true
+                                    active: win.selected && win.selected.id === modelData.id
+                                    accent: modelData.scope === "all" ? theme.turbo : theme.green
+                                    MouseArea {
+                                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                        onClicked: win.select(modelData)
+                                    }
+                                    RowLayout {
+                                        anchors.fill: parent; anchors.margins: 10; spacing: 10
+                                        Rectangle {
+                                            width: 58; height: 48; radius: 7
+                                            color: theme.mix(theme.card, modelData.proto === "tcp" ? theme.green : theme.blue, 0.18)
+                                            Column {
+                                                anchors.centerIn: parent; spacing: 0
+                                                QQC2.Label {
+                                                    anchors.horizontalCenter: parent.horizontalCenter
+                                                    text: modelData.port; color: theme.textHi
+                                                    font.pixelSize: 16; font.bold: true
+                                                }
+                                                QQC2.Label {
+                                                    anchors.horizontalCenter: parent.horizontalCenter
+                                                    text: modelData.proto.toUpperCase(); color: theme.textLo; font.pixelSize: 9
+                                                }
+                                            }
+                                        }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true; spacing: 2
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                QQC2.Label {
+                                                    text: modelData.process || "Restricted"
+                                                    color: theme.textHi; font.bold: true; Layout.fillWidth: true
+                                                    elide: Text.ElideRight
+                                                }
+                                                QQC2.Label {
+                                                    text: modelData.stack; color: theme.accentText; font.pixelSize: 11
+                                                }
+                                            }
+                                            QQC2.Label {
+                                                text: modelData.address + "  |  PID " + (modelData.pid || "?") + "  |  " + modelData.user
+                                                color: theme.textMid; font.pixelSize: 11; elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
+                                            QQC2.Label {
+                                                text: modelData.command || "Process details require elevated access"
+                                                color: theme.textLo; font.pixelSize: 10; elide: Text.ElideMiddle
+                                                Layout.fillWidth: true
+                                            }
+                                        }
+                                        Kirigami.Icon {
+                                            source: modelData.scope === "local" ? "security-high" : "network-connect"
+                                            width: 17; height: 17
+                                            color: modelData.scope === "all" ? theme.turboBright : theme.textMid
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    GlassCard {
+                        Layout.preferredWidth: 330; Layout.fillHeight: true
+                        accent: win.selected && win.selected.scope === "all" ? theme.turbo : theme.green
+                        active: !!win.selected; interactive: false
+                        ColumnLayout {
+                            anchors.fill: parent; anchors.margins: 16; spacing: 12
+                            QQC2.Label {
+                                text: win.selected ? ("Port " + win.selected.port) : "Select a listener"
+                                color: theme.textHi; font.pixelSize: 20; font.bold: true
+                            }
+                            QQC2.Label {
+                                visible: !win.selected
+                                text: "Choose a port to inspect its owner, infer the stack and discover local HTTP endpoints."
+                                color: theme.textMid; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                            }
+
+                            ColumnLayout {
+                                visible: !!win.selected; Layout.fillWidth: true; spacing: 8
+                                DetailRow { label: "Process"; value: win.selected ? win.selected.process : "" }
+                                DetailRow { label: "PID"; value: win.selected ? String(win.selected.pid || "Restricted") : "" }
+                                DetailRow { label: "Owner"; value: win.selected ? win.selected.user : "" }
+                                DetailRow { label: "Binding"; value: win.selected ? win.selected.address + ":" + win.selected.port : "" }
+                                DetailRow { label: "Stack"; value: win.selected ? win.selected.stack : "" }
+                            }
+
+                            Rectangle { visible: !!win.selected; Layout.fillWidth: true; height: 1; color: theme.line }
+                            RowLayout {
+                                visible: !!win.selected; Layout.fillWidth: true
+                                GButton {
+                                    theme: theme; kind: "filled"; accent: theme.green
+                                    text: "Inspect"; iconSource: "search"; enabled: !win.busy && win.selected && win.selected.proto === "tcp"
+                                    tooltip: "Probe /, /health, /api and OpenAPI locally"
+                                    onClicked: backend.inspectPort(win.selected.port, win.selected.address)
+                                }
+                                Item { Layout.fillWidth: true }
+                                GButton {
+                                    theme: theme; kind: "danger"; iconSource: "process-stop"
+                                    enabled: !win.busy && win.selected && win.selected.pid > 1
+                                    tooltip: "Stop the process owning this port"
+                                    onClicked: killConfirm.open()
+                                }
+                            }
+
+                            QQC2.BusyIndicator {
+                                running: win.busy; visible: win.busy
+                                Layout.alignment: Qt.AlignHCenter; width: 28; height: 28
+                            }
+
+                            ColumnLayout {
+                                visible: win.inspection && win.inspection.reachable
+                                Layout.fillWidth: true; spacing: 7
+                                QQC2.Label { text: "DISCOVERED"; color: theme.textLo; font.pixelSize: 10; font.bold: true }
+                                QQC2.Label {
+                                    text: win.inspection.title || (win.inspection.scheme + " service")
+                                    color: theme.textHi; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight
+                                }
+                                QQC2.Label {
+                                    text: (win.inspection.server ? win.inspection.server : "Server header hidden")
+                                          + (win.inspection.openapi ? "  |  OpenAPI " + win.inspection.openapi : "")
+                                    color: theme.textMid; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight
+                                }
+                                Repeater {
+                                    model: win.inspection.endpoints || []
+                                    delegate: Rectangle {
+                                        Layout.fillWidth: true; height: 30; radius: 5; color: theme.cardHi
+                                        RowLayout {
+                                            anchors.fill: parent; anchors.leftMargin: 9; anchors.rightMargin: 9
+                                            QQC2.Label { text: modelData.path; color: theme.textHi; Layout.fillWidth: true }
+                                            QQC2.Label {
+                                                text: modelData.status
+                                                color: modelData.status < 400 ? theme.greenBright : theme.turboBright
+                                                font.bold: true
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            StatusBanner {
+                                visible: win.inspection && !win.inspection.reachable && (win.inspection.endpoints !== undefined)
+                                         && !win.busy && !!win.selected
+                                Layout.fillWidth: true; theme: theme; accent: theme.blue
+                                icon: "network-server"; title: "Endpoint inspection"
+                                body: "No HTTP endpoint inspected yet."
+                            }
+                            Item { Layout.fillHeight: true }
+                            QQC2.Label {
+                                visible: !!win.selected
+                                text: win.selected ? win.selected.command : ""
+                                color: theme.textLo; font.family: theme.mono; font.pixelSize: 10
+                                wrapMode: Text.WrapAnywhere; Layout.fillWidth: true; maximumLineCount: 4
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    component DetailRow: RowLayout {
+        property string label: ""
+        property string value: ""
+        Layout.fillWidth: true
+        QQC2.Label { text: parent.label; color: theme.textLo; font.pixelSize: 11; Layout.preferredWidth: 66 }
+        QQC2.Label { text: parent.value; color: theme.textHi; Layout.fillWidth: true; elide: Text.ElideRight }
+    }
+
+    QQC2.Popup {
+        id: killConfirm
+        anchors.centerIn: parent; width: 430; padding: 0; modal: true; focus: true
+        background: GlassCard { accent: theme.red; active: true; interactive: false }
+        ColumnLayout {
+            width: parent.width; spacing: 13
+            Item { height: 8 }
+            QQC2.Label {
+                Layout.leftMargin: 18; Layout.rightMargin: 18; Layout.fillWidth: true
+                text: "Stop process " + (win.selected ? win.selected.pid : "") + "?"
+                color: theme.textHi; font.pixelSize: 18; font.bold: true
+            }
+            QQC2.Label {
+                Layout.leftMargin: 18; Layout.rightMargin: 18; Layout.fillWidth: true
+                text: "The listener on port " + (win.selected ? win.selected.port : "")
+                      + " will receive SIGTERM. Unsaved work in that process may be lost."
+                color: theme.textMid; wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.leftMargin: 18; Layout.rightMargin: 18; Layout.bottomMargin: 16; Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                GButton { theme: theme; kind: "ghost"; text: "Cancel"; onClicked: killConfirm.close() }
+                GButton {
+                    theme: theme; kind: "danger"; text: "Stop"; iconSource: "process-stop"
+                    onClicked: {
+                        backend.killProcess(win.selected.pid, win.selected.port)
+                        killConfirm.close()
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        visible: win.toast.length > 0
+        anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottomMargin: 18; width: Math.min(parent.width - 40, toastLabel.implicitWidth + 36)
+        height: 42; radius: 7; color: theme.cardHi; border.width: 1; border.color: theme.lineHi
+        QQC2.Label { id: toastLabel; anchors.centerIn: parent; text: win.toast; color: theme.textHi }
+    }
+}

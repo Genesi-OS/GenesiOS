@@ -37,7 +37,9 @@ pkgver=1.0.0
 # text colour, so on the GTK DEs it rendered light-on-white (unreadable) —
 # fixed in genesi-welcome.py by giving the combo + its popup an explicit dark
 # background.
-pkgrel=7
+# pkgrel 8: add the branded Gaming tile and install genesi-gaming instead of
+# only the raw CachyOS metas, so one click also applies Genesi's defaults.
+pkgrel=8
 pkgdesc="Welcome application for Genesi OS"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"

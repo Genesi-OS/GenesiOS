@@ -21,7 +21,9 @@ pkgver=1.6.2
 # binary, the cachyos_pi:: bridge namespace, the polkit action id, install
 # paths) are intentionally left as-is — renaming them is a build-breaking
 # cross-cutting change, not user-visible.
-pkgrel=4
+# pkgrel 5: Gaming bundle now installs genesi-gaming, adding branded defaults
+# and the genesi-game performance wrapper on top of the CachyOS stack.
+pkgrel=5
 pkgdesc='Genesi OS Package Installer - one-click app, gaming and local-AI setup'
 arch=(x86_64 aarch64)
 url='https://github.com/Genesi-OS/genesi-packageinstaller'

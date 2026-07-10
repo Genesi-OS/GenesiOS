@@ -1,0 +1,42 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# Optional branded gaming layer. The CachyOS metas provide the optimized
+# runtime/launchers; Genesi adds one predictable wrapper and sane per-user
+# defaults without forcing the large gaming stack onto every installation.
+pkgname=genesi-gaming
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Genesi gaming ecosystem: CachyOS stack plus MangoHud and performance autoconfiguration'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('GPL-3.0-or-later')
+depends=(
+    'cachyos-gaming-meta'
+    'cachyos-gaming-applications'
+    'genesi-settings'          # game-performance + the CachyOS performance base
+    'mangohud'
+    'gamemode'
+    'power-profiles-daemon'
+)
+install='genesi-gaming.install'
+source=()
+sha256sums=()
+
+package() {
+    install -Dm755 "${startdir}/genesi-game" \
+        "$pkgdir/usr/bin/genesi-game"
+    install -Dm644 "${startdir}/MangoHud.conf" \
+        "$pkgdir/usr/share/genesi-gaming/skel/.config/MangoHud/MangoHud.conf"
+    install -Dm644 "${startdir}/gamemode.ini" \
+        "$pkgdir/usr/share/genesi-gaming/skel/.config/gamemode.ini"
+    install -Dm644 "${startdir}/gaming.conf" \
+        "$pkgdir/usr/share/genesi-gaming/skel/.config/environment.d/90-genesi-gaming.conf"
+    install -Dm644 "${startdir}/MangoHud.conf" \
+        "$pkgdir/etc/skel/.config/MangoHud/MangoHud.conf"
+    install -Dm644 "${startdir}/gamemode.ini" \
+        "$pkgdir/etc/skel/.config/gamemode.ini"
+    install -Dm644 "${startdir}/gaming.conf" \
+        "$pkgdir/etc/skel/.config/environment.d/90-genesi-gaming.conf"
+    install -Dm644 "${startdir}/genesi-gaming.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-gaming.svg"
+}

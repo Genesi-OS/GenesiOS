@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""StatusNotifierItem fallback for non-Plasma desktops and Caelestia."""
+import json
+import signal
+import subprocess
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+try:
+    gi.require_version("AyatanaAppIndicator3", "0.1")
+    from gi.repository import AyatanaAppIndicator3 as AppIndicator
+except (ValueError, ImportError):
+    gi.require_version("AppIndicator3", "0.1")
+    from gi.repository import AppIndicator3 as AppIndicator
+from gi.repository import GLib, Gtk
+
+
+def listeners():
+    try:
+        proc = subprocess.run(["genesi-ports", "list-json"], capture_output=True,
+                              text=True, timeout=8)
+        return json.loads(proc.stdout or "{}").get("listeners", [])
+    except Exception:
+        return []
+
+
+def item(label, callback=None, enabled=True):
+    entry = Gtk.MenuItem(label=label)
+    entry.set_sensitive(enabled)
+    if callback:
+        entry.connect("activate", lambda _widget: callback())
+    return entry
+
+
+def launch(*argv):
+    try:
+        subprocess.Popen(list(argv), stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+class Tray:
+    def __init__(self):
+        self.indicator = AppIndicator.Indicator.new(
+            "genesi-ports-tray", "genesi-ports",
+            AppIndicator.IndicatorCategory.SYSTEM_SERVICES)
+        self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+        self.indicator.set_title("Genesi PortScope")
+        self.rebuild()
+        # `/proc` + one `ss` call every 15s is intentionally light. HTTP probing
+        # never runs from the tray; it remains an explicit dashboard action.
+        GLib.timeout_add_seconds(15, self.tick)
+
+    def tick(self):
+        self.rebuild()
+        return True
+
+    def rebuild(self):
+        rows = listeners()
+        menu = Gtk.Menu()
+        menu.append(item(f"{len(rows)} listening sockets", enabled=False))
+        menu.append(Gtk.SeparatorMenuItem())
+        if not rows:
+            menu.append(item("No listening ports", enabled=False))
+        for row in rows[:12]:
+            pid = int(row.get("pid") or 0)
+            port = int(row.get("port") or 0)
+            proto = str(row.get("proto", "tcp")).upper()
+            name = row.get("process") or "Restricted"
+            parent = Gtk.MenuItem(label=f"{port}/{proto}  {name}")
+            submenu = Gtk.Menu()
+            submenu.append(item(f"PID {pid or '?'} - {row.get('stack', 'Service')}", enabled=False))
+            submenu.append(item(f"{row.get('address', '?')} ({row.get('scope', '?')})", enabled=False))
+            if pid > 1:
+                submenu.append(Gtk.SeparatorMenuItem())
+                submenu.append(item("Stop process", lambda p=pid, n=port:
+                                    launch("pkexec", "genesi-ports", "kill", str(p), str(n))))
+            parent.set_submenu(submenu)
+            menu.append(parent)
+        if len(rows) > 12:
+            menu.append(item(f"+ {len(rows) - 12} more in PortScope", enabled=False))
+        menu.append(Gtk.SeparatorMenuItem())
+        menu.append(item("Open PortScope", lambda: launch("genesi-ports-gui")))
+        menu.append(item("Refresh", self.rebuild))
+        menu.append(item("Quit", Gtk.main_quit))
+        menu.show_all()
+        self.indicator.set_menu(menu)
+
+
+def main():
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    Tray()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi PortScope Tray
+Exec=genesi-ports-tray
+Icon=genesi-ports
+Terminal=false
+NoDisplay=true
+OnlyShowIn=GNOME;Xfce;MATE;Cinnamon;LXQt;
+X-GNOME-Autostart-enabled=true

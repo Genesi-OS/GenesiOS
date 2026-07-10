@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi PortScope
+Comment=See which process owns every listening port
+Exec=genesi-ports-gui
+Icon=genesi-ports
+Terminal=false
+Categories=Development;Network;System;
+Keywords=port;process;pid;network;developer;localhost;
+StartupWMClass=org.genesi.ports

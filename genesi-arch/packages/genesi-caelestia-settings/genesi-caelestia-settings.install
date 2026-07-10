@@ -30,6 +30,7 @@ _migrate_hypr() {
        && ! grep -qE '^windowrule = .*,[[:space:]]*class:' "$cfg" \
        && ! grep -qE '^windowrule = (noborder|rounding|move).*genesi-ai-tray' "$cfg" \
        && grep -q 'genesi-caelestia-theme-sync' "$cfg" \
+       && grep -q 'genesi-ports-tray' "$cfg" \
        && grep -q 'genesi-scheme-init' "$cfg"; then
         return 0
     fi
@@ -59,10 +60,16 @@ _migrate_hypr() {
 exec-once = genesi-update --tray
 exec-once = genesi-ai-tray
 exec-once = genesi-containers-tray
+exec-once = genesi-ports-tray
 # Float the AI Mode tray popup (only `float` — Hyprland 0.55 rejects the
 # noborder/rounding/move rules; the popup rounds itself via its stylesheet).
 windowrule = float class:^(genesi-ai-tray)$
 HYPR
+    fi
+
+    # Users who already received the original tray block still need PortScope.
+    if ! grep -q 'genesi-ports-tray' "$cfg"; then
+        printf '%s\n' 'exec-once = genesi-ports-tray' >> "$cfg"
     fi
 
     # 4. Windows-like SUPER tap → launcher (append once).

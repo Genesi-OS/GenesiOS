@@ -1,0 +1,47 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+pkgname=genesi-ports
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('GPL-3.0-or-later')
+depends=(
+    'python' 'pyside6' 'kirigami' 'qqc2-desktop-style' 'qt6-svg'
+    'iproute2' 'procps-ng' 'polkit'
+    'python-gobject' 'libayatana-appindicator' 'gtk3'
+)
+optdepends=('plasma-workspace: Plasma 6 PortScope panel widget')
+install='genesi-ports.install'
+source=()
+sha256sums=()
+
+package() {
+    install -Dm755 "${startdir}/genesi-ports" "$pkgdir/usr/bin/genesi-ports"
+    install -Dm755 "${startdir}/genesi-ports-gui" "$pkgdir/usr/bin/genesi-ports-gui"
+    install -Dm755 "${startdir}/genesi-ports-tray" "$pkgdir/usr/bin/genesi-ports-tray"
+    install -Dm755 "${startdir}/genesi-ports-panel-migrate" \
+        "$pkgdir/usr/bin/genesi-ports-panel-migrate"
+
+    install -Dm644 "${startdir}/app/genesi_ports.py" \
+        "$pkgdir/usr/share/genesi-ports/app/genesi_ports.py"
+    install -Dm644 "${startdir}/app/Main.qml" \
+        "$pkgdir/usr/share/genesi-ports/app/Main.qml"
+    for comp in Theme GlassCard GButton StatusBanner I18n; do
+        install -Dm644 "${startdir}/../genesi-ui-kit/components/${comp}.qml" \
+            "$pkgdir/usr/share/genesi-ports/app/${comp}.qml"
+    done
+
+    install -Dm644 "${startdir}/org.genesi.ports.desktop" \
+        "$pkgdir/usr/share/applications/org.genesi.ports.desktop"
+    install -Dm644 "${startdir}/genesi-ports-tray.desktop" \
+        "$pkgdir/etc/xdg/autostart/genesi-ports-tray.desktop"
+    install -Dm644 "${startdir}/genesi-ports-panel-migrate.desktop" \
+        "$pkgdir/etc/xdg/autostart/genesi-ports-panel-migrate.desktop"
+    install -Dm644 "${startdir}/genesi-ports.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-ports.svg"
+
+    install -dm755 "$pkgdir/usr/share/plasma/plasmoids/org.genesi.ports"
+    cp -r "${startdir}/plasmoid/"* \
+        "$pkgdir/usr/share/plasma/plasmoids/org.genesi.ports/"
+}

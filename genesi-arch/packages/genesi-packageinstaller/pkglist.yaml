@@ -44,13 +44,10 @@
 
 - name: "Gaming"
   packages:
-    # One-click "gaming ecosystem" (the CachyOS optimized stack). Installing
-    # cachyos-gaming-applications pulls cachyos-gaming-meta too, so this single
-    # entry brings Steam, Lutris, Heroic, Gamescope, MangoHud, GOverlay plus the
-    # optimized base (proton-cachyos-slr, wine-cachyos-opt, umu-launcher,
-    # protontricks, winetricks, the split-lock sysctl tweak). Both live in the
-    # [cachyos] repo, which Genesi's pacman.conf already enables.
-    - "cachyos-gaming-meta cachyos-gaming-applications"
+    # One-click branded ecosystem. genesi-gaming pulls the CachyOS optimized
+    # metas (Steam, Lutris, Heroic, Gamescope, Proton-CachyOS, Wine, MangoHud,
+    # GOverlay) and adds Genesi's performance wrapper + overlay/cache defaults.
+    - genesi-gaming
     # Individual picks, for users who want to cherry-pick instead of the bundle.
     - steam
     - lutris

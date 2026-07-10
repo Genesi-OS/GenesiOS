@@ -59,6 +59,7 @@ STR = {
         "settings": "Configurações", "settings_d": "Personalize o Genesi OS",
         "aimode": "Modo IA", "aimode_d": "Gerencie o otimizador de IA",
         "apps": "Instalar Apps", "apps_d": "Catálogo de aplicativos",
+        "gaming_tile": "Gaming", "gaming_tile_d": "Instale ou abra o ecossistema gamer",
         "tweaks": "Apps / Ajustes", "tweaks_d": "Manutenção e ajustes do sistema",
         "community": "Comunidade", "community_d": "Junte-se a nós no GitHub",
         "launch_start": "Abrir ao iniciar", "language": "Idioma", "back": "Voltar",
@@ -96,6 +97,7 @@ STR = {
         "settings": "Settings", "settings_d": "Personalize Genesi OS",
         "aimode": "AI Mode", "aimode_d": "Manage the AI optimizer",
         "apps": "Install Apps", "apps_d": "Application catalog",
+        "gaming_tile": "Gaming", "gaming_tile_d": "Install or open the gaming ecosystem",
         "tweaks": "Apps / Tweaks", "tweaks_d": "System maintenance and tweaks",
         "community": "Community", "community_d": "Join us on GitHub",
         "launch_start": "Launch at start", "language": "Language", "back": "Back",
@@ -191,8 +193,7 @@ MAINT_ACTIONS = [
     ("cache",     "",       "pacman -Sc"),
     ("orphans",   "",       "o=$(pacman -Qtdq || true); "
                             "[ -n \"$o\" ] && pacman -Rns $o || echo 'No orphans.'"),
-    ("gaming",    "",       "pacman -S --needed cachyos-gaming-meta "
-                            "cachyos-gaming-applications"),
+    ("gaming",    "",       "pacman -S --needed genesi-gaming"),
     ("snapper",   "",       "pacman -S --needed snapper snap-pac"),
     ("mirrors",   "",       "command -v cachyos-rate-mirrors >/dev/null && "
                             "cachyos-rate-mirrors || reflector --latest 20 "
@@ -345,6 +346,7 @@ class GenesiWelcome(QMainWindow):
             ("settings", "settings_d", self.launch_settings, False),
             ("aimode", "aimode_d", self.launch_ai_mode, False),
             ("apps", "apps_d", self.launch_pkginstaller, False),
+            ("gaming_tile", "gaming_tile_d", self.launch_gaming, False),
             ("tweaks", "tweaks_d", lambda: self.stack.setCurrentIndex(1), False),
             ("community", "community_d", lambda: self.open_url(REPO), False),
         ]
@@ -558,6 +560,16 @@ class GenesiWelcome(QMainWindow):
             if shutil.which(b):
                 self.run_user([b]); return
         self.open_url(REPO)
+
+    def launch_gaming(self):
+        installed = subprocess.run(
+            ["pacman", "-Qq", "genesi-gaming"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        ).returncode == 0
+        if installed and shutil.which("steam"):
+            self.run_user(["steam"])
+            return
+        self.run_root(self.tr("gaming"), "pacman -S --needed genesi-gaming")
 
     def launch_kernel_manager(self):
         for b in ("cachyos-kernel-manager", "genesi-kernel-manager"):

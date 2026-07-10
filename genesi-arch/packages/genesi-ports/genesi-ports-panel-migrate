@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Add the PortScope plasmoid once, through Plasma's live scripting API.
+set -u
+
+marker_dir="${XDG_CONFIG_HOME:-$HOME/.config}/genesi"
+marker="$marker_dir/panel-migrate-ports.done"
+[ -f "$marker" ] && exit 0
+
+for _ in $(seq 1 30); do
+    pgrep -x plasmashell >/dev/null 2>&1 && break
+    sleep 0.5
+done
+
+qdbus=""
+for candidate in qdbus6 qdbus-qt6 qdbus; do
+    if command -v "$candidate" >/dev/null 2>&1; then qdbus="$candidate"; break; fi
+done
+[ -n "$qdbus" ] || exit 0
+
+read -r -d '' script <<'PLASMASCRIPT'
+var present = false;
+var ps = panels();
+for (var i = 0; i < ps.length; i++) {
+    var ws = ps[i].widgets();
+    for (var j = 0; j < ws.length; j++) {
+        if (ws[j].type == "org.genesi.ports") present = true;
+    }
+}
+if (!present && ps.length > 0) {
+    ps[0].addWidget("org.genesi.ports");
+    present = true;
+}
+print(present ? "ok" : "nopanel");
+PLASMASCRIPT
+
+result="$("$qdbus" org.kde.plasma.shell /PlasmaShell \
+    org.kde.PlasmaShell.evaluateScript "$script" 2>/dev/null)" || result=""
+if [ "$result" = ok ]; then
+    mkdir -p "$marker_dir"
+    : > "$marker"
+fi
+exit 0

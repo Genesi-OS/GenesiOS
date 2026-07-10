@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Add Genesi PortScope to Panel
+Exec=/usr/bin/genesi-ports-panel-migrate
+Icon=genesi-ports
+Terminal=false
+NoDisplay=true
+OnlyShowIn=KDE;
+X-KDE-autostart-after=panel

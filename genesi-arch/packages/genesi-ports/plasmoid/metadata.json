@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Id": "org.genesi.ports",
+    "Name": "Genesi PortScope",
+    "Description": "Map listening ports to their processes",
+    "Icon": "genesi-ports",
+    "Version": "1.0.0",
+    "License": "GPL-3.0-or-later",
+    "Authors": [{ "Name": "Genesi OS Team" }]
+  },
+  "KPackageStructure": "Plasma/Applet",
+  "X-Plasma-API-Minimum-Version": "6.0"
+}
