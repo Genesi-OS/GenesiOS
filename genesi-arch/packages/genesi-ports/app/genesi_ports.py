@@ -66,8 +66,8 @@ class Backend(QObject):
                 self._set_busy(False)
         self._thread(work)
 
-    @Slot(int, str)
-    def inspectPort(self, port, address):
+    @Slot(int, str, int)
+    def inspectPort(self, port, address, pid=0):
         if self._busy:
             return
         self._set_busy(True)
@@ -75,7 +75,7 @@ class Backend(QObject):
         def work():
             try:
                 proc = subprocess.run(
-                    [CLI, "inspect-json", str(port), address or "127.0.0.1"],
+                    [CLI, "inspect-json", str(port), address or "127.0.0.1", str(pid or 0)],
                     capture_output=True, text=True, timeout=12)
                 self.inspectionLoaded.emit(proc.stdout.strip() or '{"reachable":false}')
             except Exception as exc:

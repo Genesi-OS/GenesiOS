@@ -1,7 +1,16 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# pkgrel 3: rework endpoint discovery. The old inspect only probed a fixed
+# /swagger-style path list and, even when it found an OpenAPI doc, never read its
+# `paths` — so most backends showed nothing. Now inspect-json discovers endpoints
+# in layers: (1) parse OpenAPI/Swagger from ~11 well-known spec URLs (full path +
+# method list), (2) GraphQL introspection, (3) OUT-OF-THE-BOX — read routes from
+# the project source at /proc/PID/cwd by framework convention (Next.js/Express/
+# FastAPI/Flask/Django/Spring/Rails/Go) so it works with no spec at all, (4) a
+# GET-only liveness probe as fallback. All localhost, no destructive methods.
 pkgname=genesi-ports
 pkgver=1.0.0
-pkgrel=2
+pkgrel=3
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

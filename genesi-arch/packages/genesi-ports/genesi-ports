@@ -11,6 +11,8 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlsplit
 
 try:
     import pwd
@@ -201,52 +203,433 @@ def collect():
     return rows
 
 
-def inspect_http(port, address="127.0.0.1"):
-    host = "::1" if ":" in address else "127.0.0.1"
-    host_url = f"[{host}]" if ":" in host else host
-    paths = ("/", "/health", "/api", "/openapi.json", "/swagger.json")
+# ---- endpoint discovery -----------------------------------------------------
+# Not every backend ships an OpenAPI/Swagger spec, so relying on /swagger alone
+# misses most projects. We discover endpoints in layers, strongest signal first:
+#   1. OpenAPI/Swagger — probe many well-known spec URLs AND parse their `paths`
+#      (the whole endpoint list, with methods) — not just the title;
+#   2. GraphQL introspection — POST an introspection query to the usual routes;
+#   3. Source-derived routes — the out-of-the-box bit: since we already know the
+#      PID and the stack, read the project at /proc/PID/cwd and pull routes from
+#      the framework's own conventions (Next.js/Express/FastAPI/Flask/Django/
+#      Spring/Rails/Go) — works even with no spec at all;
+#   4. a light, GET-only liveness probe of well-known paths as a last resort.
+# Everything hits localhost only, never issues a destructive method (GraphQL
+# introspection is read-only), and source parsing only reads files (no exec).
+_SSL_CTX = ssl._create_unverified_context()
+
+OPENAPI_PATHS = (
+    "/openapi.json", "/swagger.json", "/swagger/v1/swagger.json",
+    "/v3/api-docs", "/api-docs", "/api/openapi.json", "/openapi",
+    "/swagger/doc.json", "/q/openapi", "/api-docs.json", "/docs/json",
+)
+GRAPHQL_PATHS = ("/graphql", "/api/graphql", "/query", "/v1/graphql")
+PROBE_PATHS = (
+    "/", "/health", "/healthz", "/api", "/status", "/metrics",
+    "/version", "/docs", "/actuator/health",
+)
+_INTROSPECTION = json.dumps({
+    "query": "{__schema{queryType{fields{name}} mutationType{fields{name}}}}"
+}).encode("ascii")
+_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+
+
+def _request(url, timeout=0.8, method="GET", data=None, extra_headers=None):
+    headers = {"User-Agent": "Genesi-PortScope/1.0",
+               "Accept": "application/json,text/html,*/*"}
+    if extra_headers:
+        headers.update(extra_headers)
+    try:
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        resp = urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX)
+        return resp.status, resp.headers, resp.read(524288)
+    except urllib.error.HTTPError as exc:
+        try:
+            body = exc.read(524288)
+        except Exception:
+            body = b""
+        return exc.code, exc.headers, body
+    except (OSError, urllib.error.URLError, TimeoutError, ValueError, ssl.SSLError):
+        return None
+
+
+def _fetch_many(specs, timeout=0.8, workers=12):
+    """specs: iterable of (key, url, method, data, headers). Runs concurrently so
+    the wall time is ~one timeout regardless of how many URLs we probe."""
+    specs = list(specs)
+    results = {}
+
+    def one(spec):
+        key, url, method, data, hdr = spec
+        return key, _request(url, timeout=timeout, method=method, data=data, extra_headers=hdr)
+
+    if not specs:
+        return results
+    with ThreadPoolExecutor(max_workers=min(workers, len(specs))) as ex:
+        for key, res in ex.map(one, specs):
+            results[key] = res
+    return results
+
+
+def _parse_openapi(data):
+    version = str(data.get("openapi") or data.get("swagger") or "")
+    if not version and "paths" not in data:
+        return None
+    info = data.get("info") if isinstance(data.get("info"), dict) else {}
+    title = str(info.get("title") or "")
+    base = ""
+    servers = data.get("servers")
+    if isinstance(servers, list) and servers and isinstance(servers[0], dict):
+        base = str(servers[0].get("url") or "")
+    elif data.get("basePath"):
+        base = str(data.get("basePath"))
+    if "://" in base:
+        base = urlsplit(base).path
+    base = base.rstrip("/")
     endpoints = []
-    identity = {"title": "", "server": "", "openapi": "", "scheme": ""}
-    context = ssl._create_unverified_context()
-    for scheme in ("http", "https"):
-        any_response = False
-        for path in paths:
-            url = f"{scheme}://{host_url}:{port}{path}"
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "Genesi-PortScope/1.0", "Accept": "application/json,text/html,*/*"
-            })
-            try:
-                response = urllib.request.urlopen(req, timeout=0.55, context=context)
-                body = response.read(65536)
-                status = response.status
-                headers = response.headers
-            except urllib.error.HTTPError as exc:
-                body = exc.read(65536)
-                status = exc.code
-                headers = exc.headers
-            except (OSError, urllib.error.URLError, TimeoutError):
+    paths = data.get("paths")
+    if isinstance(paths, dict):
+        for path, item in paths.items():
+            if not isinstance(item, dict):
                 continue
-            any_response = True
-            endpoints.append({"path": path, "status": status})
-            identity["scheme"] = scheme
-            identity["server"] = headers.get("Server", "")[:80]
-            text = body.decode("utf-8", "replace")
-            title = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
-            if title and not identity["title"]:
-                identity["title"] = re.sub(r"\s+", " ", title.group(1)).strip()[:100]
-            if path.endswith(".json"):
-                try:
-                    data = json.loads(text)
-                    if "openapi" in data or "swagger" in data:
-                        identity["openapi"] = str(data.get("openapi") or data.get("swagger"))
-                        identity["title"] = str(data.get("info", {}).get("title") or identity["title"])[:100]
-                except (ValueError, TypeError):
-                    pass
-        if any_response:
+            methods = [m for m in item if isinstance(m, str) and m.lower() in _HTTP_METHODS]
+            for m in (methods or ["get"]):
+                endpoints.append({"method": m.upper(), "path": base + str(path), "source": "openapi"})
+    return {"version": version, "title": title, "endpoints": endpoints}
+
+
+def _graphql_fields(schema, endpoint):
+    endpoints = []
+    for kind, label in (("queryType", "QUERY"), ("mutationType", "MUTATION")):
+        node = schema.get(kind) or {}
+        for field in (node.get("fields") or []):
+            name = field.get("name")
+            if name and not name.startswith("__"):
+                endpoints.append({"method": label, "path": name, "source": "graphql"})
+    return endpoints
+
+
+# ---- source-derived routes --------------------------------------------------
+_SKIP_DIRS = {
+    "node_modules", ".git", ".next", ".nuxt", "dist", "build", "out",
+    "__pycache__", ".venv", "venv", "env", "target", ".gradle", "vendor",
+    ".cache", "coverage", ".idea", ".vscode", ".pytest_cache", "bin", "obj",
+}
+
+
+def _proc_cwd(pid):
+    if not pid or pid <= 0:
+        return ""
+    try:
+        return os.readlink("/proc/%d/cwd" % pid)
+    except OSError:
+        return ""
+
+
+def _walk(root, exts, cap=600, max_depth=9):
+    out = []
+    root = root.rstrip("/")
+    base_depth = root.count("/")
+    for dirpath, dirnames, filenames in os.walk(root):
+        if dirpath.count("/") - base_depth >= max_depth:
+            dirnames[:] = []
+            continue
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
+        for name in filenames:
+            if "." in name and name.rsplit(".", 1)[-1] in exts:
+                out.append(os.path.join(dirpath, name))
+                if len(out) >= cap:
+                    return out
+    return out
+
+
+def _read(path, limit=80000):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            return handle.read(limit)
+    except OSError:
+        return ""
+
+
+def _nextjs_url(rel):
+    if rel in (".", ""):
+        return "/"
+    parts = []
+    for seg in rel.replace(os.sep, "/").split("/"):
+        if seg.startswith("(") and seg.endswith(")"):  # route group — not in the URL
+            continue
+        seg = re.sub(r"\[\.\.\.(\w+)\]", r"*\1", seg)   # catch-all
+        seg = re.sub(r"\[(\w+)\]", r":\1", seg)          # dynamic segment
+        if seg:
+            parts.append(seg)
+    return "/" + "/".join(parts)
+
+
+def _routes_nextjs(root):
+    endpoints = []
+    for app_dir in (os.path.join(root, "app"), os.path.join(root, "src", "app")):
+        if not os.path.isdir(app_dir):
+            continue
+        for f in _walk(app_dir, {"ts", "tsx", "js", "jsx"}, cap=600):
+            stem = os.path.basename(f).rsplit(".", 1)[0]
+            if stem not in ("route", "page"):
+                continue
+            url = _nextjs_url(os.path.relpath(os.path.dirname(f), app_dir))
+            if stem == "route":
+                text = _read(f, 20000)
+                methods = set(re.findall(
+                    r"export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)", text))
+                methods |= set(re.findall(
+                    r"export\s+const\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*=", text))
+                for m in (sorted(methods) or ["GET"]):
+                    endpoints.append({"method": m, "path": url, "source": "source"})
+            else:
+                endpoints.append({"method": "GET", "path": url + "  (page)", "source": "source"})
+    for pages_dir in (os.path.join(root, "pages"), os.path.join(root, "src", "pages")):
+        if not os.path.isdir(pages_dir):
+            continue
+        for f in _walk(pages_dir, {"ts", "tsx", "js", "jsx"}, cap=600):
+            rel = re.sub(r"\.(t|j)sx?$", "", os.path.relpath(f, pages_dir))
+            if rel.endswith("/index") or rel.endswith(os.sep + "index"):
+                rel = rel[:-6]
+            if rel.startswith("_"):
+                continue
+            url = _nextjs_url(rel)
+            is_api = url.startswith("/api")
+            endpoints.append({"method": "ANY" if is_api else "GET",
+                              "path": url + ("" if is_api else "  (page)"), "source": "source"})
+    return endpoints
+
+
+def _routes_js(root):
+    endpoints = []
+    pat = re.compile(
+        r"\.\s*(get|post|put|patch|delete|all|head|options)\s*\(\s*[`'\"]([^`'\"]+)", re.I)
+    for f in _walk(root, {"js", "ts", "mjs", "cjs"}, cap=500):
+        text = _read(f)
+        for m in pat.finditer(text):
+            path = m.group(2)
+            if not path.startswith("/"):
+                continue
+            method = m.group(1).upper()
+            endpoints.append({"method": "ANY" if method == "ALL" else method,
+                              "path": path, "source": "source"})
+    return endpoints
+
+
+def _routes_python(root):
+    endpoints = []
+    deco = re.compile(
+        r"@\s*\w+\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*[`'\"]([^`'\"]+)", re.I)
+    flask = re.compile(
+        r"@\s*\w+\s*\.\s*route\s*\(\s*[`'\"]([^`'\"]+)[`'\"]([^)]*)", re.I)
+    django = re.compile(r"\b(?:re_)?path\s*\(\s*[`'\"]([^`'\"]*)")
+    for f in _walk(root, {"py"}, cap=500):
+        text = _read(f)
+        for m in deco.finditer(text):
+            endpoints.append({"method": m.group(1).upper(),
+                              "path": "/" + m.group(2).lstrip("/"), "source": "source"})
+        for m in flask.finditer(text):
+            path = "/" + m.group(1).lstrip("/")
+            methods = re.findall(r"[`'\"](GET|POST|PUT|PATCH|DELETE)[`'\"]", m.group(2), re.I)
+            for mm in (methods or ["GET"]):
+                endpoints.append({"method": mm.upper(), "path": path, "source": "source"})
+        if os.path.basename(f) == "urls.py" or "urlpatterns" in text:
+            for m in django.finditer(text):
+                endpoints.append({"method": "ANY",
+                                  "path": "/" + m.group(1).lstrip("/"), "source": "source"})
+    return endpoints
+
+
+def _routes_spring(root):
+    endpoints = []
+    # Method-level verb mappings only. @RequestMapping is treated purely as the
+    # class-level base path below, so it never becomes a spurious endpoint of its
+    # own (e.g. a class @RequestMapping("/api") must not read as GET /api).
+    mapping = re.compile(
+        r"@(Get|Post|Put|Delete|Patch)Mapping\s*\(\s*(?:value\s*=\s*)?[\"{]?\s*[\"']([^\"']+)")
+    for f in _walk(root, {"java", "kt"}, cap=500):
+        text = _read(f)
+        cls = re.search(
+            r"@RequestMapping\s*\(\s*(?:value\s*=\s*)?[\"{]?\s*[\"']([^\"']+)", text)
+        base = (cls.group(1) if cls else "").strip("/")
+        for m in mapping.finditer(text):
+            full = "/" + "/".join(p for p in (base, m.group(2).strip("/")) if p)
+            endpoints.append({"method": m.group(1).upper(), "path": full or "/", "source": "source"})
+    return endpoints
+
+
+def _routes_rails(root):
+    routes = os.path.join(root, "config", "routes.rb")
+    if not os.path.isfile(routes):
+        return []
+    text = _read(routes, 40000)
+    endpoints = []
+    for m in re.finditer(r"\b(get|post|put|patch|delete)\s+[`'\"]([^`'\"]+)", text, re.I):
+        endpoints.append({"method": m.group(1).upper(),
+                          "path": "/" + m.group(2).lstrip("/").split("(")[0], "source": "source"})
+    for m in re.finditer(r"\bresources?\s+:(\w+)", text):
+        endpoints.append({"method": "ANY", "path": "/" + m.group(1), "source": "source"})
+    return endpoints
+
+
+def _routes_go(root):
+    endpoints = []
+    pat = re.compile(r"\.\s*(GET|POST|PUT|PATCH|DELETE|HandleFunc|Handle)\s*\(\s*\"([^\"]+)")
+    for f in _walk(root, {"go"}, cap=500):
+        text = _read(f)
+        for m in pat.finditer(text):
+            path = m.group(2)
+            if not path.startswith("/"):
+                continue
+            verb = m.group(1)
+            endpoints.append({"method": "ANY" if verb in ("Handle", "HandleFunc") else verb,
+                              "path": path, "source": "source"})
+    return endpoints
+
+
+def routes_from_source(pid, stack):
+    root = _proc_cwd(pid)
+    if not root or not os.path.isdir(root):
+        return [], ""
+    style = (stack or "").lower()
+    try:
+        if "next" in style:
+            found = _routes_nextjs(root)
+        elif style in ("express", "vite", "javascript") or "node" in style:
+            found = _routes_js(root)
+        elif style in ("fastapi", "django", "flask", "python"):
+            found = _routes_python(root)
+        elif "spring" in style or style == "java":
+            found = _routes_spring(root)
+        elif style in ("rails", "ruby"):
+            found = _routes_rails(root)
+        elif style == "go":
+            found = _routes_go(root)
+        else:
+            # Unknown stack: sniff by whichever convention yields routes first.
+            found = (_routes_nextjs(root) or _routes_js(root) or _routes_python(root)
+                     or _routes_spring(root) or _routes_go(root) or _routes_rails(root))
+    except Exception:
+        found = []
+    return found, root
+
+
+def discover(port, address="127.0.0.1", pid=0):
+    host = "::1" if ":" in (address or "") else "127.0.0.1"
+    host_url = "[%s]" % host if ":" in host else host
+    result = {"reachable": False, "scheme": "", "server": "", "title": "",
+              "openapi": "", "kind": "", "root": "", "specUrl": "", "endpoints": []}
+
+    # scheme: try http and https roots at once, prefer http
+    roots = _fetch_many((
+        ("http", "http://%s:%d/" % (host_url, port), "GET", None, None),
+        ("https", "https://%s:%d/" % (host_url, port), "GET", None, None),
+    ), timeout=0.7, workers=2)
+    scheme = ""
+    for candidate in ("http", "https"):
+        res = roots.get(candidate)
+        if res:
+            scheme = candidate
+            status, headers, body = res
+            result["scheme"] = candidate
+            result["server"] = (headers.get("Server") or "")[:80]
+            title = re.search(r"<title[^>]*>(.*?)</title>",
+                              body.decode("utf-8", "replace"), re.I | re.S)
+            if title:
+                result["title"] = re.sub(r"\s+", " ", title.group(1)).strip()[:120]
+            result["reachable"] = True
             break
-    identity["endpoints"] = endpoints
-    identity["reachable"] = bool(endpoints)
-    return identity
+
+    endpoints = []
+    probe_eps = []
+    if scheme:
+        base = "%s://%s:%d" % (scheme, host_url, port)
+        specs = []
+        for sp in OPENAPI_PATHS:
+            specs.append(("oa:" + sp, base + sp, "GET", None, None))
+        for pp in PROBE_PATHS:
+            specs.append(("pb:" + pp, base + pp, "GET", None, None))
+        for gp in GRAPHQL_PATHS:
+            specs.append(("gq:" + gp, base + gp, "POST", _INTROSPECTION,
+                          {"Content-Type": "application/json"}))
+        fetched = _fetch_many(specs, timeout=0.85, workers=12)
+
+        # 1. OpenAPI/Swagger — first spec that parses wins
+        for sp in OPENAPI_PATHS:
+            res = fetched.get("oa:" + sp)
+            if not res or res[0] >= 400:
+                continue
+            try:
+                data = json.loads(res[2].decode("utf-8", "replace"))
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            parsed = _parse_openapi(data)
+            if parsed:
+                result["kind"] = "openapi"
+                result["openapi"] = parsed["version"]
+                result["specUrl"] = sp
+                if parsed["title"]:
+                    result["title"] = parsed["title"][:120]
+                endpoints.extend(parsed["endpoints"])
+                break
+
+        # 2. GraphQL introspection (if no OpenAPI)
+        if not endpoints:
+            for gp in GRAPHQL_PATHS:
+                res = fetched.get("gq:" + gp)
+                if not res:
+                    continue
+                try:
+                    data = json.loads(res[2].decode("utf-8", "replace"))
+                except (ValueError, TypeError):
+                    continue
+                schema = ((data or {}).get("data") or {}).get("__schema")
+                fields = _graphql_fields(schema, gp) if isinstance(schema, dict) else []
+                if fields:
+                    result["kind"] = "graphql"
+                    result["specUrl"] = gp
+                    endpoints.extend(fields)
+                    break
+
+        # 4. liveness probes (always merged for a live-status hint)
+        for pp in PROBE_PATHS:
+            res = fetched.get("pb:" + pp)
+            if not res or res[0] == 404:
+                continue
+            probe_eps.append({"method": "GET", "path": pp, "status": res[0], "source": "probe"})
+
+    # 3. source-derived routes when the network gave us no real endpoint list
+    if not endpoints and pid:
+        info = process_info(pid)
+        stack = infer_stack(info.get("process", ""), info.get("command", ""))
+        found, root = routes_from_source(pid, stack)
+        if found:
+            result["kind"] = result["kind"] or "source"
+            result["root"] = root
+            endpoints.extend(found)
+
+    known = {(e["method"], e["path"]) for e in endpoints}
+    for e in probe_eps:
+        if (e["method"], e["path"]) not in known:
+            endpoints.append(e)
+
+    seen = set()
+    unique = []
+    for e in endpoints:
+        key = (e.get("method"), e.get("path"))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(e)
+    unique.sort(key=lambda e: (e.get("path", ""), e.get("method", "")))
+    result["endpoints"] = unique[:250]
+    result["reachable"] = result["reachable"] or bool(unique)
+    if not result["kind"]:
+        result["kind"] = "rest" if unique else "unknown"
+    return result
 
 
 def kill_listener(pid, port):
@@ -271,7 +654,8 @@ def main():
     if command == "inspect-json" and len(sys.argv) >= 3:
         port = int(sys.argv[2])
         address = sys.argv[3] if len(sys.argv) > 3 else "127.0.0.1"
-        print(json.dumps(inspect_http(port, address)))
+        pid = int(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4].isdigit() else 0
+        print(json.dumps(discover(port, address, pid)))
         return 0
     if command == "kill" and len(sys.argv) >= 4:
         try:
@@ -280,7 +664,7 @@ def main():
             rc, result = 1, {"ok": False, "error": str(exc)}
         print(json.dumps(result))
         return rc
-    print("usage: genesi-ports {list-json|inspect-json <port> [address]|kill <pid> <port>}", file=sys.stderr)
+    print("usage: genesi-ports {list-json|inspect-json <port> [address] [pid]|kill <pid> <port>}", file=sys.stderr)
     return 2
 
 

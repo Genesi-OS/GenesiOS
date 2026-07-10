@@ -357,8 +357,8 @@ QQC2.ApplicationWindow {
                                 GButton {
                                     theme: theme; kind: "filled"; accent: theme.green
                                     text: "Inspect"; iconSource: "search"; enabled: !win.busy && win.selected && win.selected.proto === "tcp"
-                                    tooltip: "Probe /, /health, /api and OpenAPI locally"
-                                    onClicked: backend.inspectPort(win.selected.port, win.selected.address)
+                                    tooltip: "Discover endpoints: OpenAPI/Swagger, GraphQL, or read from the project source"
+                                    onClicked: backend.inspectPort(win.selected.port, win.selected.address, win.selected.pid || 0)
                                 }
                                 Item { Layout.fillWidth: true }
                                 GButton {
@@ -387,17 +387,42 @@ QQC2.ApplicationWindow {
                                           + (win.inspection.openapi ? "  |  OpenAPI " + win.inspection.openapi : "")
                                     color: theme.textMid; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight
                                 }
+                                // how many endpoints and where they came from (openapi / graphql /
+                                // source-derived from the project / probed liveness)
+                                QQC2.Label {
+                                    visible: (win.inspection.endpoints || []).length > 0
+                                    text: (win.inspection.endpoints.length) + " endpoint"
+                                          + (win.inspection.endpoints.length === 1 ? "" : "s")
+                                          + (win.inspection.kind ? "  ·  " + win.inspection.kind : "")
+                                          + (win.inspection.root ? "  ·  from project source" : "")
+                                    color: theme.textLo; font.pixelSize: 10; Layout.fillWidth: true; elide: Text.ElideRight
+                                }
                                 Repeater {
                                     model: win.inspection.endpoints || []
                                     delegate: Rectangle {
                                         Layout.fillWidth: true; height: 30; radius: 5; color: theme.cardHi
                                         RowLayout {
-                                            anchors.fill: parent; anchors.leftMargin: 9; anchors.rightMargin: 9
-                                            QQC2.Label { text: modelData.path; color: theme.textHi; Layout.fillWidth: true }
+                                            anchors.fill: parent; anchors.leftMargin: 9; anchors.rightMargin: 9; spacing: 8
                                             QQC2.Label {
+                                                text: modelData.method || "GET"
+                                                color: theme.accentText; font.bold: true
+                                                font.pixelSize: 10; font.family: theme.mono
+                                                Layout.preferredWidth: 60
+                                            }
+                                            QQC2.Label {
+                                                text: modelData.path; color: theme.textHi
+                                                Layout.fillWidth: true; elide: Text.ElideMiddle
+                                                font.family: theme.mono; font.pixelSize: 11
+                                            }
+                                            QQC2.Label {
+                                                visible: modelData.source !== undefined && modelData.source !== "probe"
+                                                text: modelData.source; color: theme.textLo; font.pixelSize: 9
+                                            }
+                                            QQC2.Label {
+                                                visible: modelData.status !== undefined
                                                 text: modelData.status
                                                 color: modelData.status < 400 ? theme.greenBright : theme.turboBright
-                                                font.bold: true
+                                                font.bold: true; font.pixelSize: 11
                                             }
                                         }
                                     }
