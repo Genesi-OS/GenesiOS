@@ -3,6 +3,7 @@ Operation = Install
 Operation = Upgrade
 Type = Path
 Target = usr/share/sddm/themes/breeze/Login.qml
+Target = usr/share/sddm/themes/breeze/SessionButton.qml
 
 [Action]
 Description = Reapplying Genesi login-screen contrast...

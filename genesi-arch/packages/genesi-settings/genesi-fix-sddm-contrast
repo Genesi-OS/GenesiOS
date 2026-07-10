@@ -1,35 +1,65 @@
 #!/bin/bash
-# Keep Breeze SDDM's password mask visible with Genesi's light text palette.
+# Keep Breeze SDDM controls readable with Genesi's light desktop palette.
 set -u
 
-qml="${GENESI_SDDM_LOGIN_QML:-/usr/share/sddm/themes/breeze/Login.qml}"
-marker='Genesi SDDM password contrast'
+login_qml="${GENESI_SDDM_LOGIN_QML:-/usr/share/sddm/themes/breeze/Login.qml}"
+session_qml="${GENESI_SDDM_SESSION_QML:-/usr/share/sddm/themes/breeze/SessionButton.qml}"
 
-[ -f "$qml" ] || exit 0
-grep -qF "$marker" "$qml" && exit 0
-grep -qE '^[[:space:]]*id:[[:space:]]*passwordBox[[:space:]]*$' "$qml" || {
-    echo "genesi-settings: Breeze passwordBox not found; leaving theme untouched" >&2
-    exit 0
+patch_login() {
+    local qml=$1 marker='Genesi SDDM password contrast' tmp
+    [ -f "$qml" ] || return 0
+    grep -qF "$marker" "$qml" && return 0
+    grep -qE '^[[:space:]]*id:[[:space:]]*passwordBox[[:space:]]*$' "$qml" || {
+        echo "genesi-settings: Breeze passwordBox not found; leaving it untouched" >&2
+        return 0
+    }
+    tmp="$(mktemp)"
+    awk -v marker="$marker" '
+        {
+            print
+            if (!patched && $0 ~ /^[[:space:]]*id:[[:space:]]*passwordBox[[:space:]]*$/) {
+                match($0, /[^ \t]/); indent = substr($0, 1, RSTART - 1)
+                print indent "// " marker
+                print indent "color: \"#173247\""
+                print indent "selectionColor: \"#1D9E75\""
+                print indent "selectedTextColor: \"#FFFFFF\""
+                patched = 1
+            }
+        }
+        END { if (!patched) exit 42 }
+    ' "$qml" > "$tmp" && install -m 644 "$tmp" "$qml"
+    rm -f "$tmp"
 }
 
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-
-awk -v marker="$marker" '
-    {
-        print
-        if (!patched && $0 ~ /^[[:space:]]*id:[[:space:]]*passwordBox[[:space:]]*$/) {
-            match($0, /[^ \t]/)
-            indent = substr($0, 1, RSTART - 1)
-            print indent "// " marker
-            print indent "color: \"#173247\""
-            print indent "selectionColor: \"#1D9E75\""
-            print indent "selectedTextColor: \"#FFFFFF\""
-            patched = 1
-        }
+patch_session_menu() {
+    local qml=$1 marker='Genesi SDDM session-menu contrast' tmp
+    [ -f "$qml" ] || return 0
+    grep -qF "$marker" "$qml" && return 0
+    grep -qE 'delegate:[[:space:]]*PlasmaComponents\.MenuItem[[:space:]]*\{' "$qml" || {
+        echo "genesi-settings: Breeze session MenuItem not found; leaving it untouched" >&2
+        return 0
     }
-    END { if (!patched) exit 42 }
-' "$qml" > "$tmp" || exit 0
+    tmp="$(mktemp)"
+    awk -v marker="$marker" '
+        {
+            print
+            if (!patched && $0 ~ /delegate:[[:space:]]*PlasmaComponents\.MenuItem[[:space:]]*\{/) {
+                match($0, /[^ \t]/); indent = substr($0, 1, RSTART - 1) "    "
+                print indent "// " marker
+                print indent "id: sessionMenuItem"
+                print indent "contentItem: PlasmaComponents.Label {"
+                print indent "    text: sessionMenuItem.text"
+                print indent "    color: \"#173247\""
+                print indent "    verticalAlignment: Text.AlignVCenter"
+                print indent "}"
+                patched = 1
+            }
+        }
+        END { if (!patched) exit 42 }
+    ' "$qml" > "$tmp" && install -m 644 "$tmp" "$qml"
+    rm -f "$tmp"
+}
 
-install -m 644 "$tmp" "$qml"
-echo "genesi-settings: fixed Breeze SDDM password contrast"
+patch_login "$login_qml"
+patch_session_menu "$session_qml"
+echo "genesi-settings: checked Breeze SDDM control contrast"

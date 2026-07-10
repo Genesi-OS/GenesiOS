@@ -129,7 +129,9 @@ pkgver=1.3.4
 # desktoptheme=default, so only fixing Genesi.colors did not affect panel menus.
 # pkgrel 43: keep Breeze SDDM's password bullets readable on its white input.
 # A pacman hook reapplies the focused QML override after plasma-desktop upgrades.
-pkgrel=43
+# pkgrel 44: also fix the Breeze desktop-session popup, whose white labels
+# disappeared against its light menu surface under the Genesi palette.
+pkgrel=44
 epoch=1
 groups=(genesi)
 arch=('any')
