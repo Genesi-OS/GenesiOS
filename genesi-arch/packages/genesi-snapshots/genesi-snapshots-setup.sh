@@ -27,7 +27,9 @@ command -v snapper >/dev/null 2>&1 || { log "snapper missing — skip"; exit 0; 
 
 CONFIG=root
 DONE_MARKER=/var/lib/genesi/snapshots-setup.done
-SETUP_VERSION=2
+# Bump to force the config-tuning steps to re-run on existing systems (the fast
+# path below otherwise short-circuits). v3: NUMBER_LIMIT 2 -> 5.
+SETUP_VERSION=3
 
 # Fast path: fully set up already (config present AND, if GRUB is in use, the
 # watcher is enabled). Re-runs cheaply otherwise so a later grub-btrfs install
@@ -58,7 +60,10 @@ fi
 # ---- 2. tune the config ENXUTO (light) --------------------------------------
 # TIMELINE_CREATE=no  -> no hourly/daily periodic snapshots (leanest profile).
 # snap-pac still snapshots around every pacman transaction.
-# NUMBER_LIMIT=2      -> snap-pac's latest before/after update pair only.
+# NUMBER_LIMIT=5      -> keep a small recovery buffer (a few before/after update
+#                        pairs). 2 was too aggressive: if the snapshot you need
+#                        to boot was already pruned, recovery is impossible. CoW
+#                        keeps 5 nearly free on disk. Still no periodic timeline.
 # Manual snapshots have no cleanup algorithm and are never counted here.
 log "applying ENXUTO (light) snapshot policy"
 snapper -c "$CONFIG" set-config \
@@ -66,8 +71,8 @@ snapper -c "$CONFIG" set-config \
     TIMELINE_CLEANUP=yes \
     NUMBER_CLEANUP=yes \
     NUMBER_MIN_AGE=0 \
-    NUMBER_LIMIT=2 \
-    NUMBER_LIMIT_IMPORTANT=2 \
+    NUMBER_LIMIT=5 \
+    NUMBER_LIMIT_IMPORTANT=5 \
     EMPTY_PRE_POST_CLEANUP=yes 2>/dev/null || log "set-config partial (older snapper?)"
 
 # Let the 'users' see/manage snapshots without sudo for read-only ops: allow the

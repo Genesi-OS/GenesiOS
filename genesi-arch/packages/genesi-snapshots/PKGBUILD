@@ -29,7 +29,11 @@ pkgver=1.0.0
 # pkgrel 4: rebundle the shared UI kit — GButton is now self-sufficient, so
 # tonal/danger/ghost buttons stop rendering as unreadable white pills when the
 # `theme` id doesn't resolve in a delegate/Popup (opaque blends, null-safe).
-pkgrel=4
+# pkgrel 5: (a) NUMBER_LIMIT 2 -> 5 so there's a real recovery buffer (SETUP_VERSION
+# bumped so it re-applies on existing systems); (b) regenerate the GRUB menu from
+# the prune hook after cleanup, so picking a snapshot in GRUB no longer hits a
+# pruned one ("vmlinuz not found") — grub-btrfsd's watcher was exiting 1.
+pkgrel=5
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

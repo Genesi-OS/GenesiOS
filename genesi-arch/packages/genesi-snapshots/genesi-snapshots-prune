@@ -6,4 +6,14 @@ set -u
 command -v snapper >/dev/null 2>&1 || exit 0
 snapper list-configs 2>/dev/null | awk 'NR>2{print $1}' | grep -qx root || exit 0
 snapper -c root cleanup number >/dev/null 2>&1 || true
+
+# Refresh the GRUB recovery menu AFTER pruning, so it never lists a snapshot that
+# was just removed. This is why picking a snapshot in GRUB failed with
+# "file '/@/.snapshots/N/snapshot/boot/vmlinuz…' not found": the grub-btrfsd
+# watcher (which is meant to do this) is fragile and was seen exiting 1 on start,
+# leaving a stale menu. Doing it here — daemon-independent, correctly ordered
+# after the prune — keeps the menu always in sync with what exists on disk.
+if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
+    grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+fi
 exit 0
