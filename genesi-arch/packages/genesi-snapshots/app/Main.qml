@@ -27,9 +27,14 @@ QQC2.ApplicationWindow {
     // ── state (driven by the backend) ──────────────────────────────
     property var  st: ({ btrfs: false, configured: false, snapPac: false, grubBtrfs: false, count: 0 })
     property var  snaps: []
+    property var  rec: ({ recovery: false, number: 0, target: "" })
     property bool busy: false
     property string toast: ""
 
+    // Booted a read-only snapshot from the GRUB menu — the "dead end" a layperson
+    // hits. In this mode the normal actions target the wrong subvolume, so they're
+    // locked and the recovery card drives the one-click way back.
+    readonly property bool inRecovery: rec.recovery === true
     readonly property bool protectedOk: st.btrfs && st.configured
     readonly property color protColor: !st.btrfs ? theme.red
                                       : (st.configured ? theme.green : theme.turbo)
@@ -38,6 +43,7 @@ QQC2.ApplicationWindow {
         target: backend
         function onStatusLoaded(s)    { try { win.st = JSON.parse(s) } catch (e) {} }
         function onSnapshotsLoaded(s) { try { win.snaps = (JSON.parse(s).snapshots) || [] } catch (e) {} }
+        function onRecoveryLoaded(s)  { try { win.rec = JSON.parse(s) } catch (e) {} }
         function onBusyChanged(b)     { win.busy = b }
         function onActionDone(m)      { win.toast = m; toastTimer.restart() }
         function onLogLine(l)         { console.log(l) }
@@ -117,12 +123,101 @@ QQC2.ApplicationWindow {
                 }
             }
 
+            // ── RECOVERY HERO: booted a read-only snapshot from GRUB ───────
+            // The dead end for laypeople — dominates the window and offers the
+            // single way out: promote this snapshot back to the real system.
+            GlassCard {
+                Layout.fillWidth: true
+                Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
+                Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
+                Layout.preferredHeight: recCol.implicitHeight + Kirigami.Units.largeSpacing * 3
+                visible: win.inRecovery
+                accent: theme.blue
+                active: true
+                wash: true
+
+                ColumnLayout {
+                    id: recCol
+                    anchors.fill: parent
+                    anchors.margins: Kirigami.Units.largeSpacing * 1.5
+                    spacing: Kirigami.Units.largeSpacing
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.largeSpacing * 1.5
+
+                        Rectangle {
+                            Layout.alignment: Qt.AlignTop
+                            width: 84; height: 84; radius: 22
+                            color: theme.a(theme.blue, 0.14)
+                            border.width: 1; border.color: theme.a(theme.blue, 0.4)
+                            Kirigami.Icon {
+                                anchors.centerIn: parent; width: 46; height: 46
+                                source: "clock"; color: theme.blue
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            QQC2.Label {
+                                text: i18n.t("rec.title")
+                                font.pixelSize: 22; font.bold: true
+                                font.family: theme.display; color: theme.textHi
+                            }
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                text: i18n.t("rec.body")
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 13; color: theme.textMid
+                            }
+                            // which snapshot we're inside
+                            Rectangle {
+                                Layout.topMargin: 6
+                                implicitWidth: recChip.implicitWidth + 20
+                                implicitHeight: 28; radius: 14
+                                color: theme.a(theme.blue, 0.14)
+                                border.width: 1; border.color: theme.a(theme.blue, 0.4)
+                                RowLayout {
+                                    id: recChip; anchors.centerIn: parent; spacing: 6
+                                    Kirigami.Icon { width: 13; height: 13; source: "document-open-recent"; color: theme.blue }
+                                    QQC2.Label {
+                                        text: i18n.t("rec.snapshot") + "  #" + win.rec.number
+                                        font.pixelSize: 12; font.bold: true; color: theme.textHi
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // actions
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.largeSpacing
+                        Item { Layout.fillWidth: true }
+                        GButton {
+                            theme: theme; kind: "ghost"; iconSource: "system-reboot"
+                            text: i18n.t("rec.reboot"); enabled: !win.busy
+                            onClicked: backend.reboot()
+                        }
+                        GButton {
+                            theme: theme; kind: "filled"; accent: theme.blue
+                            text: i18n.t("rec.restore"); iconSource: "edit-undo"
+                            tooltip: i18n.t("rec.restoreTip")
+                            enabled: !win.busy
+                            onClicked: recConfirm.open()
+                        }
+                    }
+                }
+            }
+
             // ── HERO: protection status ────────────────────────────
             GlassCard {
                 Layout.fillWidth: true
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.preferredHeight: heroCol.implicitHeight + Kirigami.Units.largeSpacing * 3
+                visible: !win.inRecovery
                 accent: win.protColor
                 active: win.protectedOk
                 wash: true
@@ -232,6 +327,18 @@ QQC2.ApplicationWindow {
                 visible: win.protectedOk
             }
 
+            // In recovery the per-snapshot actions target the wrong subvolume,
+            // so they're locked — the recovery card above is the way back.
+            QQC2.Label {
+                Layout.fillWidth: true
+                Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
+                Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
+                text: i18n.t("rec.actionsLocked")
+                wrapMode: Text.WordWrap
+                font.pixelSize: 12; color: theme.textLo
+                visible: win.inRecovery && win.protectedOk
+            }
+
             // empty state
             QQC2.Label {
                 Layout.fillWidth: true
@@ -298,13 +405,13 @@ QQC2.ApplicationWindow {
                         GButton {
                             theme: theme; kind: "tonal"; accent: theme.green
                             text: i18n.t("snap.restore"); iconSource: "edit-undo"
-                            enabled: !win.busy && modelData.number > 0
+                            enabled: !win.busy && modelData.number > 0 && !win.inRecovery
                             tooltip: i18n.t("snap.restoreTip")
                             onClicked: { confirm.num = modelData.number; confirm.desc = modelData.description || ""; confirm.open() }
                         }
                         GButton {
                             theme: theme; kind: "danger"; iconSource: "user-trash"
-                            enabled: !win.busy && modelData.number > 0
+                            enabled: !win.busy && modelData.number > 0 && !win.inRecovery
                             tooltip: i18n.t("snap.delete")
                             onClicked: backend.deleteSnapshot(modelData.number)
                         }
@@ -421,6 +528,51 @@ QQC2.ApplicationWindow {
                     theme: theme; kind: "filled"; accent: theme.turbo
                     text: i18n.t("snap.rollbackConfirm"); iconSource: "edit-undo"
                     onClicked: { backend.rollback(confirm.num); confirm.close() }
+                }
+            }
+        }
+    }
+
+    // ── recovery restore confirm ───────────────────────────────────
+    QQC2.Popup {
+        id: recConfirm
+        anchors.centerIn: parent
+        modal: true; focus: true
+        width: 480; padding: 0
+        background: GlassCard { accent: theme.blue; active: true; interactive: false }
+
+        ColumnLayout {
+            width: parent.width
+            spacing: Kirigami.Units.largeSpacing
+            Item { Layout.preferredHeight: Kirigami.Units.largeSpacing }
+            RowLayout {
+                Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
+                Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Icon { source: "edit-undo"; width: 28; height: 28; color: theme.blue }
+                QQC2.Label {
+                    text: i18n.t("rec.confirmTitle") + "  #" + win.rec.number
+                    font.pixelSize: 16; font.bold: true; color: theme.textHi
+                }
+            }
+            QQC2.Label {
+                Layout.fillWidth: true
+                Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
+                Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
+                text: i18n.t("rec.confirmBody")
+                wrapMode: Text.WordWrap; font.pixelSize: 13; color: theme.textMid
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
+                Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
+                Layout.bottomMargin: Kirigami.Units.largeSpacing * 1.5
+                Item { Layout.fillWidth: true }
+                GButton { theme: theme; kind: "ghost"; text: i18n.t("snap.cancel"); onClicked: recConfirm.close() }
+                GButton {
+                    theme: theme; kind: "filled"; accent: theme.blue
+                    text: i18n.t("rec.confirmBtn"); iconSource: "edit-undo"
+                    onClicked: { backend.restoreBooted(); recConfirm.close() }
                 }
             }
         }

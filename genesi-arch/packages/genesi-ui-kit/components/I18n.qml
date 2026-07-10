@@ -181,7 +181,18 @@ Item {
             "snap.cancel": "Cancel",
             "snap.rollbackTitle": "Roll back to",
             "snap.rollbackBody": "Genesi will make this snapshot the default system and reboot into it. Your current state is snapshotted first, so this is itself undoable. Nothing is deleted.",
-            "snap.rollbackConfirm": "Roll back & reboot"
+            "snap.rollbackConfirm": "Roll back & reboot",
+            // recovery mode (booted a read-only snapshot from the GRUB menu)
+            "rec.title": "You're in Recovery Mode",
+            "rec.body": "You picked an older snapshot in the GRUB menu, so the system is running read-only — nothing you change here is saved. If this snapshot works well, restore it to make it your normal, writable system again, then reboot.",
+            "rec.snapshot": "Booted snapshot",
+            "rec.restore": "Restore this system",
+            "rec.restoreTip": "Make this snapshot your permanent, writable system. Your current system is kept as a backup — nothing is deleted.",
+            "rec.reboot": "Reboot",
+            "rec.confirmTitle": "Restore this snapshot?",
+            "rec.confirmBody": "Genesi will make the snapshot you booted your normal system. Your current system is kept as a one-click backup, and nothing is deleted. When it finishes, reboot to use the restored system.",
+            "rec.confirmBtn": "Restore this system",
+            "rec.actionsLocked": "Read-only right now — restore this system first (above) to manage snapshots again."
         },
         "pt": {
             // nav / shell
@@ -319,7 +330,18 @@ Item {
             "snap.cancel": "Cancelar",
             "snap.rollbackTitle": "Voltar para",
             "snap.rollbackBody": "O Genesi vai tornar este snapshot o sistema padrão e reiniciar nele. Seu estado atual é salvo antes, então dá pra desfazer. Nada é apagado.",
-            "snap.rollbackConfirm": "Voltar & reiniciar"
+            "snap.rollbackConfirm": "Voltar & reiniciar",
+            // modo recuperação (iniciou um snapshot só-leitura pelo menu do GRUB)
+            "rec.title": "Você está no Modo de Recuperação",
+            "rec.body": "Você escolheu um snapshot antigo no menu do GRUB, então o sistema está rodando só-leitura — nada que você mudar aqui é salvo. Se este snapshot funciona bem, restaure ele pra virar de novo o seu sistema normal e gravável, e depois reinicie.",
+            "rec.snapshot": "Snapshot iniciado",
+            "rec.restore": "Restaurar este sistema",
+            "rec.restoreTip": "Torna este snapshot o seu sistema definitivo e gravável. Seu sistema atual é guardado como backup — nada é apagado.",
+            "rec.reboot": "Reiniciar",
+            "rec.confirmTitle": "Restaurar este snapshot?",
+            "rec.confirmBody": "O Genesi vai tornar o snapshot que você iniciou o seu sistema normal. Seu sistema atual é guardado como backup de um clique, e nada é apagado. Quando terminar, reinicie pra usar o sistema restaurado.",
+            "rec.confirmBtn": "Restaurar este sistema",
+            "rec.actionsLocked": "Só-leitura agora — restaure este sistema primeiro (acima) pra voltar a gerenciar os snapshots."
         }
     })
 }

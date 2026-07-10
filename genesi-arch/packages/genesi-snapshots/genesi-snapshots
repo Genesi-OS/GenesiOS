@@ -44,6 +44,37 @@ snapper_configured() {
     snapper list-configs 2>/dev/null | awk 'NR>2{print $1}' | grep -qx "$CONFIG"
 }
 
+# The subvolume the running system is booted from, as seen in the live mount
+# options (e.g. "@" on a normal boot, "@/.snapshots/7/snapshot" when a snapshot
+# was picked in the GRUB menu). Leading slash stripped.
+booted_subvol() {
+    local opts
+    opts="$(findmnt -no OPTIONS / 2>/dev/null || true)"
+    printf '%s' "$opts" | tr ',' '\n' | sed -n 's|^subvol=/\?||p' | head -n1
+}
+
+# If the system was booted from a grub-btrfs snapshot entry, echo that
+# snapshot's NUMBER; otherwise echo nothing. This is the whole recovery-mode
+# signal: the normal system always boots @, never a .snapshots/N/snapshot path.
+booted_snapshot_number() {
+    booted_subvol | sed -n 's|^.*\.snapshots/\([0-9][0-9]*\)/snapshot$|\1|p'
+}
+
+# The subvolume the system boots NORMALLY (e.g. @), read from /etc/fstab's root
+# entry. In recovery we are running *inside* the snapshot, and a snapshot is a
+# frozen copy of the real root, so its fstab is exactly what GRUB uses for a
+# normal boot — it tells us where to restore back to.
+canonical_root_subvol() {
+    awk '
+        $0 !~ /^[[:space:]]*#/ && NF >= 4 && $2 == "/" {
+            n = split($4, o, ",")
+            for (i = 1; i <= n; i++) if (o[i] ~ /^subvol=/) {
+                sub(/^subvol=\/?/, "", o[i]); print o[i]; exit
+            }
+        }
+    ' /etc/fstab 2>/dev/null | head -n1
+}
+
 # ---- status -----------------------------------------------------------------
 # One-shot health object for the GUI header: is the machine protected, and by
 # what. Everything is best-effort so the GUI never blocks.
@@ -126,63 +157,53 @@ print(json.dumps({"configured": True, "snapshots": rows}))
 PY
 }
 
-case "${1:-status-json}" in
-  status-json) status_json ;;
-  list-json)   list_json ;;
-
-  create)
-    need_root
-    desc="${2:-Manual snapshot}"
-    # Manual restore points belong to the user. NUMBER cleanup is reserved for
-    # snap-pac's automatic pre/post pair, so cleanup can keep exactly the latest
-    # before + after update without silently deleting manual snapshots.
-    snapper -c "$CONFIG" create --description "$desc" \
-        --userdata "genesi=manual"
-    echo "created"
-    ;;
-
-  delete)
-    need_root
-    [ -n "${2:-}" ] || { echo "usage: genesi-snapshots delete <number>" >&2; exit 2; }
-    snapper -c "$CONFIG" delete "$2"
-    echo "deleted"
-    ;;
-
-  rollback)
-    need_root
-    [ -n "${2:-}" ] || { echo "usage: genesi-snapshots rollback <number>" >&2; exit 2; }
-    number="$2"
-    [[ "$number" =~ ^[1-9][0-9]*$ ]] || die "snapshot number must be greater than zero"
-
-    # A stock snapper rollback only changes Btrfs' DEFAULT subvolume. Genesi's
-    # Calamares layout intentionally boots an explicit `subvol=/@` from fstab,
-    # so changing the default either fails ambit detection or appears to work
-    # but boots @ again. For that layout, prepare a writable copy under the
-    # exact subvolume name the boot configuration already expects. The current
-    # root is retained as a one-step emergency backup.
-    root_options="$(findmnt -no OPTIONS / 2>/dev/null || true)"
-    root_subvol="$(printf '%s' "$root_options" | tr ',' '\n' \
-        | sed -n 's|^subvol=/\?||p' | head -n1)"
-
-    if [ -z "$root_subvol" ]; then
-        # Layouts booting the Btrfs default subvolume can use snapper's native
-        # rollback. Force classic ambit because Arch/Genesi does not provide
-        # openSUSE's ambit metadata and auto-detection otherwise returns failed.
-        snapper -c "$CONFIG" --ambit classic rollback "$number"
-        echo "rolled-back"
-        exit 0
+# ---- recovery ---------------------------------------------------------------
+# Tells the GUI whether this boot is a read-only grub-btrfs snapshot (the dead
+# end a layperson hits after picking a snapshot in the GRUB menu), which
+# snapshot it is, and where "Restore this system" would restore back to.
+recovery_json() {
+    local recovery=false number="" target=""
+    if root_is_btrfs; then
+        number="$(booted_snapshot_number)"
+        if [ -n "$number" ]; then
+            recovery=true
+            target="$(canonical_root_subvol)"
+        fi
     fi
+    cat <<JSON
+{"recovery":$recovery,"number":${number:-0},"target":"$target"}
+JSON
+}
+
+# ---- the subvolume exchange (shared by rollback + restore-booted) ------------
+# Replace Genesi's explicit-subvol root (e.g. @) with a fresh writable copy of a
+# snapshot, keeping the current root as a one-step emergency backup and
+# preserving snapshot history. Runs entirely on the Btrfs top level (subvolid=5)
+# mounted aside, so it is safe even when / itself is read-only (recovery boot).
+#
+#   $1  root_subvol   the target subvolume to become the system (e.g. @)
+#   $2  number        the snapshot to restore from (lives at <root>/.snapshots/N)
+#   $3  live          1 = running as the normal writable @ (re-mount /.snapshots
+#                     afterwards so snapper/the GUI keep working until reboot);
+#                     0 = running as a read-only snapshot (skip that — / is ro,
+#                     the new @ mounts it naturally on reboot).
+# On success sets RESTORE_BACKUP to the kept-backup path (relative to top level).
+RESTORE_BACKUP=""
+top=""; mounted=false
+restore_into() {
+    local root_subvol="$1" number="$2" live="$3"
 
     case "/$root_subvol/" in
       */../*|*/./*) die "unsafe root subvolume path: $root_subvol" ;;
+      */.snapshots/*) die "refusing to restore into a snapshot subvolume: $root_subvol" ;;
     esac
 
+    local source_spec device
     source_spec="$(findmnt -no SOURCE / 2>/dev/null || true)"
     device="${source_spec%%\[*}"
     [ -b "$device" ] || die "cannot determine the Btrfs root device"
 
     top="$(mktemp -d /run/genesi-btrfs.XXXXXX)"
-    mounted=false
     cleanup_mount() {
         if [ "$mounted" = true ]; then
             umount "$top" >/dev/null 2>&1 || true
@@ -194,6 +215,7 @@ case "${1:-status-json}" in
         || die "could not mount the Btrfs top level"
     mounted=true
 
+    local root_path snapshot_path
     root_path="$top/$root_subvol"
     snapshot_path="$root_path/.snapshots/$number/snapshot"
     btrfs subvolume show "$root_path" >/dev/null 2>&1 \
@@ -201,6 +223,7 @@ case "${1:-status-json}" in
     btrfs subvolume show "$snapshot_path" >/dev/null 2>&1 \
         || die "snapshot #$number is not available on disk"
 
+    local stamp parent name prefix new_path old_path hold_path failed_path
     stamp="$(date +%Y%m%d-%H%M%S)"
     parent="$(dirname "$root_subvol")"
     name="$(basename "$root_subvol")"
@@ -218,7 +241,9 @@ case "${1:-status-json}" in
 
     # /.snapshots is itself a nested subvolume and is not included in a root
     # snapshot. Move it aside while @ is exchanged, then attach it to the new
-    # root so history and GRUB recovery entries survive the restore.
+    # root so history and GRUB recovery entries survive the restore. (In recovery
+    # the running system is booted from inside this .snapshots, but the mount is
+    # held by subvolume id, so moving its path does not disturb it.)
     if ! mv "$root_path/.snapshots" "$hold_path"; then
         btrfs subvolume delete "$new_path" >/dev/null 2>&1 || true
         die "could not preserve snapshot history"
@@ -248,19 +273,97 @@ case "${1:-status-json}" in
     fi
 
     sync
-    # The running mount still references the old subvolume ID until reboot.
-    # Re-mount snapshot history there so snapper/the GUI remain usable during
-    # that short window; the new @ sees it naturally after reboot.
-    mkdir -p /.snapshots
-    mountpoint -q /.snapshots \
-        || mount -t btrfs -o "subvol=$root_subvol/.snapshots" \
-            "$device" /.snapshots >/dev/null 2>&1 \
-        || true
-    echo "rolled-back (previous system kept as ${old_path#$top/})"
+    if [ "$live" = 1 ]; then
+        # The running mount still references the old subvolume ID until reboot.
+        # Re-mount snapshot history there so snapper/the GUI remain usable during
+        # that short window; the new @ sees it naturally after reboot. Skipped in
+        # recovery: / is read-only there, so mkdir would fail (and it is moot —
+        # the user reboots straight into the restored @).
+        mkdir -p /.snapshots
+        mountpoint -q /.snapshots \
+            || mount -t btrfs -o "subvol=$root_subvol/.snapshots" \
+                "$device" /.snapshots >/dev/null 2>&1 \
+            || true
+    fi
+    RESTORE_BACKUP="${old_path#$top/}"
+}
+
+case "${1:-status-json}" in
+  status-json)   status_json ;;
+  list-json)     list_json ;;
+  recovery-json) recovery_json ;;
+
+  create)
+    need_root
+    desc="${2:-Manual snapshot}"
+    # Manual restore points belong to the user. NUMBER cleanup is reserved for
+    # snap-pac's automatic pre/post pair, so cleanup can keep exactly the latest
+    # before + after update without silently deleting manual snapshots.
+    snapper -c "$CONFIG" create --description "$desc" \
+        --userdata "genesi=manual"
+    echo "created"
+    ;;
+
+  delete)
+    need_root
+    [ -n "${2:-}" ] || { echo "usage: genesi-snapshots delete <number>" >&2; exit 2; }
+    snapper -c "$CONFIG" delete "$2"
+    echo "deleted"
+    ;;
+
+  rollback)
+    need_root
+    [ -n "${2:-}" ] || { echo "usage: genesi-snapshots rollback <number>" >&2; exit 2; }
+    number="$2"
+    [[ "$number" =~ ^[1-9][0-9]*$ ]] || die "snapshot number must be greater than zero"
+
+    # A stock snapper rollback only changes Btrfs' DEFAULT subvolume. Genesi's
+    # Calamares layout intentionally boots an explicit `subvol=/@` from fstab,
+    # so changing the default either fails ambit detection or appears to work
+    # but boots @ again. For that layout we exchange the @ subvolume itself
+    # (see restore_into), keeping the current root as a one-step backup.
+    root_subvol="$(booted_subvol)"
+
+    # Booted from a snapshot? That is recovery mode: the live subvol is the
+    # snapshot, not @, so a normal rollback would target the wrong subvolume.
+    case "/$root_subvol/" in
+      */.snapshots/*) die "this system is booted from a snapshot — use 'restore-booted' (the \"Restore this system\" button) instead" ;;
+    esac
+
+    if [ -z "$root_subvol" ]; then
+        # Layouts booting the Btrfs default subvolume can use snapper's native
+        # rollback. Force classic ambit because Arch/Genesi does not provide
+        # openSUSE's ambit metadata and auto-detection otherwise returns failed.
+        snapper -c "$CONFIG" --ambit classic rollback "$number"
+        echo "rolled-back"
+        exit 0
+    fi
+
+    restore_into "$root_subvol" "$number" 1
+    echo "rolled-back (previous system kept as ${RESTORE_BACKUP})"
+    ;;
+
+  restore-booted)
+    # Recovery mode: the running system is a read-only snapshot picked in the
+    # GRUB menu. Make THAT snapshot the normal, writable system again — the whole
+    # point of the "Restore this system" button for laypeople. The target is the
+    # canonical @ (from the snapshot's own fstab), and the snapshot number is the
+    # one we are booted from; both are detected, nothing to pass.
+    need_root
+    root_is_btrfs || die "root is not Btrfs — nothing to restore"
+    number="$(booted_snapshot_number)"
+    [ -n "$number" ] \
+        || die "this system is not booted from a snapshot — there is nothing to restore here"
+    root_subvol="$(canonical_root_subvol)"
+    [ -n "$root_subvol" ] \
+        || die "could not determine the normal root subvolume from /etc/fstab"
+
+    restore_into "$root_subvol" "$number" 0
+    echo "restored (booted snapshot #$number is now the system; previous root kept as ${RESTORE_BACKUP})"
     ;;
 
   *)
-    echo "usage: genesi-snapshots {status-json|list-json|create <desc>|delete <n>|rollback <n>}" >&2
+    echo "usage: genesi-snapshots {status-json|list-json|recovery-json|create <desc>|delete <n>|rollback <n>|restore-booted}" >&2
     exit 2
     ;;
 esac

@@ -32,6 +32,7 @@ CLI_ABS = shutil.which(CLI) or "/usr/bin/genesi-snapshots"
 class Backend(QObject):
     statusLoaded = Signal(str)      # JSON: {btrfs,configured,snapPac,grubBtrfs,count}
     snapshotsLoaded = Signal(str)   # JSON: {configured,snapshots[]}
+    recoveryLoaded = Signal(str)    # JSON: {recovery,number,target}
     busyChanged = Signal(bool)
     logLine = Signal(str)
     actionDone = Signal(str)        # human-readable result message
@@ -61,6 +62,13 @@ class Backend(QObject):
         except Exception as e:
             self.snapshotsLoaded.emit('{"configured":false,"snapshots":[]}')
             self.logLine.emit("error listing snapshots: %s" % e)
+        try:
+            rc = subprocess.run([CLI, "recovery-json"], capture_output=True,
+                                text=True, timeout=20).stdout.strip()
+            self.recoveryLoaded.emit(rc or '{"recovery":false}')
+        except Exception as e:
+            self.recoveryLoaded.emit('{"recovery":false}')
+            self.logLine.emit("error reading recovery state: %s" % e)
 
     # --- mutations (threaded, pkexec) ---------------------------------------
     def _run(self, args, done_msg):
@@ -112,6 +120,25 @@ class Backend(QObject):
         self.logLine.emit("=== rolling back to snapshot %d ===" % number)
         self._run(["pkexec", CLI_ABS, "rollback", str(number)],
                   "Rolled back to #%d. Reboot to apply." % number)
+
+    @Slot()
+    def restoreBooted(self):
+        # Recovery mode: promote the read-only snapshot we booted from to the
+        # normal, writable system. The CLI auto-detects which snapshot that is.
+        self.logLine.emit("=== restoring the booted snapshot as the system ===")
+        self._run(["pkexec", CLI_ABS, "restore-booted"],
+                  "System restored. Reboot to finish.")
+
+    @Slot()
+    def reboot(self):
+        # Best-effort graceful reboot (logind lets an active local session do
+        # this without a password; falls back to a pkexec-able systemctl).
+        self.logLine.emit("=== rebooting ===")
+        try:
+            if subprocess.run(["systemctl", "reboot"]).returncode != 0:
+                subprocess.run(["pkexec", "systemctl", "reboot"])
+        except Exception as e:
+            self.logLine.emit("error rebooting: %s" % e)
 
 
 def main():
