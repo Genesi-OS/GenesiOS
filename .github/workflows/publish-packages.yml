@@ -352,6 +352,7 @@ jobs:
             # before the meta-package.
             "genesi-containers"
             "genesi-ports"
+            "genesi-forge"
             "genesi-sandboxes"
             "genesi-netinspect"
             "genesi-db-explorer"

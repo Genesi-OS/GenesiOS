@@ -28,7 +28,8 @@ pkgver=1.0.0
 # pkgrel 6: add Genesi PortScope (dashboard + Plasma widget + tray fallback).
 # Gaming remains optional because its launcher/runtime stack is intentionally
 # large; users install genesi-gaming from Welcome or Package Installer.
-pkgrel=6
+# pkgrel 7: add Genesi Forge, the local Git/GitHub and delivery dashboard.
+pkgrel=7
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -61,6 +62,7 @@ depends=(
     # Phase 4.3-4.6 developer tools (this OS targets programmers).
     'genesi-containers'    # Plasma widget for Docker/Podman
     'genesi-ports'         # port -> PID dashboard, Plasma widget + SNI tray
+    'genesi-forge'         # local Git projects, pipelines + deploy integrations
     'genesi-sandboxes'     # Distrobox workspaces with stack templates
     'genesi-netinspect'    # mitmproxy HTTP/HTTPS debug proxy + toggle
     'genesi-db-explorer'   # DB client launcher + Dolphin integration

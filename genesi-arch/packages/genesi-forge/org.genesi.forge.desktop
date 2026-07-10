@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Forge
+Comment=Manage local Git projects, GitHub pipelines and deployments
+Exec=genesi-forge
+Icon=genesi-forge
+Categories=Development;RevisionControl;
+Keywords=git;github;pipeline;vercel;repository;
+Terminal=false
+StartupNotify=true
