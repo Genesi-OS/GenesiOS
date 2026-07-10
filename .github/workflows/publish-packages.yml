@@ -152,7 +152,7 @@ jobs:
               "
             done \
               | sed -E 's/[<>=].*//' \
-              | grep -vE '^(genesi-.*|app2unit|libcava|python-materialyoucolor|ttf-rubik-vf|caelestia-cli|caelestia-shell|llama\.cpp|cachyos-gaming-meta|cachyos-gaming-applications)$' \
+              | grep -vE '^(genesi-.*|app2unit|libcava|python-materialyoucolor|ttf-rubik-vf|caelestia-cli|caelestia-shell|llama\.cpp|cargo|cachyos-gaming-meta|cachyos-gaming-applications)$' \
               | sort -u \
               | grep -v '^$' \
               | tr '\n' ' '
@@ -187,7 +187,7 @@ jobs:
           install_deps() {
             pacman -Syy --noconfirm && \
             pacman -S --needed --noconfirm --overwrite='*' \
-              base-devel git sudo \
+              base-devel git sudo rust \
               systemd systemd-sysvcompat \
               python-requests python-packaging \
               $DEPS
