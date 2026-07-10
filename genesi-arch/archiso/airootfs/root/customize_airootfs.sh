@@ -776,10 +776,12 @@ fi
 echo ">>> Verifying packaged Klassy + Darkly plugins..."
 pacman -Q genesi-klassy genesi-darkly
 
-KLASSY_PLUGIN="$(find /usr/lib/qt6/plugins -type f -iname 'klassydecoration.so' -print -quit 2>/dev/null)"
+KLASSY_PLUGIN="$(find /usr/lib/qt6/plugins -type f \( \
+    -iname 'org.kde.klassy.so' -o -iname 'klassydecoration.so' \
+    \) -print -quit 2>/dev/null)"
 DARKLY_STYLE="$(find /usr/lib/qt6/plugins/styles -type f -iname 'darkly*' -print -quit 2>/dev/null)"
 if [ -z "$KLASSY_PLUGIN" ]; then
-    echo ">>> ERROR: genesi-klassy is installed but klassydecoration.so is missing"
+    echo ">>> ERROR: genesi-klassy is installed but its KDecoration plugin is missing"
     exit 1
 fi
 if [ ! -d /usr/share/plasma/desktoptheme/darkly ] || [ -z "$DARKLY_STYLE" ]; then
@@ -841,7 +843,8 @@ if [ -d /tmp/klassy ]; then
     fi
     cd /
     rm -rf /tmp/klassy
-    if [ -f /usr/lib/qt6/plugins/org.kde.kdecoration2/klassydecoration.so ] \
+    if [ -f /usr/lib/qt6/plugins/org.kde.kdecoration3/org.kde.klassy.so ] \
+       || [ -f /usr/lib/qt6/plugins/org.kde.kdecoration2/klassydecoration.so ] \
        || [ -f /usr/lib/qt6/plugins/org.kde.kdecoration3/klassydecoration.so ]; then
         echo ">>> Klassy installed successfully"
         ls -la /usr/lib/qt6/plugins/org.kde.kdecoration2/klassy* 2>/dev/null
