@@ -131,7 +131,10 @@ pkgver=1.3.4
 # A pacman hook reapplies the focused QML override after plasma-desktop upgrades.
 # pkgrel 44: also fix the Breeze desktop-session popup, whose white labels
 # disappeared against its light menu surface under the Genesi palette.
-pkgrel=44
+# pkgrel 45: refine the default desktop chrome. Klassy no longer colourizes the
+# window outline from the highlighted titlebar button, KWin uses borderless
+# sides, and selected navigation rows consistently use the Genesi green.
+pkgrel=45
 epoch=1
 groups=(genesi)
 arch=('any')
@@ -173,6 +176,39 @@ package() {
   cp -rf "${srcdir}/${_gitname}/etc" "$pkgdir"
   install -d "$pkgdir/usr"
   cp -rf "${srcdir}/${_gitname}/usr" "$pkgdir"
+
+  # Keep these values authoritative in the packaged skel. The live ISO copies
+  # this same directory to liveuser and /etc/skel, while Calamares uses it for
+  # installed users, so both environments start with identical defaults.
+  for klassy_config in \
+      "$pkgdir/usr/share/genesi/skel-override/.config/klassyrc" \
+      "$pkgdir/usr/share/genesi/skel-override/.config/klassy/klassyrc"; do
+    [ -f "$klassy_config" ] || continue
+    sed -i '/^ColorizeWindowOutlineWithButton=/d' "$klassy_config"
+    sed -i '/^\[Windeco\]$/a ColorizeWindowOutlineWithButton=false' "$klassy_config"
+  done
+
+  kwin_config="$pkgdir/usr/share/genesi/skel-override/.config/kwinrc"
+  sed -i '/^\[org.kde.kdecoration2\]$/,/^\[/ s/^BorderSize=.*/BorderSize=NoSides/' \
+    "$kwin_config"
+  sed -i '/^\[org.kde.kdecoration2\]$/,/^\[/ s/^BorderSizeAuto=.*/BorderSizeAuto=false/' \
+    "$kwin_config"
+
+  for color_config in \
+      "$pkgdir/usr/share/genesi/skel-override/.config/kdeglobals" \
+      "$pkgdir/usr/share/color-schemes/Genesi.colors"; do
+    [ -f "$color_config" ] || continue
+    sed -i '/^\[Colors:Selection\]$/,/^\[/ s/^BackgroundNormal=.*/BackgroundNormal=29,158,117/' \
+      "$color_config"
+    sed -i '/^\[Colors:Selection\]$/,/^\[/ s/^BackgroundAlternate=.*/BackgroundAlternate=22,120,90/' \
+      "$color_config"
+    sed -i '/^\[Colors:Selection\]$/,/^\[/ s/^DecorationFocus=.*/DecorationFocus=29,158,117/' \
+      "$color_config"
+    sed -i '/^\[Colors:Selection\]$/,/^\[/ s/^DecorationHover=.*/DecorationHover=29,158,117/' \
+      "$color_config"
+    sed -i '/^\[Colors:Selection\]$/,/^\[/ s/^ForegroundNormal=.*/ForegroundNormal=255,255,255/' \
+      "$color_config"
+  done
 
   # Plasma Shell defaults to desktoptheme/default unless a user explicitly
   # selected genesi-plasma. Ship the same palette in that fallback so hovered

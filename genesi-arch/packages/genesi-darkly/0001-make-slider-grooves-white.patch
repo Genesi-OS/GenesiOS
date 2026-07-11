@@ -1,0 +1,26 @@
+From: Genesi OS Team <dev@genesios.org>
+Subject: [PATCH] Make slider grooves white
+
+Darkly renders the inactive part of a slider from WindowText at 30% opacity.
+On Genesi's translucent dark surfaces that blends into the application body
+and makes the control hard to locate. Keep the groove explicitly white while
+leaving the active section on the normal highlight colour.
+---
+ kstyle/darklystyle.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kstyle/darklystyle.cpp b/kstyle/darklystyle.cpp
+index 0000000..1111111 100644
+--- a/kstyle/darklystyle.cpp
++++ b/kstyle/darklystyle.cpp
+@@ -8169,7 +8169,7 @@ void Style::drawComplexControl(ComplexControl control, const QStyleOption *optio
+         auto grooveRect(subControlRect(CC_Slider, sliderOption, SC_SliderGroove, widget));
+
+         // base color
+-        const auto grooveColor(_helper->alphaColor(palette.color(QPalette::WindowText), 0.3));
++        const QColor grooveColor(Qt::white);
+
+         if (!enabled)
+             _helper->renderSliderGroove(painter, grooveRect, grooveColor);
+--
+2.50.1

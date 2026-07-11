@@ -10,7 +10,7 @@
 # it in netinstall.yaml fixes that at the source.
 pkgname=genesi-darkly
 pkgver=0
-pkgrel=1
+pkgrel=2
 pkgdesc="Darkly Qt6 style + Plasma desktoptheme for Genesi OS (glassmorphism)"
 arch=('x86_64')
 url="https://github.com/Bali10050/Darkly"
@@ -35,8 +35,15 @@ depends=(
 makedepends=('cmake' 'extra-cmake-modules' 'qt6-tools' 'git')
 provides=('darkly')
 conflicts=('darkly')
-source=("git+https://github.com/Bali10050/Darkly.git")
-sha256sums=('SKIP')
+source=("git+https://github.com/Bali10050/Darkly.git"
+        '0001-make-slider-grooves-white.patch')
+sha256sums=('SKIP'
+            'SKIP')
+
+prepare() {
+  cd "$srcdir/Darkly"
+  patch -Np1 -i "$srcdir/0001-make-slider-grooves-white.patch"
+}
 
 pkgver() {
   cd "$srcdir/Darkly"
