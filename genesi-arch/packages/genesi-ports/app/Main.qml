@@ -376,7 +376,7 @@ QQC2.ApplicationWindow {
 
                             ColumnLayout {
                                 visible: win.inspection && win.inspection.reachable
-                                Layout.fillWidth: true; spacing: 7
+                                Layout.fillWidth: true; Layout.fillHeight: true; spacing: 7
                                 QQC2.Label { text: "DISCOVERED"; color: theme.textLo; font.pixelSize: 10; font.bold: true }
                                 QQC2.Label {
                                     text: win.inspection.title || (win.inspection.scheme + " service")
@@ -397,10 +397,17 @@ QQC2.ApplicationWindow {
                                           + (win.inspection.root ? "  ·  from project source" : "")
                                     color: theme.textLo; font.pixelSize: 10; Layout.fillWidth: true; elide: Text.ElideRight
                                 }
-                                Repeater {
+                                // An API can expose dozens of endpoints — scroll them inside the card
+                                // instead of overflowing it.
+                                ListView {
+                                    Layout.fillWidth: true; Layout.fillHeight: true
+                                    clip: true; spacing: 5
                                     model: win.inspection.endpoints || []
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
                                     delegate: Rectangle {
-                                        Layout.fillWidth: true; height: 30; radius: 5; color: theme.cardHi
+                                        width: ListView.view ? ListView.view.width : 0
+                                        height: 30; radius: 5; color: theme.cardHi
                                         RowLayout {
                                             anchors.fill: parent; anchors.leftMargin: 9; anchors.rightMargin: 9; spacing: 8
                                             QQC2.Label {
@@ -435,7 +442,11 @@ QQC2.ApplicationWindow {
                                 icon: "network-server"; title: "Endpoint inspection"
                                 body: "No HTTP endpoint inspected yet."
                             }
-                            Item { Layout.fillHeight: true }
+                            // Only absorb slack when the endpoint list isn't already filling it.
+                            Item {
+                                Layout.fillHeight: true
+                                visible: !(win.inspection && win.inspection.reachable)
+                            }
                             QQC2.Label {
                                 visible: !!win.selected
                                 text: win.selected ? win.selected.command : ""

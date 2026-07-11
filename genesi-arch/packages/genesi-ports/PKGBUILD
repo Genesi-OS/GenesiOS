@@ -15,9 +15,11 @@
 # /api/, and the network fallback runs only when source yields nothing. The CLI
 # also auto-resolves the PID from the port, so source discovery works even
 # without the GUI passing it.
+# pkgrel 5: the discovered-endpoints list now scrolls inside the detail card
+# (a backend can expose dozens of endpoints) instead of overflowing it.
 pkgname=genesi-ports
 pkgver=1.0.0
-pkgrel=4
+pkgrel=5
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
