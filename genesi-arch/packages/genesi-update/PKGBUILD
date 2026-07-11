@@ -10,7 +10,7 @@ pkgdesc="Interactive update notifier & applier for Genesi OS with systray applet
 install='genesi-update.install'
 arch=('any')
 url="https://github.com/Genesi-OS/genesi-update"
-license=('GPL-3.0-or-later')
+license=('AGPL-3.0-or-later')
 depends=(
     'bash'
     'systemd'

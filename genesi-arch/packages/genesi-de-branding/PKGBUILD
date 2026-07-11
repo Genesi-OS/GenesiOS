@@ -29,7 +29,7 @@ pkgrel=4
 pkgdesc="Genesi OS look (wallpaper, dark theme, accent, launchers) for GNOME/Xfce/Cinnamon/MATE"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"
-license=('GPL3')
+license=('AGPL-3.0-or-later')
 depends=('adw-gtk-theme' 'papirus-icon-theme')
 # genesi-settings is NOT a hard dep: it's a genesi-* package that isn't in any
 # repo yet at build time (makepkg would fail "Could not resolve all

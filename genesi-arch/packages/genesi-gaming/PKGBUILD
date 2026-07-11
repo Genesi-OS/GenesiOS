@@ -9,7 +9,7 @@ pkgrel=1
 pkgdesc='Genesi gaming ecosystem: CachyOS stack plus MangoHud and performance autoconfiguration'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
-license=('GPL-3.0-or-later')
+license=('AGPL-3.0-or-later')
 depends=(
     'cachyos-gaming-meta'
     'cachyos-gaming-applications'

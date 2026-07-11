@@ -23,7 +23,7 @@ pkgrel=5
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
-license=('GPL-3.0-or-later')
+license=('AGPL-3.0-or-later')
 depends=(
     'python' 'pyside6' 'kirigami' 'qqc2-desktop-style' 'qt6-svg'
     'iproute2' 'procps-ng' 'polkit'

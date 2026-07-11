@@ -58,7 +58,7 @@ pkgrel=10
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
-license=('GPL-3.0-or-later')
+license=('AGPL-3.0-or-later')
 # snapper + snap-pac = the automatic update protection; btrfs-progs for the
 # subvolume ops; grub-btrfs = the boot-menu recovery entries (the default Genesi
 # install uses GRUB); polkit so the GUI can create/rollback via pkexec; pyside6 +

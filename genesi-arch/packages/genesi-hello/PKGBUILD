@@ -8,7 +8,7 @@ pkgrel=2
 pkgdesc='Welcome screen for Genesi OS'
 arch=('x86_64')
 groups=('genesi')
-license=('GPL-3.0-or-later')
+license=('AGPL-3.0-or-later')
 url='https://github.com/Genesi-OS/genesi-welcome'
 depends=(
   glib2

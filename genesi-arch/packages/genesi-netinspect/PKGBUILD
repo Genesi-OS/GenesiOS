@@ -92,7 +92,7 @@ pkgrel=21
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
-license=('GPL-3.0-or-later')
+license=('AGPL-3.0-or-later')
 depends=('mitmproxy' 'python' 'pyside6' 'qqc2-desktop-style' 'qt6-svg')
 optdepends=(
     'konsole: terminal for the classic mitmweb UI and cert trust'
