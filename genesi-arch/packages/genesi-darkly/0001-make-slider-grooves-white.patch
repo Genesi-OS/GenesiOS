@@ -10,7 +10,7 @@ leaving the active section on the normal highlight colour.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/kstyle/darklystyle.cpp b/kstyle/darklystyle.cpp
-index 0000000..1111111 100644
+index abcdef0..1234567 100644
 --- a/kstyle/darklystyle.cpp
 +++ b/kstyle/darklystyle.cpp
 @@ -8169,7 +8169,7 @@ void Style::drawComplexControl(ComplexControl control, const QStyleOption *optio
