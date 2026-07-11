@@ -1,17 +1,14 @@
 /*
- * Genesi Forge — dashboard stat tile: a tinted rounded icon badge on the left,
- * a big value and a caption on the right. Uses GlassCard for the surface depth.
+ * Genesi Forge — dashboard stat tile: tinted rounded icon badge, big value,
+ * caption. Sits on FCard (graphite surface).
  */
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
-GlassCard {
+FCard {
     id: root
-    property var theme
     property string icon: ""
-    accent: theme ? theme.green : "#1FBE6A"
     property string value: "0"
     property string label: ""
 
@@ -24,17 +21,12 @@ GlassCard {
         spacing: 15
 
         Rectangle {
-            Layout.preferredWidth: 48; Layout.preferredHeight: 48
+            Layout.preferredWidth: 46; Layout.preferredHeight: 46
             radius: 13
-            color: root.theme.a(root.accent, 0.16)
+            color: root.theme.a(root.accent, 0.15)
             border.width: 1
-            border.color: root.theme.a(root.accent, 0.34)
-            Kirigami.Icon {
-                anchors.centerIn: parent
-                source: root.icon
-                width: 24; height: 24
-                color: root.accent
-            }
+            border.color: root.theme.a(root.accent, 0.32)
+            FIcon { anchors.centerIn: parent; name: root.icon; size: 22; color: root.accent }
         }
         ColumnLayout {
             Layout.fillWidth: true
@@ -43,7 +35,7 @@ GlassCard {
                 text: root.value
                 color: root.theme.textHi
                 font.family: root.theme.display
-                font.pixelSize: 26; font.bold: true
+                font.pixelSize: 25; font.bold: true
             }
             QQC2.Label {
                 text: root.label

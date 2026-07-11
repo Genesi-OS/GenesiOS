@@ -1,12 +1,8 @@
 /*
- * Genesi Forge — per-stack brand mark. Draws a tinted disc with the stack's
- * brand colour and a monogram, so every project card carries a recognisable,
- * on-brand logo without shipping third-party trademark SVGs. `kind` selects the
- * monogram, `color` is the brand accent (both come from the backend's
- * detect_stack). Shader-free (software-backend / VM safe).
+ * Genesi Forge — per-stack brand mark: tinted disc with the stack's brand
+ * colour and a monogram (or a git-branch glyph for plain repos). Shader-free.
  */
 import QtQuick
-import org.kde.kirigami as Kirigami
 
 Item {
     id: root
@@ -27,9 +23,9 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: width / 2
-        color: Qt.rgba(root.color.r, root.color.g, root.color.b, 0.14)
+        color: Qt.rgba(root.color.r, root.color.g, root.color.b, 0.13)
         border.width: 1.5
-        border.color: Qt.rgba(root.color.r, root.color.g, root.color.b, 0.45)
+        border.color: Qt.rgba(root.color.r, root.color.g, root.color.b, 0.42)
 
         Text {
             anchors.centerIn: parent
@@ -38,13 +34,13 @@ Item {
             color: root.color
             font.family: "Rubik"
             font.bold: true
-            font.pixelSize: root.size * (root.mark.length > 1 ? 0.34 : 0.44)
+            font.pixelSize: root.size * (root.mark.length > 1 ? 0.33 : 0.42)
         }
-        Kirigami.Icon {
+        FIcon {
             anchors.centerIn: parent
             visible: root.mark.length === 0
-            source: "vcs-branch"
-            width: root.size * 0.5; height: width
+            name: "git-branch"
+            size: root.size * 0.46
             color: root.color
         }
     }

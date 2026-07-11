@@ -1,22 +1,21 @@
 /*
  * Genesi Forge — project card for the hub grid. Brand logo + star, name, path,
  * stack badge and a footer with the current branch and last-commit age.
+ * Fixed 208px so the grid never overlaps the import strip below it.
  */
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
-GlassCard {
+FCard {
     id: root
-    property var theme
     property var project
     signal opened()
     signal starToggled()
 
     Layout.fillWidth: true
-    implicitHeight: 150
-    accent: theme ? theme.green : "#1FBE6A"
+    implicitHeight: 208
+    interactive: true
 
     function fmtAgo(epoch) {
         if (!epoch) return "no commits"
@@ -45,17 +44,17 @@ GlassCard {
             TechLogo {
                 kind: root.project.stackKind
                 color: root.project.stackColor
-                size: 46
+                size: 44
             }
             Item { Layout.fillWidth: true }
             Rectangle {
                 Layout.preferredWidth: 30; Layout.preferredHeight: 30
+                Layout.alignment: Qt.AlignTop
                 radius: 8
                 color: star.containsMouse ? root.theme.cardHi : "transparent"
-                Kirigami.Icon {
+                FIcon {
                     anchors.centerIn: parent
-                    source: root.project.starred ? "rating" : "rating-unrated"
-                    width: 17; height: 17
+                    name: "star"; size: 16
                     color: root.project.starred ? root.theme.turboBright : root.theme.textLo
                 }
                 MouseArea {
@@ -90,14 +89,14 @@ GlassCard {
             Layout.preferredWidth: badge.implicitWidth + 20
             Layout.preferredHeight: 24
             radius: 7
-            color: root.theme.a(root.project.stackColor, 0.14)
+            color: root.theme.a(root.project.stackColor, 0.13)
             border.width: 1
-            border.color: root.theme.a(root.project.stackColor, 0.32)
+            border.color: root.theme.a(root.project.stackColor, 0.30)
             QQC2.Label {
                 id: badge
                 anchors.centerIn: parent
                 text: root.project.stack
-                color: Qt.lighter(root.project.stackColor, root.theme.dark ? 1.25 : 1.0)
+                color: Qt.lighter(root.project.stackColor, 1.25)
                 font.pixelSize: 11; font.bold: true
             }
         }
@@ -109,7 +108,7 @@ GlassCard {
         RowLayout {
             Layout.fillWidth: true
             spacing: 6
-            Kirigami.Icon { source: "vcs-branch"; width: 14; height: 14
+            FIcon { name: "git-branch"; size: 13
                 color: root.project.hasGit ? root.theme.greenBright : root.theme.textLo }
             QQC2.Label {
                 text: root.project.hasGit ? (root.project.branch || "—") : "no git"
@@ -121,8 +120,7 @@ GlassCard {
                 text: root.project.changed + " changed"
                 color: root.theme.turboBright; font.pixelSize: 11; font.bold: true
             }
-            Kirigami.Icon { visible: root.project.changed === 0; source: "appointment-new"
-                width: 13; height: 13; color: root.theme.textLo }
+            FIcon { visible: root.project.changed === 0; name: "clock"; size: 12; color: root.theme.textLo }
             QQC2.Label {
                 visible: root.project.changed === 0
                 text: root.fmtAgo(root.project.lastTime)

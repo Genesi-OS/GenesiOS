@@ -1,11 +1,11 @@
 /*
- * Genesi Forge — a draggable node type in the Canvas palette. Icon chip + name;
- * click adds a node of this type to the canvas.
+ * Genesi Forge — a node type in the Canvas palette. Drag onto the canvas to
+ * place it (shared ghost owned by CanvasView), or click to add at the default
+ * spot.
  */
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
 Item {
     id: root
@@ -14,8 +14,6 @@ Item {
     property string icon: ""
     property string kind: ""
     property color accent: theme ? theme.green : "#1FBE6A"
-    // Shared drag ghost owned by CanvasView; when set, this item can be dragged
-    // onto the canvas. Click still adds a node at the default spot (fallback).
     property Item dragGhost: null
     signal add()
 
@@ -35,11 +33,11 @@ Item {
             Rectangle {
                 width: 28; height: 28; radius: 8
                 color: root.theme.a(root.accent, 0.16)
-                Kirigami.Icon { anchors.centerIn: parent; source: root.icon; width: 16; height: 16; color: root.accent }
+                FIcon { anchors.centerIn: parent; name: root.icon; size: 15; color: root.accent }
             }
             QQC2.Label { text: root.label; color: root.theme.textHi; font.pixelSize: 13; Layout.fillWidth: true; elide: Text.ElideRight }
-            Kirigami.Icon {
-                source: "list-add"; width: 14; height: 14
+            FIcon {
+                name: "plus"; size: 13
                 color: root.theme.textLo; opacity: ma.containsMouse ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 120 } }
             }
@@ -52,6 +50,7 @@ Item {
         cursorShape: Qt.PointingHandCursor
         drag.target: root.dragGhost
         drag.threshold: 6
+        preventStealing: true
         onPressed: function(mouse) {
             if (!root.dragGhost) return
             root.dragGhost.def = { label: root.label, icon: root.icon, accent: root.accent, kind: root.kind }

@@ -6,7 +6,6 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
 Item {
     id: root
@@ -31,7 +30,7 @@ Item {
             leftPadding: 12; rightPadding: 30; verticalAlignment: Text.AlignVCenter
             text: cb.displayText; color: root.theme.textHi; font.pixelSize: 13; elide: Text.ElideRight
         }
-        indicator: Kirigami.Icon { x: cb.width - 26; y: (cb.height - 14) / 2; width: 14; height: 14; source: "arrow-down"; color: root.theme.textMid }
+        indicator: FIcon { x: cb.width - 26; y: (cb.height - 14) / 2; size: 14; name: "chevron-down"; color: root.theme.textMid }
     }
     component GField: Rectangle {
         Layout.fillWidth: true; implicitHeight: 40
@@ -40,7 +39,7 @@ Item {
         property string icon: ""
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 10; spacing: 8
-            Kirigami.Icon { visible: parent.parent.icon !== ""; source: parent.parent.icon; width: 14; height: 14; color: root.theme.textMid }
+            FIcon { visible: parent.parent.icon !== ""; name: parent.parent.icon; size: 14; color: root.theme.textMid }
             QQC2.TextField { id: tf; Layout.fillWidth: true; background: null; color: root.theme.textHi; font.pixelSize: 13
                 selectionColor: root.theme.green; selectedTextColor: root.theme.white }
         }
@@ -57,7 +56,7 @@ Item {
             Rectangle {
                 width: 40; height: 40; radius: 11
                 color: root.node ? root.theme.a(root.node.accent, 0.18) : root.theme.cardHi
-                Kirigami.Icon { anchors.centerIn: parent; source: root.node ? root.node.icon : "showgraph"; width: 20; height: 20
+                FIcon { anchors.centerIn: parent; name: root.node ? root.node.icon : "zap"; size: 19
                     color: root.node ? root.node.accent : root.theme.textMid }
             }
             ColumnLayout {
@@ -129,7 +128,7 @@ Item {
                 Combo { model: [ "Node.js CI", "Python CI", "Docker Build", "Rust CI" ] }
 
                 Item { Layout.preferredHeight: 6 }
-                GButton { theme: root.theme; kind: "tonal"; text: "Advanced Settings"; iconSource: "settings-configure"; Layout.fillWidth: true }
+                GButton { theme: root.theme; kind: "tonal"; text: "Advanced Settings"; iconSource: "icons/sliders.svg"; Layout.fillWidth: true }
 
                 Rectangle {
                     Layout.fillWidth: true; Layout.topMargin: 8
@@ -145,7 +144,7 @@ Item {
                             model: [ "Local Git repository", "GitHub repository", "Initial commit", "GitHub Actions workflow" ]
                             delegate: RowLayout {
                                 spacing: 8
-                                Kirigami.Icon { source: "checkmark"; width: 14; height: 14; color: root.theme.greenBright }
+                                FIcon { name: "check"; size: 13; color: root.theme.greenBright }
                                 QQC2.Label { text: modelData; color: root.theme.textMid; font.pixelSize: 12 }
                             }
                         }
@@ -153,7 +152,7 @@ Item {
                 }
 
                 Item { Layout.preferredHeight: 6 }
-                GButton { theme: root.theme; kind: "filled"; text: "Create Repository"; iconSource: "github"; Layout.fillWidth: true
+                GButton { theme: root.theme; kind: "filled"; text: "Create Repository"; iconSource: "icons/github.svg"; Layout.fillWidth: true
                     enabled: root.project !== null
                     onClicked: backend.createGitHub(root.project.path, repoField() , true) }
             }
@@ -210,8 +209,8 @@ Item {
                                 selectionColor: root.theme.green; selectedTextColor: root.theme.white
                                 onEditingFinished: { var l = root.node.lines.slice(); l[index] = text; root.graphProvider.setNodeLines(root.node.id, l) }
                             }
-                            Kirigami.Icon {
-                                source: "edit-delete"; width: 13; height: 13; color: root.theme.textLo
+                            FIcon {
+                                name: "x"; size: 13; color: root.theme.textLo
                                 MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor
                                     onClicked: { var l = root.node.lines.slice(); l.splice(index, 1); root.graphProvider.setNodeLines(root.node.id, l) } }
                             }
@@ -222,7 +221,7 @@ Item {
                 Item { Layout.preferredHeight: 6; visible: root.node }
                 GButton {
                     visible: root.node; theme: root.theme; kind: "danger"
-                    text: "Delete Node"; iconSource: "edit-delete"; Layout.fillWidth: true
+                    text: "Delete Node"; iconSource: "icons/trash.svg"; Layout.fillWidth: true
                     onClicked: if (root.node) root.graphProvider.deleteNode(root.node.id)
                 }
             }

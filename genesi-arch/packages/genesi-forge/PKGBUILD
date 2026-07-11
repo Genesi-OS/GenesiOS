@@ -1,8 +1,8 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 pkgname=genesi-forge
-pkgver=2.0.0
+pkgver=2.1.0
 pkgrel=1
-pkgdesc='Genesi Forge: the project hub — Git dashboard, GitHub pipelines, deployments and the Forge Canvas workflow builder'
+pkgdesc='Genesi Forge: the project hub — full git panel, GitHub pipelines, deployments and the Forge Canvas workflow builder'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
 license=('AGPL-3.0-or-later')
@@ -17,18 +17,21 @@ package() {
     # Python backend + every QML file that makes up the app.
     install -Dm644 "${startdir}/app/genesi_forge.py" "$pkgdir/usr/share/genesi-forge/app/genesi_forge.py"
     local qml
-    for qml in Main Splash HubView CanvasView OverviewTab ConfigPanel \
-               TechLogo NavItem StatTile ProjectCard ImportCard GToggle \
-               CanvasNode PaletteItem; do
+    for qml in Main Splash ForgeTheme FIcon FCard HubView ProjectView GitOverview \
+               ConsolePanel CanvasView ConfigPanel TechLogo NavItem StatTile \
+               ProjectCard ImportCard GToggle CanvasNode PaletteItem; do
         install -Dm644 "${startdir}/app/${qml}.qml" "$pkgdir/usr/share/genesi-forge/app/${qml}.qml"
     done
 
-    # Shared Genesi UI kit (bundled at build — not a published package).
-    local comp
-    for comp in Theme GlassCard GButton StatusBanner I18n; do
-        install -Dm644 "${startdir}/../genesi-ui-kit/components/${comp}.qml" \
-            "$pkgdir/usr/share/genesi-forge/app/${comp}.qml"
+    # Bundled icon set (feather-style SVGs, tinted at runtime via FIcon).
+    local svg
+    for svg in "${startdir}"/app/icons/*.svg; do
+        install -Dm644 "$svg" "$pkgdir/usr/share/genesi-forge/app/icons/$(basename "$svg")"
     done
+
+    # Shared Genesi UI kit (bundled at build — not a published package).
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/GButton.qml" \
+        "$pkgdir/usr/share/genesi-forge/app/GButton.qml"
 
     install -Dm644 "${startdir}/org.genesi.forge.desktop" "$pkgdir/usr/share/applications/org.genesi.forge.desktop"
     install -Dm644 "${startdir}/genesi-forge.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-forge.svg"

@@ -1,11 +1,10 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
-import org.kde.kirigami as Kirigami
 
 QQC2.ApplicationWindow {
     id: win
-    width: 1360; height: 860; minimumWidth: 1080; minimumHeight: 680
+    width: 1420; height: 880; minimumWidth: 1120; minimumHeight: 700
     visible: true; title: "Genesi Forge"; color: appTheme.bgBottom
 
     property var projects: []
@@ -15,10 +14,14 @@ QQC2.ApplicationWindow {
     property string toast: ""
     property bool showSplash: true
 
-    Theme { id: appTheme }
+    // Forge-local theme (graphite surfaces from the v2 mock). NOTE: the id must
+    // NOT be "theme" — inside Component{} blocks the views' own `property var
+    // theme` would shadow it and the pass would self-reference to null (the
+    // all-white-UI bug).
+    ForgeTheme { id: appTheme }
 
     function openProject(p) { win.currentProject = p }
-    function toHub() { win.currentProject = null }
+    function toHub() { win.currentProject = null; backend.refresh() }
     function showToast(msg) { win.toast = msg; toastTimer.restart() }
 
     Connections {
@@ -43,7 +46,7 @@ QQC2.ApplicationWindow {
     }
     Timer { id: toastTimer; interval: 4200; onTriggered: win.toast = "" }
 
-    // Background
+    // Window background
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
@@ -56,7 +59,7 @@ QQC2.ApplicationWindow {
     Loader {
         id: content
         anchors.fill: parent
-        sourceComponent: win.currentProject ? canvasComponent : hubComponent
+        sourceComponent: win.currentProject ? projectComponent : hubComponent
         opacity: win.showSplash ? 0 : 1
         Behavior on opacity { NumberAnimation { duration: 320 } }
     }
@@ -72,8 +75,8 @@ QQC2.ApplicationWindow {
         }
     }
     Component {
-        id: canvasComponent
-        CanvasView {
+        id: projectComponent
+        ProjectView {
             theme: appTheme
             project: win.currentProject
             onBack: win.toHub()

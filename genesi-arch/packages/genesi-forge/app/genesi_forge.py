@@ -332,6 +332,9 @@ class Backend(QObject):
     message = Signal(str)
     workflowStep = Signal(str)     # {"id","state"} per step, live
     workflowDone = Signal(bool)    # ran to completion (True) or failed/stopped (False)
+    prsLoaded = Signal(str)        # gh pr list JSON
+    consoleOut = Signal(str)       # one line of embedded-console output
+    consoleDone = Signal(int)      # console command exit code
 
     def __init__(self):
         super().__init__()
@@ -641,6 +644,202 @@ class Backend(QObject):
     @Slot()
     def stopWorkflow(self):
         self._run_stop.set()
+
+    # ── Git client (synchronous — local git is fast) ────────────────────────
+    @Slot(str, result=str)
+    def gitStatusList(self, path):
+        _, out, _ = git(Path(path), "status", "--porcelain=v1", "--untracked-files=all")
+        rows = []
+        for line in (out.splitlines() if out else []):
+            if len(line) < 4:
+                continue
+            x, y, fp = line[0], line[1], line[3:]
+            if " -> " in fp:
+                fp = fp.split(" -> ", 1)[1]
+            rows.append({"file": fp, "x": x, "y": y,
+                         "staged": x not in (" ", "?"),
+                         "unstaged": y != " ",
+                         "untracked": x == "?"})
+        return json.dumps(rows)
+
+    @Slot(str, str, bool, result=str)
+    def gitDiff(self, path, file, staged):
+        p = Path(path)
+        if staged:
+            _, out, _ = git(p, "diff", "--cached", "--no-color", "--", file)
+        else:
+            _, out, _ = git(p, "diff", "--no-color", "--", file)
+            if not out:  # untracked file — synthesize an all-added diff
+                _, out, _ = git(p, "diff", "--no-color", "--no-index", "--", "/dev/null", file)
+        return out[:120000]
+
+    @Slot(str, int, result=str)
+    def gitLog(self, path, limit):
+        _, out, _ = git(Path(path), "log", f"-{limit}", "--format=%h%x1f%an%x1f%ar%x1f%s")
+        rows = []
+        for line in (out.splitlines() if out else []):
+            parts = line.split("\x1f")
+            if len(parts) == 4:
+                rows.append({"hash": parts[0], "author": parts[1], "ago": parts[2], "subject": parts[3]})
+        return json.dumps(rows)
+
+    @Slot(str, result=str)
+    def gitBranches(self, path):
+        _, out, _ = git(Path(path), "for-each-ref", "refs/heads",
+                        "--format=%(refname:short)%09%(HEAD)%09%(upstream:short)")
+        rows = []
+        for line in (out.splitlines() if out else []):
+            parts = line.split("\t")
+            if parts and parts[0]:
+                rows.append({"name": parts[0],
+                             "current": len(parts) > 1 and parts[1] == "*",
+                             "upstream": parts[2] if len(parts) > 2 else ""})
+        return json.dumps(rows)
+
+    @Slot(str, result=str)
+    def gitStashList(self, path):
+        _, out, _ = git(Path(path), "stash", "list", "--format=%gd%x1f%gs")
+        rows = []
+        for line in (out.splitlines() if out else []):
+            parts = line.split("\x1f")
+            if len(parts) == 2:
+                rows.append({"ref": parts[0], "subject": parts[1]})
+        return json.dumps(rows)
+
+    @Slot(str, result=str)
+    def gitTags(self, path):
+        _, out, _ = git(Path(path), "tag", "--sort=-creatordate")
+        return json.dumps(out.splitlines()[:40] if out else [])
+
+    @Slot(str, result=str)
+    def gitRemotes(self, path):
+        _, out, _ = git(Path(path), "remote", "-v")
+        rows, seen = [], set()
+        for line in (out.splitlines() if out else []):
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] not in seen:
+                seen.add(parts[0])
+                rows.append({"name": parts[0], "url": parts[1]})
+        return json.dumps(rows)
+
+    @Slot(str, result=str)
+    def gitFiles(self, path):
+        _, out, _ = git(Path(path), "ls-files")
+        return json.dumps(out.splitlines()[:500] if out else [])
+
+    @Slot(str, str, str, result=str)
+    def gitCompare(self, path, a, b):
+        code, out, err = git(Path(path), "diff", "--stat", f"{a}...{b}")
+        return out if code == 0 else (err or "Could not compare")
+
+    # ── Git mutations ───────────────────────────────────────────────────────
+    @Slot(str, str)
+    def stageFile(self, path, file):
+        git(Path(path), "add", "-A", "--", file)
+
+    @Slot(str, str)
+    def unstageFile(self, path, file):
+        git(Path(path), "restore", "--staged", "--", file)
+
+    @Slot(str, str)
+    def discardFile(self, path, file):
+        code, _out, err = git(Path(path), "restore", "--", file)
+        if code != 0:
+            self.message.emit(err or "Could not discard changes")
+
+    @Slot(str, str, str, result=str)
+    def commitFiles(self, path, msg, files_json):
+        if not msg.strip():
+            return "Commit message required"
+        try:
+            files = json.loads(files_json)
+        except ValueError:
+            files = []
+        p = Path(path)
+        if files:
+            git(p, "add", "-A", "--", *files)
+            code, out, err = git(p, "commit", "-m", msg, "--", *files, timeout=30)
+        else:
+            code, out, err = git(p, "commit", "-m", msg, timeout=30)
+        if code == 0:
+            self.message.emit("Changes committed.")
+            self.refresh()
+            return ""
+        return err or out or "Commit failed"
+
+    @Slot(str, str)
+    def checkout(self, path, branch):
+        code, out, err = git(Path(path), "checkout", branch, timeout=30)
+        self.message.emit(f"Switched to {branch}." if code == 0 else (err or out))
+        self.refresh()
+
+    @Slot(str, str)
+    def createBranch(self, path, name):
+        code, out, err = git(Path(path), "checkout", "-b", name, timeout=30)
+        self.message.emit(f"Branch {name} created." if code == 0 else (err or out))
+        self.refresh()
+
+    @Slot(str, str)
+    def deleteBranch(self, path, name):
+        code, out, err = git(Path(path), "branch", "-D", name)
+        self.message.emit(f"Branch {name} deleted." if code == 0 else (err or out))
+
+    @Slot(str)
+    def stashSave(self, path):
+        code, out, err = git(Path(path), "stash", "push", "-u", "-m", "Forge stash", timeout=30)
+        self.message.emit("Changes stashed." if code == 0 else (err or out))
+        self.refresh()
+
+    @Slot(str, str)
+    def stashPop(self, path, ref):
+        code, out, err = git(Path(path), "stash", "pop", ref, timeout=30)
+        self.message.emit("Stash applied." if code == 0 else (err or out))
+        self.refresh()
+
+    @Slot(str, str)
+    def stashDrop(self, path, ref):
+        code, out, err = git(Path(path), "stash", "drop", ref)
+        self.message.emit("Stash dropped." if code == 0 else (err or out))
+
+    @Slot(str, str)
+    def createTag(self, path, name):
+        code, out, err = git(Path(path), "tag", name)
+        self.message.emit(f"Tag {name} created." if code == 0 else (err or out))
+
+    @Slot(str)
+    def loadPRs(self, slug):
+        if not slug:
+            self.prsLoaded.emit("[]")
+            return
+
+        def work():
+            code, out, _err = run(["gh", "pr", "list", "--repo", slug, "--json",
+                                   "number,title,headRefName,state,url", "--limit", "15"], timeout=20)
+            self.prsLoaded.emit(out if code == 0 and out else "[]")
+
+        self._thread(work)
+
+    # ── Embedded console (line-streamed; not a PTY — TUI apps won't run) ────
+    @Slot(str, str)
+    def runCommand(self, path, cmd):
+        def work():
+            try:
+                proc = subprocess.Popen(cmd, shell=True, cwd=path, text=True,
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                for line in proc.stdout:
+                    self.consoleOut.emit(line.rstrip("\n"))
+                proc.wait(timeout=300)
+                self.consoleDone.emit(proc.returncode)
+            except Exception as exc:
+                self.consoleOut.emit(str(exc))
+                self.consoleDone.emit(1)
+
+        self._thread(work)
+
+    @Slot(str)
+    def copyText(self, text):
+        QGuiApplication.clipboard().setText(text)
+        self.message.emit("Copied to clipboard.")
 
     # ── Templates / maintenance ─────────────────────────────────────────────
     @Slot(str, str)
