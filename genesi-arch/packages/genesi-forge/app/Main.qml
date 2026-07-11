@@ -6,7 +6,7 @@ import org.kde.kirigami as Kirigami
 QQC2.ApplicationWindow {
     id: win
     width: 1360; height: 860; minimumWidth: 1080; minimumHeight: 680
-    visible: true; title: "Genesi Forge"; color: theme.bgBottom
+    visible: true; title: "Genesi Forge"; color: appTheme.bgBottom
 
     property var projects: []
     property var stats: ({ total: 0, git: 0, starred: 0, recent: 0 })
@@ -15,7 +15,7 @@ QQC2.ApplicationWindow {
     property string toast: ""
     property bool showSplash: true
 
-    Theme { id: theme }
+    Theme { id: appTheme }
 
     function openProject(p) { win.currentProject = p }
     function toHub() { win.currentProject = null }
@@ -47,8 +47,8 @@ QQC2.ApplicationWindow {
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0; color: theme.bgTop }
-            GradientStop { position: 1; color: theme.bgBottom }
+            GradientStop { position: 0; color: appTheme.bgTop }
+            GradientStop { position: 1; color: appTheme.bgBottom }
         }
     }
 
@@ -64,7 +64,7 @@ QQC2.ApplicationWindow {
     Component {
         id: hubComponent
         HubView {
-            theme: theme
+            theme: appTheme
             projects: win.projects
             stats: win.stats
             busy: win.busy
@@ -74,7 +74,7 @@ QQC2.ApplicationWindow {
     Component {
         id: canvasComponent
         CanvasView {
-            theme: theme
+            theme: appTheme
             project: win.currentProject
             onBack: win.toHub()
             onToast: function(msg) { win.showToast(msg) }
@@ -90,7 +90,7 @@ QQC2.ApplicationWindow {
     Component {
         id: splashComponent
         Splash {
-            theme: theme
+            theme: appTheme
             onFinished: win.showSplash = false
         }
     }
@@ -101,8 +101,8 @@ QQC2.ApplicationWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom; anchors.bottomMargin: 26
         width: Math.min(560, toastLabel.implicitWidth + 36); height: 44; radius: 11
-        color: theme.cardHi; border.width: 1; border.color: theme.a(theme.green, 0.55)
+        color: appTheme.cardHi; border.width: 1; border.color: appTheme.a(appTheme.green, 0.55)
         z: 999
-        QQC2.Label { id: toastLabel; anchors.centerIn: parent; text: win.toast; color: theme.textHi; font.pixelSize: 13 }
+        QQC2.Label { id: toastLabel; anchors.centerIn: parent; text: win.toast; color: appTheme.textHi; font.pixelSize: 13 }
     }
 }
