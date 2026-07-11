@@ -1,24 +1,35 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 pkgname=genesi-forge
-pkgver=1.0.0
+pkgver=2.0.0
 pkgrel=1
-pkgdesc='Genesi Forge: local Git projects, GitHub pipelines and deployment integrations'
+pkgdesc='Genesi Forge: the project hub — Git dashboard, GitHub pipelines, deployments and the Forge Canvas workflow builder'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
 license=('AGPL-3.0-or-later')
-depends=('python' 'pyside6' 'kirigami' 'qqc2-desktop-style' 'qt6-svg' 'git' 'github-cli')
+depends=('python' 'pyside6' 'kirigami' 'qqc2-desktop-style' 'qt6-svg' 'qt6-declarative' 'git' 'github-cli')
 optdepends=('genesi-code: open projects in the Genesi editor')
 source=()
 sha256sums=()
 
 package() {
     install -Dm755 "${startdir}/genesi-forge" "$pkgdir/usr/bin/genesi-forge"
+
+    # Python backend + every QML file that makes up the app.
     install -Dm644 "${startdir}/app/genesi_forge.py" "$pkgdir/usr/share/genesi-forge/app/genesi_forge.py"
-    install -Dm644 "${startdir}/app/Main.qml" "$pkgdir/usr/share/genesi-forge/app/Main.qml"
+    local qml
+    for qml in Main Splash HubView CanvasView OverviewTab ConfigPanel \
+               TechLogo NavItem StatTile ProjectCard ImportCard GToggle \
+               CanvasNode PaletteItem; do
+        install -Dm644 "${startdir}/app/${qml}.qml" "$pkgdir/usr/share/genesi-forge/app/${qml}.qml"
+    done
+
+    # Shared Genesi UI kit (bundled at build — not a published package).
+    local comp
     for comp in Theme GlassCard GButton StatusBanner I18n; do
         install -Dm644 "${startdir}/../genesi-ui-kit/components/${comp}.qml" \
             "$pkgdir/usr/share/genesi-forge/app/${comp}.qml"
     done
+
     install -Dm644 "${startdir}/org.genesi.forge.desktop" "$pkgdir/usr/share/applications/org.genesi.forge.desktop"
     install -Dm644 "${startdir}/genesi-forge.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-forge.svg"
 }
