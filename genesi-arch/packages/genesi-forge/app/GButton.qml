@@ -25,7 +25,7 @@ Item {
 
     readonly property bool danger: kind === "danger"
     readonly property color effAccent: danger ? (theme ? theme.red : "#E74C3C") : accent
-    readonly property color onAccent: "#FFFFFF"
+    readonly property color fgColor: "#FFFFFF"
 
     readonly property color _base:   root.theme ? root.theme.card   : "#1a1d22"
     readonly property color _textHi: root.theme ? root.theme.textHi : "#ECEFF4"
@@ -42,7 +42,7 @@ Item {
         if (n.indexOf(".svg") < 0) n += ".svg"
         return Qt.resolvedUrl("icons/" + n)
     }
-    readonly property color _iconColor: kind === "filled" ? onAccent : (danger ? _red : effAccent)
+    readonly property color _iconColor: kind === "filled" ? fgColor : (danger ? _red : effAccent)
 
     implicitHeight: 34
     implicitWidth: row.implicitWidth + (root.text ? 28 : 16)
@@ -86,7 +86,7 @@ Item {
                 text: root.text
                 font.pixelSize: 13
                 font.bold: kind === "filled"
-                color: kind === "filled" ? root.onAccent : (danger ? root._red : root._textHi)
+                color: kind === "filled" ? root.fgColor : (danger ? root._red : root._textHi)
             }
         }
     }
