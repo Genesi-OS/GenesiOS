@@ -24,6 +24,7 @@ Item {
     property var pageTags: []
     property var pageRemotes: []
     property var pageLog: []
+    property var pageGraph: []
 
     function loadPage(p) {
         if (!project) return
@@ -33,6 +34,7 @@ Item {
             else if (p === "stash") pageStashes = JSON.parse(backend.gitStashList(project.path))
             else if (p === "tags") pageTags = JSON.parse(backend.gitTags(project.path))
             else if (p === "remotes") pageRemotes = JSON.parse(backend.gitRemotes(project.path))
+            else if (p === "graph") pageGraph = JSON.parse(backend.gitGraph(project.path, 120))
             else if (p === "prs") backend.loadPRs(project.slug)
         } catch (e) {}
     }
@@ -104,6 +106,7 @@ Item {
                     model: [
                         { key: "overview", label: "Overview",      icon: "layout-grid" },
                         { key: "commits",  label: "Commits",       icon: "git-commit" },
+                        { key: "graph",    label: "Graph",         icon: "git-graph" },
                         { key: "branches", label: "Branches",      icon: "git-branch" },
                         { key: "prs",      label: "Pull Requests", icon: "git-pull-request" },
                         { key: "stash",    label: "Stash",         icon: "archive" },
@@ -167,7 +170,7 @@ Item {
                     anchors.topMargin: 24        // bigger top padding
                     anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.bottomMargin: 16
                     currentIndex: {
-                        var order = ["overview", "commits", "branches", "prs", "stash", "tags", "remotes", "canvas", "terminal", "settings"]
+                        var order = ["overview", "commits", "branches", "prs", "stash", "tags", "remotes", "canvas", "terminal", "settings", "graph"]
                         var i = order.indexOf(root.page)
                         return i < 0 ? 0 : i
                     }
@@ -494,6 +497,12 @@ Item {
                             }
                         }
                         Item { Layout.fillHeight: true }
+                    }
+
+                    // 10 — Graph (commit/branch tree)
+                    GitGraph {
+                        theme: root.theme
+                        commits: root.pageGraph
                     }
                 }
             }

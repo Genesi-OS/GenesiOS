@@ -360,6 +360,58 @@ Item {
                         }
                     }
                 }
+
+                // Run log overlay — real streamed output from the workflow run.
+                Rectangle {
+                    id: logPanel
+                    visible: root.showLog
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                    anchors.margins: 10
+                    height: 180
+                    radius: 12
+                    color: "#0b0c0f"
+                    border.width: 1; border.color: root.theme.line
+                    ColumnLayout {
+                        anchors.fill: parent; anchors.margins: 10; spacing: 6
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: 8
+                            Rectangle {
+                                width: 8; height: 8; radius: 4
+                                color: root.running ? root.theme.blue : root.theme.greenBright
+                            }
+                            QQC2.Label { text: "Run Log"; color: root.theme.textHi; font.pixelSize: 12; font.bold: true }
+                            QQC2.Label { text: root.running ? "running…" : (runLog.count ? "finished" : "")
+                                color: root.theme.textLo; font.pixelSize: 11; Layout.fillWidth: true }
+                            Rectangle {
+                                width: 22; height: 22; radius: 6; color: clLogMa.containsMouse ? root.theme.cardHi : "transparent"
+                                FIcon { anchors.centerIn: parent; name: "trash"; size: 11; color: root.theme.textLo }
+                                MouseArea { id: clLogMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: runLog.clear() }
+                            }
+                            Rectangle {
+                                width: 22; height: 22; radius: 6; color: xLogMa.containsMouse ? root.theme.cardHi : "transparent"
+                                FIcon { anchors.centerIn: parent; name: "x"; size: 11; color: root.theme.textLo }
+                                MouseArea { id: xLogMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.showLog = false }
+                            }
+                        }
+                        ListView {
+                            id: logList
+                            Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+                            model: runLog
+                            QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
+                            onCountChanged: positionViewAtEnd()
+                            delegate: QQC2.Label {
+                                width: logList.width
+                                text: model.line
+                                color: model.level === "cmd" ? root.theme.greenBright
+                                     : model.level === "step" ? root.theme.blue
+                                     : model.level === "ok" ? root.theme.greenBright
+                                     : model.level === "err" ? root.theme.red : root.theme.textMid
+                                font.family: root.theme.mono; font.pixelSize: 11
+                                wrapMode: Text.WrapAnywhere
+                            }
+                        }
+                    }
+                }
             }
 
             // Config panel
@@ -380,6 +432,8 @@ Item {
             QQC2.Label { text: root.running ? "Running…" : "Ready"
                 color: root.running ? root.theme.blue : root.theme.greenBright; font.pixelSize: 13; font.bold: true }
             Item { Layout.fillWidth: true }
+            GButton { theme: root.theme; kind: "ghost"; text: root.showLog ? "Hide Log" : "Run Log"; iconSource: "icons/terminal.svg"
+                onClicked: root.showLog = !root.showLog }
             GButton { theme: root.theme; kind: "tonal"; text: "Save Workflow"; iconSource: "icons/save.svg"
                 onClicked: backend.saveWorkflow(root.project.path, root.graphJson()) }
         }
@@ -507,11 +561,21 @@ Item {
     }
 
     // ── Local run wiring ────────────────────────────────────────────────────
+    property bool showLog: false
+    ListModel { id: runLog }
+
     function runWorkflow() {
         if (running) { backend.stopWorkflow(); return }
         runState = ({})
+        runLog.clear()
+        showLog = true
         running = true
         backend.runWorkflow(project.path, graphJson())
+    }
+
+    function nodeTitle(id) {
+        for (var i = 0; i < nodes.length; i++) if (nodes[i].id === id) return nodes[i].title
+        return id
     }
 
     function zoomAction(act) {
@@ -530,8 +594,21 @@ Item {
                 for (var k in root.runState) m[k] = root.runState[k]
                 m[s.id] = s.state
                 root.runState = m
+                if (s.state === "running")
+                    runLog.append({ line: "▶ " + root.nodeTitle(s.id), level: "step" })
             } catch (e) {}
         }
-        function onWorkflowDone(ok) { root.running = false }
+        function onWorkflowLog(raw) {
+            try {
+                var l = JSON.parse(raw)
+                runLog.append({ line: l.line, level: l.level || "out" })
+                if (runLog.count > 600) runLog.remove(0, runLog.count - 600)
+            } catch (e) {}
+        }
+        function onWorkflowDone(ok) {
+            root.running = false
+            runLog.append({ line: ok ? "✓ Workflow finished" : "✕ Workflow stopped or failed",
+                            level: ok ? "ok" : "err" })
+        }
     }
 }

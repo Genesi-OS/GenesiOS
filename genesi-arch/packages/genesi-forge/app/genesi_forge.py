@@ -336,6 +336,7 @@ class Backend(QObject):
     busyChanged = Signal(bool)
     message = Signal(str)
     workflowStep = Signal(str)     # {"id","state"} per step, live
+    workflowLog = Signal(str)      # {"id","line","level"} one output line
     workflowDone = Signal(bool)    # ran to completion (True) or failed/stopped (False)
     prsLoaded = Signal(str)        # gh pr list JSON
     consoleOut = Signal(str)       # one line of embedded-console output
@@ -592,29 +593,203 @@ class Backend(QObject):
             return ""
         return graph_to_yaml(name or "project", graph.get("nodes", []))
 
-    # ── Local workflow runner ───────────────────────────────────────────────
+    # ── Local workflow runner (real per-node actions) ───────────────────────
     @staticmethod
-    def _step_command(kind, path):
-        """Map a node kind to a real local command (or None for a config-only
-        step that just resolves instantly). Runs in the project directory."""
+    def _gitignore_for(kind):
+        common = ["", "# secrets & noise", ".env", ".env.local", ".DS_Store", "*.log"]
+        web = ["# dependencies / build", "node_modules/", "dist/", "build/", ".next/", ".turbo/", "coverage/"]
+        if kind in ("next", "react", "node", "typescript", "javascript", "vue", "angular", "svelte"):
+            return "\n".join(web + common) + "\n"
+        if kind == "python":
+            return "\n".join(["__pycache__/", "*.pyc", ".venv/", "venv/", "dist/", "build/",
+                              "*.egg-info/", ".pytest_cache/", ".mypy_cache/"] + common) + "\n"
+        if kind == "rust":
+            return "\n".join(["/target"] + common) + "\n"
+        if kind == "go":
+            return "\n".join(["/bin/", "*.exe", "vendor/"] + common) + "\n"
+        if kind == "flutter":
+            return "\n".join([".dart_tool/", "build/", ".packages", ".flutter-plugins",
+                              ".flutter-plugins-dependencies"] + common) + "\n"
+        return "\n".join(common) + "\n"
+
+    @staticmethod
+    def _dockerfile_for(kind):
+        if kind == "python":
+            return ("FROM python:3.12-slim\nWORKDIR /app\nCOPY requirements.txt ./\n"
+                    "RUN pip install --no-cache-dir -r requirements.txt\nCOPY . .\n"
+                    "CMD [\"python\", \"main.py\"]\n")
+        if kind == "next":
+            return ("FROM node:20-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\n"
+                    "COPY . .\nRUN npm run build\nEXPOSE 3000\nCMD [\"npm\", \"start\"]\n")
+        if kind in ("react", "vue", "angular", "svelte", "html"):
+            return ("FROM node:20-alpine AS build\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\n"
+                    "COPY . .\nRUN npm run build\n\nFROM nginx:alpine\n"
+                    "COPY --from=build /app/dist /usr/share/nginx/html\nEXPOSE 80\n")
+        if kind in ("node", "typescript", "javascript"):
+            return ("FROM node:20-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --omit=dev\n"
+                    "COPY . .\nEXPOSE 3000\nCMD [\"npm\", \"start\"]\n")
+        if kind == "go":
+            return ("FROM golang:1.22 AS build\nWORKDIR /src\nCOPY . .\nRUN go build -o /app ./...\n\n"
+                    "FROM gcr.io/distroless/base\nCOPY --from=build /app /app\nCMD [\"/app\"]\n")
+        return ("FROM debian:stable-slim\nWORKDIR /app\nCOPY . .\n"
+                "CMD [\"echo\", \"Configure your Dockerfile\"]\n")
+
+    @staticmethod
+    def _compose_db():
+        return ("services:\n  db:\n    image: postgres:16-alpine\n"
+                "    environment:\n      POSTGRES_USER: app\n      POSTGRES_PASSWORD: app\n"
+                "      POSTGRES_DB: app\n    ports:\n      - \"5432:5432\"\n"
+                "    volumes:\n      - pgdata:/var/lib/postgresql/data\n\nvolumes:\n  pgdata:\n")
+
+    def _log(self, nid, line, level="out"):
+        self.workflowLog.emit(json.dumps({"id": nid, "line": line, "level": level}))
+
+    def _exec_cmd(self, nid, cmd, cwd):
+        self._log(nid, "$ " + " ".join(cmd), "cmd")
+        try:
+            proc = subprocess.Popen(cmd, cwd=cwd, text=True, bufsize=1,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    env={**os.environ, "LC_ALL": "C"})
+            for line in proc.stdout:
+                if self._run_stop.is_set():
+                    proc.terminate()
+                    return 130
+                self._log(nid, line.rstrip("\n"), "out")
+            proc.wait(timeout=600)
+            return proc.returncode
+        except Exception as exc:
+            self._log(nid, str(exc), "err")
+            return 1
+
+    def _exec_node(self, node, path):
+        """Perform a node's real action in the project dir. Returns True on ok."""
+        kind = node.get("kind", "")
+        nid = node.get("id", "")
         p = Path(path)
+        stack = detect_stack(path)
+
+        def wrote(fname):
+            self._log(nid, "created " + fname, "ok")
+            return True
+
+        if kind in ("start", "complete"):
+            self._log(nid, "Project ready to ship 🎉" if kind == "complete" else "Ready", "ok")
+            return True
+
+        if kind == "github":
+            if not (p / ".git").exists():
+                self._exec_cmd(nid, ["git", "init"], path)
+            code, _out, _err = git(p, "rev-parse", "--verify", "HEAD")
+            if code != 0:
+                self._exec_cmd(nid, ["git", "add", "-A"], path)
+                c = self._exec_cmd(nid, ["git", "commit", "-m", "Initial commit"], path)
+                self._log(nid, "initial commit created" if c == 0 else "nothing to commit", "ok")
+            else:
+                self._log(nid, "repository already initialized", "ok")
+            return True
+
+        if kind == "gitignore":
+            f = p / ".gitignore"
+            if f.exists():
+                self._log(nid, ".gitignore already exists — left untouched", "ok")
+                return True
+            f.write_text(self._gitignore_for(stack["kind"]), encoding="utf-8")
+            return wrote(".gitignore")
+
+        if kind == "env":
+            ex = p / ".env.example"
+            if not ex.exists():
+                ex.write_text("# Copy to .env and fill in\nAPP_ENV=development\n", encoding="utf-8")
+                wrote(".env.example")
+            gi = p / ".gitignore"
+            body = gi.read_text(encoding="utf-8") if gi.exists() else ""
+            if ".env" not in body:
+                with gi.open("a", encoding="utf-8") as fh:
+                    fh.write("\n.env\n")
+                self._log(nid, "added .env to .gitignore", "ok")
+            return True
+
         if kind == "install":
             if (p / "package.json").exists():
-                return ["npm", "install"]
-            if (p / "requirements.txt").exists():
-                return ["pip", "install", "-r", "requirements.txt"]
-            if (p / "Cargo.toml").exists():
-                return ["cargo", "fetch"]
-            return None
+                cmd = ["npm", "install"]
+            elif (p / "requirements.txt").exists():
+                cmd = ["pip", "install", "-r", "requirements.txt"]
+            elif (p / "pyproject.toml").exists():
+                cmd = ["pip", "install", "-e", "."]
+            elif (p / "Cargo.toml").exists():
+                cmd = ["cargo", "fetch"]
+            else:
+                self._log(nid, "no dependency manifest found — skipped", "ok")
+                return True
+            return self._exec_cmd(nid, cmd, path) == 0
+
         if kind == "script":
             if (p / "package.json").exists():
-                return ["npm", "run", "build", "--if-present"]
-            return None
+                self._exec_cmd(nid, ["npm", "test", "--if-present"], path)
+                return self._exec_cmd(nid, ["npm", "run", "build", "--if-present"], path) == 0
+            self._log(nid, "no npm scripts — skipped", "ok")
+            return True
+
         if kind == "docker":
-            if (p / "Dockerfile").exists():
-                return ["docker", "build", "-t", f"{p.name}:forge", "."]
-            return None
-        return None  # config-only nodes (github, env, readme, …) resolve instantly
+            f = p / "Dockerfile"
+            if f.exists():
+                self._log(nid, "Dockerfile already exists", "ok")
+            else:
+                f.write_text(self._dockerfile_for(stack["kind"]), encoding="utf-8")
+                wrote("Dockerfile")
+            return True
+
+        if kind == "database":
+            f = p / "docker-compose.yml"
+            if f.exists():
+                self._log(nid, "docker-compose.yml already exists", "ok")
+                return True
+            f.write_text(self._compose_db(), encoding="utf-8")
+            return wrote("docker-compose.yml")
+
+        if kind == "readme":
+            f = p / "README.md"
+            if f.exists():
+                self._log(nid, "README.md already exists", "ok")
+                return True
+            f.write_text(f"# {p.name}\n\n> {stack['label']} project — scaffolded by Genesi Forge.\n\n"
+                         "## Getting started\n\n```bash\n# install dependencies\n# run the project\n```\n",
+                         encoding="utf-8")
+            return wrote("README.md")
+
+        if kind == "license":
+            f = p / "LICENSE"
+            if f.exists():
+                self._log(nid, "LICENSE already exists", "ok")
+                return True
+            _, author, _ = git(p, "config", "user.name")
+            year = time.strftime("%Y")
+            f.write_text(
+                f"MIT License\n\nCopyright (c) {year} {author or 'The Authors'}\n\n"
+                "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+                "of this software and associated documentation files (the \"Software\"), to deal\n"
+                "in the Software without restriction, including without limitation the rights\n"
+                "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n"
+                "copies of the Software, and to permit persons to whom the Software is\n"
+                "furnished to do so, subject to the following conditions:\n\n"
+                "The above copyright notice and this permission notice shall be included in all\n"
+                "copies or substantial portions of the Software.\n\n"
+                "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.\n",
+                encoding="utf-8")
+            return wrote("LICENSE (MIT)")
+
+        if kind == "contributing":
+            f = p / "CONTRIBUTING.md"
+            if f.exists():
+                self._log(nid, "CONTRIBUTING.md already exists", "ok")
+                return True
+            f.write_text("# Contributing\n\nThanks for helping out!\n\n"
+                         "1. Fork & branch from `main`\n2. Commit with clear messages\n"
+                         "3. Open a pull request\n", encoding="utf-8")
+            return wrote("CONTRIBUTING.md")
+
+        self._log(nid, "no local action for this node — marked configured", "ok")
+        return True
 
     @Slot(str, str)
     def runWorkflow(self, path, graph_raw):
@@ -636,22 +811,18 @@ class Backend(QObject):
                     break
                 nid = node.get("id", "")
                 self.workflowStep.emit(json.dumps({"id": nid, "state": "running"}))
-                cmd = self._step_command(node.get("kind", ""), path)
-                if cmd is None:
-                    time.sleep(0.35)  # config step — brief beat so the UI reads
-                    self.workflowStep.emit(json.dumps({"id": nid, "state": "done"}))
-                    continue
-                code, out, err = run(cmd, cwd=path, timeout=600)
-                if code == 0:
-                    self.workflowStep.emit(json.dumps({"id": nid, "state": "done"}))
-                else:
-                    self.workflowStep.emit(json.dumps({"id": nid, "state": "failed"}))
-                    self.message.emit(f"{node.get('title', 'Step')} failed: {(err or out or '')[:160]}")
+                try:
+                    good = self._exec_node(node, path)
+                except Exception as exc:
+                    self._log(nid, str(exc), "err")
+                    good = False
+                self.workflowStep.emit(json.dumps({"id": nid, "state": "done" if good else "failed"}))
+                if not good:
                     ok = False
                     break
             self._running = False
             self.workflowDone.emit(ok)
-            self.message.emit("Workflow finished." if ok else "Workflow stopped.")
+            self.message.emit("Workflow finished." if ok else "Workflow stopped or failed.")
 
         self._thread(work)
 
@@ -740,6 +911,24 @@ class Backend(QObject):
     def gitFiles(self, path):
         _, out, _ = git(Path(path), "ls-files")
         return json.dumps(out.splitlines()[:500] if out else [])
+
+    @Slot(str, int, result=str)
+    def gitGraph(self, path, limit):
+        # All branches, topo-ordered, with parents + ref decorations — enough to
+        # lay out a lane graph on the QML side.
+        _, out, _ = git(Path(path), "log", "--all", "--topo-order", f"-{limit}",
+                        "--pretty=format:%H%x1f%h%x1f%P%x1f%an%x1f%ar%x1f%D%x1f%s")
+        rows = []
+        for line in (out.splitlines() if out else []):
+            parts = line.split("\x1f")
+            if len(parts) == 7:
+                full, short, parents, an, ar, refs, subj = parts
+                rows.append({"hash": full, "short": short,
+                             "parents": parents.split() if parents else [],
+                             "author": an, "ago": ar,
+                             "refs": [r.strip() for r in refs.split(",") if r.strip()],
+                             "subject": subj})
+        return json.dumps(rows)
 
     @Slot(str, str, str, result=str)
     def gitCompare(self, path, a, b):
