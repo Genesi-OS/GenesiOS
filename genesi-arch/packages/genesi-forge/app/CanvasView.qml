@@ -589,7 +589,7 @@ Item {
                         ]
                         delegate: Rectangle {
                             Layout.fillWidth: true; Layout.preferredHeight: 104; radius: 8
-                            color: cardMa.containsMouse ? root.theme.cardHi : root.theme.panel
+                            color: cardMa.containsMouse ? root.theme.cardHi : root.theme.card
                             border.width: 1; border.color: cardMa.containsMouse ? root.theme.a(root.theme.green, 0.6) : root.theme.line
                             ColumnLayout { anchors.fill: parent; anchors.margins: 12; spacing: 5
                                 RowLayout { spacing: 8
