@@ -46,10 +46,10 @@ Item {
     readonly property color bgTop:    "#16181d"   // window top of gradient
     readonly property color panelTop: "#131517"   // content panel (user-pinned #131517)
     readonly property color panelBot: "#111315"
-    readonly property color card:     "#2d323b"   // inner cards (clearly lifted)
-    readonly property color cardHi:   "#383e49"   // hover / fields
-    readonly property color line:     "#3c434e"   // borders
-    readonly property color lineHi:   "#49515d"
+    readonly property color card:     "#16191c"   // inner cards (user-pinned)
+    readonly property color cardHi:   "#20242a"   // hover / input fields (a touch lighter)
+    readonly property color line:     "#282d33"   // borders
+    readonly property color lineHi:   "#353b43"
 
     // ── Text (fixed-dark app) ──────────────────────────────────────────
     readonly property color textHi:  "#ECEFF4"

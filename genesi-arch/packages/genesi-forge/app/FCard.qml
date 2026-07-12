@@ -12,9 +12,9 @@ Rectangle {
     property bool active: false
     property color accent: theme ? theme.green : "#1FBE6A"
 
-    readonly property color _base: theme ? theme.card : "#2d323b"
-    readonly property color _line: theme ? theme.line : "#3c434e"
-    readonly property color _lineHi: theme ? theme.lineHi : "#49515d"
+    readonly property color _base: theme ? theme.card : "#16191c"
+    readonly property color _line: theme ? theme.line : "#282d33"
+    readonly property color _lineHi: theme ? theme.lineHi : "#353b43"
     // _white MUST be a color object — a bare "#ffffff" string has no .r/.g/.b,
     // so feeding it to _mix() yields NaN and the card renders BLACK.
     readonly property color _white: "#ffffff"
