@@ -40,14 +40,16 @@ Item {
     readonly property color red:          "#E74C3C"
 
     // ── Surfaces (Forge v2 mock — neutral graphite) ────────────────────
+    // Depth order (dark → light): content panel < window < inner cards. The
+    // panel is the darkest well; cards sit clearly lighter on top of it.
     readonly property color bgBottom: "#141619"   // window base
     readonly property color bgTop:    "#16181d"   // window top of gradient
-    readonly property color panelTop: "#15171c"   // content panel gradient
-    readonly property color panelBot: "#121316"
-    readonly property color card:     "#22262e"   // inner cards (lifted for contrast)
-    readonly property color cardHi:   "#2c313b"   // hover / fields
-    readonly property color line:     "#31373f"   // borders
-    readonly property color lineHi:   "#3d444e"
+    readonly property color panelTop: "#131517"   // content panel (user-pinned #131517)
+    readonly property color panelBot: "#111315"
+    readonly property color card:     "#2d323b"   // inner cards (clearly lifted)
+    readonly property color cardHi:   "#383e49"   // hover / fields
+    readonly property color line:     "#3c434e"   // borders
+    readonly property color lineHi:   "#49515d"
 
     // ── Text (fixed-dark app) ──────────────────────────────────────────
     readonly property color textHi:  "#ECEFF4"
