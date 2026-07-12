@@ -496,12 +496,21 @@ class Backend(QObject):
 
     @Slot(str)
     def openCode(self, path):
-        binary = shutil.which("genesi-code") or shutil.which("code")
+        genesi = shutil.which("genesi-code")
+        binary = genesi or shutil.which("code") or shutil.which("codium") \
+            or shutil.which("vscodium")
         if not binary:
-            self.message.emit("Genesi Code is not installed.")
+            self.message.emit("Genesi Code isn't installed — install the "
+                              "'genesi-code' package to open projects here.")
             return
         self._touch_recent(path)
-        subprocess.Popen([binary, path], start_new_session=True)
+        try:
+            subprocess.Popen([binary, path], start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            name = "Genesi Code" if genesi else os.path.basename(binary)
+            self.message.emit(f"Opening {Path(path).name} in {name}…")
+        except OSError as exc:
+            self.message.emit(f"Could not launch the editor: {exc}")
 
     @Slot(str)
     def openTerminal(self, path):

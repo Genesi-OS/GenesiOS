@@ -42,12 +42,12 @@ Item {
     // ── Surfaces (Forge v2 mock — neutral graphite) ────────────────────
     readonly property color bgBottom: "#141619"   // window base
     readonly property color bgTop:    "#16181d"   // window top of gradient
-    readonly property color panelTop: "#131418"   // content panel gradient (≈#121315)
-    readonly property color panelBot: "#0f1013"
-    readonly property color card:     "#1a1d22"   // inner cards
-    readonly property color cardHi:   "#23272e"   // hover / fields
-    readonly property color line:     "#262b33"   // borders
-    readonly property color lineHi:   "#343a44"
+    readonly property color panelTop: "#15171c"   // content panel gradient
+    readonly property color panelBot: "#121316"
+    readonly property color card:     "#22262e"   // inner cards (lifted for contrast)
+    readonly property color cardHi:   "#2c313b"   // hover / fields
+    readonly property color line:     "#31373f"   // borders
+    readonly property color lineHi:   "#3d444e"
 
     // ── Text (fixed-dark app) ──────────────────────────────────────────
     readonly property color textHi:  "#ECEFF4"

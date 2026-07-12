@@ -22,8 +22,8 @@ Rectangle {
 
     radius: 14
     gradient: Gradient {
-        GradientStop { position: 0.0; color: card._mix(card._base, "#ffffff", 0.025 + card._hb * 0.02) }
-        GradientStop { position: 1.0; color: card._mix(card._base, "#000000", 0.06) }
+        GradientStop { position: 0.0; color: card._mix(card._base, "#ffffff", 0.05 + card._hb * 0.03) }
+        GradientStop { position: 1.0; color: card._mix(card._base, "#ffffff", 0.01 + card._hb * 0.02) }
     }
     border.width: 1
     border.color: active ? accent : (hov.hovered && interactive ? _lineHi : _line)

@@ -1,7 +1,7 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 pkgname=genesi-forge
 pkgver=2.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Genesi Forge: the project hub — full git panel, GitHub pipelines, deployments and the Forge Canvas workflow builder'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -16,10 +16,12 @@ package() {
 
     # Python backend + every QML file that makes up the app.
     install -Dm644 "${startdir}/app/genesi_forge.py" "$pkgdir/usr/share/genesi-forge/app/genesi_forge.py"
+    # Every QML file that makes up the app (GButton is Forge-local — it shadows
+    # the kit button so bundled-SVG icons resolve + tint correctly).
     local qml
-    for qml in Main Splash ForgeTheme FIcon FCard HubView ProjectView GitOverview \
-               ConsolePanel CanvasView ConfigPanel TechLogo NavItem StatTile \
-               ProjectCard ImportCard GToggle CanvasNode PaletteItem; do
+    for qml in Main Splash ForgeTheme FIcon FCard GButton HubView ProjectView \
+               GitOverview ConsolePanel CanvasView ConfigPanel TechLogo NavItem \
+               StatTile ProjectCard ImportCard GToggle CanvasNode PaletteItem; do
         install -Dm644 "${startdir}/app/${qml}.qml" "$pkgdir/usr/share/genesi-forge/app/${qml}.qml"
     done
 
@@ -28,10 +30,6 @@ package() {
     for svg in "${startdir}"/app/icons/*.svg; do
         install -Dm644 "$svg" "$pkgdir/usr/share/genesi-forge/app/icons/$(basename "$svg")"
     done
-
-    # Shared Genesi UI kit (bundled at build — not a published package).
-    install -Dm644 "${startdir}/../genesi-ui-kit/components/GButton.qml" \
-        "$pkgdir/usr/share/genesi-forge/app/GButton.qml"
 
     install -Dm644 "${startdir}/org.genesi.forge.desktop" "$pkgdir/usr/share/applications/org.genesi.forge.desktop"
     install -Dm644 "${startdir}/genesi-forge.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-forge.svg"

@@ -152,7 +152,7 @@ Item {
 
             Rectangle {
                 anchors.fill: parent
-                anchors.topMargin: 12; anchors.rightMargin: 12; anchors.bottomMargin: 12
+                anchors.topMargin: 26; anchors.rightMargin: 12; anchors.bottomMargin: 12
                 radius: 18
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: root.theme.panelTop }
