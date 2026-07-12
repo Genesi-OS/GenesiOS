@@ -37,11 +37,13 @@ Item {
         radius: 9; color: root.theme.cardHi; border.width: 1; border.color: root.theme.lineHi
         property alias text: tf.text
         property string icon: ""
+        signal accepted(string value)
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 10; spacing: 8
             FIcon { visible: parent.parent.icon !== ""; name: parent.parent.icon; size: 14; color: root.theme.textMid }
             QQC2.TextField { id: tf; Layout.fillWidth: true; background: null; color: root.theme.textHi; font.pixelSize: 13
-                selectionColor: root.theme.green; selectedTextColor: root.theme.white }
+                selectionColor: root.theme.green; selectedTextColor: root.theme.white
+                onEditingFinished: parent.parent.accepted(text) }
         }
     }
 
@@ -151,6 +153,69 @@ Item {
                     }
                 }
 
+                FieldLabel { text: "Trigger"; visible: root.node && root.node.kind === "event" }
+                Combo {
+                    visible: root.node && root.node.kind === "event"
+                    model: [ "push", "pull_request", "branch_created", "schedule" ]
+                    currentIndex: root.optionIndex(model, root.configValue("event", "push"))
+                    onActivated: root.setConfig("event", currentText)
+                }
+                FieldLabel { text: "Branch filter"; visible: root.node && root.node.kind === "event" }
+                GField { visible: root.node && root.node.kind === "event"; text: root.configValue("branch", "main"); icon: "git-branch"
+                    onAccepted: root.setConfig("branch", value) }
+
+                FieldLabel { text: "Project template"; visible: root.node && (root.node.kind === "bootstrap" || root.node.kind === "template") }
+                Combo {
+                    visible: root.node && (root.node.kind === "bootstrap" || root.node.kind === "template")
+                    model: [ "react-vite", "next", "electron", "react-native", "rust", "go", "python", "spring" ]
+                    currentIndex: root.optionIndex(model, root.configValue("template", "react-vite"))
+                    onActivated: root.setConfig("template", currentText)
+                }
+
+                FieldLabel { text: "Command"; visible: root.node && (root.node.kind === "script" || root.node.kind === "tests") }
+                GField { visible: root.node && (root.node.kind === "script" || root.node.kind === "tests")
+                    text: root.configValue("command", ""); icon: "terminal"; onAccepted: root.setConfig("command", value) }
+
+                FieldLabel { text: "Backend framework"; visible: root.node && root.node.kind === "backend" }
+                Combo { visible: root.node && root.node.kind === "backend"; model: [ "fastapi", "express" ]
+                    currentIndex: root.optionIndex(model, root.configValue("framework", "fastapi"))
+                    onActivated: root.setConfig("framework", currentText) }
+
+                FieldLabel { text: "Quality tool"; visible: root.node && root.node.kind === "quality" }
+                Combo { visible: root.node && root.node.kind === "quality"; model: [ "biome", "eslint" ]
+                    currentIndex: root.optionIndex(model, root.configValue("tool", "biome"))
+                    onActivated: root.setConfig("tool", currentText) }
+
+                FieldLabel { text: "Frontend tooling"; visible: root.node && root.node.kind === "frontend" }
+                Combo { visible: root.node && root.node.kind === "frontend"; model: [ "tailwind", "shadcn" ]
+                    currentIndex: root.optionIndex(model, root.configValue("tool", "tailwind"))
+                    onActivated: root.setConfig("tool", currentText) }
+
+                FieldLabel { text: "Deploy provider"; visible: root.node && root.node.kind === "deploy" }
+                Combo { visible: root.node && root.node.kind === "deploy"; model: [ "vercel", "railway", "render" ]
+                    currentIndex: root.optionIndex(model, root.configValue("provider", "vercel"))
+                    onActivated: root.setConfig("provider", currentText) }
+
+                FieldLabel { text: "Package manager"; visible: root.node && root.node.kind === "install" }
+                Combo { visible: root.node && root.node.kind === "install"; model: [ "auto", "npm", "pnpm", "yarn", "bun" ]
+                    currentIndex: root.optionIndex(model, root.configValue("manager", "auto"))
+                    onActivated: root.setConfig("manager", currentText) }
+
+                FieldLabel { text: "Base branch"; visible: root.node && root.node.kind === "git_automation" }
+                GField { visible: root.node && root.node.kind === "git_automation"; text: root.configValue("base", "staging"); icon: "git-branch"
+                    onAccepted: root.setConfig("base", value) }
+                FieldLabel { text: "New branch"; visible: root.node && root.node.kind === "git_automation" }
+                GField { visible: root.node && root.node.kind === "git_automation"; text: root.configValue("branch", "feature/new-feature"); icon: "git-branch"
+                    onAccepted: root.setConfig("branch", value) }
+
+                FieldLabel { text: "Variables (KEY=value, comma separated)"; visible: root.node && root.node.kind === "env" }
+                GField { visible: root.node && root.node.kind === "env"; text: root.configValue("variables", "APP_ENV=development"); icon: "lock"
+                    onAccepted: root.setConfig("variables", value) }
+
+                FieldLabel { text: "Webhook URL"; visible: root.node && root.node.kind === "webhook" }
+                GField { visible: root.node && root.node.kind === "webhook"; text: root.configValue("url", "https://example.com/hook"); icon: "link"
+                    onAccepted: root.setConfig("url", value) }
+
                 Item { Layout.preferredHeight: 6 }
                 GButton { theme: root.theme; kind: "filled"; text: "Create Repository"; iconSource: "icons/github.svg"; Layout.fillWidth: true
                     enabled: root.project !== null
@@ -246,6 +311,16 @@ Item {
     }
 
     function repoField() { return root.project ? root.project.name : "" }
+    function configValue(key, fallback) {
+        return root.node && root.node.config && root.node.config[key] !== undefined ? root.node.config[key] : fallback
+    }
+    function setConfig(key, value) {
+        if (root.node && root.graphProvider) root.graphProvider.setNodeConfig(root.node.id, key, value)
+    }
+    function optionIndex(model, value) {
+        for (var i = 0; i < model.length; i++) if (model[i] === value) return i
+        return 0
+    }
     function previewYaml() {
         if (!root.graphProvider || !root.project) return "# add nodes to generate a workflow"
         return backend.previewWorkflow(root.project.name, root.graphProvider.graphJson())

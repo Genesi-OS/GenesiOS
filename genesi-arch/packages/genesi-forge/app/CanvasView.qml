@@ -28,6 +28,10 @@ Item {
     property string selectedId: "github"
     property real zoom: 1.0
     property var runState: ({})
+    property var canvases: []
+    property string activeCanvasId: "main"
+    property string activeCanvasName: "Project setup"
+    property bool canvasReady: false
     property bool running: false
     property string pendingFrom: ""
     property real pendingX: 0
@@ -44,9 +48,11 @@ Item {
         for (var i = 0; i < nodes.length; i++) {
             var n = nodes[i]
             var p = livePos[n.id] || { x: n.x, y: n.y }
-            out.push({ id: n.id, kind: n.kind, title: n.title, x: p.x, y: p.y })
+            out.push({ id: n.id, kind: n.kind, title: n.title, icon: n.icon,
+                       accentKey: n.accentKey || "green", x: p.x, y: p.y,
+                       lines: n.lines || [], config: n.config || ({}) })
         }
-        return JSON.stringify({ nodes: out, links: links })
+        return JSON.stringify({ id: activeCanvasId, name: activeCanvasName, nodes: out, links: links })
     }
 
     // ── Default graph (mock layout, bundled icon names) ─────────────────────
@@ -71,6 +77,79 @@ Item {
             { from: "script", to: "readme" }, { from: "readme", to: "complete" }
         ]
         nodesChanged()
+        Qt.callLater(initializeCanvases)
+    }
+
+    function accentFor(key) {
+        if (key === "purple") return theme.purple
+        if (key === "blue") return theme.blue
+        if (key === "turbo") return theme.turbo
+        if (key === "red") return theme.red
+        return theme.green
+    }
+
+    function applyGraph(graph) {
+        var incoming = graph.nodes || []
+        for (var i = 0; i < incoming.length; i++) {
+            incoming[i].accentKey = incoming[i].accentKey || "green"
+            incoming[i].accent = accentFor(incoming[i].accentKey)
+            incoming[i].lines = incoming[i].lines || [incoming[i].title || "Step"]
+            incoming[i].config = incoming[i].config || ({})
+        }
+        livePos = ({})
+        nodes = incoming
+        links = graph.links || []
+        selectedId = nodes.length ? nodes[0].id : ""
+        Qt.callLater(function() { linkLayer.requestPaint(); miniMap.requestPaint() })
+    }
+
+    function initializeCanvases() {
+        var store = JSON.parse(backend.listCanvases(project.path))
+        canvases = store.items || []
+        if (!canvases.length) {
+            backend.saveCanvas(project.path, "main", "Project setup", graphJson())
+            canvases = [ { id: "main", name: "Project setup", nodes: nodes.length } ]
+            activeCanvasId = "main"
+            activeCanvasName = "Project setup"
+            canvasNameField.text = activeCanvasName
+            canvasReady = true
+            return
+        }
+        switchCanvas(store.active || canvases[0].id)
+    }
+
+    function refreshCanvases() {
+        var store = JSON.parse(backend.listCanvases(project.path))
+        canvases = store.items || []
+        var selected = 0
+        for (var i = 0; i < canvases.length; i++) if (canvases[i].id === activeCanvasId) selected = i
+        canvasPicker.currentIndex = selected
+    }
+
+    function switchCanvas(id) {
+        if (!id || (canvasReady && id === activeCanvasId)) return
+        if (canvasReady && activeCanvasId && nodes.length)
+            backend.saveCanvas(project.path, activeCanvasId, activeCanvasName, graphJson())
+        var selected = null
+        for (var i = 0; i < canvases.length; i++) if (canvases[i].id === id) selected = canvases[i]
+        var graph = JSON.parse(backend.loadCanvas(project.path, id))
+        activeCanvasId = id
+        activeCanvasName = selected ? selected.name : "Automation"
+        canvasNameField.text = activeCanvasName
+        applyGraph(graph)
+        canvasReady = true
+    }
+
+    function createFromTemplate(template, label) {
+        if (canvasReady && activeCanvasId)
+            backend.saveCanvas(project.path, activeCanvasId, activeCanvasName, graphJson())
+        var result = JSON.parse(backend.createCanvas(project.path, label, template))
+        activeCanvasId = result.id
+        activeCanvasName = label
+        canvasNameField.text = activeCanvasName
+        applyGraph(result.graph || {})
+        refreshCanvases()
+        templatePopup.close()
     }
 
     function updatePos(id, x, y, w, h) {
@@ -104,6 +183,22 @@ Item {
                 QQC2.Label { text: "Automate your project setup and delivery"; color: root.theme.textLo; font.pixelSize: 11 }
             }
             Item { Layout.fillWidth: true }
+            QQC2.ComboBox {
+                id: canvasPicker
+                Layout.preferredWidth: 210; implicitHeight: 38
+                model: root.canvases; textRole: "name"
+                background: Rectangle { radius: 8; color: root.theme.cardHi; border.width: 1; border.color: root.theme.lineHi }
+                contentItem: QQC2.Label { leftPadding: 11; rightPadding: 28; text: canvasPicker.displayText
+                    color: root.theme.textHi; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+                onActivated: root.switchCanvas(root.canvases[currentIndex].id)
+            }
+            GButton { theme: root.theme; kind: "ghost"; iconSource: "icons/copy.svg"; tooltip: "Duplicate automation"
+                onClicked: { var id = backend.duplicateCanvas(root.project.path, root.activeCanvasId); root.refreshCanvases(); root.switchCanvas(id) } }
+            GButton { theme: root.theme; kind: "ghost"; iconSource: "icons/trash.svg"; tooltip: "Delete automation"
+                enabled: root.canvases.length > 1
+                onClicked: { backend.deleteCanvas(root.project.path, root.activeCanvasId); root.activeCanvasId = ""; root.canvasReady = false; root.initializeCanvases() } }
+            GButton { theme: root.theme; kind: "tonal"; text: "New"; iconSource: "icons/plus.svg"
+                onClicked: templatePopup.open() }
             GButton { theme: root.theme; kind: root.running ? "danger" : "tonal"
                 text: root.running ? "Stop" : "Run Workflow"
                 iconSource: root.running ? "icons/square.svg" : "icons/play.svg"
@@ -140,22 +235,35 @@ Item {
                             spacing: 5
                             Repeater {
                                 model: [
-                                    { section: "ESSENTIAL" },
-                                    { label: "GitHub Sync",           icon: "github",   accent: root.theme.purple, kind: "github" },
-                                    { label: "Smart .gitignore",      icon: "edit",     accent: root.theme.green,  kind: "gitignore" },
-                                    { label: "Environment Variables", icon: "lock",     accent: root.theme.turbo,  kind: "env" },
-                                    { label: "Install Dependencies",  icon: "download", accent: root.theme.blue,   kind: "install" },
-                                    { label: "Run Script",            icon: "terminal", accent: root.theme.purple, kind: "script" },
-                                    { section: "INFRASTRUCTURE" },
-                                    { label: "Docker",      icon: "box",      accent: root.theme.blue,   kind: "docker" },
-                                    { label: "Database",    icon: "database", accent: root.theme.green,  kind: "database" },
-                                    { label: "API Service", icon: "globe",    accent: root.theme.purple, kind: "api" },
-                                    { label: "Redis",       icon: "database", accent: root.theme.red,    kind: "redis" },
-                                    { label: "Web Hook",    icon: "link",     accent: root.theme.green,  kind: "webhook" },
+                                    { section: "EVENTS & FLOW" },
+                                    { label: "When event", icon: "zap", accent: root.theme.turbo, accentKey: "turbo", kind: "event" },
+                                    { label: "Project Bootstrap", icon: "folder-plus", accent: root.theme.green, accentKey: "green", kind: "bootstrap" },
+                                    { label: "Template", icon: "layout-grid", accent: root.theme.blue, accentKey: "blue", kind: "template" },
+                                    { label: "Run Script", icon: "terminal", accent: root.theme.purple, accentKey: "purple", kind: "script" },
+                                    { section: "CODE & SERVICES" },
+                                    { label: "API / OpenAPI", icon: "globe", accent: root.theme.purple, accentKey: "purple", kind: "api" },
+                                    { label: "Backend Service", icon: "code", accent: root.theme.blue, accentKey: "blue", kind: "backend" },
+                                    { label: "Code Quality", icon: "check", accent: root.theme.green, accentKey: "green", kind: "quality" },
+                                    { label: "Frontend Tooling", icon: "sliders", accent: root.theme.blue, accentKey: "blue", kind: "frontend" },
+                                    { label: "Tests", icon: "shield", accent: root.theme.turbo, accentKey: "turbo", kind: "tests" },
+                                    { section: "GIT & DEPENDENCIES" },
+                                    { label: "GitHub Sync", icon: "github", accent: root.theme.purple, accentKey: "purple", kind: "github" },
+                                    { label: "Git Automation", icon: "git-branch", accent: root.theme.green, accentKey: "green", kind: "git_automation" },
+                                    { label: "Smart .gitignore", icon: "edit", accent: root.theme.green, accentKey: "green", kind: "gitignore" },
+                                    { label: "Dependency Manager", icon: "download", accent: root.theme.blue, accentKey: "blue", kind: "install" },
+                                    { label: "Environment", icon: "lock", accent: root.theme.turbo, accentKey: "turbo", kind: "env" },
+                                    { section: "INFRA & DELIVERY" },
+                                    { label: "Docker", icon: "box", accent: root.theme.blue, accentKey: "blue", kind: "docker" },
+                                    { label: "Database", icon: "database", accent: root.theme.green, accentKey: "green", kind: "database" },
+                                    { label: "Redis", icon: "database", accent: root.theme.red, accentKey: "red", kind: "redis" },
+                                    { label: "Webhook", icon: "link", accent: root.theme.green, accentKey: "green", kind: "webhook" },
+                                    { label: "CI/CD", icon: "git-pull-request", accent: root.theme.purple, accentKey: "purple", kind: "ci" },
+                                    { label: "Deploy", icon: "cloud", accent: root.theme.turbo, accentKey: "turbo", kind: "deploy" },
                                     { section: "DOCUMENTATION" },
-                                    { label: "Generate README",    icon: "book-open", accent: root.theme.blue,  kind: "readme" },
-                                    { label: "License",            icon: "shield",    accent: root.theme.turbo, kind: "license" },
-                                    { label: "Contributing Guide", icon: "users",     accent: root.theme.green, kind: "contributing" }
+                                    { label: "Generate README", icon: "book-open", accent: root.theme.blue, accentKey: "blue", kind: "readme" },
+                                    { label: "Swagger Docs", icon: "file-text", accent: root.theme.purple, accentKey: "purple", kind: "api" },
+                                    { label: "License", icon: "shield", accent: root.theme.turbo, accentKey: "turbo", kind: "license" },
+                                    { label: "Contributing Guide", icon: "users", accent: root.theme.green, accentKey: "green", kind: "contributing" }
                                 ]
                                 delegate: Item {
                                     Layout.fillWidth: true
@@ -432,10 +540,70 @@ Item {
             QQC2.Label { text: root.running ? "Running…" : "Ready"
                 color: root.running ? root.theme.blue : root.theme.greenBright; font.pixelSize: 13; font.bold: true }
             Item { Layout.fillWidth: true }
+            QQC2.TextField {
+                id: canvasNameField
+                Layout.preferredWidth: 180; implicitHeight: 34
+                text: root.activeCanvasName; placeholderText: "Automation name"
+                color: root.theme.textHi; selectionColor: root.theme.green; selectedTextColor: root.theme.white
+                background: Rectangle { radius: 7; color: root.theme.cardHi; border.width: 1; border.color: root.theme.line }
+                onEditingFinished: {
+                    root.activeCanvasName = text.trim() || "Automation"
+                    backend.saveCanvas(root.project.path, root.activeCanvasId, root.activeCanvasName, root.graphJson())
+                    root.refreshCanvases()
+                }
+            }
             GButton { theme: root.theme; kind: "ghost"; text: root.showLog ? "Hide Log" : "Run Log"; iconSource: "icons/terminal.svg"
                 onClicked: root.showLog = !root.showLog }
             GButton { theme: root.theme; kind: "tonal"; text: "Save Workflow"; iconSource: "icons/save.svg"
-                onClicked: backend.saveWorkflow(root.project.path, root.graphJson()) }
+                onClicked: backend.saveCanvas(root.project.path, root.activeCanvasId, root.activeCanvasName, root.graphJson()) }
+        }
+    }
+
+    QQC2.Popup {
+        id: templatePopup
+        anchors.centerIn: parent
+        width: 700; height: 520; modal: true; focus: true
+        closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
+        background: Rectangle { radius: 12; color: root.theme.card; border.width: 1; border.color: root.theme.lineHi }
+        contentItem: ColumnLayout {
+            spacing: 12
+            QQC2.Label { text: "New Forge Canvas"; color: root.theme.textHi; font.family: root.theme.display; font.pixelSize: 20; font.bold: true }
+            QQC2.Label { text: "Start blank, automate delivery, or bootstrap a complete project."; color: root.theme.textMid; font.pixelSize: 12 }
+            QQC2.ScrollView {
+                Layout.fillWidth: true; Layout.fillHeight: true; contentWidth: availableWidth
+                GridLayout {
+                    width: templatePopup.availableWidth; columns: 3; columnSpacing: 10; rowSpacing: 10
+                    Repeater {
+                        model: [
+                            { name: "Blank canvas", sub: "Build an automation from scratch", tpl: "blank", icon: "plus" },
+                            { name: "CI quality gate", sub: "Commit, install, quality and tests", tpl: "ci", icon: "check" },
+                            { name: "Deploy preview", sub: "Pull request to deploy preview", tpl: "deploy", icon: "cloud" },
+                            { name: "React + Vite", sub: "Vite, React, Docker, CI and docs", tpl: "bootstrap:react-vite", icon: "zap" },
+                            { name: "Next.js", sub: "App Router project delivery", tpl: "bootstrap:next", icon: "globe" },
+                            { name: "Electron", sub: "Cross-platform desktop app", tpl: "bootstrap:electron", icon: "box" },
+                            { name: "React Native", sub: "Expo mobile application", tpl: "bootstrap:react-native", icon: "globe" },
+                            { name: "Rust", sub: "Cargo project with CI and Docker", tpl: "bootstrap:rust", icon: "terminal" },
+                            { name: "Go", sub: "Go module and delivery pipeline", tpl: "bootstrap:go", icon: "code" },
+                            { name: "Python", sub: "Pyproject, tests and API-ready", tpl: "bootstrap:python", icon: "terminal" },
+                            { name: "Java Spring", sub: "Maven service workflow", tpl: "bootstrap:spring", icon: "code" }
+                        ]
+                        delegate: Rectangle {
+                            Layout.fillWidth: true; Layout.preferredHeight: 104; radius: 8
+                            color: cardMa.containsMouse ? root.theme.cardHi : root.theme.panel
+                            border.width: 1; border.color: cardMa.containsMouse ? root.theme.a(root.theme.green, 0.6) : root.theme.line
+                            ColumnLayout { anchors.fill: parent; anchors.margins: 12; spacing: 5
+                                RowLayout { spacing: 8
+                                    FIcon { name: modelData.icon; size: 16; color: root.theme.greenBright }
+                                    QQC2.Label { text: modelData.name; color: root.theme.textHi; font.pixelSize: 13; font.bold: true }
+                                }
+                                QQC2.Label { text: modelData.sub; color: root.theme.textLo; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                            }
+                            MouseArea { id: cardMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                onClicked: root.createFromTemplate(modelData.tpl, modelData.name) }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -483,12 +651,26 @@ Item {
     function addNodeAt(nx, ny, def) {
         var id = def.kind + "-" + Date.now()
         var n = { id: id, kind: def.kind, title: def.label, icon: def.icon, accent: def.accent,
-                  x: nx, y: ny, lines: ["New step"], status: "Draft", statusKind: "ok" }
+                  accentKey: def.accentKey || "green", x: nx, y: ny,
+                  lines: ["New step"], config: defaultConfig(def.kind), status: "Draft", statusKind: "ok" }
         var arr = _syncPositions(nodes.slice())
         arr.push(n); nodes = arr
         selectedId = id
         Qt.callLater(function() { updatePos(id, nx, ny, 214, 120) })
         toast(def.label + " node added.")
+    }
+
+    function defaultConfig(kind) {
+        if (kind === "event") return { event: "push", branch: "main" }
+        if (kind === "bootstrap" || kind === "template") return { template: "react-vite" }
+        if (kind === "script" || kind === "tests") return { command: "" }
+        if (kind === "backend") return { framework: "fastapi" }
+        if (kind === "quality") return { tool: "biome" }
+        if (kind === "frontend") return { tool: "tailwind" }
+        if (kind === "deploy") return { provider: "vercel" }
+        if (kind === "git_automation") return { base: "staging", branch: "feature/new-feature" }
+        if (kind === "install") return { manager: "auto" }
+        return ({})
     }
 
     function deleteNode(id) {
@@ -513,6 +695,18 @@ Item {
         for (var i = 0; i < arr.length; i++) if (arr[i].id === id) arr[i].lines = lines
         nodes = arr
         Qt.callLater(function() { linkLayer.requestPaint() })
+    }
+
+    function setNodeConfig(id, key, value) {
+        var arr = _syncPositions(nodes.slice())
+        for (var i = 0; i < arr.length; i++) if (arr[i].id === id) {
+            var cfg = ({})
+            var old = arr[i].config || ({})
+            for (var k in old) cfg[k] = old[k]
+            cfg[key] = value
+            arr[i].config = cfg
+        }
+        nodes = arr
     }
 
     function autoArrange() {
