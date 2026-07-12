@@ -33,17 +33,22 @@ SKIP_DIRS = {
 }
 
 
-def run(args, cwd=None, timeout=10):
+def run(args, cwd=None, timeout=10, strip=True):
+    # strip=False is REQUIRED for `git status --porcelain` — its lines are
+    # `XY<space>PATH`, and a global strip() eats the first line's leading status
+    # space, shifting the parse so the first file loses its initial character.
     try:
         proc = subprocess.run(args, cwd=cwd, text=True, capture_output=True,
                               timeout=timeout, env={**os.environ, "LC_ALL": "C"})
-        return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+        if strip:
+            return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+        return proc.returncode, proc.stdout, proc.stderr.strip()
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 127, "", str(exc)
 
 
-def git(path, *args, timeout=8):
-    return run(["git", "-C", str(path), *args], timeout=timeout)
+def git(path, *args, timeout=8, strip=True):
+    return run(["git", "-C", str(path), *args], timeout=timeout, strip=strip)
 
 
 def load_json(path, default):
@@ -224,7 +229,7 @@ def project_summary(path_text, stars, recents):
     _, branch, _ = git(path, "branch", "--show-current")
     if not branch:
         _, branch, _ = git(path, "rev-parse", "--short", "HEAD")
-    _, status, _ = git(path, "status", "--porcelain=v1", "--untracked-files=normal")
+    _, status, _ = git(path, "status", "--porcelain=v1", "--untracked-files=normal", strip=False)
     lines = status.splitlines() if status else []
     base["staged"] = sum(1 for line in lines if line and line[0] not in (" ", "?"))
     base["modified"] = sum(1 for line in lines if not line.startswith("??") and len(line) > 1 and line[1] != " ")
@@ -657,7 +662,7 @@ class Backend(QObject):
     # ── Git client (synchronous — local git is fast) ────────────────────────
     @Slot(str, result=str)
     def gitStatusList(self, path):
-        _, out, _ = git(Path(path), "status", "--porcelain=v1", "--untracked-files=all")
+        _, out, _ = git(Path(path), "status", "--porcelain=v1", "--untracked-files=all", strip=False)
         rows = []
         for line in (out.splitlines() if out else []):
             if len(line) < 4:
