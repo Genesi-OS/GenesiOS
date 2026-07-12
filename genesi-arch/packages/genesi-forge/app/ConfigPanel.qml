@@ -153,6 +153,40 @@ Item {
                     }
                 }
 
+                Item { Layout.preferredHeight: 6 }
+                GButton { theme: root.theme; kind: "filled"; text: "Create Repository"; iconSource: "icons/github.svg"; Layout.fillWidth: true
+                    enabled: root.project !== null
+                    onClicked: backend.createGitHub(root.project.path, repoField() , true) }
+            }
+
+            // Config — generic node (editable)
+            ColumnLayout {
+                id: genericCol
+                visible: root.sub === "config" && !root.isGithub
+                width: parent.width
+                spacing: 8
+
+                QQC2.Label {
+                    visible: !root.node
+                    text: "Select a node on the canvas to configure it."
+                    color: root.theme.textLo; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap
+                }
+
+                FieldLabel { text: "Node name"; visible: root.node }
+                Rectangle {
+                    visible: root.node
+                    Layout.fillWidth: true; implicitHeight: 40; radius: 9
+                    color: root.theme.cardHi; border.width: 1; border.color: root.theme.lineHi
+                    QQC2.TextField {
+                        anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 10
+                        background: null; verticalAlignment: Text.AlignVCenter
+                        text: root.node ? root.node.title : ""
+                        color: root.theme.textHi; font.pixelSize: 13
+                        selectionColor: root.theme.green; selectedTextColor: root.theme.white
+                        onEditingFinished: if (root.node) root.graphProvider.renameNode(root.node.id, text)
+                    }
+                }
+
                 FieldLabel { text: "Trigger"; visible: root.node && root.node.kind === "event" }
                 Combo {
                     visible: root.node && root.node.kind === "event"
@@ -215,40 +249,6 @@ Item {
                 FieldLabel { text: "Webhook URL"; visible: root.node && root.node.kind === "webhook" }
                 GField { visible: root.node && root.node.kind === "webhook"; text: root.configValue("url", "https://example.com/hook"); icon: "link"
                     onAccepted: root.setConfig("url", value) }
-
-                Item { Layout.preferredHeight: 6 }
-                GButton { theme: root.theme; kind: "filled"; text: "Create Repository"; iconSource: "icons/github.svg"; Layout.fillWidth: true
-                    enabled: root.project !== null
-                    onClicked: backend.createGitHub(root.project.path, repoField() , true) }
-            }
-
-            // Config — generic node (editable)
-            ColumnLayout {
-                id: genericCol
-                visible: root.sub === "config" && !root.isGithub
-                width: parent.width
-                spacing: 8
-
-                QQC2.Label {
-                    visible: !root.node
-                    text: "Select a node on the canvas to configure it."
-                    color: root.theme.textLo; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap
-                }
-
-                FieldLabel { text: "Node name"; visible: root.node }
-                Rectangle {
-                    visible: root.node
-                    Layout.fillWidth: true; implicitHeight: 40; radius: 9
-                    color: root.theme.cardHi; border.width: 1; border.color: root.theme.lineHi
-                    QQC2.TextField {
-                        anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 10
-                        background: null; verticalAlignment: Text.AlignVCenter
-                        text: root.node ? root.node.title : ""
-                        color: root.theme.textHi; font.pixelSize: 13
-                        selectionColor: root.theme.green; selectedTextColor: root.theme.white
-                        onEditingFinished: if (root.node) root.graphProvider.renameNode(root.node.id, text)
-                    }
-                }
 
                 RowLayout {
                     visible: root.node; Layout.fillWidth: true; Layout.topMargin: 4
