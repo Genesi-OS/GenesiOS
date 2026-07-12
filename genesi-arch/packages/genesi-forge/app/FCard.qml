@@ -12,9 +12,12 @@ Rectangle {
     property bool active: false
     property color accent: theme ? theme.green : "#1FBE6A"
 
-    readonly property color _base: theme ? theme.card : "#1a1d22"
-    readonly property color _line: theme ? theme.line : "#262b33"
-    readonly property color _lineHi: theme ? theme.lineHi : "#343a44"
+    readonly property color _base: theme ? theme.card : "#2d323b"
+    readonly property color _line: theme ? theme.line : "#3c434e"
+    readonly property color _lineHi: theme ? theme.lineHi : "#49515d"
+    // _white MUST be a color object — a bare "#ffffff" string has no .r/.g/.b,
+    // so feeding it to _mix() yields NaN and the card renders BLACK.
+    readonly property color _white: "#ffffff"
     function _mix(a, b, p) { return Qt.rgba(a.r + (b.r - a.r) * p, a.g + (b.g - a.g) * p, a.b + (b.b - a.b) * p, 1) }
 
     property real _hb: (interactive && hov.hovered) ? 1 : 0
@@ -22,8 +25,8 @@ Rectangle {
 
     radius: 14
     gradient: Gradient {
-        GradientStop { position: 0.0; color: card._mix(card._base, "#ffffff", 0.05 + card._hb * 0.03) }
-        GradientStop { position: 1.0; color: card._mix(card._base, "#ffffff", 0.01 + card._hb * 0.02) }
+        GradientStop { position: 0.0; color: card._mix(card._base, card._white, 0.05 + card._hb * 0.03) }
+        GradientStop { position: 1.0; color: card._mix(card._base, card._white, 0.01 + card._hb * 0.02) }
     }
     border.width: 1
     border.color: active ? accent : (hov.hovered && interactive ? _lineHi : _line)
