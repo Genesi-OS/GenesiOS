@@ -36,6 +36,14 @@ Item {
     property string pendingFrom: ""
     property real pendingX: 0
     property real pendingY: 0
+    property var undoStack: []
+    property bool restoringHistory: false
+
+    Shortcut {
+        sequence: StandardKey.Undo
+        enabled: root.canvasReady && !root.running && root.undoStack.length > 0
+        onActivated: root.undo()
+    }
 
     function selectedNode() {
         for (var i = 0; i < nodes.length; i++)
@@ -103,6 +111,27 @@ Item {
         Qt.callLater(function() { linkLayer.requestPaint(); miniMap.requestPaint() })
     }
 
+    function clearHistory() { undoStack = [] }
+
+    function recordHistory() {
+        if (restoringHistory || !canvasReady) return
+        var history = undoStack.slice()
+        history.push(graphJson())
+        if (history.length > 50) history.shift()
+        undoStack = history
+    }
+
+    function undo() {
+        if (!undoStack.length || running) return
+        var history = undoStack.slice()
+        var snapshot = history.pop()
+        undoStack = history
+        restoringHistory = true
+        applyGraph(JSON.parse(snapshot))
+        restoringHistory = false
+        toast("Last Canvas change undone.")
+    }
+
     function initializeCanvases() {
         var store = JSON.parse(backend.listCanvases(project.path))
         canvases = store.items || []
@@ -137,6 +166,7 @@ Item {
         activeCanvasName = selected ? selected.name : "Automation"
         canvasNameField.text = activeCanvasName
         applyGraph(graph)
+        clearHistory()
         canvasReady = true
     }
 
@@ -148,6 +178,7 @@ Item {
         activeCanvasName = label
         canvasNameField.text = activeCanvasName
         applyGraph(result.graph || {})
+        clearHistory()
         refreshCanvases()
         templatePopup.close()
     }
@@ -399,6 +430,7 @@ Item {
                                 boundH: root.sheetH
                                 Component.onCompleted: { x = modelData.x; y = modelData.y; root.updatePos(modelData.id, x, y, width, height) }
                                 onMoved: root.updatePos(modelData.id, x, y, width, height)
+                                onMoveBegin: root.recordHistory()
                                 onPicked: root.selectedId = modelData.id
                                 onDeleteRequested: root.deleteNode(modelData.id)
                                 onLinkBegin: function(sx, sy) { root.beginLink(modelData.id, sx, sy) }
@@ -649,6 +681,7 @@ Item {
     }
 
     function addNodeAt(nx, ny, def) {
+        recordHistory()
         var id = def.kind + "-" + Date.now()
         var n = { id: id, kind: def.kind, title: def.label, icon: def.icon, accent: def.accent,
                   accentKey: def.accentKey || "green", x: nx, y: ny,
@@ -661,7 +694,7 @@ Item {
     }
 
     function defaultConfig(kind) {
-        if (kind === "event") return { event: "push", branch: "main" }
+        if (kind === "event") return { event: "push", branch: "main", mode: "once" }
         if (kind === "bootstrap" || kind === "template") return { template: "react-vite" }
         if (kind === "script" || kind === "tests") return { command: "" }
         if (kind === "backend") return { framework: "fastapi" }
@@ -674,6 +707,7 @@ Item {
     }
 
     function deleteNode(id) {
+        recordHistory()
         var arr = _syncPositions(nodes.slice()).filter(function(n) { return n.id !== id })
         links = links.filter(function(l) { return l.from !== id && l.to !== id })
         delete livePos[id]
@@ -685,12 +719,17 @@ Item {
 
     function renameNode(id, title) {
         var arr = _syncPositions(nodes.slice())
-        for (var i = 0; i < arr.length; i++) if (arr[i].id === id) arr[i].title = title
+        for (var i = 0; i < arr.length; i++) if (arr[i].id === id) {
+            if (arr[i].title === title) return
+            recordHistory()
+            arr[i].title = title
+        }
         nodes = arr
         Qt.callLater(function() { linkLayer.requestPaint() })
     }
 
     function setNodeLines(id, lines) {
+        recordHistory()
         var arr = _syncPositions(nodes.slice())
         for (var i = 0; i < arr.length; i++) if (arr[i].id === id) arr[i].lines = lines
         nodes = arr
@@ -703,6 +742,8 @@ Item {
             var cfg = ({})
             var old = arr[i].config || ({})
             for (var k in old) cfg[k] = old[k]
+            if (old[key] === value) return
+            recordHistory()
             cfg[key] = value
             arr[i].config = cfg
         }
@@ -710,6 +751,7 @@ Item {
     }
 
     function autoArrange() {
+        recordHistory()
         var arr = nodes.slice()
         var cols = 4, gapX = 270, gapY = 230, x0 = 60, y0 = 110
         for (var i = 0; i < arr.length; i++) {
@@ -749,9 +791,36 @@ Item {
     function addLink(fromId, toId) {
         for (var i = 0; i < links.length; i++)
             if (links[i].from === fromId && links[i].to === toId) return
+        recordHistory()
         var lk = links.slice(); lk.push({ from: fromId, to: toId }); links = lk
         linkLayer.requestPaint()
         toast("Nodes connected.")
+    }
+
+    function connectionsFor(id) {
+        var result = []
+        for (var i = 0; i < links.length; i++) {
+            var link = links[i]
+            if (link.from === id)
+                result.push({ from: link.from, to: link.to, label: "To " + nodeTitle(link.to) })
+            else if (link.to === id)
+                result.push({ from: link.from, to: link.to, label: "From " + nodeTitle(link.from) })
+        }
+        return result
+    }
+
+    function removeLink(fromId, toId) {
+        for (var i = 0; i < links.length; i++) {
+            if (links[i].from === fromId && links[i].to === toId) {
+                recordHistory()
+                var next = links.slice()
+                next.splice(i, 1)
+                links = next
+                linkLayer.requestPaint()
+                toast("Connection removed.")
+                return
+            }
+        }
     }
 
     // ── Local run wiring ────────────────────────────────────────────────────
@@ -790,6 +859,8 @@ Item {
                 root.runState = m
                 if (s.state === "running")
                     runLog.append({ line: "▶ " + root.nodeTitle(s.id), level: "step" })
+                else if (s.state === "waiting")
+                    runLog.append({ line: "Waiting: " + root.nodeTitle(s.id), level: "step" })
             } catch (e) {}
         }
         function onWorkflowLog(raw) {

@@ -14,10 +14,11 @@ Item {
     property var theme
     property var node
     property bool selected: false
-    property string runState: ""   // "", "running", "done", "failed"
+    property string runState: ""   // "", "waiting", "running", "done", "failed"
     property real boundW: 4000
     property real boundH: 4000
     signal moved()
+    signal moveBegin()
     signal picked()
     signal deleteRequested()
     signal linkBegin(real sx, real sy)
@@ -30,10 +31,12 @@ Item {
 
     readonly property color accent: node.accent
 
-    readonly property string pillText: runState === "running" ? "Running…"
+    readonly property string pillText: runState === "waiting" ? "Waiting for event"
+        : runState === "running" ? "Running…"
         : runState === "done" ? "Done" : runState === "failed" ? "Failed"
         : (node.status !== undefined ? node.status : "")
-    readonly property color pillColor: runState === "running" ? theme.blue
+    readonly property color pillColor: runState === "waiting" ? theme.turbo
+        : runState === "running" ? theme.blue
         : runState === "done" ? theme.greenBright : runState === "failed" ? theme.red
         : (node.statusKind === "success" ? theme.greenBright
            : node.statusKind === "auto" ? theme.blue : theme.green)
@@ -100,7 +103,8 @@ Item {
                 id: statusRow
                 anchors.centerIn: parent; spacing: 5
                 FIcon {
-                    name: root.runState === "running" ? "refresh-cw"
+                    name: root.runState === "waiting" ? "clock"
+                        : root.runState === "running" ? "refresh-cw"
                         : root.runState === "failed" ? "x" : "check"
                     size: 11; color: root.pillColor
                     RotationAnimation on rotation { running: root.runState === "running"; loops: Animation.Infinite; from: 0; to: 360; duration: 900 }
@@ -121,7 +125,7 @@ Item {
         drag.maximumY: root.boundH - root.height
         preventStealing: true
         cursorShape: Qt.OpenHandCursor
-        onPressed: root.picked()
+        onPressed: { root.picked(); root.moveBegin() }
         onPositionChanged: root.moved()
         onReleased: root.moved()
     }

@@ -192,11 +192,25 @@ Item {
                     visible: root.node && root.node.kind === "event"
                     model: [ "push", "pull_request", "branch_created", "schedule" ]
                     currentIndex: root.optionIndex(model, root.configValue("event", "push"))
-                    onActivated: root.setConfig("event", currentText)
+                    onActivated: {
+                        root.setConfig("event", currentText)
+                        if (currentText === "branch_created" && root.configValue("branch", "main") === "main")
+                            root.setConfig("branch", "*")
+                    }
                 }
-                FieldLabel { text: "Branch filter"; visible: root.node && root.node.kind === "event" }
-                GField { visible: root.node && root.node.kind === "event"; text: root.configValue("branch", "main"); icon: "git-branch"
+                FieldLabel { text: "Branch / pattern"; visible: root.node && root.node.kind === "event" && root.configValue("event", "push") !== "schedule" }
+                GField { visible: root.node && root.node.kind === "event" && root.configValue("event", "push") !== "schedule"; text: root.configValue("branch", "main"); icon: "git-branch"
                     onAccepted: root.setConfig("branch", value) }
+                FieldLabel { text: "Interval (minutes)"; visible: root.node && root.node.kind === "event" && root.configValue("event", "push") === "schedule" }
+                GField { visible: root.node && root.node.kind === "event" && root.configValue("event", "push") === "schedule"
+                    text: root.configValue("interval", "60"); icon: "clock"; onAccepted: root.setConfig("interval", value) }
+                FieldLabel { text: "After the event"; visible: root.node && root.node.kind === "event" }
+                Combo {
+                    visible: root.node && root.node.kind === "event"
+                    model: [ "Run once", "Keep listening" ]
+                    currentIndex: root.configValue("mode", "once") === "always" ? 1 : 0
+                    onActivated: root.setConfig("mode", currentIndex === 1 ? "always" : "once")
+                }
 
                 FieldLabel { text: "Project template"; visible: root.node && (root.node.kind === "bootstrap" || root.node.kind === "template") }
                 Combo {
@@ -278,6 +292,32 @@ Item {
                                 name: "x"; size: 13; color: root.theme.textLo
                                 MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor
                                     onClicked: { var l = root.node.lines.slice(); l.splice(index, 1); root.graphProvider.setNodeLines(root.node.id, l) } }
+                            }
+                        }
+                    }
+                }
+
+                RowLayout {
+                    visible: root.node && root.graphProvider && root.graphProvider.connectionsFor(root.node.id).length > 0
+                    Layout.fillWidth: true; Layout.topMargin: 6
+                    FieldLabel { text: "Connections" }
+                    Item { Layout.fillWidth: true }
+                }
+                Repeater {
+                    model: root.node && root.graphProvider ? root.graphProvider.connectionsFor(root.node.id) : []
+                    delegate: Rectangle {
+                        Layout.fillWidth: true; implicitHeight: 36; radius: 9
+                        color: root.theme.cardHi; border.width: 1; border.color: root.theme.line
+                        RowLayout {
+                            anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 8; spacing: 7
+                            FIcon { name: "link"; size: 12; color: root.theme.greenBright }
+                            QQC2.Label { text: modelData.label; color: root.theme.textMid; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                            Rectangle {
+                                width: 24; height: 24; radius: 6
+                                color: unlinkMa.containsMouse ? root.theme.a(root.theme.red, 0.16) : "transparent"
+                                FIcon { anchors.centerIn: parent; name: "x"; size: 12; color: unlinkMa.containsMouse ? root.theme.red : root.theme.textLo }
+                                MouseArea { id: unlinkMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.graphProvider.removeLink(modelData.from, modelData.to) }
                             }
                         }
                     }
