@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi AI Quick Chat
+Comment=Keep the Genesi AI Quick Chat ready in the background
+Exec=genesi-ai-quick --background
+Icon=genesi-ai-monitor
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel

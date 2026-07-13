@@ -15,6 +15,9 @@ the workload stops (and there's no manual override) every tweak is restored.
 - `plasmoid-aimode/` — Plasma 6 widget: live dashboard + on/auto/off
 - `monitor/` — **AI Mode Monitor**, a standalone Qt6/Kirigami dashboard app
   (`genesi-ai-monitor`, needs `pyside6`)
+- `genesi-ai-quick` — approval-only Quick Chat, available anywhere with
+  `Ctrl+Alt+Space`. A per-user background process keeps opening instant and
+  registers the shortcut natively in every desktop shipped by Genesi OS.
 - `genesi-ai-kwin-helper` — user-session helper that trims KWin desktop effects
   (blur/contrast) while AI Mode is on (KDE autostart, needs `qdbus`)
 - `genesi-ai-turbo` — **speculative decoding** (opt-in): a small same-family draft
@@ -79,6 +82,8 @@ genesi-ai-mode off      # force OFF (even while AI runs)
 genesi-ai-mode auto     # follow automatic detection (default)
 genesi-ai-mode toggle   # flip forced-ON / automatic
 genesi-ai-mode status   # print daemon state (JSON)
+genesi-ai-quick --show  # open the approval-only Quick Chat
+genesi-ai-quick-shortcuts # repair the shortcut for the active desktop session
 ```
 
 The override is a file in the daemon's world-writable runtime dir, so no sudo is

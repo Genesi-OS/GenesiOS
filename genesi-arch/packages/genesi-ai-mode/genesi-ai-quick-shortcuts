@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec python3 /usr/share/genesi-ai-mode/genesi_ai_quick_shortcuts.py "$@"

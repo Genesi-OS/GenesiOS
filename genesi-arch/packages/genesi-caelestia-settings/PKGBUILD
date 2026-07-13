@@ -103,7 +103,9 @@ pkgver=1.0.0
 # cli.json without clobbering their other keys.
 # pkgrel 14: start Genesi PortScope's SNI tray under Hyprland/Caelestia and
 # migrate existing users (Hyprland does not process XDG autostart).
-pkgrel=14
+# pkgrel 15: start the Genesi AI Quick Chat background service so its native
+# Ctrl+Alt+Space registration is available in Hyprland too.
+pkgrel=15
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

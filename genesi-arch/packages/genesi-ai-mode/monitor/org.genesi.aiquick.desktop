@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi AI Quick Chat
+Comment=Ask Genesi AI to help anywhere, with approval before every action
+Exec=genesi-ai-quick --show
+Icon=genesi-ai-monitor
+Terminal=false
+NoDisplay=true
+Categories=Utility;System;Qt;
+StartupNotify=false
+StartupWMClass=org.genesi.aiquick
+X-KDE-GlobalAccel-CommandShortcut=true
+X-KDE-Shortcuts=Ctrl+Alt+Space

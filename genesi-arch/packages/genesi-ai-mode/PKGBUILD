@@ -486,7 +486,11 @@ pkgver=1.0.0
 # from conversation context, and replace empty ellipsis bubbles with Thinking.
 # pkgrel 116: bound list_processes output and stop repeated identical tool calls
 # so small local models cannot leave the UI Thinking forever.
-pkgrel=116
+# pkgrel 117: approval-only Quick Chat. Ctrl+Alt+Space opens a persistent,
+# top-centred agent surface outside the Monitor. Native shortcut registration
+# covers every installable Genesi session (Plasma, Hyprland, GNOME, Xfce,
+# Cinnamon, Budgie, COSMIC, Niri and LXDE), with XDG + systemd user autostart.
+pkgrel=117
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -596,6 +600,8 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_ai_monitor.py"
     install -Dm644 "${startdir}/monitor/genesi_agent.py" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_agent.py"
+    install -Dm644 "${startdir}/monitor/genesi_ai_quick.py" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_ai_quick.py"
     install -Dm644 "${startdir}/monitor/Main.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/Main.qml"
     install -Dm644 "${startdir}/monitor/ChatPage.qml" \
@@ -615,6 +621,8 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/GaugeArc.qml"
     install -Dm644 "${startdir}/monitor/ChatBubble.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatBubble.qml"
+    install -Dm644 "${startdir}/monitor/QuickChat.qml" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/QuickChat.qml"
     # Crafted Genesi SVG icon set (chat avatars, mode badges, gauges, logo)
     for ic in "${startdir}/monitor/icons/"*.svg; do
         install -Dm644 "$ic" \
@@ -622,11 +630,30 @@ package() {
     done
     install -Dm755 "${startdir}/monitor/genesi-ai-monitor" \
         "$pkgdir/usr/local/bin/genesi-ai-monitor"
+    install -Dm755 "${startdir}/monitor/genesi-ai-quick" \
+        "$pkgdir/usr/local/bin/genesi-ai-quick"
     install -Dm644 "${startdir}/monitor/org.genesi.aimonitor.desktop" \
         "$pkgdir/usr/share/applications/org.genesi.aimonitor.desktop"
+    install -Dm644 "${startdir}/monitor/org.genesi.aiquick.desktop" \
+        "$pkgdir/usr/share/applications/org.genesi.aiquick.desktop"
     # Branded app icon (the Genesi leaf + monitoring pulse)
     install -Dm644 "${startdir}/monitor/icons/logo.svg" \
         "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-ai-monitor.svg"
+
+    # Cross-desktop Quick Chat startup + native shortcut registration. The
+    # service covers systemd-aware Wayland compositors; XDG autostart covers
+    # classic desktops. A per-user Unix socket makes duplicate starts harmless.
+    install -Dm644 "${startdir}/genesi-ai-quick.desktop" \
+        "$pkgdir/etc/xdg/autostart/genesi-ai-quick.desktop"
+    install -Dm644 "${startdir}/genesi-ai-quick.service" \
+        "$pkgdir/usr/lib/systemd/user/genesi-ai-quick.service"
+    install -dm755 "$pkgdir/usr/lib/systemd/user/graphical-session.target.wants"
+    ln -s ../genesi-ai-quick.service \
+        "$pkgdir/usr/lib/systemd/user/graphical-session.target.wants/genesi-ai-quick.service"
+    install -Dm644 "${startdir}/genesi_ai_quick_shortcuts.py" \
+        "$pkgdir/usr/share/genesi-ai-mode/genesi_ai_quick_shortcuts.py"
+    install -Dm755 "${startdir}/genesi-ai-quick-shortcuts" \
+        "$pkgdir/usr/local/bin/genesi-ai-quick-shortcuts"
 
     # KWin desktop-effect trimmer (user session) + KDE autostart entry
     install -Dm755 "${startdir}/genesi-ai-kwin-helper" \
