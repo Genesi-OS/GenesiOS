@@ -34,6 +34,7 @@ genesi-darkly
 genesi-calamares-branding
 genesi-welcome
 genesi-ai-mode
+genesi-plymouth
 # MemPalace integration (scripts + per-user indexer/bridge services only — the
 # mempalace CLI is provisioned per-user at runtime, so this adds negligible
 # squashfs weight, unlike genesi-llama-cpp below). Lets the live ISO demo the
@@ -57,6 +58,7 @@ ckbcomp
 clonezilla
 cloud-init
 cryptsetup
+plymouth
 darkhttpd
 ddrescue
 dhcpcd

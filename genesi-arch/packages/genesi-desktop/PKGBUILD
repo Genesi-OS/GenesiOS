@@ -29,7 +29,8 @@ pkgver=1.0.0
 # Gaming remains optional because its launcher/runtime stack is intentionally
 # large; users install genesi-gaming from Welcome or Package Installer.
 # pkgrel 7: add Genesi Forge, the local Git/GitHub and delivery dashboard.
-pkgrel=7
+# pkgrel 8: ship the branded Plymouth theme to fresh and existing systems.
+pkgrel=8
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -58,6 +59,7 @@ depends=(
     # genesi-klassy (KWin decoration) + genesi-darkly (widget style) are
     # KDE-only too — installed by the KDE-Desktop netinstall group, not here.
     'genesi-grub-theme'
+    'genesi-plymouth'
     'genesi-fastfetch'
     # Phase 4.3-4.6 developer tools (this OS targets programmers).
     'genesi-containers'    # Plasma widget for Docker/Podman

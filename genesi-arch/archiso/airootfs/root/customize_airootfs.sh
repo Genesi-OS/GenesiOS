@@ -373,17 +373,6 @@ else
     echo "⚠️  customize_airootfs_genesi.sh not found"
 fi
 
-# ============================================================
-# 1. Generate Plymouth progress bar images (if convert is available)
-# ============================================================
-if command -v convert &>/dev/null; then
-    echo ">>> Generating Plymouth progress bar images..."
-    convert -size 300x6 xc:'#0A1E1A' -fill '#0F6E56' -draw 'roundrectangle 0,0 299,5 3,3' \
-        /usr/share/plymouth/themes/genesi/progress-bg.png 2>/dev/null || true
-    convert -size 296x4 xc:'#1D9E75' -fill '#1D9E75' -draw 'roundrectangle 0,0 295,3 2,2' \
-        /usr/share/plymouth/themes/genesi/progress-bar.png 2>/dev/null || true
-fi
-
 # Set Plymouth theme if plymouth is installed
 if command -v plymouth-set-default-theme &>/dev/null; then
     echo ">>> Setting Plymouth theme to genesi..."

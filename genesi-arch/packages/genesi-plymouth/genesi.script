@@ -1,5 +1,5 @@
-// This fallback copy mirrors the genesi-plymouth package. The package provides
-// the raster assets; keeping the script in airootfs also protects custom builds.
+// Genesi OS Plymouth theme. Asset sizes are fixed so it stays crisp and
+// centered at common VM, laptop and HiDPI boot resolutions.
 Window.SetBackgroundTopColor(0.018, 0.047, 0.043);
 Window.SetBackgroundBottomColor(0.008, 0.020, 0.019);
 
@@ -10,6 +10,7 @@ ring.image = Image("ring.png");
 ring.sprite = Sprite(ring.image);
 ring.sprite.SetPosition(center_x - ring.image.GetWidth() / 2,
                         center_y - ring.image.GetHeight() / 2 - 54, 4);
+
 logo.image = Image("mark.png");
 logo.sprite = Sprite(logo.image);
 logo.sprite.SetPosition(center_x - logo.image.GetWidth() / 2,
@@ -18,6 +19,7 @@ logo.sprite.SetPosition(center_x - logo.image.GetWidth() / 2,
 title.image = Image.Text("Genesi OS", 0.91, 0.97, 0.95, 1, "Sans Bold 28");
 title.sprite = Sprite(title.image);
 title.sprite.SetPosition(center_x - title.image.GetWidth() / 2, center_y + 74, 8);
+
 status.image = Image.Text("Starting your workspace", 0.47, 0.61, 0.57, 1, "Sans 11");
 status.sprite = Sprite(status.image);
 status.sprite.SetPosition(center_x - status.image.GetWidth() / 2, center_y + 116, 8);
@@ -27,12 +29,15 @@ track.sprite = Sprite(track.image);
 track.x = center_x - track.image.GetWidth() / 2;
 track.y = center_y + 151;
 track.sprite.SetPosition(track.x, track.y, 6);
+
 fill.original = Image("progress-fill.png");
 fill.sprite = Sprite();
 fill.sprite.SetPosition(track.x, track.y, 7);
 
 dot.image = Image("dot.png");
-dot1.sprite = Sprite(dot.image); dot2.sprite = Sprite(dot.image); dot3.sprite = Sprite(dot.image);
+dot1.sprite = Sprite(dot.image);
+dot2.sprite = Sprite(dot.image);
+dot3.sprite = Sprite(dot.image);
 dot1.sprite.SetPosition(center_x - 25, center_y + 177, 8);
 dot2.sprite.SetPosition(center_x - 5, center_y + 177, 8);
 dot3.sprite.SetPosition(center_x + 15, center_y + 177, 8);
@@ -58,8 +63,8 @@ fun refresh_callback() {
 Plymouth.SetRefreshFunction(refresh_callback);
 
 prompt.sprite = Sprite();
-fun show_prompt(text, entry) {
-    prompt.image = Image.Text(text + "  " + entry, 0.91, 0.97, 0.95, 1, "Sans 13");
+fun show_prompt(text, bullets) {
+    prompt.image = Image.Text(text + "  " + bullets, 0.91, 0.97, 0.95, 1, "Sans 13");
     prompt.sprite.SetImage(prompt.image);
     prompt.sprite.SetPosition(center_x - prompt.image.GetWidth() / 2, center_y + 118, 20);
 }

@@ -1,0 +1,26 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+pkgname=genesi-plymouth
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Genesi OS animated Plymouth boot splash'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL-3.0-or-later')
+depends=('plymouth' 'mkinitcpio')
+makedepends=('librsvg')
+install='genesi-plymouth.install'
+source=('genesi.plymouth' 'genesi.script' 'logo.svg' 'ring.svg' 'dot.svg'
+        'progress-track.svg' 'progress-fill.svg')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+    local theme="$pkgdir/usr/share/plymouth/themes/genesi"
+    install -Dm644 genesi.plymouth "$theme/genesi.plymouth"
+    install -Dm644 genesi.script "$theme/genesi.script"
+
+    rsvg-convert -w 176 -h 176 -o "$theme/mark.png" logo.svg
+    rsvg-convert -w 212 -h 212 -o "$theme/ring.png" ring.svg
+    rsvg-convert -w 10 -h 10 -o "$theme/dot.png" dot.svg
+    rsvg-convert -w 320 -h 4 -o "$theme/progress-track.png" progress-track.svg
+    rsvg-convert -w 320 -h 4 -o "$theme/progress-fill.png" progress-fill.svg
+}

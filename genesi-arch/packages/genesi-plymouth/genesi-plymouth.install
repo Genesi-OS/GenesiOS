@@ -1,0 +1,43 @@
+_genesi_plymouth_apply() {
+    local config
+
+    if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+        plymouth-set-default-theme genesi >/dev/null 2>&1 || true
+    fi
+
+    # Plymouth must be present in the initramfs before userspace starts. Keep
+    # the existing hook order and place it immediately after systemd or udev.
+    for config in /etc/mkinitcpio.conf /etc/mkinitcpio.conf.d/*.conf; do
+        [ -f "$config" ] || continue
+        grep -Eq '^[[:space:]]*HOOKS=' "$config" || continue
+        grep -Eq '^[[:space:]]*HOOKS=.*(^|[[:space:](])plymouth([[:space:])]|$)' "$config" && continue
+        if grep -Eq '^[[:space:]]*HOOKS=.*systemd' "$config"; then
+            sed -Ei '/^[[:space:]]*HOOKS=/ s/(^|[[:space:](])systemd([[:space:])])/'"\1"'systemd plymouth'"\2"'/' "$config"
+        elif grep -Eq '^[[:space:]]*HOOKS=.*udev' "$config"; then
+            sed -Ei '/^[[:space:]]*HOOKS=/ s/(^|[[:space:](])udev([[:space:])])/'"\1"'udev plymouth'"\2"'/' "$config"
+        fi
+    done
+
+    # Ask the bootloader for the graphical splash on installed systems too.
+    if [ -f /etc/default/grub ]; then
+        if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub; then
+            local option
+            for option in quiet splash; do
+                grep -Eq "^GRUB_CMDLINE_LINUX_DEFAULT=.*(^|[[:space:]\"])${option}([[:space:]\"]|$)" /etc/default/grub || \
+                    sed -Ei "s/^(GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*)\"/\1 ${option}\"/" /etc/default/grub
+            done
+        else
+            printf '%s\n' 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"' >> /etc/default/grub
+        fi
+        if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
+            grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+        fi
+    fi
+
+    if command -v mkinitcpio >/dev/null 2>&1 && compgen -G '/boot/vmlinuz-*' >/dev/null; then
+        mkinitcpio -P >/dev/null 2>&1 || true
+    fi
+}
+
+post_install() { _genesi_plymouth_apply; }
+post_upgrade() { _genesi_plymouth_apply; }
