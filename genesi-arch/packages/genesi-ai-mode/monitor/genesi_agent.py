@@ -19,6 +19,80 @@ from pathlib import Path
 MAX_OUTPUT = 16_000
 MAX_FILE_READ = 96_000
 
+
+APPLICATION_ALIASES = (
+    (("firefox", "navegador", "browser"), "firefox", "Firefox"),
+    (("genesi ai mode monitor", "genesi ai monitor", "monitor do modo ia", "monitor da ia"),
+     "genesi-ai-monitor", "Genesi AI Mode Monitor"),
+    (("genesi quick chat", "quick chat"), "genesi-ai-quick --show", "Genesi AI Quick Chat"),
+    (("genesi code",), "genesi-code", "Genesi Code"),
+    (("genesi forge", "forge"), "genesi-forge", "Genesi Forge"),
+    (("genesi sandboxes", "sandboxes", "sandbox"), "genesi-sandboxes-gui", "Genesi Sandboxes"),
+    (("genesi snapshots", "snapshots", "snapshot"), "genesi-snapshots-gui", "Genesi Snapshots"),
+    (("genesi api inspector", "api inspector", "netinspect"),
+     "genesi-netinspect-gui", "Genesi API Inspector"),
+    (("genesi portscope", "portscope", "dashboard de portas", "portas e processos"),
+     "genesi-ports-gui", "Genesi PortScope"),
+    (("genesi db explorer", "db explorer"), "genesi-db", "Genesi DB Explorer"),
+    (("genesi welcome", "welcome"), "genesi-welcome", "Genesi Welcome"),
+    (("terminal", "konsole"), "konsole", "Terminal"),
+    (("arquivos", "dolphin", "file manager"), "dolphin", "Files"),
+    (("configuracoes", "system settings"), "systemsettings", "System Settings"),
+    (("calculadora", "calculator", "kcalc"), "kcalc", "Calculator"),
+)
+
+
+def _normalized(value: str) -> str:
+    return unicodedata.normalize("NFKD", str(value or "").lower()).encode("ascii", "ignore").decode()
+
+
+def _desktop_application(query: str):
+    """Resolve an installed desktop entry by its human-facing name or id."""
+    wanted = _normalized(query).strip()
+    if not wanted:
+        return None
+    roots = [Path.home() / ".local/share/applications", Path("/usr/local/share/applications"),
+             Path("/usr/share/applications")]
+    matches = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in root.glob("*.desktop"):
+            try:
+                values = {}
+                in_entry = False
+                for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                    if raw.startswith("["):
+                        in_entry = raw.strip() == "[Desktop Entry]"
+                        continue
+                    if in_entry and "=" in raw:
+                        key, value = raw.split("=", 1)
+                        if key in {"Name", "Exec", "Type", "NoDisplay", "Hidden"}:
+                            values[key] = value.strip()
+                if (values.get("Type", "Application") != "Application"
+                        or values.get("Hidden", "false").lower() == "true"):
+                    continue
+                name = values.get("Name", path.stem)
+                command = re.sub(r"\s+%[fFuUdDnNickvm]", "", values.get("Exec", "")).strip()
+                if not command:
+                    continue
+                fields = {_normalized(name), _normalized(path.stem)}
+                try:
+                    fields.add(_normalized(Path(shlex.split(command)[0]).name))
+                except ValueError:
+                    continue
+                score = 3 if wanted in fields else 2 if any(wanted == f.replace("-", " ") for f in fields) else 0
+                if not score and len(wanted) >= 4 and any(wanted in field or field in wanted for field in fields):
+                    score = 1
+                if score:
+                    matches.append((score, name, command))
+            except OSError:
+                continue
+    if not matches:
+        return None
+    _score, name, command = max(matches, key=lambda item: (item[0], -len(item[1])))
+    return command, name
+
 TOOLS = [
     {
         "name": "system_info",
@@ -183,26 +257,17 @@ def direct_app_action(messages):
     """Resolve unambiguous app-launch requests without trusting model JSON."""
     user_messages = [str(m.get("content") or "") for m in messages if m.get("role") == "user"]
     latest = user_messages[-1] if user_messages else ""
-    normalized_latest = unicodedata.normalize("NFKD", latest.lower()).encode("ascii", "ignore").decode()
+    normalized_latest = _normalized(latest)
     repeat_words = ("mesma coisa", "de novo", "novamente", "repete", "repita", "again", "same thing")
     context = latest
     if len(user_messages) > 1 and any(word in normalized_latest for word in repeat_words):
         context = user_messages[-2] + " " + latest
-    normalized = unicodedata.normalize("NFKD", context.lower()).encode("ascii", "ignore").decode()
+    normalized = _normalized(context)
     launch_words = ("abre", "abra", "abrir", "inicia", "inicie", "executa", "execute",
                     "open", "launch", "start", "roda", "rode")
     if not any(re.search(rf"\b{word}\b", normalized) for word in launch_words):
         return None
-    applications = (
-        (("firefox", "navegador"), "firefox", "Firefox"),
-        (("genesi code",), "genesi-code", "Genesi Code"),
-        (("genesi forge", "forge"), "genesi-forge", "Genesi Forge"),
-        (("terminal", "konsole"), "konsole", "Terminal"),
-        (("arquivos", "dolphin", "file manager"), "dolphin", "Files"),
-        (("configuracoes", "system settings"), "systemsettings", "System Settings"),
-        (("calculadora", "calculator", "kcalc"), "kcalc", "Calculator"),
-    )
-    for aliases, command, label in applications:
+    for aliases, command, label in APPLICATION_ALIASES:
         if any(alias in normalized for alias in aliases):
             target = ""
             url_match = re.search(r"https?://[^\s]+", latest, re.I)
@@ -229,6 +294,18 @@ def direct_app_action(messages):
                 "reason": f"Open {label}" + (f" at {target}" if target else ""),
                 "completion": f"Opened {target} in {label}." if target else f"Opened {label}.",
             }
+    # Finally resolve names exposed by installed .desktop files. This lets the
+    # assistant open niche applications without teaching the model executable
+    # names, while retaining the deterministic aliases above for Genesi apps.
+    requested = re.sub(r"^(?:por favor\s+)?(?:abre|abra|abrir|inicia|inicie|executa|execute|open|launch|start|roda|rode)\s+", "", normalized).strip()
+    requested = re.split(r"\s+(?:pra|para|for|at|no|na|em)\s+", requested, maxsplit=1)[0].strip(" .,!?")
+    desktop = _desktop_application(requested)
+    if desktop:
+        command, label = desktop
+        return {
+            "tool": "launch_app", "arguments": {"command": command},
+            "reason": f"Open {label}", "completion": f"Opened {label}.",
+        }
     return None
 
 
@@ -265,7 +342,13 @@ def action_presentation(action: dict) -> dict:
             "firefox": "Firefox", "genesi-code": "Genesi Code",
             "genesi-forge": "Genesi Forge", "konsole": "Terminal",
             "dolphin": "Files", "systemsettings": "System Settings",
-            "kcalc": "Calculator",
+            "kcalc": "Calculator", "genesi-ai-monitor": "Genesi AI Mode Monitor",
+            "genesi-ai-quick": "Genesi AI Quick Chat",
+            "genesi-sandboxes-gui": "Genesi Sandboxes",
+            "genesi-snapshots-gui": "Genesi Snapshots",
+            "genesi-netinspect-gui": "Genesi API Inspector",
+            "genesi-ports-gui": "Genesi PortScope", "genesi-db": "Genesi DB Explorer",
+            "genesi-welcome": "Genesi Welcome",
         }
         app_label = labels.get(app, app)
         target = next((part for part in parts[1:] if re.match(r"^https?://", part, re.I)), "")
@@ -525,6 +608,12 @@ class LocalToolExecutor:
         if not parts:
             raise ToolError("An application command is required.")
         executable = shutil.which(parts[0])
+        if not executable:
+            desktop = _desktop_application(command)
+            if desktop:
+                command, _label = desktop
+                parts = shlex.split(command)
+                executable = shutil.which(parts[0])
         if not executable:
             raise ToolError(f"Application not found: {parts[0]}")
         proc = subprocess.Popen(

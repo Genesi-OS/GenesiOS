@@ -86,6 +86,8 @@ class Backend(QObject):
         self._agent_mode = self._load_agent_mode()
         self._agent_pending = {}
         self._agent_lock = threading.Lock()
+        self._agent_job_lock = threading.Lock()
+        self._agent_running = False
         self._tool_executor = LocalToolExecutor()
 
     @Slot(result=str)
@@ -328,16 +330,28 @@ class Backend(QObject):
         if mode not in ("approval", "automatic"):
             self.sendPrompt(model, messages_json)
             return
+        with self._agent_job_lock:
+            if self._agent_running:
+                self._agent_status("busy", message="Genesi is already working on a request.")
+                return
+            self._agent_running = True
         self._stop = False
         try:
             messages = json.loads(messages_json)
         except Exception:
             messages = []
         threading.Thread(
-            target=self._agent_work,
+            target=self._run_agent_job,
             args=(model, messages, mode),
             daemon=True,
         ).start()
+
+    def _run_agent_job(self, model, messages, mode):
+        try:
+            self._agent_work(model, messages, mode)
+        finally:
+            with self._agent_job_lock:
+                self._agent_running = False
 
     def _agent_status(self, state, **extra):
         self.agentActivity.emit(json.dumps({"state": state, **extra}, ensure_ascii=False))
@@ -357,7 +371,7 @@ class Backend(QObject):
             pass
 
     def _wait_for_approval(self, action):
-        request_id = str(uuid.uuid4())
+        request_id = action.get("_activity_id") or str(uuid.uuid4())
         pending = {"event": threading.Event(), "approved": False}
         with self._agent_lock:
             self._agent_pending[request_id] = pending
@@ -472,15 +486,24 @@ class Backend(QObject):
                     self._agent_status("repeat-blocked", tool=action["tool"])
                     return
 
+                action_id = str(uuid.uuid4())
+                action["_activity_id"] = action_id
+                presentation = action_presentation(action)
                 if mode == "approval" and not self._wait_for_approval(action):
                     result = {"ok": False, "tool": action["tool"], "error": "The user denied this action."}
-                    self._agent_status("denied", tool=action["tool"])
+                    self._agent_status("denied", id=action_id, tool=action["tool"],
+                                       title=presentation["title"], icon=presentation["icon"])
                 else:
-                    self._agent_status("running", tool=action["tool"], reason=action["reason"])
+                    self._agent_status("running", id=action_id, tool=action["tool"],
+                                       reason=action["reason"], title=presentation["title"],
+                                       description=presentation["description"], icon=presentation["icon"])
                     result = self._tool_executor.execute(action["tool"], action["arguments"])
                     self._agent_status(
                         "action-complete" if result.get("ok") else "action-error",
-                        tool=action["tool"],
+                        id=action_id, tool=action["tool"], title=presentation["title"],
+                        icon=presentation["icon"],
+                        message=("Completed successfully" if result.get("ok")
+                                 else str(result.get("error") or "Action failed")),
                     )
                 action_cache[fingerprint] = result
 
@@ -505,6 +528,7 @@ class Backend(QObject):
                     "role": "user",
                     "content": "GENESI_TOOL_RESULT\n" + json.dumps(result, ensure_ascii=False),
                 })
+                self._agent_status("thinking", message="Reviewing the action result")
 
             self.chatToken.emit("I stopped after 8 actions to keep this task bounded. Review the results before continuing.")
             self.chatDone.emit("")

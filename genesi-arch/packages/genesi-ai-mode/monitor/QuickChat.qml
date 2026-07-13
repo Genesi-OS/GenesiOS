@@ -22,6 +22,8 @@ QQC2.ApplicationWindow {
     property bool technicalOpen: false
     property var pendingApproval: null
     property var conversation: []
+    property var actionTimeline: []
+    property string activityText: "Thinking"
     property var availableModels: []
     property string modelName: backend.quickModel()
     property bool aiActive: false
@@ -93,6 +95,48 @@ QQC2.ApplicationWindow {
         var next = conversation.slice(0)
         next.push({"role": role, "content": content})
         conversation = next
+        scrollToBottom()
+    }
+    function scrollToBottom() {
+        Qt.callLater(function() {
+            if (chatScroll.visible && chatScroll.contentItem)
+                chatScroll.contentItem.contentY = Math.max(0, chatScroll.contentItem.contentHeight - chatScroll.availableHeight)
+        })
+    }
+    function rememberAction(activity) {
+        if (!activity || (!activity.id && !activity.tool)) return
+        var id = activity.id || activity.tool
+        var next = actionTimeline.slice(0)
+        var index = -1
+        for (var i = 0; i < next.length; ++i) {
+            if (next[i].id === id) { index = i; break }
+        }
+        var previous = index >= 0 ? next[index] : {}
+        var item = {
+            "id": id,
+            "tool": activity.tool || previous.tool || "action",
+            "title": activity.title || previous.title || "System action",
+            "icon": activity.icon || previous.icon || "system-run",
+            "state": activity.state || previous.state || "waiting-approval",
+            "message": activity.message || activity.reason || previous.message || ""
+        }
+        if (index >= 0) next[index] = item
+        else next.push(item)
+        actionTimeline = next
+        scrollToBottom()
+    }
+    function consumeActivity(activity) {
+        var state = activity.state || "thinking"
+        if (["waiting-approval", "running", "action-complete", "action-error", "denied"].indexOf(state) >= 0)
+            rememberAction(activity)
+        if (state === "running") activityText = activity.reason || "Running an action"
+        else if (state === "repairing-action") activityText = "Preparing the action"
+        else if (state === "action-complete") activityText = "Reviewing the result"
+        else if (state === "action-error") activityText = "Checking what went wrong"
+        else if (state === "waiting-approval") activityText = "Waiting for your approval"
+        else if (state === "thinking") activityText = activity.message || "Thinking"
+        var terminal = ["complete", "error", "stopped", "limit-reached", "repeat-blocked"].indexOf(state) >= 0
+        thinking = !terminal
     }
     function sendPrompt() {
         var text = prompt.text.trim()
@@ -104,11 +148,16 @@ QQC2.ApplicationWindow {
         addMessage("user", text)
         prompt.text = ""
         settingsOpen = false
+        activityText = "Thinking"
         thinking = true
         backend.sendAgentPrompt(modelName, JSON.stringify(conversation), "approval")
     }
     function resolveApproval(approved) {
         if (!pendingApproval) return
+        rememberAction({"id": pendingApproval.id, "tool": pendingApproval.tool,
+                        "title": pendingApproval.title, "icon": pendingApproval.icon,
+                        "state": approved ? "approved" : "denied",
+                        "message": approved ? "Approved" : "Denied"})
         backend.resolveApproval(pendingApproval.id || "", approved)
         pendingApproval = null
         technicalOpen = false
@@ -227,6 +276,33 @@ QQC2.ApplicationWindow {
                 Layout.fillWidth: true
                 implicitHeight: 1
                 color: theme.line
+            }
+
+            Rectangle {
+                visible: root.thinking && root.pendingApproval === null && !root.settingsOpen
+                Layout.fillWidth: true
+                implicitHeight: 38
+                radius: 7
+                color: theme.a(theme.green, 0.08)
+                border.width: 1
+                border.color: theme.a(theme.green, 0.25)
+                RowLayout {
+                    anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
+                    QQC2.BusyIndicator {
+                        running: parent.parent.visible
+                        Layout.preferredWidth: 22; Layout.preferredHeight: 22
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        text: root.activityText
+                        color: root.textMid; font.bold: true
+                        elide: Text.ElideRight
+                    }
+                    QQC2.Label {
+                        text: "WORKING"
+                        color: theme.greenBright; font.bold: true; font.pixelSize: 9
+                    }
+                }
             }
 
             ColumnLayout {
@@ -408,11 +484,54 @@ QQC2.ApplicationWindow {
                             Item { Layout.fillWidth: modelData.role !== "user" }
                         }
                     }
-                    RowLayout {
-                        visible: root.thinking
-                        spacing: 8
-                        QQC2.BusyIndicator { running: visible; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
-                        QQC2.Label { text: "Thinking"; color: root.textMid; font.bold: true }
+                    Repeater {
+                        model: root.actionTimeline
+                        delegate: Rectangle {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: messages.width
+                            implicitHeight: actionRow.implicitHeight + 18
+                            radius: 7
+                            color: theme.a(theme.green, 0.07)
+                            border.width: 1
+                            border.color: modelData.state === "action-error" || modelData.state === "denied"
+                                          ? theme.a(theme.red, 0.55) : theme.a(theme.green, 0.3)
+                            RowLayout {
+                                id: actionRow
+                                anchors.fill: parent; anchors.margins: 9
+                                spacing: 9
+                                Kirigami.Icon {
+                                    source: modelData.icon
+                                    color: modelData.state === "action-error" || modelData.state === "denied"
+                                           ? theme.red : theme.greenBright
+                                    Layout.preferredWidth: 20; Layout.preferredHeight: 20
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 2
+                                    QQC2.Label {
+                                        Layout.fillWidth: true
+                                        text: modelData.title
+                                        color: root.textHi; font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+                                    QQC2.Label {
+                                        Layout.fillWidth: true
+                                        text: modelData.message
+                                        visible: text.length > 0
+                                        color: root.textMid; font.pixelSize: 10
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                QQC2.Label {
+                                    text: ({"waiting-approval": "WAITING", "approved": "APPROVED",
+                                            "running": "RUNNING", "action-complete": "DONE",
+                                            "action-error": "FAILED", "denied": "DENIED"})[modelData.state] || "WORKING"
+                                    color: modelData.state === "action-error" || modelData.state === "denied"
+                                           ? theme.red : theme.greenBright
+                                    font.bold: true; font.pixelSize: 9
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -500,7 +619,7 @@ QQC2.ApplicationWindow {
                 QQC2.Button {
                     visible: root.conversation.length > 0 && !root.thinking && root.pendingApproval === null
                     flat: true; text: "New chat"; icon.name: "document-new"
-                    onClicked: { root.conversation = []; prompt.forceActiveFocus() }
+                    onClicked: { root.conversation = []; root.actionTimeline = []; prompt.forceActiveFocus() }
                 }
             }
         }
@@ -547,13 +666,14 @@ QQC2.ApplicationWindow {
         }
         function onApprovalRequested(payload) {
             root.pendingApproval = JSON.parse(payload)
+            root.rememberAction(root.pendingApproval)
             root.settingsOpen = false
             root.thinking = false
             root.showQuick()
         }
         function onAgentActivity(payload) {
             var activity = JSON.parse(payload)
-            root.thinking = ["thinking", "repairing-action", "running"].indexOf(activity.state) >= 0
+            root.consumeActivity(activity)
         }
     }
 
