@@ -167,10 +167,23 @@ def direct_app_action(messages):
     )
     for aliases, command, label in applications:
         if any(alias in normalized for alias in aliases):
+            target = ""
+            url_match = re.search(r"https?://[^\s]+", latest, re.I)
+            if not url_match:
+                url_match = re.search(
+                    r"(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:/[^\s]*)?",
+                    latest, re.I,
+                )
+            if url_match:
+                target = url_match.group(0).rstrip(".,;:!?)]}")
+                if not re.match(r"^https?://", target, re.I):
+                    target = "https://" + target
+            full_command = command + (" " + shlex.quote(target) if target else "")
             return {
                 "tool": "launch_app",
-                "arguments": {"command": command},
-                "reason": f"Open {label}",
+                "arguments": {"command": full_command},
+                "reason": f"Open {label}" + (f" at {target}" if target else ""),
+                "completion": f"Opened {target} in {label}." if target else f"Opened {label}.",
             }
     return None
 
@@ -181,6 +194,131 @@ def action_risk(tool: str) -> str:
     if tool in {"open_path", "launch_app", "create_directory"}:
         return "local-change"
     return "system-change"
+
+
+def action_presentation(action: dict) -> dict:
+    """Build a human-first approval summary while keeping raw details optional."""
+    tool = action.get("tool", "action")
+    args = action.get("arguments") or {}
+    risk = action_risk(tool)
+    presentation = {
+        "title": "Allow this action?",
+        "description": "Genesi AI wants to perform an action on your computer.",
+        "icon": "security-high",
+        "approve_label": "Allow",
+        "risk_label": {
+            "read-only": "Only reads information",
+            "local-change": "Changes your session or files",
+            "system-change": "Changes the system",
+        }[risk],
+        "details": [],
+    }
+
+    if tool == "launch_app":
+        parts = shlex.split(str(args.get("command") or ""))
+        app = Path(parts[0]).name if parts else "application"
+        labels = {
+            "firefox": "Firefox", "genesi-code": "Genesi Code",
+            "genesi-forge": "Genesi Forge", "konsole": "Terminal",
+            "dolphin": "Files", "systemsettings": "System Settings",
+            "kcalc": "Calculator",
+        }
+        app_label = labels.get(app, app)
+        target = parts[1] if len(parts) > 1 else ""
+        presentation.update({
+            "title": f"Open {app_label}?",
+            "description": (f"{app_label} will open this address."
+                            if target else f"Genesi AI will start {app_label}."),
+            "icon": "system-run",
+            "approve_label": "Open",
+            "risk_label": "Opens an application",
+            "details": ([{"label": "Application", "value": app_label},
+                         {"label": "Address", "value": target}]
+                        if target else [{"label": "Application", "value": app_label}]),
+        })
+    elif tool == "open_path":
+        target = str(args.get("path") or "")
+        presentation.update({
+            "title": "Open this location?", "description": "The default application will open this item.",
+            "icon": "document-open", "approve_label": "Open",
+            "risk_label": "Opens an item",
+            "details": [{"label": "Location", "value": target}],
+        })
+    elif tool == "create_directory":
+        presentation.update({
+            "title": "Create this folder?", "description": "A new folder will be created at this location.",
+            "icon": "folder-new", "approve_label": "Create folder",
+            "risk_label": "Creates a folder",
+            "details": [{"label": "Folder", "value": str(args.get("path") or "")}],
+        })
+    elif tool == "write_file":
+        content = str(args.get("content") or "")
+        presentation.update({
+            "title": "Write this file?", "description": "The file will be created or its current contents replaced.",
+            "icon": "document-save", "approve_label": "Write file",
+            "risk_label": "Creates or replaces a file",
+            "details": [{"label": "File", "value": str(args.get("path") or "")},
+                        {"label": "New content", "value": f"{len(content.encode('utf-8'))} bytes"}],
+        })
+    elif tool == "read_file":
+        presentation.update({
+            "title": "Read this file?", "description": "Genesi AI will read text from this file to answer your request.",
+            "icon": "document-preview", "approve_label": "Read file",
+            "risk_label": "Read-only access",
+            "details": [{"label": "File", "value": str(args.get("path") or "")}],
+        })
+    elif tool in {"list_files", "search_files"}:
+        details = [{"label": "Folder", "value": str(args.get("path") or "~")}]
+        if tool == "search_files":
+            details.append({"label": "Search", "value": str(args.get("query") or "")})
+        presentation.update({
+            "title": "Look through this folder?", "description": "Genesi AI will only inspect names and locations.",
+            "icon": "folder-search", "approve_label": "Allow lookup", "details": details,
+            "risk_label": "Read-only access",
+        })
+    elif tool == "run_command":
+        presentation.update({
+            "title": "Run this command?", "description": "This command will run with your user permissions.",
+            "icon": "utilities-terminal", "approve_label": "Run command",
+            "risk_label": "Runs with your permissions",
+            "details": [{"label": "Command", "value": str(args.get("command") or "")},
+                        {"label": "Working folder", "value": str(args.get("cwd") or "~")}],
+        })
+    elif tool == "kill_process":
+        presentation.update({
+            "title": "Stop this process?", "description": "The application or background process may close immediately.",
+            "icon": "process-stop", "approve_label": "Stop process",
+            "risk_label": "Stops a running process",
+            "details": [{"label": "Process ID", "value": str(args.get("pid") or "")}],
+        })
+    elif tool == "manage_packages":
+        packages = args.get("packages") or []
+        if isinstance(packages, str):
+            packages = packages.split()
+        action_name = str(args.get("action") or "change").capitalize()
+        presentation.update({
+            "title": f"{action_name} system packages?",
+            "description": "The system authorization dialog will ask for your password.",
+            "icon": "system-software-install", "approve_label": action_name,
+            "risk_label": "Changes installed software",
+            "details": [{"label": "Packages", "value": ", ".join(map(str, packages))}],
+        })
+    elif tool == "system_info":
+        presentation.update({
+            "title": "Inspect system information?",
+            "description": "Genesi AI will read basic hardware, session and storage information.",
+            "icon": "computer", "approve_label": "Allow inspection",
+            "risk_label": "Read-only access",
+        })
+    elif tool == "list_processes":
+        presentation.update({
+            "title": "View running processes?",
+            "description": "Genesi AI will inspect applications running under your user account.",
+            "icon": "utilities-system-monitor", "approve_label": "View processes",
+            "risk_label": "Read-only access",
+        })
+
+    return {**presentation, "risk": risk}
 
 
 class ToolError(RuntimeError):

@@ -21,7 +21,7 @@ import uuid
 
 from genesi_agent import (
     LocalToolExecutor,
-    action_risk,
+    action_presentation,
     agent_system_prompt,
     direct_app_action,
     looks_like_agent_action,
@@ -334,8 +334,8 @@ class Backend(QObject):
         try:
             subprocess.Popen(
                 ["notify-send", "--app-name=Genesi AI", "--urgency=critical",
-                 "Genesi AI needs your approval",
-                 action.get("reason") or action.get("tool") or "Open the AI Mode Monitor to review the action."],
+                 "--replace-id=49017", action.get("title") or "Genesi AI needs your approval",
+                 action.get("description") or "Open the AI Mode Monitor to review the action."],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
@@ -347,12 +347,13 @@ class Backend(QObject):
         pending = {"event": threading.Event(), "approved": False}
         with self._agent_lock:
             self._agent_pending[request_id] = pending
+        presentation = action_presentation(action)
         request = {
             "id": request_id,
             "tool": action["tool"],
             "arguments": action["arguments"],
             "reason": action["reason"],
-            "risk": action_risk(action["tool"]),
+            **presentation,
         }
         self.approvalRequested.emit(json.dumps(request, ensure_ascii=False))
         self._agent_status("waiting-approval", **request)
@@ -411,6 +412,7 @@ class Backend(QObject):
                     self.chatDone.emit("")
                     self._agent_status("stopped")
                     return
+                was_direct = bool(direct_action)
                 if direct_action:
                     action = direct_action
                     response = json.dumps({"type": "action", **action}, ensure_ascii=False)
@@ -454,6 +456,22 @@ class Backend(QObject):
                         "action-complete" if result.get("ok") else "action-error",
                         tool=action["tool"],
                     )
+
+                # Direct app requests are already a complete, deterministic
+                # task. Do not ask the model for another step afterwards: small
+                # models otherwise sometimes invent changes to application data
+                # (for example creating a Firefox profile directory).
+                if was_direct:
+                    if result.get("ok"):
+                        final_text = action.get("completion") or "The application is open."
+                    elif result.get("error") == "The user denied this action.":
+                        final_text = "Action canceled."
+                    else:
+                        final_text = "I couldn't open the application: " + str(result.get("error") or "unknown error")
+                    self.chatToken.emit(final_text)
+                    self.chatDone.emit("")
+                    self._agent_status("complete" if result.get("ok") else "action-error")
+                    return
 
                 messages.append({"role": "assistant", "content": response})
                 messages.append({

@@ -23,6 +23,7 @@ Kirigami.Page {
     property int currentAi: -1
     property string agentMode: "chat"
     property var pendingApproval: ({})
+    property bool approvalTechnical: false
     // Persisted-session id ("" = a fresh, not-yet-saved chat). Set by the sidebar
     // HISTORY rail when reopening a chat, and by persist() after the first save.
     property string sessionId: ""
@@ -128,6 +129,7 @@ Kirigami.Page {
         function onAgentModeChanged(mode) { page.agentMode = mode }
         function onApprovalRequested(jsonStr) {
             try { page.pendingApproval = JSON.parse(jsonStr) } catch (e) { return }
+            page.approvalTechnical = false
             approvalDialog.open()
         }
         function onAgentActivity(jsonStr) {
@@ -198,47 +200,107 @@ Kirigami.Page {
             RowLayout {
                 Layout.fillWidth: true
                 Kirigami.Icon {
-                    source: "security-high"
+                    source: page.pendingApproval.icon || "security-high"
                     color: theme.greenBright
-                    Layout.preferredWidth: 24
-                    Layout.preferredHeight: 24
+                    Layout.preferredWidth: 30
+                    Layout.preferredHeight: 30
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 2
-                    QQC2.Label { text: "Action approval"; color: theme.textHi; font.bold: true; font.pixelSize: 16 }
+                    spacing: 5
                     QQC2.Label {
-                        text: (page.pendingApproval.risk || "system-change").toUpperCase()
-                        color: theme.greenBright
-                        font.pixelSize: 10
+                        Layout.fillWidth: true
+                        text: page.pendingApproval.title || "Allow this action?"
+                        color: theme.textHi
                         font.bold: true
+                        font.pixelSize: 17
+                        wrapMode: Text.WordWrap
+                    }
+                    Rectangle {
+                        implicitWidth: riskText.implicitWidth + 16
+                        implicitHeight: 22
+                        radius: 6
+                        color: page.pendingApproval.risk === "system-change"
+                               ? theme.a(theme.red, 0.16) : theme.a(theme.green, 0.14)
+                        border.width: 1
+                        border.color: page.pendingApproval.risk === "system-change"
+                                      ? theme.a(theme.red, 0.48) : theme.a(theme.green, 0.38)
+                        QQC2.Label {
+                            id: riskText
+                            anchors.centerIn: parent
+                            text: page.pendingApproval.risk_label || "Changes your session"
+                            color: page.pendingApproval.risk === "system-change" ? theme.red : theme.greenBright
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
                     }
                 }
             }
 
             QQC2.Label {
                 Layout.fillWidth: true
-                text: page.pendingApproval.reason || "Genesi AI wants to perform an action."
+                text: page.pendingApproval.description || page.pendingApproval.reason
+                      || "Genesi AI wants to perform an action."
                 color: theme.textMid
                 wrapMode: Text.WordWrap
+                font.pixelSize: 13
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+                Repeater {
+                    model: page.pendingApproval.details || []
+                    delegate: ColumnLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 2
+                        QQC2.Label {
+                            text: modelData.label
+                            color: theme.textLo
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            text: modelData.value
+                            color: theme.textHi
+                            font.pixelSize: 13
+                            wrapMode: Text.WrapAnywhere
+                        }
+                    }
+                }
+            }
+
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.line }
+
+            QQC2.Button {
+                flat: true
+                text: page.approvalTechnical ? "Hide technical details" : "Technical details"
+                icon.name: page.approvalTechnical ? "go-up" : "go-down"
+                onClicked: page.approvalTechnical = !page.approvalTechnical
             }
 
             Rectangle {
+                visible: page.approvalTechnical
                 Layout.fillWidth: true
-                implicitHeight: approvalDetails.implicitHeight + 20
+                implicitHeight: technicalDetails.implicitHeight + 20
                 radius: 6
-                color: theme.a(theme.bgBottom, 0.75)
+                color: theme.a(theme.bgBottom, 0.72)
                 border.width: 1
                 border.color: theme.line
                 ColumnLayout {
-                    id: approvalDetails
+                    id: technicalDetails
                     anchors.fill: parent
                     anchors.margins: 10
+                    spacing: 5
                     QQC2.Label {
                         Layout.fillWidth: true
-                        text: page.pendingApproval.tool || "action"
-                        color: theme.textHi
+                        text: "Tool: " + (page.pendingApproval.tool || "action")
+                        color: theme.textMid
                         font.bold: true
+                        font.family: "monospace"
+                        font.pixelSize: 11
                     }
                     QQC2.Label {
                         Layout.fillWidth: true
@@ -255,14 +317,14 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 QQC2.Button {
-                    text: "Deny"
+                    text: "Cancel"
                     onClicked: {
                         backend.resolveApproval(page.pendingApproval.id || "", false)
                         approvalDialog.close()
                     }
                 }
                 QQC2.Button {
-                    text: "Approve"
+                    text: page.pendingApproval.approve_label || "Allow"
                     highlighted: true
                     onClicked: {
                         backend.resolveApproval(page.pendingApproval.id || "", true)

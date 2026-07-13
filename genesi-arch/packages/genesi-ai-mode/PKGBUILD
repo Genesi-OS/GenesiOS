@@ -480,7 +480,9 @@ pkgver=1.0.0
 # notifications and explicit per-action consent.
 # pkgrel 113: tolerate malformed tool JSON from small local models and resolve
 # explicit requests to open known desktop apps without a model-format roundtrip.
-pkgrel=113
+# pkgrel 114: human-first approval summaries, direct browser URL handling and
+# deterministic completion for app launches (no invented follow-up actions).
+pkgrel=114
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
