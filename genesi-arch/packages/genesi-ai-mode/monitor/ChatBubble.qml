@@ -15,6 +15,7 @@ Item {
     property string role: "ai"
     property string body: ""
     property string stats: ""
+    property bool thinking: false
 
     readonly property bool isUser: role === "user"
     readonly property bool isError: role === "error"
@@ -87,7 +88,9 @@ Item {
             id: bubble
             Layout.alignment: Qt.AlignTop
             radius: 16
-            implicitWidth: Math.min(Math.max(txt.implicitWidth, b.statsData ? 320 : 0) + 28, b.width * 0.74)
+            implicitWidth: Math.min(Math.max(txt.implicitWidth,
+                                             b.thinking ? thinkingRow.implicitWidth : 0,
+                                             b.statsData ? 320 : 0) + 28, b.width * 0.74)
             implicitHeight: content.implicitHeight + 20
             color: b.isUser ? b._mix(b._accent, b._bg, 0.55)
                  : b.isError ? Qt.rgba(231/255, 76/255, 60/255, 0.10)
@@ -106,11 +109,60 @@ Item {
                 QQC2.Label {
                     id: txt
                     width: parent.width
-                    text: b.body.length > 0 ? b.body : "…"
+                    visible: !b.thinking
+                    text: b.body
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
                     color: b.isError ? "#F1B0A8" : b._txt
                     lineHeight: 1.15
+                }
+
+                Row {
+                    id: thinkingRow
+                    visible: b.thinking
+                    height: 22
+                    spacing: 9
+
+                    QQC2.Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Thinking"
+                        color: b._txtMid
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+                        Repeater {
+                            model: 3
+                            delegate: Rectangle {
+                                required property int index
+                                width: 6; height: 6; radius: 3
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: b._accent
+                                scale: 0.48
+                                opacity: 0.48
+
+                                SequentialAnimation on scale {
+                                    running: b.thinking
+                                    loops: Animation.Infinite
+                                    PauseAnimation { duration: index * 130 }
+                                    NumberAnimation { to: 1.0; duration: 190; easing.type: Easing.OutCubic }
+                                    NumberAnimation { to: 0.48; duration: 240; easing.type: Easing.InCubic }
+                                    PauseAnimation { duration: 420 - index * 90 }
+                                }
+                                SequentialAnimation on opacity {
+                                    running: b.thinking
+                                    loops: Animation.Infinite
+                                    PauseAnimation { duration: index * 130 }
+                                    NumberAnimation { to: 1.0; duration: 190 }
+                                    NumberAnimation { to: 0.48; duration: 240 }
+                                    PauseAnimation { duration: 420 - index * 90 }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // plain fallback (non-JSON stats string)

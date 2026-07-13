@@ -156,8 +156,12 @@ Kirigami.Page {
             chatList.positionViewAtEnd()
         }
         function onChatDone(stats) {
-            if (page.currentAi >= 0 && stats.length > 0)
-                chatModel.setProperty(page.currentAi, "stats", stats)
+            if (page.currentAi >= 0) {
+                if (chatModel.get(page.currentAi).body.length === 0)
+                    chatModel.remove(page.currentAi)
+                else if (stats.length > 0)
+                    chatModel.setProperty(page.currentAi, "stats", stats)
+            }
             statsLabel.text = page.shortStats(stats)
             page.busy = false
             page.currentAi = -1
@@ -485,6 +489,7 @@ Kirigami.Page {
                     role: model.role
                     body: model.body
                     stats: model.stats
+                    thinking: page.busy && index === page.currentAi && model.body.length === 0
                 }
                 QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
             }

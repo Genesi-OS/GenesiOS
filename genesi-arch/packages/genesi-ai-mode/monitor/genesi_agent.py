@@ -122,10 +122,31 @@ def parse_agent_action(text: str):
             value = json.loads(candidate)
         except (TypeError, ValueError):
             continue
-        if not isinstance(value, dict) or value.get("type") != "action":
+        if not isinstance(value, dict):
             continue
-        tool = value.get("tool")
-        args = value.get("arguments", {})
+        # Accept the canonical Genesi envelope, compact envelopes commonly
+        # emitted by small models, and OpenAI-compatible tool_calls.
+        if isinstance(value.get("action"), dict):
+            value = value["action"]
+        tool_calls = value.get("tool_calls") or []
+        if tool_calls and isinstance(tool_calls[0], dict):
+            function = tool_calls[0].get("function") or tool_calls[0]
+            value = {
+                "tool": function.get("name"),
+                "arguments": function.get("arguments", {}),
+                "reason": value.get("reason", ""),
+            }
+        declared_type = value.get("type")
+        tool = value.get("tool") or value.get("name")
+        if declared_type not in (None, "action", "tool_call", "function"):
+            tool = tool or declared_type
+        aliases = {
+            "open_application": "launch_app", "open_app": "launch_app",
+            "execute_command": "run_command", "shell": "run_command",
+            "mkdir": "create_directory", "open_file": "open_path",
+        }
+        tool = aliases.get(tool, tool)
+        args = value.get("arguments", value.get("parameters", value.get("input", {})))
         if isinstance(args, str):
             try:
                 args = json.loads(args)
@@ -143,15 +164,30 @@ def parse_agent_action(text: str):
 
 def looks_like_agent_action(text: str) -> bool:
     compact = str(text or "").lower().replace(" ", "")
-    return ("\"type\":\"action\"" in compact or "'type':'action'" in compact
-            or ("\"tool\":" in compact and "\"arguments\":" in compact))
+    structural = False
+    try:
+        value = json.loads(str(text or "").strip())
+        structural = isinstance(value, dict) and any(
+            key in value for key in ("type", "tool", "tool_calls", "action", "arguments", "parameters")
+        )
+    except (TypeError, ValueError):
+        pass
+    return (structural or "\"type\":\"action\"" in compact or "'type':'action'" in compact
+            or ("\"tool\":" in compact and "\"arguments\":" in compact)
+            or any(f'\"type\":\"{tool}\"' in compact for tool in {item["name"] for item in TOOLS})
+            or "\"tool_calls\":" in compact)
 
 
 def direct_app_action(messages):
     """Resolve unambiguous app-launch requests without trusting model JSON."""
-    latest = next((str(m.get("content") or "") for m in reversed(messages)
-                   if m.get("role") == "user"), "")
-    normalized = unicodedata.normalize("NFKD", latest.lower()).encode("ascii", "ignore").decode()
+    user_messages = [str(m.get("content") or "") for m in messages if m.get("role") == "user"]
+    latest = user_messages[-1] if user_messages else ""
+    normalized_latest = unicodedata.normalize("NFKD", latest.lower()).encode("ascii", "ignore").decode()
+    repeat_words = ("mesma coisa", "de novo", "novamente", "repete", "repita", "again", "same thing")
+    context = latest
+    if len(user_messages) > 1 and any(word in normalized_latest for word in repeat_words):
+        context = user_messages[-2] + " " + latest
+    normalized = unicodedata.normalize("NFKD", context.lower()).encode("ascii", "ignore").decode()
     launch_words = ("abre", "abra", "abrir", "inicia", "inicie", "executa", "execute",
                     "open", "launch", "start", "roda", "rode")
     if not any(re.search(rf"\b{word}\b", normalized) for word in launch_words):
@@ -174,6 +210,13 @@ def direct_app_action(messages):
                     r"(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:/[^\s]*)?",
                     latest, re.I,
                 )
+            if not url_match and context != latest:
+                url_match = re.search(r"https?://[^\s]+", context, re.I)
+                if not url_match:
+                    url_match = re.search(
+                        r"(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:/[^\s]*)?",
+                        context, re.I,
+                    )
             if url_match:
                 target = url_match.group(0).rstrip(".,;:!?)]}")
                 if not re.match(r"^https?://", target, re.I):
@@ -224,7 +267,7 @@ def action_presentation(action: dict) -> dict:
             "kcalc": "Calculator",
         }
         app_label = labels.get(app, app)
-        target = parts[1] if len(parts) > 1 else ""
+        target = next((part for part in parts[1:] if re.match(r"^https?://", part, re.I)), "")
         presentation.update({
             "title": f"Open {app_label}?",
             "description": (f"{app_label} will open this address."
