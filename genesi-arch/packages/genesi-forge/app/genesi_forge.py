@@ -355,9 +355,9 @@ class Backend(QObject):
     pipelinesLoaded = Signal(str)
     busyChanged = Signal(bool)
     message = Signal(str)
-    workflowStep = Signal(str)     # {"id","state"} per step, live
-    workflowLog = Signal(str)      # {"id","line","level"} one output line
-    workflowDone = Signal(bool)    # ran to completion (True) or failed/stopped (False)
+    workflowStep = Signal(str)     # {"jobId","id","state"} per step, live
+    workflowLog = Signal(str)      # {"jobId","id","line","level"}
+    workflowDone = Signal(str)     # {"jobId","ok","status"}
     prsLoaded = Signal(str)        # gh pr list JSON
     consoleOut = Signal(str)       # one line of embedded-console output
     consoleDone = Signal(int)      # console command exit code
@@ -365,8 +365,9 @@ class Backend(QObject):
     def __init__(self):
         super().__init__()
         self.busy = False
-        self._run_stop = threading.Event()
-        self._running = False
+        self._jobs = {}
+        self._jobs_lock = threading.Lock()
+        self._job_context = threading.local()
 
     def _set_busy(self, value):
         self.busy = value
@@ -779,7 +780,24 @@ class Backend(QObject):
                 "    volumes:\n      - pgdata:/var/lib/postgresql/data\n\nvolumes:\n  pgdata:\n")
 
     def _log(self, nid, line, level="out"):
-        self.workflowLog.emit(json.dumps({"id": nid, "line": line, "level": level}))
+        job_id = getattr(self._job_context, "job_id", "")
+        entry = {"jobId": job_id, "id": nid, "line": line, "level": level,
+                 "time": int(time.time())}
+        if job_id:
+            with self._jobs_lock:
+                job = self._jobs.get(job_id)
+                if job is not None:
+                    job["logs"].append(entry)
+                    if len(job["logs"]) > 600:
+                        del job["logs"][:-600]
+                    job["updated"] = int(time.time())
+        self.workflowLog.emit(json.dumps(entry))
+
+    def _stop_requested(self):
+        job_id = getattr(self._job_context, "job_id", "")
+        with self._jobs_lock:
+            job = self._jobs.get(job_id)
+            return bool(job and job["stop"].is_set())
 
     def _exec_cmd(self, nid, cmd, cwd):
         self._log(nid, "$ " + " ".join(cmd), "cmd")
@@ -788,7 +806,7 @@ class Backend(QObject):
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     env={**os.environ, "LC_ALL": "C"})
             for line in proc.stdout:
-                if self._run_stop.is_set():
+                if self._stop_requested():
                     proc.terminate()
                     return 130
                 self._log(nid, line.rstrip("\n"), "out")
@@ -1080,15 +1098,71 @@ class Backend(QObject):
         self._log(nid, "no local action for this node — marked configured", "ok")
         return True
 
+    @staticmethod
+    def _job_key(path, canvas_id):
+        raw = str(Path(path).resolve()) + "\0" + (canvas_id or "main")
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+    def _job_payload(self, job, include_logs=False):
+        payload = {
+            "id": job["id"], "projectPath": job["projectPath"],
+            "canvasId": job["canvasId"], "canvasName": job["canvasName"],
+            "status": job["status"], "started": job["started"],
+            "updated": job["updated"], "states": dict(job["states"]),
+        }
+        if include_logs:
+            payload["logs"] = list(job["logs"])
+        return payload
+
+    @Slot(str, result=str)
+    def workflowJobs(self, path):
+        resolved = str(Path(path).resolve()) if path else ""
+        with self._jobs_lock:
+            jobs = [self._job_payload(job) for job in self._jobs.values()
+                    if not resolved or job["projectPath"] == resolved]
+        jobs.sort(key=lambda item: item["started"], reverse=True)
+        return json.dumps(jobs)
+
+    @Slot(str, str, result=str)
+    def workflowJobFor(self, path, canvas_id):
+        job_id = self._job_key(path, canvas_id)
+        with self._jobs_lock:
+            job = self._jobs.get(job_id)
+            return json.dumps(self._job_payload(job, True)) if job else "{}"
+
+    def _job_step(self, job_id, nid, state):
+        with self._jobs_lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return
+            job["states"][nid] = state
+            job["updated"] = int(time.time())
+        self.workflowStep.emit(json.dumps({"jobId": job_id, "id": nid,
+                                           "state": state}))
+
+    @staticmethod
+    def _local_branches(path):
+        code, out, _ = git(Path(path), "for-each-ref", "--format=%(refname:short)",
+                           "refs/heads")
+        return set(out.splitlines()) if code == 0 else set()
+
+    @staticmethod
+    def _remote_branches(path):
+        code, out, _ = git(Path(path), "ls-remote", "--heads", "origin", timeout=12)
+        if code != 0:
+            return set()
+        prefix = "refs/heads/"
+        return {line.split("\t", 1)[1][len(prefix):]
+                for line in out.splitlines() if "\t" in line
+                and line.split("\t", 1)[1].startswith(prefix)}
+
     def _event_snapshot(self, node, path):
         """Capture event state without treating the current state as a trigger."""
         config = node.get("config", {})
         event = config.get("event", "push")
         branch = config.get("branch", "main") or "main"
         if event == "branch_created":
-            code, out, _ = git(Path(path), "for-each-ref", "--format=%(refname:short)",
-                               "refs/heads")
-            return set(out.splitlines()) if code == 0 else set()
+            return self._local_branches(path) | self._remote_branches(path)
         if event == "pull_request":
             args = ["gh", "pr", "list", "--state", "open", "--json", "number"]
             if branch not in ("", "*"):
@@ -1102,9 +1176,26 @@ class Backend(QObject):
                 return set()
         if event == "schedule":
             return time.monotonic()
-        ref = "HEAD" if branch in ("", "*") else f"refs/heads/{branch}"
-        code, out, _ = git(Path(path), "rev-parse", "--verify", ref)
-        return out if code == 0 else ""
+        if branch == "*":
+            refs = {}
+            for name in self._local_branches(path) | self._remote_branches(path):
+                code, out, _ = git(Path(path), "rev-parse", "--verify",
+                                   f"refs/heads/{name}")
+                if code == 0:
+                    refs[name] = out
+            code, out, _ = git(Path(path), "ls-remote", "--heads", "origin", timeout=12)
+            if code == 0:
+                for line in out.splitlines():
+                    if "\trefs/heads/" in line:
+                        sha, ref = line.split("\t", 1)
+                        refs[ref[len("refs/heads/"):]] = sha
+            return refs
+        ref = "HEAD" if not branch else f"refs/heads/{branch}"
+        code, local, _ = git(Path(path), "rev-parse", "--verify", ref)
+        code_remote, remote, _ = git(Path(path), "ls-remote", "origin",
+                                     f"refs/heads/{branch}", timeout=12)
+        remote_sha = remote.split("\t", 1)[0] if code_remote == 0 and remote else ""
+        return {"local": local if code == 0 else "", "remote": remote_sha}
 
     def _event_changed(self, node, path, previous):
         config = node.get("config", {})
@@ -1128,20 +1219,27 @@ class Backend(QObject):
         changed = bool(previous and current and current != previous)
         return changed, current, "new commit detected"
 
-    @Slot(str, str)
+    @Slot(str, str, result=str)
     def runWorkflow(self, path, graph_raw):
-        if self._running:
-            return
         try:
             graph = json.loads(graph_raw)
             nodes = graph.get("nodes", [])
             links = graph.get("links", [])
         except ValueError:
             self.message.emit("Could not read the workflow.")
-            self.workflowDone.emit(False)
-            return
-        self._running = True
-        self._run_stop.clear()
+            return ""
+
+        canvas_id = graph.get("id", "main")
+        canvas_name = graph.get("name", "Automation")
+        job_id = self._job_key(path, canvas_id)
+        resolved_path = str(Path(path).resolve())
+        with self._jobs_lock:
+            existing = self._jobs.get(job_id)
+            already_running = bool(existing and existing["status"] in
+                                   ("running", "waiting"))
+        if already_running:
+            self.message.emit("This automation is already running in the background.")
+            return job_id
 
         # Execute in dependency order, independent of visual array order.
         by_id = {node.get("id"): node for node in nodes}
@@ -1163,34 +1261,45 @@ class Backend(QObject):
                     queue.append(target)
         if len(ordered) != len(nodes):
             self.message.emit("Workflow contains a cycle. Remove one circular link.")
-            self._running = False
-            self.workflowDone.emit(False)
-            return
+            return ""
+
+        now = int(time.time())
+        job = {
+            "id": job_id, "projectPath": resolved_path, "canvasId": canvas_id,
+            "canvasName": canvas_name, "status": "running", "started": now,
+            "updated": now, "states": {}, "logs": [],
+            "stop": threading.Event(),
+        }
+        with self._jobs_lock:
+            self._jobs[job_id] = job
 
         def execute(sequence):
-            ok = True
             for node in sequence:
-                if self._run_stop.is_set():
+                if job["stop"].is_set():
                     return False
                 nid = node.get("id", "")
-                self.workflowStep.emit(json.dumps({"id": nid, "state": "running"}))
+                self._job_step(job_id, nid, "running")
+                self._log(nid, "▶ " + node.get("title", nid), "step")
                 try:
                     good = self._exec_node(node, path)
                 except Exception as exc:
                     self._log(nid, str(exc), "err")
                     good = False
-                self.workflowStep.emit(json.dumps({"id": nid, "state": "done" if good else "failed"}))
+                self._job_step(job_id, nid, "done" if good else "failed")
                 if not good:
                     return False
-            return ok
+            return True
 
         event_nodes = [node for node in ordered if node.get("kind") == "event"]
 
         def work():
+            self._job_context.job_id = job_id
             ok = True
             if not event_nodes:
                 ok = execute(ordered)
             else:
+                with self._jobs_lock:
+                    job["status"] = "waiting"
                 states = {}
                 for event_node in event_nodes:
                     nid = event_node.get("id", "")
@@ -1199,10 +1308,10 @@ class Backend(QObject):
                         "active": True,
                         "checked": 0.0,
                     }
-                    self.workflowStep.emit(json.dumps({"id": nid, "state": "waiting"}))
+                    self._job_step(job_id, nid, "waiting")
                     self._log(nid, "listening for a new event", "out")
 
-                while not self._run_stop.is_set() and any(s["active"] for s in states.values()):
+                while not job["stop"].is_set() and any(s["active"] for s in states.values()):
                     now = time.monotonic()
                     for event_node in event_nodes:
                         nid = event_node.get("id", "")
@@ -1210,7 +1319,7 @@ class Backend(QObject):
                         if not state["active"]:
                             continue
                         event = event_node.get("config", {}).get("event", "push")
-                        poll_seconds = 10 if event == "pull_request" else 1
+                        poll_seconds = 10 if event == "pull_request" else 3 if event in ("push", "branch_created") else 1
                         if now - state["checked"] < poll_seconds:
                             continue
                         state["checked"] = now
@@ -1220,7 +1329,9 @@ class Backend(QObject):
                         if not fired:
                             continue
 
-                        self.workflowStep.emit(json.dumps({"id": nid, "state": "running"}))
+                        with self._jobs_lock:
+                            job["status"] = "running"
+                        self._job_step(job_id, nid, "running")
                         self._log(nid, detail, "ok")
                         reachable = set()
                         pending = list(outgoing.get(nid, []))
@@ -1238,27 +1349,41 @@ class Backend(QObject):
                             state["active"] = False
                             break
                         if event_node.get("config", {}).get("mode", "once") == "always":
-                            self.workflowStep.emit(json.dumps({"id": nid, "state": "waiting"}))
+                            with self._jobs_lock:
+                                job["status"] = "waiting"
+                            self._job_step(job_id, nid, "waiting")
                             self._log(nid, "listening for the next event", "out")
                         else:
                             state["active"] = False
-                            self.workflowStep.emit(json.dumps({"id": nid, "state": "done"}))
+                            self._job_step(job_id, nid, "done")
                     if not ok:
                         break
-                    self._run_stop.wait(0.2)
+                    if any(state["active"] for state in states.values()):
+                        with self._jobs_lock:
+                            job["status"] = "waiting"
+                    job["stop"].wait(0.2)
 
-                if self._run_stop.is_set():
+                if job["stop"].is_set():
                     ok = False
 
-            self._running = False
-            self.workflowDone.emit(ok)
+            status = "done" if ok else "stopped" if job["stop"].is_set() else "failed"
+            with self._jobs_lock:
+                job["status"] = status
+                job["updated"] = int(time.time())
+            self.workflowDone.emit(json.dumps({"jobId": job_id, "ok": ok,
+                                               "status": status}))
             self.message.emit("Workflow finished." if ok else "Workflow stopped or failed.")
+            self._job_context.job_id = ""
 
         self._thread(work)
+        return job_id
 
-    @Slot()
-    def stopWorkflow(self):
-        self._run_stop.set()
+    @Slot(str)
+    def stopWorkflow(self, job_id):
+        with self._jobs_lock:
+            job = self._jobs.get(job_id)
+            if job:
+                job["stop"].set()
 
     # ── Git client (synchronous — local git is fast) ────────────────────────
     @Slot(str, result=str)

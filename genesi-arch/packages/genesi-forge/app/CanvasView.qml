@@ -33,6 +33,8 @@ Item {
     property string activeCanvasName: "Project setup"
     property bool canvasReady: false
     property bool running: false
+    property string activeJobId: ""
+    property int backgroundRuns: 0
     property string pendingFrom: ""
     property real pendingX: 0
     property real pendingY: 0
@@ -103,6 +105,9 @@ Item {
             incoming[i].accent = accentFor(incoming[i].accentKey)
             incoming[i].lines = incoming[i].lines || [incoming[i].title || "Step"]
             incoming[i].config = incoming[i].config || ({})
+            if (incoming[i].kind === "event" && incoming[i].config.event === "branch_created"
+                    && (!incoming[i].config.branch || incoming[i].config.branch === "main"))
+                incoming[i].config.branch = "*"
         }
         livePos = ({})
         nodes = incoming
@@ -142,6 +147,7 @@ Item {
             activeCanvasName = "Project setup"
             canvasNameField.text = activeCanvasName
             canvasReady = true
+            refreshJob()
             return
         }
         switchCanvas(store.active || canvases[0].id)
@@ -168,6 +174,7 @@ Item {
         applyGraph(graph)
         clearHistory()
         canvasReady = true
+        refreshJob()
     }
 
     function createFromTemplate(template, label) {
@@ -180,6 +187,7 @@ Item {
         applyGraph(result.graph || {})
         clearHistory()
         refreshCanvases()
+        refreshJob()
         templatePopup.close()
     }
 
@@ -214,6 +222,11 @@ Item {
                 QQC2.Label { text: "Automate your project setup and delivery"; color: root.theme.textLo; font.pixelSize: 11 }
             }
             Item { Layout.fillWidth: true }
+            RowLayout {
+                visible: root.backgroundRuns > 0; spacing: 6
+                Rectangle { width: 7; height: 7; radius: 4; color: root.theme.greenBright }
+                QQC2.Label { text: root.backgroundRuns + " background"; color: root.theme.textMid; font.pixelSize: 11 }
+            }
             QQC2.ComboBox {
                 id: canvasPicker
                 Layout.preferredWidth: 210; implicitHeight: 38
@@ -226,7 +239,7 @@ Item {
             GButton { theme: root.theme; kind: "ghost"; iconSource: "icons/copy.svg"; tooltip: "Duplicate automation"
                 onClicked: { var id = backend.duplicateCanvas(root.project.path, root.activeCanvasId); root.refreshCanvases(); root.switchCanvas(id) } }
             GButton { theme: root.theme; kind: "ghost"; iconSource: "icons/trash.svg"; tooltip: "Delete automation"
-                enabled: root.canvases.length > 1
+                enabled: root.canvases.length > 1 && !root.running
                 onClicked: { backend.deleteCanvas(root.project.path, root.activeCanvasId); root.activeCanvasId = ""; root.canvasReady = false; root.initializeCanvases() } }
             GButton { theme: root.theme; kind: "tonal"; text: "New"; iconSource: "icons/plus.svg"
                 onClicked: templatePopup.open() }
@@ -827,13 +840,36 @@ Item {
     property bool showLog: false
     ListModel { id: runLog }
 
+    function refreshBackgroundRuns() {
+        var jobs = JSON.parse(backend.workflowJobs(project.path))
+        var count = 0
+        for (var i = 0; i < jobs.length; i++)
+            if (jobs[i].status === "running" || jobs[i].status === "waiting") count++
+        backgroundRuns = count
+    }
+
+    function refreshJob() {
+        if (!canvasReady || !activeCanvasId) return
+        var job = JSON.parse(backend.workflowJobFor(project.path, activeCanvasId))
+        activeJobId = job.id || ""
+        running = job.status === "running" || job.status === "waiting"
+        runState = job.states || ({})
+        runLog.clear()
+        var logs = job.logs || []
+        for (var i = 0; i < logs.length; i++)
+            runLog.append({ line: logs[i].line, level: logs[i].level || "out" })
+        refreshBackgroundRuns()
+    }
+
     function runWorkflow() {
-        if (running) { backend.stopWorkflow(); return }
+        if (running) { backend.stopWorkflow(activeJobId); return }
         runState = ({})
         runLog.clear()
         showLog = true
-        running = true
-        backend.runWorkflow(project.path, graphJson())
+        backend.saveCanvas(project.path, activeCanvasId, activeCanvasName, graphJson())
+        activeJobId = backend.runWorkflow(project.path, graphJson())
+        running = activeJobId !== ""
+        Qt.callLater(refreshJob)
     }
 
     function nodeTitle(id) {
@@ -853,27 +889,31 @@ Item {
         function onWorkflowStep(raw) {
             try {
                 var s = JSON.parse(raw)
+                root.refreshBackgroundRuns()
+                if (s.jobId !== root.activeJobId) return
                 var m = {}
                 for (var k in root.runState) m[k] = root.runState[k]
                 m[s.id] = s.state
                 root.runState = m
-                if (s.state === "running")
-                    runLog.append({ line: "▶ " + root.nodeTitle(s.id), level: "step" })
-                else if (s.state === "waiting")
-                    runLog.append({ line: "Waiting: " + root.nodeTitle(s.id), level: "step" })
             } catch (e) {}
         }
         function onWorkflowLog(raw) {
             try {
                 var l = JSON.parse(raw)
+                if (l.jobId !== root.activeJobId) return
                 runLog.append({ line: l.line, level: l.level || "out" })
                 if (runLog.count > 600) runLog.remove(0, runLog.count - 600)
             } catch (e) {}
         }
-        function onWorkflowDone(ok) {
-            root.running = false
-            runLog.append({ line: ok ? "✓ Workflow finished" : "✕ Workflow stopped or failed",
-                            level: ok ? "ok" : "err" })
+        function onWorkflowDone(raw) {
+            try {
+                var result = JSON.parse(raw)
+                root.refreshBackgroundRuns()
+                if (result.jobId !== root.activeJobId) return
+                root.running = false
+                runLog.append({ line: result.ok ? "✓ Workflow finished" : "Workflow stopped or failed",
+                                level: result.ok ? "ok" : "err" })
+            } catch (e) {}
         }
     }
 }
