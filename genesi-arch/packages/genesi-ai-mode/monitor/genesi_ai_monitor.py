@@ -205,6 +205,19 @@ class Backend(QObject):
             if mode == "off":
                 threading.Thread(target=self._ollama_unload_all, daemon=True).start()
 
+    @Slot()
+    def openQuickChat(self):
+        """Show the singleton Quick Chat from any Monitor surface."""
+        try:
+            subprocess.Popen(
+                ["genesi-ai-quick", "--show"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError:
+            pass
+
     @Slot(str)
     def setProfile(self, profile):
         """Set the intensity profile: max | balanced | battery | auto."""

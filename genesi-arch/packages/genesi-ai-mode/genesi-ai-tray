@@ -38,6 +38,7 @@ from gi.repository import GLib, Gtk
 
 STATE_PATH = "/run/genesi-ai-mode/state.json"
 MONITOR = "/usr/local/bin/genesi-ai-monitor"
+QUICK_CHAT = "/usr/local/bin/genesi-ai-quick"
 
 
 def read_state():
@@ -72,6 +73,15 @@ def open_monitor():
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
+
+
+def open_quick_chat():
+    """Show the singleton Quick Chat detached from the tray process."""
+    try:
+        subprocess.Popen([QUICK_CHAT, "--show"], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 
 def _item(label, enabled=True, on_activate=None):
@@ -149,6 +159,7 @@ class Tray:
         menu.append(_item(("● " if force == "off" else "   ") + "Force OFF",
                           on_activate=lambda: set_mode("off")))
         menu.append(Gtk.SeparatorMenuItem())
+        menu.append(_item("Quick Chat  (Ctrl+Alt+Space)", on_activate=open_quick_chat))
         menu.append(_item("Open AI Mode Monitor", on_activate=open_monitor))
         menu.append(Gtk.SeparatorMenuItem())
         menu.append(_item("Quit", on_activate=Gtk.main_quit))

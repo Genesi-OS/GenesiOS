@@ -314,6 +314,61 @@ Kirigami.ApplicationWindow {
                 }
             }
 
+            // Quick Chat discoverability: visible command + shortcut keycap.
+            Rectangle {
+                radius: 9
+                implicitWidth: quickChatRow.implicitWidth + 18
+                implicitHeight: 36
+                color: quickChatMa.containsMouse ? theme.a(theme.green, 0.16) : theme.card
+                border.width: 1
+                border.color: quickChatMa.containsMouse ? theme.a(theme.green, 0.55) : theme.line
+                Behavior on color { ColorAnimation { duration: 140 } }
+                Row {
+                    id: quickChatRow
+                    anchors.centerIn: parent
+                    spacing: 7
+                    Kirigami.Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        source: "input-keyboard"
+                        width: 17; height: 17
+                        color: theme.greenBright
+                    }
+                    QQC2.Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Quick Chat"
+                        color: theme.textHi
+                        font.bold: true
+                        font.pixelSize: 11
+                    }
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: quickKeys.implicitWidth + 10
+                        implicitHeight: 20
+                        radius: 5
+                        color: theme.bgBottom
+                        border.width: 1; border.color: theme.lineHi
+                        QQC2.Label {
+                            id: quickKeys
+                            anchors.centerIn: parent
+                            text: "Ctrl Alt Space"
+                            color: theme.textMid
+                            font.family: theme.mono
+                            font.pixelSize: 9
+                        }
+                    }
+                }
+                MouseArea {
+                    id: quickChatMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: backend.openQuickChat()
+                    QQC2.ToolTip.visible: containsMouse
+                    QQC2.ToolTip.text: "Open Quick Chat from anywhere with Ctrl+Alt+Space"
+                    QQC2.ToolTip.delay: 350
+                }
+            }
+
             // ── Language switch (EN / PT) ──
             Rectangle {
                 radius: 11

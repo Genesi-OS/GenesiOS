@@ -371,23 +371,27 @@ QQC2.ApplicationWindow {
             }
 
             QQC2.ScrollView {
+                id: chatScroll
                 visible: root.expanded && !root.settingsOpen && root.pendingApproval === null
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(330, messages.implicitHeight)
+                contentWidth: availableWidth
                 clip: true
                 ColumnLayout {
                     id: messages
-                    width: parent.width
+                    width: chatScroll.availableWidth
                     spacing: 10
                     Repeater {
                         model: root.conversation
                         delegate: RowLayout {
                             required property var modelData
                             Layout.fillWidth: true
+                            Layout.preferredWidth: messages.width
                             Item { Layout.fillWidth: modelData.role === "user" }
                             Rectangle {
                                 Layout.maximumWidth: messages.width * 0.82
-                                implicitWidth: Math.min(messageText.implicitWidth + 24, messages.width * 0.82)
+                                Layout.preferredWidth: Math.min(messages.width * 0.82,
+                                                                Math.max(180, messageText.implicitWidth + 24))
                                 implicitHeight: messageText.implicitHeight + 18
                                 radius: 7
                                 color: modelData.role === "user" ? theme.a(theme.green, 0.25) : theme.card

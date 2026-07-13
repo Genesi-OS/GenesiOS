@@ -46,6 +46,7 @@ PlasmoidItem {
     function readState() { executable.exec("cat /run/genesi-ai-mode/state.json") }
     function setMode(mode) { executable.exec("genesi-ai-mode " + mode) }
     function openMonitor() { executable.exec("setsid -f /usr/local/bin/genesi-ai-monitor") }
+    function openQuickChat() { executable.exec("setsid -f /usr/local/bin/genesi-ai-quick --show") }
 
     function applyState(txt) {
         try {
@@ -108,9 +109,9 @@ PlasmoidItem {
     fullRepresentation: Item {
         id: fullRoot
         Layout.minimumWidth: Kirigami.Units.gridUnit * 18
-        Layout.minimumHeight: Kirigami.Units.gridUnit * 22
+        Layout.minimumHeight: Kirigami.Units.gridUnit * 25
         Layout.preferredWidth: Kirigami.Units.gridUnit * 20
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 24
+        Layout.preferredHeight: Kirigami.Units.gridUnit * 27
 
         function metrics() { return root.state.metrics || ({}) }
         function gpus() { return (root.state.metrics && root.state.metrics.gpus) || [] }
@@ -288,6 +289,21 @@ PlasmoidItem {
                     opacity: 0.7
                     font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 }
+            }
+
+            // Quick Chat entry + visible global shortcut.
+            PlasmaComponents.Button {
+                Layout.fillWidth: true
+                text: "Open Quick Chat"
+                icon.name: "input-keyboard"
+                onClicked: root.openQuickChat()
+            }
+            PlasmaComponents.Label {
+                Layout.alignment: Qt.AlignHCenter
+                text: "Ctrl + Alt + Space from anywhere"
+                opacity: 0.72
+                font.family: "monospace"
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
             }
 
             // Open monitor button
