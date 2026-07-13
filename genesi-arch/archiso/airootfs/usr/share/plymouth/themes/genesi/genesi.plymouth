@@ -1,8 +1,0 @@
-[Plymouth Theme]
-Name=Genesi OS
-Description=Animated Genesi OS boot experience
-ModuleName=script
-
-[script]
-ImageDir=/usr/share/plymouth/themes/genesi
-ScriptFile=/usr/share/plymouth/themes/genesi/genesi.script
