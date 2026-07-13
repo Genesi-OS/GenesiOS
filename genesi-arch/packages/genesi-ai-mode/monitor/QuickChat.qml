@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import QtQuick.Window
+import QtCore as QtCore
 import org.kde.kirigami as Kirigami
 
 QQC2.ApplicationWindow {
@@ -15,12 +16,22 @@ QQC2.ApplicationWindow {
     flags: Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     title: "Genesi AI Quick Chat"
 
-    property bool expanded: conversation.length > 0 || thinking || pendingApproval !== null
+    property bool expanded: settingsOpen || conversation.length > 0 || thinking || pendingApproval !== null
     property bool thinking: false
+    property bool settingsOpen: false
     property bool technicalOpen: false
     property var pendingApproval: null
     property var conversation: []
+    property var availableModels: []
     property string modelName: backend.quickModel()
+    property bool aiActive: false
+    property string forceMode: "auto"
+    property string profileMode: "auto"
+    property bool turboRequested: backend.quickTurboActive()
+    property bool turboStarting: false
+    property bool turboSpec: false
+    property bool turboNeedsInstall: false
+    property string turboStatusText: ""
     readonly property color textHi: "#f3f7fb"
     readonly property color textMid: "#b1bdc9"
     readonly property color textLo: "#738196"
@@ -52,6 +63,32 @@ QQC2.ApplicationWindow {
         prompt.text = ""
     }
     function toggleQuick() { visible ? hideQuick() : showQuick() }
+    function pollState() {
+        try {
+            var state = JSON.parse(backend.state())
+            aiActive = state.ai_mode_active || false
+            forceMode = state.force_mode || "auto"
+            profileMode = state.profile_mode || "auto"
+        } catch (error) {}
+    }
+    function chooseModel(name) {
+        if (!name || name === modelName) return
+        modelName = name
+        if (turboRequested) {
+            turboStarting = true
+            backend.setTurbo(true, modelName, turboSpec)
+        }
+    }
+    function setTurboWanted(on) {
+        if (on && !modelName) return
+        turboRequested = on
+        turboStarting = on
+        if (on) backend.setTurbo(true, modelName, turboSpec)
+        else {
+            turboStarting = false
+            backend.setTurbo(false, "", false)
+        }
+    }
     function addMessage(role, content) {
         var next = conversation.slice(0)
         next.push({"role": role, "content": content})
@@ -66,6 +103,7 @@ QQC2.ApplicationWindow {
         }
         addMessage("user", text)
         prompt.text = ""
+        settingsOpen = false
         thinking = true
         backend.sendAgentPrompt(modelName, JSON.stringify(conversation), "approval")
     }
@@ -84,6 +122,16 @@ QQC2.ApplicationWindow {
     onVisibleChanged: if (visible) reposition()
 
     Theme { id: theme }
+    QtCore.Settings {
+        category: "QuickChat"
+        property alias selectedModel: root.modelName
+        property alias speculative: root.turboSpec
+    }
+    Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.pollState() }
+    Component.onCompleted: {
+        backend.loadModels()
+        backend.backendInfo()
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -94,10 +142,10 @@ QQC2.ApplicationWindow {
         border.color: root.pendingApproval ? theme.green : theme.lineHi
 
         Rectangle {
+            visible: root.thinking
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             height: 2; radius: 1
-            color: theme.green
-            opacity: root.thinking ? pulse.opacity : 0.8
+            color: "transparent"
             Rectangle {
                 id: pulse
                 width: parent.width * 0.24; height: parent.height; radius: 1
@@ -105,8 +153,8 @@ QQC2.ApplicationWindow {
                 SequentialAnimation on x {
                     running: root.thinking
                     loops: Animation.Infinite
-                    NumberAnimation { from: 0; to: parent.width - pulse.width; duration: 900; easing.type: Easing.InOutCubic }
-                    NumberAnimation { from: parent.width - pulse.width; to: 0; duration: 900; easing.type: Easing.InOutCubic }
+                    NumberAnimation { from: 0; to: Math.max(0, root.width - 16 - pulse.width); duration: 900; easing.type: Easing.InOutCubic }
+                    NumberAnimation { from: Math.max(0, root.width - 16 - pulse.width); to: 0; duration: 900; easing.type: Easing.InOutCubic }
                 }
             }
         }
@@ -126,7 +174,9 @@ QQC2.ApplicationWindow {
                     color: theme.a(theme.green, 0.15)
                     Kirigami.Icon {
                         anchors.centerIn: parent; width: 24; height: 24
-                        source: "icons/logo.svg"; color: theme.greenBright
+                        source: Qt.resolvedUrl("icons/logo.svg")
+                        isMask: true
+                        color: theme.greenBright
                     }
                 }
                 QQC2.TextField {
@@ -155,6 +205,16 @@ QQC2.ApplicationWindow {
                     }
                 }
                 QQC2.ToolButton {
+                    icon.name: "settings-configure"
+                    checked: root.settingsOpen
+                    onClicked: {
+                        root.settingsOpen = !root.settingsOpen
+                        if (root.settingsOpen) backend.loadModels()
+                    }
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: "AI controls"
+                }
+                QQC2.ToolButton {
                     icon.name: "window-close"
                     onClicked: root.hideQuick()
                     QQC2.ToolTip.visible: hovered
@@ -169,8 +229,149 @@ QQC2.ApplicationWindow {
                 color: theme.line
             }
 
+            ColumnLayout {
+                visible: root.settingsOpen && root.pendingApproval === null
+                Layout.fillWidth: true
+                spacing: 12
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 2
+                        QQC2.Label { text: "AI controls"; color: root.textHi; font.bold: true; font.pixelSize: 16 }
+                        QQC2.Label { text: "The same local engine and performance controls used by AI Mode Monitor"; color: root.textLo; font.pixelSize: 10 }
+                    }
+                    Rectangle {
+                        implicitWidth: approvalLabel.implicitWidth + 16; implicitHeight: 22
+                        radius: 6; color: theme.a(theme.green, 0.14); border.width: 1; border.color: theme.a(theme.green, 0.38)
+                        QQC2.Label { id: approvalLabel; anchors.centerIn: parent; text: "APPROVAL"; color: "#a7f3cf"; font.bold: true; font.pixelSize: 9 }
+                    }
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: 16; rowSpacing: 10
+
+                    QQC2.Label { text: "Model"; color: root.textMid; font.bold: true }
+                    QQC2.ComboBox {
+                        id: modelPicker
+                        Layout.fillWidth: true
+                        model: root.availableModels
+                        currentIndex: Math.max(0, root.availableModels.indexOf(root.modelName))
+                        onActivated: root.chooseModel(currentText)
+                    }
+
+                    QQC2.Label { text: "AI Mode"; color: root.textMid; font.bold: true }
+                    RowLayout {
+                        spacing: 4
+                        Repeater {
+                            model: [
+                                { "value": "on", "label": "Force ON" },
+                                { "value": "auto", "label": "Auto" },
+                                { "value": "off", "label": "Force OFF" }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool selected: root.forceMode === modelData.value
+                                implicitWidth: modeText.implicitWidth + 20; implicitHeight: 30
+                                radius: 7
+                                color: selected ? (modelData.value === "off" ? theme.red : theme.green) : theme.card
+                                border.width: 1; border.color: selected ? color : theme.line
+                                QQC2.Label {
+                                    id: modeText; anchors.centerIn: parent; text: modelData.label
+                                    color: selected ? "#ffffff" : root.textMid; font.bold: selected; font.pixelSize: 11
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: { root.forceMode = modelData.value; backend.setMode(modelData.value) }
+                                }
+                            }
+                        }
+                    }
+
+                    QQC2.Label { text: "Performance"; color: root.textMid; font.bold: true }
+                    RowLayout {
+                        spacing: 4
+                        Repeater {
+                            model: [
+                                { "value": "max", "label": "Maximum" },
+                                { "value": "balanced", "label": "Balanced" },
+                                { "value": "battery", "label": "Battery" },
+                                { "value": "auto", "label": "Auto" }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool selected: root.profileMode === modelData.value
+                                implicitWidth: profileText.implicitWidth + 18; implicitHeight: 30
+                                radius: 7; color: selected ? theme.green : theme.card
+                                border.width: 1; border.color: selected ? theme.green : theme.line
+                                QQC2.Label {
+                                    id: profileText; anchors.centerIn: parent; text: modelData.label
+                                    color: selected ? "#ffffff" : root.textMid; font.bold: selected; font.pixelSize: 10
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: { root.profileMode = modelData.value; backend.setProfile(modelData.value) }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: turboControls.implicitHeight + 20
+                    radius: 7; color: theme.card; border.width: 1
+                    border.color: root.turboRequested ? theme.turbo : theme.line
+                    ColumnLayout {
+                        id: turboControls
+                        anchors.fill: parent; anchors.margins: 10; spacing: 7
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Kirigami.Icon { source: Qt.resolvedUrl("icons/bolt.svg"); isMask: true; color: theme.turboBright; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 1
+                                QQC2.Label { text: "Turbo"; color: root.textHi; font.bold: true }
+                                QQC2.Label { text: root.modelName || "Choose a model first"; color: root.textLo; font.pixelSize: 10; elide: Text.ElideRight; Layout.fillWidth: true }
+                            }
+                            QQC2.Switch { checked: root.turboRequested; enabled: !!root.modelName; onClicked: root.setTurboWanted(!root.turboRequested) }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 1
+                                QQC2.Label { text: "Speculative decoding"; color: root.textHi; font.bold: true; font.pixelSize: 11 }
+                                QQC2.Label { text: "Draft model acceleration; best with the CUDA backend"; color: root.textLo; font.pixelSize: 9 }
+                            }
+                            QQC2.Switch {
+                                checked: root.turboSpec
+                                onClicked: {
+                                    root.turboSpec = !root.turboSpec
+                                    if (root.turboRequested) {
+                                        root.turboStarting = true
+                                        backend.setTurbo(true, root.modelName, root.turboSpec)
+                                    }
+                                }
+                            }
+                        }
+                        QQC2.Label {
+                            visible: root.turboStatusText.length > 0
+                            Layout.fillWidth: true; text: root.turboStatusText
+                            color: root.turboRequested ? theme.turboBright : root.textLo
+                            font.pixelSize: 9; wrapMode: Text.WordWrap
+                        }
+                        QQC2.Button {
+                            visible: root.turboNeedsInstall
+                            text: "Install Vulkan backend"; icon.name: "system-software-install"
+                            onClicked: backend.installTurboBackend("vulkan")
+                        }
+                    }
+                }
+            }
+
             QQC2.ScrollView {
-                visible: root.expanded && root.pendingApproval === null
+                visible: root.expanded && !root.settingsOpen && root.pendingApproval === null
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(330, messages.implicitHeight)
                 clip: true
@@ -303,7 +504,34 @@ QQC2.ApplicationWindow {
 
     Connections {
         target: backend
-        function onModelChanged(model) { root.modelName = model }
+        function onModelChanged(model) { if (!root.modelName) root.modelName = model }
+        function onModelsLoaded(payload) {
+            var models = []
+            try { models = JSON.parse(payload) } catch (error) {}
+            root.availableModels = models
+            if ((!root.modelName || models.indexOf(root.modelName) < 0) && models.length > 0)
+                root.modelName = models[0]
+        }
+        function onTurboReady(ready) {
+            if (ready) {
+                root.turboRequested = true
+                root.turboStarting = false
+            } else if (!root.turboStarting) {
+                root.turboRequested = false
+            }
+        }
+        function onTurboStatus(status) {
+            root.turboStatusText = status
+            if (status.indexOf("failed") >= 0 || status.indexOf("not found") >= 0
+                    || status.indexOf("took too long") >= 0 || status.indexOf("error") === 0) {
+                root.turboStarting = false
+                root.turboRequested = false
+            }
+        }
+        function onTurboNeedsInstall(needed) {
+            root.turboNeedsInstall = needed
+            if (needed) { root.turboStarting = false; root.turboRequested = false }
+        }
         function onChatToken(token) {
             if (!token) return
             root.addMessage("assistant", token)
@@ -315,6 +543,7 @@ QQC2.ApplicationWindow {
         }
         function onApprovalRequested(payload) {
             root.pendingApproval = JSON.parse(payload)
+            root.settingsOpen = false
             root.thinking = false
             root.showQuick()
         }

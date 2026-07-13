@@ -10,7 +10,7 @@ import sys
 import threading
 import urllib.request
 
-from PySide6.QtCore import QObject, QUrl, Signal, Slot
+from PySide6.QtCore import QUrl, Signal, Slot
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -55,6 +55,10 @@ class QuickBackend(Backend):
     def quickModel(self):
         return self._quick_model
 
+    @Slot(result=bool)
+    def quickTurboActive(self):
+        return self._turbo_alive()
+
     @Slot()
     def refreshModel(self):
         threading.Thread(target=self._prepare_model, daemon=True).start()
@@ -68,8 +72,8 @@ class QuickBackend(Backend):
         except Exception:
             self._turbo = False
 
-        model = "turbo" if self._turbo else ""
-        if not model and self._ensure_ollama():
+        model = ""
+        if self._ensure_ollama():
             try:
                 with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=3) as response:
                     payload = json.loads(response.read().decode("utf-8"))
@@ -77,6 +81,18 @@ class QuickBackend(Backend):
                 model = next((name for name in models if name), "")
             except Exception:
                 pass
+        # A running Turbo may have unloaded Ollama and therefore be the only
+        # source that still knows its model. Use its OpenAI models endpoint as a
+        # fallback, while keeping the real model name (never the string "turbo").
+        if not model and self._turbo:
+            try:
+                with urllib.request.urlopen(TURBO + "/v1/models", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                model = next((item.get("id") for item in payload.get("data", [])
+                              if item.get("id")), "")
+            except Exception:
+                pass
+        self.turboReady.emit(self._turbo)
         if model != self._quick_model:
             self._quick_model = model
             self.modelChanged.emit(model)
