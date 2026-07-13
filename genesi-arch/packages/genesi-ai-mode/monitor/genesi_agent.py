@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import unicodedata
 from pathlib import Path
 
 
@@ -90,6 +91,7 @@ When no computer action is needed, answer normally. When an action is needed, re
 {{"type":"action","tool":"tool_name","arguments":{{}},"reason":"short user-facing explanation"}}
 
 Never invent a tool. Use one action at a time and wait for its result. After receiving a GENESI_TOOL_RESULT message, either request the next action or answer with the final result. Do not wrap action JSON in prose. Ask a clarifying question instead of guessing a destructive target.
+Always use launch_app, not run_command, when opening a graphical desktop application.
 
 Tools: {catalog}
 """
@@ -97,12 +99,24 @@ Tools: {catalog}
 
 def parse_agent_action(text: str):
     """Return a validated action dict, or None for a normal assistant answer."""
-    candidates = [text.strip()]
-    candidates.extend(re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S | re.I))
-    first = text.find("{")
-    last = text.rfind("}")
+    cleaned = str(text or "").replace("\ufeff", "").translate(str.maketrans({
+        "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'", "\u00a0": " ",
+    }))
+    cleaned = "".join(ch for ch in cleaned if ch in "\n\r\t" or ord(ch) >= 32)
+    candidates = [cleaned.strip()]
+    candidates.extend(re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.S | re.I))
+    first = cleaned.find("{")
+    last = cleaned.rfind("}")
     if first >= 0 and last > first:
-        candidates.append(text[first:last + 1])
+        candidates.append(cleaned[first:last + 1])
+    # raw_decode accepts a valid object followed by model stop tokens or prose.
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", cleaned):
+        try:
+            value, _end = decoder.raw_decode(cleaned[match.start():])
+            candidates.append(json.dumps(value))
+        except ValueError:
+            continue
     for candidate in candidates:
         try:
             value = json.loads(candidate)
@@ -112,6 +126,11 @@ def parse_agent_action(text: str):
             continue
         tool = value.get("tool")
         args = value.get("arguments", {})
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except ValueError:
+                args = {}
         if tool not in {item["name"] for item in TOOLS} or not isinstance(args, dict):
             continue
         return {
@@ -119,6 +138,40 @@ def parse_agent_action(text: str):
             "arguments": args,
             "reason": str(value.get("reason") or "Genesi AI wants to perform this action."),
         }
+    return None
+
+
+def looks_like_agent_action(text: str) -> bool:
+    compact = str(text or "").lower().replace(" ", "")
+    return ("\"type\":\"action\"" in compact or "'type':'action'" in compact
+            or ("\"tool\":" in compact and "\"arguments\":" in compact))
+
+
+def direct_app_action(messages):
+    """Resolve unambiguous app-launch requests without trusting model JSON."""
+    latest = next((str(m.get("content") or "") for m in reversed(messages)
+                   if m.get("role") == "user"), "")
+    normalized = unicodedata.normalize("NFKD", latest.lower()).encode("ascii", "ignore").decode()
+    launch_words = ("abre", "abra", "abrir", "inicia", "inicie", "executa", "execute",
+                    "open", "launch", "start", "roda", "rode")
+    if not any(re.search(rf"\b{word}\b", normalized) for word in launch_words):
+        return None
+    applications = (
+        (("firefox", "navegador"), "firefox", "Firefox"),
+        (("genesi code",), "genesi-code", "Genesi Code"),
+        (("genesi forge", "forge"), "genesi-forge", "Genesi Forge"),
+        (("terminal", "konsole"), "konsole", "Terminal"),
+        (("arquivos", "dolphin", "file manager"), "dolphin", "Files"),
+        (("configuracoes", "system settings"), "systemsettings", "System Settings"),
+        (("calculadora", "calculator", "kcalc"), "kcalc", "Calculator"),
+    )
+    for aliases, command, label in applications:
+        if any(alias in normalized for alias in aliases):
+            return {
+                "tool": "launch_app",
+                "arguments": {"command": command},
+                "reason": f"Open {label}",
+            }
     return None
 
 

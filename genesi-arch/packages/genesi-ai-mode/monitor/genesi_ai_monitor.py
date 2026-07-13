@@ -23,6 +23,8 @@ from genesi_agent import (
     LocalToolExecutor,
     action_risk,
     agent_system_prompt,
+    direct_app_action,
+    looks_like_agent_action,
     parse_agent_action,
 )
 
@@ -402,15 +404,33 @@ class Backend(QObject):
 
     def _agent_work(self, model, messages, mode):
         self._agent_status("thinking", mode=mode)
+        direct_action = direct_app_action(messages)
         try:
             for _step in range(8):
                 if self._stop:
                     self.chatDone.emit("")
                     self._agent_status("stopped")
                     return
-                response = self._agent_model_reply(model, messages).strip()
-                action = parse_agent_action(response)
+                if direct_action:
+                    action = direct_action
+                    response = json.dumps({"type": "action", **action}, ensure_ascii=False)
+                    direct_action = None
+                else:
+                    response = self._agent_model_reply(model, messages).strip()
+                    action = parse_agent_action(response)
                 if not action:
+                    # A small local model may produce an almost-valid tool call
+                    # (smart quotes, a trailing token, malformed arguments). Do
+                    # not leak that implementation detail into the conversation:
+                    # ask it to repair the call and retry inside the bounded loop.
+                    if looks_like_agent_action(response):
+                        messages.append({"role": "assistant", "content": response})
+                        messages.append({
+                            "role": "user",
+                            "content": "Your tool call was malformed. Return only one valid JSON action object using the documented schema.",
+                        })
+                        self._agent_status("repairing-action")
+                        continue
                     # Be forgiving if a model uses a {type:final,message:...}
                     # envelope even though the prompt asks for a normal answer.
                     try:
