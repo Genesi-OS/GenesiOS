@@ -92,6 +92,7 @@ When no computer action is needed, answer normally. When an action is needed, re
 
 Never invent a tool. Use one action at a time and wait for its result. After receiving a GENESI_TOOL_RESULT message, either request the next action or answer with the final result. Do not wrap action JSON in prose. Ask a clarifying question instead of guessing a destructive target.
 Always use launch_app, not run_command, when opening a graphical desktop application.
+After list_processes returns, answer from that result. Never call list_processes twice for the same request.
 
 Tools: {catalog}
 """
@@ -364,6 +365,27 @@ def action_presentation(action: dict) -> dict:
     return {**presentation, "risk": risk}
 
 
+def summarize_tool_result(tool: str, result: dict) -> str:
+    """Deterministic fallback when a model repeats an already completed tool."""
+    if not result.get("ok"):
+        error = str(result.get("error") or "The action did not complete.")
+        return "I did not repeat the action. " + error
+    if tool == "list_processes":
+        try:
+            payload = json.loads(result.get("result") or "{}")
+        except (TypeError, ValueError):
+            payload = {}
+        processes = payload.get("processes") or []
+        lines = [f"I found {payload.get('total', len(processes))} processes. Top processes by CPU:"]
+        for process in processes[:12]:
+            lines.append(
+                f"- {process.get('name', 'unknown')} (PID {process.get('pid', '?')}): "
+                f"{process.get('cpu', 0)}% CPU, {process.get('memory', 0)}% memory"
+            )
+        return "\n".join(lines)
+    return "That action already completed, so I did not run it a second time."
+
+
 class ToolError(RuntimeError):
     pass
 
@@ -524,10 +546,23 @@ class LocalToolExecutor:
 
     def tool_list_processes(self, _args):
         proc = subprocess.run(
-            ["ps", "-u", str(os.getuid()), "-o", "pid=,etimes=,comm=,args="],
+            ["ps", "-u", str(os.getuid()), "-o", "pid=,%cpu=,%mem=,etimes=,comm=", "--sort=-%cpu"],
             text=True, capture_output=True, timeout=10,
         )
-        return proc.stdout.strip()
+        if proc.returncode != 0:
+            raise ToolError(proc.stderr.strip() or "Could not inspect running processes.")
+        rows = []
+        lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+        for line in lines[:30]:
+            parts = line.split(None, 4)
+            if len(parts) < 5:
+                continue
+            pid, cpu, memory, elapsed, name = parts
+            rows.append({
+                "pid": int(pid), "cpu": float(cpu), "memory": float(memory),
+                "elapsed_seconds": int(elapsed), "name": name[:80],
+            })
+        return {"total": len(lines), "shown": len(rows), "processes": rows}
 
     def tool_kill_process(self, args):
         pid = int(args.get("pid"))

@@ -26,6 +26,7 @@ from genesi_agent import (
     direct_app_action,
     looks_like_agent_action,
     parse_agent_action,
+    summarize_tool_result,
 )
 
 try:
@@ -406,6 +407,7 @@ class Backend(QObject):
     def _agent_work(self, model, messages, mode):
         self._agent_status("thinking", mode=mode)
         direct_action = direct_app_action(messages)
+        action_cache = {}
         try:
             for _step in range(8):
                 if self._stop:
@@ -446,6 +448,17 @@ class Backend(QObject):
                     self._agent_status("complete")
                     return
 
+                fingerprint = json.dumps(
+                    {"tool": action["tool"],
+                     "arguments": {} if action["tool"] == "list_processes" else action["arguments"]},
+                    sort_keys=True, ensure_ascii=True,
+                )
+                if fingerprint in action_cache:
+                    self.chatToken.emit(summarize_tool_result(action["tool"], action_cache[fingerprint]))
+                    self.chatDone.emit("")
+                    self._agent_status("repeat-blocked", tool=action["tool"])
+                    return
+
                 if mode == "approval" and not self._wait_for_approval(action):
                     result = {"ok": False, "tool": action["tool"], "error": "The user denied this action."}
                     self._agent_status("denied", tool=action["tool"])
@@ -456,6 +469,7 @@ class Backend(QObject):
                         "action-complete" if result.get("ok") else "action-error",
                         tool=action["tool"],
                     )
+                action_cache[fingerprint] = result
 
                 # Direct app requests are already a complete, deterministic
                 # task. Do not ask the model for another step afterwards: small
