@@ -17,9 +17,17 @@ import tempfile
 import threading
 import subprocess
 import urllib.request
+import uuid
+
+from genesi_agent import (
+    LocalToolExecutor,
+    action_risk,
+    agent_system_prompt,
+    parse_agent_action,
+)
 
 try:
-    from PySide6.QtCore import QObject, Slot, Signal, QUrl
+    from PySide6.QtCore import QObject, Slot, Signal, QUrl, Qt
     from PySide6.QtGui import QGuiApplication, QIcon, QFont, QFontDatabase
     from PySide6.QtQml import QQmlApplicationEngine
 except ImportError:
@@ -36,6 +44,7 @@ BRIDGE = "http://127.0.0.1:11436"     # genesi-mempalace recall bridge (opt-in)
 # the user turns on "remember" — what genesi-mempalace `watch` sweeps into the
 # palace (same pattern Genesi Code uses with ~/.config/genesi-code/sessions).
 SESSIONS_DIR = os.path.expanduser("~/.config/genesi-ai-monitor/sessions")
+AGENT_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/agent.json")
 
 
 class Backend(QObject):
@@ -57,6 +66,9 @@ class Backend(QObject):
     benchDone = Signal(str)        # JSON: {model, off_rate, on_rate, delta_pct, rows[], raw}
     benchError = Signal(str)
     sessionsChanged = Signal()     # a chat session was saved/removed -> refresh HISTORY
+    approvalRequested = Signal(str)  # JSON action awaiting the user's decision
+    agentActivity = Signal(str)      # JSON status for the non-blocking UI indicator
+    agentModeChanged = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -68,6 +80,10 @@ class Backend(QObject):
         self._turbo_spec = False     # is the running Turbo using speculative decoding?
         self._bench_running = False  # a benchmark is in flight (guard re-entry)
         self._recall = False         # route chat through the mempalace recall bridge?
+        self._agent_mode = self._load_agent_mode()
+        self._agent_pending = {}
+        self._agent_lock = threading.Lock()
+        self._tool_executor = LocalToolExecutor()
 
     @Slot(result=str)
     def state(self):
@@ -248,6 +264,190 @@ class Backend(QObject):
             self.modelsLoaded.emit(json.dumps(names))
         threading.Thread(target=work, daemon=True).start()
 
+    # -- local agent -------------------------------------------------------
+    # The regular streaming chat path below is deliberately left untouched.
+    # Agent mode is opt-in and uses a separate bounded tool loop, so enabling
+    # desktop automation cannot regress normal chat latency or Turbo streaming.
+    @staticmethod
+    def _load_agent_mode():
+        try:
+            with open(AGENT_CONFIG) as handle:
+                mode = json.load(handle).get("mode", "chat")
+        except Exception:
+            mode = "chat"
+        return mode if mode in ("chat", "approval", "automatic") else "chat"
+
+    def _save_agent_mode(self):
+        try:
+            os.makedirs(os.path.dirname(AGENT_CONFIG), exist_ok=True)
+            temporary = AGENT_CONFIG + ".tmp"
+            with open(temporary, "w") as handle:
+                json.dump({"mode": self._agent_mode}, handle)
+            os.replace(temporary, AGENT_CONFIG)
+        except OSError:
+            pass
+
+    @Slot(result=str)
+    def agentMode(self):
+        return self._agent_mode
+
+    @Slot(str)
+    def setAgentMode(self, mode):
+        if mode not in ("chat", "approval", "automatic"):
+            return
+        self._agent_mode = mode
+        self._save_agent_mode()
+        self.agentModeChanged.emit(mode)
+
+    @Slot(str, bool)
+    def resolveApproval(self, request_id, approved):
+        with self._agent_lock:
+            pending = self._agent_pending.get(request_id)
+            if pending:
+                pending["approved"] = bool(approved)
+                pending["event"].set()
+
+    @Slot(str, str, str)
+    def sendAgentPrompt(self, model, messages_json, mode):
+        if mode not in ("approval", "automatic"):
+            self.sendPrompt(model, messages_json)
+            return
+        self._stop = False
+        try:
+            messages = json.loads(messages_json)
+        except Exception:
+            messages = []
+        threading.Thread(
+            target=self._agent_work,
+            args=(model, messages, mode),
+            daemon=True,
+        ).start()
+
+    def _agent_status(self, state, **extra):
+        self.agentActivity.emit(json.dumps({"state": state, **extra}, ensure_ascii=False))
+
+    def _notify_approval(self, action):
+        if QGuiApplication.applicationState() == Qt.ApplicationActive or not shutil.which("notify-send"):
+            return
+        try:
+            subprocess.Popen(
+                ["notify-send", "--app-name=Genesi AI", "--urgency=critical",
+                 "Genesi AI needs your approval",
+                 action.get("reason") or action.get("tool") or "Open the AI Mode Monitor to review the action."],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError:
+            pass
+
+    def _wait_for_approval(self, action):
+        request_id = str(uuid.uuid4())
+        pending = {"event": threading.Event(), "approved": False}
+        with self._agent_lock:
+            self._agent_pending[request_id] = pending
+        request = {
+            "id": request_id,
+            "tool": action["tool"],
+            "arguments": action["arguments"],
+            "reason": action["reason"],
+            "risk": action_risk(action["tool"]),
+        }
+        self.approvalRequested.emit(json.dumps(request, ensure_ascii=False))
+        self._agent_status("waiting-approval", **request)
+        self._notify_approval(request)
+        # Wake periodically so Stop remains responsive while a dialog is open.
+        waited = 0
+        while waited < 600 and not self._stop and not pending["event"].wait(0.5):
+            waited += 0.5
+        with self._agent_lock:
+            self._agent_pending.pop(request_id, None)
+        return bool(pending["approved"] and not self._stop)
+
+    def _agent_model_reply(self, model, messages):
+        payload_messages = [{"role": "system", "content": agent_system_prompt()}, *messages]
+        if self._turbo:
+            body = json.dumps({
+                "messages": payload_messages,
+                "stream": False,
+                "max_tokens": 768,
+                "cache_prompt": True,
+            }).encode()
+            base = BRIDGE if self._recall else TURBO
+            req = urllib.request.Request(
+                base + "/v1/chat/completions", data=body,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=900) as response:
+                obj = json.loads(response.read().decode())
+            choices = obj.get("choices") or []
+            if not choices:
+                raise RuntimeError("Turbo returned no assistant response.")
+            return (choices[0].get("message") or {}).get("content", "")
+
+        if not self._ensure_ollama():
+            raise RuntimeError("Ollama isn't running (systemctl start ollama)")
+        body = json.dumps({
+            "model": model,
+            "messages": payload_messages,
+            "stream": False,
+            "keep_alive": "15m",
+        }).encode()
+        req = urllib.request.Request(
+            OLLAMA + "/api/chat", data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=900) as response:
+            obj = json.loads(response.read().decode())
+        return (obj.get("message") or {}).get("content", "")
+
+    def _agent_work(self, model, messages, mode):
+        self._agent_status("thinking", mode=mode)
+        try:
+            for _step in range(8):
+                if self._stop:
+                    self.chatDone.emit("")
+                    self._agent_status("stopped")
+                    return
+                response = self._agent_model_reply(model, messages).strip()
+                action = parse_agent_action(response)
+                if not action:
+                    # Be forgiving if a model uses a {type:final,message:...}
+                    # envelope even though the prompt asks for a normal answer.
+                    try:
+                        final = json.loads(response)
+                        if final.get("type") == "final" and final.get("message"):
+                            response = str(final["message"])
+                    except (TypeError, ValueError, AttributeError):
+                        pass
+                    self.chatToken.emit(response or "Done.")
+                    self.chatDone.emit("")
+                    self._agent_status("complete")
+                    return
+
+                if mode == "approval" and not self._wait_for_approval(action):
+                    result = {"ok": False, "tool": action["tool"], "error": "The user denied this action."}
+                    self._agent_status("denied", tool=action["tool"])
+                else:
+                    self._agent_status("running", tool=action["tool"], reason=action["reason"])
+                    result = self._tool_executor.execute(action["tool"], action["arguments"])
+                    self._agent_status(
+                        "action-complete" if result.get("ok") else "action-error",
+                        tool=action["tool"],
+                    )
+
+                messages.append({"role": "assistant", "content": response})
+                messages.append({
+                    "role": "user",
+                    "content": "GENESI_TOOL_RESULT\n" + json.dumps(result, ensure_ascii=False),
+                })
+
+            self.chatToken.emit("I stopped after 8 actions to keep this task bounded. Review the results before continuing.")
+            self.chatDone.emit("")
+            self._agent_status("limit-reached")
+        except Exception as exc:
+            self.chatError.emit("Agent: " + str(exc))
+            self._agent_status("error", error=str(exc))
+
     @Slot(str, str)
     def sendPrompt(self, model, messages_json):
         """`messages_json` is the FULL conversation so far ([{role,content}], roles
@@ -354,6 +554,9 @@ class Backend(QObject):
     @Slot()
     def stopChat(self):
         self._stop = True
+        with self._agent_lock:
+            for pending in self._agent_pending.values():
+                pending["event"].set()
 
     # ── chat history (local sessions) + MemPalace long-term memory ───────────
     # Each conversation is one JSON file under SESSIONS_DIR. The HISTORY rail

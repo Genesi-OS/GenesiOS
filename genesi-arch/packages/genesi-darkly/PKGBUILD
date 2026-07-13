@@ -10,7 +10,7 @@
 # it in netinstall.yaml fixes that at the source.
 pkgname=genesi-darkly
 pkgver=0
-pkgrel=3
+pkgrel=4
 pkgdesc="Darkly Qt6 style + Plasma desktoptheme for Genesi OS (glassmorphism)"
 arch=('x86_64')
 url="https://github.com/Bali10050/Darkly"

@@ -986,6 +986,17 @@ if [ -d /tmp/Ant/kde/Dark/plasma ]; then
     else
         echo ">>> WARNING: Ant-Dark translucentbackground.svgz missing - panel will render opaque"
     fi
+    # Ant-Dark is copied after genesi-settings is installed, so upstream's
+    # colors file used to overwrite Genesi's readable selection palette on the
+    # live desktop. Re-apply the canonical shell palette to the theme Plasma is
+    # actually loading (plasmarc name=Ant-Dark).
+    if [ -f /usr/share/plasma/desktoptheme/genesi-plasma/colors ]; then
+        install -Dm644 /usr/share/plasma/desktoptheme/genesi-plasma/colors \
+            /usr/share/plasma/desktoptheme/Ant-Dark/colors
+        echo ">>> Applied Genesi readable colors to active Ant-Dark theme"
+    else
+        echo ">>> WARNING: Genesi Plasma colors missing - Ant-Dark palette not normalized"
+    fi
     # Verification: plasmarc name=Ant-Dark will silently fall back to Breeze
     # if the desktoptheme directory is missing. We MUST surface that here so
     # the next ISO doesn't ship with Ant-Dark configured but not installed.

@@ -21,6 +21,8 @@ Kirigami.Page {
 
     property bool busy: false
     property int currentAi: -1
+    property string agentMode: "chat"
+    property var pendingApproval: ({})
     // Persisted-session id ("" = a fresh, not-yet-saved chat). Set by the sidebar
     // HISTORY rail when reopening a chat, and by persist() after the first save.
     property string sessionId: ""
@@ -32,7 +34,10 @@ Kirigami.Page {
         }
     }
 
-    Component.onCompleted: backend.loadModels()
+    Component.onCompleted: {
+        backend.loadModels()
+        page.agentMode = backend.agentMode()
+    }
 
     // Debounce for prefill-as-you-type: fires ~450ms after the user stops typing
     // and warms the KV cache for the current text (Turbo only; the backend
@@ -76,7 +81,10 @@ Kirigami.Page {
         page.currentAi = chatModel.count - 1
         page.busy = true
         statsLabel.text = i18n.t("chat.generating")
-        backend.sendPrompt(modelCombo.currentText, JSON.stringify(msgs))
+        if (page.agentMode === "chat")
+            backend.sendPrompt(modelCombo.currentText, JSON.stringify(msgs))
+        else
+            backend.sendAgentPrompt(modelCombo.currentText, JSON.stringify(msgs), page.agentMode)
         input.text = ""
         chatList.positionViewAtEnd()
     }
@@ -117,6 +125,19 @@ Kirigami.Page {
 
     Connections {
         target: backend
+        function onAgentModeChanged(mode) { page.agentMode = mode }
+        function onApprovalRequested(jsonStr) {
+            try { page.pendingApproval = JSON.parse(jsonStr) } catch (e) { return }
+            approvalDialog.open()
+        }
+        function onAgentActivity(jsonStr) {
+            var activity = ({})
+            try { activity = JSON.parse(jsonStr) } catch (e) { return }
+            if (activity.state === "thinking") statsLabel.text = "Planning actions..."
+            else if (activity.state === "waiting-approval") statsLabel.text = "Waiting for approval"
+            else if (activity.state === "running") statsLabel.text = "Running " + (activity.tool || "action") + "..."
+            else if (activity.state === "action-error") statsLabel.text = "Action failed"
+        }
         function onTurboStatus(s) { statsLabel.text = s }
         function onTurboNeedsInstall(need) { /* handled in Main.qml */ }
         function onModelsLoaded(jsonStr) {
@@ -154,6 +175,104 @@ Kirigami.Page {
 
     ListModel { id: chatModel }
 
+    QQC2.Dialog {
+        id: approvalDialog
+        modal: true
+        focus: true
+        closePolicy: QQC2.Popup.NoAutoClose
+        width: Math.min(page.width - 48, 520)
+        x: (page.width - width) / 2
+        y: Math.max(24, (page.height - implicitHeight) / 2)
+        padding: 20
+
+        background: Rectangle {
+            radius: 8
+            color: theme.card
+            border.width: 1
+            border.color: theme.a(theme.green, 0.55)
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Kirigami.Units.largeSpacing
+
+            RowLayout {
+                Layout.fillWidth: true
+                Kirigami.Icon {
+                    source: "security-high"
+                    color: theme.greenBright
+                    Layout.preferredWidth: 24
+                    Layout.preferredHeight: 24
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    QQC2.Label { text: "Action approval"; color: theme.textHi; font.bold: true; font.pixelSize: 16 }
+                    QQC2.Label {
+                        text: (page.pendingApproval.risk || "system-change").toUpperCase()
+                        color: theme.greenBright
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+                }
+            }
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: page.pendingApproval.reason || "Genesi AI wants to perform an action."
+                color: theme.textMid
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: approvalDetails.implicitHeight + 20
+                radius: 6
+                color: theme.a(theme.bgBottom, 0.75)
+                border.width: 1
+                border.color: theme.line
+                ColumnLayout {
+                    id: approvalDetails
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        text: page.pendingApproval.tool || "action"
+                        color: theme.textHi
+                        font.bold: true
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        text: JSON.stringify(page.pendingApproval.arguments || {}, null, 2)
+                        color: theme.textMid
+                        font.family: "monospace"
+                        font.pixelSize: 11
+                        wrapMode: Text.WrapAnywhere
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                QQC2.Button {
+                    text: "Deny"
+                    onClicked: {
+                        backend.resolveApproval(page.pendingApproval.id || "", false)
+                        approvalDialog.close()
+                    }
+                }
+                QQC2.Button {
+                    text: "Approve"
+                    highlighted: true
+                    onClicked: {
+                        backend.resolveApproval(page.pendingApproval.id || "", true)
+                        approvalDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -181,6 +300,57 @@ Kirigami.Page {
                     onClicked: backend.loadModels()
                     QQC2.ToolTip.text: i18n.t("chat.reload")
                     QQC2.ToolTip.visible: hovered
+                }
+                Rectangle {
+                    implicitWidth: agentModeRow.implicitWidth + 6
+                    implicitHeight: 34
+                    radius: 8
+                    color: theme.card
+                    border.width: 1
+                    border.color: theme.line
+                    Row {
+                        id: agentModeRow
+                        anchors.centerIn: parent
+                        spacing: 2
+                        Repeater {
+                            model: [
+                                { "mode": "chat", "label": "Chat" },
+                                { "mode": "approval", "label": "Approval" },
+                                { "mode": "automatic", "label": "Automatic" }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool selected: page.agentMode === modelData.mode
+                                height: 28
+                                width: agentModeLabel.implicitWidth + 18
+                                radius: 6
+                                color: selected ? theme.a(theme.green, 0.9)
+                                     : (agentModeMouse.containsMouse ? theme.a(theme.textHi, 0.06) : "transparent")
+                                QQC2.Label {
+                                    id: agentModeLabel
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    color: parent.selected ? "#ffffff" : theme.textMid
+                                    font.bold: parent.selected
+                                    font.pixelSize: 11
+                                }
+                                MouseArea {
+                                    id: agentModeMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: !page.busy
+                                    onClicked: backend.setAgentMode(modelData.mode)
+                                    QQC2.ToolTip.visible: containsMouse
+                                    QQC2.ToolTip.text: modelData.mode === "chat"
+                                        ? "Fast conversation without computer access"
+                                        : (modelData.mode === "approval"
+                                           ? "Ask before every computer action"
+                                           : "Run allowed actions automatically")
+                                }
+                            }
+                        }
+                    }
                 }
                 Item { Layout.fillWidth: true }
                 QQC2.Label {
