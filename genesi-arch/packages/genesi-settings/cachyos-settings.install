@@ -12,6 +12,7 @@ post_install() {
     migrate_fish_greeting_dedup
     fix_sddm_contrast
     fix_desktop_visual_defaults
+    remove_live_branding_leaks
 }
 
 post_upgrade() {
@@ -30,6 +31,27 @@ post_upgrade() {
     migrate_fish_greeting_dedup
     fix_sddm_contrast
     fix_desktop_visual_defaults
+    remove_live_branding_leaks
+}
+
+# Older Calamares profiles copied the live ISO's branding service and XDG
+# autostart into the installed target. That helper recopied skel-override over
+# ~/.config at login, undoing color fixes and user preferences. It belongs only
+# to the disposable live session; remove every leaked entry on install/upgrade.
+remove_live_branding_leaks() {
+    # In the archiso build/root this service is intentional: it seeds the
+    # disposable liveuser before SDDM starts. Only remove it from real installed
+    # systems, where livecd-talk/archiso hooks are absent.
+    if [ -e /etc/systemd/system/livecd-talk.service ] || \
+       [ -e /usr/lib/initcpio/hooks/archiso ] || [ -d /run/archiso ]; then
+        return 0
+    fi
+    rm -f /etc/xdg/autostart/genesi-branding.desktop \
+        /etc/systemd/system/genesi-branding.service \
+        /etc/systemd/system/multi-user.target.wants/genesi-branding.service \
+        /usr/local/bin/genesi-branding.sh 2>/dev/null || true
+    systemctl disable genesi-branding.service >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
 }
 
 # Apply the new visual defaults to existing users. Fresh and live users receive

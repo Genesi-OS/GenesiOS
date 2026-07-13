@@ -136,7 +136,9 @@ pkgver=1.3.4
 # sides, and selected navigation rows consistently use the Genesi green.
 # pkgrel 46: selected text stays white for every KDE/Plasma selection role and
 # Klassy titlebar buttons default to the full-height rectangle shape.
-pkgrel=46
+# pkgrel 47: keep those values authoritative when Plasma reapplies Genesi.colors,
+# and remove the live-only branding jobs accidentally copied into old installs.
+pkgrel=47
 epoch=1
 groups=(genesi)
 arch=('any')
