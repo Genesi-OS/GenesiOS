@@ -126,8 +126,13 @@ TOOLS = [
     },
     {
         "name": "run_command",
-        "description": "Run a shell command as the current user in a chosen directory.",
+        "description": "Run a non-interactive shell command in the background and return its output to the assistant.",
         "arguments": {"command": "shell command", "cwd": "optional working directory", "timeout": "optional seconds, max 120"},
+    },
+    {
+        "name": "run_in_terminal",
+        "description": "Open a visible terminal and run an interactive command, TUI program, sudo command, installer or long-running task.",
+        "arguments": {"command": "shell command", "cwd": "optional working directory", "keep_open": "optional boolean"},
     },
     {
         "name": "launch_app",
@@ -166,6 +171,8 @@ When no computer action is needed, answer normally. When an action is needed, re
 
 Never invent a tool. Use one action at a time and wait for its result. After receiving a GENESI_TOOL_RESULT message, either request the next action or answer with the final result. Do not wrap action JSON in prose. Ask a clarifying question instead of guessing a destructive target.
 Always use launch_app, not run_command, when opening a graphical desktop application.
+Use run_in_terminal when the user mentions a terminal, wants to watch the command, or the command is interactive, uses sudo, launches a TUI, or may ask questions. Use run_command only when you need its captured output to continue reasoning.
+Use manage_packages for installing or removing Arch Linux packages. You are able to operate the system: do not tell the user to run a command manually when one of these tools can complete it. Privileged actions will be authenticated by the operating system.
 After list_processes returns, answer from that result. Never call list_processes twice for the same request.
 
 Tools: {catalog}
@@ -309,6 +316,58 @@ def direct_app_action(messages):
     return None
 
 
+def direct_terminal_action(messages):
+    """Recognize explicit requests to run a command in a visible terminal."""
+    user_messages = [str(m.get("content") or "") for m in messages if m.get("role") == "user"]
+    latest = user_messages[-1].strip() if user_messages else ""
+    if not latest:
+        return None
+    normalized = _normalized(latest)
+    if not re.search(r"\b(?:no|num|em um|in the)\s+terminal\b", normalized):
+        return None
+    match = re.search(
+        r"\b(?:roda|rode|rodar|executa|execute|executar|run|start)\s+(?:o\s+comando\s+)?(.+?)\s+(?:no|num|em\s+um|in\s+the)\s+terminal\b",
+        latest, re.I,
+    )
+    if not match:
+        return None
+    command = match.group(1).strip().strip("'\"")
+    if not command:
+        return None
+    return {
+        "tool": "run_in_terminal",
+        "arguments": {"command": command, "cwd": "~", "keep_open": True},
+        "reason": f"Run {command} in a visible terminal",
+        "completion": f"Started {command} in the terminal.",
+    }
+
+
+def direct_package_action(messages):
+    """Resolve simple, explicit package install/remove requests reliably."""
+    user_messages = [str(m.get("content") or "") for m in messages if m.get("role") == "user"]
+    latest = _normalized(user_messages[-1]).strip() if user_messages else ""
+    match = re.search(
+        r"\b(instala|instale|instalar|install|desinstala|desinstale|desinstalar|remove|remova|uninstall)\b\s+(.+)$",
+        latest,
+    )
+    if not match:
+        return None
+    verb, requested = match.groups()
+    action = "remove" if verb in {"desinstala", "desinstale", "desinstalar", "remove", "remova", "uninstall"} else "install"
+    requested = re.sub(r"\b(?:no|num|em um|in the)\s+terminal\b.*$", "", requested).strip()
+    requested = re.sub(r"^(?:(?:por favor|pra mim|para mim)\s+)*(?:(?:o|a|os|as)\s+)?(?:pacote|pacotes|package|packages)?\s*", "", requested)
+    requested = re.sub(r"\s+(?:por favor|pra mim|para mim)$", "", requested).strip(" .,;:")
+    parts = [part.strip() for part in re.split(r"\s*(?:,|\be\b|\band\b)\s*", requested) if part.strip()]
+    if not parts or any(" " in part or not re.fullmatch(r"[a-z0-9@._+:-]+", part) for part in parts):
+        return None
+    label = ", ".join(parts)
+    return {
+        "tool": "manage_packages", "arguments": {"action": action, "packages": parts},
+        "reason": f"{action.capitalize()} {label}",
+        "completion": f"Package operation started for {label}.",
+    }
+
+
 def action_risk(tool: str) -> str:
     if tool in {"system_info", "list_files", "search_files", "read_file", "list_processes"}:
         return "read-only"
@@ -411,6 +470,15 @@ def action_presentation(action: dict) -> dict:
             "details": [{"label": "Command", "value": str(args.get("command") or "")},
                         {"label": "Working folder", "value": str(args.get("cwd") or "~")}],
         })
+    elif tool == "run_in_terminal":
+        presentation.update({
+            "title": "Run this in Terminal?",
+            "description": "A visible terminal will open and run this command with your user permissions.",
+            "icon": "utilities-terminal", "approve_label": "Open and run",
+            "risk_label": "Runs visibly with your permissions",
+            "details": [{"label": "Command", "value": str(args.get("command") or "")},
+                        {"label": "Working folder", "value": str(args.get("cwd") or "~")}],
+        })
     elif tool == "kill_process":
         presentation.update({
             "title": "Stop this process?", "description": "The application or background process may close immediately.",
@@ -487,6 +555,11 @@ class LocalToolExecutor:
             raise ToolError(f"Unknown tool: {tool}")
         try:
             result = method(arguments or {})
+            if isinstance(result, dict) and int(result.get("exit_code") or 0) != 0:
+                output = str(result.get("output") or "").strip()
+                return {"ok": False, "tool": tool,
+                        "error": self._limit(output or f"Command exited with status {result['exit_code']}"),
+                        "result": self._limit(result)}
             return {"ok": True, "tool": tool, "result": self._limit(result)}
         except Exception as exc:
             return {"ok": False, "tool": tool, "error": self._limit(str(exc))}
@@ -602,6 +675,45 @@ class LocalToolExecutor:
         )
         return {"exit_code": proc.returncode, "output": proc.stdout or ""}
 
+    def tool_run_in_terminal(self, args):
+        command = str(args.get("command") or "").strip()
+        if not command:
+            raise ToolError("A command is required.")
+        if self._catastrophic.search(command):
+            raise ToolError("This command is blocked because it can destroy the operating system or a disk.")
+        cwd = self._path(args.get("cwd") or "~", must_exist=True)
+        shell = shutil.which("bash") or shutil.which("sh")
+        if not shell:
+            raise ToolError("No POSIX shell was found.")
+        keep_open = args.get("keep_open", True) is not False
+        script = command
+        if keep_open:
+            script += "; status=$?; printf '\\n[Genesi AI] Command finished with status %s.\\n' \"$status\"; exec " + shlex.quote(shell)
+
+        candidates = []
+        if shutil.which("xdg-terminal-exec"):
+            candidates.append(["xdg-terminal-exec", shell, "-lc", script])
+        if shutil.which("konsole"):
+            candidates.append(["konsole", "--workdir", str(cwd), "-e", shell, "-lc", script])
+        if shutil.which("gnome-terminal"):
+            candidates.append(["gnome-terminal", f"--working-directory={cwd}", "--", shell, "-lc", script])
+        if shutil.which("xfce4-terminal"):
+            candidates.append(["xfce4-terminal", "--working-directory", str(cwd), "-x", shell, "-lc", script])
+        if shutil.which("kitty"):
+            candidates.append(["kitty", "--directory", str(cwd), shell, "-lc", script])
+        if shutil.which("foot"):
+            candidates.append(["foot", "--working-directory", str(cwd), shell, "-lc", script])
+        if shutil.which("alacritty"):
+            candidates.append(["alacritty", "--working-directory", str(cwd), "-e", shell, "-lc", script])
+        if shutil.which("xterm"):
+            candidates.append(["xterm", "-e", shell, "-lc", f"cd {shlex.quote(str(cwd))} && {script}"])
+        if not candidates:
+            raise ToolError("No supported terminal emulator is installed.")
+        env = {**os.environ, "GENESI_AI_ACTION": "1"}
+        proc = subprocess.Popen(candidates[0], cwd=cwd, env=env, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, start_new_session=True)
+        return {"pid": proc.pid, "terminal": candidates[0][0], "command": command}
+
     def tool_launch_app(self, args):
         command = str(args.get("command") or "").strip()
         parts = shlex.split(command)
@@ -675,9 +787,22 @@ class LocalToolExecutor:
             raise ToolError("Package action must be install or remove.")
         if not packages or any(not re.fullmatch(r"[a-zA-Z0-9@._+:-]+", str(p)) for p in packages):
             raise ToolError("One or more package names are invalid.")
+        packages = list(map(str, packages))
+        if action == "install" and shutil.which("pacman"):
+            official = subprocess.run(
+                ["pacman", "-Si", "--", *packages], stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, timeout=30,
+            ).returncode == 0
+            helper = shutil.which("paru") or shutil.which("yay")
+            if not official and helper:
+                command = " ".join([
+                    shlex.quote(helper), "-S", "--needed", "--noconfirm", "--",
+                    *map(shlex.quote, packages),
+                ])
+                return self.tool_run_in_terminal({"command": command, "cwd": "~", "keep_open": True})
         pacman_args = ["-S", "--needed"] if action == "install" else ["-R"]
         proc = subprocess.run(
-            ["pkexec", "pacman", *pacman_args, "--noconfirm", *map(str, packages)],
+            ["pkexec", "pacman", *pacman_args, "--noconfirm", *packages],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=900,
         )
         return {"exit_code": proc.returncode, "output": proc.stdout or ""}

@@ -24,6 +24,8 @@ from genesi_agent import (
     action_presentation,
     agent_system_prompt,
     direct_app_action,
+    direct_package_action,
+    direct_terminal_action,
     looks_like_agent_action,
     parse_agent_action,
     summarize_tool_result,
@@ -433,7 +435,8 @@ class Backend(QObject):
 
     def _agent_work(self, model, messages, mode):
         self._agent_status("thinking", mode=mode)
-        direct_action = direct_app_action(messages)
+        direct_action = (direct_package_action(messages) or direct_terminal_action(messages)
+                         or direct_app_action(messages))
         action_cache = {}
         try:
             for _step in range(8):
@@ -507,17 +510,16 @@ class Backend(QObject):
                     )
                 action_cache[fingerprint] = result
 
-                # Direct app requests are already a complete, deterministic
-                # task. Do not ask the model for another step afterwards: small
-                # models otherwise sometimes invent changes to application data
-                # (for example creating a Firefox profile directory).
+                # Deterministic requests are already complete tasks. Do not ask
+                # small models for another step afterwards; they may repeat the
+                # operation or invent unrelated follow-up changes.
                 if was_direct:
                     if result.get("ok"):
-                        final_text = action.get("completion") or "The application is open."
+                        final_text = action.get("completion") or "The action completed."
                     elif result.get("error") == "The user denied this action.":
                         final_text = "Action canceled."
                     else:
-                        final_text = "I couldn't open the application: " + str(result.get("error") or "unknown error")
+                        final_text = "I couldn't complete the action: " + str(result.get("error") or "unknown error")
                     self.chatToken.emit(final_text)
                     self.chatDone.emit("")
                     self._agent_status("complete" if result.get("ok") else "action-error")

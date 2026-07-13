@@ -22,7 +22,7 @@ QQC2.ApplicationWindow {
     property bool technicalOpen: false
     property var pendingApproval: null
     property var conversation: []
-    property var actionTimeline: []
+    property var timeline: []
     property string activityText: "Thinking"
     property var availableModels: []
     property string modelName: backend.quickModel()
@@ -95,6 +95,10 @@ QQC2.ApplicationWindow {
         var next = conversation.slice(0)
         next.push({"role": role, "content": content})
         conversation = next
+        var visual = timeline.slice(0)
+        visual.push({"kind": "message", "role": role, "content": content,
+                     "id": "message-" + Date.now() + "-" + visual.length})
+        timeline = visual
         scrollToBottom()
     }
     function scrollToBottom() {
@@ -106,13 +110,14 @@ QQC2.ApplicationWindow {
     function rememberAction(activity) {
         if (!activity || (!activity.id && !activity.tool)) return
         var id = activity.id || activity.tool
-        var next = actionTimeline.slice(0)
+        var next = timeline.slice(0)
         var index = -1
         for (var i = 0; i < next.length; ++i) {
-            if (next[i].id === id) { index = i; break }
+            if (next[i].kind === "action" && next[i].id === id) { index = i; break }
         }
         var previous = index >= 0 ? next[index] : {}
         var item = {
+            "kind": "action",
             "id": id,
             "tool": activity.tool || previous.tool || "action",
             "title": activity.title || previous.title || "System action",
@@ -122,7 +127,7 @@ QQC2.ApplicationWindow {
         }
         if (index >= 0) next[index] = item
         else next.push(item)
-        actionTimeline = next
+        timeline = next
         scrollToBottom()
     }
     function consumeActivity(activity) {
@@ -458,77 +463,81 @@ QQC2.ApplicationWindow {
                     width: chatScroll.availableWidth
                     spacing: 10
                     Repeater {
-                        model: root.conversation
-                        delegate: RowLayout {
+                        model: root.timeline
+                        delegate: Item {
                             required property var modelData
                             Layout.fillWidth: true
                             Layout.preferredWidth: messages.width
-                            Item { Layout.fillWidth: modelData.role === "user" }
-                            Rectangle {
-                                Layout.maximumWidth: messages.width * 0.82
-                                Layout.preferredWidth: Math.min(messages.width * 0.82,
-                                                                Math.max(180, messageText.implicitWidth + 24))
-                                implicitHeight: messageText.implicitHeight + 18
-                                radius: 7
-                                color: modelData.role === "user" ? theme.a(theme.green, 0.25) : theme.card
-                                QQC2.Label {
-                                    id: messageText
-                                    anchors.fill: parent; anchors.margins: 9
-                                    text: modelData.content
-                                    color: root.textHi
-                                    wrapMode: Text.Wrap
-                                    textFormat: Text.PlainText
-                                    font.pixelSize: 13
-                                }
-                            }
-                            Item { Layout.fillWidth: modelData.role !== "user" }
-                        }
-                    }
-                    Repeater {
-                        model: root.actionTimeline
-                        delegate: Rectangle {
-                            required property var modelData
-                            Layout.fillWidth: true
-                            Layout.preferredWidth: messages.width
-                            implicitHeight: actionRow.implicitHeight + 18
-                            radius: 7
-                            color: theme.a(theme.green, 0.07)
-                            border.width: 1
-                            border.color: modelData.state === "action-error" || modelData.state === "denied"
-                                          ? theme.a(theme.red, 0.55) : theme.a(theme.green, 0.3)
+                            implicitHeight: modelData.kind === "message" ? messageRow.implicitHeight : actionCard.implicitHeight
                             RowLayout {
-                                id: actionRow
-                                anchors.fill: parent; anchors.margins: 9
-                                spacing: 9
-                                Kirigami.Icon {
-                                    source: modelData.icon
-                                    color: modelData.state === "action-error" || modelData.state === "denied"
-                                           ? theme.red : theme.greenBright
-                                    Layout.preferredWidth: 20; Layout.preferredHeight: 20
-                                }
-                                ColumnLayout {
-                                    Layout.fillWidth: true; spacing: 2
+                                id: messageRow
+                                visible: modelData.kind === "message"
+                                width: parent.width
+                                Item { Layout.fillWidth: modelData.role === "user" }
+                                Rectangle {
+                                    Layout.maximumWidth: messages.width * 0.82
+                                    Layout.preferredWidth: Math.min(messages.width * 0.82,
+                                                                    Math.max(180, messageText.implicitWidth + 24))
+                                    implicitHeight: messageText.implicitHeight + 18
+                                    radius: 7
+                                    color: modelData.role === "user" ? theme.a(theme.green, 0.25) : theme.card
                                     QQC2.Label {
-                                        Layout.fillWidth: true
-                                        text: modelData.title
-                                        color: root.textHi; font.bold: true
-                                        elide: Text.ElideRight
-                                    }
-                                    QQC2.Label {
-                                        Layout.fillWidth: true
-                                        text: modelData.message
-                                        visible: text.length > 0
-                                        color: root.textMid; font.pixelSize: 10
-                                        elide: Text.ElideRight
+                                        id: messageText
+                                        anchors.fill: parent; anchors.margins: 9
+                                        text: modelData.content || ""
+                                        color: root.textHi
+                                        wrapMode: Text.Wrap
+                                        textFormat: Text.PlainText
+                                        font.pixelSize: 13
                                     }
                                 }
-                                QQC2.Label {
-                                    text: ({"waiting-approval": "WAITING", "approved": "APPROVED",
-                                            "running": "RUNNING", "action-complete": "DONE",
-                                            "action-error": "FAILED", "denied": "DENIED"})[modelData.state] || "WORKING"
-                                    color: modelData.state === "action-error" || modelData.state === "denied"
-                                           ? theme.red : theme.greenBright
-                                    font.bold: true; font.pixelSize: 9
+                                Item { Layout.fillWidth: modelData.role !== "user" }
+                            }
+                            Rectangle {
+                                id: actionCard
+                                visible: modelData.kind === "action"
+                                width: parent.width
+                                implicitHeight: actionRow.implicitHeight + 18
+                                radius: 7
+                                color: theme.a(theme.green, 0.07)
+                                border.width: 1
+                                border.color: modelData.state === "action-error" || modelData.state === "denied"
+                                              ? theme.a(theme.red, 0.55) : theme.a(theme.green, 0.3)
+                                RowLayout {
+                                    id: actionRow
+                                    anchors.fill: parent; anchors.margins: 9
+                                    spacing: 9
+                                    Kirigami.Icon {
+                                        source: modelData.icon || "system-run"
+                                        color: modelData.state === "action-error" || modelData.state === "denied"
+                                               ? theme.red : theme.greenBright
+                                        Layout.preferredWidth: 20; Layout.preferredHeight: 20
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        QQC2.Label {
+                                            Layout.fillWidth: true
+                                            text: modelData.title || "System action"
+                                            color: root.textHi; font.bold: true
+                                            elide: Text.ElideRight
+                                        }
+                                        QQC2.Label {
+                                            Layout.fillWidth: true
+                                            text: modelData.message || ""
+                                            visible: text.length > 0
+                                            color: root.textMid; font.pixelSize: 10
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    QQC2.Label {
+                                        text: ({"waiting-approval": "WAITING", "approved": "APPROVED",
+                                                "running": "RUNNING", "action-complete": "DONE",
+                                                "action-error": "FAILED", "denied": "DENIED"})[modelData.state] || "WORKING"
+                                        color: modelData.state === "action-error" || modelData.state === "denied"
+                                               ? theme.red : theme.greenBright
+                                        font.bold: true; font.pixelSize: 9
+                                    }
                                 }
                             }
                         }
@@ -619,7 +628,7 @@ QQC2.ApplicationWindow {
                 QQC2.Button {
                     visible: root.conversation.length > 0 && !root.thinking && root.pendingApproval === null
                     flat: true; text: "New chat"; icon.name: "document-new"
-                    onClicked: { root.conversation = []; root.actionTimeline = []; prompt.forceActiveFocus() }
+                    onClicked: { root.conversation = []; root.timeline = []; prompt.forceActiveFocus() }
                 }
             }
         }
