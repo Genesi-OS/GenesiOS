@@ -326,6 +326,10 @@ jobs:
             "genesi-darkly"
             # Branded GRUB background (no more black "Arch Linux" menu).
             "genesi-grub-theme"
+            # Branded boot splash. Must be built before genesi-desktop, which
+            # depends on it, or the published meta-package becomes impossible
+            # to install and validate-install fails with "target not found".
+            "genesi-plymouth"
             # Branded fastfetch greeting (logo + system info) in the terminal.
             "genesi-fastfetch"
             # "Coat of paint" for the CachyOS-imported GTK desktops
@@ -520,6 +524,23 @@ jobs:
           done
 
           rm -rf "$GITHUB_WORKSPACE/.ci-sources"
+
+          # A meta-package built with makepkg -d can be created even when one
+          # of its Genesi dependencies was accidentally omitted from PACKAGES.
+          # Refuse to publish that broken repository snapshot. This catches the
+          # exact genesi-desktop -> genesi-plymouth regression before the ISO
+          # workflow has to discover it later.
+          while IFS= read -r dep; do
+            dep="${dep%%[<>=]*}"
+            case "$dep" in
+              genesi-*)
+                if ! compgen -G "repo/${dep}-*.pkg.tar.zst" >/dev/null; then
+                  echo "::error::genesi-desktop dependency was not built: ${dep}"
+                  exit 1
+                fi ;;
+            esac
+          done < <(bash -c 'source genesi-desktop/PKGBUILD; printf "%s\n" "${depends[@]}"')
+          echo "All genesi-desktop package dependencies are present."
 
           cd repo
           rm -f genesi.db* genesi.files*
