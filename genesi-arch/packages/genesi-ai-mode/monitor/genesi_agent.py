@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import unicodedata
 from pathlib import Path
 
@@ -317,21 +318,22 @@ def direct_app_action(messages):
 
 
 def direct_terminal_action(messages):
-    """Recognize explicit requests to run a command in a visible terminal."""
+    """Recognize requests to run a command in a visible terminal."""
     user_messages = [str(m.get("content") or "") for m in messages if m.get("role") == "user"]
     latest = user_messages[-1].strip() if user_messages else ""
     if not latest:
         return None
-    normalized = _normalized(latest)
-    if not re.search(r"\b(?:no|num|em um|in the)\s+terminal\b", normalized):
-        return None
-    match = re.search(
+    explicit_terminal = re.search(
         r"\b(?:roda|rode|rodar|executa|execute|executar|run|start)\s+(?:o\s+comando\s+)?(.+?)\s+(?:no|num|em\s+um|in\s+the)\s+terminal\b",
-        latest, re.I,
-    )
+        latest, re.I)
+    explicit_command = re.search(
+        r"\b(?:roda|rode|rodar|executa|execute|executar|run)\s+(?:pra\s+mim\s+|para\s+mim\s+)?(?:o\s+)?comando\s+(.+)$",
+        latest, re.I)
+    match = explicit_terminal or explicit_command
     if not match:
         return None
-    command = match.group(1).strip().strip("'\"")
+    command = re.sub(r"\s+(?:pra mim|para mim|por favor)$", "", match.group(1), flags=re.I)
+    command = command.strip().strip("'\"")
     if not command:
         return None
     return {
@@ -549,6 +551,19 @@ class LocalToolExecutor:
         re.I,
     )
 
+    def __init__(self):
+        self._process_lock = threading.Lock()
+        self._active_process = None
+
+    def cancel(self):
+        with self._process_lock:
+            process = self._active_process
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+            except OSError:
+                pass
+
     def execute(self, tool: str, arguments: dict) -> dict:
         method = getattr(self, f"tool_{tool}", None)
         if method is None:
@@ -668,12 +683,24 @@ class LocalToolExecutor:
         shell = shutil.which("bash") or shutil.which("sh")
         if not shell:
             raise ToolError("No POSIX shell was found.")
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [shell, "-lc", command], cwd=cwd, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             env={**os.environ, "PAGER": "cat", "GIT_PAGER": "cat"},
         )
-        return {"exit_code": proc.returncode, "output": proc.stdout or ""}
+        with self._process_lock:
+            self._active_process = proc
+        try:
+            output, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            output, _ = proc.communicate()
+            raise ToolError(f"Command timed out after {timeout} seconds.\n{output or ''}")
+        finally:
+            with self._process_lock:
+                if self._active_process is proc:
+                    self._active_process = None
+        return {"exit_code": proc.returncode, "output": output or ""}
 
     def tool_run_in_terminal(self, args):
         command = str(args.get("command") or "").strip()
@@ -690,23 +717,31 @@ class LocalToolExecutor:
         if keep_open:
             script += "; status=$?; printf '\\n[Genesi AI] Command finished with status %s.\\n' \"$status\"; exec " + shlex.quote(shell)
 
-        candidates = []
-        if shutil.which("xdg-terminal-exec"):
-            candidates.append(["xdg-terminal-exec", shell, "-lc", script])
+        launchers = {}
         if shutil.which("konsole"):
-            candidates.append(["konsole", "--workdir", str(cwd), "-e", shell, "-lc", script])
-        if shutil.which("gnome-terminal"):
-            candidates.append(["gnome-terminal", f"--working-directory={cwd}", "--", shell, "-lc", script])
-        if shutil.which("xfce4-terminal"):
-            candidates.append(["xfce4-terminal", "--working-directory", str(cwd), "-x", shell, "-lc", script])
-        if shutil.which("kitty"):
-            candidates.append(["kitty", "--directory", str(cwd), shell, "-lc", script])
-        if shutil.which("foot"):
-            candidates.append(["foot", "--working-directory", str(cwd), shell, "-lc", script])
+            launchers["konsole"] = ["konsole", "--workdir", str(cwd), "-e", shell, "-lc", script]
         if shutil.which("alacritty"):
-            candidates.append(["alacritty", "--working-directory", str(cwd), "-e", shell, "-lc", script])
+            launchers["alacritty"] = ["alacritty", "--working-directory", str(cwd), "-e", shell, "-lc", script]
+        if shutil.which("xdg-terminal-exec"):
+            launchers["xdg"] = ["xdg-terminal-exec", "--", shell, "-lc", script]
+        if shutil.which("gnome-terminal"):
+            launchers["gnome"] = ["gnome-terminal", f"--working-directory={cwd}", "--", shell, "-lc", script]
+        if shutil.which("xfce4-terminal"):
+            launchers["xfce"] = ["xfce4-terminal", "--working-directory", str(cwd), "-x", shell, "-lc", script]
+        if shutil.which("kitty"):
+            launchers["kitty"] = ["kitty", "--directory", str(cwd), shell, "-lc", script]
+        if shutil.which("foot"):
+            launchers["foot"] = ["foot", "--working-directory", str(cwd), shell, "-lc", script]
         if shutil.which("xterm"):
-            candidates.append(["xterm", "-e", shell, "-lc", f"cd {shlex.quote(str(cwd))} && {script}"])
+            launchers["xterm"] = ["xterm", "-e", shell, "-lc", f"cd {shlex.quote(str(cwd))} && {script}"]
+        desktop = _normalized(os.environ.get("XDG_CURRENT_DESKTOP", ""))
+        if "kde" in desktop or "plasma" in desktop:
+            order = ("konsole", "xdg", "alacritty", "kitty", "foot", "gnome", "xfce", "xterm")
+        elif "hypr" in desktop or "caelestia" in desktop:
+            order = ("alacritty", "kitty", "foot", "xdg", "konsole", "gnome", "xfce", "xterm")
+        else:
+            order = ("xdg", "gnome", "xfce", "konsole", "alacritty", "kitty", "foot", "xterm")
+        candidates = [launchers[name] for name in order if name in launchers]
         if not candidates:
             raise ToolError("No supported terminal emulator is installed.")
         env = {**os.environ, "GENESI_AI_ACTION": "1"}

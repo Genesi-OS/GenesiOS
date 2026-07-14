@@ -24,6 +24,7 @@ QQC2.ApplicationWindow {
     property var conversation: []
     property var timeline: []
     property string activityText: "Thinking"
+    property string actionMode: backend.agentMode() === "automatic" ? "automatic" : "approval"
     property var availableModels: []
     property string modelName: backend.quickModel()
     property bool aiActive: false
@@ -91,6 +92,19 @@ QQC2.ApplicationWindow {
             backend.setTurbo(false, "", false)
         }
     }
+    function setActionMode(mode) {
+        if (thinking || pendingApproval !== null || (mode !== "approval" && mode !== "automatic")) return
+        actionMode = mode
+        backend.setAgentMode(mode)
+    }
+    function stopWork() {
+        if (!thinking && pendingApproval === null) return
+        activityText = "Stopping"
+        pendingApproval = null
+        technicalOpen = false
+        thinking = true
+        backend.stopChat()
+    }
     function addMessage(role, content) {
         var next = conversation.slice(0)
         next.push({"role": role, "content": content})
@@ -132,13 +146,14 @@ QQC2.ApplicationWindow {
     }
     function consumeActivity(activity) {
         var state = activity.state || "thinking"
-        if (["waiting-approval", "running", "action-complete", "action-error", "denied"].indexOf(state) >= 0)
+        if (["waiting-approval", "running", "action-complete", "action-error", "denied", "stopped"].indexOf(state) >= 0)
             rememberAction(activity)
         if (state === "running") activityText = activity.reason || "Running an action"
         else if (state === "repairing-action") activityText = "Preparing the action"
         else if (state === "action-complete") activityText = "Reviewing the result"
         else if (state === "action-error") activityText = "Checking what went wrong"
         else if (state === "waiting-approval") activityText = "Waiting for your approval"
+        else if (state === "stopped") activityText = "Stopped"
         else if (state === "thinking") activityText = activity.message || "Thinking"
         var terminal = ["complete", "error", "stopped", "limit-reached", "repeat-blocked"].indexOf(state) >= 0
         thinking = !terminal
@@ -155,7 +170,7 @@ QQC2.ApplicationWindow {
         settingsOpen = false
         activityText = "Thinking"
         thinking = true
-        backend.sendAgentPrompt(modelName, JSON.stringify(conversation), "approval")
+        backend.sendAgentPrompt(modelName, JSON.stringify(conversation), actionMode)
     }
     function resolveApproval(approved) {
         if (!pendingApproval) return
@@ -251,12 +266,23 @@ QQC2.ApplicationWindow {
                     Keys.onEscapePressed: root.hideQuick()
                 }
                 Rectangle {
+                    visible: !root.thinking && root.pendingApproval === null
                     Layout.preferredWidth: 34; Layout.preferredHeight: 26
                     radius: 6; color: theme.a(theme.green, 0.15)
                     QQC2.Label {
                         anchors.centerIn: parent; text: "ASK"
                         color: "#a7f3cf"; font.bold: true; font.pixelSize: 9
                     }
+                }
+                QQC2.Button {
+                    visible: root.thinking || root.pendingApproval !== null
+                    text: "Stop"
+                    icon.name: "process-stop"
+                    palette.button: theme.a(theme.red, 0.24)
+                    palette.buttonText: "#ffffff"
+                    onClicked: root.stopWork()
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: "Stop the current AI request"
                 }
                 QQC2.ToolButton {
                     icon.name: "settings-configure"
@@ -324,8 +350,16 @@ QQC2.ApplicationWindow {
                     }
                     Rectangle {
                         implicitWidth: approvalLabel.implicitWidth + 16; implicitHeight: 22
-                        radius: 6; color: theme.a(theme.green, 0.14); border.width: 1; border.color: theme.a(theme.green, 0.38)
-                        QQC2.Label { id: approvalLabel; anchors.centerIn: parent; text: "APPROVAL"; color: "#a7f3cf"; font.bold: true; font.pixelSize: 9 }
+                        radius: 6
+                        color: root.actionMode === "automatic" ? theme.a(theme.turbo, 0.2) : theme.a(theme.green, 0.14)
+                        border.width: 1
+                        border.color: root.actionMode === "automatic" ? theme.turbo : theme.a(theme.green, 0.38)
+                        QQC2.Label {
+                            id: approvalLabel; anchors.centerIn: parent
+                            text: root.actionMode === "automatic" ? "AUTOMATIC" : "APPROVAL"
+                            color: root.actionMode === "automatic" ? theme.turboBright : "#a7f3cf"
+                            font.bold: true; font.pixelSize: 9
+                        }
                     }
                 }
 
@@ -341,6 +375,42 @@ QQC2.ApplicationWindow {
                         model: root.availableModels
                         currentIndex: Math.max(0, root.availableModels.indexOf(root.modelName))
                         onActivated: root.chooseModel(currentText)
+                    }
+
+                    QQC2.Label { text: "Actions"; color: root.textMid; font.bold: true }
+                    RowLayout {
+                        spacing: 4
+                        Repeater {
+                            model: [
+                                { "value": "approval", "label": "Ask first", "icon": "security-high" },
+                                { "value": "automatic", "label": "Automatic", "icon": "system-run" }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool selected: root.actionMode === modelData.value
+                                implicitWidth: actionModeRow.implicitWidth + 18; implicitHeight: 32
+                                radius: 7
+                                color: selected ? (modelData.value === "automatic" ? theme.turbo : theme.green) : theme.card
+                                border.width: 1; border.color: selected ? color : theme.line
+                                Row {
+                                    id: actionModeRow; anchors.centerIn: parent; spacing: 6
+                                    Kirigami.Icon {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        source: modelData.icon; width: 15; height: 15
+                                        color: selected ? "#ffffff" : root.textMid
+                                    }
+                                    QQC2.Label {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: modelData.label; color: selected ? "#ffffff" : root.textMid
+                                        font.bold: selected; font.pixelSize: 10
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.setActionMode(modelData.value)
+                                }
+                            }
+                        }
                     }
 
                     QQC2.Label { text: "AI Mode"; color: root.textMid; font.bold: true }
@@ -501,16 +571,18 @@ QQC2.ApplicationWindow {
                                 radius: 7
                                 color: theme.a(theme.green, 0.07)
                                 border.width: 1
-                                border.color: modelData.state === "action-error" || modelData.state === "denied"
-                                              ? theme.a(theme.red, 0.55) : theme.a(theme.green, 0.3)
+                                border.color: modelData.state === "stopped" ? theme.lineHi
+                                              : modelData.state === "action-error" || modelData.state === "denied"
+                                                ? theme.a(theme.red, 0.55) : theme.a(theme.green, 0.3)
                                 RowLayout {
                                     id: actionRow
                                     anchors.fill: parent; anchors.margins: 9
                                     spacing: 9
                                     Kirigami.Icon {
                                         source: modelData.icon || "system-run"
-                                        color: modelData.state === "action-error" || modelData.state === "denied"
-                                               ? theme.red : theme.greenBright
+                                        color: modelData.state === "stopped" ? root.textMid
+                                               : modelData.state === "action-error" || modelData.state === "denied"
+                                                 ? theme.red : theme.greenBright
                                         Layout.preferredWidth: 20; Layout.preferredHeight: 20
                                     }
                                     ColumnLayout {
@@ -533,9 +605,11 @@ QQC2.ApplicationWindow {
                                     QQC2.Label {
                                         text: ({"waiting-approval": "WAITING", "approved": "APPROVED",
                                                 "running": "RUNNING", "action-complete": "DONE",
-                                                "action-error": "FAILED", "denied": "DENIED"})[modelData.state] || "WORKING"
-                                        color: modelData.state === "action-error" || modelData.state === "denied"
-                                               ? theme.red : theme.greenBright
+                                                "action-error": "FAILED", "denied": "DENIED",
+                                                "stopped": "STOPPED"})[modelData.state] || "WORKING"
+                                        color: modelData.state === "stopped" ? root.textMid
+                                               : modelData.state === "action-error" || modelData.state === "denied"
+                                                 ? theme.red : theme.greenBright
                                         font.bold: true; font.pixelSize: 9
                                     }
                                 }
@@ -624,7 +698,11 @@ QQC2.ApplicationWindow {
                     font.pixelSize: 10; elide: Text.ElideRight
                 }
                 Item { Layout.fillWidth: true }
-                QQC2.Label { text: "Approval mode"; color: root.textLo; font.pixelSize: 10 }
+                QQC2.Label {
+                    text: root.actionMode === "automatic" ? "Automatic actions" : "Approval mode"
+                    color: root.actionMode === "automatic" ? theme.turboBright : root.textLo
+                    font.bold: root.actionMode === "automatic"; font.pixelSize: 10
+                }
                 QQC2.Button {
                     visible: root.conversation.length > 0 && !root.thinking && root.pendingApproval === null
                     flat: true; text: "New chat"; icon.name: "document-new"
@@ -637,6 +715,9 @@ QQC2.ApplicationWindow {
     Connections {
         target: backend
         function onModelChanged(model) { if (!root.modelName) root.modelName = model }
+        function onAgentModeChanged(mode) {
+            if (mode === "approval" || mode === "automatic") root.actionMode = mode
+        }
         function onModelsLoaded(payload) {
             var models = []
             try { models = JSON.parse(payload) } catch (error) {}

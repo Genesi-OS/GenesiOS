@@ -90,6 +90,7 @@ class Backend(QObject):
         self._agent_lock = threading.Lock()
         self._agent_job_lock = threading.Lock()
         self._agent_running = False
+        self._agent_response = None
         self._tool_executor = LocalToolExecutor()
 
     @Slot(result=str)
@@ -410,8 +411,7 @@ class Backend(QObject):
                 base + "/v1/chat/completions", data=body,
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=900) as response:
-                obj = json.loads(response.read().decode())
+            obj = json.loads(self._read_agent_response(req).decode())
             choices = obj.get("choices") or []
             if not choices:
                 raise RuntimeError("Turbo returned no assistant response.")
@@ -429,9 +429,23 @@ class Backend(QObject):
             OLLAMA + "/api/chat", data=body,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=900) as response:
-            obj = json.loads(response.read().decode())
+        obj = json.loads(self._read_agent_response(req).decode())
         return (obj.get("message") or {}).get("content", "")
+
+    def _read_agent_response(self, request):
+        response = urllib.request.urlopen(request, timeout=900)
+        with self._agent_job_lock:
+            if self._stop:
+                response.close()
+                raise RuntimeError("Agent request stopped.")
+            self._agent_response = response
+        try:
+            return response.read()
+        finally:
+            with self._agent_job_lock:
+                if self._agent_response is response:
+                    self._agent_response = None
+            response.close()
 
     def _agent_work(self, model, messages, mode):
         self._agent_status("thinking", mode=mode)
@@ -451,6 +465,10 @@ class Backend(QObject):
                     direct_action = None
                 else:
                     response = self._agent_model_reply(model, messages).strip()
+                    if self._stop:
+                        self.chatDone.emit("")
+                        self._agent_status("stopped")
+                        return
                     action = parse_agent_action(response)
                 if not action:
                     # A small local model may produce an almost-valid tool call
@@ -492,7 +510,13 @@ class Backend(QObject):
                 action_id = str(uuid.uuid4())
                 action["_activity_id"] = action_id
                 presentation = action_presentation(action)
-                if mode == "approval" and not self._wait_for_approval(action):
+                approved = mode != "approval" or self._wait_for_approval(action)
+                if self._stop:
+                    self.chatDone.emit("")
+                    self._agent_status("stopped", id=action_id, tool=action["tool"],
+                                       title=presentation["title"], icon=presentation["icon"])
+                    return
+                if not approved:
                     result = {"ok": False, "tool": action["tool"], "error": "The user denied this action."}
                     self._agent_status("denied", id=action_id, tool=action["tool"],
                                        title=presentation["title"], icon=presentation["icon"])
@@ -501,6 +525,11 @@ class Backend(QObject):
                                        reason=action["reason"], title=presentation["title"],
                                        description=presentation["description"], icon=presentation["icon"])
                     result = self._tool_executor.execute(action["tool"], action["arguments"])
+                    if self._stop:
+                        self.chatDone.emit("")
+                        self._agent_status("stopped", id=action_id, tool=action["tool"],
+                                           title=presentation["title"], icon=presentation["icon"])
+                        return
                     self._agent_status(
                         "action-complete" if result.get("ok") else "action-error",
                         id=action_id, tool=action["tool"], title=presentation["title"],
@@ -536,8 +565,12 @@ class Backend(QObject):
             self.chatDone.emit("")
             self._agent_status("limit-reached")
         except Exception as exc:
-            self.chatError.emit("Agent: " + str(exc))
-            self._agent_status("error", error=str(exc))
+            if self._stop:
+                self.chatDone.emit("")
+                self._agent_status("stopped")
+            else:
+                self.chatError.emit("Agent: " + str(exc))
+                self._agent_status("error", error=str(exc))
 
     @Slot(str, str)
     def sendPrompt(self, model, messages_json):
@@ -645,6 +678,14 @@ class Backend(QObject):
     @Slot()
     def stopChat(self):
         self._stop = True
+        self._tool_executor.cancel()
+        with self._agent_job_lock:
+            response = self._agent_response
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
         with self._agent_lock:
             for pending in self._agent_pending.values():
                 pending["event"].set()
