@@ -22,7 +22,7 @@ else
     fail "GRUB_THEME is not configured in /etc/default/grub"
 fi
 
-for asset in background.png logo.png select_c.png select_e.png select_w.png unifont-16.pf2; do
+for asset in background.png select_c.png select_e.png select_w.png unifont-16.pf2; do
     if [[ ! -r "/usr/share/grub/themes/genesi/$asset" ]]; then
         fail "missing theme asset: $asset"
     fi

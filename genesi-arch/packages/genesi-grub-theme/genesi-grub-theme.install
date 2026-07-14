@@ -30,7 +30,7 @@ _genesi_grub_apply() {
     _genesi_grub_set "$defaults" GRUB_DISTRIBUTOR '"Genesi OS"'
     _genesi_grub_set "$defaults" GRUB_THEME '"/usr/share/grub/themes/genesi/theme.txt"'
     _genesi_grub_set "$defaults" GRUB_BACKGROUND '"/usr/share/grub/themes/genesi/background.png"'
-    _genesi_grub_set "$defaults" GRUB_GFXMODE '"1920x1080,auto"'
+    _genesi_grub_set "$defaults" GRUB_GFXMODE '"1024x768,1280x720,1920x1080,auto"'
     _genesi_grub_set "$defaults" GRUB_TERMINAL_OUTPUT '"gfxterm"'
 
     # Readable fallbacks if firmware cannot load the graphical theme.
