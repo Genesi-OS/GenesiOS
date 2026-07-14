@@ -3,6 +3,7 @@ set -u
 
 theme=/usr/share/grub/themes/genesi/theme.txt
 config=/boot/grub/grub.cfg
+snapshot_config=/boot/grub/grub-btrfs.cfg
 failed=0
 
 ok() { printf '[ OK ] %s\n' "$1"; }
@@ -50,10 +51,17 @@ fi
 if [[ -f /etc/snapper/configs/root ]] && command -v snapper >/dev/null 2>&1; then
     snapshot_count=$(snapper -c root list 2>/dev/null | awk '$1 ~ /^[0-9]+$/ { count++ } END { print count+0 }')
     if (( snapshot_count > 0 )); then
+        # grub-btrfs 4.x keeps snapshot menuentry blocks in a separate
+        # grub-btrfs.cfg and leaves a configfile hook in the main grub.cfg.
+        # Older releases generated the entries inline, so accept both layouts.
         if [[ -r "$config" ]] && grep -Fq '/.snapshots/' "$config"; then
-            ok "snapshot recovery entries remain present in grub.cfg"
+            ok "inline snapshot recovery entries remain present in grub.cfg"
+        elif [[ -s "$snapshot_config" ]] \
+            && grep -Eq '^[[:space:]]*menuentry[[:space:]]' "$snapshot_config" \
+            && grep -Eq 'grub-btrfs\.cfg|snapshots-btrfs' "$config"; then
+            ok "grub.cfg loads the generated snapshot recovery menu"
         else
-            fail "Snapper has restore points, but grub.cfg has no snapshot recovery entries"
+            fail "Snapper has restore points, but GRUB has no generated snapshot recovery menu"
         fi
     else
         warn "Snapper is configured but has no restore points to verify"
