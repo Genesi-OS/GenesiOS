@@ -174,6 +174,7 @@ Never invent a tool. Use one action at a time and wait for its result. After rec
 Always use launch_app, not run_command, when opening a graphical desktop application.
 Use run_in_terminal when the user mentions a terminal, wants to watch the command, or the command is interactive, uses sudo, launches a TUI, or may ask questions. Use run_command only when you need its captured output to continue reasoning.
 Use manage_packages for installing or removing Arch Linux packages. You are able to operate the system: do not tell the user to run a command manually when one of these tools can complete it. Privileged actions will be authenticated by the operating system.
+Removing, deleting or uninstalling an installed application means manage_packages with action remove. kill_process only stops a currently running process and always requires a numeric PID; it never uninstalls software.
 After list_processes returns, answer from that result. Never call list_processes twice for the same request.
 
 Tools: {catalog}
@@ -223,10 +224,13 @@ def parse_agent_action(text: str):
         tool = value.get("tool") or value.get("name")
         if declared_type not in (None, "action", "tool_call", "function"):
             tool = tool or declared_type
+        raw_tool = tool
         aliases = {
             "open_application": "launch_app", "open_app": "launch_app",
             "execute_command": "run_command", "shell": "run_command",
             "mkdir": "create_directory", "open_file": "open_path",
+            "install_package": "manage_packages", "uninstall_package": "manage_packages",
+            "remove_package": "manage_packages",
         }
         tool = aliases.get(tool, tool)
         args = value.get("arguments", value.get("parameters", value.get("input", {})))
@@ -235,7 +239,15 @@ def parse_agent_action(text: str):
                 args = json.loads(args)
             except ValueError:
                 args = {}
-        if tool not in {item["name"] for item in TOOLS} or not isinstance(args, dict):
+        if not isinstance(args, dict):
+            continue
+        if tool == "manage_packages" and raw_tool in {"install_package", "uninstall_package", "remove_package"}:
+            package = args.pop("package", args.get("packages", []))
+            args["packages"] = package if isinstance(package, list) else [package]
+            args["action"] = "install" if raw_tool == "install_package" else "remove"
+        if tool not in {item["name"] for item in TOOLS}:
+            continue
+        if not _valid_tool_arguments(tool, args):
             continue
         return {
             "tool": tool,
@@ -243,6 +255,27 @@ def parse_agent_action(text: str):
             "reason": str(value.get("reason") or "Genesi AI wants to perform this action."),
         }
     return None
+
+
+def _valid_tool_arguments(tool: str, args: dict) -> bool:
+    """Reject incomplete model calls before they reach approval or execution."""
+    if tool in {"run_command", "run_in_terminal", "launch_app"}:
+        return isinstance(args.get("command"), str) and bool(args["command"].strip())
+    if tool in {"read_file", "write_file", "create_directory"}:
+        return isinstance(args.get("path"), str) and bool(args["path"].strip())
+    if tool == "open_path":
+        return isinstance(args.get("path"), str) and bool(args["path"].strip())
+    if tool == "kill_process":
+        try:
+            return int(args.get("pid")) > 1
+        except (TypeError, ValueError):
+            return False
+    if tool == "manage_packages":
+        packages = args.get("packages")
+        if isinstance(packages, str):
+            packages = packages.split()
+        return args.get("action") in {"install", "remove"} and bool(packages)
+    return True
 
 
 def looks_like_agent_action(text: str) -> bool:
@@ -352,15 +385,33 @@ def direct_package_action(messages):
         r"\b(instala|instale|instalar|install|desinstala|desinstale|desinstalar|remove|remova|uninstall)\b\s+(.+)$",
         latest,
     )
-    if not match:
-        return None
-    verb, requested = match.groups()
-    action = "remove" if verb in {"desinstala", "desinstale", "desinstalar", "remove", "remova", "uninstall"} else "install"
-    requested = re.sub(r"\b(?:no|num|em um|in the)\s+terminal\b.*$", "", requested).strip()
-    requested = re.sub(r"^(?:(?:por favor|pra mim|para mim)\s+)*(?:(?:o|a|os|as)\s+)?(?:pacote|pacotes|package|packages)?\s*", "", requested)
-    requested = re.sub(r"\s+(?:por favor|pra mim|para mim)$", "", requested).strip(" .,;:")
-    parts = [part.strip() for part in re.split(r"\s*(?:,|\be\b|\band\b)\s*", requested) if part.strip()]
-    if not parts or any(" " in part or not re.fullmatch(r"[a-z0-9@._+:-]+", part) for part in parts):
+    parts = []
+    action = ""
+    if match:
+        verb, requested = match.groups()
+        action = "remove" if verb in {"desinstala", "desinstale", "desinstalar", "remove", "remova", "uninstall"} else "install"
+        requested = re.sub(r"\b(?:no|num|em um|in the)\s+terminal\b.*$", "", requested).strip()
+        requested = re.sub(r"^(?:(?:por favor|pra mim|para mim)\s+)*(?:(?:o|a|os|as)\s+)?(?:pacote|pacotes|package|packages)?\s*", "", requested)
+        requested = re.sub(r"\s+(?:por favor|pra mim|para mim)$", "", requested).strip(" .,;:")
+        parts = [part.strip() for part in re.split(r"\s*(?:,|\be\b|\band\b)\s*", requested) if part.strip()]
+        if any(" " in part or not re.fullmatch(r"[a-z0-9@._+:-]+", part) for part in parts):
+            parts = []
+
+    # "Delete it from my PC" means uninstalling an installed package, not
+    # killing a process. Resolve references against pacman's package database.
+    delete_words = r"(?:exclua|excluir|apague|apagar|delete|deletar)"
+    system_words = r"(?:pc|computador|sistema|maquina|programa|aplicativo|pacote)"
+    if not parts and re.search(rf"\b{delete_words}\b", latest) and re.search(rf"\b{system_words}\b", latest):
+        context = _normalized(" ".join(user_messages[-2:]))
+        mentioned = []
+        for package in _installed_packages():
+            pattern = rf"(?<![a-z0-9@._+:-]){re.escape(package)}(?![a-z0-9@._+:-])"
+            if re.search(pattern, context):
+                mentioned.append(package)
+        if len(mentioned) == 1:
+            action, parts = "remove", mentioned
+
+    if not action or not parts:
         return None
     label = ", ".join(parts)
     return {
@@ -368,6 +419,18 @@ def direct_package_action(messages):
         "reason": f"{action.capitalize()} {label}",
         "completion": f"Package operation started for {label}.",
     }
+
+
+def _installed_packages():
+    if not shutil.which("pacman"):
+        return []
+    try:
+        result = subprocess.run(["pacman", "-Qq"], text=True, capture_output=True, timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    return [line.strip().lower() for line in result.stdout.splitlines() if line.strip()]
 
 
 def action_risk(tool: str) -> str:
@@ -801,7 +864,10 @@ class LocalToolExecutor:
         return {"total": len(lines), "shown": len(rows), "processes": rows}
 
     def tool_kill_process(self, args):
-        pid = int(args.get("pid"))
+        try:
+            pid = int(args.get("pid"))
+        except (TypeError, ValueError):
+            raise ToolError("A numeric process ID is required to stop a process.")
         if pid <= 1 or pid == os.getpid():
             raise ToolError("Refusing to terminate this process.")
         status = Path(f"/proc/{pid}/status")
