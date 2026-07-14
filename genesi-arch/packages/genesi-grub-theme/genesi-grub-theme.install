@@ -1,45 +1,54 @@
-# Genesi OS - apply GRUB branding whenever this package is installed/updated.
+# Genesi OS GRUB theme lifecycle.
 #
-# Why a scriptlet instead of relying on the Calamares genesi_grub step: on the
-# 2026-06-01 install the Calamares step did NOT run (the live ISO regenerates
-# settings.conf and dropped the module), leaving /etc/default/grub fully stock
-# (GRUB_BACKGROUND commented) and grub.cfg titled "Arch Linux". Doing it in the
-# package post_install/post_upgrade makes it run on the REAL target every time,
-# independent of Calamares — and it also fixes ALREADY-installed systems on the
-# next `pacman -Syu`.
+# This only changes presentation settings. grub-mkconfig still discovers all
+# normal kernels and the grub-btrfs recovery submenu through the standard
+# scripts under /etc/grub.d.
+
+_genesi_grub_set() {
+    local file="$1" key="$2" value="$3"
+
+    if grep -q "^[#[:space:]]*${key}=" "$file" 2>/dev/null; then
+        sed -i "s|^[#[:space:]]*${key}=.*|${key}=${value}|" "$file"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$file"
+    fi
+}
+
+_genesi_grub_regenerate() {
+    if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
+        if ! grub-mkconfig -o /boot/grub/grub.cfg; then
+            printf 'warning: Genesi theme installed, but grub.cfg regeneration failed\n' >&2
+            printf 'warning: run sudo grub-mkconfig -o /boot/grub/grub.cfg manually\n' >&2
+        fi
+    fi
+}
 
 _genesi_grub_apply() {
-    local gd=/etc/default/grub
-    [ -f "$gd" ] || gd=/etc/default/grub
+    local defaults=/etc/default/grub
+    [ -e "$defaults" ] || : > "$defaults"
 
-    _set() {
-        # _set KEY VALUE -> ensure `KEY=VALUE` exists, uncommented.
-        local k="$1" v="$2"
-        if grep -q "^[#[:space:]]*${k}=" "$gd" 2>/dev/null; then
-            sed -i "s|^[#[:space:]]*${k}=.*|${k}=${v}|" "$gd"
-        else
-            printf '%s=%s\n' "$k" "$v" >> "$gd"
-        fi
-    }
+    _genesi_grub_set "$defaults" GRUB_DISTRIBUTOR '"Genesi OS"'
+    _genesi_grub_set "$defaults" GRUB_THEME '"/usr/share/grub/themes/genesi/theme.txt"'
+    _genesi_grub_set "$defaults" GRUB_BACKGROUND '"/usr/share/grub/themes/genesi/background.png"'
+    _genesi_grub_set "$defaults" GRUB_GFXMODE '"1920x1080,auto"'
+    _genesi_grub_set "$defaults" GRUB_TERMINAL_OUTPUT '"gfxterm"'
 
-    [ -e "$gd" ] || : > "$gd"
-    _set GRUB_DISTRIBUTOR '"Genesi OS"'
-    # Drop any stale GRUB_THEME (old cachyos path that doesn't exist).
-    sed -i '/^[#[:space:]]*GRUB_THEME=/d' "$gd" 2>/dev/null || true
-    if [ -f /usr/share/grub/themes/genesi/background.png ]; then
-        _set GRUB_BACKGROUND '"/usr/share/grub/themes/genesi/background.png"'
-    fi
-    _set GRUB_COLOR_NORMAL    '"light-gray/black"'
-    _set GRUB_COLOR_HIGHLIGHT '"black/light-cyan"'
-    _set GRUB_TERMINAL_OUTPUT '"gfxterm"'
+    # Readable fallbacks if firmware cannot load the graphical theme.
+    _genesi_grub_set "$defaults" GRUB_COLOR_NORMAL '"light-gray/black"'
+    _genesi_grub_set "$defaults" GRUB_COLOR_HIGHLIGHT '"white/dark-gray"'
 
-    # Regenerate grub.cfg so the menu shows "Genesi OS" + the background.
-    # Guarded so it's a no-op in environments where GRUB isn't set up yet
-    # (e.g. a chroot before grub-install); Calamares/grub will regenerate later.
-    if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
-        grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
-    fi
+    _genesi_grub_regenerate
+}
+
+_genesi_grub_remove() {
+    local defaults=/etc/default/grub
+    [ -f "$defaults" ] || return 0
+
+    sed -i '/^[#[:space:]]*GRUB_THEME=.*genesi\/theme\.txt/d' "$defaults"
+    sed -i '/^[#[:space:]]*GRUB_BACKGROUND=.*genesi\/background\.png/d' "$defaults"
+    _genesi_grub_regenerate
 }
 
 post_install() { _genesi_grub_apply; }
 post_upgrade() { _genesi_grub_apply; }
+post_remove() { _genesi_grub_remove; }

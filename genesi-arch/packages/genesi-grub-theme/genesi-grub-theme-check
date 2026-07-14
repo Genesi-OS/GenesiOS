@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -u
+
+theme=/usr/share/grub/themes/genesi/theme.txt
+config=/boot/grub/grub.cfg
+failed=0
+
+ok() { printf '[ OK ] %s\n' "$1"; }
+warn() { printf '[WARN] %s\n' "$1"; }
+fail() { printf '[FAIL] %s\n' "$1" >&2; failed=1; }
+
+if [[ -r "$theme" ]]; then
+    ok "Genesi theme assets are installed"
+else
+    fail "missing $theme"
+fi
+
+if grep -Fq 'GRUB_THEME="/usr/share/grub/themes/genesi/theme.txt"' /etc/default/grub 2>/dev/null; then
+    ok "GRUB_THEME points to the Genesi theme"
+else
+    fail "GRUB_THEME is not configured in /etc/default/grub"
+fi
+
+for asset in background.png logo.png select_c.png select_e.png select_w.png unifont-16.pf2; do
+    if [[ ! -r "/usr/share/grub/themes/genesi/$asset" ]]; then
+        fail "missing theme asset: $asset"
+    fi
+done
+
+if [[ -r "$config" ]]; then
+    if command -v grub-script-check >/dev/null 2>&1; then
+        if grub-script-check "$config"; then
+            ok "grub.cfg syntax is valid"
+        else
+            fail "grub.cfg failed grub-script-check"
+        fi
+    else
+        warn "grub-script-check is unavailable"
+    fi
+
+    if grep -Fq '/usr/share/grub/themes/genesi/theme.txt' "$config"; then
+        ok "generated grub.cfg loads the Genesi theme"
+    else
+        fail "generated grub.cfg does not load the Genesi theme"
+    fi
+else
+    fail "missing $config"
+fi
+
+if [[ -f /etc/snapper/configs/root ]] && command -v snapper >/dev/null 2>&1; then
+    snapshot_count=$(snapper -c root list 2>/dev/null | awk '$1 ~ /^[0-9]+$/ { count++ } END { print count+0 }')
+    if (( snapshot_count > 0 )); then
+        if [[ -r "$config" ]] && grep -Fq '/.snapshots/' "$config"; then
+            ok "snapshot recovery entries remain present in grub.cfg"
+        else
+            fail "Snapper has restore points, but grub.cfg has no snapshot recovery entries"
+        fi
+    else
+        warn "Snapper is configured but has no restore points to verify"
+    fi
+else
+    warn "Genesi Snapshots is not configured on this installation"
+fi
+
+if (( failed )); then
+    printf '\nGenesi GRUB verification failed. Do not reboot until the failures are fixed.\n' >&2
+    exit 1
+fi
+
+printf '\nGenesi GRUB theme and recovery integration look healthy.\n'

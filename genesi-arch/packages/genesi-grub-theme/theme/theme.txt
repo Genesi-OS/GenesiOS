@@ -1,0 +1,85 @@
+# Genesi OS GRUB theme
+# Derived from Elegant-grub2-themes by vinceliuice (GPL-3.0-only).
+
+title-text: ""
+desktop-image: "background.png"
+desktop-image-scale-method: "stretch"
+desktop-image-h-align: "center"
+desktop-image-v-align: "center"
+desktop-color: "#020914"
+terminal-font: "Terminus Regular 16"
+terminal-left: "0"
+terminal-top: "0"
+terminal-width: "100%"
+terminal-height: "100%"
+terminal-border: "0"
+
++ image {
+  left = 0
+  top = 0
+  file = "panel.png"
+}
+
++ boot_menu {
+  left = 39%
+  top = 16%
+  width = 56%
+  height = 66%
+  item_font = "Unifont Regular 16"
+  item_color = "#d8e5e5"
+  selected_item_color = "#ffffff"
+  icon_width = 32
+  icon_height = 32
+  item_icon_space = 10
+  item_height = 50
+  item_padding = 5
+  item_spacing = 5
+  selected_item_pixmap_style = "select_*.png"
+}
+
++ image {
+  left = 10%
+  top = 20%
+  file = "logo.png"
+}
+
++ label {
+  left = 8%
+  top = 50%
+  width = 26%
+  align = "center"
+  text = "GENESI OS"
+  color = "#b8ffdf"
+  font = "Unifont Regular 32"
+}
+
++ label {
+  left = 8%
+  top = 57%
+  width = 26%
+  align = "center"
+  text = "Evolve. Connect. Create."
+  color = "#9bb2b5"
+  font = "Unifont Regular 16"
+}
+
++ label {
+  left = 39%
+  top = 86%
+  width = 56%
+  align = "center"
+  text = "Use Enter to boot and arrow keys to choose a system or recovery point"
+  color = "#86a0a4"
+  font = "Terminus Regular 14"
+}
+
++ label {
+  left = 39%
+  top = 90%
+  width = 56%
+  align = "center"
+  id = "__timeout__"
+  text = "Starting the selected entry in %d seconds"
+  color = "#b8ffdf"
+  font = "Terminus Regular 16"
+}
