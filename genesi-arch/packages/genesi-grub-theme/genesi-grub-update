@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -u
+
+config=${GENESI_GRUB_CONFIG:-/boot/grub/grub.cfg}
+config_dir=${config%/*}
+backup=${GENESI_GRUB_BACKUP:-$config_dir/grub.cfg.genesi-last-good}
+lock=${GENESI_GRUB_LOCK:-/run/lock/genesi-grub-update.lock}
+live_marker=${GENESI_GRUB_LIVE_MARKER:-/run/archiso/bootmnt}
+tmp=
+
+log() { printf 'genesi-grub-update: %s\n' "$*"; }
+fail() { printf 'genesi-grub-update: ERROR: %s\n' "$*" >&2; exit 1; }
+cleanup() { [ -z "${tmp:-}" ] || rm -f -- "$tmp"; }
+trap cleanup EXIT HUP INT TERM
+
+# The live image has its own immutable bootloader. Calamares generates the
+# installed system's menu after mounting the target, so changing the live
+# session here is both useless and misleading.
+if [ -e "$live_marker" ]; then
+    log 'live environment detected; installed-system menu is unchanged'
+    exit 0
+fi
+
+command -v grub-mkconfig >/dev/null 2>&1 || exit 0
+[ -d "$config_dir" ] || exit 0
+command -v flock >/dev/null 2>&1 || fail 'flock is required'
+mkdir -p "${lock%/*}"
+exec 9>"$lock"
+flock 9
+
+tmp=$(mktemp "$config_dir/.grub.cfg.genesi.XXXXXX") \
+    || fail 'could not create a temporary menu beside grub.cfg'
+
+log 'generating a candidate menu'
+if ! grub-mkconfig -o "$tmp"; then
+    fail 'generation failed; the current boot menu was preserved'
+fi
+
+if command -v grub-script-check >/dev/null 2>&1 \
+    && ! grub-script-check "$tmp"; then
+    fail 'candidate syntax is invalid; the current boot menu was preserved'
+fi
+
+grep -Eq '^[[:space:]]*(menuentry|submenu)[[:space:]]' "$tmp" \
+    || fail 'candidate has no boot entries; the current boot menu was preserved'
+grep -Eq '(^|[[:space:]])(linux|linuxefi)[[:space:]].*(vmlinuz|/boot/)' "$tmp" \
+    || fail 'candidate has no Linux kernel entry; the current boot menu was preserved'
+
+# Keep only a verified previous menu. Copying before the atomic rename means a
+# power loss can leave either the old or new complete file, never a partial one.
+if [ -s "$config" ]; then
+    if ! command -v grub-script-check >/dev/null 2>&1 \
+        || grub-script-check "$config" >/dev/null 2>&1; then
+        cp -a -- "$config" "$backup"
+    fi
+fi
+
+chmod 600 "$tmp"
+chown 0:0 "$tmp"
+mv -f -- "$tmp" "$config"
+tmp=
+sync -f "$config" 2>/dev/null || true
+log 'validated menu installed atomically; previous menu kept as grub.cfg.genesi-last-good'

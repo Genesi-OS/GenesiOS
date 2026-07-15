@@ -1,0 +1,14 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = genesi-grub-theme
+Target = grub
+Target = linux*
+Target = grub-btrfs
+Target = genesi-plymouth
+
+[Action]
+Description = Safely rebuilding the Genesi OS boot menu...
+When = PostTransaction
+Exec = /usr/bin/genesi-grub-update

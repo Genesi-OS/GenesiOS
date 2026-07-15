@@ -10,6 +10,13 @@ ok() { printf '[ OK ] %s\n' "$1"; }
 warn() { printf '[WARN] %s\n' "$1"; }
 fail() { printf '[FAIL] %s\n' "$1" >&2; failed=1; }
 
+if [[ -x /usr/bin/genesi-grub-update ]] \
+   && [[ -r /usr/share/libalpm/hooks/95-genesi-grub.hook ]]; then
+    ok "atomic post-transaction GRUB maintenance is installed"
+else
+    fail "atomic GRUB maintenance files are missing"
+fi
+
 if [[ -r "$theme" ]]; then
     ok "Genesi theme assets are installed"
 else
@@ -46,6 +53,17 @@ if [[ -r "$config" ]]; then
     fi
 else
     fail "missing $config"
+fi
+
+if [[ -s /boot/grub/grub.cfg.genesi-last-good ]]; then
+    if ! command -v grub-script-check >/dev/null 2>&1 \
+        || grub-script-check /boot/grub/grub.cfg.genesi-last-good; then
+        ok "last known-good GRUB menu is available"
+    else
+        fail "last known-good GRUB menu is invalid"
+    fi
+else
+    warn "last known-good menu will be created on the next successful update"
 fi
 
 if [[ -f /etc/snapper/configs/root ]] && command -v snapper >/dev/null 2>&1; then

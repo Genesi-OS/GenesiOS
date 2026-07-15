@@ -39,9 +39,9 @@ SETUP_VERSION=4
 # flag into the new @ so the very first boot after a restore rebuilds the menu.
 REGEN_FLAG=/var/lib/genesi/regen-grub
 if [ -e "$REGEN_FLAG" ]; then
-    if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
+    if command -v genesi-grub-update >/dev/null 2>&1 && [ -d /boot/grub ]; then
         log "post-restore: regenerating the GRUB snapshot menu"
-        grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+        genesi-grub-update >/dev/null 2>&1 || true
     fi
     rm -f "$REGEN_FLAG" 2>/dev/null || true
 fi
@@ -106,7 +106,7 @@ systemctl disable --now snapper-timeline.timer 2>/dev/null || true
 # ---- 4. grub-btrfs boot menu ("go back to yesterday") -----------------------
 # grub-btrfsd watches /.snapshots and regenerates the GRUB submenu on change so
 # a broken boot always has selectable snapshots. Only meaningful with GRUB.
-if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
+if command -v genesi-grub-update >/dev/null 2>&1 && [ -d /boot/grub ]; then
     # Make recovery visible and understandable to non-technical users. The
     # grub-btrfs submenu is otherwise named after the distro and snapshot rows
     # lead with implementation details instead of their useful description.
@@ -139,7 +139,7 @@ if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
 
     if systemctl enable --now grub-btrfsd.service 2>/dev/null; then
         # Seed the submenu once so the entries exist before the first new snapshot.
-        grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+        genesi-grub-update >/dev/null 2>&1 || true
     else
         log "grub-btrfsd not available yet (install grub-btrfs) — will retry next boot"
         fully_ok=0

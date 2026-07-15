@@ -2,7 +2,7 @@
 
 pkgname=genesi-grub-theme
 pkgver=2.0.0
-pkgrel=3
+pkgrel=4
 pkgdesc="Elegant GRUB theme branded for Genesi OS"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"
@@ -20,6 +20,10 @@ package() {
   install -Dm644 "${startdir}/background.png" "${theme_dir}/background.png"
   install -Dm755 "${startdir}/genesi-grub-theme-check" \
     "${pkgdir}/usr/bin/genesi-grub-theme-check"
+  install -Dm755 "${startdir}/genesi-grub-update" \
+    "${pkgdir}/usr/bin/genesi-grub-update"
+  install -Dm644 "${startdir}/95-genesi-grub.hook" \
+    "${pkgdir}/usr/share/libalpm/hooks/95-genesi-grub.hook"
   install -Dm644 "${startdir}/LICENSE.elegant" \
     "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm644 "${startdir}/NOTICE" \

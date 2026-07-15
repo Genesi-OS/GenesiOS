@@ -54,7 +54,7 @@ pkgver=1.0.0
 # "Root isn't Btrfs" banner from flashing over the recovery card on a transient
 # empty status read.
 # pkgrel 10: ship the refactored app logo (icons/logo.svg).
-pkgrel=11
+pkgrel=12
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -68,7 +68,7 @@ license=('AGPL-3.0-or-later')
 # the GRUB snapshot menu never regenerates. grub-btrfs itself does NOT depend on
 # it, so we must.
 depends=('snapper' 'snap-pac' 'grub-btrfs' 'btrfs-progs' 'inotify-tools'
-         'python' 'pyside6' 'qqc2-desktop-style' 'polkit')
+         'python' 'pyside6' 'qqc2-desktop-style' 'polkit' 'genesi-grub-theme')
 groups=('genesi')
 install="${pkgname}.install"
 source=()

@@ -1,8 +1,9 @@
 # Genesi OS GRUB theme lifecycle.
 #
-# This only changes presentation settings. grub-mkconfig still discovers all
-# normal kernels and the grub-btrfs recovery submenu through the standard
-# scripts under /etc/grub.d.
+# This scriptlet only changes presentation settings. Regeneration is performed
+# once, after the complete pacman transaction, by 95-genesi-grub.hook. Running
+# grub-mkconfig from a package scriptlet can observe a half-updated kernel/GRUB
+# stack and must never overwrite the active boot menu directly.
 
 _genesi_grub_set() {
     local file="$1" key="$2" value="$3"
@@ -11,15 +12,6 @@ _genesi_grub_set() {
         sed -i "s|^[#[:space:]]*${key}=.*|${key}=${value}|" "$file"
     else
         printf '%s=%s\n' "$key" "$value" >> "$file"
-    fi
-}
-
-_genesi_grub_regenerate() {
-    if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
-        if ! grub-mkconfig -o /boot/grub/grub.cfg; then
-            printf 'warning: Genesi theme installed, but grub.cfg regeneration failed\n' >&2
-            printf 'warning: run sudo grub-mkconfig -o /boot/grub/grub.cfg manually\n' >&2
-        fi
     fi
 }
 
@@ -37,7 +29,6 @@ _genesi_grub_apply() {
     _genesi_grub_set "$defaults" GRUB_COLOR_NORMAL '"light-gray/black"'
     _genesi_grub_set "$defaults" GRUB_COLOR_HIGHLIGHT '"white/dark-gray"'
 
-    _genesi_grub_regenerate
 }
 
 _genesi_grub_remove() {
@@ -46,7 +37,6 @@ _genesi_grub_remove() {
 
     sed -i '/^[#[:space:]]*GRUB_THEME=.*genesi\/theme\.txt/d' "$defaults"
     sed -i '/^[#[:space:]]*GRUB_BACKGROUND=.*genesi\/background\.png/d' "$defaults"
-    _genesi_grub_regenerate
 }
 
 post_install() { _genesi_grub_apply; }

@@ -13,7 +13,7 @@ snapper -c root cleanup number >/dev/null 2>&1 || true
 # watcher (which is meant to do this) is fragile and was seen exiting 1 on start,
 # leaving a stale menu. Doing it here — daemon-independent, correctly ordered
 # after the prune — keeps the menu always in sync with what exists on disk.
-if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
-    grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+if command -v genesi-grub-update >/dev/null 2>&1 && [ -d /boot/grub ]; then
+    genesi-grub-update >/dev/null 2>&1 || true
 fi
 exit 0

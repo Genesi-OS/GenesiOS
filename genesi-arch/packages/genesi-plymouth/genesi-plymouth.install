@@ -29,9 +29,8 @@ _genesi_plymouth_apply() {
         else
             printf '%s\n' 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"' >> /etc/default/grub
         fi
-        if command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
-            grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
-        fi
+        # 95-genesi-grub.hook rebuilds the menu once the full transaction ends.
+        # Never write the active grub.cfg from a package scriptlet.
     fi
 
     if command -v mkinitcpio >/dev/null 2>&1 && compgen -G '/boot/vmlinuz-*' >/dev/null; then

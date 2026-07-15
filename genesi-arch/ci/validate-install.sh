@@ -37,6 +37,8 @@ CALA="$REPO_ROOT/genesi-calamares-config-full/etc/calamares/modules"
 PACSTRAP_CONF="$CALA/pacstrap.conf"
 NETINSTALL="$CALA/netinstall.yaml"
 LIVE_PKGS="$REPO_ROOT/genesi-arch/archiso/packages_desktop.x86_64"
+GRUB_PKG="$REPO_ROOT/genesi-arch/packages/genesi-grub-theme"
+GRUB_FINALIZER="$REPO_ROOT/genesi-calamares-config-full/etc/calamares/scripts/genesi-grub-setup.sh"
 LOCALE_SUB="${LOCALE_SUB:-en-us}"   # expands firefox-i18n-$LOCALE etc.
 
 FAIL=0
@@ -44,6 +46,40 @@ note() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m  ! %s\033[0m\n' "$*"; }
 bad()  { printf '\033[1;31m  ✗ %s\033[0m\n' "$*"; FAIL=1; }
+
+# ---------------------------------------------------------------------------
+# Boot-menu safety is checked before touching repositories. Package scriptlets
+# must never write the active grub.cfg during a partially-complete transaction.
+# Upgrades and fresh installs validate a sibling candidate before renaming it.
+# ---------------------------------------------------------------------------
+note "Validating atomic GRUB lifecycle"
+for file in "$GRUB_PKG/genesi-grub-update" "$GRUB_FINALIZER"; do
+  if bash -n "$file"; then
+    ok "shell syntax: ${file#$REPO_ROOT/}"
+  else
+    bad "invalid shell syntax: ${file#$REPO_ROOT/}"
+  fi
+done
+if grep -Ev '^[[:space:]]*#' "$GRUB_PKG/genesi-grub-theme.install" \
+   | grep -q 'grub-mkconfig'; then
+  bad "theme scriptlet runs grub-mkconfig inside a package transaction"
+else
+  ok "theme scriptlet does not regenerate the active menu"
+fi
+grep -q 'When = PostTransaction' "$GRUB_PKG/95-genesi-grub.hook" \
+  && ok "GRUB maintenance runs after the complete transaction" \
+  || bad "GRUB pacman hook is not PostTransaction"
+for file in "$GRUB_PKG/genesi-grub-update" "$GRUB_FINALIZER"; do
+  grep -q 'grub-script-check' "$file" \
+    || bad "missing grub-script-check in ${file#$REPO_ROOT/}"
+  grep -q 'mv -f' "$file" \
+    || bad "missing atomic rename in ${file#$REPO_ROOT/}"
+done
+if bash "$REPO_ROOT/genesi-arch/ci/grub-update-atomic-test.sh"; then
+  ok "failed GRUB generation preserves the last working menu"
+else
+  bad "atomic GRUB update behavior test failed"
+fi
 
 # ---------------------------------------------------------------------------
 # Same repos the installed target sees: [genesi] + CachyOS (already present) +

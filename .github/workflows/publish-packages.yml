@@ -436,7 +436,7 @@ jobs:
             # install-time resolution from the genesi repo still applies.
             MAKEPKG_NODEPS=""
             case "$pkg" in
-              genesi-desktop|genesi-gaming|genesi-caelestia-cli|genesi-caelestia-shell|genesi-caelestia-settings)
+              genesi-desktop|genesi-gaming|genesi-plymouth|genesi-snapshots|genesi-caelestia-cli|genesi-caelestia-shell|genesi-caelestia-settings)
                 MAKEPKG_NODEPS="-d" ;;
             esac
 

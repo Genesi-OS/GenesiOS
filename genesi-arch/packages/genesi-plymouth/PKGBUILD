@@ -1,12 +1,12 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 pkgname=genesi-plymouth
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Genesi OS animated Plymouth boot splash'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
 license=('AGPL-3.0-or-later')
-depends=('plymouth' 'mkinitcpio')
+depends=('plymouth' 'mkinitcpio' 'genesi-grub-theme')
 makedepends=('librsvg')
 install='genesi-plymouth.install'
 source=('genesi.plymouth' 'genesi.script' 'logo.svg' 'ring.svg' 'dot.svg'
