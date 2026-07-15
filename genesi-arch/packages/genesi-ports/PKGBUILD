@@ -19,7 +19,7 @@
 # (a backend can expose dozens of endpoints) instead of overflowing it.
 pkgname=genesi-ports
 pkgver=1.0.0
-pkgrel=5
+pkgrel=6
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -45,7 +45,7 @@ package() {
         "$pkgdir/usr/share/genesi-ports/app/genesi_ports.py"
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-ports/app/Main.qml"
-    for comp in Theme GlassCard GButton StatusBanner I18n; do
+    for comp in Theme GlassCard StudioTheme StudioCard GButton StatusBanner I18n; do
         install -Dm644 "${startdir}/../genesi-ui-kit/components/${comp}.qml" \
             "$pkgdir/usr/share/genesi-ports/app/${comp}.qml"
     done

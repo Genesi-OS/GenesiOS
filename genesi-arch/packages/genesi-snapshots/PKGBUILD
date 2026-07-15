@@ -54,7 +54,7 @@ pkgver=1.0.0
 # "Root isn't Btrfs" banner from flashing over the recovery card on a transient
 # empty status read.
 # pkgrel 10: ship the refactored app logo (icons/logo.svg).
-pkgrel=10
+pkgrel=11
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -103,7 +103,7 @@ package() {
         "$pkgdir/usr/share/genesi-snapshots/app/genesi_snapshots.py"
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-snapshots/app/Main.qml"
-    for comp in Theme GlassCard GButton StatusBanner I18n; do
+    for comp in Theme GlassCard StudioTheme StudioCard GButton StatusBanner I18n; do
         install -Dm644 "${startdir}/../genesi-ui-kit/components/${comp}.qml" \
             "$pkgdir/usr/share/genesi-snapshots/app/${comp}.qml"
     done

@@ -120,7 +120,7 @@ pkgver=1.0.0
 # pkgrel 20: pick up the pinned dark mockup palette (#040b17 bg / #0d1623 cards)
 # from the shared kit, so Sandboxes matches the redesigned AI Mode Monitor.
 # pkgrel 21: shared GButton uses opaque tonal fills for VM-safe contrast.
-pkgrel=22
+pkgrel=23
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -151,7 +151,7 @@ package() {
         "$pkgdir/usr/share/genesi-sandboxes/app/Main.qml"
     # Shared Genesi UI kit — one canonical source, bundled in at build (see
     # genesi-ui-kit/README.md for why it's not a dependency).
-    for comp in Theme GlassCard GButton StatusBanner I18n; do
+    for comp in Theme GlassCard StudioTheme StudioCard GButton StatusBanner I18n; do
         install -Dm644 "${startdir}/../genesi-ui-kit/components/${comp}.qml" \
             "$pkgdir/usr/share/genesi-sandboxes/app/${comp}.qml"
     done

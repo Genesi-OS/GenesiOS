@@ -4,8 +4,8 @@
  * A protection panel over the genesi-snapshots CLI (snapper + snap-pac +
  * grub-btrfs). The hero states, at a glance, whether the machine is protected;
  * the timeline lists every restore point; one click creates a manual snapshot,
- * rolls back, or deletes. Built on the shared Genesi UI kit (Theme/GlassCard/
- * GButton/StatusBanner/I18n) so it matches the AI Monitor / Sandboxes look.
+ * rolls back, or deletes. The Studio components only style the presentation;
+ * all recovery and restore behavior remains in the existing backend.
  */
 import QtQuick
 import QtQuick.Layouts
@@ -16,12 +16,12 @@ import org.kde.kirigami as Kirigami
 QQC2.ApplicationWindow {
     id: win
     visible: true
-    width: 900; height: 700
-    minimumWidth: 720; minimumHeight: 540
+    width: 980; height: 740
+    minimumWidth: 760; minimumHeight: 580
     title: "Genesi Snapshots"
     color: theme.bgBottom
 
-    Theme { id: theme }
+    StudioTheme { id: theme }
     I18n  { id: i18n }
 
     // ── state (driven by the backend) ──────────────────────────────
@@ -91,8 +91,9 @@ QQC2.ApplicationWindow {
                 spacing: Kirigami.Units.largeSpacing
 
                 Rectangle {
-                    width: 44; height: 44; radius: 13
+                    width: 48; height: 48; radius: 8
                     color: theme.a(theme.green, 0.16)
+                    border.width: 1; border.color: theme.a(theme.green, 0.34)
                     Kirigami.Icon {
                         anchors.centerIn: parent; width: 26; height: 26
                         source: "security-high"; color: theme.green
@@ -101,8 +102,13 @@ QQC2.ApplicationWindow {
                 ColumnLayout {
                     spacing: 0
                     QQC2.Label {
+                        text: "SYSTEM RECOVERY"
+                        font.pixelSize: 9; font.bold: true
+                        color: theme.accentText
+                    }
+                    QQC2.Label {
                         text: "Genesi Snapshots"
-                        font.pixelSize: 20; font.bold: true
+                        font.pixelSize: 22; font.bold: true
                         font.family: theme.display; color: theme.textHi
                     }
                     QQC2.Label {
@@ -126,7 +132,7 @@ QQC2.ApplicationWindow {
             // ── RECOVERY HERO: booted a read-only snapshot from GRUB ───────
             // The dead end for laypeople — dominates the window and offers the
             // single way out: promote this snapshot back to the real system.
-            GlassCard {
+            StudioCard {
                 Layout.fillWidth: true
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
@@ -148,11 +154,11 @@ QQC2.ApplicationWindow {
 
                         Rectangle {
                             Layout.alignment: Qt.AlignTop
-                            width: 84; height: 84; radius: 22
+                            width: 76; height: 76; radius: 8
                             color: theme.a(theme.blue, 0.14)
                             border.width: 1; border.color: theme.a(theme.blue, 0.4)
                             Kirigami.Icon {
-                                anchors.centerIn: parent; width: 46; height: 46
+                                anchors.centerIn: parent; width: 42; height: 42
                                 source: "clock"; color: theme.blue
                             }
                         }
@@ -175,7 +181,7 @@ QQC2.ApplicationWindow {
                             Rectangle {
                                 Layout.topMargin: 6
                                 implicitWidth: recChip.implicitWidth + 20
-                                implicitHeight: 28; radius: 14
+                                implicitHeight: 28; radius: 7
                                 color: theme.a(theme.blue, 0.14)
                                 border.width: 1; border.color: theme.a(theme.blue, 0.4)
                                 RowLayout {
@@ -212,7 +218,7 @@ QQC2.ApplicationWindow {
             }
 
             // ── HERO: protection status ────────────────────────────
-            GlassCard {
+            StudioCard {
                 Layout.fillWidth: true
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
@@ -231,11 +237,11 @@ QQC2.ApplicationWindow {
                     // big shield
                     Rectangle {
                         Layout.alignment: Qt.AlignVCenter
-                        width: 84; height: 84; radius: 22
+                        width: 76; height: 76; radius: 8
                         color: theme.a(win.protColor, 0.14)
                         border.width: 1; border.color: theme.a(win.protColor, 0.4)
                         Kirigami.Icon {
-                            anchors.centerIn: parent; width: 46; height: 46
+                            anchors.centerIn: parent; width: 42; height: 42
                             source: win.protectedOk ? "security-high"
                                   : (win.st.btrfs ? "security-medium" : "security-low")
                             color: win.protColor
@@ -271,7 +277,7 @@ QQC2.ApplicationWindow {
                                 property string label: ""
                                 property bool on: false
                                 implicitWidth: chipRow.implicitWidth + 20
-                                implicitHeight: 28; radius: 14
+                                implicitHeight: 28; radius: 7
                                 color: on ? theme.a(theme.green, 0.14) : theme.a(theme.textLo, 0.10)
                                 border.width: 1
                                 border.color: on ? theme.a(theme.green, 0.4) : theme.a(theme.textLo, 0.18)
@@ -322,12 +328,21 @@ QQC2.ApplicationWindow {
             }
 
             // ── timeline header ────────────────────────────────────
-            QQC2.Label {
+            RowLayout {
+                Layout.fillWidth: true
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
+                Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.topMargin: Kirigami.Units.smallSpacing
-                text: i18n.t("snap.timeline")
-                font.pixelSize: 13; font.bold: true; color: theme.textMid
                 visible: win.protectedOk
+                QQC2.Label {
+                    text: i18n.t("snap.timeline")
+                    font.pixelSize: 13; font.bold: true; color: theme.textMid
+                }
+                Item { Layout.fillWidth: true }
+                QQC2.Label {
+                    text: win.snaps.length + " RESTORE POINTS"
+                    font.pixelSize: 10; font.bold: true; color: theme.textLo
+                }
             }
 
             // In recovery the per-snapshot actions target the wrong subvolume,
@@ -354,7 +369,7 @@ QQC2.ApplicationWindow {
             // ── snapshot list ──────────────────────────────────────
             Repeater {
                 model: win.protectedOk ? win.snaps : []
-                delegate: GlassCard {
+                delegate: StudioCard {
                     required property var modelData
                     Layout.fillWidth: true
                     Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
@@ -370,7 +385,7 @@ QQC2.ApplicationWindow {
 
                         // number badge
                         Rectangle {
-                            width: 46; height: 46; radius: 12
+                            width: 48; height: 48; radius: 8
                             color: theme.a(win.typeColor(modelData), 0.14)
                             border.width: 1; border.color: theme.a(win.typeColor(modelData), 0.35)
                             Layout.alignment: Qt.AlignVCenter
@@ -446,7 +461,7 @@ QQC2.ApplicationWindow {
         modal: true; focus: true
         width: 420
         padding: 0
-        background: GlassCard { accent: theme.green; active: true; interactive: false }
+        background: StudioCard { accent: theme.green; active: true; interactive: false }
 
         ColumnLayout {
             width: parent.width
@@ -497,7 +512,7 @@ QQC2.ApplicationWindow {
         anchors.centerIn: parent
         modal: true; focus: true
         width: 460; padding: 0
-        background: GlassCard { accent: theme.turbo; active: true; interactive: false }
+        background: StudioCard { accent: theme.turbo; active: true; interactive: false }
 
         ColumnLayout {
             width: parent.width
@@ -542,7 +557,7 @@ QQC2.ApplicationWindow {
         anchors.centerIn: parent
         modal: true; focus: true
         width: 480; padding: 0
-        background: GlassCard { accent: theme.blue; active: true; interactive: false }
+        background: StudioCard { accent: theme.blue; active: true; interactive: false }
 
         ColumnLayout {
             width: parent.width

@@ -9,15 +9,15 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: win
-    width: 1240
-    height: 800
-    minimumWidth: 940
-    minimumHeight: 600
+    width: 1320
+    height: 840
+    minimumWidth: 1020
+    minimumHeight: 640
     visible: true
     title: "Genesi API Inspector"
     color: theme.bgBottom
 
-    Theme { id: theme }
+    StudioTheme { id: theme }
     I18n { id: i18n }
 
     // ── shared state ───────────────────────────────────────────────
@@ -56,7 +56,7 @@ ApplicationWindow {
         signal clicked()
         implicitHeight: 32
         implicitWidth: lbl.implicitWidth + 26
-        radius: 9
+        radius: 7
         opacity: enabledX ? 1 : 0.4
         color: flat ? (ma.containsMouse ? theme.a(accent, 0.16) : "transparent")
                     : (ma.containsMouse ? Qt.lighter(accent, 1.12) : accent)
@@ -101,7 +101,7 @@ ApplicationWindow {
         readonly property bool selected: win.detailTab === index
         implicitHeight: 26
         implicitWidth: lbl.implicitWidth + 34
-        radius: 7
+        radius: 6
         color: selected ? theme.a(theme.green, theme.dark ? 0.24 : 0.18)
               : (ma.containsMouse ? theme.a(theme.textHi, theme.dark ? 0.07 : 0.05) : "transparent")
         border.width: 1
@@ -129,7 +129,7 @@ ApplicationWindow {
         property alias text: ta.text
         property bool editable: false
         color: theme.bgBottom
-        radius: 10
+        radius: 8
         border.width: 1
         border.color: theme.line
         clip: true
@@ -154,23 +154,31 @@ ApplicationWindow {
 
     // ╔══════════════════════ top bar ══════════════════════╗
     header: Rectangle {
-        height: 56
-        color: theme.card
+        height: 68
+        color: theme.bgTop
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 18
             anchors.rightMargin: 16
             spacing: 14
-            Image {
-                source: Qt.resolvedUrl("icons/logo.svg")
-                sourceSize.width: 24; sourceSize.height: 24
-                Layout.preferredWidth: 24; Layout.preferredHeight: 24
-                smooth: true
+            Rectangle {
+                Layout.preferredWidth: 40; Layout.preferredHeight: 40
+                radius: 8
+                color: theme.a(theme.green, 0.13)
+                border.width: 1; border.color: theme.a(theme.green, 0.34)
+                Image {
+                    anchors.centerIn: parent
+                    source: Qt.resolvedUrl("icons/logo.svg")
+                    sourceSize.width: 23; sourceSize.height: 23
+                    width: 23; height: 23
+                    smooth: true
+                }
             }
-            Text {
-                text: "Genesi API Inspector"
-                color: theme.textHi; font.pixelSize: 17; font.bold: true
+            ColumnLayout {
+                spacing: 0
+                Text { text: "API WORKBENCH"; color: theme.accentText; font.pixelSize: 9; font.bold: true }
+                Text { text: "Genesi API Inspector"; color: theme.textHi; font.pixelSize: 18; font.bold: true }
             }
             Rectangle {
                 Layout.preferredWidth: dot.implicitWidth + 26
@@ -189,7 +197,7 @@ ApplicationWindow {
             }
             Item { Layout.fillWidth: true }
             Text {
-                visible: !certTrusted
+                visible: !certTrusted && win.width > 1180
                 text: i18n.t("insp.httpsHelp")
                 color: theme.textMid; font.pixelSize: 12
             }
@@ -244,9 +252,9 @@ ApplicationWindow {
 
         // ── nav rail ──
         Rectangle {
-            Layout.preferredWidth: 168
+            Layout.preferredWidth: 188
             Layout.fillHeight: true
-            color: theme.card
+            color: theme.panelTop
             Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: theme.line }
             ColumnLayout {
                 anchors.fill: parent
@@ -254,6 +262,14 @@ ApplicationWindow {
                 anchors.leftMargin: 10
                 anchors.rightMargin: 10
                 spacing: 6
+                Text {
+                    text: "WORKBENCH"
+                    color: theme.textLo
+                    font.pixelSize: 9
+                    font.bold: true
+                    Layout.leftMargin: 10
+                    Layout.bottomMargin: 4
+                }
                 Repeater {
                     model: [
                         { t: "Proxy",    i: "icons/proxy.svg",    n: 0 },
@@ -265,7 +281,7 @@ ApplicationWindow {
                         required property var modelData
                         Layout.fillWidth: true
                         implicitHeight: 42
-                        radius: 10
+                        radius: 8
                         color: page === modelData.n ? theme.a(theme.green, 0.16)
                                                     : (nma.containsMouse ? theme.cardHi : "transparent")
                         border.width: page === modelData.n ? 1 : 0
@@ -302,11 +318,18 @@ ApplicationWindow {
                     }
                 }
                 Item { Layout.fillHeight: true }
-                Text {
+                Rectangle {
                     Layout.fillWidth: true
-                    text: "engine: mitmproxy\n" + proxyHost + ":" + proxyPort
-                    color: theme.textLo; font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
+                    Layout.preferredHeight: 54
+                    radius: 8
+                    color: theme.card
+                    border.width: 1; border.color: theme.line
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "MITMPROXY ENGINE"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: proxyHost + ":" + proxyPort; color: theme.textMid; font.pixelSize: 11; font.family: theme.mono }
+                    }
                 }
             }
         }
@@ -385,7 +408,7 @@ ApplicationWindow {
                     }
 
                     // intercept banner (paused request)
-                    GlassCard {
+                    StudioCard {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 230
                         visible: interceptItem !== null
@@ -432,7 +455,7 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         spacing: 12
 
-                        GlassCard {
+                        StudioCard {
                             Layout.preferredWidth: parent.width * 0.46
                             Layout.fillHeight: true
                             ColumnLayout {
@@ -507,7 +530,7 @@ ApplicationWindow {
                             }
                         }
 
-                        GlassCard {
+                        StudioCard {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             ColumnLayout {
@@ -578,7 +601,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         spacing: 12
-                        GlassCard {
+                        StudioCard {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             ColumnLayout {
@@ -589,7 +612,7 @@ ApplicationWindow {
                                 RawView { id: repeaterEdit; Layout.fillWidth: true; Layout.fillHeight: true; editable: true }
                             }
                         }
-                        GlassCard {
+                        StudioCard {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             ColumnLayout {
@@ -639,7 +662,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.preferredHeight: parent.height * 0.42
                         spacing: 12
-                        GlassCard {
+                        StudioCard {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             ColumnLayout {
@@ -650,7 +673,7 @@ ApplicationWindow {
                                 RawView { id: intruderTpl; Layout.fillWidth: true; Layout.fillHeight: true; editable: true }
                             }
                         }
-                        GlassCard {
+                        StudioCard {
                             Layout.preferredWidth: parent.width * 0.34
                             Layout.fillHeight: true
                             ColumnLayout {
@@ -662,7 +685,7 @@ ApplicationWindow {
                             }
                         }
                     }
-                    GlassCard {
+                    StudioCard {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         ColumnLayout {
@@ -729,7 +752,7 @@ ApplicationWindow {
                             onClicked: { scanModel.clear(); scanCount = 0 }
                         }
                     }
-                    GlassCard {
+                    StudioCard {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         ColumnLayout {

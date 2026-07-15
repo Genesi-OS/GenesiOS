@@ -88,7 +88,7 @@ pkgver=1.0.0
 # pkgrel 19: pick up the pinned dark mockup palette (#040b17 bg / #0d1623 cards)
 # from the shared kit, so the Inspector matches the redesigned AI Mode Monitor.
 # pkgrel 20: shared GButton uses opaque tonal fills for VM-safe contrast.
-pkgrel=21
+pkgrel=22
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -123,6 +123,10 @@ package() {
         "$pkgdir/usr/share/genesi-netinspect/app/Theme.qml"
     install -Dm644 "${startdir}/../genesi-ui-kit/components/GlassCard.qml" \
         "$pkgdir/usr/share/genesi-netinspect/app/GlassCard.qml"
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/StudioTheme.qml" \
+        "$pkgdir/usr/share/genesi-netinspect/app/StudioTheme.qml"
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/StudioCard.qml" \
+        "$pkgdir/usr/share/genesi-netinspect/app/StudioCard.qml"
     install -Dm644 "${startdir}/../genesi-ui-kit/components/I18n.qml" \
         "$pkgdir/usr/share/genesi-netinspect/app/I18n.qml"
 

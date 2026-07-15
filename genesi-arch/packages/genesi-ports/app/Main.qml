@@ -6,10 +6,10 @@ import org.kde.kirigami as Kirigami
 
 QQC2.ApplicationWindow {
     id: win
-    width: 1120
-    height: 700
-    minimumWidth: 900
-    minimumHeight: 580
+    width: 1200
+    height: 760
+    minimumWidth: 960
+    minimumHeight: 620
     visible: true
     title: "Genesi PortScope"
     color: theme.bgBottom
@@ -25,7 +25,7 @@ QQC2.ApplicationWindow {
     property bool privilegedView: false
     property string toast: ""
 
-    Theme { id: theme }
+    StudioTheme { id: theme }
 
     function filtered() {
         var out = []
@@ -40,6 +40,17 @@ QQC2.ApplicationWindow {
             out.push(item)
         }
         return out
+    }
+
+    function exposedCount() {
+        var count = 0
+        for (var i = 0; i < listeners.length; i++)
+            if (listeners[i].scope === "all" || listeners[i].scope === "network") count++
+        return count
+    }
+
+    function localCount() {
+        return Math.max(0, listeners.length - exposedCount())
     }
 
     function select(item) {
@@ -90,8 +101,8 @@ QQC2.ApplicationWindow {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 74
-            color: theme.card
+            Layout.preferredHeight: 86
+            color: theme.bgTop
             border.width: 0
 
             RowLayout {
@@ -100,27 +111,42 @@ QQC2.ApplicationWindow {
                 anchors.rightMargin: 22
                 spacing: 14
                 Rectangle {
-                    width: 42; height: 42; radius: 8
+                    width: 48; height: 48; radius: 8
                     color: theme.mix(theme.card, theme.green, 0.20)
                     border.width: 1; border.color: theme.a(theme.green, 0.55)
                     Kirigami.Icon {
-                        anchors.centerIn: parent; width: 23; height: 23
+                        anchors.centerIn: parent; width: 26; height: 26
                         source: "network-connect"; color: theme.greenBright
                     }
                 }
                 ColumnLayout {
                     spacing: 1
                     QQC2.Label {
-                        text: "PortScope"
+                        text: "Ports & Processes"
                         color: theme.textHi; font.family: theme.display
-                        font.pixelSize: 22; font.bold: true
+                        font.pixelSize: 23; font.bold: true
                     }
                     QQC2.Label {
-                        text: "Ports, processes and local endpoints"
+                        text: "Live ownership map for every listening service"
                         color: theme.textMid; font.pixelSize: 12
                     }
                 }
                 Item { Layout.fillWidth: true }
+                Rectangle {
+                    Layout.preferredWidth: liveRow.implicitWidth + 22
+                    Layout.preferredHeight: 30
+                    radius: 7
+                    color: theme.a(theme.green, 0.10)
+                    border.width: 1
+                    border.color: theme.a(theme.green, 0.34)
+                    RowLayout {
+                        id: liveRow
+                        anchors.centerIn: parent
+                        spacing: 7
+                        Rectangle { width: 7; height: 7; radius: 4; color: theme.greenBright }
+                        QQC2.Label { text: "LIVE  12s"; color: theme.accentText; font.pixelSize: 10; font.bold: true }
+                    }
+                }
                 Rectangle {
                     width: 260; height: 38; radius: 7
                     color: theme.cardHi; border.width: 1; border.color: theme.lineHi
@@ -158,23 +184,33 @@ QQC2.ApplicationWindow {
             spacing: 0
 
             Rectangle {
-                Layout.preferredWidth: 205; Layout.fillHeight: true
-                color: theme.card
+                Layout.preferredWidth: 222; Layout.fillHeight: true
+                color: theme.panelTop
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 14; spacing: 8
                     QQC2.Label { text: "OVERVIEW"; color: theme.textLo; font.pixelSize: 11; font.bold: true }
                     Rectangle {
-                        Layout.fillWidth: true; height: 72; radius: 7
+                        Layout.fillWidth: true; height: 82; radius: 8
                         color: theme.mix(theme.card, theme.green, 0.12)
                         border.width: 1; border.color: theme.a(theme.green, 0.35)
-                        Column {
-                            anchors.centerIn: parent; spacing: 1
-                            QQC2.Label {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: win.listeners.length; color: theme.greenBright
-                                font.pixelSize: 28; font.bold: true
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 14
+                            spacing: 12
+                            ColumnLayout {
+                                spacing: 0
+                                QQC2.Label { text: win.localCount(); color: theme.greenBright; font.pixelSize: 25; font.bold: true }
+                                QQC2.Label { text: "LOCAL"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
                             }
-                            QQC2.Label { text: "listening sockets"; color: theme.textMid; font.pixelSize: 11 }
+                            Rectangle { width: 1; Layout.fillHeight: true; Layout.topMargin: 14; Layout.bottomMargin: 14; color: theme.lineHi }
+                            ColumnLayout {
+                                spacing: 0
+                                QQC2.Label { text: win.exposedCount(); color: win.exposedCount() > 0 ? theme.turboBright : theme.textMid; font.pixelSize: 25; font.bold: true }
+                                QQC2.Label { text: "EXPOSED"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                            }
+                            Item { Layout.fillWidth: true }
+                            QQC2.Label { text: win.listeners.length; color: theme.textHi; font.pixelSize: 13; font.bold: true }
                         }
                     }
 
@@ -264,9 +300,9 @@ QQC2.ApplicationWindow {
                                 id: portList
                                 model: win.filtered()
                                 spacing: 7
-                                delegate: GlassCard {
+                                delegate: StudioCard {
                                     width: ListView.view ? ListView.view.width : 400
-                                    height: 72; interactive: true
+                                    height: 80; interactive: true
                                     active: win.selected && win.selected.id === modelData.id
                                     accent: modelData.scope === "all" ? theme.turbo : theme.green
                                     MouseArea {
@@ -276,14 +312,14 @@ QQC2.ApplicationWindow {
                                     RowLayout {
                                         anchors.fill: parent; anchors.margins: 10; spacing: 10
                                         Rectangle {
-                                            width: 58; height: 48; radius: 7
+                                            width: 62; height: 54; radius: 8
                                             color: theme.mix(theme.card, modelData.proto === "tcp" ? theme.green : theme.blue, 0.18)
                                             Column {
                                                 anchors.centerIn: parent; spacing: 0
                                                 QQC2.Label {
                                                     anchors.horizontalCenter: parent.horizontalCenter
                                                     text: modelData.port; color: theme.textHi
-                                                    font.pixelSize: 16; font.bold: true
+                                                    font.pixelSize: 18; font.bold: true
                                                 }
                                                 QQC2.Label {
                                                     anchors.horizontalCenter: parent.horizontalCenter
@@ -326,8 +362,8 @@ QQC2.ApplicationWindow {
                         }
                     }
 
-                    GlassCard {
-                        Layout.preferredWidth: 330; Layout.fillHeight: true
+                    StudioCard {
+                        Layout.preferredWidth: 360; Layout.fillHeight: true
                         accent: win.selected && win.selected.scope === "all" ? theme.turbo : theme.green
                         active: !!win.selected; interactive: false
                         ColumnLayout {
@@ -471,7 +507,7 @@ QQC2.ApplicationWindow {
     QQC2.Popup {
         id: killConfirm
         anchors.centerIn: parent; width: 430; padding: 0; modal: true; focus: true
-        background: GlassCard { accent: theme.red; active: true; interactive: false }
+        background: StudioCard { accent: theme.red; active: true; interactive: false }
         ColumnLayout {
             width: parent.width; spacing: 13
             Item { height: 8 }

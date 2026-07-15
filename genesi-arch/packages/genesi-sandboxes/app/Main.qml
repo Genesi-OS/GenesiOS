@@ -1,8 +1,8 @@
 /*
  * Genesi Sandboxes — Doquo-style workspace UI: a left sidebar (brand + primary
  * action + filters + backend status) and a content area (header + tabs + a clean
- * list of workspaces). Follows the system light/dark scheme via the shared kit
- * (Theme/GlassCard/GButton/StatusBanner are all theme-aware). Every action goes
+ * list of workspaces). Uses the Forge-inspired Studio surface language while
+ * every action continues to go
  * through the `backend` object, which drives the genesi-sandboxes CLI.
  */
 import QtQuick
@@ -19,7 +19,7 @@ Kirigami.ApplicationWindow {
     minimumHeight: Kirigami.Units.gridUnit * 30
     color: theme.bgBottom
 
-    Theme { id: theme }
+    StudioTheme { id: theme }
     I18n { id: i18n }
 
     property var boxes: []
@@ -97,9 +97,9 @@ Kirigami.ApplicationWindow {
 
             // ───────────────────────── SIDEBAR ─────────────────────────
             Rectangle {
-                Layout.preferredWidth: 248
+                Layout.preferredWidth: 238
                 Layout.fillHeight: true
-                color: theme.bgTop
+                color: theme.panelTop
                 Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: theme.line }
 
                 ColumnLayout {
@@ -112,11 +112,16 @@ Kirigami.ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.bottomMargin: Kirigami.Units.smallSpacing
                         spacing: 10
-                        Kirigami.Icon { source: "genesi-sandboxes"; Layout.preferredWidth: 30; Layout.preferredHeight: 30 }
+                        Rectangle {
+                            Layout.preferredWidth: 38; Layout.preferredHeight: 38; radius: 8
+                            color: theme.a(theme.green, 0.13)
+                            border.width: 1; border.color: theme.a(theme.green, 0.32)
+                            Kirigami.Icon { anchors.centerIn: parent; width: 22; height: 22; source: "genesi-sandboxes"; color: theme.greenBright }
+                        }
                         ColumnLayout {
                             spacing: -3
-                            QQC2.Label { text: "Sandboxes"; font.bold: true; font.pixelSize: 16; color: theme.textHi }
-                            QQC2.Label { text: "GENESI OS"; font.pixelSize: 9; font.letterSpacing: 2; color: theme.green }
+                            QQC2.Label { text: "Workspace Lab"; font.bold: true; font.pixelSize: 16; color: theme.textHi }
+                            QQC2.Label { text: "GENESI SANDBOXES"; font.pixelSize: 9; color: theme.accentText; font.bold: true }
                         }
                         Item { Layout.fillWidth: true }
                         // Language switch (EN / PT, live)
@@ -165,7 +170,7 @@ Kirigami.ApplicationWindow {
                             readonly property bool sel: win.filter === modelData.k
                             Layout.fillWidth: true
                             Layout.preferredHeight: 36
-                            radius: 9
+                            radius: 8
                             color: navItem.sel ? theme.a(theme.green, 0.14)
                                  : (nma.containsMouse ? theme.a(theme.textHi, 0.06) : "transparent")
                             Behavior on color { ColorAnimation { duration: 130 } }
@@ -208,7 +213,7 @@ Kirigami.ApplicationWindow {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 34
-                        radius: 9
+                        radius: 8
                         visible: win.containerBackend !== "" && win.containerBackend !== "none"
                         color: theme.a(win.backendReady ? theme.green : theme.red, 0.10)
                         border.width: 1
@@ -267,7 +272,7 @@ Kirigami.ApplicationWindow {
                 // header block
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.margins: Kirigami.Units.largeSpacing * 2
+                    Layout.margins: Kirigami.Units.largeSpacing * 1.75
                     Layout.bottomMargin: Kirigami.Units.largeSpacing
                     spacing: Kirigami.Units.smallSpacing
 
@@ -281,8 +286,8 @@ Kirigami.ApplicationWindow {
                                 color: theme.a(theme.green, 0.15)
                                 QQC2.Label { id: planLbl; anchors.centerIn: parent; text: "GENESI OS"; font.pixelSize: 9; font.letterSpacing: 1.5; color: theme.accentText; font.bold: true }
                             }
-                            QQC2.Label { text: "Dev Workspaces"; font.bold: true; font.pixelSize: 26; color: theme.textHi }
-                            QQC2.Label { text: "Isolated, container-backed environments — one per project."; color: theme.textMid; font.pixelSize: 13 }
+                            QQC2.Label { text: "Isolated Workspaces"; font.bold: true; font.pixelSize: 27; color: theme.textHi }
+                            QQC2.Label { text: "Container-backed environments with a real project attached."; color: theme.textMid; font.pixelSize: 13 }
                         }
                         GButton {
                             theme: theme
@@ -293,6 +298,37 @@ Kirigami.ApplicationWindow {
                             Layout.alignment: Qt.AlignTop
                             onClicked: createDialog.open()
                         }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 8
+                        spacing: 18
+
+                        ColumnLayout {
+                            spacing: 0
+                            QQC2.Label { text: win.boxes.length; color: theme.textHi; font.pixelSize: 18; font.bold: true }
+                            QQC2.Label { text: "TOTAL WORKSPACES"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                        }
+                        Rectangle { width: 1; height: 30; color: theme.lineHi }
+                        ColumnLayout {
+                            spacing: 0
+                            QQC2.Label { text: win.runningCount(); color: theme.greenBright; font.pixelSize: 18; font.bold: true }
+                            QQC2.Label { text: "RUNNING"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                        }
+                        Rectangle { width: 1; height: 30; color: theme.lineHi }
+                        ColumnLayout {
+                            spacing: 0
+                            QQC2.Label { text: Math.max(0, win.boxes.length - win.runningCount()); color: theme.textMid; font.pixelSize: 18; font.bold: true }
+                            QQC2.Label { text: "STOPPED"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                        }
+                        Rectangle { width: 1; height: 30; color: theme.lineHi }
+                        ColumnLayout {
+                            spacing: 0
+                            QQC2.Label { text: win.containerBackend || "detecting"; color: win.backendReady ? theme.accentText : theme.turboBright; font.pixelSize: 13; font.bold: true }
+                            QQC2.Label { text: "RUNTIME"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                        }
+                        Item { Layout.fillWidth: true }
                     }
                 }
 
@@ -414,11 +450,11 @@ Kirigami.ApplicationWindow {
                         topMargin: Kirigami.Units.largeSpacing
                         bottomMargin: Kirigami.Units.largeSpacing
 
-                        delegate: GlassCard {
+                        delegate: StudioCard {
                             required property var modelData
                             width: ListView.view ? ListView.view.width - Kirigami.Units.largeSpacing * 4 : implicitWidth
                             x: Kirigami.Units.largeSpacing * 2
-                            implicitHeight: 68
+                            implicitHeight: 78
                             accent: win.accentFor(modelData.name)
                             active: modelData.running
 
@@ -430,8 +466,8 @@ Kirigami.ApplicationWindow {
 
                                 // icon tile
                                 Rectangle {
-                                    Layout.preferredWidth: 40; Layout.preferredHeight: 40
-                                    radius: 11
+                                    Layout.preferredWidth: 46; Layout.preferredHeight: 46
+                                    radius: 8
                                     color: theme.a(win.accentFor(modelData.name), 0.16)
                                     QQC2.Label {
                                         anchors.centerIn: parent
