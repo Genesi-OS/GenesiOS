@@ -1576,8 +1576,10 @@ class Backend(QObject):
     @Slot()
     def captureHotkey(self):
         def work():
-            reply = self._automation_cmd({"cmd": "capture-hotkey", "timeout": 8},
-                                         timeout=12)
+            # The daemon blocks up to ~12s waiting for the user's chord; give the
+            # socket read a longer ceiling so it isn't cut off mid-capture.
+            reply = self._automation_cmd({"cmd": "capture-hotkey", "timeout": 12},
+                                         timeout=20)
             self.hotkeyCaptured.emit(reply.get("combo", "") if reply.get("ok") else "")
         threading.Thread(target=work, daemon=True).start()
 

@@ -635,7 +635,7 @@ Item {
                 theme: root.theme
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true
-                AutomationConfigPanel { anchors.fill: parent; theme: root.theme; node: root.selectedNode(); graphProvider: root }
+                AutomationConfigPanel { anchors.fill: parent; theme: root.theme; node: root.selectedNode(); graphProvider: root; hotkeyAvailable: root.hotkeyAvailable }
             }
         }
 

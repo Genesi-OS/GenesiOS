@@ -353,12 +353,27 @@ class Hotkeys:
                 continue
         self.available = bool(self._fds)
 
+    def reopen(self):
+        """Re-scan /dev/input — lets the daemon pick up input access gained after
+        it started (e.g. the user was just added to the 'input' group). Returns
+        the new `available`."""
+        for fd in self._fds:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        self._fds = []
+        self._pressed = set()
+        self._open()
+        return self.available
+
     def set_combos(self, combos):
         self._combos = {_combo_keyset(c) for c in combos if c}
 
-    def capture(self, timeout=8.0):
-        """Block up to `timeout`s for the user to press a chord; return its
-        canonical string, or "" on timeout / unavailable."""
+    def capture(self, timeout=12.0):
+        """Block up to `timeout`s for the user to press a chord, then return its
+        canonical string once they RELEASE it (so 'ctrl', 'shift', 'ctrl+shift'
+        and 'ctrl+shift+n' all work). "" on timeout / unavailable."""
         if not self.available:
             return ""
         with self._cap_lock:
@@ -369,7 +384,7 @@ class Hotkeys:
         got = self._cap_event.wait(timeout)
         with self._cap_lock:
             self._cap_active = False
-            return self._cap_result or "" if got else ""
+            return (self._cap_result or "") if got else ""
 
     def run(self):
         if not self._fds:
@@ -404,14 +419,15 @@ class Hotkeys:
                 self._on_change(up=name)
 
     def _on_change(self, down=None, up=None):
-        # Capture mode: remember the peak chord, finalize on the first release.
+        # Capture mode: accumulate the peak chord as keys go down, and only
+        # finalize once EVERYTHING is released — so we never save a half-pressed
+        # chord (e.g. just "ctrl" while the user is still reaching for "shift").
+        # Modifier-only chords ("ctrl", "shift", "ctrl+shift") are allowed.
         with self._cap_lock:
             if self._cap_active:
                 if down:
                     self._cap_peak.add(down)
-                    has_non_mod = any(k not in _MOD_ORDER for k in self._cap_peak)
-                    _ = has_non_mod
-                if up and self._cap_peak:
+                elif up and self._cap_peak and not self._pressed:
                     self._cap_result = _canon_combo(self._cap_peak)
                     self._cap_active = False
                     self._cap_event.set()
@@ -903,6 +919,7 @@ class Daemon:
         # watchers
         self._inotify = None
         self._hotkeys = None
+        self._hk_started = False           # evdev reader thread running?
         self._fs_nodes = []                # [(auto, node)]
         self._hotkey_nodes = []            # [(auto, node, combo)]
         self._stop = threading.Event()
@@ -1045,12 +1062,26 @@ class Daemon:
     def _poll_loop(self):
         if psutil:
             psutil.cpu_percent(interval=None)   # prime
+        tick = 0
         while not self._stop.is_set():
             try:
                 self._poll_once()
             except Exception:
                 pass
+            tick += 1
+            # Every ~10s, if hotkeys still have no input access, try again — the
+            # user may have just been added to the 'input' group.
+            if tick % 5 == 0 and self._hotkeys and not self._hotkeys.available:
+                if self._hotkeys.reopen():
+                    self.status.set_hotkey(True)
+                    self._start_hotkey_reader()
             self._stop.wait(POLL_SECONDS)
+
+    def _start_hotkey_reader(self):
+        if self._hk_started or not (self._hotkeys and self._hotkeys.available):
+            return
+        self._hk_started = True
+        threading.Thread(target=self._hotkeys.run, daemon=True).start()
 
     def _edge_fire(self, auto, node, satisfied, detail):
         """Fire when a boolean condition crosses from false → true (edge)."""
@@ -1549,7 +1580,7 @@ class Daemon:
 
     def _handle_conn(self, conn):
         try:
-            conn.settimeout(15)
+            conn.settimeout(30)     # capture-hotkey can block ~12s before replying
             data = conn.recv(65536).decode("utf-8", "replace").strip()
             try:
                 msg = json.loads(data) if data else {}
@@ -1585,10 +1616,16 @@ class Daemon:
                     return {"ok": True}
             return {"ok": False, "error": "no such approval request"}
         if cmd == "capture-hotkey":
-            if not (self._hotkeys and self._hotkeys.available):
-                return {"ok": False, "error": "hotkeys unavailable (need the 'input' group)"}
-            combo = self._hotkeys.capture(float(msg.get("timeout", 8)))
-            return {"ok": bool(combo), "combo": combo}
+            hk = self._hotkeys
+            # Last-ditch: try to gain input access right now (group just added).
+            if hk and not hk.available and hk.reopen():
+                self.status.set_hotkey(True)
+                self._start_hotkey_reader()
+            if not (hk and hk.available):
+                return {"ok": False, "combo": "", "error": "no-input-access"}
+            combo = hk.capture(float(msg.get("timeout", 12)))
+            return {"ok": bool(combo), "combo": combo,
+                    "error": "" if combo else "no-keys"}
         return {"ok": False, "error": "unknown command"}
 
     # -- config-dir watch (reload when the GUI saves) ---------------------
@@ -1622,8 +1659,7 @@ class Daemon:
     def run(self):
         self._hotkeys = Hotkeys(self._on_combo)
         self.status.set_hotkey(self._hotkeys.available)
-        if self._hotkeys.available:
-            threading.Thread(target=self._hotkeys.run, daemon=True).start()
+        self._start_hotkey_reader()
         self.load()
         threading.Thread(target=self._poll_loop, daemon=True).start()
         threading.Thread(target=self._serve_socket, daemon=True).start()

@@ -15,6 +15,8 @@ Item {
 
     property var models: []
     property bool capturing: false
+    property bool hotkeyAvailable: true
+    property string captureNote: ""
 
     readonly property bool isEvent: node && ("" + node.kind).indexOf("evt_") === 0
 
@@ -25,9 +27,15 @@ Item {
             try { root.models = JSON.parse(jsonStr) } catch (e) { root.models = [] }
         }
         function onHotkeyCaptured(combo) {
-            if (root.capturing) {
-                root.capturing = false
-                if (combo && root.node) root.setConfig("combo", combo)
+            if (!root.capturing) return
+            root.capturing = false
+            if (combo && root.node) {
+                root.setConfig("combo", combo)
+                root.captureNote = ""
+            } else {
+                root.captureNote = root.hotkeyAvailable
+                    ? "No keys detected — click Capture and hold your shortcut."
+                    : "Needs input access: run  sudo usermod -aG input $USER  then log out and back in."
             }
         }
     }
@@ -186,17 +194,26 @@ Item {
                     visible: root.kindIs("evt_hotkey"); Layout.fillWidth: true; spacing: 8
                     Rectangle {
                         Layout.fillWidth: true; implicitHeight: 40; radius: 9
-                        color: root.theme.cardHi; border.width: 1; border.color: root.theme.lineHi
+                        color: root.theme.cardHi; border.width: 1
+                        border.color: root.capturing ? root.theme.a(root.theme.turbo, 0.7) : root.theme.lineHi
                         QQC2.Label {
-                            anchors.fill: parent; anchors.leftMargin: 12; verticalAlignment: Text.AlignVCenter
-                            text: root.capturing ? "press keys…" : (root.cfg("combo", "") || "not set")
+                            anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 8
+                            verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
+                            text: root.capturing ? "press & hold your shortcut, then release…" : (root.cfg("combo", "") || "not set")
                             color: root.capturing ? root.theme.turboBright : root.theme.textHi
                             font.family: root.theme.mono; font.pixelSize: 13
                         }
                     }
-                    GButton { theme: root.theme; kind: "tonal"; text: root.capturing ? "…" : "Capture"; iconSource: "icons/terminal.svg"
-                        onClicked: { root.capturing = true; backend.captureHotkey() } }
+                    GButton { theme: root.theme; kind: "tonal"; text: root.capturing ? "waiting…" : "Capture"; iconSource: "icons/terminal.svg"
+                        enabled: !root.capturing
+                        onClicked: { root.captureNote = ""; root.capturing = true; backend.captureHotkey() } }
                 }
+                QQC2.Label { visible: root.kindIs("evt_hotkey") && root.captureNote !== ""
+                    Layout.fillWidth: true; wrapMode: Text.Wrap; text: root.captureNote
+                    color: root.hotkeyAvailable ? root.theme.textMid : root.theme.turboBright; font.pixelSize: 10 }
+                QQC2.Label { visible: root.kindIs("evt_hotkey"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Modifier-only shortcuts (Ctrl, Shift, Ctrl+Shift…) are allowed. Note: a modifier-only shortcut fires whenever you use it elsewhere too."
+                    color: root.theme.textLo; font.pixelSize: 10 }
 
                 // ── evt_schedule ────────────────────────────────────────
                 FieldLabel { text: "Every N minutes"; visible: root.kindIs("evt_schedule") }
