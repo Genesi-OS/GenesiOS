@@ -12,6 +12,20 @@ _seed_cuda_repo() {
     fi
 }
 
+# Automations hotkey blocks read /dev/input via evdev, which is root:input 0640 —
+# so add every human user to the 'input' group. Universal (works on X11 + every
+# Wayland compositor Genesi ships); takes effect on next login. Everything else in
+# Automations (files, CPU/RAM, apps, schedule) already works without this.
+_grant_input_access() {
+    getent group input >/dev/null 2>&1 || groupadd -r input 2>/dev/null || true
+    local u
+    for u in $(getent passwd | awk -F: '$3>=1000 && $3<60000 {print $1}'); do
+        if ! id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -qx input; then
+            gpasswd -a "$u" input >/dev/null 2>&1 || true
+        fi
+    done
+}
+
 post_install() {
     _seed_cuda_repo
     echo "==> Creating AI Mode runtime directory..."
@@ -26,6 +40,10 @@ post_install() {
     # the machine is idle + on AC, so enabling it by default is safe.
     echo "==> Enabling nightly AI autotuner timer..."
     systemctl enable genesi-ai-tune.timer 2>/dev/null || true
+    # Per-user Automations engine is auto-enabled via its default.target.wants
+    # symlink; grant input access so hotkey blocks work after next login.
+    _grant_input_access
+    echo "==> Automations engine will start on next login (genesi-automationd)."
     echo "==> AI Mode is ready. Start now with: sudo systemctl start genesi-aid"
 }
 
@@ -38,6 +56,9 @@ post_upgrade() {
     systemctl restart genesi-aid.service 2>/dev/null || true
     # Enable the autotuner timer for systems upgrading from a build without it.
     systemctl enable genesi-ai-tune.timer 2>/dev/null || true
+    # Grant input access for Automations hotkeys on systems upgrading into this
+    # build (the per-user genesi-automationd auto-enables via its wants symlink).
+    _grant_input_access
     # Aplica as novas permissões de leitura no diretório de modelos do Ollama
     systemctl try-restart ollama.service 2>/dev/null || true
 }

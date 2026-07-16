@@ -13,6 +13,7 @@ import json
 import time
 import signal
 import shutil
+import socket
 import tempfile
 import threading
 import subprocess
@@ -30,6 +31,7 @@ from genesi_agent import (
     parse_agent_action,
     summarize_tool_result,
 )
+import genesi_turbo_ctl as turbo_ctl
 
 try:
     from PySide6.QtCore import QObject, Slot, Signal, QUrl, Qt
@@ -50,6 +52,13 @@ BRIDGE = "http://127.0.0.1:11436"     # genesi-mempalace recall bridge (opt-in)
 # palace (same pattern Genesi Code uses with ~/.config/genesi-code/sessions).
 SESSIONS_DIR = os.path.expanduser("~/.config/genesi-ai-monitor/sessions")
 AGENT_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/agent.json")
+# Automations: this Backend only EDITS the graphs; genesi-automationd runs them.
+AUTOMATIONS_DIR = os.path.expanduser("~/.config/genesi-ai-monitor/automations")
+AUTOMATION_STATUS = os.path.join(
+    os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
+    "genesi-automation", "status.json")
+AUTOMATION_SOCK = os.path.join(
+    os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "genesi-automationd.sock")
 
 
 class Backend(QObject):
@@ -74,6 +83,8 @@ class Backend(QObject):
     approvalRequested = Signal(str)  # JSON action awaiting the user's decision
     agentActivity = Signal(str)      # JSON status for the non-blocking UI indicator
     agentModeChanged = Signal(str)
+    automationStatusChanged = Signal(str)  # JSON run state/logs from the daemon
+    hotkeyCaptured = Signal(str)     # captured "ctrl+alt+a" combo ("" on cancel)
 
     def __init__(self):
         super().__init__()
@@ -912,6 +923,7 @@ class Backend(QObject):
         # running", which is the dumb on/off the user hit. Kill any stray Turbo
         # server on our port and WAIT for the socket to actually free.
         self._kill_stray_turbo()
+        turbo_ctl.clear_marker()
         log, self._turbo_log = self._turbo_log, None
         if log:
             try:
@@ -1157,6 +1169,9 @@ class Backend(QObject):
                     with urllib.request.urlopen(TURBO + "/health", timeout=2) as r:
                         if json.loads(r.read()).get("status") == "ok":
                             self._turbo = True
+                            # Record the served tag so current_model() (shared with
+                            # the automation daemon) is accurate while we own Turbo.
+                            turbo_ctl.write_marker(model)
                             self.turboReady.emit(True)
                             self.turboStatus.emit(ready_msg + gpu_hint)
                             return
@@ -1392,6 +1407,179 @@ class Backend(QObject):
             "load_s": round(ld / 1e9, 2),
             "total_s": round(total / 1e9, 2),
         })
+
+    # ── Automations ─────────────────────────────────────────────────────────
+    # This Backend is a thin editor: it reads/writes the automation graphs under
+    # AUTOMATIONS_DIR and pokes genesi-automationd (the per-user daemon) to reload
+    # or run one now. The daemon owns all the actual watching/executing so
+    # automations keep running with the Monitor window closed. See genesi-automationd.
+    @staticmethod
+    def _ensure_automation_daemon():
+        try:
+            subprocess.run(
+                ["systemctl", "--user", "start", "genesi-automationd.service"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+        except Exception:
+            pass
+
+    @Slot()
+    def ensureAutomationDaemon(self):
+        threading.Thread(target=self._ensure_automation_daemon, daemon=True).start()
+
+    def _automation_cmd(self, msg, timeout=12):
+        """One JSON command to the daemon over its user socket; starts the daemon
+        and retries once if it isn't up yet. Returns the parsed reply ({} on
+        failure)."""
+        for attempt in range(2):
+            try:
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.settimeout(timeout)
+                s.connect(AUTOMATION_SOCK)
+                s.sendall((json.dumps(msg) + "\n").encode())
+                data = s.recv(65536).decode("utf-8", "replace").strip()
+                s.close()
+                return json.loads(data) if data else {}
+            except (OSError, ValueError):
+                if attempt == 0:
+                    self._ensure_automation_daemon()
+                    time.sleep(0.7)
+                    continue
+                return {}
+        return {}
+
+    @staticmethod
+    def _automation_path(aid):
+        return os.path.join(AUTOMATIONS_DIR, aid + ".json")
+
+    def _write_automation(self, a):
+        os.makedirs(AUTOMATIONS_DIR, exist_ok=True)
+        path = self._automation_path(a["id"])
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(a, fh, ensure_ascii=False)
+        os.replace(tmp, path)
+        # Poke the daemon (it also inotify-watches the dir, so this is a nudge for
+        # immediacy / when inotify isn't available). Threaded so QML never blocks.
+        threading.Thread(
+            target=lambda: self._automation_cmd({"cmd": "reload"}, timeout=8),
+            daemon=True).start()
+
+    @Slot(result=str)
+    def listAutomations(self):
+        items = []
+        try:
+            os.makedirs(AUTOMATIONS_DIR, exist_ok=True)
+            for fn in sorted(os.listdir(AUTOMATIONS_DIR)):
+                if not fn.endswith(".json"):
+                    continue
+                try:
+                    with open(os.path.join(AUTOMATIONS_DIR, fn), encoding="utf-8") as fh:
+                        a = json.load(fh)
+                except (OSError, ValueError):
+                    continue
+                items.append({"id": a.get("id", fn[:-5]),
+                              "name": a.get("name", "Automation"),
+                              "enabled": bool(a.get("enabled")),
+                              "nodes": len(a.get("nodes", []))})
+        except OSError:
+            pass
+        return json.dumps({"items": items})
+
+    @Slot(str, result=str)
+    def loadAutomation(self, aid):
+        try:
+            with open(self._automation_path(aid), encoding="utf-8") as fh:
+                return fh.read()
+        except OSError:
+            return json.dumps({"id": aid, "name": "Automation", "enabled": False,
+                               "nodes": [], "links": []})
+
+    @Slot(str, str, str, result=str)
+    def saveAutomation(self, aid, name, graph_raw):
+        try:
+            graph = json.loads(graph_raw)
+        except ValueError:
+            return ""
+        enabled = False                     # keep the on/off flag across saves
+        try:
+            with open(self._automation_path(aid), encoding="utf-8") as fh:
+                enabled = bool(json.load(fh).get("enabled"))
+        except (OSError, ValueError):
+            pass
+        self._write_automation({
+            "id": aid, "name": name or "Automation", "enabled": enabled,
+            "nodes": graph.get("nodes", []), "links": graph.get("links", [])})
+        return aid
+
+    @Slot(str, result=str)
+    def createAutomation(self, name):
+        aid = "auto-" + uuid.uuid4().hex[:10]
+        self._write_automation({"id": aid, "name": name or "New automation",
+                                "enabled": False, "nodes": [], "links": []})
+        return aid
+
+    @Slot(str, result=str)
+    def duplicateAutomation(self, aid):
+        try:
+            with open(self._automation_path(aid), encoding="utf-8") as fh:
+                a = json.load(fh)
+        except (OSError, ValueError):
+            return ""
+        nid = "auto-" + uuid.uuid4().hex[:10]
+        a["id"] = nid
+        a["name"] = a.get("name", "Automation") + " copy"
+        a["enabled"] = False
+        self._write_automation(a)
+        return nid
+
+    @Slot(str)
+    def deleteAutomation(self, aid):
+        try:
+            os.unlink(self._automation_path(aid))
+        except OSError:
+            pass
+        threading.Thread(
+            target=lambda: self._automation_cmd({"cmd": "reload"}, timeout=8),
+            daemon=True).start()
+
+    @Slot(str, bool)
+    def setAutomationEnabled(self, aid, on):
+        try:
+            with open(self._automation_path(aid), encoding="utf-8") as fh:
+                a = json.load(fh)
+        except (OSError, ValueError):
+            return
+        a["enabled"] = bool(on)
+        self._write_automation(a)
+
+    @Slot(str)
+    def runAutomationNow(self, aid):
+        threading.Thread(
+            target=lambda: self._automation_cmd({"cmd": "run-now", "id": aid}),
+            daemon=True).start()
+
+    @Slot(str, bool)
+    def resolveAutomationApproval(self, req_id, approved):
+        cmd = "approve" if approved else "deny"
+        threading.Thread(
+            target=lambda: self._automation_cmd({"cmd": cmd, "id": req_id}),
+            daemon=True).start()
+
+    @Slot(result=str)
+    def automationStatus(self):
+        try:
+            with open(AUTOMATION_STATUS, encoding="utf-8") as fh:
+                return fh.read()
+        except OSError:
+            return "{}"
+
+    @Slot()
+    def captureHotkey(self):
+        def work():
+            reply = self._automation_cmd({"cmd": "capture-hotkey", "timeout": 8},
+                                         timeout=12)
+            self.hotkeyCaptured.emit(reply.get("combo", "") if reply.get("ok") else "")
+        threading.Thread(target=work, daemon=True).start()
 
 
 def main():

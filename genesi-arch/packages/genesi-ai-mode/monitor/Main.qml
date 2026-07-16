@@ -474,7 +474,8 @@ Kirigami.ApplicationWindow {
                     model: [
                         { "icon": "icons/nav-dashboard.svg", "key": "nav.dashboard" },
                         { "icon": "icons/nav-chat.svg",      "key": "nav.chat" },
-                        { "icon": "icons/nav-models.svg",    "key": "nav.models" }
+                        { "icon": "icons/nav-models.svg",    "key": "nav.models" },
+                        { "icon": "icons/zap.svg",           "key": "nav.automations", "label": "Automations" }
                     ]
                     delegate: Rectangle {
                         required property int index
@@ -511,7 +512,7 @@ Kirigami.ApplicationWindow {
                             anchors.right: parent.right
                             anchors.rightMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
-                            text: i18n.t(modelData.key)
+                            text: modelData.label !== undefined ? modelData.label : i18n.t(modelData.key)
                             color: sel ? theme.textHi : theme.textMid
                             font.bold: sel
                             font.pixelSize: 12
@@ -523,7 +524,7 @@ Kirigami.ApplicationWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: win.currentTab = index
-                            QQC2.ToolTip.text: i18n.t(modelData.key)
+                            QQC2.ToolTip.text: modelData.label !== undefined ? modelData.label : i18n.t(modelData.key)
                             QQC2.ToolTip.visible: containsMouse
                             QQC2.ToolTip.delay: 400
                         }
@@ -1346,6 +1347,9 @@ Kirigami.ApplicationWindow {
 
         // ───────────────────────── 3. MODELOS ─────────────────────────
         AdvisorPage { id: advisorPage; i18n: i18n }
+
+        // ───────────────────────── 4. AUTOMAÇÕES ─────────────────────────
+        AutomationsPage { id: automationsPage }
         }
         }
 

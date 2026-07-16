@@ -496,7 +496,21 @@ pkgver=1.0.0
 # compact settings button.
 # pkgrel 123: distinguish package removal from process termination, resolve
 # natural uninstall requests, and reject malformed tool arguments early.
-pkgrel=123
+# pkgrel 124: Automations — an n8n-style, PC-wide automation tab in the Monitor
+# (Forge Canvas adapted) plus genesi-automationd, a per-user background daemon
+# that runs the graphs whether or not the window is open. 17 event blocks:
+# file/folder (inotify), CPU/RAM, temperature, app open/close, per-process CPU/RAM,
+# power/battery, disk usage/mount, USB add/remove, network on/off + iface, bluetooth
+# connect, user idle/active (evdev clock), global hotkeys (evdev), schedule, on
+# startup/login, log-line regex, custom-command sensor, manual. 8 action blocks:
+# shell script, AI (model + AI Mode + Turbo-on-chosen-model + autonomous),
+# notification, HTTP request, file op, launch/close app, play sound, power
+# (lock/suspend/…). The AI block runs advisory (answer+notify), ask (each action
+# waits for an Approve/Deny in the Monitor, 5-min gate) or auto (runs actions
+# itself). Ships a template gallery (organize downloads, low battery, idle lock,
+# low disk, overheat, cpu hog, usb backup, morning routine, AI-on-a-hotkey). Turbo
+# lifecycle extracted to the shared, Qt-free genesi_turbo_ctl.py (Monitor + daemon).
+pkgrel=124
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -529,6 +543,7 @@ optdepends=(
     'qt6-tools: qdbus for the KWin desktop-effect trimmer'
     'genesi-llama-cpp: Genesi Turbo speculative decoding (llama-server, Vulkan — shipped by default)'
     'genesi-ttf-rubik-vf: Rubik brand UI font for the Monitor (shipped by default; falls back to the system sans if absent)'
+    'libnotify: desktop notifications from Automations (notify-send)'
 )
 install="$pkgname.install"
 # Opt-in advanced tweaks config (all OFF by default). backup() so pacman writes
@@ -629,6 +644,16 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatBubble.qml"
     install -Dm644 "${startdir}/monitor/QuickChat.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/QuickChat.qml"
+    # Automations tab: the Forge Canvas adapted for PC-wide automation, plus its
+    # self-contained graphite theme + primitives (no dep on the shared Theme.qml).
+    for _aq in AutomationsPage AutomationCanvas AutomationConfigPanel CanvasNode \
+               PaletteItem FIcon FCard GButton GToggle CanvasTheme; do
+        install -Dm644 "${startdir}/monitor/${_aq}.qml" \
+            "$pkgdir/usr/share/genesi-ai-mode/monitor/${_aq}.qml"
+    done
+    # Shared, Qt-free Turbo control (used by the Monitor backend AND the daemon).
+    install -Dm644 "${startdir}/monitor/genesi_turbo_ctl.py" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_turbo_ctl.py"
     # Crafted Genesi SVG icon set (chat avatars, mode badges, gauges, logo)
     for ic in "${startdir}/monitor/icons/"*.svg; do
         install -Dm644 "$ic" \
@@ -673,4 +698,16 @@ package() {
         "$pkgdir/usr/local/bin/genesi-ai-cuda-notify"
     install -Dm644 "${startdir}/genesi-ai-cuda-notify.desktop" \
         "$pkgdir/etc/xdg/autostart/genesi-ai-cuda-notify.desktop"
+
+    # Automations background engine (per-user). Runs the Monitor's automation
+    # graphs whether or not the window is open. Enabled for every user by a
+    # default.target.wants symlink (works on Plasma, Hyprland, GNOME, Xfce,
+    # Cinnamon, Budgie, LXDE, Cosmic, Niri — and a No-Desktop install).
+    install -Dm755 "${startdir}/genesi-automationd" \
+        "$pkgdir/usr/local/bin/genesi-automationd"
+    install -Dm644 "${startdir}/genesi-automationd.service" \
+        "$pkgdir/usr/lib/systemd/user/genesi-automationd.service"
+    install -dm755 "$pkgdir/usr/lib/systemd/user/default.target.wants"
+    ln -s ../genesi-automationd.service \
+        "$pkgdir/usr/lib/systemd/user/default.target.wants/genesi-automationd.service"
 }

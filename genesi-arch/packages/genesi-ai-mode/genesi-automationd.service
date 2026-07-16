@@ -1,0 +1,19 @@
+[Unit]
+Description=Genesi Automations engine — runs your Monitor automations in the background
+Documentation=https://github.com/Genesi-OS/GenesiOS
+# Per-USER service (systemctl --user): it needs the user's session to watch their
+# folders, read /dev/input for hotkeys, drive the local AI and send notifications.
+# Deliberately NOT tied to graphical-session.target so it also runs on a "No
+# Desktop" install; every event backend degrades gracefully without a GUI.
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/genesi-automationd
+Restart=on-failure
+RestartSec=5
+# Don't restart-storm on a persistent crash (e.g. a broken Python env).
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Install]
+WantedBy=default.target
