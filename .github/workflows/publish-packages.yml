@@ -205,6 +205,20 @@ jobs:
             sleep 30
           done
 
+          # Reclaim disk NOW, before any package builds. The container's / is a
+          # thin overlay on the host runner's small root partition, and after
+          # pulling Qt6/vulkan/rust/base-devel + every PKGBUILD dep, the
+          # downloaded package tarballs in /var/cache/pacman/pkg pile up to
+          # several GB that are never needed again (makepkg -s is a no-op here —
+          # all deps are already installed). Leaving them behind is what left
+          # only ~956MB free before the build even started, so the heavy
+          # genesi-caelestia-shell Qt build died writing its PCH files with
+          # "No space left on device" (CI run #331, commit 2c836e0). Clearing the
+          # cache here is pure headroom with zero effect on the produced repo.
+          echo "Disk before cache purge:"; df -h / || true
+          pacman -Scc --noconfirm || rm -rf /var/cache/pacman/pkg/* || true
+          echo "Disk after cache purge:"; df -h / || true
+
       - name: Normalize build flags for broad CPU compatibility
         shell: bash
         run: |
