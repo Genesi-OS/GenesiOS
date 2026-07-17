@@ -613,7 +613,8 @@ class Engine:
         self.status.log(aid, "$ " + command.splitlines()[0], "cmd")
         try:
             proc = subprocess.run(["/bin/sh", "-lc", command], capture_output=True,
-                                  text=True, timeout=float(cfg.get("timeout", 300)))
+                                  text=True, timeout=float(cfg.get("timeout", 300)),
+                                  env=_graphical_env())
         except subprocess.TimeoutExpired:
             self.status.log(aid, "script timed out", "err")
             return
@@ -634,7 +635,7 @@ class Engine:
             subprocess.Popen(["notify-send", "--app-name=Genesi Automation",
                               title, body],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             start_new_session=True)
+                             start_new_session=True, env=_graphical_env())
             self.status.log(aid, "🔔 " + title, "ok")
         except OSError as exc:
             self.status.log(aid, "notify failed: %s" % exc, "err")
@@ -689,7 +690,7 @@ class Engine:
             if op == "launch":
                 subprocess.Popen(["/bin/sh", "-lc", app],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 start_new_session=True)
+                                 start_new_session=True, env=_graphical_env())
                 self.status.log(aid, "launched " + app, "ok")
             else:
                 subprocess.run(["pkill", "-f", app], check=False)
@@ -713,7 +714,8 @@ class Engine:
             return
         try:
             subprocess.Popen(players[0], stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, start_new_session=True)
+                             stderr=subprocess.DEVNULL, start_new_session=True,
+                             env=_graphical_env())
             self.status.log(aid, "🔊 played sound", "ok")
         except OSError as exc:
             self.status.log(aid, "sound failed: %s" % exc, "err")
@@ -866,6 +868,52 @@ def _run(cmd):
         subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         pass
+
+
+_GENV_CACHE = {"ts": 0.0, "env": None}     # cache the systemctl lookup a few s
+
+
+def _graphical_env():
+    """An environment for launching GUI apps from this headless --user daemon.
+
+    genesi-automationd is a `systemd --user` service that is deliberately NOT
+    tied to graphical-session.target (so it also runs on "No Desktop"), so it
+    does not inherit DISPLAY / WAYLAND_DISPLAY. Without them, an action like
+    `firefox` or `xdg-open …` dies with "no DISPLAY environment variable
+    specified" even though the event fired correctly. We resolve the session's
+    display vars from the systemd user manager (the session imports them there
+    at login) and fall back to sane defaults, so GUI actions actually open."""
+    env = dict(os.environ)
+    if env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
+        return env                          # already in a graphical env
+    now = time.monotonic()
+    base = _GENV_CACHE["env"]
+    if base is None or now - _GENV_CACHE["ts"] > 10:
+        base = {}
+        try:
+            out = subprocess.run(["systemctl", "--user", "show-environment"],
+                                 capture_output=True, text=True, timeout=5).stdout
+            for line in out.splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    base[k] = v
+        except Exception:
+            pass
+        _GENV_CACHE["env"] = base
+        _GENV_CACHE["ts"] = now
+    for k in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY",
+              "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE"):
+        if base.get(k) and not env.get(k):
+            env[k] = base[k]
+    if not env.get("DISPLAY") and not env.get("WAYLAND_DISPLAY"):
+        rt = env.get("XDG_RUNTIME_DIR")
+        if rt:
+            for cand in ("wayland-1", "wayland-0"):
+                if os.path.exists(os.path.join(rt, cand)):
+                    env["WAYLAND_DISPLAY"] = cand
+                    break
+        env.setdefault("DISPLAY", ":0")     # last-ditch: the usual X socket
+    return env
 
 
 def _ensure_ollama():
@@ -1528,13 +1576,25 @@ class Daemon:
         if not auto:
             return "unknown automation"
         manual = [n for n in auto.get("nodes", []) if n.get("kind") == "evt_manual"]
+        triggers = [n for n in auto.get("nodes", [])
+                    if n.get("kind") in EVENT_KINDS and n.get("kind") != "evt_manual"]
         if manual:
             for n in manual:
                 threading.Thread(target=self.engine.run_chain,
                                  args=(auto, n.get("id"), "manual run"),
                                  daemon=True).start()
+        elif triggers:
+            # Test run: fire each trigger's action chain exactly as the real
+            # event would — so "Run now" exercises the actual wiring
+            # (event → actions), instead of firing every stray action on the
+            # sheet. For a "hotkey → run script" graph this runs the script,
+            # just as pressing the hotkey does.
+            for n in triggers:
+                threading.Thread(target=self.engine.run_chain,
+                                 args=(auto, n.get("id"), "test run"),
+                                 daemon=True).start()
         else:
-            # No manual node: run every action node in order.
+            # No trigger at all: run every action node in order.
             keep = {n.get("id") for n in auto.get("nodes", [])
                     if n.get("kind") in ACTION_KINDS}
             seq = self.engine._topo(auto, keep)

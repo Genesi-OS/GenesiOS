@@ -253,6 +253,17 @@ Item {
         for (var i = 0; i < nodes.length; i++) if (nodes[i].id === id) return nodes[i].title
         return id
     }
+    // Per-node run indicator driven by the daemon's live status. While the
+    // automation is firing, every node glows "running" (blue, spinning pill);
+    // when it's armed and idle, its event nodes show an amber "Waiting for
+    // event" pill — so it's obvious at a glance whether it's listening or busy.
+    function nodeRunState(n) {
+        if (!n) return ""
+        if (running) return "running"
+        if (activeEnabled && ("" + n.kind).indexOf("evt_") === 0 && n.kind !== "evt_manual")
+            return "waiting"
+        return ""
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -307,7 +318,8 @@ Item {
             GButton { theme: root.theme; kind: "tonal"; text: "Template"; iconSource: "icons/layout-grid.svg"
                 onClicked: templatePopup.open() }
             GButton { theme: root.theme; kind: "filled"; text: "Run now"; iconSource: "icons/play.svg"
-                onClicked: { root.showLog = true; backend.runAutomationNow(root.activeId); root.toast("Running now…") } }
+                tooltip: "Test run: runs the actions now, without waiting for the trigger"
+                onClicked: { root.showLog = true; backend.runAutomationNow(root.activeId); root.toast("Test run — running the actions now…") } }
         }
 
         // ── Body: palette | canvas | config ─────────────────────────────
@@ -490,6 +502,7 @@ Item {
                                 theme: root.theme
                                 node: modelData
                                 selected: root.selectedId === modelData.id
+                                runState: root.nodeRunState(modelData)
                                 boundW: root.sheetW
                                 boundH: root.sheetH
                                 Component.onCompleted: { x = modelData.x; y = modelData.y; root.updatePos(modelData.id, x, y, width, height) }
