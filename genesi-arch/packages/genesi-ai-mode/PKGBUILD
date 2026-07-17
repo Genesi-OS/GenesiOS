@@ -523,7 +523,15 @@ pkgver=1.0.0
 # event" while armed (the CanvasNode runState was never wired up). (3) "Run now"
 # fires each trigger's action chain (a real test run) instead of every stray
 # action, and its label/toast say it runs without waiting for the trigger.
-pkgrel=126
+# pkgrel 127: AI Action block now actually acts. (1) The daemon's headless AI
+# runner (act_ai ask/auto) now tries the SAME deterministic resolvers as the
+# Monitor chat (direct_app/terminal/package_action) BEFORE the model loop, so
+# "open X / run Y / install Z" reliably becomes an action even when a small local
+# model won't emit valid JSON — that was why ask mode never showed an approval
+# and the block "did nothing". (2) _ensure_display_env() seeds os.environ so the
+# AI tool executor's launch_app/open_path actually open on screen. (3) Command
+# sensor (evt_command) now gets the graphical env too.
+pkgrel=127
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

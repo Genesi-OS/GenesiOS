@@ -79,6 +79,9 @@ try:
         parse_agent_action,
         looks_like_agent_action,
         summarize_tool_result,
+        direct_app_action,
+        direct_terminal_action,
+        direct_package_action,
     )
     _AGENT_OK = True
 except Exception:                          # AI blocks degrade to a clear log line
@@ -585,6 +588,7 @@ class Engine:
         kind = node.get("kind")
         cfg = node.get("config", {}) or {}
         title = node.get("title", kind)
+        _ensure_display_env()               # so launched GUI apps actually appear
         try:
             if kind == "act_script":
                 self._act_script(aid, cfg, title)
@@ -819,10 +823,22 @@ class Engine:
         # user's Approve/Deny (via self.approve, a 5-min gate). Bounded to 6 steps.
         messages = [{"role": "user", "content": prompt}]
         system = agent_system_prompt()
+        # Deterministic fast-paths FIRST — exactly like the Monitor's chat. These
+        # resolve obvious "open X / run Y in a terminal / install Z" prompts
+        # without depending on a small local model emitting perfect JSON, which is
+        # the #1 reason the AI block produced no action (and so, in ask mode, never
+        # asked for approval and looked like it "did nothing").
+        direct_action = (direct_package_action(messages) or direct_terminal_action(messages)
+                         or direct_app_action(messages))
         seen = {}
         for _step in range(6):
-            response = self._ai_chat(model, messages, use_turbo, system=system).strip()
-            action = parse_agent_action(response)
+            if direct_action:
+                action = direct_action
+                response = json.dumps({"type": "action", **action}, ensure_ascii=False)
+                direct_action = None
+            else:
+                response = self._ai_chat(model, messages, use_turbo, system=system).strip()
+                action = parse_agent_action(response)
             if not action:
                 if looks_like_agent_action(response):
                     messages.append({"role": "assistant", "content": response})
@@ -837,6 +853,8 @@ class Engine:
             if mode == "ask" and self.approve is not None:
                 if not self.approve(aid, action):
                     self.status.log(aid, "✗ denied: %s" % action["tool"], "err")
+                    if action.get("completion"):    # a one-shot direct request
+                        return "Action denied."
                     messages.append({"role": "assistant", "content": response})
                     messages.append({"role": "user", "content": "GENESI_TOOL_RESULT\n" +
                                      json.dumps({"ok": False, "error": "The user denied this action."})})
@@ -846,6 +864,12 @@ class Engine:
             seen[fp] = result
             self.status.log(aid, summarize_tool_result(action["tool"], result),
                             "ok" if result.get("ok") else "err")
+            # A deterministic direct action is a complete, single-shot request
+            # ("open firefox") — return its friendly completion instead of looping
+            # the model over the tool result.
+            if action.get("completion"):
+                return (action["completion"] if result.get("ok")
+                        else summarize_tool_result(action["tool"], result))
             messages.append({"role": "assistant", "content": response})
             messages.append({"role": "user", "content":
                              "GENESI_TOOL_RESULT\n" + json.dumps(result, ensure_ascii=False)})
@@ -914,6 +938,20 @@ def _graphical_env():
                     break
         env.setdefault("DISPLAY", ":0")     # last-ditch: the usual X socket
     return env
+
+
+def _ensure_display_env():
+    """Merge the resolved graphical env into this process's os.environ, so every
+    subprocess the daemon spawns inherits DISPLAY/WAYLAND_DISPLAY — including the
+    AI tool executor (genesi_agent.LocalToolExecutor), whose launch_app/open_path/
+    run_in_terminal Popen calls inherit os.environ and would otherwise open apps
+    into the void. Idempotent and cheap (the lookup is cached in _graphical_env)."""
+    genv = _graphical_env()
+    for k in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY",
+              "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE"):
+        v = genv.get(k)
+        if v and not os.environ.get(k):
+            os.environ[k] = v
 
 
 def _ensure_ollama():
@@ -1522,7 +1560,7 @@ class Daemon:
         self._cmd_next[key] = now + every
         try:
             proc = subprocess.run(["/bin/sh", "-lc", command], capture_output=True,
-                                  text=True, timeout=30)
+                                  text=True, timeout=30, env=_graphical_env())
         except Exception:
             return
         out = (proc.stdout or "").strip()
