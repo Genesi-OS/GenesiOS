@@ -82,6 +82,42 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Calamares' shellprocess module expands ${ROOT} only inside the command
+# string — it NEVER exports ROOT into the script's environment. Every external
+# script invoked from a module conf must therefore receive the target root as
+# an argument; forgetting it makes the script silently fall back to /mnt (the
+# wrong place). That's exactly how the 2026-07-17 "Genesi GRUB theme is
+# missing" install abort happened: the theme WAS installed in the real target
+# (/tmp/calamares-root-XXXX), but the finalizer looked in /mnt.
+# ---------------------------------------------------------------------------
+note "Validating shellprocess script wiring (\${ROOT} argument)"
+while IFS= read -r hit; do
+  [ -n "$hit" ] || continue
+  file="${hit%%:*}"; rest="${hit#*:}"; lineno="${rest%%:*}"; line="${rest#*:}"
+  case "$line" in
+    *'${ROOT}'*) ok "ROOT passed: $(basename "$file"):$lineno" ;;
+    *) bad "missing \${ROOT} argument: $(basename "$file"):$lineno -> $line" ;;
+  esac
+done < <(grep -nH -E '"-?bash /etc/calamares/scripts/[^"]*\.sh' "$CALA"/*.conf)
+
+note "Validating the GRUB finalizer resolves its target-root argument"
+SIMROOT="$(mktemp -d /tmp/genesi-simroot.XXXXXX)"
+mkdir -p "$SIMROOT/etc" "$SIMROOT/usr/share/grub/themes/genesi"
+cp "$GRUB_PKG/theme/theme.txt" "$SIMROOT/usr/share/grub/themes/genesi/theme.txt"
+cp "$GRUB_PKG/background.png"  "$SIMROOT/usr/share/grub/themes/genesi/background.png"
+# Theme files exist in the fake target but grub-mkconfig does not: the script
+# must get PAST the theme checks (proving $1 propagation) and stop at the
+# grub-mkconfig check. Stopping at "theme is missing" would mean it looked in
+# the wrong root — the exact 2026-07-17 failure mode.
+finalizer_out="$(bash "$GRUB_FINALIZER" "$SIMROOT" 2>&1)"
+if printf '%s' "$finalizer_out" | grep -q 'grub-mkconfig is missing'; then
+  ok "finalizer honors its ROOT argument (stopped only at the expected grub-mkconfig check)"
+else
+  bad "finalizer did not honor its ROOT argument; output: $(printf '%s' "$finalizer_out" | tail -n 2 | tr '\n' ' ')"
+fi
+rm -rf "$SIMROOT"
+
+# ---------------------------------------------------------------------------
 # Same repos the installed target sees: [genesi] + CachyOS (already present) +
 # core/extra + multilib (for lib32-*).
 # ---------------------------------------------------------------------------
