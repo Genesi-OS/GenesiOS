@@ -105,7 +105,13 @@ pkgver=1.0.0
 # migrate existing users (Hyprland does not process XDG autostart).
 # pkgrel 15: start the Genesi AI Quick Chat background service so its native
 # Ctrl+Alt+Space registration is available in Hyprland too.
-pkgrel=15
+# pkgrel 16: float the Quick Chat under Hyprland. The frameless summon bar was
+# being TILED into a workspace-high slab (reported 2026-07-18 with a photo of
+# the screen). New windowrules float it at its own compact size, center it and
+# pin it to every workspace; the .install appends them to existing users'
+# configs (idempotent, same migration machinery as before). The window itself
+# became drag-movable in genesi-ai-mode pkgrel 128.
+pkgrel=16
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

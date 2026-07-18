@@ -210,6 +210,18 @@ QQC2.ApplicationWindow {
         border.width: 1
         border.color: root.pendingApproval ? theme.green : theme.lineHi
 
+        // Drag-to-move from any non-interactive spot (no titlebar needed). The
+        // handler only activates past the drag threshold, so plain clicks are
+        // untouched, and TakeOverForbidden means it can never steal the pointer
+        // from the text field, buttons or the chat scroll once they own the
+        // press. startSystemMove() is compositor-native: it works on X11 (KDE)
+        // and Wayland (Hyprland floating) alike.
+        DragHandler {
+            target: null
+            grabPermissions: PointerHandler.TakeOverForbidden
+            onActiveChanged: if (active) root.startSystemMove()
+        }
+
         Rectangle {
             visible: root.thinking
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top

@@ -32,7 +32,8 @@ _migrate_hypr() {
        && grep -q 'genesi-caelestia-theme-sync' "$cfg" \
        && grep -q 'genesi-ports-tray' "$cfg" \
        && grep -q 'genesi-ai-quick --background' "$cfg" \
-       && grep -q 'genesi-scheme-init' "$cfg"; then
+       && grep -q 'genesi-scheme-init' "$cfg" \
+       && grep -q 'aiquick)' "$cfg"; then
         return 0
     fi
 
@@ -102,6 +103,19 @@ HYPR
 # Default to the "dynamic" scheme once so the light-theme toggle works (the
 # stock "catppuccin mocha" is dark-only). Marker-guarded; runs once.
 exec-once = sh -c 'm="$HOME/.config/caelestia/.genesi-scheme-init"; [ -e "$m" ] && exit 0; for i in 1 2 3 4 5 6; do if caelestia scheme set --name dynamic; then mkdir -p "$HOME/.config/caelestia"; touch "$m"; break; fi; sleep 3; done'
+HYPR
+    fi
+
+    # 7. Quick Chat windowrules (append once). Hyprland TILED the frameless
+    #    summon bar into a workspace-high slab (reported 2026-07-18, photo).
+    #    Float it at its own compact size, centered, pinned to every workspace.
+    if ! grep -q 'aiquick)' "$cfg"; then
+        cat >> "$cfg" <<'HYPR'
+# Genesi AI Quick Chat (Ctrl+Alt+Space): never tile the summon bar — float it
+# at its own size, centered, on every workspace (it is drag-movable).
+windowrule = float class:^(org\.genesi\.aiquick)$
+windowrule = center class:^(org\.genesi\.aiquick)$
+windowrule = pin class:^(org\.genesi\.aiquick)$
 HYPR
     fi
 

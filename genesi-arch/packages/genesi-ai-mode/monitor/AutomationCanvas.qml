@@ -27,6 +27,14 @@ Item {
     property string selectedId: ""
     property real zoom: 1.0
 
+    // Responsive: the Monitor often runs tiled/half-screen or on small displays.
+    // Below these widths the side panels shrink and the header buttons drop
+    // their labels, so the sheet keeps usable space instead of being crushed
+    // (reported 2026-07-18: the tab "broke" whenever the window wasn't
+    // fullscreen).
+    readonly property bool compact: width < 1080
+    readonly property bool tight: width < 900
+
     property var automations: []
     property string activeId: ""
     property string activeName: "Automation"
@@ -283,6 +291,7 @@ Item {
                 QQC2.Label { text: "Automations"; color: root.theme.textHi
                     font.family: root.theme.display; font.pixelSize: 18; font.bold: true }
                 QQC2.Label { text: "Automate anything on your PC — runs in the background"
+                    visible: !root.compact
                     color: root.theme.textLo; font.pixelSize: 11 }
             }
             Item { Layout.fillWidth: true }
@@ -293,6 +302,7 @@ Item {
                 Rectangle { width: 8; height: 8; radius: 4
                     color: root.activeEnabled ? root.theme.greenBright : root.theme.textLo }
                 QQC2.Label { text: root.activeEnabled ? "Enabled" : "Disabled"
+                    visible: !root.tight
                     color: root.activeEnabled ? root.theme.greenBright : root.theme.textMid; font.pixelSize: 12 }
                 GToggle { theme: root.theme; checked: root.activeEnabled
                     onToggled: function(v) { root.activeEnabled = v; backend.setAutomationEnabled(root.activeId, v)
@@ -301,7 +311,7 @@ Item {
 
             QQC2.ComboBox {
                 id: autoPicker
-                Layout.preferredWidth: 210; implicitHeight: 38
+                Layout.preferredWidth: root.tight ? 136 : (root.compact ? 170 : 210); implicitHeight: 38
                 model: root.automations; textRole: "name"
                 background: Rectangle { radius: 8; color: root.theme.cardHi; border.width: 1; border.color: root.theme.lineHi }
                 contentItem: QQC2.Label { leftPadding: 11; rightPadding: 28; text: autoPicker.displayText
@@ -313,11 +323,13 @@ Item {
             GButton { theme: root.theme; kind: "ghost"; iconSource: "icons/trash.svg"; tooltip: "Delete"
                 enabled: root.automations.length > 1
                 onClicked: { backend.deleteAutomation(root.activeId); root.activeId = ""; root.ready = false; root.initialize() } }
-            GButton { theme: root.theme; kind: "tonal"; text: "New"; iconSource: "icons/plus.svg"
+            GButton { theme: root.theme; kind: "tonal"; text: root.tight ? "" : "New"; iconSource: "icons/plus.svg"
+                tooltip: root.tight ? "New automation" : ""
                 onClicked: { var id = backend.createAutomation("New automation"); root.refreshList(); root.switchTo(id) } }
-            GButton { theme: root.theme; kind: "tonal"; text: "Template"; iconSource: "icons/layout-grid.svg"
+            GButton { theme: root.theme; kind: "tonal"; text: root.tight ? "" : "Template"; iconSource: "icons/layout-grid.svg"
+                tooltip: root.tight ? "Start from a template" : ""
                 onClicked: templatePopup.open() }
-            GButton { theme: root.theme; kind: "filled"; text: "Run now"; iconSource: "icons/play.svg"
+            GButton { theme: root.theme; kind: "filled"; text: root.tight ? "" : "Run now"; iconSource: "icons/play.svg"
                 tooltip: "Test run: runs the actions now, without waiting for the trigger"
                 onClicked: { root.showLog = true; backend.runAutomationNow(root.activeId); root.toast("Test run — running the actions now…") } }
         }
@@ -331,7 +343,7 @@ Item {
             // Palette
             FCard {
                 theme: root.theme
-                Layout.preferredWidth: 232
+                Layout.preferredWidth: root.compact ? 190 : 232
                 Layout.fillHeight: true
                 ColumnLayout {
                     anchors.fill: parent
@@ -530,6 +542,9 @@ Item {
                 }
 
                 Rectangle {
+                    // Hide the mini-map when the canvas itself is small — it
+                    // would cover most of the visible sheet.
+                    visible: parent.width > 470
                     x: 16; y: parent.height - height - 16
                     width: 180; height: 120; radius: 12
                     color: Qt.rgba(0.05, 0.055, 0.065, 0.92)
@@ -646,7 +661,7 @@ Item {
             // Config panel
             FCard {
                 theme: root.theme
-                Layout.preferredWidth: 300
+                Layout.preferredWidth: root.compact ? 252 : 300
                 Layout.fillHeight: true
                 AutomationConfigPanel { anchors.fill: parent; theme: root.theme; node: root.selectedNode(); graphProvider: root; hotkeyAvailable: root.hotkeyAvailable }
             }
@@ -663,7 +678,7 @@ Item {
             Item { Layout.fillWidth: true }
             QQC2.TextField {
                 id: nameField
-                Layout.preferredWidth: 200; implicitHeight: 34
+                Layout.preferredWidth: root.tight ? 136 : 200; implicitHeight: 34
                 text: root.activeName; placeholderText: "Automation name"
                 color: root.theme.textHi; selectionColor: root.theme.green; selectedTextColor: root.theme.white
                 background: Rectangle { radius: 7; color: root.theme.cardHi; border.width: 1; border.color: root.theme.line }
@@ -696,7 +711,11 @@ Item {
         id: templatePopup
         parent: QQC2.Overlay.overlay
         anchors.centerIn: parent
-        width: 720; height: 520; modal: true; focus: true
+        // Fit small windows: this was a fixed 720×520 that overflowed whenever
+        // the Monitor wasn't maximized.
+        width: Math.min(720, parent ? parent.width - 24 : 720)
+        height: Math.min(520, parent ? parent.height - 24 : 520)
+        modal: true; focus: true
         closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
         background: Rectangle { radius: 12; color: root.theme.card; border.width: 1; border.color: root.theme.lineHi }
         contentItem: ColumnLayout {
@@ -706,7 +725,9 @@ Item {
             QQC2.ScrollView {
                 Layout.fillWidth: true; Layout.fillHeight: true; contentWidth: availableWidth
                 GridLayout {
-                    width: templatePopup.availableWidth; columns: 3; columnSpacing: 10; rowSpacing: 10
+                    width: templatePopup.availableWidth
+                    columns: templatePopup.width < 580 ? 2 : 3
+                    columnSpacing: 10; rowSpacing: 10
                     Repeater {
                         model: root.templateList
                         delegate: Rectangle {

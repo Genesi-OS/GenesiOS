@@ -531,7 +531,16 @@ pkgver=1.0.0
 # and the block "did nothing". (2) _ensure_display_env() seeds os.environ so the
 # AI tool executor's launch_app/open_path actually open on screen. (3) Command
 # sensor (evt_command) now gets the graphical env too.
-pkgrel=127
+# pkgrel 128: (1) Quick Chat is drag-movable from any empty spot on its card
+# (DragHandler → startSystemMove(); no titlebar; TakeOverForbidden so the text
+# field/buttons/scroll keep working) — works on KDE X11 and Hyprland/Wayland.
+# (2) The Monitor's Automations tab is responsive: side panels shrink and the
+# header buttons go icon-only in narrow windows, the mini-map hides when the
+# canvas is tiny, and the template gallery fits small windows (was a fixed
+# 720×520 that overflowed whenever the app wasn't maximized). Pairs with
+# genesi-caelestia-settings pkgrel 16 (floats/centers/pins the Quick Chat under
+# Hyprland — it was being tiled into a workspace-high slab).
+pkgrel=128
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
