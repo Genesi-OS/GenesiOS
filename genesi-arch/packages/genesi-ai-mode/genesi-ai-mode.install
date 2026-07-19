@@ -59,6 +59,20 @@ post_upgrade() {
     # Grant input access for Automations hotkeys on systems upgrading into this
     # build (the per-user genesi-automationd auto-enables via its wants symlink).
     _grant_input_access
+    # genesi-automationd is a per-USER unit: the resident process keeps running
+    # the PREVIOUS build's code after an upgrade (it reloads graphs, not
+    # itself) — that's how the pkgrel-129 link-port routing appeared broken
+    # ("runs every card at once"). Restart it for every logged-in user; the
+    # daemon also self-restarts when it sees its file change (same build), so
+    # this is belt & braces.
+    for _uid in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $1}'); do
+        [ "$_uid" -ge 1000 ] 2>/dev/null || continue
+        _uname=$(id -nu "$_uid" 2>/dev/null) || continue
+        runuser -u "$_uname" -- env "XDG_RUNTIME_DIR=/run/user/$_uid" \
+            "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$_uid/bus" \
+            systemctl --user try-restart genesi-automationd.service \
+            2>/dev/null || true
+    done
     # Aplica as novas permissões de leitura no diretório de modelos do Ollama
     systemctl try-restart ollama.service 2>/dev/null || true
 }

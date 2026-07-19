@@ -51,17 +51,20 @@ Item {
     property real pendingY: 0
 
     // ── result ports ────────────────────────────────────────────────────────
-    // Kinds listed here grow three output dots — on ok (green), on error
-    // (red), on output (blue) — and genesi-automationd follows a link only
-    // when its port matches the node's result. A link dragged from the single
-    // default dot (every other kind) always fires. Mirrors PORT_KINDS in the
-    // daemon.
+    // Action kinds listed here grow two output dots — on ok (green) and on
+    // error (red) — and genesi-automationd follows a link only when its port
+    // matches the node's result. A link from the single default dot (every
+    // other kind) always fires. The Command sensor deliberately keeps ONE dot:
+    // its own properties (Fire when: exit0 / match / regex) define the
+    // condition, and chained mid-flow it GATES the chain — the single output
+    // only fires when that condition holds (user feedback 2026-07-19: three
+    // dots there duplicated what the properties already say). Mirrors
+    // PORT_KINDS + the run_chain gate in the daemon.
     function portsFor(kind) {
         if (kind === "act_script" || kind === "act_ai" || kind === "act_http"
-                || kind === "act_file" || kind === "evt_command")
-            return [ { port: "ok",     label: "on ok",     color: theme.greenBright },
-                     { port: "err",    label: "on error",  color: theme.red },
-                     { port: "output", label: "on output", color: theme.blue } ]
+                || kind === "act_file")
+            return [ { port: "ok",  label: "on ok",    color: theme.greenBright },
+                     { port: "err", label: "on error", color: theme.red } ]
         return []
     }
     function portColor(port) {

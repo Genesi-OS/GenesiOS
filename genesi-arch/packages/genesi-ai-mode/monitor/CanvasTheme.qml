@@ -1,8 +1,10 @@
 /*
- * Genesi AI Mode Monitor — Automations canvas theme. Copied from Forge's
- * ForgeTheme so the Automations canvas keeps the exact graphite look of the
- * Forge Canvas, self-contained (no dependency on the Monitor's shared Theme.qml
- * from the UI kit). Fixed-dark by design.
+ * Genesi AI Mode Monitor — Automations canvas theme. Structure copied from
+ * Forge's ForgeTheme (self-contained, fixed-dark), but the SURFACES are the
+ * Monitor's pinned navy palette (ui-kit Theme.qml: #040b17/#0d1623/#16223a…),
+ * NOT Forge's graphite — the tab lives inside the Monitor and must match it
+ * (the graphite mismatch was reported 2026-07-19). If the ui-kit surface
+ * palette ever changes, mirror it here.
  */
 import QtQuick
 
@@ -38,20 +40,20 @@ Item {
     readonly property color blue:         "#3AAFE0"
     readonly property color red:          "#E74C3C"
 
-    // ── Surfaces (neutral graphite) ────────────────────────────────────
-    readonly property color bgBottom: "#141619"
-    readonly property color bgTop:    "#16181d"
-    readonly property color panelTop: "#131517"
-    readonly property color panelBot: "#111315"
-    readonly property color card:     "#16191c"
-    readonly property color cardHi:   "#20242a"
-    readonly property color line:     "#282d33"
-    readonly property color lineHi:   "#353b43"
+    // ── Surfaces (Monitor navy — mirrors ui-kit Theme.qml) ─────────────
+    readonly property color bgBottom: "#040b17"
+    readonly property color bgTop:    "#0a1220"
+    readonly property color panelTop: "#0a1220"
+    readonly property color panelBot: "#040b17"
+    readonly property color card:     "#0d1623"
+    readonly property color cardHi:   "#16223a"
+    readonly property color line:     "#1b2740"
+    readonly property color lineHi:   "#27374f"
 
     // ── Text ───────────────────────────────────────────────────────────
     readonly property color textHi:  "#ECEFF4"
-    readonly property color textMid: "#9AA3B2"
-    readonly property color textLo:  "#5F6774"
+    readonly property color textMid: "#9AA8BC"
+    readonly property color textLo:  "#5F6E86"
 
     readonly property string mono:    "monospace"
     readonly property string sans:    "Rubik"

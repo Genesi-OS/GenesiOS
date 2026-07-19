@@ -115,14 +115,16 @@ ACTION_KINDS = {"act_script", "act_ai", "act_notify", "act_http", "act_file",
                 "act_app", "act_sound", "act_power", "act_wait"}
 
 # Result ports. Links carry an optional `fromPort`: "" (none) = always follow;
-# "ok" / "err" follow only when the source node succeeded / failed; "output"
-# follows only when the node produced non-empty output. The GUI draws the three
-# extra dots on the kinds listed here; every other node keeps the single
-# always-port. An event node that is the TARGET of a link is a CONDITION: it is
-# skipped by the pollers and instead evaluated mid-chain against the upstream
-# node's output (evt_command being the useful one — "command sensor receives
-# the Run Script output", requested 2026-07-18).
-PORT_KINDS = {"act_script", "act_ai", "act_http", "act_file", "evt_command"}
+# "ok" / "err" follow only when the source node succeeded / failed ("output" is
+# still honored for graphs saved by the pkgrel-129 GUI, which briefly offered
+# it). The GUI draws the two extra dots on the ACTION kinds listed here; every
+# other node keeps the single always-port. An event node that is the TARGET of
+# a link is a CONDITION: it is skipped by the pollers and evaluated mid-chain
+# against the upstream node's output (evt_command — "command sensor receives
+# the Run Script output", 2026-07-18). Per 2026-07-19 feedback the Command
+# sensor keeps ONE output dot: its own properties define the condition and its
+# portless links only fire when that condition holds (see the run_chain gate).
+PORT_KINDS = {"act_script", "act_ai", "act_http", "act_file"}
 
 POLL_SECONDS = 2.0
 LOG_KEEP = 200
@@ -576,8 +578,14 @@ class Engine:
                     continue
                 steps += 1
                 outcome, output = self._run_node(auto, node, payload)
+                # A condition node (evt_* mid-chain, e.g. the Command sensor)
+                # GATES the flow: its portless links only fire when its own
+                # configured condition held ("ok"). Action nodes keep the
+                # portless-link-always-fires contract.
+                gated = node.get("kind") in EVENT_KINDS
                 for port, to in outgoing.get(nid, []):
-                    if (port == "" or port == outcome
+                    if ((port == "" and (outcome == "ok" or not gated))
+                            or port == outcome
                             or (port == "output" and (output or "").strip())):
                         queue.append((to, output if (output or "").strip()
                                       else payload))
@@ -1265,6 +1273,11 @@ class Daemon:
     def _poll_loop(self):
         if psutil:
             psutil.cpu_percent(interval=None)   # prime
+        self_path = os.path.abspath(__file__)
+        try:
+            self_mtime = os.path.getmtime(self_path)
+        except OSError:
+            self_mtime = 0
         tick = 0
         while not self._stop.is_set():
             try:
@@ -1278,6 +1291,19 @@ class Daemon:
                 if self._hotkeys.reopen():
                     self.status.set_hotkey(True)
                     self._start_hotkey_reader()
+            # Every ~10s: self-restart when the on-disk daemon changed. This is
+            # a per-USER service, so a `pacman -Syu` cannot restart it the way
+            # post_upgrade restarts system units — after the pkgrel-129 update
+            # the resident OLD daemon kept ignoring link ports ("runs every
+            # card at once", 2026-07-19). Re-exec picks the new code up within
+            # seconds of the package landing; graphs reload at startup.
+            if tick % 5 == 0 and self_mtime:
+                try:
+                    if os.path.getmtime(self_path) != self_mtime:
+                        os.execv(sys.executable,
+                                 [sys.executable, self_path] + sys.argv[1:])
+                except OSError:
+                    pass
             self._stop.wait(POLL_SECONDS)
 
     def _start_hotkey_reader(self):

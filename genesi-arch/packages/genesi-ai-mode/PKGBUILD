@@ -551,7 +551,19 @@ pkgver=1.0.0
 # $GENESI_INPUT). A Command sensor chained after another block stops polling
 # and becomes a checker over that block's output. New "Wait / delay" card.
 # Old graphs (portless links) run exactly as before.
-pkgrel=129
+# pkgrel 130: three Automations follow-ups from hardware testing of 129:
+# (1) the canvas wore Forge's graphite — recolored CanvasTheme to the Monitor's
+# pinned navy surfaces (#040b17/#0d1623/…) so the tab matches the app.
+# (2) Ports simplified per feedback: actions keep on ok / on error (the
+# "on output" dot is gone — the output pipes to the next block regardless);
+# the Command sensor is back to a SINGLE dot and, chained mid-flow, GATES the
+# chain: its portless links only fire when its configured condition holds.
+# (3) THE REAL "ports don't work" cause: genesi-automationd is a per-user unit,
+# so after an upgrade the resident OLD daemon kept running (ignoring fromPort →
+# "every card fires at once"). post_upgrade now restarts it for every
+# logged-in user AND the daemon re-execs itself when its on-disk file changes,
+# so future updates land within seconds.
+pkgrel=130
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
