@@ -625,12 +625,16 @@ class Engine:
                 proc = subprocess.run(["/bin/sh", "-lc", command],
                                       capture_output=True, text=True,
                                       timeout=60, env=env)
-                out = (proc.stdout or "").strip()
+                # stdout + stderr: error text ("comando não encontrado", …)
+                # lives on stderr and must be matchable too.
+                out = ((proc.stdout or "").strip() + "\n"
+                       + (proc.stderr or "").strip()).strip()
                 base_ok = proc.returncode == 0
             except Exception as exc:
                 self.status.log(aid, "checker failed: %s" % exc, "err")
                 return "err", ""
-        if cfg.get("on", "exit0") == "match":
+        on = cfg.get("on", "exit0")
+        if on == "match":
             pattern = cfg.get("match") or ""
             try:
                 hit = bool(re.search(pattern, out)) if pattern else bool(out)
@@ -639,7 +643,14 @@ class Engine:
             outcome = "ok" if hit else "err"
             self.status.log(aid, "checker %s" % ("matched" if hit else
                             "did not match"), "ok" if hit else "err")
-        else:
+        elif on == "error":
+            # Condition = "the command FAILED" (outcome ok when it did fail).
+            outcome = "ok" if not base_ok else "err"
+            self.status.log(aid, "checker → command %s"
+                            % ("failed (condition met)" if not base_ok else
+                               "succeeded (condition not met)"),
+                            "ok" if not base_ok else "err")
+        else:  # exit0 (and legacy "changed", meaningless mid-chain)
             outcome = "ok" if base_ok else "err"
             self.status.log(aid, "checker → %s" % outcome,
                             "ok" if base_ok else "err")
@@ -707,14 +718,50 @@ class Engine:
         time.sleep(seconds)
         return "ok", ""
 
+    # Terminal emulators for "Run in a terminal window" (TUI apps like cmatrix/
+    # htop need a real TTY — headless they die with `$TERM="unknown"`,
+    # reported 2026-07-19). Same picker order as the Monitor's Turbo installer.
+    _TERMS = (("konsole", ["konsole", "-e"]),
+              ("foot", ["foot"]),
+              ("alacritty", ["alacritty", "-e"]),
+              ("kitty", ["kitty"]),
+              ("xterm", ["xterm", "-e"]))
+
+    def _find_terminal(self):
+        return next((argv for name, argv in self._TERMS
+                     if shutil.which(name)), None)
+
     def _act_script(self, aid, cfg, title, payload=""):
         command = self._sub((cfg.get("command") or "").strip(), payload)
         if not command:
             self.status.log(aid, "script: empty command — skipped", "out")
             return "err", ""
-        self.status.log(aid, "$ " + command.splitlines()[0], "cmd")
         env = _graphical_env()
         env["GENESI_INPUT"] = payload or ""
+        if cfg.get("terminal"):
+            # Interactive/TUI mode: open the command in a terminal window.
+            # Its output cannot be captured, so the ok port means "launched"
+            # and the payload stays empty.
+            term = self._find_terminal()
+            if term is None:
+                self.status.log(aid, "no terminal emulator found "
+                                "(install konsole/foot/kitty)", "err")
+                return "err", ""
+            self.status.log(aid, "↗ " + command.splitlines()[0]
+                            + "  (terminal window)", "cmd")
+            try:
+                subprocess.Popen(term + ["bash", "-lc", command],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL,
+                                 start_new_session=True, env=env)
+                return "ok", ""
+            except OSError as exc:
+                self.status.log(aid, "terminal launch failed: %s" % exc, "err")
+                return "err", ""
+        # Headless: give CLI tools a sane $TERM (ncurses aborts on "unknown";
+        # "dumb" makes tput/less-style calls degrade instead of dying).
+        env.setdefault("TERM", "dumb")
+        self.status.log(aid, "$ " + command.splitlines()[0], "cmd")
         try:
             proc = subprocess.run(["/bin/sh", "-lc", command], capture_output=True,
                                   text=True, timeout=float(cfg.get("timeout", 300)),
@@ -728,8 +775,12 @@ class Engine:
             self.status.log(aid, line, "err")
         self.status.log(aid, "script exit %d" % proc.returncode,
                         "ok" if proc.returncode == 0 else "err")
-        return ("ok" if proc.returncode == 0 else "err",
-                (proc.stdout or "").strip())
+        # Payload: stdout; on failure fall back to stderr so an error branch
+        # carries the actual error message ("comando não encontrado" etc.).
+        out = (proc.stdout or "").strip()
+        if not out and proc.returncode != 0:
+            out = (proc.stderr or "").strip()
+        return ("ok" if proc.returncode == 0 else "err", out)
 
     def _act_notify(self, aid, cfg, payload=""):
         title = self._sub(cfg.get("title") or "Genesi Automation", payload)
@@ -1712,10 +1763,16 @@ class Daemon:
                                   text=True, timeout=30, env=_graphical_env())
         except Exception:
             return
-        out = (proc.stdout or "").strip()
+        # Match against stdout AND stderr — "command not found" and most error
+        # text go to stderr, which a stdout-only match silently missed
+        # (reported 2026-07-19).
+        out = ((proc.stdout or "").strip() + "\n"
+               + (proc.stderr or "").strip()).strip()
         ev = cfg.get("on", "exit0")
         if ev == "exit0":
             self._edge_fire(auto, node, proc.returncode == 0, "command exit 0")
+        elif ev == "error":
+            self._edge_fire(auto, node, proc.returncode != 0, "command failed")
         elif ev == "match":
             pattern = cfg.get("match") or ""
             try:

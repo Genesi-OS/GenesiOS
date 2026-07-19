@@ -276,6 +276,7 @@ Item {
             out.push("Run on demand")
         } else if (n.kind === "act_script") {
             out.push(c.command ? ("" + c.command).split("\n")[0].substring(0, 30) : "no command")
+            if (c.terminal) out.push("in a terminal window")
         } else if (n.kind === "act_ai") {
             out.push(c.model ? c.model : "pick a model")
             var ex = c.exec || (c.autonomous ? "auto" : "advisory")
@@ -866,7 +867,7 @@ Item {
         if (kind === "evt_log") return { path: "", pattern: "", mode: "always" }
         if (kind === "evt_command") return { command: "", on: "exit0", match: "", interval: "30", mode: "always" }
         if (kind === "evt_manual") return { mode: "always" }
-        if (kind === "act_script") return { command: "" }
+        if (kind === "act_script") return { command: "", terminal: false }
         if (kind === "act_ai") return { model: "", aiMode: false, turbo: false, spec: false, exec: "advisory", prompt: "" }
         if (kind === "act_notify") return { title: "Genesi", body: "" }
         if (kind === "act_http") return { url: "", method: "GET", body: "" }

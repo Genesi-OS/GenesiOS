@@ -230,6 +230,11 @@ Item {
                 QQC2.Label { visible: root.kindIs("act_script"); Layout.fillWidth: true; wrapMode: Text.Wrap
                     text: "{input} (or $GENESI_INPUT) holds the previous block's output. Drag links from the on ok / on error dots to branch on the result; either way the script's output flows to the next block."
                     color: root.theme.textLo; font.pixelSize: 10 }
+                RowToggle { visible: root.kindIs("act_script"); label: "Run in a terminal window"; value: root.cfgBool("terminal")
+                    onToggled: function(v) { root.setConfig("terminal", v) } }
+                QQC2.Label { visible: root.kindIs("act_script") && root.cfgBool("terminal"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Opens the command in a real terminal — needed for interactive/TUI programs (cmatrix, htop, installers). In this mode the output can't be captured: on ok means \"launched\" and nothing is piped to the next block."
+                    color: root.theme.textLo; font.pixelSize: 10 }
 
                 // ── act_ai ──────────────────────────────────────────────
                 FieldLabel { text: "Model"; visible: root.kindIs("act_ai") }
@@ -358,9 +363,14 @@ Item {
                 GArea { visible: root.kindIs("evt_command"); text: root.cfg("command", "")
                     onAccepted: root.setConfig("command", value) }
                 FieldLabel { text: "Fire when"; visible: root.kindIs("evt_command") }
-                Combo { visible: root.kindIs("evt_command"); model: [ "exit0", "match", "changed" ]
-                    currentIndex: root.optionIndex(model, root.cfg("on", "exit0"))
-                    onActivated: root.setConfig("on", currentText) }
+                Combo { visible: root.kindIs("evt_command")
+                    // Friendly labels; stored values stay exit0/error/match/
+                    // changed (the daemon and old graphs use them).
+                    property var vals: [ "exit0", "error", "match", "changed" ]
+                    model: [ "command succeeds (ok)", "command fails (error)",
+                             "output matches regex", "output changed since last check" ]
+                    currentIndex: Math.max(0, vals.indexOf(root.cfg("on", "exit0")))
+                    onActivated: root.setConfig("on", vals[currentIndex]) }
                 FieldLabel { text: "Output matches regex"; visible: root.kindIs("evt_command") && root.cfg("on","exit0") === "match" }
                 GField { visible: root.kindIs("evt_command") && root.cfg("on","exit0") === "match"; text: root.cfg("match", ""); icon: "search"
                     onAccepted: root.setConfig("match", value) }
@@ -368,7 +378,7 @@ Item {
                 GField { visible: root.kindIs("evt_command"); text: root.cfg("interval", "30"); icon: "clock"
                     onAccepted: root.setConfig("interval", value) }
                 QQC2.Label { visible: root.kindIs("evt_command"); Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: "Chained AFTER another block, this becomes a checker: it stops polling and runs once per chain, with the previous block's output in {input} / $GENESI_INPUT (leave the command empty to test that output directly). The chain only continues past it when the condition above holds."
+                    text: "The regex is tested against the command's stdout AND stderr (error text like \"command not found\" lives on stderr). Commands run under /bin/sh, so shell messages may differ from your interactive shell (fish). Chained AFTER another block, this becomes a checker: it stops polling and runs once per chain, with the previous block's output in {input} / $GENESI_INPUT (leave the command empty to test that output directly). The chain only continues past it when the condition above holds."
                     color: root.theme.textLo; font.pixelSize: 10 }
 
                 // ── act_http ────────────────────────────────────────────
