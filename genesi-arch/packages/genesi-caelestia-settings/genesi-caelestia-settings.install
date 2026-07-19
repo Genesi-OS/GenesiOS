@@ -172,11 +172,48 @@ PY
     chown "$owner" "$(dirname "$cli")" "$cli" 2>/dev/null || true
 }
 
+# Fix the session drawer's logout for existing users. Upstream caelestia
+# defaults logout to `loginctl terminate-user ""`, which kills every user
+# process at once (sddm-helper included) — on real hardware that left an
+# infinite black screen instead of returning to the SDDM greeter. We only SET
+# session.commands.logout when the user hasn't configured one; any custom
+# command (or any other shell.json key) is left untouched.
+_migrate_shell_json() {
+    local shl="$1" owner="$2"
+    python3 - "$shl" <<'PY' || return 0
+import json, os, sys
+p = sys.argv[1]
+try:
+    with open(p) as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        data = {}
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    data = {}
+session = data.get("session")
+if not isinstance(session, dict):
+    session = {}
+    data["session"] = session
+commands = session.get("commands")
+if not isinstance(commands, dict):
+    commands = {}
+    session["commands"] = commands
+if commands.get("logout"):
+    sys.exit(0)  # user has their own logout command — leave the file alone
+commands["logout"] = ["hyprctl", "dispatch", "exit"]
+os.makedirs(os.path.dirname(p), exist_ok=True)
+with open(p, "w") as f:
+    json.dump(data, f, indent=2)
+PY
+    chown "$owner" "$(dirname "$shl")" "$shl" 2>/dev/null || true
+}
+
 _migrate_user() {
     local home="$1" owner="$2"
-    _migrate_hypr     "$home/.config/hypr/hyprland.conf"     "$owner"
-    _migrate_qt6ct    "$home/.config/qt6ct/qt6ct.conf"       "$owner"
-    _migrate_cli_json "$home/.config/caelestia/cli.json"     "$owner"
+    _migrate_hypr       "$home/.config/hypr/hyprland.conf"     "$owner"
+    _migrate_qt6ct      "$home/.config/qt6ct/qt6ct.conf"       "$owner"
+    _migrate_cli_json   "$home/.config/caelestia/cli.json"     "$owner"
+    _migrate_shell_json "$home/.config/caelestia/shell.json"   "$owner"
 }
 
 _migrate_all() {

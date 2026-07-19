@@ -46,8 +46,54 @@ Item {
     property bool restoringHistory: false
 
     property string pendingFrom: ""
+    property string pendingPort: ""
     property real pendingX: 0
     property real pendingY: 0
+
+    // ── result ports ────────────────────────────────────────────────────────
+    // Kinds listed here grow three output dots — on ok (green), on error
+    // (red), on output (blue) — and genesi-automationd follows a link only
+    // when its port matches the node's result. A link dragged from the single
+    // default dot (every other kind) always fires. Mirrors PORT_KINDS in the
+    // daemon.
+    function portsFor(kind) {
+        if (kind === "act_script" || kind === "act_ai" || kind === "act_http"
+                || kind === "act_file" || kind === "evt_command")
+            return [ { port: "ok",     label: "on ok",     color: theme.greenBright },
+                     { port: "err",    label: "on error",  color: theme.red },
+                     { port: "output", label: "on output", color: theme.blue } ]
+        return []
+    }
+    function portColor(port) {
+        if (port === "ok") return theme.greenBright
+        if (port === "err") return theme.red
+        if (port === "output") return theme.blue
+        return null
+    }
+    function portLabel(port) {
+        if (port === "ok") return "on ok"
+        if (port === "err") return "on error"
+        if (port === "output") return "on output"
+        return ""
+    }
+    // Sheet-space point a link leaves a node from (must mirror the dot layout
+    // in CanvasNode.qml: 16px dots, 10px spacing, vertically centered).
+    function portPoint(id, port) {
+        var p = livePos[id]
+        if (!p) return { x: 0, y: 0 }
+        var x = p.x + (p.w || 214)
+        var n = null
+        for (var i = 0; i < nodes.length; i++)
+            if (nodes[i].id === id) { n = nodes[i]; break }
+        var ports = n ? portsFor(n.kind) : []
+        if (!ports.length || !port)
+            return { x: x, y: p.y + (p.h || 120) / 2 }
+        var idx = 0
+        for (var j = 0; j < ports.length; j++)
+            if (ports[j].port === port) { idx = j; break }
+        var total = ports.length * 16 + (ports.length - 1) * 10
+        return { x: x, y: p.y + ((p.h || 120) - total) / 2 + idx * 26 + 8 }
+    }
 
     Shortcut {
         sequence: StandardKey.Undo
@@ -241,6 +287,8 @@ Item {
             out.push((c.op || "launch") + " " + (c.app || "—"))
         } else if (n.kind === "act_sound") {
             out.push(c.sound ? baseName(c.sound) : "play a beep")
+        } else if (n.kind === "act_wait") {
+            out.push("wait " + (c.seconds || "5") + "s")
         } else if (n.kind === "act_power") {
             out.push(c.op || "lock")
         }
@@ -388,6 +436,7 @@ Item {
                                     { label: "File operation", icon: "copy", accent: root.theme.green, accentKey: "green", kind: "act_file" },
                                     { label: "Launch / close app", icon: "external-link", accent: root.theme.purple, accentKey: "purple", kind: "act_app" },
                                     { label: "Play sound", icon: "bolt", accent: root.theme.turbo, accentKey: "turbo", kind: "act_sound" },
+                                    { label: "Wait / delay", icon: "clock", accent: root.theme.blue, accentKey: "blue", kind: "act_wait" },
                                     { label: "Power (lock / suspend…)", icon: "lock", accent: root.theme.red, accentKey: "red", kind: "act_power" }
                                 ]
                                 delegate: Item {
@@ -480,9 +529,11 @@ Item {
                                 for (var i = 0; i < root.links.length; i++) {
                                     var a = root.livePos[root.links[i].from], b = root.livePos[root.links[i].to]
                                     if (!a || !b) continue
-                                    var x1 = a.x + (a.w || 214), y1 = a.y + (a.h || 120) / 2
+                                    var sp = root.portPoint(root.links[i].from, root.links[i].fromPort || "")
+                                    var x1 = sp.x, y1 = sp.y
                                     var x2 = b.x, y2 = b.y + (b.h || 120) / 2
-                                    var acc = root.nodeAccent(root.links[i].from)
+                                    var acc = root.portColor(root.links[i].fromPort || "")
+                                             || root.nodeAccent(root.links[i].from)
                                     ctx.strokeStyle = Qt.rgba(acc.r, acc.g, acc.b, 0.65)
                                     var dx = Math.max(46, Math.abs(x2 - x1) * 0.5)
                                     ctx.beginPath(); ctx.moveTo(x1, y1)
@@ -494,8 +545,10 @@ Item {
                                 if (root.pendingFrom !== "") {
                                     var pa = root.livePos[root.pendingFrom]
                                     if (pa) {
-                                        var px1 = pa.x + (pa.w || 214), py1 = pa.y + (pa.h || 120) / 2
-                                        var pacc = root.nodeAccent(root.pendingFrom)
+                                        var psp = root.portPoint(root.pendingFrom, root.pendingPort)
+                                        var px1 = psp.x, py1 = psp.y
+                                        var pacc = root.portColor(root.pendingPort)
+                                                  || root.nodeAccent(root.pendingFrom)
                                         ctx.strokeStyle = Qt.rgba(pacc.r, pacc.g, pacc.b, 0.95)
                                         ctx.setLineDash([6, 5])
                                         var pdx = Math.max(46, Math.abs(root.pendingX - px1) * 0.5)
@@ -515,6 +568,7 @@ Item {
                                 node: modelData
                                 selected: root.selectedId === modelData.id
                                 runState: root.nodeRunState(modelData)
+                                outPorts: root.portsFor(modelData.kind)
                                 boundW: root.sheetW
                                 boundH: root.sheetH
                                 Component.onCompleted: { x = modelData.x; y = modelData.y; root.updatePos(modelData.id, x, y, width, height) }
@@ -522,7 +576,7 @@ Item {
                                 onMoveBegin: root.recordHistory()
                                 onPicked: root.selectedId = modelData.id
                                 onDeleteRequested: root.deleteNode(modelData.id)
-                                onLinkBegin: function(sx, sy) { root.beginLink(modelData.id, sx, sy) }
+                                onLinkBegin: function(sx, sy, port) { root.beginLink(modelData.id, sx, sy, port) }
                                 onLinkMove: function(sx, sy) { root.moveLink(sx, sy) }
                                 onLinkEnd: function(sx, sy) { root.endLink(sx, sy) }
                             }
@@ -816,6 +870,7 @@ Item {
         if (kind === "act_file") return { op: "copy", src: "", dest: "" }
         if (kind === "act_app") return { op: "launch", app: "" }
         if (kind === "act_sound") return { sound: "" }
+        if (kind === "act_wait") return { seconds: "5" }
         if (kind === "act_power") return { op: "lock" }
         return ({})
     }
@@ -954,7 +1009,7 @@ Item {
     }
 
     // ── Linking ─────────────────────────────────────────────────────────────
-    function beginLink(id, sx, sy) { pendingFrom = id; pendingX = sx; pendingY = sy; linkLayer.requestPaint() }
+    function beginLink(id, sx, sy, port) { pendingFrom = id; pendingPort = port || ""; pendingX = sx; pendingY = sy; linkLayer.requestPaint() }
     function moveLink(sx, sy) { pendingX = sx; pendingY = sy; linkLayer.requestPaint() }
     function endLink(sx, sy) {
         var target = ""
@@ -963,33 +1018,42 @@ Item {
             if (sx >= p.x - 14 && sx <= p.x + (p.w || 214) + 14 &&
                 sy >= p.y - 10 && sy <= p.y + (p.h || 120) + 10) { target = id; break }
         }
-        if (target && target !== pendingFrom) addLink(pendingFrom, target)
-        pendingFrom = ""
+        if (target && target !== pendingFrom) addLink(pendingFrom, target, pendingPort)
+        pendingFrom = ""; pendingPort = ""
         linkLayer.requestPaint()
     }
-    function addLink(fromId, toId) {
+    function addLink(fromId, toId, port) {
+        port = port || ""
         for (var i = 0; i < links.length; i++)
-            if (links[i].from === fromId && links[i].to === toId) return
+            if (links[i].from === fromId && links[i].to === toId
+                && (links[i].fromPort || "") === port) return
         recordHistory()
-        var lk = links.slice(); lk.push({ from: fromId, to: toId }); links = lk
+        var o = { from: fromId, to: toId }
+        if (port) o.fromPort = port
+        var lk = links.slice(); lk.push(o); links = lk
         linkLayer.requestPaint()
         scheduleSave()
-        toast("Blocks connected.")
+        toast(port ? "Blocks connected (" + portLabel(port) + ")." : "Blocks connected.")
     }
     function connectionsFor(id) {
         var result = []
         for (var i = 0; i < links.length; i++) {
             var link = links[i]
+            var p = link.fromPort || ""
+            var suffix = p ? "  ·  " + portLabel(p) : ""
             if (link.from === id)
-                result.push({ from: link.from, to: link.to, label: "To " + nodeTitle(link.to) })
+                result.push({ from: link.from, to: link.to, port: p,
+                              label: "To " + nodeTitle(link.to) + suffix })
             else if (link.to === id)
-                result.push({ from: link.from, to: link.to, label: "From " + nodeTitle(link.from) })
+                result.push({ from: link.from, to: link.to, port: p,
+                              label: "From " + nodeTitle(link.from) + suffix })
         }
         return result
     }
-    function removeLink(fromId, toId) {
+    function removeLink(fromId, toId, port) {
         for (var i = 0; i < links.length; i++) {
-            if (links[i].from === fromId && links[i].to === toId) {
+            if (links[i].from === fromId && links[i].to === toId
+                && (port === undefined || (links[i].fromPort || "") === (port || ""))) {
                 recordHistory()
                 var next = links.slice(); next.splice(i, 1); links = next
                 linkLayer.requestPaint(); scheduleSave(); toast("Connection removed.")

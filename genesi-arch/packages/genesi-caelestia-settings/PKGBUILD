@@ -105,13 +105,20 @@ pkgver=1.0.0
 # migrate existing users (Hyprland does not process XDG autostart).
 # pkgrel 15: start the Genesi AI Quick Chat background service so its native
 # Ctrl+Alt+Space registration is available in Hyprland too.
+# pkgrel 17: fix the session drawer's LOGOUT button leaving an infinite black
+# screen. caelestia's default logout is `loginctl terminate-user ""` — it kills
+# every user process at once (sddm-helper included, mid-teardown), and on real
+# hardware the seat never returned to the SDDM greeter. Ship a shell.json with
+# logout = `hyprctl dispatch exit` (the clean Hyprland session exit; SDDM then
+# shows the greeter) via /etc/skel + .install merge for existing users (only
+# sets session.commands.logout when the user hasn't customized it).
 # pkgrel 16: float the Quick Chat under Hyprland. The frameless summon bar was
 # being TILED into a workspace-high slab (reported 2026-07-18 with a photo of
 # the screen). New windowrules float it at its own compact size, center it and
 # pin it to every workspace; the .install appends them to existing users'
 # configs (idempotent, same migration machinery as before). The window itself
 # became drag-movable in genesi-ai-mode pkgrel 128.
-pkgrel=16
+pkgrel=17
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -139,8 +146,8 @@ depends=(
 )
 install='genesi-caelestia-settings.install'
 source=('hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini' 'genesi-dark.conf'
-        'genesi-caelestia-theme-sync' 'cli.json')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+        'genesi-caelestia-theme-sync' 'cli.json' 'shell.json')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     # Default Hyprland config for new users. Hyprland reads
@@ -180,4 +187,14 @@ package() {
     # existing users are migrated by the .install.
     install -Dm644 "${srcdir}/cli.json" \
         "${pkgdir}/etc/skel/.config/caelestia/cli.json"
+
+    # caelestia-shell config: replace the session drawer's default LOGOUT
+    # command. Upstream defaults to `loginctl terminate-user ""`, which nukes
+    # every process of the user at once (including sddm-helper mid-teardown) —
+    # on real hardware that left an infinite black screen instead of returning
+    # to the SDDM greeter (reported 2026-07-18). `hyprctl dispatch exit` ends
+    # the Hyprland session cleanly and SDDM comes back. Shutdown/reboot/
+    # hibernate keep upstream defaults (systemctl — those are fine).
+    install -Dm644 "${srcdir}/shell.json" \
+        "${pkgdir}/etc/skel/.config/caelestia/shell.json"
 }

@@ -1211,6 +1211,81 @@ class Backend(QObject):
             self.turboRecommended.emit(tag)
         threading.Thread(target=work, daemon=True).start()
 
+    # ── visible-terminal install path ────────────────────────────────────────
+    # The silent pkexec install kept failing invisibly: pacman stops on file
+    # conflicts / replace questions and with --noconfirm those default to "no",
+    # so the user only ever saw a one-line "install not completed" (reported
+    # 2026-07-18, CUDA install). Preferred path now: open a real terminal
+    # running the install interactively — output visible, prompts answerable —
+    # and verify the backend afterwards. The silent pkexec path stays as the
+    # fallback when no terminal emulator is found.
+    _TERMINALS = (
+        ("konsole", ["konsole", "-e"]),          # KDE default
+        ("foot", ["foot"]),                      # Hyprland/caelestia default
+        ("alacritty", ["alacritty", "-e"]),
+        ("kitty", ["kitty"]),
+        ("xterm", ["xterm", "-e"]),
+    )
+
+    def _spawn_install_terminal(self, script_text):
+        """Run `script_text` (bash) in the first available terminal emulator.
+        Returns the terminal's Popen, or None if no terminal exists."""
+        term = next((argv for name, argv in self._TERMINALS
+                     if shutil.which(name)), None)
+        if term is None:
+            return None
+        fd, path = tempfile.mkstemp(prefix="genesi-turbo-install-",
+                                    suffix=".sh")
+        with os.fdopen(fd, "w") as fh:
+            fh.write(script_text)
+        os.chmod(path, 0o700)
+        try:
+            return subprocess.Popen(term + ["bash", path],
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+        except OSError:
+            os.unlink(path)
+            return None
+
+    def _terminal_install(self, kind, script_body):
+        """Open the install terminal and verify the result when it closes.
+        Returns True if the terminal was launched (result handled async)."""
+        script = (
+            "#!/bin/bash\n"
+            "echo '== Genesi Turbo — installing the "
+            + ("CUDA" if kind == "cuda" else "Vulkan") + " backend =='\n"
+            "echo 'Answer any pacman question below (this window is "
+            "interactive).'\necho\n"
+            + script_body +
+            "\nstatus=$?\necho\n"
+            "if [ $status -eq 0 ]; then "
+            "echo '✓ Done — go back to the Monitor and turn Turbo on.'; "
+            "else echo \"✗ The installer exited with code $status — scroll up "
+            "for the reason.\"; fi\n"
+            "echo 'Press Enter to close this window.'; read -r\n"
+            "exit $status\n")
+        proc = self._spawn_install_terminal(script)
+        if proc is None:
+            return False
+        self.turboStatus.emit(
+            "installer opened in a terminal window — follow it there")
+
+        def monitor():
+            try:
+                proc.wait(timeout=7200)
+            except Exception:
+                pass
+            if self._installed_backend() == kind and self._has_llama_server():
+                self.turboNeedsInstall.emit(False)
+                self.turboStatus.emit(
+                    f"{kind.upper()} backend installed ✓ — turn Turbo on again")
+            else:
+                self.turboStatus.emit(
+                    "install window closed but the backend isn't active — "
+                    "check the terminal output and try again")
+        threading.Thread(target=monitor, daemon=True).start()
+        return True
+
     @Slot(str)
     def installTurboBackend(self, kind="vulkan"):
         """One-click install of the Turbo backend.
@@ -1234,6 +1309,15 @@ class Backend(QObject):
             return
         if kind == "cuda":
             self._install_cuda_backend()
+            return
+        # Preferred: interactive install in a visible terminal (see above).
+        # sudo asks for the password right in the window; --overwrite clears
+        # the leftover-file conflicts that used to kill the silent path.
+        if self._terminal_install("vulkan", (
+                "sudo sh -c \""
+                "pacman -Rdd --noconfirm genesi-llama-cpp-cuda llama.cpp-cuda "
+                "2>/dev/null; "
+                "pacman -Sy --needed --overwrite '*' genesi-llama-cpp\"")):
             return
         if not shutil.which("pkexec"):
             self.turboStatus.emit(
@@ -1287,6 +1371,29 @@ class Backend(QObject):
         def _finish_ok(msg="CUDA backend installed ✓ — turn Turbo on again"):
             self.turboNeedsInstall.emit(False)
             self.turboStatus.emit(msg)
+
+        # Preferred: interactive install in a visible terminal. Falls back to
+        # the AUR build inside the SAME window when the prebuilt isn't in the
+        # repos yet (the helper must not run as root, so sudo wraps pacman
+        # only). --overwrite clears the CUDA leftover-file conflicts the user
+        # kept hitting in the silent path.
+        helper = self._aur_helper() or ""
+        aur_branch = (
+            "  echo 'prebuilt genesi-llama-cpp-cuda not in the repos yet — "
+            "building llama.cpp-cuda from the AUR (this is a LONG build)';\n"
+            "  sudo pacman -Rdd --noconfirm genesi-llama-cpp 2>/dev/null;\n"
+            f"  {helper} -S --needed llama.cpp-cuda;\n") if helper else (
+            "  echo 'prebuilt genesi-llama-cpp-cuda not in the repos yet and "
+            "no AUR helper (paru/yay) is installed'; false;\n")
+        if self._terminal_install("cuda", (
+                "sudo pacman -Sy\n"
+                "if pacman -Si genesi-llama-cpp-cuda >/dev/null 2>&1; then\n"
+                "  sudo sh -c \""
+                "pacman -Rdd --noconfirm genesi-llama-cpp llama.cpp-cuda "
+                "2>/dev/null; "
+                "pacman -S --needed --overwrite '*' genesi-llama-cpp-cuda\"\n"
+                "else\n" + aur_branch + "fi")):
+            return
 
         def work():
             # ── Path 1: prebuilt repo package via pkexec pacman ──────────────

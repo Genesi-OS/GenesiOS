@@ -227,6 +227,9 @@ Item {
                 FieldLabel { text: "Shell command / script"; visible: root.kindIs("act_script") }
                 GArea { visible: root.kindIs("act_script"); text: root.cfg("command", "")
                     onAccepted: root.setConfig("command", value) }
+                QQC2.Label { visible: root.kindIs("act_script"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "{input} (or $GENESI_INPUT) holds the previous block's output. Drag links from the on ok / on error / on output dots to branch on the result."
+                    color: root.theme.textLo; font.pixelSize: 10 }
 
                 // ── act_ai ──────────────────────────────────────────────
                 FieldLabel { text: "Model"; visible: root.kindIs("act_ai") }
@@ -364,6 +367,9 @@ Item {
                 FieldLabel { text: "Check every (seconds)"; visible: root.kindIs("evt_command") }
                 GField { visible: root.kindIs("evt_command"); text: root.cfg("interval", "30"); icon: "clock"
                     onAccepted: root.setConfig("interval", value) }
+                QQC2.Label { visible: root.kindIs("evt_command"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Chained AFTER another block, this becomes a checker: it stops polling and runs once per chain, with the previous block's output in {input} / $GENESI_INPUT (leave the command empty to test that output directly). Route the result with the on ok / on error / on output dots."
+                    color: root.theme.textLo; font.pixelSize: 10 }
 
                 // ── act_http ────────────────────────────────────────────
                 FieldLabel { text: "URL"; visible: root.kindIs("act_http") }
@@ -403,6 +409,14 @@ Item {
                 GField { visible: root.kindIs("act_sound"); text: root.cfg("sound", ""); icon: "bolt"
                     onAccepted: root.setConfig("sound", value) }
 
+                // ── act_wait ────────────────────────────────────────────
+                FieldLabel { text: "Wait (seconds)"; visible: root.kindIs("act_wait") }
+                GField { visible: root.kindIs("act_wait"); text: root.cfg("seconds", "5"); icon: "clock"
+                    onAccepted: root.setConfig("seconds", value) }
+                QQC2.Label { visible: root.kindIs("act_wait"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Pauses the chain before the next block (up to 1 hour). The previous block's output passes through unchanged."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
                 // ── act_power ───────────────────────────────────────────
                 FieldLabel { text: "Action"; visible: root.kindIs("act_power") }
                 Combo { visible: root.kindIs("act_power"); model: [ "lock", "suspend", "hibernate", "shutdown", "reboot", "logout" ]
@@ -439,7 +453,7 @@ Item {
                                 color: unlinkMa.containsMouse ? root.theme.a(root.theme.red, 0.16) : "transparent"
                                 FIcon { anchors.centerIn: parent; name: "x"; size: 12; color: unlinkMa.containsMouse ? root.theme.red : root.theme.textLo }
                                 MouseArea { id: unlinkMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.graphProvider.removeLink(modelData.from, modelData.to) }
+                                    onClicked: root.graphProvider.removeLink(modelData.from, modelData.to, modelData.port) }
                             }
                         }
                     }

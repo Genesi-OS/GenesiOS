@@ -26,7 +26,12 @@ pkgver=1.6.2
 # pkgrel 6: depend on Arch's complete rust toolchain instead of the virtual
 # `cargo` provider. Pacman may satisfy `cargo` with rustup, whose proxy exits
 # when no default toolchain exists, breaking CMake/Corrosion in clean CI.
-pkgrel=6
+# pkgrel 7: explicit colors for the package-tree check indicators. Under
+# Hyprland (qt6ct → Fusion + the Genesi dark palette) Fusion painted the
+# checkbox dark-on-dark — the selection box was invisible (reported
+# 2026-07-18). Outlined box / Genesi-green checked / half-fill tri-state,
+# readable on light styles too. Built from the develop branch as before.
+pkgrel=7
 pkgdesc='Genesi OS Package Installer - one-click app, gaming and local-AI setup'
 arch=(x86_64 aarch64)
 url='https://github.com/Genesi-OS/genesi-packageinstaller'

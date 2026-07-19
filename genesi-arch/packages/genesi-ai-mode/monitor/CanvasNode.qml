@@ -20,9 +20,14 @@ Item {
     signal moveBegin()
     signal picked()
     signal deleteRequested()
-    signal linkBegin(real sx, real sy)
+    signal linkBegin(real sx, real sy, string port)
     signal linkMove(real sx, real sy)
     signal linkEnd(real sx, real sy)
+
+    // Result ports ({port, label, color}); empty = single always-port. Set by
+    // the canvas from portsFor(kind) — layout must match portPoint() there
+    // (16px dots, 10px spacing, vertically centered).
+    property var outPorts: []
 
     width: 214
     implicitHeight: body.implicitHeight + 28
@@ -139,6 +144,7 @@ Item {
     }
     Rectangle {
         id: outPort
+        visible: (root.outPorts || []).length === 0
         width: 16; height: 16; radius: 8
         anchors.verticalCenter: parent.verticalCenter
         anchors.left: parent.right; anchors.leftMargin: -9
@@ -152,9 +158,47 @@ Item {
             hoverEnabled: true
             preventStealing: true
             cursorShape: Qt.CrossCursor
-            onPressed: function(m) { var s = mapToItem(root.parent, m.x, m.y); root.linkBegin(s.x, s.y) }
+            onPressed: function(m) { var s = mapToItem(root.parent, m.x, m.y); root.linkBegin(s.x, s.y, "") }
             onPositionChanged: function(m) { if (pressed) { var s = mapToItem(root.parent, m.x, m.y); root.linkMove(s.x, s.y) } }
             onReleased: function(m) { var s = mapToItem(root.parent, m.x, m.y); root.linkEnd(s.x, s.y) }
+        }
+    }
+
+    // Result ports: on ok / on error / on output. Drag a link from a dot and
+    // the chain only follows it when the node ends with that result.
+    Column {
+        visible: (root.outPorts || []).length > 0
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.left: parent.right; anchors.leftMargin: -9
+        spacing: 10
+        Repeater {
+            model: root.outPorts
+            delegate: Rectangle {
+                required property var modelData
+                width: 16; height: 16; radius: 8
+                color: pMa.containsMouse || pMa.pressed ? modelData.color : root.theme.card
+                border.width: 2; border.color: modelData.color
+                scale: pMa.containsMouse || pMa.pressed ? 1.25 : 1.0
+                Behavior on scale { NumberAnimation { duration: 110 } }
+                QQC2.Label {
+                    anchors.right: parent.left; anchors.rightMargin: 5
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.selected || pMa.containsMouse
+                    text: modelData.label
+                    color: modelData.color
+                    font.pixelSize: 9; font.bold: true
+                }
+                MouseArea {
+                    id: pMa
+                    anchors.fill: parent; anchors.margins: -8
+                    hoverEnabled: true
+                    preventStealing: true
+                    cursorShape: Qt.CrossCursor
+                    onPressed: function(m) { var s = mapToItem(root.parent, m.x, m.y); root.linkBegin(s.x, s.y, modelData.port) }
+                    onPositionChanged: function(m) { if (pressed) { var s = mapToItem(root.parent, m.x, m.y); root.linkMove(s.x, s.y) } }
+                    onReleased: function(m) { var s = mapToItem(root.parent, m.x, m.y); root.linkEnd(s.x, s.y) }
+                }
+            }
         }
     }
 

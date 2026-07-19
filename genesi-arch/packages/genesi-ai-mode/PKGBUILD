@@ -540,7 +540,18 @@ pkgver=1.0.0
 # 720×520 that overflowed whenever the app wasn't maximized). Pairs with
 # genesi-caelestia-settings pkgrel 16 (floats/centers/pins the Quick Chat under
 # Hyprland — it was being tiled into a workspace-high slab).
-pkgrel=128
+# pkgrel 129: (1) Turbo backend installs (Vulkan/CUDA) now open in a real
+# terminal (konsole/foot/alacritty/kitty/xterm, first found) — interactive, so
+# pacman's overwrite/replace questions are answerable and failures visible; the
+# CUDA path falls back to the AUR build in the same window; --overwrite '*'
+# clears the leftover-file conflicts. Silent pkexec stays as fallback.
+# (2) Automations: RESULT PORTS — Run Script / AI Action / HTTP / File op /
+# Command sensor grow "on ok" / "on error" / "on output" dots; the daemon walks
+# links by result and pipes each node's output to the next ({input} /
+# $GENESI_INPUT). A Command sensor chained after another block stops polling
+# and becomes a checker over that block's output. New "Wait / delay" card.
+# Old graphs (portless links) run exactly as before.
+pkgrel=129
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

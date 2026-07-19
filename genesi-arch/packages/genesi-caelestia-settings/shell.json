@@ -1,0 +1,7 @@
+{
+  "session": {
+    "commands": {
+      "logout": ["hyprctl", "dispatch", "exit"]
+    }
+  }
+}

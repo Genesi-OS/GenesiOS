@@ -112,7 +112,17 @@ EVENT_KINDS = {"evt_fs", "evt_resource", "evt_app", "evt_hotkey",
                "evt_idle", "evt_startup", "evt_log", "evt_command",
                "evt_bluetooth"}
 ACTION_KINDS = {"act_script", "act_ai", "act_notify", "act_http", "act_file",
-                "act_app", "act_sound", "act_power"}
+                "act_app", "act_sound", "act_power", "act_wait"}
+
+# Result ports. Links carry an optional `fromPort`: "" (none) = always follow;
+# "ok" / "err" follow only when the source node succeeded / failed; "output"
+# follows only when the node produced non-empty output. The GUI draws the three
+# extra dots on the kinds listed here; every other node keeps the single
+# always-port. An event node that is the TARGET of a link is a CONDITION: it is
+# skipped by the pollers and instead evaluated mid-chain against the upstream
+# node's output (evt_command being the useful one — "command sensor receives
+# the Run Script output", requested 2026-07-18).
+PORT_KINDS = {"act_script", "act_ai", "act_http", "act_file", "evt_command"}
 
 POLL_SECONDS = 2.0
 LOG_KEEP = 200
@@ -532,35 +542,100 @@ class Engine:
         self.approve = None                # set by Daemon: approve(aid, action)->bool
 
     def run_chain(self, auto, start_id, detail):
+        """Walk the graph from the fired trigger, following links by RESULT.
+
+        Each executed node yields (outcome, output): outcome is "ok"/"err",
+        output is its text product (stdout / AI reply / HTTP body). A link
+        fires when its port is empty (always), equals the outcome, or is
+        "output" and the node produced non-empty output. The winning output is
+        forwarded as the next node's payload ({input} / $GENESI_INPUT), so a
+        chain like  Run Script → Command sensor → Notify  pipes real data.
+        Old graphs (portless links) behave as before: everything reachable
+        runs, in link order."""
         aid = auto["id"]
         nodes = {n.get("id"): n for n in auto.get("nodes", [])}
         outgoing = {}
         for link in auto.get("links", []):
-            outgoing.setdefault(link.get("from"), []).append(link.get("to"))
-
-        # Reachable action nodes from the trigger (BFS), then topological order.
-        reachable, pending = set(), list(outgoing.get(start_id, []))
-        while pending:
-            nid = pending.pop(0)
-            if nid in reachable:
-                continue
-            reachable.add(nid)
-            pending.extend(outgoing.get(nid, []))
-        sequence = self._topo(auto, reachable)
-        if not sequence:
+            outgoing.setdefault(link.get("from"), []).append(
+                ((link.get("fromPort") or ""), link.get("to")))
+        first = outgoing.get(start_id, [])
+        if not first:
             return
 
         self.status.state(aid, "running", running=True)
         self.status.log(aid, "▶ triggered — " + (detail or "event"), "step")
         try:
-            for node in sequence:
-                if node.get("kind") not in ACTION_KINDS:
+            # A trigger has no run result: every outgoing link fires, whatever
+            # dot it was drawn from, carrying the event detail as payload.
+            queue = [(to, detail or "") for _port, to in first]
+            steps = 0
+            while queue and steps < 128:          # cycle guard
+                nid, payload = queue.pop(0)
+                node = nodes.get(nid)
+                if node is None:
                     continue
-                self._run_action(auto, node)
+                steps += 1
+                outcome, output = self._run_node(auto, node, payload)
+                for port, to in outgoing.get(nid, []):
+                    if (port == "" or port == outcome
+                            or (port == "output" and (output or "").strip())):
+                        queue.append((to, output if (output or "").strip()
+                                      else payload))
         finally:
             self.status.state(aid, "listening" if auto.get("enabled") else "idle",
                               running=False)
             self.status.log(aid, "✓ finished", "ok")
+
+    def _run_node(self, auto, node, payload):
+        """Execute one node mid-chain. Actions dispatch to their executor; an
+        evt_command with an incoming link acts as a CONDITION over the payload;
+        any other event node just passes the payload through."""
+        kind = node.get("kind")
+        if kind in ACTION_KINDS:
+            return self._run_action(auto, node, payload)
+        if kind == "evt_command":
+            return self._cond_command(auto, node, payload)
+        return "ok", payload
+
+    @staticmethod
+    def _sub(text, payload):
+        return (text or "").replace("{input}", payload or "")
+
+    def _cond_command(self, auto, node, payload):
+        """evt_command chained after another node: run its command ONCE with
+        the upstream output in $GENESI_INPUT / {input} (empty command = test
+        the payload itself), then report ok/err + the produced output."""
+        aid = auto["id"]
+        cfg = node.get("config", {}) or {}
+        command = self._sub((cfg.get("command") or "").strip(), payload)
+        out, base_ok = (payload or "").strip(), bool((payload or "").strip())
+        if command:
+            self.status.log(aid, "? " + command.splitlines()[0], "cmd")
+            env = _graphical_env()
+            env["GENESI_INPUT"] = payload or ""
+            try:
+                proc = subprocess.run(["/bin/sh", "-lc", command],
+                                      capture_output=True, text=True,
+                                      timeout=60, env=env)
+                out = (proc.stdout or "").strip()
+                base_ok = proc.returncode == 0
+            except Exception as exc:
+                self.status.log(aid, "checker failed: %s" % exc, "err")
+                return "err", ""
+        if cfg.get("on", "exit0") == "match":
+            pattern = cfg.get("match") or ""
+            try:
+                hit = bool(re.search(pattern, out)) if pattern else bool(out)
+            except re.error:
+                hit = False
+            outcome = "ok" if hit else "err"
+            self.status.log(aid, "checker %s" % ("matched" if hit else
+                            "did not match"), "ok" if hit else "err")
+        else:
+            outcome = "ok" if base_ok else "err"
+            self.status.log(aid, "checker → %s" % outcome,
+                            "ok" if base_ok else "err")
+        return outcome, out
 
     def _topo(self, auto, keep):
         nodes = {n.get("id"): n for n in auto.get("nodes", []) if n.get("id") in keep}
@@ -583,7 +658,9 @@ class Engine:
         return order if len(order) == len(nodes) else list(nodes.values())
 
     # -- action executors --------------------------------------------------
-    def _run_action(self, auto, node):
+    # Every executor returns (outcome, output): outcome "ok"/"err" drives the
+    # result ports, output feeds the next node's payload.
+    def _run_action(self, auto, node, payload=""):
         aid = auto["id"]
         kind = node.get("kind")
         cfg = node.get("config", {}) or {}
@@ -591,74 +668,100 @@ class Engine:
         _ensure_display_env()               # so launched GUI apps actually appear
         try:
             if kind == "act_script":
-                self._act_script(aid, cfg, title)
+                return self._act_script(aid, cfg, title, payload)
             elif kind == "act_notify":
-                self._act_notify(aid, cfg)
+                return self._act_notify(aid, cfg, payload)
             elif kind == "act_ai":
-                self._act_ai(aid, cfg, title)
+                return self._act_ai(aid, cfg, title, payload)
             elif kind == "act_http":
-                self._act_http(aid, cfg)
+                return self._act_http(aid, cfg, payload)
             elif kind == "act_file":
-                self._act_file(aid, cfg)
+                return self._act_file(aid, cfg)
             elif kind == "act_app":
-                self._act_app(aid, cfg)
+                return self._act_app(aid, cfg)
             elif kind == "act_sound":
-                self._act_sound(aid, cfg)
+                return self._act_sound(aid, cfg)
             elif kind == "act_power":
-                self._act_power(aid, cfg)
+                return self._act_power(aid, cfg)
+            elif kind == "act_wait":
+                return self._act_wait(aid, cfg)
         except Exception as exc:
             self.status.log(aid, "%s: %s" % (title, exc), "err")
+            return "err", ""
+        return "ok", ""
 
-    def _act_script(self, aid, cfg, title):
-        command = (cfg.get("command") or "").strip()
+    def _act_wait(self, aid, cfg):
+        try:
+            seconds = min(3600.0, max(0.0, float(cfg.get("seconds", 5))))
+        except (TypeError, ValueError):
+            seconds = 5.0
+        self.status.log(aid, "waiting %gs…" % seconds, "out")
+        time.sleep(seconds)
+        return "ok", ""
+
+    def _act_script(self, aid, cfg, title, payload=""):
+        command = self._sub((cfg.get("command") or "").strip(), payload)
         if not command:
             self.status.log(aid, "script: empty command — skipped", "out")
-            return
+            return "err", ""
         self.status.log(aid, "$ " + command.splitlines()[0], "cmd")
+        env = _graphical_env()
+        env["GENESI_INPUT"] = payload or ""
         try:
             proc = subprocess.run(["/bin/sh", "-lc", command], capture_output=True,
                                   text=True, timeout=float(cfg.get("timeout", 300)),
-                                  env=_graphical_env())
+                                  env=env)
         except subprocess.TimeoutExpired:
             self.status.log(aid, "script timed out", "err")
-            return
+            return "err", ""
         for line in (proc.stdout or "").splitlines()[-20:]:
             self.status.log(aid, line, "out")
         for line in (proc.stderr or "").splitlines()[-10:]:
             self.status.log(aid, line, "err")
         self.status.log(aid, "script exit %d" % proc.returncode,
                         "ok" if proc.returncode == 0 else "err")
+        return ("ok" if proc.returncode == 0 else "err",
+                (proc.stdout or "").strip())
 
-    def _act_notify(self, aid, cfg):
-        title = cfg.get("title") or "Genesi Automation"
-        body = cfg.get("body") or ""
+    def _act_notify(self, aid, cfg, payload=""):
+        title = self._sub(cfg.get("title") or "Genesi Automation", payload)
+        body = self._sub(cfg.get("body") or "", payload)
         if not shutil.which("notify-send"):
             self.status.log(aid, "notify: notify-send missing", "err")
-            return
+            return "err", ""
         try:
             subprocess.Popen(["notify-send", "--app-name=Genesi Automation",
                               title, body],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=True, env=_graphical_env())
             self.status.log(aid, "🔔 " + title, "ok")
+            return "ok", ""
         except OSError as exc:
             self.status.log(aid, "notify failed: %s" % exc, "err")
+            return "err", ""
 
-    def _act_http(self, aid, cfg):
-        url = (cfg.get("url") or "").strip()
+    def _act_http(self, aid, cfg, payload=""):
+        url = self._sub((cfg.get("url") or "").strip(), payload)
         if not url:
             self.status.log(aid, "http: no URL — skipped", "out")
-            return
+            return "err", ""
         method = (cfg.get("method") or "GET").upper()
-        body = cfg.get("body") or ""
+        body = self._sub(cfg.get("body") or "", payload)
         data = body.encode() if (body and method != "GET") else None
         headers = {"Content-Type": "application/json"} if data else {}
         try:
             req = urllib.request.Request(url, data=data, headers=headers, method=method)
             with urllib.request.urlopen(req, timeout=30) as r:
+                text = ""
+                try:
+                    text = r.read(8192).decode("utf-8", "replace")
+                except Exception:
+                    pass
                 self.status.log(aid, "%s %s → %s" % (method, url[:60], r.status), "ok")
+                return "ok", text.strip()
         except Exception as exc:
             self.status.log(aid, "http failed: %s" % exc, "err")
+            return "err", ""
 
     def _act_file(self, aid, cfg):
         import shutil as _sh
@@ -681,15 +784,18 @@ class Engine:
                 self.status.log(aid, "created dir " + (dest or src), "ok")
             else:
                 self.status.log(aid, "file: nothing to do", "out")
+                return "err", ""
+            return "ok", ""
         except Exception as exc:
             self.status.log(aid, "file %s failed: %s" % (op, exc), "err")
+            return "err", ""
 
     def _act_app(self, aid, cfg):
         op = cfg.get("op", "launch")
         app = (cfg.get("app") or "").strip()
         if not app:
             self.status.log(aid, "app: none set — skipped", "out")
-            return
+            return "err", ""
         try:
             if op == "launch":
                 subprocess.Popen(["/bin/sh", "-lc", app],
@@ -699,8 +805,10 @@ class Engine:
             else:
                 subprocess.run(["pkill", "-f", app], check=False)
                 self.status.log(aid, "closed " + app, "ok")
+            return "ok", ""
         except OSError as exc:
             self.status.log(aid, "app %s failed: %s" % (op, exc), "err")
+            return "err", ""
 
     def _act_sound(self, aid, cfg):
         sound = os.path.expanduser(cfg.get("sound", "") or "")
@@ -715,14 +823,16 @@ class Engine:
             players.append(["canberra-gtk-play", "-i", "message"])
         if not players:
             self.status.log(aid, "sound: no player (install pulseaudio/libcanberra)", "err")
-            return
+            return "err", ""
         try:
             subprocess.Popen(players[0], stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True,
                              env=_graphical_env())
             self.status.log(aid, "🔊 played sound", "ok")
+            return "ok", ""
         except OSError as exc:
             self.status.log(aid, "sound failed: %s" % exc, "err")
+            return "err", ""
 
     def _act_power(self, aid, cfg):
         op = cfg.get("op", "lock")
@@ -737,7 +847,7 @@ class Engine:
         cmd = cmds.get(op)
         if not cmd:
             self.status.log(aid, "power: unknown op " + op, "err")
-            return
+            return "err", ""
         # Prefer loginctl lock via a few fallbacks (compositor-agnostic).
         if op == "lock" and not shutil.which("loginctl"):
             for alt in (["xdg-screensaver", "lock"], ["swaylock"], ["hyprlock"]):
@@ -747,17 +857,23 @@ class Engine:
         try:
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.status.log(aid, "power: " + op, "ok")
+            return "ok", ""
         except OSError as exc:
             self.status.log(aid, "power %s failed: %s" % (op, exc), "err")
+            return "err", ""
 
-    def _act_ai(self, aid, cfg, title):
+    def _act_ai(self, aid, cfg, title, payload=""):
         if not _AGENT_OK:
             self.status.log(aid, "AI action unavailable (agent lib missing)", "err")
-            return
-        prompt = (cfg.get("prompt") or "").strip()
+            return "err", ""
+        prompt = self._sub((cfg.get("prompt") or "").strip(), payload)
         if not prompt:
             self.status.log(aid, "AI: empty prompt — skipped", "out")
-            return
+            return "err", ""
+        # A chained AI block gets the upstream output appended when the prompt
+        # doesn't already place it via {input} — so "summarize this" works.
+        if payload and "{input}" not in (cfg.get("prompt") or ""):
+            prompt = prompt + "\n\nInput from the previous block:\n" + payload
         model = cfg.get("model") or ""
         want_turbo = bool(cfg.get("turbo"))
         spec = bool(cfg.get("spec"))
@@ -786,7 +902,7 @@ class Engine:
             reply = self._ai_run(model, prompt, exec_mode, use_turbo, aid)
         except Exception as exc:
             self.status.log(aid, "AI error: %s" % exc, "err")
-            return
+            return "err", ""
         # Surface the assistant's final words in the log; an advisory block also
         # notifies (it takes no action, so the answer is the whole point).
         if reply:
@@ -797,6 +913,7 @@ class Engine:
                                   title or "Genesi AI", reply[:400]],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  start_new_session=True)
+        return "ok", (reply or "").strip()
 
     def _ai_chat(self, model, messages, use_turbo, system=None):
         msgs = ([{"role": "system", "content": system}] if system else []) + messages
@@ -1204,7 +1321,13 @@ class Daemon:
         btset = self._bt_set() if "evt_bluetooth" in kinds else None
 
         for a in enabled:
+            # An event node that is the TARGET of a link is a mid-chain
+            # CONDITION (e.g. a Command sensor checking a Run Script's
+            # output): it must never poll/fire on its own.
+            fed = {l.get("to") for l in a.get("links", [])}
             for n in a.get("nodes", []):
+                if n.get("id") in fed:
+                    continue
                 k = n.get("kind")
                 try:
                     if k == "evt_resource":
@@ -1613,9 +1736,13 @@ class Daemon:
             auto = self.autos.get(aid)
         if not auto:
             return "unknown automation"
-        manual = [n for n in auto.get("nodes", []) if n.get("kind") == "evt_manual"]
+        # Event nodes fed by a link are mid-chain conditions, not triggers.
+        fed = {l.get("to") for l in auto.get("links", [])}
+        manual = [n for n in auto.get("nodes", [])
+                  if n.get("kind") == "evt_manual" and n.get("id") not in fed]
         triggers = [n for n in auto.get("nodes", [])
-                    if n.get("kind") in EVENT_KINDS and n.get("kind") != "evt_manual"]
+                    if n.get("kind") in EVENT_KINDS and n.get("kind") != "evt_manual"
+                    and n.get("id") not in fed]
         if manual:
             for n in manual:
                 threading.Thread(target=self.engine.run_chain,
@@ -1645,7 +1772,7 @@ class Daemon:
         aid = auto["id"]
         try:
             for node in seq:
-                self.engine._run_action(auto, node)
+                self.engine._run_action(auto, node, "")
         finally:
             self.status.state(aid, "listening" if auto.get("enabled") else "idle",
                               running=False)
