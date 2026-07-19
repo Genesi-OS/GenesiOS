@@ -488,6 +488,7 @@ class Status:
                 cur.setdefault("running", False)
                 cur.setdefault("lastRun", 0)
                 cur.setdefault("pending", [])
+                cur.setdefault("nodes", {})
                 cur["state"] = "listening" if a.get("enabled") else "disabled"
             for aid in list(self._autos):
                 if aid not in autos:
@@ -514,6 +515,28 @@ class Status:
                 cur["running"] = running
             if state == "running":
                 cur["lastRun"] = _now()
+        self._flush()
+
+    # -- per-node run state (drives the canvas flow visuals) ---------------
+    # Without this the GUI only knew a single per-automation `running` bool and
+    # lit EVERY card blue, so the actual path through the graph was invisible
+    # (reported 2026-07-19). States: running | ok | failed | skipped.
+    def nodes_reset(self, aid, states=None):
+        with self._lock:
+            cur = self._autos.get(aid)
+            if cur is None:
+                return
+            cur["nodes"] = dict(states or {})
+        self._flush()
+
+    def node_state(self, aid, node_id, state):
+        if not node_id:
+            return
+        with self._lock:
+            cur = self._autos.get(aid)
+            if cur is None:
+                return
+            cur.setdefault("nodes", {})[node_id] = state
         self._flush()
 
     def set_pending(self, aid, items):
@@ -565,11 +588,16 @@ class Engine:
             return
 
         self.status.state(aid, "running", running=True)
+        # Start a fresh per-node picture: the trigger is already satisfied,
+        # everything else is blank until the walk reaches it.
+        self.status.nodes_reset(aid, {start_id: "ok"})
         self.status.log(aid, "▶ triggered — " + (detail or "event"), "step")
+        skipped = set()
         try:
             # A trigger has no run result: every outgoing link fires, whatever
             # dot it was drawn from, carrying the event detail as payload.
             queue = [(to, detail or "") for _port, to in first]
+            ran = set()
             steps = 0
             while queue and steps < 128:          # cycle guard
                 nid, payload = queue.pop(0)
@@ -577,7 +605,14 @@ class Engine:
                 if node is None:
                     continue
                 steps += 1
+                # One node at a time, in order: mark it running, execute it to
+                # completion, then record its outcome before moving on.
+                self.status.node_state(aid, nid, "running")
                 outcome, output = self._run_node(auto, node, payload)
+                ran.add(nid)
+                skipped.discard(nid)
+                self.status.node_state(aid, nid,
+                                       "ok" if outcome == "ok" else "failed")
                 # A condition node (evt_* mid-chain, e.g. the Command sensor)
                 # GATES the flow: its portless links only fire when its own
                 # configured condition held ("ok"). Action nodes keep the
@@ -589,6 +624,13 @@ class Engine:
                             or (port == "output" and (output or "").strip())):
                         queue.append((to, output if (output or "").strip()
                                       else payload))
+                    elif to not in ran:
+                        # The branch was not taken — show it as skipped so the
+                        # path that DID run is unambiguous on the canvas.
+                        skipped.add(to)
+            for nid in skipped:
+                if nid not in ran:
+                    self.status.node_state(aid, nid, "skipped")
         finally:
             self.status.state(aid, "listening" if auto.get("enabled") else "idle",
                               running=False)
@@ -633,26 +675,41 @@ class Engine:
             except Exception as exc:
                 self.status.log(aid, "checker failed: %s" % exc, "err")
                 return "err", ""
+        # Always show WHAT was tested — a checker that silently "doesn't work"
+        # is almost always matching against text it never saw (2026-07-19).
+        preview = " ".join((out or "").split())[:110] or "(no output)"
+        self.status.log(aid, "checker input: " + preview, "out")
         on = cfg.get("on", "exit0")
         if on == "match":
             pattern = cfg.get("match") or ""
-            try:
-                hit = bool(re.search(pattern, out)) if pattern else bool(out)
-            except re.error:
-                hit = False
+            if not pattern:
+                hit = bool(out)
+                self.status.log(aid, "checker: no regex set — treating any "
+                                "output as a match", "out")
+            else:
+                try:
+                    hit = bool(re.search(pattern, out))
+                except re.error as exc:
+                    hit = False
+                    self.status.log(aid, "checker: invalid regex (%s)" % exc,
+                                    "err")
+                self.status.log(
+                    aid, "checker: /%s/ %s" % (pattern,
+                                               "matched" if hit else "did NOT match"),
+                    "ok" if hit else "err")
             outcome = "ok" if hit else "err"
-            self.status.log(aid, "checker %s" % ("matched" if hit else
-                            "did not match"), "ok" if hit else "err")
         elif on == "error":
             # Condition = "the command FAILED" (outcome ok when it did fail).
             outcome = "ok" if not base_ok else "err"
-            self.status.log(aid, "checker → command %s"
-                            % ("failed (condition met)" if not base_ok else
-                               "succeeded (condition not met)"),
+            self.status.log(aid, "checker: command %s"
+                            % ("failed → condition met" if not base_ok else
+                               "succeeded → condition NOT met"),
                             "ok" if not base_ok else "err")
         else:  # exit0 (and legacy "changed", meaningless mid-chain)
             outcome = "ok" if base_ok else "err"
-            self.status.log(aid, "checker → %s" % outcome,
+            self.status.log(aid, "checker: command %s"
+                            % ("succeeded → condition met" if base_ok else
+                               "failed → condition NOT met"),
                             "ok" if base_ok else "err")
         return outcome, out
 

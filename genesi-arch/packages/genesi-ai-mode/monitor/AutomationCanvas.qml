@@ -317,9 +317,21 @@ Item {
     // automation is firing, every node glows "running" (blue, spinning pill);
     // when it's armed and idle, its event nodes show an amber "Waiting for
     // event" pill — so it's obvious at a glance whether it's listening or busy.
+    // Per-node run state straight from the daemon (nodeStates: id -> running |
+    // ok | failed | skipped). Previously a single per-automation `running` bool
+    // lit EVERY card blue, so you couldn't see which path the flow took
+    // (reported 2026-07-19). Falls back to the armed "Waiting for event" hint
+    // on trigger blocks when nothing is running.
+    property var nodeStates: ({})
+
     function nodeRunState(n) {
         if (!n) return ""
-        if (running) return "running"
+        var s = nodeStates[n.id]
+        if (s === "running") return "running"
+        if (s === "ok") return "done"
+        if (s === "failed") return "failed"
+        if (s === "skipped") return "skipped"
+        if (running) return ""
         if (activeEnabled && ("" + n.kind).indexOf("evt_") === 0 && n.kind !== "evt_manual")
             return "waiting"
         return ""
@@ -966,30 +978,46 @@ Item {
     }
 
     function renameNode(id, title) {
-        var arr = _syncPositions(nodes.slice())
-        for (var i = 0; i < arr.length; i++) if (arr[i].id === id) {
-            if (arr[i].title === title) return
-            recordHistory()
-            arr[i].title = title
-        }
-        nodes = arr
+        var current = null
+        for (var i = 0; i < nodes.length; i++) if (nodes[i].id === id) current = nodes[i]
+        if (!current || current.title === title) return
+        recordHistory()
+        _replaceNode(id, { title: title })
         scheduleSave()
         Qt.callLater(function() { linkLayer.requestPaint() })
     }
 
-    function setNodeConfig(id, key, value) {
+    // Replace nodes[i] with a COPY carrying `patch`. slice() is a shallow copy,
+    // so mutating the element in place kept the SAME object reference — QML then
+    // saw no identity change on `node` and never re-evaluated the config panel's
+    // bindings, which is why conditional fields (the regex input on the Command
+    // sensor's "match" mode) only appeared after reselecting the block
+    // (reported 2026-07-19). A fresh object forces the re-evaluation.
+    function _replaceNode(id, patch) {
         var arr = _syncPositions(nodes.slice())
-        for (var i = 0; i < arr.length; i++) if (arr[i].id === id) {
-            var cfg = ({})
-            var old = arr[i].config || ({})
-            for (var k in old) cfg[k] = old[k]
-            if (old[key] === value) return
-            recordHistory()
-            cfg[key] = value
-            arr[i].config = cfg
-            arr[i].lines = summaryLines(arr[i])
+        for (var i = 0; i < arr.length; i++) {
+            if (arr[i].id !== id) continue
+            var copy = ({})
+            for (var k in arr[i]) copy[k] = arr[i][k]
+            for (var p in patch) copy[p] = patch[p]
+            copy.lines = summaryLines(copy)
+            arr[i] = copy
+            break
         }
         nodes = arr
+    }
+
+    function setNodeConfig(id, key, value) {
+        var current = null
+        for (var i = 0; i < nodes.length; i++) if (nodes[i].id === id) current = nodes[i]
+        if (!current) return
+        var old = current.config || ({})
+        if (old[key] === value) return
+        recordHistory()
+        var cfg = ({})
+        for (var k in old) cfg[k] = old[k]
+        cfg[key] = value
+        _replaceNode(id, { config: cfg })
         scheduleSave()
         Qt.callLater(function() { linkLayer.requestPaint() })
     }
@@ -1092,6 +1120,7 @@ Item {
         var mine = autos[root.activeId]
         if (!mine) { root.running = false; root.pendingApprovals = []; return }
         root.running = mine.running || false
+        root.nodeStates = mine.nodes || ({})
         root.pendingApprovals = mine.pending || []
         if (root.pendingApprovals.length > 0) root.showLog = true
         var log = mine.log || []

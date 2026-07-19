@@ -38,10 +38,12 @@ Item {
     readonly property string pillText: runState === "waiting" ? "Waiting for event"
         : runState === "running" ? "Running…"
         : runState === "done" ? "Done" : runState === "failed" ? "Failed"
+        : runState === "skipped" ? "Not taken"
         : (node.status !== undefined ? node.status : "")
     readonly property color pillColor: runState === "waiting" ? theme.turbo
         : runState === "running" ? theme.blue
         : runState === "done" ? theme.greenBright : runState === "failed" ? theme.red
+        : runState === "skipped" ? theme.textLo
         : (node.statusKind === "success" ? theme.greenBright
            : node.statusKind === "auto" ? theme.blue : theme.green)
 
@@ -52,7 +54,12 @@ Item {
         color: root.theme.mix(root.theme.card, root.accent, root.selected ? 0.13 : 0.05)
         border.width: root.selected ? 2 : 1.5
         border.color: root.runState === "running" ? root.theme.blue
+                    : root.runState === "failed" ? root.theme.red
+                    : root.runState === "done" ? root.theme.greenBright
                     : root.selected ? root.accent : root.theme.a(root.accent, 0.5)
+        // A branch the flow did not take dims out, so the path that actually
+        // ran reads at a glance.
+        opacity: root.runState === "skipped" ? 0.45 : 1.0
     }
     Rectangle {
         visible: root.selected
@@ -109,7 +116,8 @@ Item {
                 FIcon {
                     name: root.runState === "waiting" ? "clock"
                         : root.runState === "running" ? "refresh-cw"
-                        : root.runState === "failed" ? "x" : "check"
+                        : root.runState === "failed" ? "x"
+                        : root.runState === "skipped" ? "minus" : "check"
                     size: 11; color: root.pillColor
                     RotationAnimation on rotation { running: root.runState === "running"; loops: Animation.Infinite; from: 0; to: 360; duration: 900 }
                 }
