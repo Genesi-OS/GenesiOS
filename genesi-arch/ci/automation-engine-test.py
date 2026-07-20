@@ -173,5 +173,66 @@ st = run(build(
     [{"from": "trg", "to": "s"}, {"from": "s", "to": "t", "fromPort": "ok"}]))
 check("downstream saw the piped value", st.node_states.get("t") == "ok", str(st.node_states))
 
+
+# ── 8. a failed condition blocks EVERY port, including the legacy "output" ──
+# Reproduces the 2026-07-19 report: a sensor whose regex did NOT match still
+# ran the next card, because the link carried the legacy fromPort "output"
+# ("fire if the node printed anything"), which bypassed the gate.
+print("\n[8] legacy 'output' link cannot bypass a failed condition")
+sensor_nomatch = {"id": "chk", "kind": "evt_command", "title": "sensor",
+                  "config": {"command": "", "on": "match",
+                             "match": "unknown command: testee"}}
+st = run(build(
+    [TRIGGER, script("s", "nosuchcommand_teste"), sensor_nomatch, script("ai", "true")],
+    [{"from": "trg", "to": "s"},
+     {"from": "s", "to": "chk", "fromPort": "err"},
+     {"from": "chk", "to": "ai", "fromPort": "output"}]))
+check("sensor did not match", st.node_states.get("chk") == "failed", str(st.node_states))
+check("downstream card did NOT run", st.node_states.get("ai") != "ok", str(st.node_states))
+
+# ── 9. every Fire-when mode gates correctly mid-chain ───────────────────
+print("\n[9] all four Fire-when modes")
+
+
+def sensor_chain(cfg, script_cmd="echo hello"):
+    node = {"id": "chk", "kind": "evt_command", "title": "s", "config": cfg}
+    return build(
+        [TRIGGER, script("s", script_cmd), node, script("after", "true")],
+        [{"from": "trg", "to": "s"},
+         {"from": "s", "to": "chk"},
+         {"from": "chk", "to": "after"}])
+
+
+# exit0: command succeeds -> passes
+st = run(sensor_chain({"command": "true", "on": "exit0"}))
+check("exit0 passes when command succeeds", st.node_states.get("after") == "ok", str(st.node_states))
+st = run(sensor_chain({"command": "exit 1", "on": "exit0"}))
+check("exit0 blocks when command fails", st.node_states.get("after") != "ok", str(st.node_states))
+
+# error: command fails -> passes
+st = run(sensor_chain({"command": "exit 1", "on": "error"}))
+check("error passes when command fails", st.node_states.get("after") == "ok", str(st.node_states))
+st = run(sensor_chain({"command": "true", "on": "error"}))
+check("error blocks when command succeeds", st.node_states.get("after") != "ok", str(st.node_states))
+
+# match: regex hits -> passes
+st = run(sensor_chain({"command": "echo needle", "on": "match", "match": "needle"}))
+check("match passes on a hit", st.node_states.get("after") == "ok", str(st.node_states))
+st = run(sensor_chain({"command": "echo needle", "on": "match", "match": "nope"}))
+check("match blocks on a miss", st.node_states.get("after") != "ok", str(st.node_states))
+
+# changed: first run never fires; a differing output does
+auto_changed = sensor_chain({"command": "echo one", "on": "changed"})
+st_engine = FakeStatus()
+eng = mod.Engine(st_engine)
+eng.run_chain(auto_changed, "trg", "t")
+check("changed blocks on the first run",
+      st_engine.node_states.get("after") != "ok", str(st_engine.node_states))
+auto_changed["nodes"][2]["config"]["command"] = "echo two"
+st_engine.node_states.clear()
+eng.run_chain(auto_changed, "trg", "t")     # same Engine keeps the snapshot
+check("changed passes when the output differs",
+      st_engine.node_states.get("after") == "ok", str(st_engine.node_states))
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

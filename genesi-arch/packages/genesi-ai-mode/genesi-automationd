@@ -565,6 +565,7 @@ class Engine:
         self.status = status
         self._tools = LocalToolExecutor() if _AGENT_OK else None
         self.approve = None                # set by Daemon: approve(aid, action)->bool
+        self._cond_snap = {}               # (aid,node) -> last output, for "changed"
 
     def run_chain(self, auto, start_id, detail):
         """Walk the graph from the fired trigger, following links by RESULT.
@@ -614,14 +615,24 @@ class Engine:
                 self.status.node_state(aid, nid,
                                        "ok" if outcome == "ok" else "failed")
                 # A condition node (evt_* mid-chain, e.g. the Command sensor)
-                # GATES the flow: its portless links only fire when its own
-                # configured condition held ("ok"). Action nodes keep the
-                # portless-link-always-fires contract.
+                # GATES the flow: when its configured condition did not hold,
+                # NOTHING downstream runs — whatever port the link was drawn
+                # from. This is absolute: the legacy "output" port used to mean
+                # "fire if the node printed anything", which bypassed the gate
+                # entirely and let the next block run after a "did NOT match"
+                # (reported 2026-07-19).
                 gated = node.get("kind") in EVENT_KINDS
+                blocked = gated and outcome != "ok"
                 for port, to in outgoing.get(nid, []):
-                    if ((port == "" and (outcome == "ok" or not gated))
-                            or port == outcome
-                            or (port == "output" and (output or "").strip())):
+                    if blocked:
+                        fires = False
+                    elif port == "" or port == "output":
+                        # "output" is a legacy port (its dot was removed in
+                        # pkgrel 130); treat it as the plain default link.
+                        fires = True
+                    else:
+                        fires = (port == outcome)
+                    if fires:
                         queue.append((to, output if (output or "").strip()
                                       else payload))
                     elif to not in ran:
@@ -705,7 +716,22 @@ class Engine:
                             % ("failed → condition met" if not base_ok else
                                "succeeded → condition NOT met"),
                             "ok" if not base_ok else "err")
-        else:  # exit0 (and legacy "changed", meaningless mid-chain)
+        elif on == "changed":
+            # Condition = "the output differs from the previous run of this
+            # checker". The first run has nothing to compare against, so it
+            # does NOT fire (same edge semantics as the polling trigger).
+            key = (aid, node.get("id"))
+            prev = self._cond_snap.get(key)
+            self._cond_snap[key] = out
+            changed = prev is not None and out != prev
+            outcome = "ok" if changed else "err"
+            self.status.log(
+                aid, "checker: output %s" % (
+                    "changed → condition met" if changed else
+                    ("first run, nothing to compare → condition NOT met"
+                     if prev is None else "unchanged → condition NOT met")),
+                "ok" if changed else "err")
+        else:  # exit0
             outcome = "ok" if base_ok else "err"
             self.status.log(aid, "checker: command %s"
                             % ("succeeded → condition met" if base_ok else

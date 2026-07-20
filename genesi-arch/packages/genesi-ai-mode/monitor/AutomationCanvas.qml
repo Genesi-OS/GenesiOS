@@ -67,16 +67,18 @@ Item {
                      { port: "err", label: "on error", color: theme.red } ]
         return []
     }
+    // "output" is a LEGACY port: its dot was removed in pkgrel 130 and the
+    // daemon now treats such a link as a plain default link (it used to fire on
+    // "any output produced", which bypassed a Command sensor's gate entirely).
+    // Render it like a default link so the canvas matches what actually runs.
     function portColor(port) {
         if (port === "ok") return theme.greenBright
         if (port === "err") return theme.red
-        if (port === "output") return theme.blue
         return null
     }
     function portLabel(port) {
         if (port === "ok") return "on ok"
         if (port === "err") return "on error"
-        if (port === "output") return "on output"
         return ""
     }
     // Sheet-space point a link leaves a node from (must mirror the dot layout
@@ -89,11 +91,13 @@ Item {
         for (var i = 0; i < nodes.length; i++)
             if (nodes[i].id === id) { n = nodes[i]; break }
         var ports = n ? portsFor(n.kind) : []
-        if (!ports.length || !port)
-            return { x: x, y: p.y + (p.h || 120) / 2 }
-        var idx = 0
+        var idx = -1
         for (var j = 0; j < ports.length; j++)
             if (ports[j].port === port) { idx = j; break }
+        // No ports, no port on the link, or an unknown/legacy port name → the
+        // link leaves from the card's mid-height default point.
+        if (!ports.length || !port || idx < 0)
+            return { x: x, y: p.y + (p.h || 120) / 2 }
         var total = ports.length * 16 + (ports.length - 1) * 10
         return { x: x, y: p.y + ((p.h || 120) - total) / 2 + idx * 26 + 8 }
     }
