@@ -2,6 +2,24 @@
 
 Thank you for your interest in contributing to Genesi OS! This document provides guidelines and instructions for contributing.
 
+> **Before you take part**, please read our [Code of Conduct](CODE_OF_CONDUCT.md).
+> It applies to every project space — issues, pull requests, discussions and the
+> community forum — and to everyone equally.
+>
+> Found a security vulnerability? **Do not open a public issue.** Follow the
+> [Security Policy](SECURITY.md) instead.
+
+## 📜 Licensing of contributions
+
+Genesi OS is licensed under the **AGPL-3.0** (see [LICENSE](LICENSE)).
+Contributions are accepted on an *inbound-equals-outbound* basis: unless you
+state otherwise in writing when you submit, you licence your contribution under
+the same terms as the component you are contributing to.
+
+By submitting a contribution you confirm that it is your own work, or that you
+have the right to submit it under that licence — and that your employer, if they
+have a claim to the work, has authorised it.
+
 ## 🌟 Ways to Contribute
 
 - 🐛 Report bugs
