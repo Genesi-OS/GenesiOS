@@ -1,0 +1,22 @@
+[Unit]
+Description=Genesi Studio Mode — session daemon (focus one app, freeze the rest)
+Documentation=https://github.com/Genesi-OS/GenesiOS
+# Per-USER service (systemctl --user): it inspects the user's own windows and
+# freezes the user's own processes, which needs their session, not root.
+# Deliberately NOT bound to graphical-session.target so it still comes up on a
+# "No Desktop" install; the window backends degrade to a /proc scan there.
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/genesi-studiod
+# Belt and braces on top of the daemon's own SIGTERM handler: if the process is
+# killed hard, this still thaws whatever it had frozen. A user must never be
+# able to end up with a permanently paused app because a daemon died.
+ExecStopPost=-/usr/bin/genesi-studio off
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Install]
+WantedBy=default.target

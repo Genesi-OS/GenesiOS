@@ -1,0 +1,32 @@
+[Unit]
+Description=Genesi Studio Mode — privileged lever helper
+Documentation=https://github.com/Genesi-OS/GenesiOS
+# System service: the only privileged part of Studio Mode. It applies the
+# root-only levers (negative nice, fast-core pinning, cgroup weights, the CPU
+# governor) on request, and authenticates every caller with SO_PEERCRED so a
+# user can only ever touch their own processes.
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/genesi-studio-helperd
+RuntimeDirectory=genesi-studio
+RuntimeDirectoryMode=0755
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+# It must write cpufreq/cgroup/proc knobs, so it cannot be locked down to the
+# point of uselessness — but it has no business touching the network or /home.
+PrivateNetwork=yes
+ProtectHome=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

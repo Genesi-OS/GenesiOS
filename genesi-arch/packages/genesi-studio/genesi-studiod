@@ -1,0 +1,557 @@
+#!/usr/bin/env python3
+"""
+genesi-studiod — Genesi Studio Mode, session daemon (systemd --user).
+
+Studio Mode gives one or more chosen applications the whole machine: the focused
+app gets priority, fast cores and cgroup share, while every OTHER open app is
+frozen so it cannot steal a single cycle. Turn it off and everything comes back
+exactly as it was.
+
+WHY FREEZE AND NOT CLOSE
+    Closing background apps would be the naive way to free resources, and it is
+    the wrong one: it loses unsaved work, and "restore" could only ever relaunch
+    the app, never its open documents. Freezing (cgroup v2 `cgroup.freeze`,
+    SIGSTOP as fallback) stops the process from being scheduled at all — the
+    same CPU/GPU relief — while the process keeps its memory and its state.
+    Thawing puts the user back exactly where they were, mid-sentence.
+
+WHAT IS NEVER FROZEN (the part that matters)
+    Freezing the compositor freezes the desktop, including the widget you would
+    use to turn Studio Mode back off. So freezing is restricted twice over:
+      * only processes that OWN A WINDOW are candidates — never daemons,
+        never session infrastructure that merely happens to be running;
+      * and a protected set (compositors, shells, panels, portals, audio,
+        the display manager, our own tree) is excluded even if it has a window.
+    Anything not positively identified as a user application is left running.
+
+NEWLY LAUNCHED APPS
+    The freeze set is a snapshot taken when Studio Mode is switched on. Apps
+    launched afterwards run normally and are never frozen — the user asked to
+    be able to open other things while a session is running, and silently
+    freezing a window the moment it appears would be indistinguishable from a
+    hang.
+
+CRASH SAFETY
+    Frozen processes outlive this daemon: cgroup freeze state lives in the
+    kernel. So the freeze set is written to ~/.local/state/genesi-studio/
+    session.json BEFORE anything is frozen, and a starting daemon that finds a
+    stale session file thaws everything before doing anything else. The systemd
+    unit also thaws on stop. A user should never be able to end up with a
+    permanently frozen app because a Python process died.
+
+PRIVILEGED LEVERS
+    Everything root-only (negative nice, fast-core pinning, cgroup weights, the
+    governor) is delegated to genesi-studio-helperd over its authenticated
+    socket. This daemon never needs privilege for its own job: you may always
+    freeze and thaw your own processes.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import signal
+import socket
+import sys
+import threading
+import time
+
+sys.path.insert(0, "/usr/share/genesi-studio")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import genesi_studio_wm as wm      # noqa: E402
+
+HELPER_SOCK = "/run/genesi-studio/helper.sock"
+
+XDG_RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+RUN_DIR = os.path.join(XDG_RUNTIME, "genesi-studio")
+STATE_PATH = os.path.join(RUN_DIR, "state.json")
+CTL_SOCK = os.path.join(RUN_DIR, "control.sock")
+
+CONFIG_DIR = os.path.expanduser("~/.config/genesi-studio")
+CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
+STATE_DIR = os.path.expanduser("~/.local/state/genesi-studio")
+SESSION_PATH = os.path.join(STATE_DIR, "session.json")
+
+POLL_SECONDS = 2.0
+
+DEFAULT_CONFIG = {
+    "freeze_background": True,
+    # Apps the user never wants frozen even when they are in the background —
+    # music players, chat, a build running in a terminal.
+    "never_freeze": ["spotify", "discord", "telegram-desktop", "element"],
+    # Ask the helper for the machine-wide governor too, not just per-process.
+    "global_levers": True,
+    "highlight_focused": True,
+}
+
+# Freezing any of these takes the desktop down with it. Matched against the
+# process comm (and the window app_id), case-insensitively, as a prefix.
+PROTECTED = (
+    # compositors / shells / panels, one per DE we ship
+    "plasmashell", "kwin_wayland", "kwin_x11", "kwin", "krunner",
+    "hyprland", "quickshell", "caelestia",
+    "gnome-shell", "gnome-session", "mutter",
+    "xfwm4", "xfdesktop", "xfce4-panel", "xfce4-session",
+    "cinnamon", "cinnamon-session", "muffin",
+    "budgie-panel", "budgie-wm", "budgie-daemon",
+    "lxqt-panel", "lxqt-session", "openbox", "lxsession", "pcmanfm",
+    "cosmic-comp", "cosmic-panel", "cosmic-session", "cosmic-app",
+    "niri", "waybar", "swaybar", "sway",
+    # session infrastructure
+    "systemd", "dbus-daemon", "dbus-broker", "pipewire", "wireplumber",
+    "pulseaudio", "xdg-desktop-portal", "polkit", "polkit-kde", "polkit-gnome",
+    "sddm", "gdm", "lightdm", "ly", "greetd",
+    "kwalletd", "kwalletd6", "gnome-keyring", "ssh-agent", "gpg-agent",
+    "Xwayland", "Xorg", "xorg",
+    # ourselves and our own tooling
+    "genesi-studiod", "genesi-studio", "genesi-aid", "genesi-automationd",
+    "python3",
+)
+
+
+def log(msg):
+    print(f"genesi-studiod: {msg}", flush=True)
+
+
+# ── small helpers ────────────────────────────────────────────────────────────
+def _read(path):
+    try:
+        with open(path) as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def _write(path, value):
+    try:
+        with open(path, "w") as fh:
+            fh.write(str(value))
+        return True
+    except OSError:
+        return False
+
+
+def _load_json(path, default):
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except Exception:
+        return default
+
+
+def _atomic_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.tmp"
+    try:
+        with open(tmp, "w") as fh:
+            json.dump(data, fh, indent=2)
+        os.replace(tmp, path)
+        return True
+    except OSError:
+        return False
+
+
+def _alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+
+
+def _comm(pid):
+    return (_read(f"/proc/{pid}/comm") or "").strip()
+
+
+def _cgroup_dir(pid):
+    """cgroup-v2 directory of a pid, or None."""
+    raw = _read(f"/proc/{pid}/cgroup")
+    if not raw:
+        return None
+    for line in raw.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) == 3 and parts[0] == "0":
+            path = os.path.join("/sys/fs/cgroup", parts[2].lstrip("/"))
+            return path if os.path.isdir(path) else None
+    return None
+
+
+def _children(pid, depth=0):
+    """Full descendant pid list, for the SIGSTOP fallback."""
+    if depth > 6:
+        return []
+    out = []
+    raw = _read(f"/proc/{pid}/task/{pid}/children")
+    for token in (raw or "").split():
+        try:
+            kid = int(token)
+        except ValueError:
+            continue
+        out.append(kid)
+        out.extend(_children(kid, depth + 1))
+    return out
+
+
+def _is_protected(pid, app_id=""):
+    names = [_comm(pid).lower(), (app_id or "").lower()]
+    for name in names:
+        if not name:
+            continue
+        for p in PROTECTED:
+            if name.startswith(p.lower()):
+                return True
+    return False
+
+
+# ── helper client ────────────────────────────────────────────────────────────
+def helper_call(req, timeout=6):
+    """One request to genesi-studio-helperd. Returns {} when it isn't running.
+
+    Studio Mode stays useful without the helper — freezing alone already frees
+    the machine — so an absent helper degrades instead of failing.
+    """
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(HELPER_SOCK)
+        s.sendall((json.dumps(req) + "\n").encode())
+        data = b""
+        while b"\n" not in data:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        s.close()
+        return json.loads(data.decode().split("\n", 1)[0] or "{}")
+    except Exception:
+        return {}
+
+
+# ── the daemon ───────────────────────────────────────────────────────────────
+class Studio:
+    def __init__(self):
+        self.cfg = dict(DEFAULT_CONFIG)
+        self.cfg.update(_load_json(CONFIG_PATH, {}))
+        self.lock = threading.RLock()
+        self.active = False
+        self.targets = []          # [{pid, app_id, title}]
+        self.frozen = []           # [{pid, app_id, method, cgroup}]
+        self.boosted = []          # pids handed to the helper
+        self.highlighted = []      # windows we recolored
+        self.last_error = ""
+        os.makedirs(RUN_DIR, exist_ok=True)
+        os.makedirs(STATE_DIR, exist_ok=True)
+        self._recover()
+
+    @property
+    def backend(self):
+        """Always ask the module, never cache: list_windows() can demote a
+        broken backend to procfs mid-session, and a cached reference here would
+        make the widget claim a backend that is no longer in use."""
+        return wm.detect_backend()
+
+    # -- crash recovery ----------------------------------------------------
+    def _recover(self):
+        """Thaw anything a previous (crashed) run left frozen."""
+        prev = _load_json(SESSION_PATH, None)
+        if not prev:
+            return
+        log("found a stale Studio session — thawing everything it froze")
+        for entry in prev.get("frozen", []):
+            self._thaw_entry(entry)
+        helper_call({"op": "restore-all"})
+        try:
+            os.unlink(SESSION_PATH)
+        except OSError:
+            pass
+
+    def _persist_session(self):
+        """Write the undo record BEFORE freezing, so a crash is recoverable."""
+        _atomic_json(SESSION_PATH, {
+            "started": time.time(),
+            "targets": self.targets,
+            "frozen": self.frozen,
+            "boosted": self.boosted,
+        })
+
+    # -- freezing ----------------------------------------------------------
+    def _freeze_pid(self, pid, app_id):
+        """Freeze one app. cgroup freeze first (catches the whole scope, i.e.
+        every helper process a browser spawned); SIGSTOP the tree otherwise."""
+        cg = _cgroup_dir(pid)
+        if cg and os.path.exists(os.path.join(cg, "cgroup.freeze")):
+            if _write(os.path.join(cg, "cgroup.freeze"), "1"):
+                return {"pid": pid, "app_id": app_id, "method": "cgroup",
+                        "cgroup": cg}
+        pids = [pid] + _children(pid)
+        stopped = []
+        for p in pids:
+            try:
+                os.kill(p, signal.SIGSTOP)
+                stopped.append(p)
+            except OSError:
+                continue
+        if not stopped:
+            return None
+        return {"pid": pid, "app_id": app_id, "method": "sigstop",
+                "pids": stopped}
+
+    def _thaw_entry(self, entry):
+        if entry.get("method") == "cgroup":
+            cg = entry.get("cgroup")
+            if cg:
+                _write(os.path.join(cg, "cgroup.freeze"), "0")
+            return
+        for p in entry.get("pids") or [entry.get("pid")]:
+            try:
+                os.kill(int(p), signal.SIGCONT)
+            except OSError:
+                continue
+
+    def _freeze_candidates(self, target_pids):
+        """Windowed apps that are safe to freeze right now."""
+        never = [n.lower() for n in (self.cfg.get("never_freeze") or [])]
+        out, seen = [], set()
+        for w in wm.list_windows():
+            if w.pid in target_pids or w.pid in seen:
+                continue
+            if _is_protected(w.pid, w.app_id):
+                continue
+            name = (w.app_id or _comm(w.pid)).lower()
+            if any(name.startswith(n) for n in never):
+                continue
+            # Never freeze our own process tree (the daemon runs under the
+            # session, and a window in our own tree would deadlock the thaw).
+            if w.pid == os.getpid():
+                continue
+            seen.add(w.pid)
+            out.append(w)
+        return out
+
+    # -- activation --------------------------------------------------------
+    def activate(self, targets=None):
+        with self.lock:
+            if self.active:
+                return {"ok": False, "error": "already active"}
+            wins = wm.list_windows()
+            chosen = self._resolve_targets(targets, wins)
+            if not chosen:
+                return {"ok": False,
+                        "error": "no target app (focus one, or name it)"}
+
+            self.targets = [{"pid": w.pid, "app_id": w.app_id,
+                             "title": w.title} for w in chosen]
+            target_pids = {w.pid for w in chosen}
+
+            # Record the undo plan first — see CRASH SAFETY in the docstring.
+            self.frozen = []
+            self._persist_session()
+
+            if self.cfg.get("freeze_background", True):
+                for w in self._freeze_candidates(target_pids):
+                    entry = self._freeze_pid(w.pid, w.app_id)
+                    if entry:
+                        self.frozen.append(entry)
+                        self._persist_session()
+
+            reply = helper_call({
+                "op": "boost",
+                "pids": sorted(target_pids),
+                "global": bool(self.cfg.get("global_levers", True)),
+            })
+            self.boosted = sorted(target_pids) if reply.get("ok") else []
+            self.last_error = "" if reply.get("ok") else \
+                "helper unavailable — per-process priority not applied"
+
+            if self.cfg.get("highlight_focused", True):
+                for w in chosen:
+                    if wm.highlight_window(w):
+                        self.highlighted.append(w)
+
+            self.active = True
+            self._persist_session()
+            self.write_state()
+            log(f"ON — focus {[t['app_id'] for t in self.targets]}, "
+                f"froze {len(self.frozen)} app(s)")
+            return {"ok": True, "targets": self.targets,
+                    "frozen": len(self.frozen)}
+
+    def deactivate(self):
+        with self.lock:
+            if not self.active:
+                return {"ok": False, "error": "not active"}
+            for entry in self.frozen:
+                self._thaw_entry(entry)
+            helper_call({"op": "release", "pids": self.boosted, "global": True})
+            for w in self.highlighted:
+                wm.clear_highlight(w)
+            thawed = len(self.frozen)
+            self.frozen, self.boosted, self.targets, self.highlighted = \
+                [], [], [], []
+            self.active = False
+            try:
+                os.unlink(SESSION_PATH)
+            except OSError:
+                pass
+            self.write_state()
+            log(f"OFF — thawed {thawed} app(s), levers restored")
+            return {"ok": True, "thawed": thawed}
+
+    def _resolve_targets(self, targets, wins):
+        """Turn the request into concrete windows.
+
+        None  → whatever is focused (only possible where the backend knows)
+        list  → pids, or app_id substrings, matched against the window list
+        """
+        if not targets:
+            focused = self.backend.focused() if self.backend.supports_focus() \
+                else None
+            return [focused] if focused else []
+        chosen, by_pid = [], {w.pid: w for w in wins}
+        for t in targets:
+            t = str(t)
+            if t.isdigit() and int(t) in by_pid:
+                chosen.append(by_pid[int(t)])
+                continue
+            hits = [w for w in wins if t.lower() in (w.app_id or "").lower()]
+            if hits:
+                chosen.append(hits[0])
+        return chosen
+
+    # -- runtime -----------------------------------------------------------
+    def tick(self):
+        """Auto-deactivate when every target app is gone.
+
+        The user asked for Studio Mode to end when they close the app, and this
+        is also the safety net that guarantees frozen apps come back: a target
+        that exits without this check would leave the session frozen behind it.
+        """
+        with self.lock:
+            if not self.active:
+                return
+            if not any(_alive(t["pid"]) for t in self.targets):
+                log("every focused app exited — leaving Studio Mode")
+                self.deactivate()
+                return
+            # Drop dead targets from a multi-app session so the UI stays honest.
+            live = [t for t in self.targets if _alive(t["pid"])]
+            if len(live) != len(self.targets):
+                self.targets = live
+                self._persist_session()
+            self.write_state()
+
+    def snapshot(self):
+        with self.lock:
+            return {
+                "active": self.active,
+                "backend": self.backend.name,
+                "supports_focus": self.backend.supports_focus(),
+                "targets": list(self.targets),
+                "frozen": [{"pid": f["pid"], "app_id": f["app_id"],
+                            "method": f["method"]} for f in self.frozen],
+                "frozen_count": len(self.frozen),
+                "boosted": list(self.boosted),
+                "config": dict(self.cfg),
+                "error": self.last_error,
+                "updated": time.time(),
+            }
+
+    def write_state(self):
+        _atomic_json(STATE_PATH, self.snapshot())
+
+    # -- control socket ----------------------------------------------------
+    def handle(self, req):
+        op = req.get("op")
+        if op == "status":
+            return {"ok": True, "state": self.snapshot()}
+        if op == "list":
+            return {"ok": True,
+                    "windows": [w.as_dict() for w in wm.list_windows()],
+                    "backend": self.backend.name,
+                    "supports_focus": self.backend.supports_focus()}
+        if op == "on":
+            return self.activate(req.get("targets"))
+        if op == "off":
+            return self.deactivate()
+        if op == "toggle":
+            return self.deactivate() if self.active \
+                else self.activate(req.get("targets"))
+        if op == "config":
+            with self.lock:
+                self.cfg.update(req.get("set") or {})
+                _atomic_json(CONFIG_PATH, self.cfg)
+                self.write_state()
+            return {"ok": True, "config": self.cfg}
+        return {"ok": False, "error": f"unknown op {op!r}"}
+
+    def serve(self):
+        try:
+            os.unlink(CTL_SOCK)
+        except OSError:
+            pass
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(CTL_SOCK)
+        os.chmod(CTL_SOCK, 0o600)      # this one really is private to the user
+        srv.listen(8)
+        log(f"control socket at {CTL_SOCK} (wm backend: {self.backend.name})")
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                continue
+            threading.Thread(target=self._client, args=(conn,),
+                             daemon=True).start()
+
+    def _client(self, conn):
+        try:
+            conn.settimeout(15)
+            data = b""
+            while b"\n" not in data:
+                chunk = conn.recv(65536)
+                if not chunk:
+                    return
+                data += chunk
+            reply = self.handle(json.loads(data.split(b"\n", 1)[0].decode()))
+        except Exception as exc:
+            reply = {"ok": False, "error": str(exc)}
+        try:
+            conn.sendall((json.dumps(reply) + "\n").encode())
+        except OSError:
+            pass
+        finally:
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+
+def main():
+    studio = Studio()
+
+    def _bye(_sig, _frm):
+        # The whole promise of Studio Mode is that everything comes back. Honour
+        # it on the way out, even on a systemd stop or a logout.
+        log("stopping — restoring the session")
+        try:
+            if studio.active:
+                studio.deactivate()
+        except Exception:
+            pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _bye)
+    signal.signal(signal.SIGINT, _bye)
+
+    studio.write_state()
+    threading.Thread(target=studio.serve, daemon=True).start()
+    while True:
+        try:
+            studio.tick()
+        except Exception as exc:
+            log(f"tick error: {exc}")
+        time.sleep(POLL_SECONDS)
+
+
+if __name__ == "__main__":
+    sys.exit(main() or 0)

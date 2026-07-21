@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""
+genesi-studio — control Genesi Studio Mode from the shell.
+
+    genesi-studio on [app...]   give the machine to an app (default: focused)
+    genesi-studio off           thaw everything, restore every lever
+    genesi-studio toggle [app]  flip it
+    genesi-studio status        raw daemon state (JSON)
+    genesi-studio info          human-readable status
+    genesi-studio list [--json] what is open right now, and what is focused
+    genesi-studio set K=V ...   change config (freeze_background, global_levers,
+                                highlight_focused, never_freeze)
+
+`app` is a pid or part of an application id — `genesi-studio on firefox` and
+`genesi-studio on 4242` both work, and several may be named at once to focus a
+whole set (e.g. `genesi-studio on genesi-code firefox`).
+
+Every command talks to the per-user daemon over its private socket; nothing here
+needs sudo.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+import sys
+
+XDG_RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+CTL_SOCK = os.path.join(XDG_RUNTIME, "genesi-studio", "control.sock")
+
+USAGE = __doc__.split("\n\n", 1)[1].rstrip()
+
+
+def call(req, timeout=20):
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(CTL_SOCK)
+    except (FileNotFoundError, ConnectionRefusedError):
+        die("genesi-studiod is not running "
+            "(systemctl --user start genesi-studiod)")
+    except OSError as exc:
+        die(f"cannot reach genesi-studiod: {exc}")
+    try:
+        s.sendall((json.dumps(req) + "\n").encode())
+        data = b""
+        while b"\n" not in data:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        return json.loads(data.decode().split("\n", 1)[0] or "{}")
+    except Exception as exc:
+        die(f"bad reply from genesi-studiod: {exc}")
+    finally:
+        s.close()
+
+
+def die(msg, code=1):
+    print(f"genesi-studio: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def cmd_info():
+    st = call({"op": "status"}).get("state") or {}
+    if not st:
+        die("no state from the daemon")
+    active = st.get("active")
+    print(f"Studio  : {'ON' if active else 'OFF'}")
+    print(f"Backend : {st.get('backend', '?')}"
+          f"{'' if st.get('supports_focus') else '  (no focus tracking here — pick apps by name)'}")
+    targets = st.get("targets") or []
+    if targets:
+        print("Focused : " + ", ".join(
+            f"{t.get('app_id') or '?'}({t.get('pid')})" for t in targets))
+    else:
+        print("Focused : —")
+    frozen = st.get("frozen") or []
+    if frozen:
+        by_method = {}
+        for f in frozen:
+            by_method.setdefault(f.get("method", "?"), []).append(
+                f.get("app_id") or str(f.get("pid")))
+        print(f"Frozen  : {len(frozen)} app(s)")
+        for method, names in by_method.items():
+            print(f"          via {method}: {', '.join(sorted(names))}")
+    else:
+        print("Frozen  : —")
+    boosted = st.get("boosted") or []
+    print("Boosted : " + (", ".join(str(p) for p in boosted) or "—"))
+    cfg = st.get("config") or {}
+    print(f"Config  : freeze_background={cfg.get('freeze_background')}, "
+          f"global_levers={cfg.get('global_levers')}, "
+          f"highlight_focused={cfg.get('highlight_focused')}")
+    never = cfg.get("never_freeze") or []
+    if never:
+        print("          never freeze: " + ", ".join(never))
+    if st.get("error"):
+        print(f"Note    : {st['error']}")
+
+
+def cmd_list(as_json=False):
+    reply = call({"op": "list"})
+    wins = reply.get("windows") or []
+    if as_json:
+        # Machine-readable form for the tray/plasmoid, so no UI ever has to
+        # parse the human table below (which is free to change).
+        print(json.dumps(reply, indent=2))
+        return
+    if not reply.get("supports_focus"):
+        print(f"({reply.get('backend')} backend: this desktop exposes no window "
+              f"list, so these are applications, and focus is unknown)\n")
+    if not wins:
+        print("nothing open that Studio Mode can see")
+        return
+    print(f"  {'PID':>7}  {'APP':<26} TITLE")
+    for w in sorted(wins, key=lambda w: (w.get("app_id") or "").lower()):
+        mark = "*" if w.get("focused") else " "
+        print(f"{mark} {w.get('pid'):>7}  {(w.get('app_id') or '')[:26]:<26} "
+              f"{(w.get('title') or '')[:50]}")
+
+
+def cmd_set(pairs):
+    """Config assignment with just enough typing to be useful from a shell."""
+    out = {}
+    for pair in pairs:
+        if "=" not in pair:
+            die(f"expected KEY=VALUE, got {pair!r}")
+        key, _, raw = pair.partition("=")
+        key = key.strip()
+        raw = raw.strip()
+        if raw.lower() in ("true", "yes", "on", "1"):
+            val = True
+        elif raw.lower() in ("false", "no", "off", "0"):
+            val = False
+        elif key == "never_freeze":
+            val = [x.strip() for x in raw.split(",") if x.strip()]
+        else:
+            val = raw
+        out[key] = val
+    reply = call({"op": "config", "set": out})
+    if not reply.get("ok"):
+        die(reply.get("error", "config change refused"))
+    print(json.dumps(reply.get("config", {}), indent=2))
+
+
+def main(argv):
+    cmd = argv[0] if argv else "status"
+    rest = argv[1:]
+
+    if cmd in ("-h", "--help", "help"):
+        print(USAGE)
+        return 0
+
+    if cmd == "status":
+        print(json.dumps(call({"op": "status"}).get("state", {}), indent=2))
+        return 0
+    if cmd == "info":
+        cmd_info()
+        return 0
+    if cmd == "list":
+        cmd_list(as_json="--json" in rest)
+        return 0
+    if cmd == "set":
+        if not rest:
+            die("set needs at least one KEY=VALUE")
+        cmd_set(rest)
+        return 0
+    if cmd in ("on", "off", "toggle"):
+        req = {"op": cmd}
+        if cmd != "off" and rest:
+            req["targets"] = rest
+        reply = call(req)
+        if not reply.get("ok"):
+            die(reply.get("error", f"{cmd} failed"))
+        if cmd == "off" or (cmd == "toggle" and "thawed" in reply):
+            print(f"Studio Mode OFF — thawed {reply.get('thawed', 0)} app(s)")
+        else:
+            names = ", ".join(t.get("app_id") or str(t.get("pid"))
+                              for t in reply.get("targets", []))
+            print(f"Studio Mode ON — focused on {names or '?'}, "
+                  f"froze {reply.get('frozen', 0)} app(s)")
+        return 0
+
+    print(USAGE, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

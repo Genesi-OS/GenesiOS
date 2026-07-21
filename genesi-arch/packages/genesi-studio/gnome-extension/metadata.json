@@ -1,0 +1,8 @@
+{
+    "uuid": "genesi-studio@genesios.org",
+    "name": "Genesi Studio Mode",
+    "description": "Give the whole machine to one app: focus it, freeze the rest, restore everything when you are done.",
+    "url": "https://github.com/Genesi-OS/GenesiOS",
+    "shell-version": ["45", "46", "47", "48"],
+    "session-modes": ["user"]
+}

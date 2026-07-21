@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""
+genesi-studio-tray — Studio Mode in the system tray, for every non-Plasma desktop.
+
+The rich Studio Mode widget is a Plasma 6 plasmoid, and a plasmoid only loads
+inside plasmashell. This tray applet gives the same controls everywhere else:
+Hyprland+caelestia, Xfce4, Cinnamon, Budgie, LXDE and Niri.
+
+WHY libappindicator AND NOT Qt's QSystemTrayIcon
+    Exactly the reason genesi-ai-tray documents: Qt 6.11's StatusNotifierItem is
+    broken against the caelestia (Quickshell) bar — it registers with the watcher
+    but never serves its properties, so the icon simply never appears. Every
+    working tray in Genesi (AI Mode, Containers) is on libayatana-appindicator,
+    so this one is too.
+
+    appindicator is menu-only — no arbitrary popup — so the plasmoid's live rows
+    become menu items refreshed on a timer, and the app list becomes a submenu.
+
+DATA MODEL (single source of truth: the genesi-studiod daemon)
+    State  : $XDG_RUNTIME_DIR/genesi-studio/state.json  (read directly)
+    Control: `genesi-studio on|off|toggle [app]`        (private user socket)
+"""
+
+import json
+import os
+import signal
+import subprocess
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+try:
+    gi.require_version("AyatanaAppIndicator3", "0.1")
+    from gi.repository import AyatanaAppIndicator3 as AppIndicator
+except (ValueError, ImportError):       # older libappindicator
+    gi.require_version("AppIndicator3", "0.1")
+    from gi.repository import AppIndicator3 as AppIndicator
+from gi.repository import GLib, Gtk
+
+XDG_RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+STATE_PATH = os.path.join(XDG_RUNTIME, "genesi-studio", "state.json")
+CLI = "genesi-studio"
+
+# How many background apps to list before collapsing into a count. A tray menu
+# that grows past a screen height is unusable on a small laptop panel.
+MAX_LISTED = 12
+
+
+def read_state():
+    try:
+        with open(STATE_PATH) as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def run_cli(*args):
+    try:
+        subprocess.Popen([CLI, *args], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception:
+        pass
+
+
+def list_windows():
+    """Ask the daemon what is open, for the 'Focus on…' submenu.
+
+    Uses `list --json` rather than scraping the human table, so reformatting
+    the CLI's output can never silently empty this menu.
+    """
+    try:
+        out = subprocess.run([CLI, "list", "--json"], capture_output=True,
+                             text=True, timeout=5)
+        if out.returncode != 0:
+            return []
+        wins = json.loads(out.stdout or "{}").get("windows") or []
+    except Exception:
+        return []
+    return sorted(((w.get("pid"), w.get("app_id") or str(w.get("pid")))
+                   for w in wins if w.get("pid")),
+                  key=lambda t: t[1].lower())
+
+
+def _item(label, enabled=True, on_activate=None):
+    mi = Gtk.MenuItem(label=label)
+    mi.set_sensitive(enabled)
+    if on_activate:
+        mi.connect("activate", lambda _w: on_activate())
+    return mi
+
+
+class Tray:
+    def __init__(self):
+        self.ind = AppIndicator.Indicator.new(
+            "genesi-studio-tray", "genesi-studio",
+            AppIndicator.IndicatorCategory.APPLICATION_STATUS)
+        self.ind.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+        self.ind.set_title("Genesi Studio Mode")
+        self.rebuild()
+        GLib.timeout_add_seconds(3, self._tick)
+
+    def _tick(self):
+        self.rebuild()
+        return True
+
+    def rebuild(self):
+        s = read_state()
+        menu = Gtk.Menu()
+
+        if not s:
+            self.ind.set_title("Studio Mode — daemon offline")
+            menu.append(_item("Studio Mode — daemon offline", False))
+            menu.append(Gtk.SeparatorMenuItem())
+            menu.append(_item("Quit", on_activate=Gtk.main_quit))
+            menu.show_all()
+            self.ind.set_menu(menu)
+            return
+
+        active = bool(s.get("active"))
+        targets = s.get("targets") or []
+        names = ", ".join(t.get("app_id") or str(t.get("pid"))
+                          for t in targets) or "—"
+
+        self.ind.set_title(
+            f"Studio Mode: {'ON — ' + names if active else 'OFF'}")
+        menu.append(_item(f"Studio Mode: {'ON' if active else 'OFF'}", False))
+
+        if active:
+            menu.append(_item(f"Focused: {names}", False))
+            frozen = s.get("frozen") or []
+            menu.append(_item(f"Frozen: {len(frozen)} app(s)", False))
+            for f in frozen[:MAX_LISTED]:
+                menu.append(_item(f"    • {f.get('app_id') or f.get('pid')}",
+                                  False))
+            if len(frozen) > MAX_LISTED:
+                menu.append(_item(f"    … and {len(frozen) - MAX_LISTED} more",
+                                  False))
+            boosted = s.get("boosted") or []
+            if boosted:
+                menu.append(_item(f"Boosted: {len(boosted)} process(es)", False))
+        else:
+            backend = s.get("backend", "?")
+            if s.get("supports_focus"):
+                menu.append(_item(f"Ready — {backend} (follows focus)", False))
+            else:
+                # Be explicit rather than silently doing nothing on a desktop
+                # that hides its window list from us.
+                menu.append(_item(f"Ready — {backend} (pick an app below)",
+                                  False))
+
+        if s.get("error"):
+            menu.append(_item(f"! {s['error']}", False))
+
+        menu.append(Gtk.SeparatorMenuItem())
+
+        if active:
+            menu.append(_item("Turn Studio Mode OFF",
+                              on_activate=lambda: run_cli("off")))
+        else:
+            if s.get("supports_focus"):
+                menu.append(_item("Studio Mode on the focused app",
+                                  on_activate=lambda: run_cli("on")))
+            focus_menu = Gtk.Menu()
+            apps = list_windows()
+            if apps:
+                for pid, app in apps[:MAX_LISTED * 2]:
+                    focus_menu.append(_item(
+                        f"{app}  ({pid})",
+                        on_activate=lambda p=pid: run_cli("on", str(p))))
+            else:
+                focus_menu.append(_item("nothing open", False))
+            holder = Gtk.MenuItem(label="Focus on…")
+            holder.set_submenu(focus_menu)
+            menu.append(holder)
+
+        menu.append(Gtk.SeparatorMenuItem())
+        menu.append(_item("Quit", on_activate=Gtk.main_quit))
+        menu.show_all()
+        self.ind.set_menu(menu)
+
+
+def main():
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    Tray()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

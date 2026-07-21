@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Studio Mode (tray)
+Comment=Studio Mode control in the system tray
+Exec=/usr/bin/genesi-studio-tray
+Icon=genesi-studio
+Terminal=false
+Categories=System;Monitor;
+X-GNOME-Autostart-enabled=true
+# KDE gets the Plasma widget and GNOME gets the Shell extension, both of which
+# are richer than a menu-only tray. Running the tray there too would put two
+# Studio Mode controls in the same panel.
+NotShowIn=KDE;GNOME;

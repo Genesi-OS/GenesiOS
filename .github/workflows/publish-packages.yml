@@ -378,6 +378,12 @@ jobs:
             # + grub-btrfs) + a branded manager app. Self-contained (its deps are
             # all real repo packages), so it slots in with the other dev tools.
             "genesi-snapshots"
+            # Studio Mode — focus one app, freeze the rest, restore after.
+            # Self-contained (Python + QML + a GNOME extension, no compiled
+            # parts), and its check() runs the freeze-safety tests at build
+            # time, so a regression in "what may be frozen" fails the publish
+            # instead of shipping a desktop that can lock up.
+            "genesi-studio"
             # Optional gaming meta/autoconfig. Built with -d so CI does not
             # install the entire Steam/Lutris/Proton stack into the builder.
             "genesi-gaming"

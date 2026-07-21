@@ -1,0 +1,20 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "dev@genesios.org",
+                "Name": "Genesi OS Team"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Give the whole machine to one app: focus it, freeze the rest, restore everything on exit",
+        "Icon": "genesi-studio",
+        "Id": "org.genesi.studio",
+        "License": "AGPL-3.0-or-later",
+        "Name": "Genesi Studio Mode",
+        "Version": "1.0",
+        "Website": "https://github.com/Genesi-OS/GenesiOS"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

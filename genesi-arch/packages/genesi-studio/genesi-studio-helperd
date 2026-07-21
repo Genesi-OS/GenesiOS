@@ -1,0 +1,527 @@
+#!/usr/bin/env python3
+"""
+genesi-studio-helperd — the privileged half of Genesi Studio Mode.
+
+Studio Mode's session daemon (genesi-studiod) runs as the user and handles
+everything a user may do to their own processes: listing windows, freezing
+background apps, restoring them. But the levers that actually buy latency —
+negative nice, realtime I/O class, pinning to the fastest cores, cgroup
+weights, the CPU governor — all need root. This tiny service is the only part
+that runs privileged, and it is deliberately boring.
+
+SECURITY MODEL (this is the whole reason it isn't a world-writable flag file)
+    genesi-ai-mode's control surface is a world-writable file in /run, which is
+    fine there: the only thing you can write is "on"/"off"/"auto" for the whole
+    machine. Studio Mode's surface takes *PIDs*, so an unauthenticated file
+    would let any local user ask root to renice or pin someone else's
+    processes. Instead this listens on a unix socket and reads the peer's real
+    uid from SO_PEERCRED — a kernel-supplied credential the caller cannot
+    forge. Every request is then constrained:
+
+      * a non-root caller may only name PIDs whose /proc entry it owns
+      * PIDs are re-checked at apply time, not just at parse time
+      * nice never goes below -10, so a runaway request cannot starve the
+        kernel's own threads or lock the box out of its input stack
+      * the request vocabulary is a fixed set of ops with no free-form paths
+
+BASELINES AND RESTORE
+    Every lever is captured before it is touched and written to
+    /run/genesi-studio/baseline.json, so a helper that is killed and restarted
+    (or a session that crashes) can still put the machine back. `restore` is
+    idempotent and safe to call when nothing was ever applied.
+
+COEXISTENCE WITH AI MODE
+    genesi-aid owns the same global sysfs knobs (governor/EPP) and restores
+    them from its own captured baseline. Two daemons writing the same file
+    would fight, and whoever restored last would win with a stale value. So
+    this helper refuses to touch the *global* knobs whenever AI Mode reports
+    itself active, and says so in its reply; the per-process levers, which
+    genesi-aid never touches, always apply.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import signal
+import socket
+import struct
+import subprocess
+import sys
+import threading
+
+RUN_DIR = "/run/genesi-studio"
+SOCK_PATH = f"{RUN_DIR}/helper.sock"
+BASELINE_PATH = f"{RUN_DIR}/baseline.json"
+AID_STATE = "/run/genesi-ai-mode/state.json"
+
+CPU_BASE = "/sys/devices/system/cpu"
+NICE_FLOOR = -10          # never go lower; see SECURITY MODEL above
+CGROUP_BOOST_WEIGHT = 400  # default is 100; 4x share under contention
+
+
+def log(msg):
+    print(f"genesi-studio-helperd: {msg}", flush=True)
+
+
+# ── small fs helpers ─────────────────────────────────────────────────────────
+def _read(path):
+    try:
+        with open(path) as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def _write(path, value):
+    try:
+        with open(path, "w") as fh:
+            fh.write(str(value))
+        return True
+    except OSError:
+        return False
+
+
+def _atomic_json(path, data):
+    tmp = f"{path}.tmp"
+    try:
+        with open(tmp, "w") as fh:
+            json.dump(data, fh)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def _load_baseline():
+    try:
+        with open(BASELINE_PATH) as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def _proc_uid(pid):
+    try:
+        return os.stat(f"/proc/{pid}").st_uid
+    except OSError:
+        return None
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _ai_mode_active():
+    """True when genesi-aid currently owns the global CPU knobs."""
+    try:
+        with open(AID_STATE) as fh:
+            return bool(json.load(fh).get("ai_mode_active"))
+    except Exception:
+        return False
+
+
+def _performance_cpu_ids():
+    """Logical CPUs on the fastest physical cores.
+
+    Same rule genesi-aid uses: on a hybrid CPU this is the P-cores (plus their
+    HT siblings), so a focused app never gets scheduled onto an E-core and eats
+    cross-core sync stalls. On a uniform CPU it returns every CPU and pinning
+    becomes a no-op. Empty on boxes with no cpufreq (VMs) → caller skips it.
+    """
+    freqs = {}
+    try:
+        for cpu in os.listdir(CPU_BASE):
+            m = re.fullmatch(r"cpu(\d+)", cpu)
+            if not m:
+                continue
+            raw = _read(f"{CPU_BASE}/{cpu}/cpufreq/cpuinfo_max_freq")
+            if raw is None:
+                return []                    # incomplete data → don't guess
+            try:
+                freqs[int(m.group(1))] = int(raw)
+            except ValueError:
+                return []
+    except OSError:
+        return []
+    if not freqs:
+        return []
+    top = max(freqs.values())
+    return sorted(i for i, mf in freqs.items() if mf >= top * 0.95)
+
+
+def _cgroup_path(pid):
+    """Absolute cgroup-v2 dir for a pid, or None on a v1-only/odd system."""
+    raw = _read(f"/proc/{pid}/cgroup")
+    if not raw:
+        return None
+    for line in raw.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) == 3 and parts[0] == "0":       # v2 unified line
+            path = os.path.join("/sys/fs/cgroup", parts[2].lstrip("/"))
+            return path if os.path.isdir(path) else None
+    return None
+
+
+# ── the levers ───────────────────────────────────────────────────────────────
+class Levers:
+    """Applies and reverses every privileged tweak, remembering the originals."""
+
+    def __init__(self):
+        self.state = _load_baseline()
+
+    def _save(self):
+        _atomic_json(BASELINE_PATH, self.state)
+
+    # -- per process -------------------------------------------------------
+    def boost_pid(self, pid, perf_cpus):
+        """Give one process the fast path. Returns a list of applied lever names."""
+        applied = []
+        procs = self.state.setdefault("procs", {})
+        key = str(pid)
+        if key in procs:
+            return []                        # already boosted; don't re-capture
+
+        saved = {}
+        # nice: the single cheapest latency win under contention.
+        try:
+            saved["nice"] = os.getpriority(os.PRIO_PROCESS, pid)
+            os.setpriority(os.PRIO_PROCESS, pid, NICE_FLOOR)
+            applied.append("nice")
+        except OSError:
+            pass
+
+        # ionice: best-effort priority 0. Deliberately NOT realtime class —
+        # RT I/O can starve journald/systemd and wedge the desktop, which is
+        # exactly the "my PC froze" outcome Studio Mode exists to prevent.
+        # Capture the real class/priority first: restoring to a hardcoded
+        # default would silently change the I/O behaviour of any process that
+        # was not on the default to begin with.
+        prev = _ionice_get(pid)
+        if subprocess_ok(["ionice", "-c", "2", "-n", "0", "-p", str(pid)]):
+            saved["ionice"] = prev            # [class, prio] or None
+            applied.append("ionice")
+
+        # affinity: keep it on the fast cores.
+        if perf_cpus:
+            try:
+                saved["affinity"] = sorted(os.sched_getaffinity(pid))
+                os.sched_setaffinity(pid, set(perf_cpus))
+                applied.append("affinity")
+            except OSError:
+                pass
+
+        # oom_score_adj: make the focused app the LAST thing the kernel kills.
+        adj = f"/proc/{pid}/oom_score_adj"
+        cur = _read(adj)
+        if cur is not None and _write(adj, "-500"):
+            saved["oom_score_adj"] = cur
+            applied.append("oom_score_adj")
+
+        # cgroup weight: the app's systemd scope gets 4x CPU/IO share. This is
+        # what makes the difference when the box is genuinely saturated —
+        # nice only orders the queue, cpu.weight sizes the slice.
+        cg = _cgroup_path(pid)
+        if cg:
+            for knob, want in (("cpu.weight", CGROUP_BOOST_WEIGHT),
+                               ("io.weight", CGROUP_BOOST_WEIGHT)):
+                path = os.path.join(cg, knob)
+                cur = _read(path)
+                if cur is not None and _write(path, want):
+                    saved.setdefault("cgroup", {})[knob] = [path, cur]
+                    applied.append(knob)
+
+        if saved:
+            procs[key] = saved
+            self._save()
+        return applied
+
+    def restore_pid(self, pid):
+        procs = self.state.get("procs", {})
+        saved = procs.pop(str(pid), None)
+        if not saved:
+            return
+        # A dead process needs no restoring, but its cgroup knobs might still
+        # exist (the scope outlives the leader briefly), so do those anyway.
+        if _alive(pid):
+            if "nice" in saved:
+                try:
+                    os.setpriority(os.PRIO_PROCESS, pid, int(saved["nice"]))
+                except OSError:
+                    pass
+            if "ionice" in saved:
+                _ionice_set(pid, saved["ionice"])
+            if "affinity" in saved:
+                try:
+                    os.sched_setaffinity(pid, set(saved["affinity"]))
+                except OSError:
+                    pass
+            if "oom_score_adj" in saved:
+                _write(f"/proc/{pid}/oom_score_adj", saved["oom_score_adj"])
+        for _knob, (path, cur) in (saved.get("cgroup") or {}).items():
+            _write(path, cur)
+        self._save()
+
+    # -- global ------------------------------------------------------------
+    def apply_global(self):
+        """Governor + EPP to performance. Skipped while AI Mode owns them."""
+        if _ai_mode_active():
+            return [], "ai-mode-owns-cpu"
+        if "global" in self.state:
+            return [], "already"
+        saved, applied = {}, []
+        govs = []
+        for cpu in sorted(os.listdir(CPU_BASE)):
+            if not re.fullmatch(r"cpu\d+", cpu):
+                continue
+            p = f"{CPU_BASE}/{cpu}/cpufreq/scaling_governor"
+            cur = _read(p)
+            if cur is not None and _write(p, "performance"):
+                govs.append([p, cur])
+        if govs:
+            saved["governor"] = govs
+            applied.append("governor")
+        epps = []
+        for cpu in sorted(os.listdir(CPU_BASE)):
+            if not re.fullmatch(r"cpu\d+", cpu):
+                continue
+            p = f"{CPU_BASE}/{cpu}/cpufreq/energy_performance_preference"
+            cur = _read(p)
+            if cur is not None and _write(p, "performance"):
+                epps.append([p, cur])
+        if epps:
+            saved["epp"] = epps
+            applied.append("epp")
+        if saved:
+            self.state["global"] = saved
+            self._save()
+        return applied, None
+
+    def restore_global(self):
+        saved = self.state.pop("global", None)
+        if not saved:
+            return
+        for group in ("governor", "epp"):
+            for path, cur in saved.get(group, []):
+                _write(path, cur)
+        self._save()
+
+    def restore_all(self):
+        for pid in list(self.state.get("procs", {}).keys()):
+            self.restore_pid(int(pid))
+        self.restore_global()
+        self.state = {}
+        self._save()
+
+
+_IONICE_CLASSES = {"none": 0, "realtime": 1, "best-effort": 2, "idle": 3}
+
+
+def _ionice_get(pid):
+    """Current I/O class and priority as [class, prio], or None if unreadable.
+
+    `ionice -p PID` prints e.g. "best-effort: prio 4", or just "idle" for the
+    classes that carry no priority.
+    """
+    try:
+        out = subprocess.run(["ionice", "-p", str(pid)], capture_output=True,
+                             text=True, timeout=5)
+        if out.returncode != 0:
+            return None
+        txt = out.stdout.strip().lower()
+    except Exception:
+        return None
+    name = txt.split(":", 1)[0].strip()
+    cls = _IONICE_CLASSES.get(name)
+    if cls is None:
+        return None
+    m = re.search(r"prio\s+(\d+)", txt)
+    return [cls, int(m.group(1)) if m else None]
+
+
+def _ionice_set(pid, saved):
+    """Put a process back on the I/O class it had before we touched it."""
+    if not saved:
+        # We could not read the original; "none" restores the kernel default,
+        # which is where an unreadable process almost certainly was.
+        subprocess_ok(["ionice", "-c", "0", "-p", str(pid)])
+        return
+    cls, prio = saved[0], saved[1] if len(saved) > 1 else None
+    cmd = ["ionice", "-c", str(cls)]
+    if prio is not None and cls in (1, 2):     # only these carry a priority
+        cmd += ["-n", str(prio)]
+    subprocess_ok(cmd + ["-p", str(pid)])
+
+
+def subprocess_ok(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True,
+                              timeout=5).returncode == 0
+    except Exception:
+        return False
+
+
+# ── server ───────────────────────────────────────────────────────────────────
+class Helper:
+    def __init__(self):
+        self.levers = Levers()
+        self.lock = threading.Lock()
+        self.perf_cpus = _performance_cpu_ids()
+
+    def _authorized_pids(self, pids, peer_uid):
+        """Drop anything the caller does not own. Root may name anything."""
+        ok = []
+        for p in pids:
+            try:
+                pid = int(p)
+            except (TypeError, ValueError):
+                continue
+            if pid <= 1 or not _alive(pid):
+                continue
+            if peer_uid != 0 and _proc_uid(pid) != peer_uid:
+                log(f"denied pid {pid} to uid {peer_uid} (not owner)")
+                continue
+            ok.append(pid)
+        return ok
+
+    def handle(self, req, peer_uid):
+        op = req.get("op")
+        if op == "ping":
+            return {"ok": True, "perf_cpus": self.perf_cpus,
+                    "ai_mode_active": _ai_mode_active()}
+
+        if op == "boost":
+            pids = self._authorized_pids(req.get("pids") or [], peer_uid)
+            with self.lock:
+                applied = {}
+                for pid in pids:
+                    applied[pid] = self.levers.boost_pid(pid, self.perf_cpus)
+                gapplied, gskip = ([], None)
+                if req.get("global", True):
+                    gapplied, gskip = self.levers.apply_global()
+            return {"ok": True, "boosted": applied, "global": gapplied,
+                    "global_skipped": gskip}
+
+        if op == "release":
+            pids = self._authorized_pids(req.get("pids") or [], peer_uid)
+            # A pid that already exited still needs its baseline dropped, so
+            # release works off the recorded set rather than liveness.
+            recorded = set(self.levers.state.get("procs", {}))
+            with self.lock:
+                for pid in pids:
+                    self.levers.restore_pid(pid)
+                for key in list(recorded):
+                    if peer_uid != 0 and _proc_uid(int(key)) not in (peer_uid, None):
+                        continue
+                    if not _alive(int(key)):
+                        self.levers.restore_pid(int(key))
+                if req.get("global", True):
+                    self.levers.restore_global()
+            return {"ok": True}
+
+        if op == "restore-all":
+            if peer_uid != 0:
+                # Scoped restore for a normal user: only their own processes,
+                # plus the global knobs (which are machine-wide by nature and
+                # were only ever set on a Studio Mode request).
+                pids = [int(p) for p in self.levers.state.get("procs", {})
+                        if _proc_uid(int(p)) in (peer_uid, None)]
+                with self.lock:
+                    for pid in pids:
+                        self.levers.restore_pid(pid)
+                    self.levers.restore_global()
+            else:
+                with self.lock:
+                    self.levers.restore_all()
+            return {"ok": True}
+
+        if op == "status":
+            return {"ok": True, "state": self.levers.state,
+                    "perf_cpus": self.perf_cpus,
+                    "ai_mode_active": _ai_mode_active()}
+
+        return {"ok": False, "error": f"unknown op {op!r}"}
+
+    def serve(self):
+        os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+        try:
+            os.unlink(SOCK_PATH)
+        except OSError:
+            pass
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(SOCK_PATH)
+        # World-writable: any local user may ASK. What they may actually do is
+        # decided per-request by SO_PEERCRED, not by file permissions.
+        os.chmod(SOCK_PATH, 0o666)
+        srv.listen(16)
+        log(f"listening on {SOCK_PATH} (perf cpus: {self.perf_cpus or 'n/a'})")
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                continue
+            threading.Thread(target=self._client, args=(conn,),
+                             daemon=True).start()
+
+    def _client(self, conn):
+        try:
+            conn.settimeout(10)
+            creds = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                                    struct.calcsize("3i"))
+            _pid, uid, _gid = struct.unpack("3i", creds)
+            data = b""
+            while b"\n" not in data:
+                chunk = conn.recv(65536)
+                if not chunk:
+                    return
+                data += chunk
+                if len(data) > 1 << 20:      # 1MB of "request" is an attack
+                    return
+            req = json.loads(data.split(b"\n", 1)[0].decode())
+            reply = self.handle(req, uid)
+        except Exception as exc:
+            reply = {"ok": False, "error": str(exc)}
+        try:
+            conn.sendall((json.dumps(reply) + "\n").encode())
+        except OSError:
+            pass
+        finally:
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+
+def main():
+    if os.geteuid() != 0:
+        log("must run as root")
+        return 1
+    helper = Helper()
+
+    def _bye(_sig, _frm):
+        # Leaving a machine pinned to `performance` after the service stops
+        # would be a silent battery/thermal regression, so unwind on the way out.
+        log("shutting down — restoring baselines")
+        try:
+            helper.levers.restore_all()
+        except Exception:
+            pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _bye)
+    signal.signal(signal.SIGINT, _bye)
+    # A previous run that was SIGKILLed leaves baselines on disk; unwind them
+    # before taking new ones, or the originals are lost forever.
+    if helper.levers.state:
+        log("stale baselines from a previous run — restoring first")
+        helper.levers.restore_all()
+    helper.serve()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

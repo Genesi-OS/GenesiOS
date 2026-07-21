@@ -30,7 +30,11 @@ pkgver=1.0.0
 # large; users install genesi-gaming from Welcome or Package Installer.
 # pkgrel 7: add Genesi Forge, the local Git/GitHub and delivery dashboard.
 # pkgrel 8: ship the branded Plymouth theme to fresh and existing systems.
-pkgrel=8
+# pkgrel 9: add Genesi Studio Mode (focus one app, freeze the rest, restore
+# after). In the meta so it reaches fresh installs AND existing systems on
+# `pacman -Syu`. It is inert until the user switches it on, and its widget
+# follows whatever desktop is installed, so it is safe to ship to everyone.
+pkgrel=9
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -71,6 +75,9 @@ depends=(
     # "Indestructible OS": snapper + snap-pac + grub-btrfs, wired ENXUTO, with a
     # branded manager app. No-op on non-Btrfs roots.
     'genesi-snapshots'
+    # Studio Mode: hand the machine to one app (game, Genesi Code, DAW) and
+    # freeze the rest. Inert until switched on; its widget follows the DE.
+    'genesi-studio'
 )
 
 package() {

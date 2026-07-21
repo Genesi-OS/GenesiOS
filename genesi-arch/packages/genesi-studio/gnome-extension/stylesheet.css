@@ -1,0 +1,5 @@
+/* Genesi green on the panel icon while Studio Mode is holding the machine.
+   Matches the plasmoid and the tray so the state reads the same on every DE. */
+.genesi-studio-active {
+    color: #1D9E75;
+}

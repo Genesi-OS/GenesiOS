@@ -1,0 +1,112 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# Genesi Studio Mode — give the whole machine to one app.
+#
+# The focused app (or apps — several may be focused at once) gets negative nice,
+# the fastest cores, a 4x cgroup CPU/IO share and the performance governor,
+# while every other OPEN APPLICATION is frozen so it cannot steal a cycle.
+# Frozen means paused, not closed: cgroup v2 `cgroup.freeze` (SIGSTOP as a
+# fallback) stops the process being scheduled while it keeps its memory and its
+# unsaved work. Turning Studio Mode off — manually, or automatically when the
+# focused app exits — thaws everything and restores every lever it touched.
+#
+# THREE PROCESSES, ONE CONTROL PATH
+#   genesi-studiod         per-user daemon: windows, freezing, restore, state
+#   genesi-studio-helperd  root helper: the privileged levers only, SO_PEERCRED-
+#                          authenticated so a caller can only touch its own pids
+#   genesi-studio          CLI every UI drives (plasmoid, tray, GNOME extension)
+#
+# DESKTOP COVERAGE
+#   The window list is per-compositor, so genesi_studio_wm.py carries a backend
+#   for each: hyprctl (Hyprland/caelestia), niri msg, swaymsg, a KWin script
+#   over DBus (Plasma Wayland), EWMH via wmctrl (Xfce/Cinnamon/Budgie/LXDE and
+#   any X11 session), and a /proc scan as the always-works fallback.
+#
+#   The UI follows the same shape: a Plasma 6 plasmoid on KDE, a GNOME Shell
+#   extension on GNOME (which is also what gives GNOME Wayland real focus
+#   detection — Mutter exposes none to outside processes), and a libappindicator
+#   tray everywhere else, including Cosmic via cosmic-panel's status area.
+pkgname=genesi-studio
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL-3.0-or-later')
+depends=(
+    'python'
+    'systemd'
+)
+optdepends=(
+    'python-gobject: system-tray widget (non-KDE, non-GNOME desktops)'
+    'libayatana-appindicator: system-tray widget (the proven SNI path in Genesi)'
+    'gtk3: system-tray widget'
+    'wmctrl: window list on X11 desktops (Xfce, Cinnamon, Budgie, LXDE, MATE)'
+    'xorg-xprop: focused-window detection on X11 desktops'
+    'util-linux: ionice, for the I/O priority lever'
+    'plasma-workspace: the Plasma 6 Studio Mode widget'
+    'gnome-shell: the GNOME Studio Mode extension'
+)
+install='genesi-studio.install'
+source=()
+sha256sums=()
+
+check() {
+    # The freeze-safety rules decide whether background apps merely pause or the
+    # desktop locks up with no way to turn Studio Mode back off, so they are
+    # tested at build time. Pure logic, no session required.
+    python "${startdir}/test-studio-safety.py"
+}
+
+package() {
+    # ── executables ───────────────────────────────────────────────────────────
+    install -Dm755 "${startdir}/genesi-studiod" \
+        "$pkgdir/usr/bin/genesi-studiod"
+    install -Dm755 "${startdir}/genesi-studio-helperd" \
+        "$pkgdir/usr/bin/genesi-studio-helperd"
+    install -Dm755 "${startdir}/genesi-studio" \
+        "$pkgdir/usr/bin/genesi-studio"
+    install -Dm755 "${startdir}/genesi-studio-tray" \
+        "$pkgdir/usr/bin/genesi-studio-tray"
+
+    # ── shared library ────────────────────────────────────────────────────────
+    # Both daemons import this; it lives outside /usr/bin so it is never on PATH.
+    install -Dm644 "${startdir}/genesi_studio_wm.py" \
+        "$pkgdir/usr/share/genesi-studio/genesi_studio_wm.py"
+
+    # ── systemd units ─────────────────────────────────────────────────────────
+    install -Dm644 "${startdir}/genesi-studiod.service" \
+        "$pkgdir/usr/lib/systemd/user/genesi-studiod.service"
+    install -Dm644 "${startdir}/genesi-studio-helperd.service" \
+        "$pkgdir/usr/lib/systemd/system/genesi-studio-helperd.service"
+
+    # ── tray autostart (skipped on KDE and GNOME, see the .desktop) ───────────
+    install -Dm644 "${startdir}/genesi-studio-tray.desktop" \
+        "$pkgdir/etc/xdg/autostart/genesi-studio-tray.desktop"
+
+    # ── icon ─────────────────────────────────────────────────────────────────
+    # hicolor is the universal fallback, so the name resolves in every icon
+    # theme — the lesson from the Genesi Containers tray, whose icon rendered
+    # broken until it was installed here.
+    install -Dm644 "${startdir}/genesi-studio.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-studio.svg"
+    install -Dm644 "${startdir}/genesi-studio.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/genesi-studio-symbolic.svg"
+
+    # ── Plasma 6 widget ──────────────────────────────────────────────────────
+    local plasmoid="$pkgdir/usr/share/plasma/plasmoids/org.genesi.studio"
+    install -Dm644 "${startdir}/plasmoid-studio/metadata.json" \
+        "$plasmoid/metadata.json"
+    install -Dm644 "${startdir}/plasmoid-studio/contents/ui/main.qml" \
+        "$plasmoid/contents/ui/main.qml"
+
+    # ── GNOME Shell extension ────────────────────────────────────────────────
+    local ext="$pkgdir/usr/share/gnome-shell/extensions/genesi-studio@genesios.org"
+    install -Dm644 "${startdir}/gnome-extension/metadata.json" "$ext/metadata.json"
+    install -Dm644 "${startdir}/gnome-extension/extension.js"  "$ext/extension.js"
+    install -Dm644 "${startdir}/gnome-extension/stylesheet.css" "$ext/stylesheet.css"
+
+    # ── docs ─────────────────────────────────────────────────────────────────
+    install -Dm644 "${startdir}/README.md" \
+        "$pkgdir/usr/share/doc/genesi-studio/README.md"
+}

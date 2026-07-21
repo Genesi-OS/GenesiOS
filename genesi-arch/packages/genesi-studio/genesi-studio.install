@@ -1,0 +1,69 @@
+# Genesi Studio Mode — post-install wiring.
+#
+# Two units, two scopes: the privileged lever helper is a system service, and
+# the session daemon is a per-user service enabled globally so it starts in
+# every user's session (Plasma, Hyprland, GNOME, Xfce, Cinnamon, Budgie, LXDE,
+# Cosmic, Niri) without each user having to enable it by hand.
+
+post_install() {
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable --now genesi-studio-helperd.service >/dev/null 2>&1 || true
+    # --global writes the enablement into /etc, so it applies to every existing
+    # AND future user; it does not start anything in an already-running session.
+    systemctl --global enable genesi-studiod.service >/dev/null 2>&1 || true
+
+    cat <<'EOF'
+
+  Genesi Studio Mode installed.
+
+    genesi-studio on            give the machine to the focused app
+    genesi-studio on blender    …or name the app (several may be named)
+    genesi-studio off           thaw everything, restore every lever
+    genesi-studio info          what it is doing right now
+
+  The widget is already in your panel on KDE (add "Genesi Studio Mode") and in
+  the tray on Hyprland/Xfce/Cinnamon/Budgie/LXDE/Niri/Cosmic. On GNOME, enable
+  the "Genesi Studio Mode" extension.
+
+  The session daemon starts at your next login; to use it right away:
+      systemctl --user start genesi-studiod
+
+  Background apps are FROZEN, never closed — they keep their unsaved work and
+  come back exactly where they were when you turn Studio Mode off.
+
+EOF
+}
+
+post_upgrade() {
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl try-restart genesi-studio-helperd.service >/dev/null 2>&1 || true
+    # The session daemon is restarted per-user, not globally: restarting it
+    # while someone has Studio Mode ON would thaw their session out from under
+    # them. It picks up the new version at their next login, and its own
+    # crash-recovery path handles a version that stopped mid-session.
+    systemctl --global enable genesi-studiod.service >/dev/null 2>&1 || true
+}
+
+pre_remove() {
+    # Unwind what root can reach. NOTE the honest limit: pacman runs as root
+    # with no access to a logged-in user's session bus, so `--global disable`
+    # stops the daemon being started NEXT time — it cannot stop one that is
+    # running right now in someone's session. If that daemon is holding a Studio
+    # session, its apps stay frozen until it is stopped or the user logs out
+    # (a freeze does not survive the session ending). Hence the warning below.
+    systemctl --global disable genesi-studiod.service >/dev/null 2>&1 || true
+    systemctl disable --now genesi-studio-helperd.service >/dev/null 2>&1 || true
+
+    cat <<'EOF'
+
+  ! If Studio Mode is ON in any logged-in session, run this there FIRST:
+        genesi-studio off
+    Removing the package cannot reach a running session daemon, and frozen
+    apps stay paused until that daemon stops or the user logs out.
+
+EOF
+}
+
+post_remove() {
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
