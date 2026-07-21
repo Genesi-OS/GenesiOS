@@ -28,7 +28,12 @@
 #   tray everywhere else, including Cosmic via cosmic-panel's status area.
 pkgname=genesi-studio
 pkgver=1.0.0
-pkgrel=1
+# pkgrel 2: make wmctrl/xorg-xprop hard deps (without them a KDE X11 session
+# silently fell back to the /proc scan and listed daemons instead of windows),
+# resolve real app icons and names from .desktop entries for every widget, and
+# make the /proc backend require an open display-server connection so the app
+# picker on COSMIC and GNOME Wayland lists applications rather than agents.
+pkgrel=2
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -36,14 +41,21 @@ license=('AGPL-3.0-or-later')
 depends=(
     'python'
     'systemd'
+    # HARD deps, not optional — learned the hard way on a KDE X11 install:
+    # with these missing the EWMH backend declares itself unavailable and the
+    # session silently falls back to the /proc scan, which lists daemons
+    # (kded6, plasmashell, kaccess) instead of the user's actual windows and
+    # loses focus tracking entirely. X11 is the default session on Plasma here,
+    # so the "optional" backend was in fact the primary one. Both are tiny.
+    'wmctrl'
+    'xorg-xprop'
+    # ionice, for the I/O priority lever.
+    'util-linux'
 )
 optdepends=(
     'python-gobject: system-tray widget (non-KDE, non-GNOME desktops)'
     'libayatana-appindicator: system-tray widget (the proven SNI path in Genesi)'
     'gtk3: system-tray widget'
-    'wmctrl: window list on X11 desktops (Xfce, Cinnamon, Budgie, LXDE, MATE)'
-    'xorg-xprop: focused-window detection on X11 desktops'
-    'util-linux: ionice, for the I/O priority lever'
     'plasma-workspace: the Plasma 6 Studio Mode widget'
     'gnome-shell: the GNOME Studio Mode extension'
 )

@@ -268,8 +268,13 @@ migrate_panel_widgets() {
     local home u uid gid
     for home in /home/*; do
         [ -d "$home" ] || continue
-        # Already migrated for this user? leave it alone.
-        [ -f "$home/.config/genesi/panel-migrate-containers.done" ] && continue
+        # Already migrated for the CURRENT widget set? leave it alone.
+        # The marker name is keyed to the widget list inside
+        # genesi-panel-migrate.sh, so when a new default widget ships the marker
+        # changes and this drops the autostart again. Checking the old
+        # containers-only marker here would permanently skip every user who had
+        # already been migrated once, and they would never get the new widget.
+        [ -f "$home/.config/genesi/panel-migrate-org.genesi.containers-org.genesi.studio.done" ] && continue
         u=$(stat -c %U "$home" 2>/dev/null) || continue
         id "$u" >/dev/null 2>&1 || continue
         uid=$(id -u "$u" 2>/dev/null) || continue

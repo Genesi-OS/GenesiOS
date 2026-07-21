@@ -141,7 +141,13 @@ pkgver=1.3.4
 # pkgrel 48: Ant-Dark is the Plasma shell theme selected by plasmarc. Give that
 # active theme the same green selection and white selected text/icon palette;
 # fixing only genesi-plasma/default never affected panel context menus.
-pkgrel=48
+# pkgrel 49: put the Genesi Studio Mode widget (org.genesi.studio) on the
+# default panel — applet 34 in the skel appletsrc for NEW users, and via the
+# panel migration for EXISTING ones. The migration is now driven by a widget
+# LIST whose marker name is derived from that list, because the old fixed
+# "panel-migrate-containers.done" marker meant an already-migrated user could
+# never receive a widget added later: the script saw the marker and exited.
+pkgrel=49
 epoch=1
 groups=(genesi)
 arch=('any')

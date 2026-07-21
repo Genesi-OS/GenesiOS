@@ -187,6 +187,79 @@ for saved, want in [
     hd._ionice_set(1234, saved)
     check(f"restore {saved}", rec.calls[-1], want)
 
+print("\ndesktop entries — icons and human names for the app picker")
+import tempfile  # noqa: E402
+
+tmp = tempfile.mkdtemp()
+
+
+def desktop(fn, body):
+    with open(os.path.join(tmp, fn), "w", encoding="utf-8") as fh:
+        fh.write(body)
+
+
+# A normal app whose window class differs from its file name and its binary.
+desktop("firefox.desktop", """[Desktop Entry]
+Type=Application
+Name=Firefox
+Name[pt_BR]=Raposa de Fogo
+Icon=firefox-logo
+Exec=/usr/lib/firefox/firefox %u
+StartupWMClass=Navigator
+
+[Desktop Action new-window]
+Name=Nova janela
+Icon=wrong-action-icon
+""")
+# Reverse-DNS id, the Wayland app_id style.
+desktop("org.kde.konsole.desktop", """[Desktop Entry]
+Type=Application
+Name=Konsole
+Icon=utilities-terminal
+Exec=konsole
+""")
+# A background agent: NoDisplay means "not a user-facing app" and it must be
+# kept out of the index entirely, or it shows up in the picker as if it were one.
+desktop("kded6.desktop", """[Desktop Entry]
+Type=Application
+Name=KDE Daemon
+Icon=kde
+Exec=kded6
+NoDisplay=true
+""")
+
+wm._DESKTOP_DIRS = (tmp,)
+wm._desktop_index = None          # force a rebuild against the temp dir
+
+check("StartupWMClass wins for the X11 window class",
+      wm.desktop_lookup("Navigator"), ("firefox-logo", "Firefox"))
+check("reverse-DNS app_id resolves",
+      wm.desktop_lookup("org.kde.konsole"), ("utilities-terminal", "Konsole"))
+check("bare binary name resolves",
+      wm.desktop_lookup("konsole"), ("utilities-terminal", "Konsole"))
+check("Exec basename resolves past the %u code",
+      wm.desktop_lookup("firefox"), ("firefox-logo", "Firefox"))
+check("plain Name wins over localised Name[pt_BR]",
+      wm.desktop_lookup("Navigator")[1], "Firefox")
+check("action-group Icon does not leak into the entry",
+      wm.desktop_lookup("Navigator")[0], "firefox-logo")
+check("NoDisplay agent is not indexed",
+      wm.desktop_lookup("kded6"), ("application-x-executable", "kded6"))
+check("unknown app still yields a renderable icon + label",
+      wm.desktop_lookup("totally-unknown-app"),
+      ("application-x-executable", "totally-unknown-app"))
+
+# The veto set is what keeps background agents out of the picker on the
+# desktops with no window list (COSMIC, GNOME Wayland). They DO hold a
+# connection to the compositor, so the display-socket test alone would let
+# them through — exactly what made the first cut of the list show kded6 and
+# kaccess instead of the user's apps.
+agents = wm._desktop_index_get(want_hidden=True)
+check("NoDisplay agent is vetoed by desktop-file name", "kded6" in agents, True)
+check("NoDisplay agent is vetoed by Exec basename too", "kded6" in agents, True)
+check("a real app is never vetoed", "firefox" in agents, False)
+check("a real app is never vetoed (by class)", "navigator" in agents, False)
+
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILURE(S):"))
 for f in fails:
     print("  " + f)

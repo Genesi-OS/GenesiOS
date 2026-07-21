@@ -276,14 +276,19 @@ class Studio:
         })
 
     # -- freezing ----------------------------------------------------------
-    def _freeze_pid(self, pid, app_id):
+    def _freeze_pid(self, win):
         """Freeze one app. cgroup freeze first (catches the whole scope, i.e.
         every helper process a browser spawned); SIGSTOP the tree otherwise."""
+        pid, app_id = win.pid, win.app_id
+        # The icon/name travel with the record so the widgets can render the
+        # frozen list properly, and so a crash-recovery thaw can still name
+        # what it is thawing.
+        meta = {"pid": pid, "app_id": app_id,
+                "icon": win.icon, "name": win.name}
         cg = _cgroup_dir(pid)
         if cg and os.path.exists(os.path.join(cg, "cgroup.freeze")):
             if _write(os.path.join(cg, "cgroup.freeze"), "1"):
-                return {"pid": pid, "app_id": app_id, "method": "cgroup",
-                        "cgroup": cg}
+                return dict(meta, method="cgroup", cgroup=cg)
         pids = [pid] + _children(pid)
         stopped = []
         for p in pids:
@@ -294,8 +299,7 @@ class Studio:
                 continue
         if not stopped:
             return None
-        return {"pid": pid, "app_id": app_id, "method": "sigstop",
-                "pids": stopped}
+        return dict(meta, method="sigstop", pids=stopped)
 
     def _thaw_entry(self, entry):
         if entry.get("method") == "cgroup":
@@ -340,8 +344,12 @@ class Studio:
                 return {"ok": False,
                         "error": "no target app (focus one, or name it)"}
 
+            # Carry the icon and human name through to state.json: every widget
+            # renders from that file alone and must not have to re-resolve
+            # desktop entries itself (the plasmoid could not anyway).
             self.targets = [{"pid": w.pid, "app_id": w.app_id,
-                             "title": w.title} for w in chosen]
+                             "title": w.title, "icon": w.icon,
+                             "name": w.name} for w in chosen]
             target_pids = {w.pid for w in chosen}
 
             # Record the undo plan first — see CRASH SAFETY in the docstring.
@@ -350,7 +358,7 @@ class Studio:
 
             if self.cfg.get("freeze_background", True):
                 for w in self._freeze_candidates(target_pids):
-                    entry = self._freeze_pid(w.pid, w.app_id)
+                    entry = self._freeze_pid(w)
                     if entry:
                         self.frozen.append(entry)
                         self._persist_session()
@@ -449,7 +457,9 @@ class Studio:
                 "supports_focus": self.backend.supports_focus(),
                 "targets": list(self.targets),
                 "frozen": [{"pid": f["pid"], "app_id": f["app_id"],
-                            "method": f["method"]} for f in self.frozen],
+                            "method": f["method"],
+                            "icon": f.get("icon"), "name": f.get("name")}
+                           for f in self.frozen],
                 "frozen_count": len(self.frozen),
                 "boosted": list(self.boosted),
                 "config": dict(self.cfg),

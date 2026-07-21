@@ -42,6 +42,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 
 __all__ = ["Window", "detect_backend", "backend_for", "list_windows",
            "focused_window", "highlight_window", "clear_highlight"]
@@ -54,9 +55,15 @@ class Window:
     `pid` is what Studio Mode actually optimizes — everything downstream (nice,
     affinity, cgroup, freezing) is process-level, so a window with no resolvable
     pid is useless to us and gets dropped by the backends.
+
+    `icon` and `name` are resolved from the desktop-entry index, so every UI can
+    show the app's real icon and human name ("Firefox") instead of its raw
+    window class ("firefox-esr"). They are best-effort: an app with no .desktop
+    entry falls back to its app_id and a generic icon.
     """
 
-    __slots__ = ("pid", "app_id", "title", "handle", "focused", "backend")
+    __slots__ = ("pid", "app_id", "title", "handle", "focused", "backend",
+                 "icon", "name")
 
     def __init__(self, pid, app_id="", title="", handle=None, focused=False,
                  backend=""):
@@ -66,14 +73,165 @@ class Window:
         self.handle = handle
         self.focused = bool(focused)
         self.backend = backend
+        self.icon, self.name = desktop_lookup(self.app_id, self.pid)
 
     def as_dict(self):
         return {"pid": self.pid, "app_id": self.app_id, "title": self.title,
                 "handle": self.handle, "focused": self.focused,
-                "backend": self.backend}
+                "backend": self.backend, "icon": self.icon, "name": self.name}
 
     def __repr__(self):
         return f"<Window {self.app_id}:{self.pid} {self.title!r}>"
+
+
+# ── desktop-entry index (icons + human names) ────────────────────────────────
+_DESKTOP_DIRS = ("/usr/share/applications",
+                 "/usr/local/share/applications",
+                 os.path.expanduser("~/.local/share/applications"),
+                 "/var/lib/flatpak/exports/share/applications",
+                 os.path.expanduser(
+                     "~/.local/share/flatpak/exports/share/applications"))
+
+_desktop_index = None          # {match key -> (icon, name)}
+_desktop_hidden = None         # {match key} for NoDisplay entries (agents)
+_desktop_index_at = 0.0
+_DESKTOP_TTL = 60.0            # apps get installed while the session runs
+
+
+def _parse_desktop(path):
+    """Pull Icon/Name/StartupWMClass/Exec out of a .desktop [Desktop Entry].
+
+    Hand-parsed rather than via configparser: desktop files legitimately
+    contain duplicate keys and '%' format codes that configparser rejects, and
+    one bad file must not take the whole index down.
+    """
+    icon = name = wmclass = execline = ""
+    nodisplay = False
+    # Returned even for NoDisplay entries: the caller keeps their names in a
+    # separate veto set, which is how background agents that legitimately talk
+    # to the compositor (kded6, kaccess, xdg-desktop-portal) are kept out of
+    # the app picker without resorting to name heuristics.
+    try:
+        with open(path, "r", errors="replace") as fh:
+            in_entry = False
+            for line in fh:
+                line = line.strip()
+                if line.startswith("["):
+                    # Only the main group; action groups have their own names.
+                    in_entry = line == "[Desktop Entry]"
+                    continue
+                if not in_entry or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip()
+                if key == "Icon" and not icon:
+                    icon = val
+                elif key == "Name" and not name:      # plain Name, not Name[xx]
+                    name = val
+                elif key == "StartupWMClass" and not wmclass:
+                    wmclass = val
+                elif key == "Exec" and not execline:
+                    execline = val
+                elif key == "NoDisplay" and val.lower() == "true":
+                    nodisplay = True
+    except OSError:
+        return None
+    return icon, name, wmclass, execline, nodisplay
+
+
+def _build_desktop_index():
+    index, hidden = {}, set()
+
+    def put(key, icon, name):
+        key = (key or "").strip().lower()
+        # First writer wins: /usr/share is scanned before ~/.local, but a more
+        # specific match key (StartupWMClass) is registered before the looser
+        # ones for the same file, so precision beats scan order.
+        if key and key not in index:
+            index[key] = (icon, name)
+
+    for d in _DESKTOP_DIRS:
+        try:
+            entries = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for fn in entries:
+            if not fn.endswith(".desktop"):
+                continue
+            parsed = _parse_desktop(os.path.join(d, fn))
+            if not parsed:
+                continue
+            icon, name, wmclass, execline, nodisplay = parsed
+            stem = fn[:-8]
+            if nodisplay:
+                # Not a user-facing app: record every name it could be matched
+                # by, so the /proc backend can veto it, and index nothing.
+                for key in (wmclass, stem, stem.split(".")[-1]):
+                    if key:
+                        hidden.add(key.strip().lower())
+                if execline:
+                    for tok in execline.split():
+                        if not tok.startswith("%") and "=" not in tok:
+                            hidden.add(os.path.basename(tok).strip().lower())
+                            break
+                continue
+            if not icon and not name:
+                continue
+            # Most precise first: the app itself declares its window class.
+            put(wmclass, icon, name)
+            put(stem, icon, name)                    # org.kde.konsole
+            put(stem.split(".")[-1], icon, name)     # konsole
+            if execline:
+                # The binary actually launched, minus wrappers and %-codes.
+                for tok in execline.split():
+                    if tok.startswith("%") or "=" in tok:
+                        continue
+                    base = os.path.basename(tok)
+                    if base not in ("env", "sh", "bash", "flatpak", "sudo"):
+                        put(base, icon, name)
+                        break
+    return index, hidden
+
+
+def _desktop_index_get(want_hidden=False):
+    global _desktop_index, _desktop_hidden, _desktop_index_at
+    now = time.time()
+    if _desktop_index is None or (now - _desktop_index_at) > _DESKTOP_TTL:
+        try:
+            _desktop_index, _desktop_hidden = _build_desktop_index()
+        except Exception:
+            _desktop_index = _desktop_index or {}
+            _desktop_hidden = _desktop_hidden or set()
+        _desktop_index_at = now
+    return _desktop_hidden if want_hidden else _desktop_index
+
+
+def desktop_lookup(app_id, pid=None):
+    """(icon, display name) for a window class, falling back sensibly.
+
+    Tries the window class, then its last dotted component, then the process
+    name — a Wayland app_id like "org.mozilla.firefox", an X11 class like
+    "Navigator" and a bare comm like "firefox" should all land on Firefox.
+    """
+    index = _desktop_index_get()
+    tried = []
+    if app_id:
+        tried.append(app_id)
+        if "." in app_id:
+            tried.append(app_id.split(".")[-1])
+        tried.append(app_id.replace(" ", "-"))
+    if pid:
+        comm = _comm(pid)
+        if comm:
+            tried.append(comm)
+    for key in tried:
+        hit = index.get(key.strip().lower())
+        if hit:
+            icon, name = hit
+            return icon or "application-x-executable", name or app_id or key
+    # No desktop entry: still give the UI something to render and to label.
+    return "application-x-executable", app_id or (_comm(pid) if pid else "") or "?"
 
 
 def _run(cmd, timeout=4):
@@ -393,6 +551,60 @@ def _cmdline(pid):
         return ""
 
 
+def _display_socket_inodes():
+    """Inodes of the compositor's listening sockets (Wayland and/or X11).
+
+    A process with a window necessarily holds an open connection to the display
+    server. That is a far better "is this a GUI app" test than matching process
+    names against .desktop files, and it is the only signal available on the
+    desktops that expose no window list at all (COSMIC, GNOME Wayland).
+
+    Returns an empty set when /proc/net/unix is unreadable, in which case the
+    caller keeps its name-matching behaviour rather than listing nothing.
+    """
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    wayland = os.environ.get("WAYLAND_DISPLAY") or "wayland-0"
+    wanted = set()
+    wl_path = wayland if wayland.startswith("/") \
+        else os.path.join(runtime, wayland)
+    try:
+        with open("/proc/net/unix") as fh:
+            next(fh, None)                    # header
+            for line in fh:
+                parts = line.split()
+                if len(parts) < 8:
+                    continue
+                inode, path = parts[6], parts[7]
+                # The Wayland socket, plus the X11 sockets that back XWayland
+                # and every X11 session.
+                if path == wl_path or path.startswith("/tmp/.X11-unix/X") \
+                        or path.startswith("@/tmp/.X11-unix/X"):
+                    wanted.add(inode)
+    except Exception:
+        return set()
+    return wanted
+
+
+def _has_display_connection(pid, display_inodes):
+    """True when this process holds an open fd to the display server."""
+    if not display_inodes:
+        return False
+    fddir = f"/proc/{pid}/fd"
+    try:
+        names = os.listdir(fddir)
+    except OSError:
+        return False                          # not ours / already gone
+    for fd in names:
+        try:
+            target = os.readlink(os.path.join(fddir, fd))
+        except OSError:
+            continue
+        if target.startswith("socket:["):
+            if target[8:-1] in display_inodes:
+                return True
+    return False
+
+
 class ProcBackend(_Backend):
     """Last resort: GNOME-Wayland and Cosmic, where no window list is exposed.
 
@@ -404,31 +616,28 @@ class ProcBackend(_Backend):
 
     name = "procfs"
 
-    _DESKTOP_DIRS = ("/usr/share/applications",
-                     "/usr/local/share/applications",
-                     os.path.expanduser("~/.local/share/applications"))
-
     def available(self):
         return True
 
     def supports_focus(self):
         return False
 
-    def _desktop_names(self):
-        names = set()
-        for d in self._DESKTOP_DIRS:
-            try:
-                for fn in os.listdir(d):
-                    if fn.endswith(".desktop"):
-                        names.add(fn[:-8].lower())
-                        names.add(fn[:-8].split(".")[-1].lower())
-            except Exception:
-                continue
-        return names
-
     def windows(self):
         uid = os.getuid()
-        known = self._desktop_names()
+        # Two independent signals, because neither alone is good enough:
+        #
+        #   display connection — the process holds an fd to the Wayland/X11
+        #     socket. Strong evidence it has a window, and the ONLY signal that
+        #     works for an app with no .desktop entry. This is what stops the
+        #     list being full of daemons.
+        #   desktop entry      — gives the icon and the human name, and its
+        #     NoDisplay flag excludes background agents that DO connect to the
+        #     display (kded6, kaccess, portals) but are not user applications.
+        #
+        # Require the connection; use the entry to name and to veto.
+        known = _desktop_index_get()
+        agents = _desktop_index_get(want_hidden=True)
+        display_inodes = _display_socket_inodes()
         out, seen = [], set()
         for entry in os.listdir("/proc"):
             if not entry.isdigit():
@@ -442,10 +651,21 @@ class ProcBackend(_Backend):
                 continue
             if not comm or comm in seen:
                 continue
-            # A GUI app either matches a .desktop name or is a known toolkit
-            # process with a window-ish command line. Keep this conservative:
-            # false positives here become "apps" the user is offered to focus.
-            if comm.lower() not in known:
+            connected = _has_display_connection(pid, display_inodes)
+            indexed = comm.lower() in known
+            if display_inodes:
+                # A real GUI app talks to the compositor. Anything that also
+                # has a visible desktop entry is certainly one; anything with
+                # no entry at all is still listed (unpackaged binaries, AppImages
+                # and games launched straight from Steam have no .desktop we can
+                # match), but a process whose entry says NoDisplay is dropped.
+                if not connected:
+                    continue
+                if comm.lower() in agents:
+                    continue
+            elif not indexed:
+                # No /proc/net/unix (hardened kernel): fall back to the old
+                # name-matching behaviour rather than listing nothing at all.
                 continue
             seen.add(comm)
             out.append(Window(pid=pid, app_id=comm, title=_cmdline(pid)[:120],

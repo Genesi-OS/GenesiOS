@@ -89,6 +89,21 @@ for each, best-first:
 | GNOME (Wayland) | `/proc` scan **+ the Shell extension** | apps only | yes, via the extension |
 | Cosmic | `/proc` scan | apps only | no |
 
+The `/proc` backend identifies applications by requiring an **open connection to
+the display server** (an fd onto the Wayland or X11 socket), then vetoes anything
+whose desktop entry is `NoDisplay`. The connection test is what separates apps
+from daemons; the veto is what removes the background agents that legitimately
+connect anyway (`kded6`, `kaccess`, portals). Name matching alone listed those
+agents as if they were the user's apps.
+
+Full focus-following on COSMIC would need a Wayland toplevel client. Note that
+neither `ext-foreign-toplevel-list-v1` nor `cosmic-toplevel-info-v1` exposes a
+**PID** — they carry title, app_id and (for the COSMIC one) activated state — so
+such a client would still have to bridge app_id back to a process. Everything
+Studio Mode does is process-level, so that bridge, not the protocol, is the real
+work. The tray widget already runs on COSMIC via `cosmic-panel`'s status area,
+which implements the StatusNotifierItem host.
+
 GNOME on Wayland exposes no window list to third parties at all, which is why
 the GNOME Shell extension matters: running inside the shell, it can read the
 real focused window and hand its PID to the CLI. Without it, Studio Mode on
