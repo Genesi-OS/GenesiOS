@@ -819,8 +819,7 @@ Kirigami.ApplicationWindow {
                 // ── TURBO CARD ──
                 GlassCard {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: (win.turboStatusText.length > 0 ? 116 : 100)
-                                            + (win.turboRecommend.length > 0 ? 22 : 0)
+                    Layout.preferredHeight: win.turboStatusText.length > 0 ? 116 : 100
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing
                     accent: theme.turbo
@@ -879,37 +878,6 @@ Kirigami.ApplicationWindow {
                                         QQC2.ToolTip.visible: containsMouse
                                     }
                                 }
-                                // Always available: when a backend is missing it installs one;
-                                // when one is present it lets you SWITCH between Vulkan and CUDA
-                                // (the dialog shows which is active + recommends per hardware).
-                                // Custom rounded pill (the flat Fusion QQC2.Button looked out of place).
-                                Rectangle {
-                                    id: backendBtn
-                                    implicitHeight: 30
-                                    implicitWidth: backendRow.implicitWidth + 24
-                                    radius: 9
-                                    color: backendMa.containsMouse ? theme.cardHi : theme.a(theme.textHi, 0.06)
-                                    border.width: 1; border.color: theme.line
-                                    Behavior on color { ColorAnimation { duration: 140 } }
-                                    RowLayout {
-                                        id: backendRow
-                                        anchors.centerIn: parent
-                                        spacing: 6
-                                        Kirigami.Icon { source: "download"; Layout.preferredWidth: 14; Layout.preferredHeight: 14; color: theme.textMid }
-                                        QQC2.Label {
-                                            text: win.turboNeedsInstall ? i18n.t("turbo.installBackend") : i18n.t("turbo.backend")
-                                            color: theme.textHi; font.pixelSize: 12
-                                        }
-                                        Kirigami.Icon { source: "go-down"; Layout.preferredWidth: 12; Layout.preferredHeight: 12; color: theme.textLo }
-                                    }
-                                    MouseArea {
-                                        id: backendMa
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: { backend.backendInfo(); backendDialog.open() }
-                                    }
-                                }
                             }
                             QQC2.Label {
                                 Layout.fillWidth: true
@@ -918,41 +886,6 @@ Kirigami.ApplicationWindow {
                                 color: win.turboSpec ? theme.turboBright : theme.textMid
                                 opacity: 0.9
                                 font.pixelSize: 12
-                            }
-                            // Advisor → Turbo model pick: biggest model that fits 100% in VRAM.
-                            RowLayout {
-                                visible: win.turboRecommend.length > 0
-                                spacing: Kirigami.Units.smallSpacing
-                                QQC2.Label {
-                                    text: i18n.t("turbo.recommendedGpu")
-                                    color: theme.textLo; font.pixelSize: 11
-                                }
-                                Rectangle {
-                                    radius: 6; height: 20
-                                    width: recLbl.implicitWidth + 16
-                                    color: win.turboModel === win.turboRecommend
-                                         ? theme.a(theme.green, 0.30) : theme.a(theme.textHi, 0.10)
-                                    border.width: 1
-                                    border.color: win.turboModel === win.turboRecommend
-                                         ? theme.a(theme.green, 0.6) : theme.line
-                                    QQC2.Label {
-                                        id: recLbl
-                                        anchors.centerIn: parent
-                                        text: win.turboModel === win.turboRecommend
-                                            ? "✓ " + win.turboRecommend : win.turboRecommend
-                                        font.pixelSize: 10
-                                        color: win.turboModel === win.turboRecommend
-                                             ? theme.greenBright : theme.textMid
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: { win.turboModel = win.turboRecommend; win.turboModelLocked = true }
-                                        QQC2.ToolTip.text: i18n.t("tip.recVram")
-                                        QQC2.ToolTip.visible: containsMouse
-                                    }
-                                }
                             }
                             QQC2.Label {
                                 visible: win.turboStatusText.length > 0
@@ -964,30 +897,74 @@ Kirigami.ApplicationWindow {
                             }
                         }
 
-                        // custom toggle
-                        Rectangle {
-                            width: 54; height: 30; radius: 15
-                            color: win.turboRequested ? theme.turbo : theme.a(theme.textHi, 0.13)
-                            Behavior on color { ColorAnimation { duration: 180 } }
+                        // Right-hand controls: backend picker stacked on top of the
+                        // on/off toggle, both flush to the card's right edge.
+                        ColumnLayout {
+                            Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                            spacing: Kirigami.Units.smallSpacing
+
+                            // Always available: when a backend is missing it installs one;
+                            // when one is present it lets you SWITCH between Vulkan and CUDA
+                            // (the dialog shows which is active + recommends per hardware).
+                            // Custom rounded pill (the flat Fusion QQC2.Button looked out of place).
                             Rectangle {
-                                width: 24; height: 24; radius: 12; y: 3
-                                x: win.turboRequested ? parent.width - 27 : 3
-                                color: "#FFFFFF"
-                                Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                                id: backendBtn
+                                Layout.alignment: Qt.AlignRight
+                                implicitHeight: 30
+                                implicitWidth: backendRow.implicitWidth + 24
+                                radius: 9
+                                color: backendMa.containsMouse ? theme.cardHi : theme.a(theme.textHi, 0.06)
+                                border.width: 1; border.color: theme.line
+                                Behavior on color { ColorAnimation { duration: 140 } }
+                                RowLayout {
+                                    id: backendRow
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    Kirigami.Icon { source: "download"; Layout.preferredWidth: 14; Layout.preferredHeight: 14; color: theme.textMid }
+                                    QQC2.Label {
+                                        text: win.turboNeedsInstall ? i18n.t("turbo.installBackend") : i18n.t("turbo.backend")
+                                        color: theme.textHi; font.pixelSize: 12
+                                    }
+                                    Kirigami.Icon { source: "go-down"; Layout.preferredWidth: 12; Layout.preferredHeight: 12; color: theme.textLo }
+                                }
+                                MouseArea {
+                                    id: backendMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: { backend.backendInfo(); backendDialog.open() }
+                                }
                             }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (win.turboRequested) {
-                                        // turning Turbo OFF — release the lock so the
-                                        // next start asks again / re-seeds from live.
-                                        win.turboRequested = false
-                                        win.turboModelLocked = false
-                                    } else {
-                                        // turning Turbo ON — ask which model first.
-                                        backend.loadModels()
-                                        turboModelDialog.openPicker()
+
+                            // custom toggle
+                            Rectangle {
+                                Layout.alignment: Qt.AlignRight
+                                Layout.preferredWidth: 54
+                                Layout.preferredHeight: 30
+                                implicitWidth: 54; implicitHeight: 30
+                                radius: 15
+                                color: win.turboRequested ? theme.turbo : theme.a(theme.textHi, 0.13)
+                                Behavior on color { ColorAnimation { duration: 180 } }
+                                Rectangle {
+                                    width: 24; height: 24; radius: 12; y: 3
+                                    x: win.turboRequested ? parent.width - 27 : 3
+                                    color: "#FFFFFF"
+                                    Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (win.turboRequested) {
+                                            // turning Turbo OFF — release the lock so the
+                                            // next start asks again / re-seeds from live.
+                                            win.turboRequested = false
+                                            win.turboModelLocked = false
+                                        } else {
+                                            // turning Turbo ON — ask which model first.
+                                            backend.loadModels()
+                                            turboModelDialog.openPicker()
+                                        }
                                     }
                                 }
                             }
