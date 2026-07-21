@@ -222,16 +222,18 @@ def desktop_lookup(app_id, pid=None):
             tried.append(app_id.split(".")[-1])
         tried.append(app_id.replace(" ", "-"))
     if pid:
-        comm = _comm(pid)
-        if comm:
-            tried.append(comm)
+        # exe basename / comm / launched command — see _app_names(). This is
+        # what lets an app whose window class says nothing useful still find
+        # its icon via the binary the user actually started.
+        tried.extend(_app_names(pid))
     for key in tried:
         hit = index.get(key.strip().lower())
         if hit:
             icon, name = hit
             return icon or "application-x-executable", name or app_id or key
     # No desktop entry: still give the UI something to render and to label.
-    return "application-x-executable", app_id or (_comm(pid) if pid else "") or "?"
+    fallback = app_id or (_exe_name(pid) or _comm(pid) if pid else "") or "?"
+    return "application-x-executable", fallback
 
 
 def _run(cmd, timeout=4):
@@ -551,6 +553,49 @@ def _cmdline(pid):
         return ""
 
 
+def _exe_name(pid):
+    """Basename of the real executable, or "" .
+
+    Preferred over /proc/PID/comm because comm is truncated to 15 characters
+    (TASK_COMM_LEN) — an app called "genesi-code-helper" arrives as
+    "genesi-code-hel" and matches no desktop entry at all. It is also stable
+    for apps that rewrite their own comm (Electron, Steam games).
+    """
+    try:
+        return os.path.basename(os.readlink(f"/proc/{pid}/exe"))
+    except OSError:
+        return ""
+
+
+def _app_names(pid):
+    """Every plausible identity for a process, best first.
+
+    comm is truncated and can be rewritten; the exe basename is exact but is a
+    wrapper for interpreted apps (electron, python3); the first cmdline token
+    is what the user actually launched. Trying all three is what makes an
+    Electron app, a Python app and a plain binary all resolve to one entry.
+    """
+    names = []
+    exe = _exe_name(pid)
+    if exe:
+        names.append(exe)
+    comm = _comm(pid)
+    if comm and comm not in names:
+        names.append(comm)
+    cmd = _cmdline(pid).split()
+    if cmd:
+        first = os.path.basename(cmd[0])
+        if first and first not in names:
+            names.append(first)
+        # `electron /opt/genesi-code/app` — the script path names the app.
+        if len(cmd) > 1 and first in ("electron", "python3", "python", "node",
+                                      "sh", "bash", "env"):
+            arg = os.path.basename(cmd[1].rstrip("/"))
+            if arg and not arg.startswith("-") and arg not in names:
+                names.append(arg)
+    return names
+
+
 def _display_socket_inodes():
     """Inodes of the compositor's listening sockets (Wayland and/or X11).
 
@@ -639,36 +684,47 @@ class ProcBackend(_Backend):
         agents = _desktop_index_get(want_hidden=True)
         display_inodes = _display_socket_inodes()
         out, seen = [], set()
-        for entry in os.listdir("/proc"):
+        for entry in sorted(os.listdir("/proc"), key=lambda e: int(e)
+                            if e.isdigit() else 0):
             if not entry.isdigit():
                 continue
             pid = int(entry)
             try:
                 if os.stat(f"/proc/{pid}").st_uid != uid:
                     continue
-                comm = _comm(pid)
             except Exception:
                 continue
-            if not comm or comm in seen:
+            names = _app_names(pid)
+            if not names:
                 continue
+            # Group by the real executable, not by comm: comm is truncated to
+            # 15 chars and Electron/Chromium apps rewrite it per child process,
+            # so deduping on it both split one app into several rows and hid
+            # apps whose name is longer than the limit. The lowest pid for an
+            # executable is its main process, and /proc is walked in pid order,
+            # so the first hit is the one to keep.
+            key = _exe_name(pid) or names[0]
+            if key in seen:
+                continue
+            lowered = [n.lower() for n in names]
             connected = _has_display_connection(pid, display_inodes)
-            indexed = comm.lower() in known
+            indexed = any(n in known for n in lowered)
             if display_inodes:
-                # A real GUI app talks to the compositor. Anything that also
-                # has a visible desktop entry is certainly one; anything with
-                # no entry at all is still listed (unpackaged binaries, AppImages
-                # and games launched straight from Steam have no .desktop we can
-                # match), but a process whose entry says NoDisplay is dropped.
+                # A real GUI app talks to the compositor. An app with no
+                # desktop entry is still listed (unpackaged binaries,
+                # AppImages, Steam games), but one whose entry says NoDisplay
+                # is a background agent and is dropped.
                 if not connected:
                     continue
-                if comm.lower() in agents:
+                if any(n in agents for n in lowered):
                     continue
             elif not indexed:
                 # No /proc/net/unix (hardened kernel): fall back to the old
                 # name-matching behaviour rather than listing nothing at all.
                 continue
-            seen.add(comm)
-            out.append(Window(pid=pid, app_id=comm, title=_cmdline(pid)[:120],
+            seen.add(key)
+            out.append(Window(pid=pid, app_id=names[0],
+                              title=_cmdline(pid)[:120],
                               handle=None, focused=False, backend=self.name))
         return out
 

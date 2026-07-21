@@ -28,6 +28,11 @@ PlasmoidItem {
     property var targets: []
     property var frozen: []
     property var openApps: []
+    // PIDs ticked in the picker. Studio Mode takes any number of apps, so the
+    // picker is multi-select and only commits when the user says go — clicking
+    // a row used to fire immediately, which made choosing a second app
+    // impossible.
+    property var selected: []
     property string backendName: "?"
     property bool supportsFocus: true
     property string lastError: ""
@@ -90,6 +95,30 @@ PlasmoidItem {
         } catch (e) {
             // leave the previous list rather than blanking the picker
         }
+    }
+
+    function isSelected(pid) {
+        return root.selected.indexOf(pid) !== -1
+    }
+
+    function toggleSelect(pid) {
+        // Reassign rather than mutate: QML property bindings do not observe
+        // in-place changes to a JS array, so push()/splice() alone would tick
+        // the box in the model but never repaint the row.
+        var next = root.selected.slice()
+        var at = next.indexOf(pid)
+        if (at === -1)
+            next.push(pid)
+        else
+            next.splice(at, 1)
+        root.selected = next
+    }
+
+    function startSelected() {
+        if (root.selected.length === 0)
+            return
+        root.studioOn(root.selected.join(" "))
+        root.selected = []
     }
 
     function targetNames() {
@@ -342,13 +371,16 @@ PlasmoidItem {
 
                 PlasmaComponents.Button {
                     Layout.fillWidth: true
-                    visible: root.supportsFocus
+                    visible: root.supportsFocus && root.selected.length === 0
                     text: "Focus the active window"
                     icon.name: "view-fullscreen"
                     onClicked: root.studioOn("")
                 }
                 PlasmaComponents.Label {
-                    text: root.supportsFocus ? "…or pick an app:" : "Open apps:"
+                    text: root.selected.length > 0
+                        ? root.selected.length + " app(s) selected"
+                        : (root.supportsFocus ? "…or tick the apps to focus:"
+                                              : "Tick the apps to focus:")
                     opacity: 0.7
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
                 }
@@ -362,11 +394,16 @@ PlasmoidItem {
                         delegate: PlasmaComponents.ItemDelegate {
                             width: ListView.view.width
                             height: Kirigami.Units.iconSizes.large
-                            onClicked: root.studioOn(String(modelData.pid))
+                            // Ticks the row; the run button below commits.
+                            onClicked: root.toggleSelect(modelData.pid)
 
                             contentItem: RowLayout {
                                 spacing: Kirigami.Units.smallSpacing
 
+                                PlasmaComponents.CheckBox {
+                                    checked: root.isSelected(modelData.pid)
+                                    onToggled: root.toggleSelect(modelData.pid)
+                                }
                                 Kirigami.Icon {
                                     source: modelData.icon || "application-x-executable"
                                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
@@ -408,6 +445,26 @@ PlasmoidItem {
                     visible: root.openApps.length === 0
                     text: "Nothing open that Studio Mode can see"
                     explanation: "Backend: " + root.backendName
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: root.selected.length > 0
+                    spacing: Kirigami.Units.smallSpacing
+
+                    PlasmaComponents.Button {
+                        Layout.fillWidth: true
+                        text: root.selected.length === 1
+                            ? "Give the machine to this app"
+                            : "Give the machine to these " + root.selected.length + " apps"
+                        icon.name: "media-playback-start"
+                        onClicked: root.startSelected()
+                    }
+                    PlasmaComponents.Button {
+                        text: "Clear"
+                        flat: true
+                        onClicked: root.selected = []
+                    }
                 }
             }
         }

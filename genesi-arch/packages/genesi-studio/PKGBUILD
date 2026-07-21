@@ -33,7 +33,13 @@ pkgver=1.0.0
 # resolve real app icons and names from .desktop entries for every widget, and
 # make the /proc backend require an open display-server connection so the app
 # picker on COSMIC and GNOME Wayland lists applications rather than agents.
-pkgrel=2
+# pkgrel 3: multi-app selection in both widgets (the picker used to fire on the
+# first click, so a second app could never be chosen), a desktop notification on
+# switch-on/off reporting how many apps were paused (Studio Mode was otherwise
+# invisible — a frozen window keeps its last frame on screen), and /proc app
+# identity by real executable instead of comm, which is truncated at 15 chars
+# and rewritten per-child by Electron apps.
+pkgrel=3
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -53,6 +59,7 @@ depends=(
     'util-linux'
 )
 optdepends=(
+    'libnotify: desktop notification when Studio Mode switches on or off'
     'python-gobject: system-tray widget (non-KDE, non-GNOME desktops)'
     'libayatana-appindicator: system-tray widget (the proven SNI path in Genesi)'
     'gtk3: system-tray widget'

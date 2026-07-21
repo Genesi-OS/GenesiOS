@@ -91,6 +91,11 @@ def _item(label, enabled=True, on_activate=None):
 
 class Tray:
     def __init__(self):
+        # PIDs ticked in the "Focus on…" submenu. Studio Mode accepts any
+        # number of apps, so the submenu is a multi-select: ticking rows builds
+        # a set and a separate entry commits it. Activating on the first click
+        # would make choosing a second app impossible.
+        self.selected = set()
         self.ind = AppIndicator.Indicator.new(
             "genesi-studio-tray", "genesi-studio",
             AppIndicator.IndicatorCategory.APPLICATION_STATUS)
@@ -102,6 +107,25 @@ class Tray:
     def _tick(self):
         self.rebuild()
         return True
+
+    def _on_toggle(self, item, pid):
+        if item.get_active():
+            self.selected.add(pid)
+        else:
+            self.selected.discard(pid)
+        # Do NOT rebuild here: the menu is mid-activation and replacing it
+        # under GTK's feet closes the submenu the user is still clicking in.
+        # The 3-second timer redraws it soon enough.
+
+    def _start_selected(self):
+        if not self.selected:
+            return
+        run_cli("on", *[str(p) for p in sorted(self.selected)])
+        self.selected.clear()
+
+    def _clear_selected(self):
+        self.selected.clear()
+        self.rebuild()
 
     def rebuild(self):
         s = read_state()
@@ -157,21 +181,34 @@ class Tray:
             menu.append(_item("Turn Studio Mode OFF",
                               on_activate=lambda: run_cli("off")))
         else:
-            if s.get("supports_focus"):
+            if s.get("supports_focus") and not self.selected:
                 menu.append(_item("Studio Mode on the focused app",
                                   on_activate=lambda: run_cli("on")))
             focus_menu = Gtk.Menu()
             apps = list_windows()
+            live = set()
             if apps:
                 for pid, app in apps[:MAX_LISTED * 2]:
-                    focus_menu.append(_item(
-                        f"{app}  ({pid})",
-                        on_activate=lambda p=pid: run_cli("on", str(p))))
+                    live.add(pid)
+                    mi = Gtk.CheckMenuItem(label=f"{app}  ({pid})")
+                    mi.set_active(pid in self.selected)
+                    mi.connect("toggled", self._on_toggle, pid)
+                    focus_menu.append(mi)
             else:
                 focus_menu.append(_item("nothing open", False))
+            # An app the user ticked may have exited before they committed.
+            self.selected &= live
             holder = Gtk.MenuItem(label="Focus on…")
             holder.set_submenu(focus_menu)
             menu.append(holder)
+
+            if self.selected:
+                count = len(self.selected)
+                menu.append(_item(
+                    f"▶ Give the machine to {count} selected app(s)",
+                    on_activate=self._start_selected))
+                menu.append(_item("Clear selection",
+                                  on_activate=self._clear_selected))
 
         menu.append(Gtk.SeparatorMenuItem())
         menu.append(_item("Quit", on_activate=Gtk.main_quit))
