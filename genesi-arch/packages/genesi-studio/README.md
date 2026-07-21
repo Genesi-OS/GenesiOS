@@ -89,12 +89,20 @@ for each, best-first:
 | GNOME (Wayland) | `/proc` scan **+ the Shell extension** | apps only | yes, via the extension |
 | Cosmic | `/proc` scan | apps only | no |
 
-The `/proc` backend identifies applications by requiring an **open connection to
-the display server** (an fd onto the Wayland or X11 socket), then vetoes anything
-whose desktop entry is `NoDisplay`. The connection test is what separates apps
-from daemons; the veto is what removes the background agents that legitimately
-connect anyway (`kded6`, `kaccess`, portals). Name matching alone listed those
-agents as if they were the user's apps.
+The `/proc` backend identifies applications by matching a process against a
+**visible desktop entry** (its executable, `comm`, or launched command line),
+and vetoes anything whose entry is `NoDisplay` — that veto is what keeps the
+background agents (`kded6`, `kaccess`, portals) out of the picker. It is a
+heuristic and misses apps with no `.desktop` (Steam games, AppImages); that is
+the honest ceiling on a desktop with no window list.
+
+Crucially, this fallback should almost never be what you actually run: the
+session daemon has no `DISPLAY`/`WAYLAND_DISPLAY` of its own (it is a
+`systemd --user` service, which does not inherit the graphical environment), so
+on startup it **harvests those variables from a session-owned compositor
+process** and splices them in. Without that step every real backend fails its
+`available()` check and the session drops to `procfs` — which was the original
+"Backend: procfs, nothing found" bug on KDE.
 
 Full focus-following on COSMIC would need a Wayland toplevel client. Note that
 neither `ext-foreign-toplevel-list-v1` nor `cosmic-toplevel-info-v1` exposes a

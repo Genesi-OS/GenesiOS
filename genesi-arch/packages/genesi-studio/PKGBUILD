@@ -39,7 +39,14 @@ pkgver=1.0.0
 # invisible — a frozen window keeps its last frame on screen), and /proc app
 # identity by real executable instead of comm, which is truncated at 15 chars
 # and rewritten per-child by Electron apps.
-pkgrel=3
+# pkgrel 4: THE fix for "Backend: procfs, nothing found". genesi-studiod is a
+# systemd --user service and so has no DISPLAY/WAYLAND_DISPLAY of its own — every
+# real backend failed available() and the session dropped to procfs. It now
+# harvests the session env from a compositor process before detecting. Also
+# reverts the pkgrel-3 display-socket app filter, which was broken (a client's
+# socket fd inode never matches the server's listening inode → empty list) back
+# to desktop-entry matching + the NoDisplay veto.
+pkgrel=4
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

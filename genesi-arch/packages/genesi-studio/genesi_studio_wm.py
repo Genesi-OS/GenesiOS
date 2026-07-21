@@ -596,60 +596,6 @@ def _app_names(pid):
     return names
 
 
-def _display_socket_inodes():
-    """Inodes of the compositor's listening sockets (Wayland and/or X11).
-
-    A process with a window necessarily holds an open connection to the display
-    server. That is a far better "is this a GUI app" test than matching process
-    names against .desktop files, and it is the only signal available on the
-    desktops that expose no window list at all (COSMIC, GNOME Wayland).
-
-    Returns an empty set when /proc/net/unix is unreadable, in which case the
-    caller keeps its name-matching behaviour rather than listing nothing.
-    """
-    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-    wayland = os.environ.get("WAYLAND_DISPLAY") or "wayland-0"
-    wanted = set()
-    wl_path = wayland if wayland.startswith("/") \
-        else os.path.join(runtime, wayland)
-    try:
-        with open("/proc/net/unix") as fh:
-            next(fh, None)                    # header
-            for line in fh:
-                parts = line.split()
-                if len(parts) < 8:
-                    continue
-                inode, path = parts[6], parts[7]
-                # The Wayland socket, plus the X11 sockets that back XWayland
-                # and every X11 session.
-                if path == wl_path or path.startswith("/tmp/.X11-unix/X") \
-                        or path.startswith("@/tmp/.X11-unix/X"):
-                    wanted.add(inode)
-    except Exception:
-        return set()
-    return wanted
-
-
-def _has_display_connection(pid, display_inodes):
-    """True when this process holds an open fd to the display server."""
-    if not display_inodes:
-        return False
-    fddir = f"/proc/{pid}/fd"
-    try:
-        names = os.listdir(fddir)
-    except OSError:
-        return False                          # not ours / already gone
-    for fd in names:
-        try:
-            target = os.readlink(os.path.join(fddir, fd))
-        except OSError:
-            continue
-        if target.startswith("socket:["):
-            if target[8:-1] in display_inodes:
-                return True
-    return False
-
-
 class ProcBackend(_Backend):
     """Last resort: GNOME-Wayland and Cosmic, where no window list is exposed.
 
@@ -680,9 +626,16 @@ class ProcBackend(_Backend):
         #     display (kded6, kaccess, portals) but are not user applications.
         #
         # Require the connection; use the entry to name and to veto.
+        # Identify a GUI app by a VISIBLE desktop entry (NoDisplay entries are
+        # background agents and are vetoed). This is a heuristic — it misses
+        # apps with no .desktop (Steam games, AppImages) — but it is the honest
+        # ceiling on a desktop that exposes no window list, and it is far better
+        # than the alternatives: matching process names alone lets daemons
+        # through, and an earlier attempt to require an open display-socket fd
+        # was worse still (a client's socket fd has a different inode from the
+        # server's listening socket, so nothing ever matched → an empty list).
         known = _desktop_index_get()
         agents = _desktop_index_get(want_hidden=True)
-        display_inodes = _display_socket_inodes()
         out, seen = [], set()
         for entry in sorted(os.listdir("/proc"), key=lambda e: int(e)
                             if e.isdigit() else 0):
@@ -707,21 +660,10 @@ class ProcBackend(_Backend):
             if key in seen:
                 continue
             lowered = [n.lower() for n in names]
-            connected = _has_display_connection(pid, display_inodes)
-            indexed = any(n in known for n in lowered)
-            if display_inodes:
-                # A real GUI app talks to the compositor. An app with no
-                # desktop entry is still listed (unpackaged binaries,
-                # AppImages, Steam games), but one whose entry says NoDisplay
-                # is a background agent and is dropped.
-                if not connected:
-                    continue
-                if any(n in agents for n in lowered):
-                    continue
-            elif not indexed:
-                # No /proc/net/unix (hardened kernel): fall back to the old
-                # name-matching behaviour rather than listing nothing at all.
-                continue
+            if any(n in agents for n in lowered):
+                continue                     # NoDisplay: a background agent
+            if not any(n in known for n in lowered):
+                continue                     # no visible desktop entry
             seen.add(key)
             out.append(Window(pid=pid, app_id=names[0],
                               title=_cmdline(pid)[:120],
@@ -734,6 +676,99 @@ _BACKENDS = [HyprlandBackend, NiriBackend, SwayBackend, KWinBackend,
 
 _cached = None
 
+# ── session environment harvest ──────────────────────────────────────────────
+# Every backend's available() reads a session env var: X11 wants DISPLAY,
+# Hyprland wants HYPRLAND_INSTANCE_SIGNATURE, Wayland wants WAYLAND_DISPLAY, and
+# so on. But genesi-studiod runs as a systemd --user service, which does NOT
+# inherit those from the graphical session — so without help EVERY real backend
+# fails its check and detection falls all the way through to procfs. That is
+# exactly the "Backend: procfs, nothing found" symptom on a normal desktop.
+#
+# So before detecting, borrow the session env from a GUI process the user
+# already owns (a compositor or panel is guaranteed to have the full set) and
+# splice the display vars into our own environ. This is DE-agnostic and works
+# regardless of whether the service was wired to graphical-session.target.
+_SESSION_ENV_KEYS = (
+    "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY",
+    "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "XDG_SESSION_DESKTOP",
+    "HYPRLAND_INSTANCE_SIGNATURE", "NIRI_SOCKET", "SWAYSOCK",
+    "DBUS_SESSION_BUS_ADDRESS",
+)
+# A session-owned GUI process guaranteed to carry the full env. Harvesting from
+# one of these (rather than the first random match) avoids picking up a stray
+# short-lived helper with a partial environment.
+_ENV_DONORS = ("plasmashell", "kwin_wayland", "kwin_x11", "Hyprland",
+               "gnome-shell", "cosmic-comp", "niri", "sway", "xfwm4",
+               "cinnamon", "marco", "kwin", "quickshell", "waybar")
+_env_ok = False
+_env_last = 0.0
+
+
+def _read_environ(pid):
+    try:
+        with open(f"/proc/{pid}/environ", "rb") as fh:
+            raw = fh.read()
+    except OSError:
+        return {}
+    env = {}
+    for chunk in raw.split(b"\0"):
+        if b"=" in chunk:
+            k, _, v = chunk.partition(b"=")
+            env[k.decode(errors="replace")] = v.decode(errors="replace")
+    return env
+
+
+def ensure_session_env():
+    """Splice the session's display env into this process. Returns True if it
+    just changed the environment (so callers can invalidate a cached backend)."""
+    global _env_ok, _env_last
+    if _env_ok:
+        return False
+    # Already have a display connection? (interactive run, or systemd imported
+    # the graphical environment for us.)
+    if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"):
+        _env_ok = True
+        return False
+    # The daemon polls a few times a second; a full /proc environ scan that
+    # often is wasteful, and early in login the donors may not be up yet.
+    now = time.time()
+    if now - _env_last < 3.0:
+        return False
+    _env_last = now
+
+    uid = os.getuid()
+    donor_env = None
+    fallback_env = None
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        try:
+            if os.stat(f"/proc/{pid}").st_uid != uid:
+                continue
+        except OSError:
+            continue
+        comm = _comm(pid)
+        if comm in _ENV_DONORS:
+            env = _read_environ(pid)
+            if env.get("WAYLAND_DISPLAY") or env.get("DISPLAY"):
+                donor_env = env
+                break
+        elif fallback_env is None:
+            # Any owned process with a display var, as a backstop for a DE whose
+            # compositor comm is not in the donor list.
+            env = _read_environ(pid)
+            if env.get("WAYLAND_DISPLAY") or env.get("DISPLAY"):
+                fallback_env = env
+    env = donor_env or fallback_env
+    if not env:
+        return False
+    for k in _SESSION_ENV_KEYS:
+        if env.get(k) and not os.environ.get(k):
+            os.environ[k] = env[k]
+    _env_ok = True
+    return True
+
 
 def detect_backend(force=None):
     """Pick the best backend for this session (cached; pass force to re-pick).
@@ -743,6 +778,11 @@ def detect_backend(force=None):
     always `available()`.
     """
     global _cached
+    # Borrow the session's display env if we don't have it yet. If it just
+    # appeared, drop any cached pick (it would be a stale procfs chosen before
+    # the env was available) and re-detect.
+    if ensure_session_env():
+        _cached = None
     if _cached is not None and not force:
         return _cached
     for cls in _BACKENDS:

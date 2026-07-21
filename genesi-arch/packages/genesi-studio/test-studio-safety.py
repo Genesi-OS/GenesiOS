@@ -260,6 +260,54 @@ check("NoDisplay agent is vetoed by Exec basename too", "kded6" in agents, True)
 check("a real app is never vetoed", "firefox" in agents, False)
 check("a real app is never vetoed (by class)", "navigator" in agents, False)
 
+print("\nsession env harvest — the daemon has no DISPLAY of its own")
+# genesi-studiod is a systemd --user service, so DISPLAY/WAYLAND_DISPLAY/etc are
+# NOT in its environment and every backend's available() check would fail,
+# dropping the whole session to procfs. ensure_session_env() must borrow them
+# from a session-owned GUI process. This mocks /proc to prove the priority:
+# a real compositor donor beats a random fallback process.
+import types as _types  # noqa: E402
+
+_procs = {
+    "1":    ("systemd",     {}),                      # no display var
+    "1500": ("some-helper", {"DISPLAY": ":9",         # fallback candidate
+                             "WAYLAND_DISPLAY": ""}),
+    "1600": ("plasmashell", {"DISPLAY": ":0",         # the real donor
+                             "WAYLAND_DISPLAY": "wayland-0",
+                             "XAUTHORITY": "/home/a/.Xauthority",
+                             "XDG_SESSION_TYPE": "x11"}),
+}
+_orig = {k: getattr(wm.os, k, None)
+         for k in ("listdir", "stat", "getuid")}
+_orig_comm = wm._comm
+_orig_environ = wm._read_environ
+
+wm.os.listdir = lambda p: list(_procs) if p == "/proc" else _orig["listdir"](p)
+wm.os.stat = lambda p: _types.SimpleNamespace(st_uid=1000)
+wm.os.getuid = lambda: 1000
+wm._comm = lambda pid: _procs.get(str(pid), ("", {}))[0]
+wm._read_environ = lambda pid: _procs.get(str(pid), ("", {}))[1]
+
+# Pretend we start with no display env at all, like the real service.
+for _k in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"):
+    os.environ.pop(_k, None)
+wm._env_ok = False
+wm._env_last = 0.0
+
+changed = wm.ensure_session_env()
+check("harvest reports it changed the environment", changed, True)
+check("DISPLAY taken from the plasmashell donor, not the helper",
+      os.environ.get("DISPLAY"), ":0")
+check("WAYLAND_DISPLAY harvested", os.environ.get("WAYLAND_DISPLAY"), "wayland-0")
+check("XAUTHORITY harvested (needed for wmctrl/xprop on X11)",
+      os.environ.get("XAUTHORITY"), "/home/a/.Xauthority")
+check("second call is a no-op once satisfied", wm.ensure_session_env(), False)
+
+# restore the patched os bits so nothing below is affected
+wm.os.listdir, wm.os.stat, wm.os.getuid = (
+    _orig["listdir"], _orig["stat"], _orig["getuid"])
+wm._comm, wm._read_environ = _orig_comm, _orig_environ
+
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILURE(S):"))
 for f in fails:
     print("  " + f)
