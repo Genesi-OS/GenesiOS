@@ -292,6 +292,63 @@ check("titles with spaces survive intact",
       [w.title for w in _wins if w.pid == 5678], ["index.html - LiveSupport"])
 
 
+print("\nbackend demotion — an empty window list must NOT strand the session")
+# The daemon starts at login, BEFORE any application window exists. An earlier
+# version treated three consecutive empty polls as proof the backend was broken
+# and demoted the session to procfs permanently, so every session ran on procfs
+# (daemons instead of windows, no focus tracking) until the daemon was manually
+# restarted. Empty is a legitimate answer; the preferred backend must survive it.
+
+
+class FlakyBackend(wm._Backend):
+    name = "x11"                      # pretend to be the real X11 backend
+
+    def __init__(self):
+        self.result = []              # starts empty, like a fresh login
+
+    def available(self):
+        return True
+
+    def windows(self):
+        return self.result
+
+
+_flaky = FlakyBackend()
+_saved_cached, _saved_last = wm._cached, wm._last_backend
+_saved_proc = wm.ProcBackend.windows
+wm._cached = _flaky
+wm._last_backend = None
+wm._env_ok = True                     # skip the harvest path
+wm.ProcBackend.windows = lambda self: []   # nothing in procfs either
+
+for _ in range(6):                    # twice the old three-strike limit
+    wm.list_windows()
+check("an empty backend is still the active one after 6 empty polls",
+      wm.active_backend().name, "x11")
+
+# Windows finally appear — the session must pick them up, not stay on procfs.
+_flaky.result = [wm.Window(pid=42, app_id="code", backend="x11")]
+check("windows are returned once they exist",
+      [w.pid for w in wm.list_windows()], [42])
+check("and the backend is still x11", wm.active_backend().name, "x11")
+
+# The case the guard was really for: the backend is broken (always empty) but
+# procfs can see apps. Fall back for that call, without making it permanent.
+_flaky.result = []
+wm.ProcBackend.windows = lambda self: [
+    wm.Window(pid=7, app_id="firefox", backend="procfs")]
+check("procfs answers when the real backend has nothing",
+      [w.pid for w in wm.list_windows()], [7])
+check("the fallback is reported honestly", wm.active_backend().name, "procfs")
+_flaky.result = [wm.Window(pid=42, app_id="code", backend="x11")]
+check("and the real backend is retried on the very next poll",
+      [w.pid for w in wm.list_windows()], [42])
+check("recovering back to x11", wm.active_backend().name, "x11")
+
+wm.ProcBackend.windows = _saved_proc
+wm._cached, wm._last_backend = _saved_cached, _saved_last
+
+
 print("\nperformance-core pinning — hybrid CPUs only, never a uniform CPU or VM")
 # Pinning the focused app to a core SUBSET only helps on a real Intel P/E chip.
 # On a uniform CPU or in a VM it just removes cores and makes the app slower —

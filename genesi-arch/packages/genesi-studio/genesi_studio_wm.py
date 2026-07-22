@@ -818,39 +818,55 @@ def backend_for(name):
     return None
 
 
-_empty_polls = 0
-_EMPTY_LIMIT = 3
+_last_backend = None       # whichever backend produced the most recent result
 
 
 def list_windows():
-    """Windows from the active backend, with a demotion guard.
+    """Windows from the best available backend, with a PER-CALL fallback.
 
-    A backend can be `available()` yet return nothing forever — the KWin script
-    path is the realistic case (a tightened script sandbox swallows the dump).
-    Rather than leaving Studio Mode blind, three consecutive empty polls demote
-    the session to procfs, which lists apps instead of windows but always works.
-    A real session always has at least one window, so this cannot misfire on a
-    healthy backend.
+    An earlier version demoted the session to procfs permanently after three
+    consecutive empty polls, on the assumption that "a real session always has
+    at least one window". That assumption is false at exactly the moment it
+    mattered: the daemon starts at login, BEFORE any application window exists,
+    so every session burned its three strikes in the first six seconds and then
+    ran on procfs — listing daemons instead of windows and losing focus
+    tracking — until the daemon was restarted by hand. An empty window list is
+    a legitimate answer, not evidence of a broken backend.
+
+    So nothing is demoted permanently. If the preferred backend yields nothing,
+    procfs is consulted for THIS CALL only (which still covers the case it was
+    meant for: a KWin whose script sandbox swallows the dump), and the
+    preferred backend is retried on the very next poll.
     """
-    global _cached, _empty_polls
+    global _last_backend
     b = detect_backend()
     try:
         wins = b.windows()
     except Exception:
         wins = []
     if wins:
-        _empty_polls = 0
+        _last_backend = b
         return wins
     if b.name != ProcBackend.name:
-        _empty_polls += 1
-        if _empty_polls >= _EMPTY_LIMIT:
-            _cached = ProcBackend()
-            _empty_polls = 0
-            try:
-                return _cached.windows()
-            except Exception:
-                return []
-    return []
+        try:
+            alt = ProcBackend().windows()
+        except Exception:
+            alt = []
+        if alt:
+            _last_backend = ProcBackend()
+            return alt
+    _last_backend = b
+    return wins
+
+
+def active_backend():
+    """The backend that produced the most recent list_windows() result.
+
+    What the UI should report: detect_backend() alone can disagree with what
+    actually answered (the per-call procfs fallback above), and a widget that
+    claims focus tracking it does not have is worse than one that admits it.
+    """
+    return _last_backend or detect_backend()
 
 
 def focused_window():

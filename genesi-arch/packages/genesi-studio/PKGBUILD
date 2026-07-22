@@ -56,7 +56,14 @@ pkgver=1.0.0
 # pkgrel 6: a window with an empty title produced 5 wmctrl fields instead of 6
 # and the parser dropped the whole line, so those windows never appeared in the
 # picker. Accept 5 and blank the title. Adds X11-parsing test coverage.
-pkgrel=6
+# pkgrel 7: THE reason every session ran on procfs. list_windows() demoted the
+# backend permanently after three empty polls — and the daemon starts at login,
+# before any window exists, so every session burned its three strikes in six
+# seconds and was stuck listing daemons with no focus tracking until a manual
+# restart. Empty is a legitimate answer; the fallback is now per-call and
+# recoverable. Also fixes the systemd "Unknown key 'StartLimitIntervalSec' in
+# section [Service]" warning (it belongs in [Unit]).
+pkgrel=7
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

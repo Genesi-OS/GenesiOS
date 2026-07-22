@@ -265,10 +265,14 @@ class Studio:
 
     @property
     def backend(self):
-        """Always ask the module, never cache: list_windows() can demote a
-        broken backend to procfs mid-session, and a cached reference here would
-        make the widget claim a backend that is no longer in use."""
-        return wm.detect_backend()
+        """Whichever backend actually answered the last window query.
+
+        Never cached here, and deliberately active_backend() rather than
+        detect_backend(): list_windows() can fall back to procfs for a single
+        call, and a widget that advertises focus tracking it does not currently
+        have is worse than one that admits it.
+        """
+        return wm.active_backend()
 
     # -- crash recovery ----------------------------------------------------
     def _recover(self):

@@ -5,6 +5,10 @@ Documentation=https://github.com/Genesi-OS/GenesiOS
 # root-only levers (negative nice, fast-core pinning, cgroup weights, the CPU
 # governor) on request, and authenticates every caller with SO_PEERCRED so a
 # user can only ever touch their own processes.
+# StartLimit* belong to [Unit], not [Service] — in [Service] systemd ignores
+# them with a warning and the restart rate limit never applies.
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -13,8 +17,6 @@ RuntimeDirectory=genesi-studio
 RuntimeDirectoryMode=0755
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=120
-StartLimitBurst=5
 
 # It must write cpufreq/cgroup/proc knobs, so it cannot be locked down to the
 # point of uselessness — but it has no business touching the network or /home.

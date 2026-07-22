@@ -5,6 +5,11 @@ Documentation=https://github.com/Genesi-OS/GenesiOS
 # freezes the user's own processes, which needs their session, not root.
 # Deliberately NOT bound to graphical-session.target so it still comes up on a
 # "No Desktop" install; the window backends degrade to a /proc scan there.
+# StartLimit* belong to [Unit], not [Service] — systemd logged
+# "Unknown key 'StartLimitIntervalSec' in section [Service], ignoring" and the
+# restart rate limit was silently not applied.
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -15,8 +20,6 @@ ExecStart=/usr/bin/genesi-studiod
 ExecStopPost=-/usr/bin/genesi-studio off
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=120
-StartLimitBurst=5
 
 [Install]
 WantedBy=default.target
