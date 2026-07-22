@@ -520,18 +520,27 @@ class X11Backend(_Backend):
     def windows(self):
         active = self._active_id()
         out = []
-        for line in _run(["wmctrl", "-lp"]).splitlines():
-            # <id> <desktop> <pid> <host> <title...>
-            parts = line.split(None, 4)
-            if len(parts) < 5:
+        # -lxp adds WM_CLASS and pid: <id> <desktop> <wm_class> <pid> <host>
+        # <title>. WM_CLASS ("instance.Class") is the real X11 app identity and
+        # matches a .desktop StartupWMClass, so an app whose comm is truncated
+        # or generic (python3 for the AI Mode Monitor, a wrapper for Genesi
+        # Code) still resolves to the right name and icon.
+        for line in _run(["wmctrl", "-lxp"]).splitlines():
+            parts = line.split(None, 5)
+            if len(parts) < 6:
                 continue
             try:
-                wid, pid = int(parts[0], 16), int(parts[2])
+                wid, pid = int(parts[0], 16), int(parts[3])
             except ValueError:
                 continue
             if pid <= 0 or not _alive(pid):
                 continue
-            out.append(Window(pid=pid, app_id=_comm(pid), title=parts[4],
+            wm_class = parts[2]
+            # "navigator.Firefox" → prefer the Class half for app_id; Window
+            # resolves the icon/name from it plus the pid's exe as a fallback.
+            app_id = wm_class.split(".")[-1] if wm_class and wm_class != "N/A" \
+                else _comm(pid)
+            out.append(Window(pid=pid, app_id=app_id, title=parts[5],
                               handle=wid, focused=(active == wid),
                               backend=self.name))
         return out

@@ -57,7 +57,14 @@ BASELINE_PATH = f"{RUN_DIR}/baseline.json"
 AID_STATE = "/run/genesi-ai-mode/state.json"
 
 CPU_BASE = "/sys/devices/system/cpu"
-NICE_FLOOR = -10          # never go lower; see SECURITY MODEL above
+# Gentle on purpose. -10 (the first cut) starved the compositor on a loaded
+# machine — the focused app won the CPU over kwin/mutter, so its own window
+# repainted less and it FELT laggier despite having more CPU — and it fought
+# Genesi's ananicy-cpp, which manages nice per-app (the same clash genesi-game
+# documents with GameMode). cgroup cpu.weight below is the real lever: a
+# proportional share that never starves anyone absolutely. nice just nudges the
+# ordering. Renicing the compositor's competition, not the compositor.
+NICE_BOOST = -5
 CGROUP_BOOST_WEIGHT = 400  # default is 100; 4x share under contention
 
 
@@ -126,12 +133,15 @@ def _ai_mode_active():
 
 
 def _performance_cpu_ids():
-    """Logical CPUs on the fastest physical cores.
+    """Logical CPUs on the fast cores of a HYBRID CPU only — else [].
 
-    Same rule genesi-aid uses: on a hybrid CPU this is the P-cores (plus their
-    HT siblings), so a focused app never gets scheduled onto an E-core and eats
-    cross-core sync stalls. On a uniform CPU it returns every CPU and pinning
-    becomes a no-op. Empty on boxes with no cpufreq (VMs) → caller skips it.
+    On an Intel P/E chip, pinning the focused app to the P-cores keeps it off
+    the slow E-cores. But pinning only helps when there genuinely are two
+    frequency tiers: on a uniform CPU (every Ryzen/older Intel) or in a VM,
+    "fastest cores" is either every core or measurement noise, and pinning the
+    app to a SUBSET just removes cores from it and makes it slower — the exact
+    "the app feels laggier with Studio on" regression. So this returns a subset
+    only when a clearly slower tier exists, and [] otherwise (no pinning).
     """
     freqs = {}
     try:
@@ -148,10 +158,18 @@ def _performance_cpu_ids():
                 return []
     except OSError:
         return []
-    if not freqs:
+    if len(freqs) < 4:                        # too few cores to carve up
         return []
-    top = max(freqs.values())
-    return sorted(i for i, mf in freqs.items() if mf >= top * 0.95)
+    top, bottom = max(freqs.values()), min(freqs.values())
+    # A real hybrid has the E-cores >12% slower. Uniform CPUs and VMs don't.
+    if bottom >= top * 0.88:
+        return []
+    fast = sorted(i for i, mf in freqs.items() if mf >= top * 0.95)
+    # Never strand the app on almost nothing, and never pin if "fast" is
+    # everything (then it is not really a hybrid split).
+    if len(fast) < 2 or len(fast) >= len(freqs):
+        return []
+    return fast
 
 
 def _cgroup_path(pid):
@@ -187,10 +205,11 @@ class Levers:
             return []                        # already boosted; don't re-capture
 
         saved = {}
-        # nice: the single cheapest latency win under contention.
+        # nice: a gentle ordering nudge (see NICE_BOOST — going harder starves
+        # the compositor and fights ananicy-cpp).
         try:
             saved["nice"] = os.getpriority(os.PRIO_PROCESS, pid)
-            os.setpriority(os.PRIO_PROCESS, pid, NICE_FLOOR)
+            os.setpriority(os.PRIO_PROCESS, pid, NICE_BOOST)
             applied.append("nice")
         except OSError:
             pass

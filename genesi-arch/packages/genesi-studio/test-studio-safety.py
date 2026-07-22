@@ -260,6 +260,41 @@ check("NoDisplay agent is vetoed by Exec basename too", "kded6" in agents, True)
 check("a real app is never vetoed", "firefox" in agents, False)
 check("a real app is never vetoed (by class)", "navigator" in agents, False)
 
+print("\nperformance-core pinning — hybrid CPUs only, never a uniform CPU or VM")
+# Pinning the focused app to a core SUBSET only helps on a real Intel P/E chip.
+# On a uniform CPU or in a VM it just removes cores and makes the app slower —
+# the "feels laggier with Studio on" regression. hd is loaded above.
+
+
+import re as _re  # noqa: E402
+
+
+def _fake_cpus(freqs):
+    """Patch hd so _performance_cpu_ids sees a given per-cpu max-freq map."""
+    hd.os.listdir = lambda p: [f"cpu{i}" for i in freqs]
+    hd._read = lambda path: str(
+        freqs[int(_re.search(r"/cpu(\d+)/", path).group(1))])
+
+
+_hd_listdir, _hd_read = hd.os.listdir, hd._read
+# Ryzen 5 5600: 6 uniform cores, all 4.4GHz → no pinning.
+_fake_cpus({i: 4400000 for i in range(6)})
+check("uniform 6-core CPU → no pinning", hd._performance_cpu_ids(), [])
+# VM: identical made-up frequencies → no pinning.
+_fake_cpus({i: 2000000 for i in range(4)})
+check("VM uniform cores → no pinning", hd._performance_cpu_ids(), [])
+# Intel 12th-gen-ish: 8 P-threads at 4.9GHz, 8 E-cores at 3.9GHz → pin to P.
+hybrid = {i: 4900000 for i in range(8)}
+hybrid.update({i: 3900000 for i in range(8, 16)})
+_fake_cpus(hybrid)
+check("hybrid P/E CPU → pins to the P-cores", hd._performance_cpu_ids(),
+      list(range(8)))
+# Too few cores to bother splitting.
+_fake_cpus({0: 4000000, 1: 3000000})
+check("2-core machine → no pinning", hd._performance_cpu_ids(), [])
+hd.os.listdir, hd._read = _hd_listdir, _hd_read
+
+
 print("\nsession env harvest — the daemon has no DISPLAY of its own")
 # genesi-studiod is a systemd --user service, so DISPLAY/WAYLAND_DISPLAY/etc are
 # NOT in its environment and every backend's available() check would fail,
