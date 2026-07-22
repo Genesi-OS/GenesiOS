@@ -527,7 +527,10 @@ class X11Backend(_Backend):
         # Code) still resolves to the right name and icon.
         for line in _run(["wmctrl", "-lxp"]).splitlines():
             parts = line.split(None, 5)
-            if len(parts) < 6:
+            # A window with an EMPTY title yields only 5 fields, so requiring 6
+            # silently dropped those windows entirely. Accept 5 and treat the
+            # title as blank.
+            if len(parts) < 5:
                 continue
             try:
                 wid, pid = int(parts[0], 16), int(parts[3])
@@ -540,7 +543,8 @@ class X11Backend(_Backend):
             # resolves the icon/name from it plus the pid's exe as a fallback.
             app_id = wm_class.split(".")[-1] if wm_class and wm_class != "N/A" \
                 else _comm(pid)
-            out.append(Window(pid=pid, app_id=app_id, title=parts[5],
+            title = parts[5] if len(parts) > 5 else ""
+            out.append(Window(pid=pid, app_id=app_id, title=title,
                               handle=wid, focused=(active == wid),
                               backend=self.name))
         return out

@@ -260,6 +260,38 @@ check("NoDisplay agent is vetoed by Exec basename too", "kded6" in agents, True)
 check("a real app is never vetoed", "firefox" in agents, False)
 check("a real app is never vetoed (by class)", "navigator" in agents, False)
 
+print("\nX11 window parsing — wmctrl -lxp is the primary desktop's window list")
+# Columns: id, desktop, wm_class, pid, host, title.
+_WMCTRL = """\
+0x03400007  0 genesi-update.Genesi-Update  1234 genesi-x8664 Genesi-Update Systray Applet
+0x05000003  0 code.Code                    5678 genesi-x8664 index.html - LiveSupport
+0x05200004  0 N/A                          9012 genesi-x8664
+0x05400005  0 org.genesi.aimonitor.Aimonitor 3456 genesi-x8664 Genesi AI Mode Monitor
+0x05600006  0 navigator.Firefox            7890 genesi-x8664 Nova aba - Firefox
+garbage line that should be ignored
+"""
+_x11 = wm.X11Backend()
+_orig_run, _orig_alive = wm._run, wm._alive
+wm._run = lambda cmd, timeout=4: (
+    _WMCTRL if cmd[:2] == ["wmctrl", "-lxp"]
+    else "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x05000003")
+wm._alive = lambda pid: True
+_wins = _x11.windows()
+wm._run, wm._alive = _orig_run, _orig_alive
+
+check("every real window is parsed", len(_wins), 5)
+check("a window with an EMPTY title is NOT dropped",
+      9012 in [w.pid for w in _wins], True)
+check("WM_CLASS Class half becomes app_id",
+      [w.app_id for w in _wins if w.pid == 5678], ["Code"])
+check("reverse-DNS WM_CLASS keeps its Class half",
+      [w.app_id for w in _wins if w.pid == 3456], ["Aimonitor"])
+check("the active window is flagged focused",
+      [w.pid for w in _wins if w.focused], [5678])
+check("titles with spaces survive intact",
+      [w.title for w in _wins if w.pid == 5678], ["index.html - LiveSupport"])
+
+
 print("\nperformance-core pinning — hybrid CPUs only, never a uniform CPU or VM")
 # Pinning the focused app to a core SUBSET only helps on a real Intel P/E chip.
 # On a uniform CPU or in a VM it just removes cores and makes the app slower —

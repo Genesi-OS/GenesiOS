@@ -53,7 +53,10 @@ pkgver=1.0.0
 # or a VM it pinned the app to a core subset and made it slower, so it is a
 # no-op there now. X11 backend reads real WM_CLASS (wmctrl -lxp) so apps whose
 # comm is generic (the Qt Monitor, the Electron editor) still get name + icon.
-pkgrel=5
+# pkgrel 6: a window with an empty title produced 5 wmctrl fields instead of 6
+# and the parser dropped the whole line, so those windows never appeared in the
+# picker. Accept 5 and blank the title. Adds X11-parsing test coverage.
+pkgrel=6
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
