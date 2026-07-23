@@ -517,8 +517,19 @@ class Studio:
         if op == "status":
             return {"ok": True, "state": self.snapshot()}
         if op == "list":
+            # Flag the shell/compositor windows rather than dropping them: the
+            # CLI stays a truthful diagnostic, while the widgets hide them from
+            # the picker. Offering "give the machine to plasmashell" is
+            # meaningless — it is protected, so it can neither be frozen nor
+            # sensibly focused — and three desktop-shell rows crowded out the
+            # user's actual apps.
+            wins = []
+            for w in wm.list_windows():
+                d = w.as_dict()
+                d["protected"] = _is_protected(w.pid, w.app_id)
+                wins.append(d)
             return {"ok": True,
-                    "windows": [w.as_dict() for w in wm.list_windows()],
+                    "windows": wins,
                     "backend": self.backend.name,
                     "supports_focus": self.backend.supports_focus()}
         if op == "on":

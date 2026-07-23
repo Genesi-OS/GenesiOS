@@ -91,7 +91,16 @@ PlasmoidItem {
     function applyList(txt) {
         try {
             var r = JSON.parse(txt)
-            root.openApps = r.windows || []
+            // Drop the shell/compositor windows the daemon flagged: they are
+            // protected, so they can neither be frozen nor meaningfully
+            // focused, and they crowded the real apps out of the picker.
+            var all = r.windows || []
+            var out = []
+            for (var i = 0; i < all.length; i++) {
+                if (!all[i].protected)
+                    out.push(all[i])
+            }
+            root.openApps = out
         } catch (e) {
             // leave the previous list rather than blanking the picker
         }

@@ -92,7 +92,8 @@ _DESKTOP_DIRS = ("/usr/share/applications",
                  os.path.expanduser(
                      "~/.local/share/flatpak/exports/share/applications"))
 
-_desktop_index = None          # {match key -> (icon, name)}
+_desktop_index = None          # {normalized key -> (icon, name)}  — precise
+_desktop_loose = None          # {alphanumeric key -> (icon, name)} — fallback
 _desktop_hidden = None         # {match key} for NoDisplay entries (agents)
 _desktop_index_at = 0.0
 _DESKTOP_TTL = 60.0            # apps get installed while the session runs
@@ -151,10 +152,25 @@ def _norm_key(s):
     return (s or "").strip().lower().replace("_", "-")
 
 
+def _loose_key(s):
+    """Separator-insensitive key: letters and digits only.
+
+    An app's WM_CLASS and its desktop-file name often differ only in how they
+    punctuate: Genesi Code presents as "GenesiCode" while its entry is
+    genesi-code, and "genesicode" != "genesi-code" under _norm_key. Folding
+    everything to alphanumerics makes them meet. Kept as a SEPARATE, lower
+    priority table so it can never outrank an exact match.
+    """
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
 def _build_desktop_index():
-    index, hidden = {}, set()
+    index, loose, hidden = {}, {}, set()
 
     def put(key, icon, name):
+        lk = _loose_key(key)
+        if lk and lk not in loose:
+            loose[lk] = (icon, name)
         key = _norm_key(key)
         # First writer wins: /usr/share is scanned before ~/.local, but a more
         # specific match key (StartupWMClass) is registered before the looser
@@ -209,7 +225,7 @@ def _build_desktop_index():
                         break
                     put(base, icon, name)
                     break
-    return index, hidden
+    return index, loose, hidden
 
 
 # Binaries a .desktop may invoke without BEING that binary: terminals it opens
@@ -224,17 +240,25 @@ _EXEC_NOT_IDENTITY = {
 }
 
 
-def _desktop_index_get(want_hidden=False):
-    global _desktop_index, _desktop_hidden, _desktop_index_at
+def _desktop_tables():
+    """(precise index, loose index, hidden set), rebuilt on a TTL."""
+    global _desktop_index, _desktop_loose, _desktop_hidden, _desktop_index_at
     now = time.time()
     if _desktop_index is None or (now - _desktop_index_at) > _DESKTOP_TTL:
         try:
-            _desktop_index, _desktop_hidden = _build_desktop_index()
+            _desktop_index, _desktop_loose, _desktop_hidden = \
+                _build_desktop_index()
         except Exception:
             _desktop_index = _desktop_index or {}
+            _desktop_loose = _desktop_loose or {}
             _desktop_hidden = _desktop_hidden or set()
         _desktop_index_at = now
-    return _desktop_hidden if want_hidden else _desktop_index
+    return _desktop_index, _desktop_loose, _desktop_hidden
+
+
+def _desktop_index_get(want_hidden=False):
+    index, _loose, hidden = _desktop_tables()
+    return hidden if want_hidden else index
 
 
 def desktop_lookup(app_id, pid=None):
@@ -244,26 +268,42 @@ def desktop_lookup(app_id, pid=None):
     name — a Wayland app_id like "org.mozilla.firefox", an X11 class like
     "Navigator" and a bare comm like "firefox" should all land on Firefox.
     """
-    index = _desktop_index_get()
+    index, loose, _hidden = _desktop_tables()
     tried = []
     if app_id:
         tried.append(app_id)
         if "." in app_id:
+            # wmctrl joins WM_CLASS as "instance.Class", and either half may
+            # itself be dotted ("genesicode.dev.genesi.GenesiCode"), so try the
+            # last component, the first, and everything after the first dot.
             tried.append(app_id.split(".")[-1])
+            tried.append(app_id.split(".", 1)[1])
+            tried.append(app_id.split(".")[0])
         tried.append(app_id.replace(" ", "-"))
     if pid:
         # exe basename / comm / launched command — see _app_names(). This is
         # what lets an app whose window class says nothing useful still find
         # its icon via the binary the user actually started.
         tried.extend(_app_names(pid))
+    # Exact matches for every candidate name first, so a precise hit always
+    # beats a punctuation-insensitive one.
     for key in tried:
         hit = index.get(_norm_key(key))
         if hit:
             icon, name = hit
             return icon or "application-x-executable", name or app_id or key
+    # Then the separator-insensitive pass: "GenesiCode" finds genesi-code.
+    for key in tried:
+        hit = loose.get(_loose_key(key))
+        if hit:
+            icon, name = hit
+            return icon or "application-x-executable", name or app_id or key
     # No desktop entry: still give the UI something to render and to label.
-    fallback = app_id or (_exe_name(pid) or _comm(pid) if pid else "") or "?"
-    return "application-x-executable", fallback
+    # Show the last WM_CLASS component ("GenesiCode"), not the whole dotted
+    # string we matched on — the full form is for lookups, not for humans.
+    fallback = app_id.split(".")[-1] if app_id else \
+        ((_exe_name(pid) or _comm(pid)) if pid else "")
+    return "application-x-executable", fallback or "?"
 
 
 def _run(cmd, timeout=4):
@@ -624,8 +664,12 @@ class X11Backend(_Backend):
                 continue
             # "navigator.Firefox" → prefer the Class half for app_id; Window
             # resolves the icon/name from it plus the pid's exe as a fallback.
-            app_id = wm_class.split(".")[-1] if wm_class and wm_class != "N/A" \
-                else _comm(pid)
+            # Keep the FULL class for matching. Genesi Code declares
+            # StartupWMClass=dev.genesi.GenesiCode, so discarding everything
+            # before the last dot threw away the exact key its desktop entry is
+            # indexed under. desktop_lookup() tries the whole string and its
+            # components, and falls back to the last one for display.
+            app_id = wm_class if wm_class and wm_class != "N/A" else _comm(pid)
             title = parts[5] if len(parts) > 5 else ""
             out.append(Window(pid=pid, app_id=app_id, title=title,
                               handle=wid, focused=(active == wid),

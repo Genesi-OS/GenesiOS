@@ -272,6 +272,48 @@ check("underscored Qt WM_CLASS matches its hyphenated desktop entry",
 check("a terminal-launcher entry does not hijack the terminal's identity",
       wm.desktop_lookup("konsole"), ("utilities-terminal", "Konsole"))
 
+# WM_CLASS and desktop-file names often differ only in punctuation: the editor
+# presents as "GenesiCode" while its entry is genesi-code. Without a
+# separator-insensitive pass every such app fell back to a generic icon.
+desktop("genesi-code.desktop", """[Desktop Entry]
+Type=Application
+Name=Genesi Code
+Icon=genesi-code
+Exec=/usr/bin/genesi-code
+""")
+wm._desktop_index = None
+
+check("CamelCase WM_CLASS finds its hyphenated desktop entry",
+      wm.desktop_lookup("GenesiCode"), ("genesi-code", "Genesi Code"))
+check("the exact entry still wins for the hyphenated form",
+      wm.desktop_lookup("genesi-code"), ("genesi-code", "Genesi Code"))
+# Precision must outrank the loose pass: Firefox's StartupWMClass is an exact
+# hit and must not be displaced by an alphanumeric collision.
+check("an exact match is never displaced by the loose pass",
+      wm.desktop_lookup("Navigator"), ("firefox-logo", "Firefox"))
+check("still no icon invented for a genuinely unknown app",
+      wm.desktop_lookup("nothing-like-this-exists")[0],
+      "application-x-executable")
+
+# The editor declares StartupWMClass=dev.genesi.GenesiCode, so the full dotted
+# class must be tried — keeping only the last component threw away the exact
+# key the entry is indexed under.
+desktop("genesi-code-full.desktop", """[Desktop Entry]
+Type=Application
+Name=Genesi Code
+Icon=genesi-code
+Exec=/usr/bin/genesi-code %U
+StartupWMClass=dev.genesi.GenesiCode
+""")
+wm._desktop_index = None
+check("a dotted StartupWMClass matches on the full class",
+      wm.desktop_lookup("dev.genesi.GenesiCode"), ("genesi-code", "Genesi Code"))
+check("...and when wmctrl prefixes the instance too",
+      wm.desktop_lookup("genesicode.dev.genesi.GenesiCode"),
+      ("genesi-code", "Genesi Code"))
+check("an unmatched dotted class displays only its last component",
+      wm.desktop_lookup("com.example.NoSuchApp")[1], "NoSuchApp")
+
 # The veto set is what keeps background agents out of the picker on the
 # desktops with no window list (COSMIC, GNOME Wayland). They DO hold a
 # connection to the compositor, so the display-socket test alone would let
@@ -315,10 +357,14 @@ check("PID is read from the pid column, not the class column",
       sorted(w.pid for w in _wins), [926, 3456, 4841, 5678, 6334, 9012])
 check("a window with an EMPTY title is NOT dropped",
       9012 in [w.pid for w in _wins], True)
-check("WM_CLASS Class half becomes app_id",
-      [w.app_id for w in _wins if w.pid == 5678], ["Code"])
-check("a Qt app's underscored WM_CLASS resolves",
-      [w.app_id for w in _wins if w.pid == 3456], ["Genesi_ai_monitor"])
+check("app_id keeps the FULL class, so dotted StartupWMClass can match",
+      [w.app_id for w in _wins if w.pid == 5678], ["code.Code"])
+check("an unmatched class still DISPLAYS as its last component",
+      [w.name for w in _wins if w.pid == 5678], ["Code"])
+check("a Qt app's underscored class resolves to its real name",
+      [w.name for w in _wins if w.pid == 3456], ["Genesi AI Mode Monitor"])
+check("...and to its real icon",
+      [w.icon for w in _wins if w.pid == 3456], ["genesi-ai-monitor"])
 check("the active window is flagged focused",
       [w.pid for w in _wins if w.focused], [5678])
 check("titles with spaces survive intact",

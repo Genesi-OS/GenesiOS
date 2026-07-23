@@ -73,7 +73,13 @@ pkgver=1.0.0
 # pkgrel 9: a window that never sets _NET_WM_PID (some toolkits, some Electron
 # builds) came back from wmctrl with pid 0 and was dropped, hiding a real app.
 # Recover the process by matching the window class instead.
-pkgrel=9
+# pkgrel 10: real app icons in the picker. Matching kept only the last WM_CLASS
+# component, throwing away the exact key an entry is indexed under (Genesi Code
+# declares StartupWMClass=dev.genesi.GenesiCode), and "GenesiCode" never met
+# genesi-code because the two differ only in punctuation. The full class is now
+# matched, with a separator-insensitive fallback pass. Shell/compositor windows
+# are also flagged so the widgets stop offering plasmashell as a target.
+pkgrel=10
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

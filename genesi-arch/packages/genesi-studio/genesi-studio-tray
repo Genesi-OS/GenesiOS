@@ -76,8 +76,11 @@ def list_windows():
         wins = json.loads(out.stdout or "{}").get("windows") or []
     except Exception:
         return []
-    return sorted(((w.get("pid"), w.get("app_id") or str(w.get("pid")))
-                   for w in wins if w.get("pid")),
+    # Skip the shell/compositor windows the daemon flagged as protected — they
+    # can neither be frozen nor sensibly focused, so offering them is noise.
+    return sorted(((w.get("pid"), w.get("name") or w.get("app_id")
+                    or str(w.get("pid")))
+                   for w in wins if w.get("pid") and not w.get("protected")),
                   key=lambda t: t[1].lower())
 
 
