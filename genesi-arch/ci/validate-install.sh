@@ -39,6 +39,7 @@ NETINSTALL="$CALA/netinstall.yaml"
 LIVE_PKGS="$REPO_ROOT/genesi-arch/archiso/packages_desktop.x86_64"
 GRUB_PKG="$REPO_ROOT/genesi-arch/packages/genesi-grub-theme"
 GRUB_FINALIZER="$REPO_ROOT/genesi-calamares-config-full/etc/calamares/scripts/genesi-grub-setup.sh"
+LIMINE_FINALIZER="$REPO_ROOT/genesi-calamares-config-full/etc/calamares/scripts/genesi-limine-setup.sh"
 LOCALE_SUB="${LOCALE_SUB:-en-us}"   # expands firefox-i18n-$LOCALE etc.
 
 FAIL=0
@@ -116,6 +117,44 @@ else
   bad "finalizer did not honor its ROOT argument; output: $(printf '%s' "$finalizer_out" | tail -n 2 | tr '\n' ' ')"
 fi
 rm -rf "$SIMROOT"
+
+# ---------------------------------------------------------------------------
+# Same contract for the Limine finalizer. Two properties matter:
+#   1. On a GRUB install (no /etc/default/limine) it must no-op, so adding
+#      Limine can never disturb the existing GRUB path.
+#   2. On a Limine install it must READ $ROOT/etc/default/limine (not /mnt) —
+#      the same ROOT-argument bug class as the 2026-07-17 GRUB abort.
+# We deliberately do NOT create a limine.conf: the steps after that lookup
+# arch-chroot into the target, which must never run against a fake root in CI.
+# ---------------------------------------------------------------------------
+note "Validating the Limine finalizer resolves its target-root argument"
+if [ ! -f "$LIMINE_FINALIZER" ]; then
+  bad "missing genesi-limine-setup.sh"
+else
+  SIMROOT="$(mktemp -d /tmp/genesi-simroot-limine.XXXXXX)"
+  mkdir -p "$SIMROOT/etc" "$SIMROOT/usr" "$SIMROOT/boot"
+  if lim_out="$(bash "$LIMINE_FINALIZER" "$SIMROOT" 2>&1)"; then
+    if printf '%s' "$lim_out" | grep -q 'not the selected bootloader'; then
+      ok "Limine finalizer no-ops on a GRUB install (GRUB path protected)"
+    else
+      bad "Limine finalizer did not no-op without /etc/default/limine; output: $(printf '%s' "$lim_out" | tail -n 2 | tr '\n' ' ')"
+    fi
+  else
+    bad "Limine finalizer exited non-zero on a GRUB install (must never abort)"
+  fi
+
+  mkdir -p "$SIMROOT/etc/default"; : > "$SIMROOT/etc/default/limine"
+  if lim_out="$(bash "$LIMINE_FINALIZER" "$SIMROOT" 2>&1)"; then
+    if printf '%s' "$lim_out" | grep -q 'no limine.conf found'; then
+      ok "Limine finalizer honors its ROOT argument (read \$ROOT/etc/default/limine)"
+    else
+      bad "Limine finalizer did not honor its ROOT argument; output: $(printf '%s' "$lim_out" | tail -n 2 | tr '\n' ' ')"
+    fi
+  else
+    bad "Limine finalizer exited non-zero on a Limine install (must never abort)"
+  fi
+  rm -rf "$SIMROOT"
+fi
 
 # ---------------------------------------------------------------------------
 # Same repos the installed target sees: [genesi] + CachyOS (already present) +
@@ -288,6 +327,22 @@ if [ "${#SOFT[@]}" -gt 0 ]; then
     grep -iE 'unable to satisfy|cannot resolve|target not found|conflict' /tmp/_err \
       | sed 's/^/      /' | head -10
   fi
+fi
+
+# The Limine snapshot stack is deliberately NOT in netinstall: genesi-limine-setup.sh
+# installs it in the target at install time, and only when Limine is the chosen
+# loader (so GRUB installs stay lean). That script degrades gracefully when a
+# package is missing — Limine still boots, only snapshot sync is skipped — so this
+# is a WARN, never a gate. It exists to give visibility on whether the repos the
+# target actually sees carry these packages. (`limine` itself IS in the critical
+# netinstall set, so it is already covered by the hard gate above.)
+LIMINE_SNAP_PKGS=(limine-snapper-sync limine-mkinitcpio-hook)
+if pacman -Sp --needed --noconfirm "${LIMINE_SNAP_PKGS[@]}" >/dev/null 2>/tmp/_err </dev/null; then
+  ok "Level 1: Limine snapshot stack resolves (${LIMINE_SNAP_PKGS[*]})"
+else
+  warn "Level 1: Limine snapshot stack NOT available — Limine boots fine, but snapshots won't sync until these land in a repo"
+  grep -iE 'target not found|unable to satisfy|cannot resolve' /tmp/_err \
+    | sed 's/^/      /' | head -5
 fi
 
 # ---------------------------------------------------------------------------
