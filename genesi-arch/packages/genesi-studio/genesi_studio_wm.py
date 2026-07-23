@@ -140,11 +140,22 @@ def _parse_desktop(path):
     return icon, name, wmclass, execline, nodisplay
 
 
+def _norm_key(s):
+    """Canonical match key: lowercase, and '_' folded to '-'.
+
+    Qt derives an app's WM_CLASS from its binary name, so the AI Mode Monitor
+    presents as "Genesi_ai_monitor" while its desktop entry is
+    genesi-ai-monitor. Without folding the separator those never met, and every
+    Genesi Python/QML app resolved to a generic icon and a raw class name.
+    """
+    return (s or "").strip().lower().replace("_", "-")
+
+
 def _build_desktop_index():
     index, hidden = {}, set()
 
     def put(key, icon, name):
-        key = (key or "").strip().lower()
+        key = _norm_key(key)
         # First writer wins: /usr/share is scanned before ~/.local, but a more
         # specific match key (StartupWMClass) is registered before the looser
         # ones for the same file, so precision beats scan order.
@@ -169,11 +180,11 @@ def _build_desktop_index():
                 # by, so the /proc backend can veto it, and index nothing.
                 for key in (wmclass, stem, stem.split(".")[-1]):
                     if key:
-                        hidden.add(key.strip().lower())
+                        hidden.add(_norm_key(key))
                 if execline:
                     for tok in execline.split():
                         if not tok.startswith("%") and "=" not in tok:
-                            hidden.add(os.path.basename(tok).strip().lower())
+                            hidden.add(_norm_key(os.path.basename(tok)))
                             break
                 continue
             if not icon and not name:
@@ -188,10 +199,29 @@ def _build_desktop_index():
                     if tok.startswith("%") or "=" in tok:
                         continue
                     base = os.path.basename(tok)
-                    if base not in ("env", "sh", "bash", "flatpak", "sudo"):
-                        put(base, icon, name)
+                    if base.lower() in _EXEC_NOT_IDENTITY:
+                        # This entry only BORROWS the binary (a launcher that
+                        # opens a terminal, or an interpreter). Indexing it
+                        # would hand that binary's identity to the launcher —
+                        # which is how a plain Konsole window ended up labelled
+                        # "Genesi DEV: NVIDIA + CUDA (test)", the name of a
+                        # .desktop that merely runs `konsole -e ...`.
                         break
+                    put(base, icon, name)
+                    break
     return index, hidden
+
+
+# Binaries a .desktop may invoke without BEING that binary: terminals it opens
+# a command in, and interpreters it runs a script with.
+_EXEC_NOT_IDENTITY = {
+    "env", "sh", "bash", "zsh", "fish", "sudo", "pkexec", "flatpak",
+    "konsole", "gnome-terminal", "xfce4-terminal", "xterm", "uxterm",
+    "alacritty", "kitty", "foot", "wezterm", "terminator", "tilix",
+    "x-terminal-emulator", "lxterminal", "mate-terminal", "ptyxis",
+    "python", "python3", "node", "electron", "java", "ruby", "perl",
+    "wine", "steam", "gamescope", "mangohud",
+}
 
 
 def _desktop_index_get(want_hidden=False):
@@ -227,7 +257,7 @@ def desktop_lookup(app_id, pid=None):
         # its icon via the binary the user actually started.
         tried.extend(_app_names(pid))
     for key in tried:
-        hit = index.get(key.strip().lower())
+        hit = index.get(_norm_key(key))
         if hit:
             icon, name = hit
             return icon or "application-x-executable", name or app_id or key
@@ -520,11 +550,18 @@ class X11Backend(_Backend):
     def windows(self):
         active = self._active_id()
         out = []
-        # -lxp adds WM_CLASS and pid: <id> <desktop> <wm_class> <pid> <host>
-        # <title>. WM_CLASS ("instance.Class") is the real X11 app identity and
-        # matches a .desktop StartupWMClass, so an app whose comm is truncated
-        # or generic (python3 for the AI Mode Monitor, a wrapper for Genesi
-        # Code) still resolves to the right name and icon.
+        # `wmctrl -lxp` columns are:
+        #     <id> <desktop> <pid> <wm_class> <host> <title>
+        # PID comes BEFORE WM_CLASS. Getting this backwards made int() raise on
+        # every line, so the backend returned an empty list forever and the
+        # session fell through to procfs — the "it only ever finds Firefox"
+        # bug. Verified against real output:
+        #     0x01600012 -1 926 plasmashell.plasmashell host Área de trabalho
+        #
+        # WM_CLASS ("instance.Class") is the real X11 app identity and matches a
+        # .desktop StartupWMClass, so an app whose comm is generic or truncated
+        # (python3 for the Qt apps, a wrapper for the editor) still resolves to
+        # the right name and icon.
         for line in _run(["wmctrl", "-lxp"]).splitlines():
             parts = line.split(None, 5)
             # A window with an EMPTY title yields only 5 fields, so requiring 6
@@ -533,12 +570,12 @@ class X11Backend(_Backend):
             if len(parts) < 5:
                 continue
             try:
-                wid, pid = int(parts[0], 16), int(parts[3])
+                wid, pid = int(parts[0], 16), int(parts[2])
             except ValueError:
                 continue
             if pid <= 0 or not _alive(pid):
                 continue
-            wm_class = parts[2]
+            wm_class = parts[3]
             # "navigator.Firefox" → prefer the Class half for app_id; Window
             # resolves the icon/name from it plus the pid's exe as a fallback.
             app_id = wm_class.split(".")[-1] if wm_class and wm_class != "N/A" \
@@ -672,7 +709,9 @@ class ProcBackend(_Backend):
             key = _exe_name(pid) or names[0]
             if key in seen:
                 continue
-            lowered = [n.lower() for n in names]
+            # Same separator folding the index uses, or a process named with
+            # underscores would never match its hyphenated desktop entry.
+            lowered = [_norm_key(n) for n in names]
             if any(n in agents for n in lowered):
                 continue                     # NoDisplay: a background agent
             if not any(n in known for n in lowered):

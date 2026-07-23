@@ -249,6 +249,29 @@ check("unknown app still yields a renderable icon + label",
       wm.desktop_lookup("totally-unknown-app"),
       ("application-x-executable", "totally-unknown-app"))
 
+# Qt builds WM_CLASS from the binary name, so Genesi's Python/QML apps present
+# as "Genesi_ai_monitor" while their desktop entry is genesi-ai-monitor.
+desktop("genesi-ai-monitor.desktop", """[Desktop Entry]
+Type=Application
+Name=Genesi AI Mode Monitor
+Icon=genesi-ai-monitor
+Exec=/usr/local/bin/genesi-ai-monitor
+""")
+# A launcher that merely opens a terminal must NOT claim the terminal's name.
+desktop("genesi-dev-cuda.desktop", """[Desktop Entry]
+Type=Application
+Name=Genesi DEV: NVIDIA + CUDA (test)
+Icon=genesi-dev
+Exec=konsole -e /usr/local/bin/genesi-dev-cuda-setup
+""")
+wm._desktop_index = None
+
+check("underscored Qt WM_CLASS matches its hyphenated desktop entry",
+      wm.desktop_lookup("Genesi_ai_monitor"),
+      ("genesi-ai-monitor", "Genesi AI Mode Monitor"))
+check("a terminal-launcher entry does not hijack the terminal's identity",
+      wm.desktop_lookup("konsole"), ("utilities-terminal", "Konsole"))
+
 # The veto set is what keeps background agents out of the picker on the
 # desktops with no window list (COSMIC, GNOME Wayland). They DO hold a
 # connection to the compositor, so the display-socket test alone would let
@@ -261,13 +284,19 @@ check("a real app is never vetoed", "firefox" in agents, False)
 check("a real app is never vetoed (by class)", "navigator" in agents, False)
 
 print("\nX11 window parsing — wmctrl -lxp is the primary desktop's window list")
-# Columns: id, desktop, wm_class, pid, host, title.
+# Columns are id, desktop, PID, WM_CLASS, host, title — PID comes BEFORE
+# WM_CLASS. An earlier fixture had them swapped, which encoded the same
+# misreading as the parser and let a total failure (int() raising on every
+# line, so the backend returned nothing and the session fell to procfs) pass
+# the tests. These first two rows are verbatim real output from a Genesi
+# session; treat them as the contract.
 _WMCTRL = """\
-0x03400007  0 genesi-update.Genesi-Update  1234 genesi-x8664 Genesi-Update Systray Applet
-0x05000003  0 code.Code                    5678 genesi-x8664 index.html - LiveSupport
-0x05200004  0 N/A                          9012 genesi-x8664
-0x05400005  0 org.genesi.aimonitor.Aimonitor 3456 genesi-x8664 Genesi AI Mode Monitor
-0x05600006  0 navigator.Firefox            7890 genesi-x8664 Nova aba - Firefox
+0x01600012 -1 926  plasmashell.plasmashell  genesi-x8664 Área de trabalho @ QRect(0,0 1920x955)
+0x04200008  0 4841 konsole.konsole          genesi-x8664 ~ : fish — Konsole
+0x05000003  0 5678 code.Code                genesi-x8664 index.html - LiveSupport
+0x05200004  0 9012 N/A                      genesi-x8664
+0x05400005  0 3456 genesi_ai_monitor.Genesi_ai_monitor genesi-x8664 Genesi AI Mode Monitor
+0x05600006  0 6334 Navigator.firefox        genesi-x8664 Nova aba - Firefox
 garbage line that should be ignored
 """
 _x11 = wm.X11Backend()
@@ -279,17 +308,24 @@ wm._alive = lambda pid: True
 _wins = _x11.windows()
 wm._run, wm._alive = _orig_run, _orig_alive
 
-check("every real window is parsed", len(_wins), 5)
+check("every real window is parsed", len(_wins), 6)
+# The regression that mattered: with pid/wm_class swapped this was 0.
+check("the parser does not return an empty list", len(_wins) > 0, True)
+check("PID is read from the pid column, not the class column",
+      sorted(w.pid for w in _wins), [926, 3456, 4841, 5678, 6334, 9012])
 check("a window with an EMPTY title is NOT dropped",
       9012 in [w.pid for w in _wins], True)
 check("WM_CLASS Class half becomes app_id",
       [w.app_id for w in _wins if w.pid == 5678], ["Code"])
-check("reverse-DNS WM_CLASS keeps its Class half",
-      [w.app_id for w in _wins if w.pid == 3456], ["Aimonitor"])
+check("a Qt app's underscored WM_CLASS resolves",
+      [w.app_id for w in _wins if w.pid == 3456], ["Genesi_ai_monitor"])
 check("the active window is flagged focused",
       [w.pid for w in _wins if w.focused], [5678])
 check("titles with spaces survive intact",
       [w.title for w in _wins if w.pid == 5678], ["index.html - LiveSupport"])
+check("a title with non-ASCII survives",
+      [w.title for w in _wins if w.pid == 926],
+      ["Área de trabalho @ QRect(0,0 1920x955)"])
 
 
 print("\nbackend demotion — an empty window list must NOT strand the session")

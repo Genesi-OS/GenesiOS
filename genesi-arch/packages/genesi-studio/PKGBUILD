@@ -63,7 +63,14 @@ pkgver=1.0.0
 # restart. Empty is a legitimate answer; the fallback is now per-call and
 # recoverable. Also fixes the systemd "Unknown key 'StartLimitIntervalSec' in
 # section [Service]" warning (it belongs in [Unit]).
-pkgrel=7
+# pkgrel 8: `wmctrl -lxp` columns are id, desktop, PID, WM_CLASS — the parser
+# had PID and WM_CLASS swapped, so int() raised on every line, the X11 backend
+# returned nothing, and the session fell to procfs every time. Verified against
+# real session output, which is now the test fixture. Also folds '_' to '-' when
+# matching desktop entries (Qt names the AI Monitor's WM_CLASS
+# "Genesi_ai_monitor" but its entry is genesi-ai-monitor), and stops .desktop
+# launchers that merely run a terminal from claiming the terminal's identity.
+pkgrel=8
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
