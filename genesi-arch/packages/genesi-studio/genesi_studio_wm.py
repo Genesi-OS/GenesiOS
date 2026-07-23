@@ -532,6 +532,48 @@ class KWinBackend(_Backend):
         return out
 
 
+def _pid_for_wm_class(wm_class):
+    """Best-effort PID for a window that never advertised _NET_WM_PID.
+
+    That property is a convention, not a guarantee: some toolkits and some
+    Electron builds never set it, and wmctrl then prints 0 or -1 for the pid.
+    Dropping those windows would silently hide real applications — the exact
+    failure mode this backend has already been bitten by twice — so fall back
+    to matching the window class against the user's own processes.
+
+    Returns 0 when nothing matches, and the caller drops the window then: every
+    lever Studio Mode has is process-level, so a window with no resolvable
+    process genuinely cannot be acted on.
+    """
+    if not wm_class or wm_class == "N/A":
+        return 0
+    want = {_norm_key(wm_class),
+            _norm_key(wm_class.split(".")[-1]),
+            _norm_key(wm_class.split(".")[0])}
+    want.discard("")
+    uid = os.getuid()
+    best = 0
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return 0
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        try:
+            if os.stat(f"/proc/{pid}").st_uid != uid:
+                continue
+        except OSError:
+            continue
+        if any(_norm_key(n) in want for n in _app_names(pid)):
+            # Lowest pid wins: for a multi-process app (Electron spawns a tree)
+            # that is the main process, which is the one worth boosting.
+            if not best or pid < best:
+                best = pid
+    return best
+
+
 class X11Backend(_Backend):
     """EWMH via wmctrl/xprop — covers Xfce4, Cinnamon, Budgie, LXDE, MATE and
     any X11 session including KDE-on-X11 (where it beats the KWin script)."""
@@ -573,9 +615,13 @@ class X11Backend(_Backend):
                 wid, pid = int(parts[0], 16), int(parts[2])
             except ValueError:
                 continue
+            wm_class = parts[3]
+            if pid <= 0:
+                # No _NET_WM_PID on this window — recover the process from its
+                # class rather than dropping a real app from the list.
+                pid = _pid_for_wm_class(wm_class)
             if pid <= 0 or not _alive(pid):
                 continue
-            wm_class = parts[3]
             # "navigator.Firefox" → prefer the Class half for app_id; Window
             # resolves the icon/name from it plus the pid's exe as a fallback.
             app_id = wm_class.split(".")[-1] if wm_class and wm_class != "N/A" \

@@ -327,6 +327,27 @@ check("a title with non-ASCII survives",
       [w.title for w in _wins if w.pid == 926],
       ["Área de trabalho @ QRect(0,0 1920x955)"])
 
+# _NET_WM_PID is a convention, not a guarantee. A window without it comes back
+# from wmctrl with pid 0; dropping it would hide a real app, so the class is
+# matched against the user's processes instead.
+_NOPID = "0x07000009  0 0 GenesiCode.GenesiCode genesi-x8664 main.rs - genesi-code\n"
+_orig_run, _orig_alive = wm._run, wm._alive
+_orig_lookup = wm._pid_for_wm_class
+wm._run = lambda cmd, timeout=4: (
+    _NOPID if cmd[:2] == ["wmctrl", "-lxp"] else "")
+wm._alive = lambda pid: True
+wm._pid_for_wm_class = lambda cls: 4242 if "genesicode" in cls.lower() else 0
+_recovered = wm.X11Backend().windows()
+check("a window with no _NET_WM_PID is recovered, not dropped",
+      [w.pid for w in _recovered], [4242])
+
+# ...but if the process genuinely cannot be found there is nothing to act on.
+wm._pid_for_wm_class = lambda cls: 0
+check("an unresolvable window is dropped (every lever is process-level)",
+      wm.X11Backend().windows(), [])
+wm._run, wm._alive = _orig_run, _orig_alive
+wm._pid_for_wm_class = _orig_lookup
+
 
 print("\nbackend demotion — an empty window list must NOT strand the session")
 # The daemon starts at login, BEFORE any application window exists. An earlier
