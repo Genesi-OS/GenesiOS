@@ -284,6 +284,14 @@ class Studio:
         for entry in prev.get("frozen", []):
             self._thaw_entry(entry)
         helper_call({"op": "restore-all"})
+        # An X11 outline is a separate process that only exits when its window
+        # does, so a daemon that died mid-session would leave a green rectangle
+        # floating over a window that is no longer in Studio Mode.
+        try:
+            subprocess.run(["pkill", "-f", "genesi-studio-outline"],
+                           capture_output=True, timeout=5)
+        except Exception:
+            pass
         try:
             os.unlink(SESSION_PATH)
         except OSError:

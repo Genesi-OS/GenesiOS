@@ -41,9 +41,11 @@ COEXISTENCE WITH AI MODE
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
+import shutil
 import signal
 import socket
 import struct
@@ -65,7 +67,11 @@ CPU_BASE = "/sys/devices/system/cpu"
 # proportional share that never starves anyone absolutely. nice just nudges the
 # ordering. Renicing the compositor's competition, not the compositor.
 NICE_BOOST = -5
-CGROUP_BOOST_WEIGHT = 400  # default is 100; 4x share under contention
+# cgroup weights are PROPORTIONAL, so a large number is safe in a way a large
+# negative nice is not: everyone else still gets scheduled, the focused app just
+# gets a much bigger slice when the machine is actually contended. Default is
+# 100, so this is a 10x share.
+CGROUP_BOOST_WEIGHT = 1000
 
 
 def log(msg):
@@ -241,13 +247,24 @@ class Levers:
             saved["oom_score_adj"] = cur
             applied.append("oom_score_adj")
 
-        # cgroup weight: the app's systemd scope gets 4x CPU/IO share. This is
-        # what makes the difference when the box is genuinely saturated —
-        # nice only orders the queue, cpu.weight sizes the slice.
+        # cgroup: the real levers. nice only orders the run queue; these size
+        # the actual slice, and the memory ones remove the biggest source of
+        # visible stutter — being paged out or reclaimed mid-use.
         cg = _cgroup_path(pid)
         if cg:
-            for knob, want in (("cpu.weight", CGROUP_BOOST_WEIGHT),
-                               ("io.weight", CGROUP_BOOST_WEIGHT)):
+            knobs = [
+                ("cpu.weight", CGROUP_BOOST_WEIGHT),
+                ("io.weight", CGROUP_BOOST_WEIGHT),
+                # Never swap the focused app. A game or editor that gets paged
+                # out stutters for seconds when it touches that memory again,
+                # and no amount of CPU priority recovers it.
+                ("memory.swap.max", "0"),
+                # Protect its pages from reclaim: under pressure the kernel
+                # takes memory from everyone else first. "max" means the whole
+                # of what it is using is protected.
+                ("memory.low", "max"),
+            ]
+            for knob, want in knobs:
                 path = os.path.join(cg, knob)
                 cur = _read(path)
                 if cur is not None and _write(path, want):
@@ -315,6 +332,31 @@ class Levers:
         if epps:
             saved["epp"] = epps
             applied.append("epp")
+        # Keep the machine out of swap while a session is running. Same reason
+        # as memory.swap.max on the target: a page-out mid-frame is a visible
+        # hitch that no scheduler priority can undo.
+        cur = _read("/proc/sys/vm/swappiness")
+        if cur is not None and _write("/proc/sys/vm/swappiness", "10"):
+            saved["swappiness"] = cur
+            applied.append("swappiness")
+
+        # GPU to its performance state. This is the lever that matters for a
+        # game, and nothing else in Genesi owns it while AI Mode is off.
+        gpu = []
+        for card in sorted(glob.glob("/sys/class/drm/card[0-9]")):
+            # AMD: forcing the DPM level stops the clocks bouncing back down
+            # between frames.
+            p = os.path.join(card, "device/power_dpm_force_performance_level")
+            cur = _read(p)
+            if cur is not None and _write(p, "high"):
+                gpu.append([p, cur])
+        if gpu:
+            saved["gpu"] = gpu
+            applied.append("gpu-clocks")
+        if _nvidia_prefer_max_performance():
+            saved["nvidia"] = True
+            applied.append("nvidia-powermizer")
+
         if saved:
             self.state["global"] = saved
             self._save()
@@ -324,9 +366,14 @@ class Levers:
         saved = self.state.pop("global", None)
         if not saved:
             return
-        for group in ("governor", "epp"):
+        for group in ("governor", "epp", "gpu"):
             for path, cur in saved.get(group, []):
                 _write(path, cur)
+        if "swappiness" in saved:
+            _write("/proc/sys/vm/swappiness", saved["swappiness"])
+        if saved.get("nvidia"):
+            # 0 = Adaptive, the driver default.
+            _nvidia_powermizer(0)
         self._save()
 
     def restore_all(self):
@@ -335,6 +382,23 @@ class Levers:
         self.restore_global()
         self.state = {}
         self._save()
+
+
+def _nvidia_powermizer(mode):
+    """Set the NVIDIA PowerMizer mode (1 = prefer maximum performance, 0 = adaptive).
+
+    Only touches the setting when the proprietary driver's control tool is
+    present; the open kernel module and nouveau simply have no equivalent, and
+    the AMD path above already covers those cards.
+    """
+    if not subprocess_which("nvidia-settings"):
+        return False
+    return subprocess_ok([
+        "nvidia-settings", "-a", f"GPUPowerMizerMode={int(mode)}"])
+
+
+def _nvidia_prefer_max_performance():
+    return _nvidia_powermizer(1)
 
 
 _IONICE_CLASSES = {"none": 0, "realtime": 1, "best-effort": 2, "idle": 3}
@@ -382,6 +446,10 @@ def subprocess_ok(cmd):
                               timeout=5).returncode == 0
     except Exception:
         return False
+
+
+def subprocess_which(name):
+    return shutil.which(name)
 
 
 # ── server ───────────────────────────────────────────────────────────────────

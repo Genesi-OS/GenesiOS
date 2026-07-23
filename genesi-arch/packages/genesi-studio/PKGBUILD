@@ -79,7 +79,13 @@ pkgver=1.0.0
 # genesi-code because the two differ only in punctuation. The full class is now
 # matched, with a separator-insensitive fallback pass. Shell/compositor windows
 # are also flagged so the widgets stop offering plasmashell as a target.
-pkgrel=10
+# pkgrel 11: stronger boost (memory.swap.max=0 and memory.low so the focused app
+# is never paged out or reclaimed — the biggest remaining source of stutter —
+# plus 10x cgroup weight, vm.swappiness and GPU performance level), a green
+# outline around focused windows on X11 via genesi-studio-outline (KWin has no
+# API to tint another window's decoration, so it is drawn), and a white panel
+# icon (the plasmoid was not masking it, so `color` never applied).
+pkgrel=11
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -100,6 +106,8 @@ depends=(
 )
 optdepends=(
     'libnotify: desktop notification when Studio Mode switches on or off'
+    'pyside6: green outline around the focused window on X11 desktops'
+    'nvidia-settings: PowerMizer maximum-performance mode on NVIDIA GPUs'
     'python-gobject: system-tray widget (non-KDE, non-GNOME desktops)'
     'libayatana-appindicator: system-tray widget (the proven SNI path in Genesi)'
     'gtk3: system-tray widget'
@@ -127,6 +135,8 @@ package() {
         "$pkgdir/usr/bin/genesi-studio"
     install -Dm755 "${startdir}/genesi-studio-tray" \
         "$pkgdir/usr/bin/genesi-studio-tray"
+    install -Dm755 "${startdir}/genesi-studio-outline" \
+        "$pkgdir/usr/bin/genesi-studio-outline"
 
     # ── shared library ────────────────────────────────────────────────────────
     # Both daemons import this; it lives outside /usr/bin so it is never on PATH.

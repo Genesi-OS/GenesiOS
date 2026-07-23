@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""
+genesi-studio-outline — draw a subtle green outline around a focused window (X11).
+
+WHY THIS EXISTS
+    On Hyprland and Niri the compositor lets a third party recolour someone
+    else's window border, so Studio Mode just asks it to (one hyprctl call).
+    KWin, Mutter and every other X11 window manager have no such API: a window's
+    decoration belongs to the decoration plugin, and nothing outside it can
+    tint one window differently.
+
+    So on X11 the outline is drawn instead of requested — four thin
+    always-on-top strips positioned around the target, following it as it moves
+    and resizes. Four strips rather than one full-size translucent overlay
+    because a strip that fails to be transparent is a hairline artefact, while
+    an overlay that fails to be transparent covers the application.
+
+CLICK-THROUGH
+    Qt.WindowTransparentForInput sets an empty X11 input shape, so the strips
+    cannot take focus, cannot be clicked, and never appear in the task switcher
+    or the taskbar (Qt.Tool + X11BypassWindowManagerHint). If any of that fails
+    the strips are still only a few pixels wide, at the very edge of the window.
+
+GEOMETRY
+    Polled from `wmctrl -lG`, which Studio Mode already depends on, rather than
+    adding xdotool or python-xlib for one lookup. Polling is deliberate: there
+    is no portable X11 "window moved" signal without an event loop on the root
+    window, and a few hundred milliseconds of lag on a border that only marks a
+    mode is not worth that complexity.
+
+    The process exits on its own when the window disappears, so a crashed daemon
+    cannot leave an orphan outline on screen.
+"""
+
+from __future__ import annotations
+
+import argparse
+import signal
+import subprocess
+import sys
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QApplication, QWidget
+
+GENESI_GREEN = "#1D9E75"
+THICKNESS = 2            # subtle by request: a hairline, not a picture frame
+POLL_MS = 250
+# A window that cannot be found for this many consecutive polls is gone. A
+# couple of misses are normal while a window is being dragged between desktops.
+MISS_LIMIT = 8
+
+
+def window_geometry(wid):
+    """(x, y, w, h) for an X11 window id, or None.
+
+    `wmctrl -lG` columns: <id> <desktop> <x> <y> <w> <h> <host> <title>.
+    """
+    try:
+        out = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
+                             timeout=3)
+        if out.returncode != 0:
+            return None
+    except Exception:
+        return None
+    for line in out.stdout.splitlines():
+        parts = line.split(None, 7)
+        if len(parts) < 6:
+            continue
+        try:
+            if int(parts[0], 16) != wid:
+                continue
+            return (int(parts[2]), int(parts[3]), int(parts[4]), int(parts[5]))
+        except ValueError:
+            continue
+    return None
+
+
+class Strip(QWidget):
+    """One edge of the outline: a bare coloured rectangle that ignores input."""
+
+    def __init__(self, colour):
+        super().__init__(None)
+        self.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+            | Qt.Tool                       # keep out of the taskbar/switcher
+            | Qt.WindowTransparentForInput  # empty input shape: click-through
+            | Qt.X11BypassWindowManagerHint  # no decoration, no WM placement
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground, False)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setAutoFillBackground(True)
+        pal = self.palette()
+        pal.setColor(self.backgroundRole(), QColor(colour))
+        self.setPalette(pal)
+
+
+class Outline:
+    def __init__(self, wid, colour=GENESI_GREEN, thickness=THICKNESS):
+        self.wid = wid
+        self.thickness = thickness
+        self.strips = [Strip(colour) for _ in range(4)]
+        self.misses = 0
+        self.last = None
+
+    def show_at(self, x, y, w, h):
+        t = self.thickness
+        # top, bottom, left, right — drawn just OUTSIDE the window so the
+        # outline never covers the app's own content.
+        rects = [
+            (x - t, y - t, w + 2 * t, t),
+            (x - t, y + h, w + 2 * t, t),
+            (x - t, y, t, h),
+            (x + w, y, t, h),
+        ]
+        for strip, (sx, sy, sw, sh) in zip(self.strips, rects):
+            strip.setGeometry(sx, sy, max(sw, 1), max(sh, 1))
+            if not strip.isVisible():
+                strip.show()
+            else:
+                strip.raise_()
+
+    def hide(self):
+        for strip in self.strips:
+            strip.hide()
+
+    def tick(self):
+        geo = window_geometry(self.wid)
+        if geo is None:
+            self.misses += 1
+            if self.misses >= MISS_LIMIT:
+                QApplication.quit()
+            return
+        self.misses = 0
+        if geo != self.last:
+            self.last = geo
+            self.show_at(*geo)
+        else:
+            # Keep the strips above windows that were raised over them without
+            # thrashing geometry when nothing has moved.
+            for strip in self.strips:
+                strip.raise_()
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--wid", required=True,
+                    help="X11 window id, decimal or 0x-prefixed hex")
+    ap.add_argument("--color", default=GENESI_GREEN)
+    ap.add_argument("--thickness", type=int, default=THICKNESS)
+    args = ap.parse_args(argv)
+    try:
+        wid = int(args.wid, 16) if args.wid.lower().startswith("0x") \
+            else int(args.wid)
+    except ValueError:
+        print(f"genesi-studio-outline: bad window id {args.wid!r}",
+              file=sys.stderr)
+        return 2
+
+    # Die with a plain SIGTERM/SIGINT so the daemon can just kill the process.
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    app = QApplication(sys.argv[:1])
+    app.setQuitOnLastWindowClosed(False)
+    outline = Outline(wid, args.color, max(1, args.thickness))
+    if window_geometry(wid) is None:
+        return 1                       # window already gone; nothing to mark
+
+    timer = QTimer()
+    timer.timeout.connect(outline.tick)
+    timer.start(POLL_MS)
+    outline.tick()
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -173,7 +173,13 @@ PlasmoidItem {
                 source: "genesi-studio"
                 Layout.preferredWidth: Kirigami.Units.iconSizes.small
                 Layout.preferredHeight: Kirigami.Units.iconSizes.small
-                color: root.studioActive ? root.genesiGreen : root.offColor
+                // Without isMask the `color` below does nothing and the raw SVG
+                // is painted as-is — which is why the panel icon came out dark.
+                // As a mask it takes the theme's text colour when idle and the
+                // Genesi green when Studio Mode holds the machine.
+                isMask: true
+                color: root.studioActive ? root.genesiGreen
+                                         : Kirigami.Theme.textColor
                 SequentialAnimation on opacity {
                     running: root.studioActive
                     loops: Animation.Infinite
@@ -239,7 +245,8 @@ PlasmoidItem {
                         // Only the idle Studio glyph is a mask; a real app icon
                         // must keep its own colours.
                         isMask: !root.studioActive
-                        color: root.studioActive ? "transparent" : root.offColor
+                        color: root.studioActive ? "transparent"
+                                                 : Kirigami.Theme.textColor
                     }
                 }
 

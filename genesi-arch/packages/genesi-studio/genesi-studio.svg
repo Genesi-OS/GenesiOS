@@ -1,5 +1,9 @@
+<!-- Stroke is an explicit white, NOT currentColor: the tray loads this by name
+     through GTK/appindicator, where currentColor has no cascade to inherit and
+     resolves to black — invisible on the dark Genesi panel. Plasma renders it
+     as a mask (isMask) and tints it, so the literal colour is ignored there. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+     stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"
      stroke-linejoin="round">
   <!-- A focused frame with a spotlight dot: one thing has the stage. -->
   <rect x="3" y="4" width="18" height="14" rx="2"/>

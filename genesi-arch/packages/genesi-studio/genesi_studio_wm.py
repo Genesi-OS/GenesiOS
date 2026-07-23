@@ -624,10 +624,42 @@ class X11Backend(_Backend):
         return bool(os.environ.get("DISPLAY")) and bool(shutil.which("wmctrl")) \
             and bool(shutil.which("xprop"))
 
+    # X11 has no API for tinting someone else's window decoration, so the
+    # Studio Mode outline is DRAWN over the window edge by a helper process
+    # instead of asked for. One process per outlined window, keyed by window id
+    # so unhighlight() can stop exactly the right one.
+    _outlines = {}
+
     def _active_id(self):
         txt = _run(["xprop", "-root", "_NET_ACTIVE_WINDOW"])
         m = re.search(r"(0x[0-9a-fA-F]+)", txt)
         return int(m.group(1), 16) if m else None
+
+    def highlight(self, win, color="1D9E75"):
+        if not win.handle or win.handle in self._outlines:
+            return False
+        exe = shutil.which("genesi-studio-outline")
+        if not exe:
+            return False
+        try:
+            proc = subprocess.Popen(
+                [exe, "--wid", hex(int(win.handle)), "--color", f"#{color}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True)
+        except Exception:
+            return False
+        self._outlines[win.handle] = proc
+        return True
+
+    def unhighlight(self, win):
+        proc = self._outlines.pop(win.handle, None)
+        if not proc:
+            return False
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        return True
 
     def windows(self):
         active = self._active_id()
