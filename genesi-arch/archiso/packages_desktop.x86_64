@@ -48,6 +48,13 @@ genesi-kde-settings
 # genesi-db-explorer/sqlitebrowser) arrive on the INSTALLED system via the
 # genesi-desktop meta, not the live medium, to keep the squashfs light.
 genesi-containers
+# Studio Mode. MUST be on the live ISO even though it is a dev tool: the default
+# panel (genesi-settings skel appletsrc) lists its widget org.genesi.studio, so
+# without the package present plasmashell fails to load the applet and shows
+# "package org.genesi.studio does not exist" on every live boot. Small anyway
+# (Python + QML; its wmctrl/xorg-xprop deps are tiny), same as genesi-containers
+# whose widget is in the same panel.
+genesi-studio
 # NOTE: genesi-llama-cpp (Vulkan llama.cpp + Vulkan libs, tens of MB) and the
 # genesi-desktop meta are deliberately NOT on the live ISO — they belong on the
 # INSTALLED system (netinstall) only. On the live medium they just bloat the
