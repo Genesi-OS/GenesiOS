@@ -9,9 +9,7 @@
 #      snap-pac update snapshots + manual ones, with aggressive number cleanup
 #      so the disk footprint stays tiny;
 #   3. snapper's cleanup timer is on (prunes old snapshots);
-#   4. the active bootloader's snapshot watcher is on (limine-snapper-sync on a
-#      Limine install, or grub-btrfsd on a GRUB install) so the boot menu always
-#      offers snapshots to recover from;
+#   4. grub-btrfs' watcher is on (keeps the GRUB "go back" submenu in sync);
 #   5. a first "Genesi baseline" snapshot exists.
 #
 # Every step is guarded and non-fatal: on a non-Btrfs install (or any error) it
@@ -31,9 +29,8 @@ CONFIG=root
 DONE_MARKER=/var/lib/genesi/snapshots-setup.done
 # Bump to force the config-tuning steps to re-run on existing systems (the fast
 # path below otherwise short-circuits). v3: NUMBER_LIMIT 2 -> 5. v4: GRUB snapshot
-# titles lead with date + type (readable auto-snapshot names). v5: bootloader-aware
-# — wires limine-snapper-sync on Limine installs, grub-btrfsd on GRUB installs.
-SETUP_VERSION=5
+# titles lead with date + type (readable auto-snapshot names).
+SETUP_VERSION=4
 
 # Post-restore GRUB regen (runs BEFORE the fast-path short-circuit). A restore
 # activates a copy of a snapshot as the new @, and because /boot lives inside @
@@ -106,44 +103,10 @@ systemctl enable --now snapper-cleanup.timer 2>/dev/null \
 # Deliberately DO NOT enable snapper-timeline.timer (ENXUTO = no periodic snaps).
 systemctl disable --now snapper-timeline.timer 2>/dev/null || true
 
-# ---- 4. bootloader snapshot menu ("go back to yesterday") -------------------
-# Which bootloader is active decides how snapshots reach the boot menu:
-#   * Limine -> limine-snapper-sync.service regenerates the Limine menu and boots
-#     snapshots WRITABLE (sd-btrfs-overlayfs). Detected via /etc/default/limine
-#     (written by the installer for every Limine install) or the sync config.
-#   * GRUB   -> grub-btrfsd + genesi-grub-update regenerate the GRUB submenu.
-# Limine is checked FIRST and the two branches are mutually exclusive, so
-# grub-btrfsd is never enabled on a Limine system (where grub is still installed
-# from pacstrap but /boot/grub/grub.cfg is never generated).
-if [ -e /etc/default/limine ] || [ -e /etc/limine-snapper-sync.conf ]; then
-    log "Limine detected — wiring the limine-snapper-sync snapshot menu"
-    # Keep @ as the Btrfs DEFAULT subvolume so Limine always finds limine-bios.sys,
-    # limine.conf and the kernels (they live inside @, and Limine boots the default
-    # subvolume, not subvol=@ like GRUB). The installer sets this, but re-assert it
-    # here so it self-heals if anything drifts it (e.g. a restore that could not).
-    # Idempotent: only writes when the running @ isn't already the default.
-    if [ "$(findmnt -no FSTYPE / 2>/dev/null || true)" = btrfs ] && command -v btrfs >/dev/null 2>&1; then
-        running_id="$(btrfs inspect-internal rootid / 2>/dev/null || true)"
-        cur_default="$(btrfs subvolume get-default / 2>/dev/null | awk '{print $2; exit}')"
-        if [ -n "$running_id" ] && [ "$running_id" != "$cur_default" ]; then
-            btrfs subvolume set-default "$running_id" / 2>/dev/null \
-                && log "re-pointed the Btrfs default subvolume at the running @ (id $running_id)" \
-                || log "could not set the Btrfs default subvolume (Limine boot relies on it)"
-        fi
-    fi
-    # Brand the snapshot menu group with the Genesi name (idempotent).
-    if [ -e /etc/limine-snapper-sync.conf ]; then
-        sed -i 's/^TARGET_OS_NAME=.*/TARGET_OS_NAME="Genesi OS"/' \
-            /etc/limine-snapper-sync.conf 2>/dev/null || true
-    fi
-    if systemctl enable --now limine-snapper-sync.service 2>/dev/null; then
-        # Seed the menu once so snapshot entries exist before the next snapshot.
-        command -v limine-update >/dev/null 2>&1 && limine-update >/dev/null 2>&1 || true
-    else
-        log "limine-snapper-sync.service not available yet (install limine-snapper-sync) — will retry next boot"
-        fully_ok=0
-    fi
-elif command -v genesi-grub-update >/dev/null 2>&1 && [ -d /boot/grub ]; then
+# ---- 4. grub-btrfs boot menu ("go back to yesterday") -----------------------
+# grub-btrfsd watches /.snapshots and regenerates the GRUB submenu on change so
+# a broken boot always has selectable snapshots. Only meaningful with GRUB.
+if command -v genesi-grub-update >/dev/null 2>&1 && [ -d /boot/grub ]; then
     # Make recovery visible and understandable to non-technical users. The
     # grub-btrfs submenu is otherwise named after the distro and snapshot rows
     # lead with implementation details instead of their useful description.

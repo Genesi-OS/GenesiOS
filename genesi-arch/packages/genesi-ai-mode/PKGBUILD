@@ -619,7 +619,21 @@ pkgver=1.0.0
 # own registry). Deletion is restricted to files Genesi itself copied in.
 # Covered by genesi-arch/ci/gguf-library-test.py (42 asserts) and
 # gguf-cli-test.py (29 asserts).
-pkgrel=135
+# pkgrel 136: FIX — pkgrel 135 could not open the Monitor at all. AdvisorPage.qml
+# bound the ListView scrollbar as a bare `ScrollBar.vertical:`, but this file
+# imports QtQuick.Controls AS QQC2, and an attached type must carry its module's
+# qualifier. QML treats that as a hard "Non-existent attached object" load error,
+# not a warning, so Main.qml could not instantiate AdvisorPage and the whole UI
+# died with "Failed to load the Monitor UI (is kirigami installed?)" — the error
+# text sent the user hunting a missing dependency that was never the problem
+# (reported 2026-07-24, bare metal, Hyprland/caelestia on the RTX 3050).
+# One-character class of bug that the Python/CLI tests could never see, because
+# it only surfaces when QQmlApplicationEngine actually loads the UI. Fixed to
+# `QQC2.ScrollBar.vertical:`, matching every other Genesi QML file, and pinned by
+# a NEW genesi-arch/ci/qml-sanity-test.py that checks attached-type qualification
+# against each file's imports across all 53 QML files in the repo (verified to
+# fail when the bug is reintroduced, and clean on every shipped app).
+pkgrel=136
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

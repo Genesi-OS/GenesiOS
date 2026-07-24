@@ -422,7 +422,10 @@ Kirigami.Page {
                     clip: true
                     spacing: 6
                     model: page.ggufModels
-                    ScrollBar.vertical: QQC2.ScrollBar {}
+                    // QtQuick.Controls is imported qualified, so the ATTACHED type
+                    // has to be qualified too — a bare `ScrollBar.vertical` is a
+                    // "Non-existent attached object" load error, not a warning.
+                    QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
 
                     delegate: Rectangle {
                         id: ggufRow

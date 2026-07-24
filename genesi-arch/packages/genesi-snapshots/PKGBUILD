@@ -54,19 +54,11 @@ pkgver=1.0.0
 # "Root isn't Btrfs" banner from flashing over the recovery card on a transient
 # empty status read.
 # pkgrel 10: ship the refactored app logo (icons/logo.svg).
-# pkgrel 13: bootloader-aware first-boot setup. Genesi now offers Limine (the
-# default) alongside GRUB in the installer; genesi-snapshots-setup detects the
-# active loader and wires limine-snapper-sync.service on Limine installs (boot
-# snapshots writable via sd-btrfs-overlayfs) or grub-btrfsd on GRUB installs —
-# mutually exclusive, GRUB path unchanged. SETUP_VERSION 4 -> 5 so it re-applies.
-# grub-btrfs/genesi-grub-theme stay as deps (inert on Limine); the Limine snapshot
-# stack is installed at install time by the Calamares genesi-limine-setup.sh.
-# pkgrel 14: Limine boots the Btrfs DEFAULT subvolume, not subvol=@ like GRUB, so
-# the setup now re-asserts @ as the default on Limine systems (self-heal), and the
-# restore re-points the default at the freshly restored @ (a subvol-exchange gives
-# @ a new id, which would otherwise leave Limine booting the pruned backup). Fixes
-# the "Stage 3 file not found" panic seen on the first real BIOS Limine install.
-pkgrel=14
+# pkgrel 15: revert all Limine-related changes — Limine bootloader support was
+# removed (it needs a FAT32 /boot the btrfs-only layout doesn't create). Content
+# is back to the pre-Limine GRUB-only version; pkgrel jumps past the reverted
+# 13/14 builds so this clean package supersedes them in the [genesi] repo.
+pkgrel=15
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
