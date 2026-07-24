@@ -6,6 +6,7 @@ worth testing even though the rest of the daemon needs a real /proc + cgroups.
 """
 import importlib.util
 import sys
+import signal
 import types
 from pathlib import Path
 
@@ -23,6 +24,11 @@ for name, val in (("getuid", lambda: 1000), ("getpriority", lambda *a: 0),
         setattr(os, name, val)
 if not hasattr(os, "PRIO_PROCESS"):
     os.PRIO_PROCESS = 0
+# SIGSTOP/SIGCONT are POSIX-only; the daemon references them for the freeze path.
+if not hasattr(signal, "SIGSTOP"):
+    signal.SIGSTOP = 19
+if not hasattr(signal, "SIGCONT"):
+    signal.SIGCONT = 18
 
 # genesi-studiod imports genesi_studio_wm at module level; load it under its
 # real name first so the daemon's import resolves.
@@ -73,13 +79,13 @@ check("cosmic-app-library protected (real cosmic prefix)",
       sd._is_protected(999999, "cosmic-app-library"), True)
 
 
-print("\n_freeze_candidates — targets, protected apps and never_freeze excluded")
+print("\n_suspend_candidates — targets, protected apps and never_freeze excluded")
 
 
 class FakeStudio:
-    """Just enough of Studio to drive _freeze_candidates."""
+    """Just enough of Studio to drive _suspend_candidates."""
     cfg = {"never_freeze": ["spotify", "discord"]}
-    _freeze_candidates = sd.Studio._freeze_candidates
+    _suspend_candidates = sd.Studio._suspend_candidates
 
 
 def W(pid, app_id):
@@ -87,20 +93,76 @@ def W(pid, app_id):
 
 
 windows = [
-    W(100, "firefox"),        # background app -> freeze
+    W(100, "firefox"),        # background app -> suspend
     W(200, "blender"),        # the target     -> skip
     W(300, "plasmashell"),    # compositor     -> skip
     W(400, "spotify"),        # never_freeze   -> skip
-    W(500, "kdenlive"),       # background app -> freeze
+    W(500, "kdenlive"),       # background app -> suspend
     W(600, "Discord"),        # never_freeze, case-insensitive -> skip
 ]
 orig_list = wm.list_windows
 wm.list_windows = lambda: windows
 try:
-    got = sorted(w.pid for w in FakeStudio()._freeze_candidates({200}))
+    got = sorted(w.pid for w in FakeStudio()._suspend_candidates({200}))
 finally:
     wm.list_windows = orig_list
-check("only firefox + kdenlive are frozen", got, [100, 500])
+check("only firefox + kdenlive are suspended", got, [100, 500])
+
+
+print("\nthrottle vs freeze — the default must NOT stop the process (Wayland ping)")
+# A frozen Wayland client cannot answer the compositor's ping, so it is marked
+# "not responding" and a wait/force-quit dialog appears. The default suspend
+# method must therefore renice, never SIGSTOP.
+_sig_sent = []
+_nice_set = []
+_orig_kill, _orig_setpri, _orig_getpri = os.kill, os.setpriority, os.getpriority
+_orig_children = sd._children
+_orig_ionice = sd._ionice_idle
+os.kill = lambda pid, sig: _sig_sent.append((pid, sig))
+os.getpriority = lambda which, pid: 0
+os.setpriority = lambda which, pid, val: _nice_set.append((pid, val))
+sd._children = lambda pid, depth=0: [pid + 1000]   # one child, to test the tree
+sd._ionice_idle = lambda pid: None
+
+
+class ThrottleStudio:
+    cfg = {"suspend_method": "throttle"}
+    _suspend_pid = sd.Studio._suspend_pid
+    _throttle_pid = sd.Studio._throttle_pid
+    _freeze_pid = sd.Studio._freeze_pid
+
+
+_entry = ThrottleStudio()._suspend_pid(W(100, "firefox"))
+check("throttle never sends a signal (no SIGSTOP)", _sig_sent, [])
+check("throttle renices the whole tree to +19",
+      sorted(_nice_set), [(100, 19), (1100, 19)])
+check("the undo record is a throttle record", _entry["method"], "throttle")
+check("it remembers the original nice per pid",
+      set(_entry["nice"].keys()), {"100", "1100"})
+
+# The opt-in freeze path must still SIGSTOP (for the X11 user who wants zero CPU).
+_sig_sent.clear()
+
+
+class FreezeStudio:
+    cfg = {"suspend_method": "freeze"}
+    _suspend_pid = sd.Studio._suspend_pid
+    _throttle_pid = sd.Studio._throttle_pid
+    _freeze_pid = sd.Studio._freeze_pid
+
+
+_orig_cgdir = sd._cgroup_dir
+sd._cgroup_dir = lambda pid: None                  # force the SIGSTOP path
+_fentry = FreezeStudio()._suspend_pid(W(100, "firefox"))
+check("opt-in freeze still SIGSTOPs the tree",
+      sorted(p for p, s in _sig_sent), [100, 1100])
+check("...with SIGSTOP specifically",
+      all(s == signal.SIGSTOP for _p, s in _sig_sent), True)
+check("freeze record uses the sigstop method", _fentry["method"], "sigstop")
+
+os.kill, os.setpriority, os.getpriority = _orig_kill, _orig_setpri, _orig_getpri
+sd._children, sd._ionice_idle, sd._cgroup_dir = \
+    _orig_children, _orig_ionice, _orig_cgdir
 
 
 print("\n_resolve_targets — pid and name matching")

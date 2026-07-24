@@ -118,7 +118,12 @@ pkgver=1.0.0
 # pin it to every workspace; the .install appends them to existing users'
 # configs (idempotent, same migration machinery as before). The window itself
 # became drag-movable in genesi-ai-mode pkgrel 128.
-pkgrel=17
+# pkgrel 18: start genesi-studio-tray on this session too (exec-once). Hyprland
+# ignores /etc/xdg/autostart, so without this the Studio Mode widget — whose
+# tray is its ONLY form here, the KDE plasmoid needing plasmashell — simply
+# never appeared on caelestia. Migrated into existing users' configs like the
+# other trays.
+pkgrel=18
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

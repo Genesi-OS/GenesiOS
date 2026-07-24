@@ -85,7 +85,13 @@ pkgver=1.0.0
 # outline around focused windows on X11 via genesi-studio-outline (KWin has no
 # API to tint another window's decoration, so it is drawn), and a white panel
 # icon (the plasmoid was not masking it, so `color` never applied).
-pkgrel=11
+# pkgrel 12: THROTTLE background apps (renice +19 + ionice idle) instead of
+# freezing them by default. A frozen Wayland client cannot answer the
+# compositor's ping, so Hyprland/KWin/Mutter marked it "not responding" and
+# popped a wait/force-quit dialog over every paused app — reported on Hyprland +
+# caelestia. Throttling keeps them alive-enough to pong while giving the focused
+# app the machine. True freeze stays available via `suspend_method=freeze`.
+pkgrel=12
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

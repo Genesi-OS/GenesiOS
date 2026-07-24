@@ -31,6 +31,7 @@ _migrate_hypr() {
        && ! grep -qE '^windowrule = (noborder|rounding|move).*genesi-ai-tray' "$cfg" \
        && grep -q 'genesi-caelestia-theme-sync' "$cfg" \
        && grep -q 'genesi-ports-tray' "$cfg" \
+       && grep -q 'genesi-studio-tray' "$cfg" \
        && grep -q 'genesi-ai-quick --background' "$cfg" \
        && grep -q 'genesi-scheme-init' "$cfg" \
        && grep -q 'aiquick)' "$cfg"; then
@@ -72,6 +73,12 @@ HYPR
     # Users who already received the original tray block still need PortScope.
     if ! grep -q 'genesi-ports-tray' "$cfg"; then
         printf '%s\n' 'exec-once = genesi-ports-tray' >> "$cfg"
+    fi
+
+    # …and Studio Mode (its tray is the ONLY widget on this session — the KDE
+    # plasmoid doesn't load without plasmashell).
+    if ! grep -q 'genesi-studio-tray' "$cfg"; then
+        printf '%s\n' 'exec-once = genesi-studio-tray' >> "$cfg"
     fi
 
     # Hyprland does not process XDG autostart. Keep the Quick Chat daemon warm;

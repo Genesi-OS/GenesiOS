@@ -4,20 +4,29 @@ genesi-studiod — Genesi Studio Mode, session daemon (systemd --user).
 
 Studio Mode gives one or more chosen applications the whole machine: the focused
 app gets priority, fast cores and cgroup share, while every OTHER open app is
-frozen so it cannot steal a single cycle. Turn it off and everything comes back
-exactly as it was.
+held back so it cannot steal cycles from it. Turn it off and everything comes
+back exactly as it was.
 
-WHY FREEZE AND NOT CLOSE
-    Closing background apps would be the naive way to free resources, and it is
-    the wrong one: it loses unsaved work, and "restore" could only ever relaunch
-    the app, never its open documents. Freezing (cgroup v2 `cgroup.freeze`,
-    SIGSTOP as fallback) stops the process from being scheduled at all — the
-    same CPU/GPU relief — while the process keeps its memory and its state.
-    Thawing puts the user back exactly where they were, mid-sentence.
+HOW BACKGROUND APPS ARE HELD BACK (throttle, not freeze)
+    The default is to THROTTLE: renice each background app to +19 and put its
+    I/O in the idle class. The app keeps running — just at the very bottom of
+    the queue — so the focused app (boosted to -5 with a 10x cgroup weight) wins
+    every contended scheduling decision, while the background app stays
+    responsive enough to answer the compositor's ping.
 
-WHAT IS NEVER FROZEN (the part that matters)
-    Freezing the compositor freezes the desktop, including the widget you would
-    use to turn Studio Mode back off. So freezing is restricted twice over:
+    That last point is why freezing is NOT the default. A truly frozen client
+    (cgroup.freeze / SIGSTOP) cannot pong, so Hyprland, KWin and Mutter mark it
+    "not responding" and pop a wait/force-quit dialog over every paused window.
+    Freeze remains available (`suspend_method=freeze`) for an X11 user who wants
+    literal zero CPU and does not mind the dialogs; throttle is the safe default.
+
+    Either way nothing is closed, so no unsaved work is lost and every app
+    returns to full speed exactly where it was.
+
+WHAT IS NEVER TOUCHED (the part that matters)
+    Suspending the compositor would take the desktop down with it, including the
+    widget you would use to turn Studio Mode back off. So it is restricted twice
+    over:
       * only processes that OWN A WINDOW are candidates — never daemons,
         never session infrastructure that merely happens to be running;
       * and a protected set (compositors, shells, panels, portals, audio,
@@ -77,14 +86,32 @@ SESSION_PATH = os.path.join(STATE_DIR, "session.json")
 POLL_SECONDS = 2.0
 
 DEFAULT_CONFIG = {
+    "suspend_background": True,
+    # How background apps are held back:
+    #   "throttle" (default) — renice +19 + ionice idle. The app keeps running,
+    #       just at the bottom of the queue, so it still answers the
+    #       compositor's ping and NO "application is not responding" dialog
+    #       appears. This is the safe default, and on Wayland the only sane one:
+    #       a frozen client cannot pong, so Hyprland/KWin/Mutter mark it hung
+    #       and pop a wait/force-quit dialog — the bug this replaces.
+    #   "freeze" — the old behaviour: cgroup freeze / SIGSTOP, true zero CPU.
+    #       Opt-in, because it triggers the not-responding dialog on Wayland.
+    "suspend_method": "throttle",
+    # Back-compat: honoured if a user's config still has the old key.
     "freeze_background": True,
-    # Apps the user never wants frozen even when they are in the background —
-    # music players, chat, a build running in a terminal.
+    # Apps the user never wants suspended even in the background — music
+    # players, chat, a build running in a terminal.
     "never_freeze": ["spotify", "discord", "telegram-desktop", "element"],
     # Ask the helper for the machine-wide governor too, not just per-process.
     "global_levers": True,
     "highlight_focused": True,
 }
+
+# Nice value for a suspended background app: the lowest normal priority, so the
+# focused app (boosted to -5 with a 10x cgroup weight) wins every contended
+# scheduling decision, while the background app still runs enough to stay
+# responsive to the compositor.
+BACKGROUND_NICE = 19
 
 # Freezing any of these takes the desktop down with it. Matched against the
 # process comm (and the window app_id), case-insensitively, as a prefix.
@@ -212,6 +239,26 @@ def _notify(title, body, icon="genesi-studio"):
         pass
 
 
+def _ionice_idle(pid):
+    """Best-effort: put a process's I/O in the idle class. Never raises."""
+    try:
+        subprocess.run(["ionice", "-c", "3", "-p", str(pid)],
+                       capture_output=True, timeout=3)
+    except Exception:
+        pass
+
+
+def _ionice_restore(pid):
+    """Return a process's I/O to the kernel default (class 0 = none)."""
+    if pid is None:
+        return
+    try:
+        subprocess.run(["ionice", "-c", "0", "-p", str(pid)],
+                       capture_output=True, timeout=3)
+    except Exception:
+        pass
+
+
 def _is_protected(pid, app_id=""):
     names = [_comm(pid).lower(), (app_id or "").lower()]
     for name in names:
@@ -280,9 +327,9 @@ class Studio:
         prev = _load_json(SESSION_PATH, None)
         if not prev:
             return
-        log("found a stale Studio session — thawing everything it froze")
+        log("found a stale Studio session — restoring everything it held back")
         for entry in prev.get("frozen", []):
-            self._thaw_entry(entry)
+            self._resume_entry(entry)
         helper_call({"op": "restore-all"})
         # An X11 outline is a separate process that only exits when its window
         # does, so a daemon that died mid-session would leave a green rectangle
@@ -306,21 +353,52 @@ class Studio:
             "boosted": self.boosted,
         })
 
-    # -- freezing ----------------------------------------------------------
-    def _freeze_pid(self, win):
-        """Freeze one app. cgroup freeze first (catches the whole scope, i.e.
-        every helper process a browser spawned); SIGSTOP the tree otherwise."""
-        pid, app_id = win.pid, win.app_id
-        # The icon/name travel with the record so the widgets can render the
-        # frozen list properly, and so a crash-recovery thaw can still name
-        # what it is thawing.
-        meta = {"pid": pid, "app_id": app_id,
+    # -- suspending the background -----------------------------------------
+    def _suspend_pid(self, win):
+        """Hold one background app back, by the configured method.
+
+        Returns an undo record, or None if nothing could be applied. The
+        icon/name travel with it so the widgets can render the list and a
+        crash-recovery pass can still name what it is restoring.
+        """
+        meta = {"pid": win.pid, "app_id": win.app_id,
                 "icon": win.icon, "name": win.name}
-        cg = _cgroup_dir(pid)
+        if self.cfg.get("suspend_method", "throttle") == "freeze":
+            return self._freeze_pid(win, meta)
+        return self._throttle_pid(win, meta)
+
+    def _throttle_pid(self, win, meta):
+        """Sink the whole process tree to the bottom of the scheduler.
+
+        renice +19 keeps the app RUNNING — so it still answers the compositor's
+        ping and never triggers a not-responding dialog — while giving it almost
+        no CPU whenever the focused app wants it. Originals are captured per pid
+        so the exact prior nice is restored, not a guessed default.
+        """
+        niced = {}
+        for p in [win.pid] + _children(win.pid):
+            try:
+                niced[str(p)] = os.getpriority(os.PRIO_PROCESS, p)
+                os.setpriority(os.PRIO_PROCESS, p, BACKGROUND_NICE)
+            except OSError:
+                continue
+        # ionice best-effort: push background I/O behind the focused app's too.
+        # Not captured (restore returns it to the default) — a background app on
+        # a custom I/O class is rare, and the cost of probing every pid is not.
+        _ionice_idle(win.pid)
+        if not niced:
+            return None
+        return dict(meta, method="throttle", nice=niced)
+
+    def _freeze_pid(self, win, meta):
+        """True zero-CPU suspend (opt-in). cgroup freeze catches the whole
+        scope; SIGSTOP the tree otherwise. On Wayland this makes the compositor
+        mark the app unresponsive — that is why it is not the default."""
+        cg = _cgroup_dir(win.pid)
         if cg and os.path.exists(os.path.join(cg, "cgroup.freeze")):
             if _write(os.path.join(cg, "cgroup.freeze"), "1"):
                 return dict(meta, method="cgroup", cgroup=cg)
-        pids = [pid] + _children(pid)
+        pids = [win.pid] + _children(win.pid)
         stopped = []
         for p in pids:
             try:
@@ -332,20 +410,30 @@ class Studio:
             return None
         return dict(meta, method="sigstop", pids=stopped)
 
-    def _thaw_entry(self, entry):
-        if entry.get("method") == "cgroup":
+    def _resume_entry(self, entry):
+        method = entry.get("method")
+        if method == "throttle":
+            for p, orig in (entry.get("nice") or {}).items():
+                try:
+                    os.setpriority(os.PRIO_PROCESS, int(p), int(orig))
+                except OSError:
+                    continue
+            _ionice_restore(entry.get("pid"))
+            return
+        if method == "cgroup":
             cg = entry.get("cgroup")
             if cg:
                 _write(os.path.join(cg, "cgroup.freeze"), "0")
             return
+        # sigstop
         for p in entry.get("pids") or [entry.get("pid")]:
             try:
                 os.kill(int(p), signal.SIGCONT)
             except OSError:
                 continue
 
-    def _freeze_candidates(self, target_pids):
-        """Windowed apps that are safe to freeze right now."""
+    def _suspend_candidates(self, target_pids):
+        """Windowed apps that are safe to hold back right now."""
         never = [n.lower() for n in (self.cfg.get("never_freeze") or [])]
         out, seen = [], set()
         for w in wm.list_windows():
@@ -387,9 +475,12 @@ class Studio:
             self.frozen = []
             self._persist_session()
 
-            if self.cfg.get("freeze_background", True):
-                for w in self._freeze_candidates(target_pids):
-                    entry = self._freeze_pid(w)
+            # "suspend_background" is the current key; fall back to the old
+            # "freeze_background" so an upgraded user's config still works.
+            if self.cfg.get("suspend_background",
+                            self.cfg.get("freeze_background", True)):
+                for w in self._suspend_candidates(target_pids):
+                    entry = self._suspend_pid(w)
                     if entry:
                         self.frozen.append(entry)
                         self._persist_session()
@@ -413,18 +504,19 @@ class Studio:
             self.write_state()
             names = ", ".join(t.get("name") or t["app_id"]
                               for t in self.targets) or "?"
+            method = self.cfg.get("suspend_method", "throttle")
             log(f"ON — focus {[t['app_id'] for t in self.targets]}, "
-                f"froze {len(self.frozen)} app(s)")
-            # Say what actually happened, including when the answer is
-            # "nothing was frozen" — that is a real and confusing outcome when
-            # every other open window turned out to be protected.
+                f"{method} {len(self.frozen)} app(s)")
+            # Say what actually happened, including the confusing "nothing" case
+            # where every other open window turned out to be protected.
+            verb = "frozen" if method == "freeze" else "slowed"
             if self.frozen:
                 body = (f"{names} has the machine.\n"
-                        f"{len(self.frozen)} background app(s) paused — they "
-                        f"keep their work and resume when you switch off.")
+                        f"{len(self.frozen)} background app(s) {verb} — they "
+                        f"return to full speed when you switch off.")
             else:
                 body = (f"{names} has the machine.\n"
-                        f"Nothing to pause — no other app was eligible.")
+                        f"No other app needed holding back.")
             if self.last_error:
                 body += f"\n{self.last_error}"
             _notify("Studio Mode ON", body)
@@ -436,7 +528,7 @@ class Studio:
             if not self.active:
                 return {"ok": False, "error": "not active"}
             for entry in self.frozen:
-                self._thaw_entry(entry)
+                self._resume_entry(entry)
             helper_call({"op": "release", "pids": self.boosted, "global": True})
             for w in self.highlighted:
                 wm.clear_highlight(w)

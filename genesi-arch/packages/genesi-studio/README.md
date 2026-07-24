@@ -17,14 +17,28 @@ genesi-studio info               # what it is doing right now
 genesi-studio list               # what is open, and what is focused
 ```
 
-## Frozen, not closed
+## Held back, not closed
 
 Closing background apps would be the crude way to free a machine, and it loses
 unsaved work: "restore" could only ever relaunch the app, never its open
-documents. Studio Mode freezes instead — cgroup v2 `cgroup.freeze`, with
-SIGSTOP on the process tree as a fallback. A frozen process is not scheduled at
-all (the same CPU and GPU relief as closing it) but keeps its memory and its
-state. Thawing puts you back mid-sentence.
+documents. So Studio Mode never closes anything.
+
+By default it **throttles**: each background app is reniced to +19 with its I/O
+in the idle class, so it keeps running but sits at the very bottom of the queue
+while the focused app takes the machine. Throttling (rather than a true freeze)
+is deliberate — a frozen Wayland client cannot answer the compositor's ping, so
+Hyprland, KWin and Mutter mark it "not responding" and pop a wait/force-quit
+dialog over every paused window.
+
+A literal zero-CPU freeze (cgroup `cgroup.freeze` / SIGSTOP) is still available
+for X11 users who want it and do not mind those dialogs:
+
+```bash
+genesi-studio set suspend_method=freeze   # default is "throttle"
+```
+
+Either way the app keeps its memory and its state, and returns to full speed
+exactly where it was.
 
 Apps you launch **after** switching Studio Mode on are never frozen. The freeze
 set is a snapshot taken at activation, because silently freezing a window the
