@@ -117,6 +117,20 @@ systemctl disable --now snapper-timeline.timer 2>/dev/null || true
 # from pacstrap but /boot/grub/grub.cfg is never generated).
 if [ -e /etc/default/limine ] || [ -e /etc/limine-snapper-sync.conf ]; then
     log "Limine detected — wiring the limine-snapper-sync snapshot menu"
+    # Keep @ as the Btrfs DEFAULT subvolume so Limine always finds limine-bios.sys,
+    # limine.conf and the kernels (they live inside @, and Limine boots the default
+    # subvolume, not subvol=@ like GRUB). The installer sets this, but re-assert it
+    # here so it self-heals if anything drifts it (e.g. a restore that could not).
+    # Idempotent: only writes when the running @ isn't already the default.
+    if [ "$(findmnt -no FSTYPE / 2>/dev/null || true)" = btrfs ] && command -v btrfs >/dev/null 2>&1; then
+        running_id="$(btrfs inspect-internal rootid / 2>/dev/null || true)"
+        cur_default="$(btrfs subvolume get-default / 2>/dev/null | awk '{print $2; exit}')"
+        if [ -n "$running_id" ] && [ "$running_id" != "$cur_default" ]; then
+            btrfs subvolume set-default "$running_id" / 2>/dev/null \
+                && log "re-pointed the Btrfs default subvolume at the running @ (id $running_id)" \
+                || log "could not set the Btrfs default subvolume (Limine boot relies on it)"
+        fi
+    fi
     # Brand the snapshot menu group with the Genesi name (idempotent).
     if [ -e /etc/limine-snapper-sync.conf ]; then
         sed -i 's/^TARGET_OS_NAME=.*/TARGET_OS_NAME="Genesi OS"/' \

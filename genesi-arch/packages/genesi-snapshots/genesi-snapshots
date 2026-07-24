@@ -272,6 +272,22 @@ restore_into() {
         die "could not reattach snapshot history; original system restored"
     fi
 
+    # Limine (unlike GRUB) boots the Btrfs DEFAULT subvolume, which the installer
+    # points at @ on Limine systems. The exchange above gave @ a NEW subvolume id,
+    # so the stored default still points at the OLD @ (staged aside as the backup,
+    # pruned later) — on Limine the machine would boot the pre-restore system and
+    # then fail to boot once that backup is removed. If a non-top-level default is
+    # set (i.e. a Limine install), re-point it at the freshly restored @. No-op on
+    # GRUB, where the default stays the top level (id 5). Non-fatal: the restore
+    # already succeeded structurally, and genesi-snapshots-setup re-asserts it too.
+    default_id="$(btrfs subvolume get-default "$top" 2>/dev/null | awk '{print $2; exit}')"
+    if [ -n "$default_id" ] && [ "$default_id" != "5" ]; then
+        new_root_id="$(btrfs inspect-internal rootid "$root_path" 2>/dev/null || true)"
+        if [ -z "$new_root_id" ] || ! btrfs subvolume set-default "$new_root_id" "$top" 2>/dev/null; then
+            echo "genesi-snapshots: WARNING: could not re-point the Btrfs default subvolume to the restored @ — on Limine run 'btrfs subvolume set-default' manually" >&2
+        fi
+    fi
+
     # The restored @ carries the grub.cfg frozen into the snapshot — it lists
     # snapshots that no longer exist and omits newer ones. Since /boot lives inside
     # @ we cannot fix the running grub.cfg (that is the OLD @, about to be dropped);
