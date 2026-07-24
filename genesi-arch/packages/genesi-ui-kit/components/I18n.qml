@@ -120,6 +120,29 @@ Item {
             "adv.download": "Download",
             "adv.downloading": "Downloading…",
             "adv.startingPre": "starting download of ",
+            // ── local GGUF library ──
+            "gguf.title": "Local GGUF models",
+            "gguf.subtitle": "Use any .gguf on this machine — a Hugging Face "
+                + "download works directly, no Ollama import. Drag a file onto "
+                + "this window, pick one, or paste a direct link.",
+            "gguf.addFile": "Add GGUF file",
+            "gguf.add": "Add",
+            "gguf.adding": "Adding…",
+            "gguf.added": "Added",
+            "gguf.urlPlaceholder": "…or paste a direct .gguf link",
+            "gguf.pick": "Choose a GGUF model",
+            "gguf.drop": "Drop the .gguf here",
+            "gguf.openFolder": "Open the models folder",
+            "gguf.rescan": "Rescan for GGUF files",
+            "gguf.remove": "Remove from the library",
+            "gguf.use": "Use with Turbo",
+            "gguf.inUse": "In use",
+            "gguf.empty": "No GGUF files found yet. Add one above, or drop it in "
+                + "your Downloads folder and press rescan.",
+            "gguf.fitGpu": "FITS GPU",
+            "gguf.fitMoe": "MoE OFFLOAD",
+            "gguf.fitSpill": "SLOW",
+            "gguf.fitCpu": "CPU",
             // dialogs + tooltips
             "dlg.backendTitle": "Install the Turbo backend",
             "dlg.backendIntro": "Choose the Turbo inference engine (llama-server).",
@@ -269,6 +292,30 @@ Item {
             "adv.download": "Baixar",
             "adv.downloading": "Baixando…",
             "adv.startingPre": "iniciando download de ",
+            // ── biblioteca GGUF local ──
+            "gguf.title": "Modelos GGUF locais",
+            "gguf.subtitle": "Use qualquer .gguf desta máquina — um download do "
+                + "Hugging Face funciona direto, sem importar para o Ollama. "
+                + "Arraste um arquivo para esta janela, escolha um, ou cole um "
+                + "link direto.",
+            "gguf.addFile": "Adicionar GGUF",
+            "gguf.add": "Adicionar",
+            "gguf.adding": "Adicionando…",
+            "gguf.added": "Adicionado",
+            "gguf.urlPlaceholder": "…ou cole um link .gguf direto",
+            "gguf.pick": "Escolha um modelo GGUF",
+            "gguf.drop": "Solte o .gguf aqui",
+            "gguf.openFolder": "Abrir a pasta de modelos",
+            "gguf.rescan": "Procurar arquivos GGUF de novo",
+            "gguf.remove": "Remover da biblioteca",
+            "gguf.use": "Usar com o Turbo",
+            "gguf.inUse": "Em uso",
+            "gguf.empty": "Nenhum arquivo GGUF encontrado ainda. Adicione um "
+                + "acima, ou coloque na pasta Downloads e clique em procurar.",
+            "gguf.fitGpu": "CABE NA GPU",
+            "gguf.fitMoe": "OFFLOAD MoE",
+            "gguf.fitSpill": "LENTO",
+            "gguf.fitCpu": "CPU",
             // dialogs + tooltips
             "dlg.backendTitle": "Instalar o backend do Turbo",
             "dlg.backendIntro": "Escolha o motor de inferência do Turbo (llama-server).",

@@ -597,7 +597,29 @@ pkgver=1.0.0
 # used to silently behave like exit0) — first run never fires, matching the
 # polling trigger's edge semantics. All four Fire-when modes are pinned by
 # genesi-arch/ci/automation-engine-test.py (24 asserts).
-pkgrel=134
+# pkgrel 135: ANY local .gguf is now a first-class model — no ollama import.
+# Until now the Monitor could only run what `ollama pull` had fetched, so using a
+# Hugging Face download meant hand-writing a Modelfile in a terminal. That hurt
+# most exactly where it mattered: the MoE quants that make a 30B-A3B usable on a
+# small card live on HF, and ollama's runner does not expose the expert-offload
+# flag (--n-cpu-moe) Turbo already uses to run them fast.
+# genesi-ai-turbo's ensure() now resolves a GGUF reference (a path, or
+# gguf:<name> from the library) as well as an ollama tag, so EVERY existing Turbo
+# feature — MoE expert-offload, Genesi Fit, speculative decoding, autotuned
+# profiles — applies to those files unchanged. New subcommands gguf-list /
+# gguf-info / gguf-import (JSON out, consumed by the Monitor); library lives in
+# ~/.local/share/genesi/models with ~/Downloads and ~/Models also scanned; shard
+# sets are collapsed to their first file. pick_draft never guesses a sibling
+# draft for a GGUF (a mismatched tokenizer silently corrupts speculation).
+# Monitor: the Models page gained a GGUF library card — file picker, drag-and-
+# drop, direct-URL download, and per-model badges saying how the file will
+# actually run HERE (fits VRAM / MoE offload / slow / CPU) from real VRAM+RAM
+# detection. Picking one hands the path to Turbo and switches Turbo on, because
+# a raw GGUF can only be served by llama-server (ollama's chat API only knows its
+# own registry). Deletion is restricted to files Genesi itself copied in.
+# Covered by genesi-arch/ci/gguf-library-test.py (42 asserts) and
+# gguf-cli-test.py (29 asserts).
+pkgrel=135
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

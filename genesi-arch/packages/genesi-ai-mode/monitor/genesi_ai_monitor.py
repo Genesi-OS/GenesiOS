@@ -74,6 +74,9 @@ class Backend(QObject):
     turboNeedsInstall = Signal(bool)  # backend (llama-server) missing -> offer install
     turboRecommended = Signal(str)    # advisor's biggest-fits-VRAM model pick
     backendAdvice = Signal(str)       # JSON: which backend (cuda/vulkan) to install
+    ggufModels = Signal(str)          # JSON array of local GGUF models (+fit report)
+    ggufImportStatus = Signal(str)    # human-readable import/download progress
+    ggufImportDone = Signal(bool, str)  # finished (ok?, message)
     # Benchmark (wraps `genesi-ai-mode bench`): live progress + parsed result.
     benchRunning = Signal(bool)    # a benchmark is in flight
     benchProgress = Signal(str)    # human-readable step ("warming up …", "AI Mode ON …")
@@ -295,6 +298,103 @@ class Backend(QObject):
                 names = []
             self.modelsLoaded.emit(json.dumps(names))
         threading.Thread(target=work, daemon=True).start()
+
+    # ── local GGUF models ────────────────────────────────────────────────────
+    # Any .gguf on the machine is a first-class model here: llama-server reads
+    # the architecture and chat template out of the file header, so a Hugging
+    # Face download needs no ollama import. genesi-ai-turbo owns the discovery
+    # and metadata parsing (it is the process that will serve the file), and the
+    # Monitor just presents it. GGUF models therefore REQUIRE Turbo — ollama's
+    # /api/chat only knows about its own registry — which the UI enforces by
+    # switching Turbo on when one is selected.
+    @Slot()
+    def loadGgufModels(self):
+        def work():
+            entries = []
+            if shutil.which("genesi-ai-turbo"):
+                try:
+                    r = subprocess.run(["genesi-ai-turbo", "gguf-list"],
+                                       capture_output=True, text=True, timeout=60)
+                    entries = json.loads(r.stdout or "[]")
+                except Exception:
+                    entries = []
+            self.ggufModels.emit(json.dumps(entries))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    @Slot(str, bool)
+    def importGguf(self, source, move=False):
+        """Add a .gguf (local path, file:// URL from a drag-and-drop, or an
+        http(s) link) to the Genesi GGUF library, then refresh the list."""
+        src = (source or "").strip()
+        if not src:
+            self.ggufImportDone.emit(False, "no file selected")
+            return
+        if not shutil.which("genesi-ai-turbo"):
+            self.ggufImportDone.emit(False, "genesi-ai-turbo not found")
+            return
+
+        def work():
+            self.ggufImportStatus.emit("adding the model…")
+            try:
+                proc = subprocess.Popen(
+                    ["genesi-ai-turbo", "gguf-import", src]
+                    + (["--move"] if move else []),
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            except OSError as e:
+                self.ggufImportDone.emit(False, str(e))
+                return
+            # Progress and the final summary both go to stderr; the new path is
+            # the only thing on stdout. Stream stderr so a multi-GB download
+            # shows real progress instead of freezing the card.
+            last = ""
+            for line in iter(proc.stderr.readline, ""):
+                line = line.strip().lstrip(":").strip()
+                if line:
+                    last = line
+                    self.ggufImportStatus.emit(line)
+            out = (proc.stdout.read() or "").strip()
+            proc.wait()
+            if proc.returncode == 0 and out:
+                self.ggufImportDone.emit(True, os.path.basename(out))
+                self.loadGgufModels()
+            else:
+                self.ggufImportDone.emit(
+                    False, last.lstrip("[!] ").strip() or "import failed")
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(result=str)
+    def ggufLibraryDir(self):
+        data = (os.environ.get("XDG_DATA_HOME")
+                or os.path.expanduser("~/.local/share"))
+        return os.environ.get("GENESI_GGUF_DIR", "").split(":")[0].strip() \
+            or os.path.join(data, "genesi", "models")
+
+    @Slot()
+    def openGgufFolder(self):
+        path = self.ggufLibraryDir()
+        try:
+            os.makedirs(path, exist_ok=True)
+            subprocess.Popen(["xdg-open", path],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+    @Slot(str, result=bool)
+    def removeGguf(self, path):
+        """Delete a GGUF that lives in the Genesi library. Files the user keeps
+        elsewhere (Downloads…) are only ever listed, never deleted — removing
+        something we merely discovered would be destroying data we don't own."""
+        p = os.path.realpath(os.path.expanduser(path or ""))
+        lib = os.path.realpath(self.ggufLibraryDir())
+        if not p.startswith(lib + os.sep) or not p.lower().endswith(".gguf"):
+            return False
+        try:
+            os.unlink(p)
+        except OSError:
+            return False
+        self.loadGgufModels()
+        return True
 
     # -- local agent -------------------------------------------------------
     # The regular streaming chat path below is deliberately left untouched.

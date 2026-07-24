@@ -13,6 +13,17 @@ already downloaded — no re-download.
   genesi-ai-turbo recommend               print the biggest model that fits VRAM
   genesi-ai-turbo <model> [--spec]        same as `serve`
 
+<model> is either an ollama tag (llama3.1:8b) or ANY GGUF on this machine —
+a path (./mistral.gguf, ~/Downloads/x.gguf) or gguf:<name> from the Genesi GGUF
+library. Every Turbo feature (MoE expert-offload, Fit, spec, autotune) works the
+same either way, so a model downloaded straight from Hugging Face needs no
+ollama import step at all:
+
+  genesi-ai-turbo gguf-list               JSON of the local GGUF library
+  genesi-ai-turbo gguf-import <src>       add a .gguf file (or URL) to the library
+  genesi-ai-turbo gguf-info <path>        one GGUF's metadata + how it will run
+  genesi-ai-turbo serve ~/Downloads/qwen3-30b-a3b-q4.gguf
+
   --spec / --speculative   enable speculative decoding (a draft model proposes
                            tokens; faster decode on a mature GPU driver, but can
                            REGRESS on Vulkan/NVK). Default OFF = plain full GPU
@@ -111,6 +122,7 @@ import shutil
 import socket
 import tempfile
 import subprocess
+import urllib.parse
 import urllib.request
 
 TURBO_PORT = 11435
@@ -235,6 +247,304 @@ def gguf_path(tag):
     return None
 
 
+# ── Genesi GGUF library ──────────────────────────────────────────────────────
+# Any .gguf on the machine is a first-class Turbo model. llama-server reads the
+# architecture, context length and chat template straight out of the GGUF header,
+# so a file downloaded from Hugging Face needs NO ollama import step — pointing
+# `-m` at it is enough. That matters most for MoE models: the quants that make a
+# 30B-A3B usable on an 8 GB card live on HF, and ollama's own runner doesn't
+# expose the expert-offload flag (--n-cpu-moe) that makes them fast. Everything
+# below is just discovery + bookkeeping; the serving path is unchanged.
+
+# Where `gguf-import` puts files, and the roots we scan for existing ones.
+def gguf_library_dir():
+    """The Genesi GGUF library (created on demand). Override: GENESI_GGUF_DIR."""
+    env = os.environ.get("GENESI_GGUF_DIR", "").split(":")[0].strip()
+    if env:
+        return os.path.expanduser(env)
+    data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return os.path.join(data, "genesi", "models")
+
+
+def _gguf_scan_dirs():
+    """Every directory we look in for .gguf files, best-known first. Includes the
+    usual places a browser drops a Hugging Face download so the user doesn't have
+    to move the file at all."""
+    dirs, seen = [], set()
+    for d in ([os.path.expanduser(p) for p in
+               os.environ.get("GENESI_GGUF_DIR", "").split(":") if p.strip()]
+              + [gguf_library_dir(),
+                 os.path.expanduser("~/Downloads"),
+                 os.path.expanduser("~/Models"),
+                 os.path.expanduser("~/.cache/huggingface/hub"),
+                 "/var/lib/genesi/models"]):
+        rp = os.path.realpath(d)
+        if rp not in seen and os.path.isdir(d):
+            seen.add(rp)
+            dirs.append(d)
+    return dirs
+
+
+# A sharded model is "model-00001-of-00003.gguf"; llama.cpp loads the whole set
+# when pointed at the FIRST shard, so we list only that one and hide the rest.
+_SHARD_RE = re.compile(r"-(\d{5})-of-(\d{5})\.gguf$", re.I)
+
+
+def _is_hidden_shard(path):
+    m = _SHARD_RE.search(os.path.basename(path))
+    return bool(m) and m.group(1) != "00001"
+
+
+def scan_gguf_library(max_depth=3):
+    """Every usable .gguf on this machine as a list of dicts (see gguf_describe).
+    Bounded-depth walk so a huge home directory can't stall the UI."""
+    out, seen = [], set()
+    for root in _gguf_scan_dirs():
+        base_depth = root.rstrip(os.sep).count(os.sep)
+        for dirpath, dirnames, filenames in os.walk(root):
+            if dirpath.count(os.sep) - base_depth >= max_depth:
+                dirnames[:] = []
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for fn in filenames:
+                if not fn.lower().endswith(".gguf"):
+                    continue
+                p = os.path.join(dirpath, fn)
+                rp = os.path.realpath(p)
+                if rp in seen or _is_hidden_shard(p):
+                    continue
+                # Genesi Fit's requantized copies are derived artifacts, not
+                # models the user picked — keep them out of the library list.
+                if os.sep + ".cache" + os.sep + "genesi-turbo" + os.sep in rp:
+                    continue
+                seen.add(rp)
+                try:
+                    if os.path.getsize(p) < 1024 * 1024:      # stub/partial download
+                        continue
+                except OSError:
+                    continue
+                out.append(gguf_describe(p))
+    out.sort(key=lambda d: d.get("name", "").lower())
+    return out
+
+
+def is_gguf_ref(ref):
+    """True when `ref` names a GGUF file rather than an ollama tag."""
+    if not ref:
+        return False
+    r = str(ref)
+    return (r.startswith("gguf:") or r.lower().endswith(".gguf")
+            or (os.sep in r and os.path.isfile(os.path.expanduser(r))))
+
+
+def resolve_gguf_ref(ref):
+    """A GGUF reference -> an absolute readable path, or None.
+
+    Accepts an absolute/relative path, ~-expanded, or `gguf:<name>` which is
+    matched against the library by file name (with or without the .gguf suffix)."""
+    if not ref:
+        return None
+    r = str(ref)
+    if r.startswith("gguf:"):
+        want = r[5:].strip().lower()
+        if not want:
+            return None
+        for entry in scan_gguf_library():
+            base = os.path.basename(entry["path"]).lower()
+            if want in (base, base[:-5], entry.get("name", "").lower()):
+                return entry["path"]
+        return None
+    p = os.path.abspath(os.path.expanduser(r))
+    return p if os.path.isfile(p) and os.access(p, os.R_OK) else None
+
+
+# GGUF file_type -> the quant name users recognise. Mirrors _FT_BPW above.
+_FT_NAME = {0: "F32", 1: "F16", 2: "Q4_0", 3: "Q4_1", 7: "Q8_0", 8: "Q5_0",
+            9: "Q5_1", 10: "Q2_K", 11: "Q3_K_S", 12: "Q3_K_M", 13: "Q3_K_L",
+            14: "Q4_K_S", 15: "Q4_K_M", 16: "Q5_K_S", 17: "Q5_K_M", 18: "Q6_K",
+            19: "IQ2_XXS", 20: "IQ4_NL", 30: "IQ4_XS"}
+
+
+def gguf_describe(path):
+    """Everything the UI needs about one GGUF, read from its header (cheap — no
+    weights are loaded). Never raises: unreadable fields simply come back empty."""
+    try:
+        size_gb = os.path.getsize(path) / (1024.0 ** 3)
+    except OSError:
+        size_gb = 0.0
+    meta = gguf_meta(path, (".expert_count", ".block_count", ".context_length",
+                            ".file_type", "general.architecture",
+                            "general.name", "general.size_label"))
+    experts = int(meta.get(".expert_count") or 0)
+    ft = meta.get(".file_type")
+    try:
+        ft = int(ft)
+    except (TypeError, ValueError):
+        ft = -1
+    bpw = _FT_BPW.get(ft, 4.8)
+    # Total parameters: prefer the model's own label, else infer from the file
+    # size and bits-per-weight (size_gb * 8 / bpw), which is accurate to ~5%.
+    label = str(meta.get("general.size_label") or "").strip()
+    params_b = 0.0
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*[Bb]$", label)
+    if m:
+        params_b = float(m.group(1))
+    else:
+        m = re.match(r"^(\d+)x(\d+(?:\.\d+)?)\s*[Bb]$", label)   # e.g. 8x7B
+        if m:
+            params_b = float(m.group(1)) * float(m.group(2))
+    if params_b <= 0 and size_gb > 0 and bpw > 0:
+        params_b = size_gb * 8.0 / bpw
+    name = (str(meta.get("general.name") or "").strip()
+            or os.path.basename(path)[:-5])
+    return {
+        "path": path,
+        "file": os.path.basename(path),
+        "name": name,
+        "arch": str(meta.get("general.architecture") or "").strip(),
+        "size_gb": round(size_gb, 2),
+        "params_b": round(params_b, 1),
+        "quant": _FT_NAME.get(ft, ""),
+        "experts": experts,
+        "moe": experts > 1,
+        "blocks": int(meta.get(".block_count") or 0),
+        "context": int(meta.get(".context_length") or 0),
+        "in_library": os.path.realpath(path).startswith(
+            os.path.realpath(gguf_library_dir())),
+    }
+
+
+def gguf_fit_report(entry):
+    """How this GGUF will actually run on THIS machine — the honest expectation,
+    not a download button. Returns (verdict, detail) where verdict is one of
+    'gpu' (fits VRAM entirely), 'moe' (spills, but expert-offload keeps it fast),
+    'spill' (spills as a dense model — slow) or 'cpu' (no usable GPU)."""
+    vram_gb = _detect_vram_mb() / 1024.0
+    ram_gb = _total_ram_gb()
+    budget = max(vram_gb - 1.2, 0.0)          # runtime + KV headroom
+    size = float(entry.get("size_gb") or 0.0)
+    if vram_gb < 1.0:
+        if size > ram_gb * 0.7:
+            return "cpu", (f"needs ~{size:.1f} GB but only ~{ram_gb * 0.7:.1f} GB "
+                           "of RAM is safely usable — expect swapping")
+        return "cpu", (f"CPU only ({ram_gb:.0f} GB RAM) — works, but decode is "
+                       "limited by memory bandwidth")
+    if size <= budget:
+        return "gpu", (f"fits your {vram_gb:.1f} GB VRAM completely "
+                       f"({size:.1f} GB) — full GPU speed")
+    if entry.get("moe"):
+        active = (float(entry.get("params_b") or 0.0)
+                  / max(int(entry.get("experts") or 1), 1))
+        need_ram = size * 1.15
+        if need_ram > ram_gb * 0.7:
+            return "spill", (f"MoE, but its experts need ~{size:.1f} GB of RAM and "
+                             f"only ~{ram_gb * 0.7:.1f} GB is safely usable")
+        return "moe", (f"too big for {vram_gb:.1f} GB VRAM, but it is MoE — Turbo "
+                       f"keeps attention on the GPU and streams the experts from "
+                       f"RAM (~{active:.1f}B active/token), so it runs far faster "
+                       "than a dense model this size")
+    return "spill", (f"{size:.1f} GB vs a {budget:.1f} GB VRAM budget — part of it "
+                     "runs on the CPU, so decode will be slow. A smaller quant or "
+                     "an MoE model of the same size will be much faster")
+
+
+def import_gguf(src, move=False, progress=None):
+    """Add `src` (a local .gguf path or an http(s) URL) to the GGUF library and
+    return its new path. Raises ValueError/OSError with a user-readable message.
+
+    Copy (not move) by default: the user's download stays where they put it."""
+    lib = gguf_library_dir()
+    os.makedirs(lib, exist_ok=True)
+    src = str(src).strip()
+    if src.startswith("file://"):
+        src = urllib.parse.unquote(urllib.parse.urlparse(src).path)
+    if src.startswith(("http://", "https://")):
+        return _download_gguf(src, lib, progress)
+    p = os.path.abspath(os.path.expanduser(src))
+    if not os.path.isfile(p):
+        raise ValueError(f"not a file: {src}")
+    if not p.lower().endswith(".gguf"):
+        raise ValueError("not a .gguf file — Genesi serves GGUF weights "
+                         "(convert safetensors first, or download the GGUF build)")
+    with open(p, "rb") as fh:
+        if fh.read(4) != b"GGUF":
+            raise ValueError("this file is not a valid GGUF (bad magic header) — "
+                             "it may be an incomplete download")
+    dest = os.path.join(lib, os.path.basename(p))
+    if os.path.realpath(dest) == os.path.realpath(p):
+        return p                                   # already in the library
+    if os.path.exists(dest):
+        raise ValueError(f"{os.path.basename(p)} is already in the library")
+    free = shutil.disk_usage(lib).free
+    need = os.path.getsize(p)
+    if not move and free < need + (256 * 1024 * 1024):
+        raise OSError(f"not enough free space: needs {need / 1024**3:.1f} GB, "
+                      f"{free / 1024**3:.1f} GB available")
+    if move:
+        try:
+            os.replace(p, dest)                    # same filesystem: instant
+            return dest
+        except OSError:
+            pass                                   # cross-device: fall back to copy
+    tmp = dest + ".part"
+    try:
+        shutil.copyfile(p, tmp)
+        os.replace(tmp, dest)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    if move:
+        try:
+            os.unlink(p)
+        except OSError:
+            pass
+    return dest
+
+
+def _download_gguf(url, lib, progress=None):
+    """Fetch a .gguf over http(s) into the library, resumable-safe (writes to
+    .part and renames on success so a cancelled download is never served)."""
+    name = os.path.basename(urllib.parse.urlparse(url).path) or "model.gguf"
+    if not name.lower().endswith(".gguf"):
+        raise ValueError("that URL doesn't point at a .gguf file")
+    dest = os.path.join(lib, name)
+    if os.path.exists(dest):
+        raise ValueError(f"{name} is already in the library")
+    tmp = dest + ".part"
+    req = urllib.request.Request(url, headers={"User-Agent": "genesi-ai-turbo"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            total = int(r.headers.get("Content-Length") or 0)
+            free = shutil.disk_usage(lib).free
+            if total and free < total + (256 * 1024 * 1024):
+                raise OSError(f"not enough free space: needs "
+                              f"{total / 1024**3:.1f} GB, "
+                              f"{free / 1024**3:.1f} GB available")
+            done = 0
+            with open(tmp, "wb") as fh:
+                while True:
+                    chunk = r.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    done += len(chunk)
+                    if progress and total:
+                        progress(done, total)
+        with open(tmp, "rb") as fh:
+            if fh.read(4) != b"GGUF":
+                raise ValueError("the downloaded file is not a valid GGUF")
+        os.replace(tmp, dest)
+        return dest
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _fix_ollama_permissions():
     """Try to open up the Ollama models tree so any local user can read the
     GGUF blobs. Ollama's systemd service runs as the `ollama` user, so newly
@@ -278,7 +588,18 @@ def _fix_ollama_permissions():
 
 
 def ensure(tag):
-    """Make sure `tag` is pulled; return its GGUF path (or None on failure)."""
+    """Make sure `tag` is available; return its GGUF path (or None on failure).
+
+    `tag` may be an ollama tag OR a direct GGUF reference (path / gguf:<name>).
+    Resolving both here is what makes every downstream Turbo feature — MoE
+    expert-offload, Fit, speculative decoding, autotuned profiles — work
+    identically for a file the user downloaded from Hugging Face, with no import
+    step and no ollama involvement at all."""
+    if is_gguf_ref(tag):
+        p = resolve_gguf_ref(tag)
+        if not p:
+            print(f"[!] GGUF not found: {tag}", file=sys.stderr)
+        return p
     p = gguf_path(tag)
     if p:
         return p
@@ -304,6 +625,12 @@ def ensure(tag):
 
 
 def pick_draft(main):
+    # A direct GGUF has no reliable family/tokenizer mapping to an ollama tag, and
+    # a draft with a MISMATCHED tokenizer silently corrupts speculation. So we
+    # never guess a sibling for one — GENESI_TURBO_SELF_DRAFT=1 still works (a Q2
+    # quant of the same file is tokenizer-identical by construction).
+    if is_gguf_ref(main):
+        return None
     low = main.lower()
     if any(t in low for t in TINY):
         return None                       # already tiny — nothing to speculate
@@ -1484,6 +1811,50 @@ def main():
     # risk of the two computing a different VRAM bucket and silently missing.
     if action == "hw-sig":
         print(_hw_sig())
+        return
+    # ── GGUF library (any .gguf on the machine is a usable Turbo model) ──
+    # JSON on stdout so the Monitor can consume these directly.
+    if action == "gguf-list":
+        entries = scan_gguf_library()
+        for e in entries:
+            e["fit"], e["fit_detail"] = gguf_fit_report(e)
+        print(json.dumps(entries))
+        return
+    if action == "gguf-info":
+        if not rest:
+            sys.exit("usage: genesi-ai-turbo gguf-info <path|gguf:name>")
+        p = resolve_gguf_ref(rest[0])
+        if not p:
+            sys.exit(f"GGUF not found: {rest[0]}")
+        e = gguf_describe(p)
+        e["fit"], e["fit_detail"] = gguf_fit_report(e)
+        print(json.dumps(e))
+        return
+    if action == "gguf-import":
+        if not rest:
+            sys.exit("usage: genesi-ai-turbo gguf-import <path|url> [--move]")
+        move = any(a.lower() == "--move" for a in rest)
+        src = next((a for a in rest if not a.startswith("--")), None)
+        if not src:
+            sys.exit("usage: genesi-ai-turbo gguf-import <path|url> [--move]")
+
+        def _pct(done, total):
+            print(f"\r:: downloading… {done * 100 // total}% "
+                  f"({done / 1024**3:.1f}/{total / 1024**3:.1f} GB)",
+                  end="", file=sys.stderr, flush=True)
+        try:
+            dest = import_gguf(src, move=move, progress=_pct)
+        except (ValueError, OSError) as e:
+            sys.exit(f"[!] {e}")
+        print("", file=sys.stderr)
+        e = gguf_describe(dest)
+        verdict, detail = gguf_fit_report(e)
+        print(f":: added {e['name']} ({e['size_gb']:.1f} GB"
+              + (f", {e['quant']}" if e["quant"] else "")
+              + (f", MoE/{e['experts']} experts" if e["moe"] else "")
+              + f") → {detail}", file=sys.stderr)
+        print(f":: serve it with:  genesi-ai-turbo serve {dest}", file=sys.stderr)
+        print(dest)
         return
     # AUTO spec: with nothing pinned, default to speculative decoding on a CUDA
     # build (it pays off there) and plain offload on Vulkan/NVK (where it can

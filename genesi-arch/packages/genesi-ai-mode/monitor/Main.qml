@@ -91,6 +91,9 @@ Kirigami.ApplicationWindow {
     // live activeModel / firstInstalledModel auto-seed below must NOT overwrite
     // their choice — that was the "Turbo starts with a model I didn't pick" bug.
     property bool turboModelLocked: false
+    // Path of the local GGUF currently handed to Turbo ("" when the selection is
+    // a normal Ollama tag). Drives the "in use" state in the GGUF library list.
+    property string turboGguf: ""
 
     onActiveModelChanged: if (activeModel && !turboModelLocked) turboModel = activeModel
     onFirstInstalledModelChanged: if (!turboModel && firstInstalledModel && !turboModelLocked) turboModel = firstInstalledModel
@@ -98,11 +101,17 @@ Kirigami.ApplicationWindow {
     // Changing the model only (re)starts Turbo — it never stops it. Only the user
     // flipping the switch off (turboRequested=false) stops the Turbo server.
     onTurboModelChanged: {
+        // Switching back to a normal Ollama tag clears the GGUF selection, so the
+        // library list stops showing a stale "in use" badge.
+        if (turboGguf && turboModel !== turboGguf) turboGguf = ""
         if (turboRequested && turboModel) backend.setTurbo(true, turboModel, turboSpec)
     }
     onTurboRequestedChanged: {
         if (turboRequested && turboModel) backend.setTurbo(true, turboModel, turboSpec)
-        else if (!turboRequested) backend.setTurbo(false, "", false)
+        else if (!turboRequested) {
+            backend.setTurbo(false, "", false)
+            turboGguf = ""     // nothing is being served -> drop the "in use" badge
+        }
     }
     // Flipping speculative on/off while Turbo runs restarts it in the new mode.
     onTurboSpecChanged: {
@@ -1323,7 +1332,22 @@ Kirigami.ApplicationWindow {
         ChatPage { id: chatPage; i18n: i18n }
 
         // ───────────────────────── 3. MODELOS ─────────────────────────
-        AdvisorPage { id: advisorPage; i18n: i18n }
+        AdvisorPage {
+            id: advisorPage
+            i18n: i18n
+            activeGguf: win.turboGguf
+            // Picking a local GGUF hands the file straight to Turbo. It MUST run
+            // through Turbo: llama-server loads a .gguf path directly (reading the
+            // architecture and chat template from the header), while Ollama's chat
+            // API only knows models in its own registry — so we switch Turbo on
+            // rather than letting the pick silently do nothing.
+            onUseGguf: function (path, label) {
+                win.turboGguf = path
+                win.turboModelLocked = true      // don't let polling overwrite it
+                win.turboModel = path
+                win.turboRequested = true
+            }
+        }
 
         // ───────────────────────── 4. AUTOMAÇÕES ─────────────────────────
         AutomationsPage { id: automationsPage }
