@@ -388,10 +388,12 @@ def gguf_describe(path):
     m = re.match(r"^(\d+(?:\.\d+)?)\s*[Bb]$", label)
     if m:
         params_b = float(m.group(1))
-    else:
-        m = re.match(r"^(\d+)x(\d+(?:\.\d+)?)\s*[Bb]$", label)   # e.g. 8x7B
-        if m:
-            params_b = float(m.group(1)) * float(m.group(2))
+    # NOTE: a MoE label like "8x7B" or "32x2.4B" is NOT a multiplication. Experts
+    # share the attention and embedding weights, so the real total is far lower
+    # than the product (Mixtral 8x7B is 46.7B, not 56; gpt-oss 32x2.4B is 21B,
+    # not 76.8). Multiplying it reported gpt-oss-20b as "76.8B" in the pickers.
+    # Fall through to the size estimate below, which is accurate to a few percent
+    # because it measures the bytes actually on disk.
     if params_b <= 0 and size_gb > 0 and bpw > 0:
         params_b = size_gb * 8.0 / bpw
     name = (str(meta.get("general.name") or "").strip()

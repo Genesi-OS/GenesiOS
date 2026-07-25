@@ -123,6 +123,17 @@ n = turbo.gguf_describe(nolabel)
 eq("params inferred from file size", n["params_b"], 0.2)
 eq("name falls back to the file name", n["name"], "nolabel")
 
+# A MoE label is not a multiplication: experts share attention and embedding
+# weights, so "32x2.4B" (gpt-oss-20b) is 21B, not 76.8B. Multiplying it showed
+# "76.8B" in the model pickers. The size estimate must win instead.
+moe_label = os.path.join(downloads, "moe-label.gguf")
+make_gguf(moe_label, {
+    "general.size_label": (T_STR, "32x2.4B"),
+    "general.file_type": (T_U32, 15),
+}, pad_mb=128)
+eq("MoE 'NxM' label is not multiplied",
+   turbo.gguf_describe(moe_label)["params_b"], 0.2)
+
 print("\n== scan_gguf_library ==")
 names = sorted(os.path.basename(e["path"]) for e in turbo.scan_gguf_library())
 check("dense model found", "test-dense-8b-q4_k_m.gguf" in names)
