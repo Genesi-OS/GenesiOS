@@ -177,6 +177,113 @@ def ollama_unload_all():
             pass
 
 
+# ── local GGUF models ────────────────────────────────────────────────────────
+# A GGUF is addressed everywhere by the stable reference `gguf:<file stem>`, the
+# form `genesi-ai-turbo` resolves. Keeping it a plain STRING is what lets a local
+# model flow through every existing path unchanged — the chat/Quick Chat/Turbo
+# pickers, an automation node's saved config, a chat session on disk — all of
+# which already store a model as a string.
+#
+# The one hard rule: a GGUF can only be served by llama-server. Ollama's chat API
+# knows its own registry and nothing else, so callers must route a GGUF to Turbo
+# REGARDLESS of the user's Turbo preference (that switch selects speculative
+# decoding, it is not what makes a local file loadable). Use serves_model() to do
+# that routing and ensure() to bring the right server up.
+
+def is_gguf_ref(model):
+    """True when `model` names a local GGUF rather than an Ollama tag."""
+    if not model:
+        return False
+    m = str(model)
+    return (m.startswith("gguf:") or m.lower().endswith(".gguf")
+            or (os.sep in m and os.path.isfile(os.path.expanduser(m))))
+
+
+_GGUF_CACHE = {"at": 0.0, "items": []}
+_GGUF_TTL = 20.0          # seconds; a rescan walks several directories
+
+
+def list_gguf_models(force=False):
+    """Local GGUF models as [{ref, label, path, moe, size_gb, params_b, fit}].
+
+    Cached briefly so a picker can ask for labels repeatedly without re-walking
+    the filesystem. Returns [] when the CLI is missing — never raises.
+    """
+    now = time.time()
+    if not force and _GGUF_CACHE["items"] and now - _GGUF_CACHE["at"] < _GGUF_TTL:
+        return _GGUF_CACHE["items"]
+    items = []
+    if shutil.which("genesi-ai-turbo"):
+        try:
+            r = subprocess.run(["genesi-ai-turbo", "gguf-list"],
+                               capture_output=True, text=True, timeout=60)
+            for e in json.loads(r.stdout or "[]"):
+                stem = os.path.basename(e.get("path", ""))[:-5]
+                if not stem:
+                    continue
+                items.append({
+                    "ref": "gguf:" + stem,
+                    "label": _label_for(e, stem),
+                    "path": e.get("path", ""),
+                    "moe": bool(e.get("moe")),
+                    "size_gb": e.get("size_gb", 0),
+                    "params_b": e.get("params_b", 0),
+                    "fit": e.get("fit", ""),
+                })
+        except Exception:
+            items = []
+    _GGUF_CACHE["at"], _GGUF_CACHE["items"] = now, items
+    return items
+
+
+def _label_for(entry, stem):
+    """A short human name for a picker: the GGUF's own name when it is
+    meaningful, else the file stem, plus the parameter size when known."""
+    name = (entry.get("name") or "").strip() or stem
+    if len(name) > 42:
+        name = name[:41].rstrip() + "…"
+    params = entry.get("params_b") or 0
+    size = f" · {params:g}B" if params else ""
+    return f"{name}{size} (GGUF)"
+
+
+def invalidate_gguf_cache():
+    _GGUF_CACHE["at"] = 0.0
+
+
+def model_label(model):
+    """Display name for any model reference (GGUF ref or Ollama tag)."""
+    if not is_gguf_ref(model):
+        return model or ""
+    for item in list_gguf_models():
+        if item["ref"] == model:
+            return item["label"]
+    # Known-shape ref whose file is gone (deleted, or an external drive is
+    # unplugged): show the stem rather than the raw `gguf:` scheme.
+    m = str(model)
+    return (m[5:] if m.startswith("gguf:") else os.path.basename(m)) + " (GGUF)"
+
+
+def serves_model(model, spec=False, on_status=None, stop_check=None):
+    """Bring up whatever `model` needs, and say whether Turbo is now REQUIRED.
+
+    Returns (force_turbo, ok, message):
+      * Ollama tag -> (False, True, "")   nothing to do; the caller's own Turbo
+                                          preference still decides where it goes.
+      * GGUF ref   -> (True,  ok,   msg)  ensure() ran; llama-server is the only
+                                          thing that can load a GGUF, so the
+                                          caller MUST use the Turbo path when ok.
+
+    Callers combine it with their own preference:  use_turbo = force or self._turbo
+    That is what makes a local GGUF behave like any pulled model in the chat,
+    Quick Chat and automations, with or without the Turbo switch.
+    """
+    if not is_gguf_ref(model):
+        return False, True, ""
+    ok, msg = ensure(model, spec=spec, on_status=on_status, stop_check=stop_check)
+    return True, ok, msg
+
+
 def _noop(_msg):
     pass
 

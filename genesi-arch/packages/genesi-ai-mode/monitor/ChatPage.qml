@@ -360,6 +360,15 @@ Kirigami.Page {
                 QQC2.ComboBox {
                     id: modelCombo
                     Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+                    // The model holds raw references (Ollama tags and
+                    // `gguf:<stem>`), so currentText stays the value the backend
+                    // needs; only the rendering is prettified here.
+                    displayText: backend.modelLabel(currentText)
+                    delegate: QQC2.ItemDelegate {
+                        width: modelCombo.width
+                        text: backend.modelLabel(modelData)
+                        highlighted: modelCombo.highlightedIndex === index
+                    }
                 }
                 QQC2.ToolButton {
                     icon.name: "view-refresh"

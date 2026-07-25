@@ -1029,12 +1029,25 @@ class Engine:
             self.status.log(aid, "AI Mode → on", "out")
 
         use_turbo = False
-        if want_turbo:
-            self.status.log(aid, "ensuring Turbo on %s…" % (model or "?"), "out")
+        # A local GGUF can only be loaded by llama-server, so it needs Turbo
+        # whether or not the node asked for it — otherwise picking a local model
+        # in an automation would silently post to Ollama, which has never heard
+        # of that file. The node's Turbo checkbox still controls the extras.
+        needs_turbo = want_turbo or turbo_ctl.is_gguf_ref(model)
+        if needs_turbo:
+            if want_turbo:
+                self.status.log(aid, "ensuring Turbo on %s…" % (model or "?"), "out")
+            else:
+                self.status.log(
+                    aid, "loading local GGUF %s…" % turbo_ctl.model_label(model), "out")
             ok, msg = turbo_ctl.ensure(
                 model, spec, on_status=lambda m: self.status.log(aid, m, "out"))
             self.status.log(aid, msg, "ok" if ok else "err")
             use_turbo = ok
+            # A GGUF has no Ollama fallback: if the server didn't come up the
+            # block must fail loudly instead of quietly asking the wrong engine.
+            if not ok and turbo_ctl.is_gguf_ref(model):
+                return "err", ""
         else:
             _ensure_ollama()
 

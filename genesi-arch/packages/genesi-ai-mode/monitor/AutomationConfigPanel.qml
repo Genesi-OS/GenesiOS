@@ -238,8 +238,17 @@ Item {
 
                 // ── act_ai ──────────────────────────────────────────────
                 FieldLabel { text: "Model"; visible: root.kindIs("act_ai") }
-                Combo { visible: root.kindIs("act_ai"); model: root.models
+                Combo { id: aiModelCombo
+                    visible: root.kindIs("act_ai"); model: root.models
                     currentIndex: root.optionIndex(root.models, root.cfg("model", ""))
+                    // Values stay raw references (Ollama tags and `gguf:<stem>`)
+                    // so a saved automation keeps working; only display changes.
+                    displayText: backend.modelLabel(currentText)
+                    delegate: QQC2.ItemDelegate {
+                        width: aiModelCombo.width
+                        text: backend.modelLabel(modelData)
+                        highlighted: aiModelCombo.highlightedIndex === index
+                    }
                     onActivated: root.setConfig("model", root.models[currentIndex]) }
                 RowToggle { visible: root.kindIs("act_ai"); label: "Turn AI Mode on"; value: root.cfgBool("aiMode")
                     onToggled: function(v) { root.setConfig("aiMode", v) } }

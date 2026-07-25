@@ -384,9 +384,18 @@ QQC2.ApplicationWindow {
                     QQC2.ComboBox {
                         id: modelPicker
                         Layout.fillWidth: true
+                        // The VALUE stays the raw reference (an Ollama tag or a
+                        // `gguf:<stem>`); only the display is prettified, so
+                        // picking never rewrites the model into its label.
                         model: root.availableModels
                         currentIndex: Math.max(0, root.availableModels.indexOf(root.modelName))
-                        onActivated: root.chooseModel(currentText)
+                        displayText: backend.modelLabel(root.modelName)
+                        delegate: QQC2.ItemDelegate {
+                            width: modelPicker.width
+                            text: backend.modelLabel(modelData)
+                            highlighted: modelPicker.highlightedIndex === index
+                        }
+                        onActivated: root.chooseModel(root.availableModels[currentIndex])
                     }
 
                     QQC2.Label { text: "Actions"; color: root.textMid; font.bold: true }

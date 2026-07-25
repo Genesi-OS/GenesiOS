@@ -633,7 +633,36 @@ pkgver=1.0.0
 # a NEW genesi-arch/ci/qml-sanity-test.py that checks attached-type qualification
 # against each file's imports across all 53 QML files in the repo (verified to
 # fail when the bug is reintroduced, and clean on every shipped app).
-pkgrel=136
+# pkgrel 137: local GGUFs are now selectable EVERYWHERE, not just on the Models
+# page. pkgrel 135 shipped the import but left it an island: the chat picker,
+# Quick Chat, the Turbo picker and an automation's AI block all listed only
+# `ollama pull` models, so an imported GGUF was invisible to the app that was
+# supposed to run it (reported 2026-07-24).
+# loadModels() now returns Ollama tags AND local GGUFs in ONE list. A GGUF is
+# addressed by the stable string `gguf:<file stem>`, which is why nothing
+# downstream needed reshaping — every picker, saved chat session and automation
+# node config already stores a model as a string. New modelLabel() renders one
+# for humans ("Qwen3 30B A3B · 30B (GGUF)"); pickers show the label but keep the
+# raw reference as the value, so choosing a model never rewrites it.
+# TRANSPORT is the real fix. Ollama's chat API only knows its own registry, so a
+# GGUF can only be served by llama-server — which previously meant it worked only
+# with the Turbo switch on. genesi_turbo_ctl.serves_model() now makes a GGUF
+# FORCE the llama-server transport and brings the server up on demand, so a local
+# model behaves exactly like a pulled one with Turbo on OR off. The switch goes
+# back to meaning what it says: speculative decoding and Turbo extras. Applied at
+# all four call sites that had a bare `if turbo`: Monitor chat, the agent tool
+# loop, Quick Chat (which inherits Backend) and the automation AI block — the
+# last one now fails loudly for a GGUF instead of quietly asking Ollama.
+# Switching from an auto-started GGUF back to an Ollama tag releases our
+# llama-server first, so its VRAM isn't still held while Ollama loads on top; a
+# Turbo the USER enabled is never torn down. Quick Chat also falls back to the
+# GGUF library when Ollama has no models at all.
+# NOTE for future work: Backend gained _prepare_transport, NOT _prepare_model —
+# QuickBackend already defines a zero-arg _prepare_model and would have silently
+# overridden it, breaking Quick Chat on the first message.
+# Covered by genesi-arch/ci/gguf-routing-test.py (37 asserts; stubs PySide6 so
+# the real Backend._prepare_transport is exercised headlessly).
+pkgrel=137
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

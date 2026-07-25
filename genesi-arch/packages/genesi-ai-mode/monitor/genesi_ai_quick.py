@@ -14,6 +14,7 @@ from PySide6.QtCore import QUrl, Signal, Slot
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
+import genesi_turbo_ctl as turbo_ctl
 from genesi_ai_monitor import Backend, OLLAMA, TURBO
 
 
@@ -85,13 +86,23 @@ class QuickBackend(Backend):
         # source that still knows its model. Use its OpenAI models endpoint as a
         # fallback, while keeping the real model name (never the string "turbo").
         if not model and self._turbo:
-            try:
-                with urllib.request.urlopen(TURBO + "/v1/models", timeout=2) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
-                model = next((item.get("id") for item in payload.get("data", [])
-                              if item.get("id")), "")
-            except Exception:
-                pass
+            marker = turbo_ctl.current_model()
+            if marker:
+                model = marker            # exact reference, incl. a `gguf:` one
+            else:
+                try:
+                    with urllib.request.urlopen(TURBO + "/v1/models", timeout=2) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                    model = next((item.get("id") for item in payload.get("data", [])
+                                  if item.get("id")), "")
+                except Exception:
+                    pass
+        # Nothing from Ollama (not installed, or the user only keeps local GGUF
+        # files): fall back to the GGUF library so Quick Chat still has a model.
+        if not model:
+            local = turbo_ctl.list_gguf_models()
+            if local:
+                model = local[0]["ref"]
         self.turboReady.emit(self._turbo)
         if model != self._quick_model:
             self._quick_model = model

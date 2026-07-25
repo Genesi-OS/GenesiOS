@@ -288,6 +288,13 @@ class Backend(QObject):
 
     @Slot()
     def loadModels(self):
+        """The one model list every picker uses: Ollama tags AND local GGUFs.
+
+        Both are plain strings (a GGUF is `gguf:<stem>`), so a local model needs
+        no special handling anywhere downstream — the chat picker, Quick Chat,
+        the Turbo picker and an automation node's saved config all keep treating
+        a model as a string. Use modelLabel() to render one for a human.
+        """
         def work():
             self._ensure_ollama()
             try:
@@ -296,8 +303,20 @@ class Backend(QObject):
                 names = [m.get("name") for m in data.get("models", []) if m.get("name")]
             except Exception:
                 names = []
+            names += [g["ref"] for g in turbo_ctl.list_gguf_models()]
             self.modelsLoaded.emit(json.dumps(names))
         threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, result=str)
+    def modelLabel(self, model):
+        """Human-readable name for a model reference, for pickers and headers.
+        Ollama tags pass through unchanged; a GGUF ref becomes its real name."""
+        return turbo_ctl.model_label(model)
+
+    @Slot(str, result=bool)
+    def isGgufModel(self, model):
+        """Is this reference a local GGUF file (vs an Ollama tag)?"""
+        return turbo_ctl.is_gguf_ref(model)
 
     # ── local GGUF models ────────────────────────────────────────────────────
     # Any .gguf on the machine is a first-class model here: llama-server reads
@@ -357,7 +376,12 @@ class Backend(QObject):
             proc.wait()
             if proc.returncode == 0 and out:
                 self.ggufImportDone.emit(True, os.path.basename(out))
+                # Refresh BOTH lists: the library card and the shared model list
+                # every picker reads, so the new file is immediately selectable
+                # in the chat, Quick Chat and automations — not just here.
+                turbo_ctl.invalidate_gguf_cache()
                 self.loadGgufModels()
+                self.loadModels()
             else:
                 self.ggufImportDone.emit(
                     False, last.lstrip("[!] ").strip() or "import failed")
@@ -393,7 +417,9 @@ class Backend(QObject):
             os.unlink(p)
         except OSError:
             return False
+        turbo_ctl.invalidate_gguf_cache()
         self.loadGgufModels()
+        self.loadModels()
         return True
 
     # -- local agent -------------------------------------------------------
@@ -462,6 +488,14 @@ class Backend(QObject):
 
     def _run_agent_job(self, model, messages, mode):
         try:
+            # Same transport rule as chat: a local GGUF has to be loaded into
+            # llama-server before the tool loop can talk to it. Already on a
+            # worker thread, so blocking here is safe.
+            _, ok, err = self._prepare_transport(model)
+            if not ok:
+                self._agent_status("error", error=err or "could not start the model")
+                self.chatError.emit(err or "could not start the model")
+                return
             self._agent_work(model, messages, mode)
         finally:
             with self._agent_job_lock:
@@ -510,7 +544,9 @@ class Backend(QObject):
 
     def _agent_model_reply(self, model, messages):
         payload_messages = [{"role": "system", "content": agent_system_prompt()}, *messages]
-        if self._turbo:
+        # A GGUF is served by llama-server, so the agent loop must use the Turbo
+        # transport for it even when the Turbo switch is off (same rule as chat).
+        if self._turbo or turbo_ctl.is_gguf_ref(model):
             body = json.dumps({
                 "messages": payload_messages,
                 "stream": False,
@@ -683,6 +719,36 @@ class Backend(QObject):
                 self.chatError.emit("Agent: " + str(exc))
                 self._agent_status("error", error=str(exc))
 
+    # ── transport routing ────────────────────────────────────────────────────
+    def _prepare_transport(self, model):
+        """Get `model` ready to answer and say which transport to use.
+
+        Returns (use_turbo, ok, error). A local GGUF can only be loaded by
+        llama-server, so it FORCES the Turbo transport and is brought up on
+        demand here — that is what makes a GGUF usable in the chat, Quick Chat
+        and automations whether or not the user turned the Turbo switch on. The
+        switch itself is left alone: it selects speculative decoding, it is not
+        the thing that makes a local file work.
+        """
+        force, ok, msg = turbo_ctl.serves_model(
+            model,
+            spec=bool(getattr(self, "_turbo_spec", False)),
+            on_status=lambda m: self.turboStatus.emit(m),
+            stop_check=lambda: self._stop)
+        if not ok:
+            return False, False, msg
+        if force:
+            self._turbo_model = model
+            return True, True, ""
+        # An Ollama tag while the user has Turbo OFF: if we auto-started a server
+        # for a GGUF earlier it is still holding VRAM, and Ollama is about to load
+        # its own copy on top. Release ours first so a small card doesn't OOM.
+        if not self._turbo and turbo_ctl.is_gguf_ref(turbo_ctl.current_model()):
+            self.turboStatus.emit("freeing the local GGUF server…")
+            turbo_ctl.stop()
+            self._turbo_model = ""
+        return bool(self._turbo), True, ""
+
     @Slot(str, str)
     def sendPrompt(self, model, messages_json):
         """`messages_json` is the FULL conversation so far ([{role,content}], roles
@@ -695,8 +761,16 @@ class Backend(QObject):
             messages = json.loads(messages_json)
         except Exception:
             messages = []
-        target = self._chat_turbo if self._turbo else self._chat_ollama
-        threading.Thread(target=target, args=(model, messages), daemon=True).start()
+
+        def work():
+            use_turbo, ok, err = self._prepare_transport(model)
+            if not ok:
+                self.chatError.emit(err or "could not start the model")
+                return
+            if self._stop:
+                return
+            (self._chat_turbo if use_turbo else self._chat_ollama)(model, messages)
+        threading.Thread(target=work, daemon=True).start()
 
     def _chat_ollama(self, model, messages):
         if not self._ensure_ollama():

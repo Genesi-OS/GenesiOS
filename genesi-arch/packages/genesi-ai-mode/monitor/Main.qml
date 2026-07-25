@@ -1951,7 +1951,10 @@ Kirigami.ApplicationWindow {
                         anchors.margins: Kirigami.Units.largeSpacing
                         spacing: Kirigami.Units.smallSpacing
                         QQC2.Label {
-                            text: (turboModelDialog.selected === modelData ? "✓ " : "") + modelData
+                            // modelData is the raw reference (Ollama tag or
+                            // `gguf:<stem>`); show the friendly name instead.
+                            text: (turboModelDialog.selected === modelData ? "✓ " : "")
+                                  + backend.modelLabel(modelData)
                             color: turboModelDialog.selected === modelData ? theme.turboBright : theme.textHi
                             font.bold: turboModelDialog.selected === modelData
                             Layout.fillWidth: true
