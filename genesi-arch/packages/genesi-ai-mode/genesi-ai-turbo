@@ -1349,6 +1349,18 @@ def server_cmd(main_gguf, draft_gguf):
            # cross-restart persistence in llama-server is a runtime API
            # (--slot-save-path + /slots?action=save), not a startup flag.
 
+    # Apply the model's OWN chat template from the GGUF instead of llama.cpp's
+    # legacy built-in guesses. This is what turns a reasoning model's channels
+    # into structured fields — gpt-oss's harmony analysis channel becomes
+    # `reasoning_content` and its tool calls become `tool_calls` — and it is
+    # REQUIRED before the server will accept a request carrying `tools` at all.
+    # Without it Genesi Code could only ever see the final answer, so a model
+    # that announced a tool on another channel looked like it had done nothing.
+    # Gated on --help: older builds don't have the flag and refuse to start on an
+    # unknown argument.
+    if "--jinja" in _llama_help():
+        cmd += ["--jinja"]
+
     # Flash attention + quantized KV cache are a clear win on the GPU (they cut
     # memory bandwidth, which is the bottleneck there), but on CPU the q8_0 KV
     # has to be de-quantized every single step and CPU flash-attn isn't faster —
