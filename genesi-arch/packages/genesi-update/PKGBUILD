@@ -5,7 +5,9 @@ pkgver=1.0.0
 # 2026-06-01 (2): add genesi-update.install — enable genesi-update.timer for all
 # users globally. It shipped disabled, so the auto update-check never ran and
 # the systray "updates available" icon never lit up on installed systems.
-pkgrel=2
+# 2026-08-07 (3): the tray applet moved from PyQt6 to libappindicator, so the
+# icon finally appears in the Hyprland/caelestia bar. Deps follow.
+pkgrel=3
 pkgdesc="Interactive update notifier & applier for Genesi OS with systray applet"
 install='genesi-update.install'
 arch=('any')
@@ -23,13 +25,23 @@ depends=(
     'diffutils'
     'hicolor-icon-theme'
     'python'
-    'python-pyqt6'
-    'qt6-svg'
+    # The tray applet is libappindicator (Gtk), NOT Qt: Qt 6.11's SNI never
+    # serves its properties to the caelestia (Quickshell) bar, so the icon
+    # simply never appeared under Hyprland. Same reason genesi-containers-tray
+    # and genesi-ai-tray moved off Qt.
+    'python-gobject'
+    'gtk3'
+    'libayatana-appindicator'
+    'librsvg'
     'glib2'
     'xdg-utils'
     'libnotify'
 )
 optdepends=(
+    # The applet speaks SNI (StatusNotifierItem), which every panel in the
+    # Genesi chooser supports EXCEPT LXDE's lxpanel, whose tray is XEmbed-only.
+    # snixembed proxies one to the other for those panels.
+    'snixembed: tray icon on XEmbed-only panels (LXDE)'
     'paru: AUR support'
     'yay: AUR support'
     'pikaur: AUR support'
