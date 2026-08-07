@@ -33,7 +33,7 @@ Needs llama-server, shipped by Genesi (Vulkan, any GPU):
   sudo pacman -S genesi-llama-cpp
 
 Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
-  GENESI_TURBO_CTX=4096          context window
+  GENESI_TURBO_CTX=8192          context window
   GENESI_TURBO_UBATCH=<n>        physical prefill batch / n_ubatch
                                  (default 1024 on GPU, 512 on CPU; lower it if a
                                   small GPU OOMs, raise it on a big GPU)
@@ -1284,7 +1284,13 @@ def server_cmd(main_gguf, draft_gguf):
     # still wins (precedence: env > tuned > heuristic).
     tune = load_tune_profile(main_gguf)
 
-    ctx = _env_int("GENESI_TURBO_CTX", 4096)
+    # 4096 was a chat-sized default and it is too small for agent work: Genesi
+    # Code sends its instructions, the open file, and every tool result back on
+    # each step, so the first file the model read pushed the request past the
+    # window and llama-server rejected the turn ("request (4119 tokens) exceeds
+    # the available context size (4096 tokens)"). 8192 costs a few hundred MB of
+    # KV on a quantized cache and buys a whole working agent.
+    ctx = _env_int("GENESI_TURBO_CTX", 8192)
     # Prefill (reading the prompt) is compute-bound, so a bigger physical batch
     # (n_ubatch / -ub) reads the prompt in fewer, fatter passes. Larger -ub costs
     # more compute-buffer memory, so default to a modest bump only on GPU and the

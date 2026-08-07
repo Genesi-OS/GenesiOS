@@ -670,7 +670,7 @@ pkgver=1.0.0
 # existing file-size estimate handle those labels — it measures the bytes really
 # on disk and lands within a few percent (gpt-oss-20b -> ~21B). Pinned by a new
 # case in ci/gguf-library-test.py.
-pkgrel=139
+pkgrel=140
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
