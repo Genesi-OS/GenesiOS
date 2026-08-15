@@ -34,7 +34,10 @@ pkgver=1.0.0
 # after). In the meta so it reaches fresh installs AND existing systems on
 # `pacman -Syu`. It is inert until the user switches it on, and its widget
 # follows whatever desktop is installed, so it is safe to ship to everyone.
-pkgrel=9
+# pkgrel 10: add Genesi Mesh. It shipped to the [genesi] repo in pkgrel 1 but
+# was NOT listed here, so `pacman -Syu` had no reason to install it and it never
+# reached any machine — the exact failure mode this file's header warns about.
+pkgrel=10
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -78,6 +81,12 @@ depends=(
     # Studio Mode: hand the machine to one app (game, Genesi Code, DAW) and
     # freeze the rest. Inert until switched on; its widget follows the DE.
     'genesi-studio'
+    # Genesi Mesh: pool GPU memory across machines on the LAN so a model that
+    # fits on no single box still runs. The daemon idles at ~0 cost with one
+    # machine, and worker mode is off by default, so shipping it by default
+    # costs nothing — but NOT listing it here means `pacman -Syu` has no reason
+    # to pull it, which is exactly why it never reached installed systems.
+    'genesi-mesh'
 )
 
 package() {
