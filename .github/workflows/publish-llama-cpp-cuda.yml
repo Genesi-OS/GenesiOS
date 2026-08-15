@@ -150,10 +150,15 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/genesi-arch/packages/cuda-repo"
+          # --prerelease keeps this infrastructure release off the top of the
+          # Releases page: `rolling` (the ISO download) must stay the only
+          # non-prerelease. The TAG is baked into installed systems' pacman.conf
+          # Server line, so it must never change — title/notes/flag are cosmetic.
           gh release create "$CUDA_TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Genesi OS CUDA Repository" \
-            --notes "Release-hosted pacman repo for the prebuilt CUDA llama.cpp. Package assets are immutable; the stable db points to the current package." \
+            --title "[infra] Pacman repo — genesi-cuda (not a download)" \
+            --prerelease \
+            --notes "Release-hosted pacman repo for the prebuilt CUDA llama.cpp. Package assets are immutable; the stable db points to the current package. This is NOT the Genesi OS ISO download." \
             2>/dev/null || echo "Release $CUDA_TAG already exists — updating assets."
           if gh release view "$CUDA_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
             -q '.assets[].name' | grep -Fxq "$PACKAGE_NAME"; then

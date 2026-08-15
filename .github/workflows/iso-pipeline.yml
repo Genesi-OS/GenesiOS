@@ -418,6 +418,39 @@ jobs:
           grep -vaE 'ci\(.+\): publish packages' /tmp/commits.txt > /tmp/commits.flt || true
           head -n 80 /tmp/commits.flt > /tmp/commits.top || true
 
+          # Shared changelog formatter, reused by the per-build step below (same
+          # job -> /tmp persists). Buckets conventional-commit subjects into
+          # what a READER cares about instead of dumping 80 raw subjects in
+          # commit order. Housekeeping types (docs/chore/ci/test/refactor/style/
+          # build) are dropped entirely — they are noise on a download page.
+          # Anything that isn't a conventional commit still lands in "Other", so
+          # nothing is silently lost.
+          # NOTE: every line of this heredoc (terminator included) sits at the
+          # same indentation as the rest of the `run:` block. YAML strips that
+          # common indentation before the shell sees it, so `AWK` lands in
+          # column 0 as a heredoc terminator must. Do not outdent it.
+          cat > /tmp/changelog.awk <<'AWK'
+          BEGIN {
+            FS = "\t"
+            split("feat fix perf other", ord, " ")
+            t["feat"]  = "### New features"
+            t["fix"]   = "### Fixes"
+            t["perf"]  = "### Performance"
+            t["other"] = "### Other changes"
+          }
+          {
+            s = $3; sha = substr($2, 1, 7); k = "other"
+            if (s ~ /^feat/)                                           k = "feat"
+            else if (s ~ /^fix/)                                       k = "fix"
+            else if (s ~ /^perf/)                                      k = "perf"
+            else if (s ~ /^(docs|chore|ci|test|refactor|style|build)/) next
+            b[k] = b[k] "- " s " (" sha ")\n"; c[k]++
+          }
+          END {
+            for (i = 1; i <= 4; i++) { k = ord[i]; if (c[k]) printf("\n%s\n\n%s", t[k], b[k]) }
+          }
+          AWK
+
           {
             echo "## ⬇️ Download"
             echo
@@ -432,16 +465,12 @@ jobs:
             echo '`genesi-os-latest.iso` always tracks the latest `main` build.'
             echo
             echo "## 📝 Changelog"
-            if [ -s /tmp/commits.top ]; then
-              # Group commits under a single date header (newest first) instead of
-              # repeating the date on every line.
-              awk -F'\t' '
-                $1 != cur { cur=$1; printf("\n### %s\n\n", $1) }
-                { printf("- %s (%s)\n", $3, substr($2,1,7)) }
-              ' /tmp/commits.top
+            awk -f /tmp/changelog.awk /tmp/commits.top > /tmp/changelog.body || true
+            if [ -s /tmp/changelog.body ]; then
+              cat /tmp/changelog.body
             else
               echo
-              echo "- (no changes recorded)"
+              echo "- (no user-facing changes in this build)"
             fi
             echo
             echo "_Build ${GITHUB_SHA:0:7} · $(date -u '+%Y-%m-%d %H:%M UTC')_"
@@ -468,10 +497,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: rolling
-          name: "Genesi OS — rolling (latest main build)"
+          name: "Genesi OS — Download (latest build)"
           # Mark this as the repo's "Latest" so visitors land on the actual ISO
           # build, not the infra "repo" release. prerelease=false is required for
           # GitHub to consider it Latest. Real version tags (v*) will supersede it.
+          #
+          # This is deliberately the ONLY release on the page that is NOT a
+          # prerelease: the build-<sha> archives and the [infra] pacman-repo
+          # releases are all flagged prerelease, so a visitor sees exactly one
+          # thing to click. Keep it that way.
           prerelease: false
           make_latest: true
           body_path: CHANGELOG_ROLLING.md
@@ -542,14 +576,13 @@ jobs:
             echo '**https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso**'
             echo
             echo "## 📝 Changelog"
-            if [ -s /tmp/commits.flt ]; then
-              head -n 20 /tmp/commits.flt | awk -F'\t' '
-                $1 != cur { cur=$1; printf("\n### %s\n\n", $1) }
-                { printf("- %s (%s)\n", $3, substr($2,1,7)) }
-              '
+            head -n 20 /tmp/commits.flt > /tmp/commits.build 2>/dev/null || true
+            awk -f /tmp/changelog.awk /tmp/commits.build > /tmp/changelog.build 2>/dev/null || true
+            if [ -s /tmp/changelog.build ]; then
+              cat /tmp/changelog.build
             else
               echo
-              echo "- (no changes recorded)"
+              echo "- (no user-facing changes in this build)"
             fi
             echo
             echo "_Build ${GITHUB_SHA:0:7} · $(date -u '+%Y-%m-%d %H:%M UTC')_"
@@ -563,7 +596,10 @@ jobs:
           tag_name: ${{ env.BUILD_TAG }}
           name: ${{ env.BUILD_NAME }}
           # Keep `rolling` as the repo's "Latest"; these are the browsable history.
-          prerelease: false
+          # prerelease: true is what makes GitHub badge them "Pre-release" and keeps
+          # the Releases page readable — without it, 12 CI builds visually compete
+          # with the actual download and the page reads like build noise.
+          prerelease: true
           make_latest: false
           body_path: CHANGELOG_BUILD.md
           files: |
@@ -572,11 +608,15 @@ jobs:
             parts/REJOIN.txt
 
       # ── Retention: prune old build-<sha> archive releases (main) ───────────
-      # The per-build releases above accumulate forever otherwise. Keep the 30
+      # The per-build releases above accumulate forever otherwise. Keep the 12
       # newest build-<sha> archives; delete older ones AND their git tags. Real
       # version tags (v*) and the `rolling` release never match the build- prefix
       # and are always preserved. Best-effort: never fails the build.
-      - name: 🧹 Prune old build-<sha> releases (keep newest 30)
+      #
+      # Why 12 and not 30: each archive holds a full split ISO (~3.2GB across
+      # parts), and 30 of them made the Releases page an unreadable wall of CI
+      # builds. A dozen is more history than anyone actually rolls back to.
+      - name: 🧹 Prune old build-<sha> releases (keep newest 12)
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -585,7 +625,7 @@ jobs:
           gh release list -R "$GITHUB_REPOSITORY" --limit 1000 \
             --json tagName,createdAt \
             --jq '[.[] | select(.tagName | startswith("build-"))]
-                  | sort_by(.createdAt) | reverse | .[30:] | .[].tagName' \
+                  | sort_by(.createdAt) | reverse | .[12:] | .[].tagName' \
             2>/dev/null | while read -r tag; do
               [ -n "$tag" ] || continue
               echo "pruning old archive release: $tag"

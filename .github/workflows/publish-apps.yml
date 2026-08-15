@@ -208,10 +208,16 @@ jobs:
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/genesi-arch/packages/apps-repo"
           # Create the backing release once; ignore if it already exists.
+          # --prerelease keeps this infrastructure release off the top of the
+          # Releases page: `rolling` (the ISO download) must stay the only
+          # non-prerelease, so visitors are never sent here by mistake. The TAG
+          # is baked into every installed system's pacman.conf Server line, so it
+          # must never change — only the title/notes/flag are cosmetic.
           gh release create "$APPS_TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Genesi OS Apps Repository" \
-            --notes "Release-hosted pacman repo for large Genesi apps. Package assets are immutable; stable indexes point to the current package." \
+            --title "[infra] Pacman repo — genesi-apps (not a download)" \
+            --prerelease \
+            --notes "Release-hosted pacman repo for large Genesi apps. Package assets are immutable; stable indexes point to the current package. This is NOT the Genesi OS ISO download." \
             2>/dev/null || echo "Release $APPS_TAG already exists — updating assets."
           PACKAGE_PATH=$(find . -maxdepth 1 -type f -name 'genesi-code-*.pkg.tar.zst' -print -quit)
           PACKAGE_NAME=${PACKAGE_PATH#./}
