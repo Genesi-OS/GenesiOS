@@ -100,6 +100,90 @@ def strip(src):
     return "".join(out)
 
 
+# Built-in properties per root type. Deliberately small: a component whose root
+# is not listed here is skipped entirely rather than half-checked.
+ITEM_PROPS = {
+    "id", "objectName", "parent", "data", "children", "resources", "states",
+    "transitions", "transform", "anchors", "x", "y", "z", "width", "height",
+    "implicitWidth", "implicitHeight", "visible", "opacity", "enabled", "clip",
+    "scale", "rotation", "transformOrigin", "smooth", "antialiasing", "focus",
+    "activeFocus", "state", "layer", "baselineOffset", "containmentMask",
+    "childrenRect", "rotation",
+}
+ROOT_PROPS = {
+    "Item": ITEM_PROPS,
+    "Rectangle": ITEM_PROPS | {"color", "radius", "border", "gradient"},
+    "MouseArea": ITEM_PROPS | {"hoverEnabled", "acceptedButtons", "cursorShape",
+                               "propagateComposedEvents", "preventStealing",
+                               "containsMouse", "pressed", "drag", "scrollGestureEnabled"},
+}
+
+_API_CACHE = {}
+
+
+def component_api(comp_path):
+    """Property/handler names a local component legitimately accepts, or None
+    when its root type is not one we model."""
+    key = str(comp_path)
+    if key in _API_CACHE:
+        return _API_CACHE[key]
+    src = strip(comp_path.read_text(encoding="utf-8", errors="replace"))
+    # Root type = first `TypeName {` after the import block.
+    root = re.search(r"^\s*([A-Z]\w*(?:\.[A-Z]\w*)?)\s*\{", src, re.M)
+    base = ROOT_PROPS.get(root.group(1)) if root else None
+    if base is None:
+        _API_CACHE[key] = None
+        return None
+    names = set(base)
+    for m in re.finditer(r"\bproperty\s+(?:alias\s+|[\w.<>]+\s+)(\w+)", src):
+        names.add(m.group(1))
+    for m in re.finditer(r"\bsignal\s+(\w+)", src):
+        names.add("on" + m.group(1)[0].upper() + m.group(1)[1:])
+    # Any `onFoo` handler is allowed: signals can come from the base type too.
+    _API_CACHE[key] = names
+    return names
+
+
+def block_body(code, brace_index):
+    """Text between a `{` and its matching `}`, or None if unbalanced."""
+    depth = 0
+    for i in range(brace_index, len(code)):
+        if code[i] == "{":
+            depth += 1
+        elif code[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return code[brace_index + 1:i]
+    return None
+
+
+def direct_bindings(body):
+    """`name:` bindings at the block's OWN level — never inside a nested block,
+    which would belong to a child element, and never dotted (attached
+    properties like Layout.fillWidth are resolved by a different mechanism).
+
+    Names DECLARED in the block are excluded. `property string icon: ""` is a
+    declaration whose default value happens to look exactly like a binding, and
+    a component extending another (StatTile's root is FCard) legitimately adds
+    its own properties that way."""
+    declared = {m.group(1) for m in
+                re.finditer(r"\bproperty\s+(?:alias\s+|[\w.<>]+\s+)(\w+)", body)}
+    declared |= {m.group(1) for m in re.finditer(r"\bsignal\s+(\w+)", body)}
+
+    out, depth = [], 0
+    for m in re.finditer(r"[{}()\[\]]|(?<![\w.])([A-Za-z_]\w*)\s*:(?!:)", body):
+        tok = m.group(0)
+        if tok in "{([":
+            depth += 1
+        elif tok in "})]":
+            depth -= 1
+        elif depth == 0 and m.group(1):
+            name = m.group(1)
+            if not name.startswith("on") and name not in declared:
+                out.append((name, m.start(1)))
+    return out
+
+
 failures = []
 checked = 0
 
@@ -137,6 +221,37 @@ for path in sorted(PACKAGES.rglob("*.qml")):
                     failures.append(
                         f"{rel}:{line}: `{m.group(1)}.{typ}....` is qualified but "
                         f"{module} is imported plainly -> write `{typ}....`")
+
+    # ── Unknown property assigned to a LOCAL component ──────────────────────
+    # QML resolves properties at LOAD time, so `FIcon { theme: ... }` on a
+    # component that has no `theme` is not a warning — it aborts the whole
+    # component tree with "Cannot assign to non-existent property", and the app
+    # does not open at all. That is exactly how a broken Genesi Forge shipped
+    # (SecretsPanel passed `theme` to FIcon, which only has name/color/size).
+    #
+    # Only components defined in the SAME directory are checked, and only when
+    # their root type is one whose built-in properties we actually know. Anything
+    # else is skipped rather than guessed at — a false positive here would block
+    # CI on correct code, which is worse than the bug it catches.
+    siblings = {p.stem: p for p in path.parent.glob("*.qml")}
+    for comp_name, comp_path in siblings.items():
+        if comp_name == path.stem:
+            continue
+        known = component_api(comp_path)
+        if known is None:
+            continue                      # unknown root type: do not guess
+        for m in re.finditer(rf"\b{comp_name}\s*{{", code):
+            body = block_body(code, m.end() - 1)
+            if body is None:
+                continue
+            for prop, offset in direct_bindings(body):
+                if prop in known:
+                    continue
+                line = code[:m.end() + offset].count("\n") + 1
+                failures.append(
+                    f"{rel}:{line}: `{comp_name}` has no property `{prop}` "
+                    f"(would abort at load with 'Cannot assign to non-existent "
+                    f"property \"{prop}\"' and the app would not open)")
 
     for op, cl, label in (("{", "}", "braces"), ("(", ")", "parens"),
                           ("[", "]", "brackets")):

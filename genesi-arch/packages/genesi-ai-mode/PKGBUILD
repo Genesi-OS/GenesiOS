@@ -704,7 +704,13 @@ pkgver=1.0.0
 # laptop with only integrated graphics the shared memory would otherwise look
 # like real VRAM, the model would appear to "fit locally", and the mesh would be
 # refused in exactly the case it exists for.
-pkgrel=144
+# 2026-08-15 (145): the error explainer never fired for most users. The shell
+# hook only handled bash and zsh, but fish is Genesi's default interactive
+# shell and does not read /etc/profile.d at all, so the feature was inert on the
+# very machines most likely to see it. Adds a fish integration installed to
+# vendor_conf.d, with the same contract (skip-lists, background, stdin from
+# /dev/null, stdout inherited, never re-run the command).
+pkgrel=145
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -823,6 +829,10 @@ package() {
     # profile.d so interactive shells pick the hook up with no dotfile edits.
     install -Dm644 "${startdir}/genesi-assist.sh" \
         "$pkgdir/etc/profile.d/genesi-assist.sh"
+    # fish does not read profile.d. It is also Genesi's default interactive
+    # shell, so without this file the helper did nothing for most users.
+    install -Dm644 "${startdir}/genesi-assist.fish" \
+        "$pkgdir/usr/share/fish/vendor_conf.d/genesi-assist.fish"
     install -Dm644 "${startdir}/genesi-ai-assist.conf" \
         "$pkgdir/etc/genesi-ai-assist.conf"
 

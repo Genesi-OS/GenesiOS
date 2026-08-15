@@ -2,6 +2,7 @@
 # bash on Linux (CI runs in a CachyOS container). Force LF regardless of the
 # committer's OS / core.autocrlf setting.
 *.sh   text eol=lf
+*.fish text eol=lf
 *.bash text eol=lf
 *.yml  text eol=lf
 *.yaml text eol=lf

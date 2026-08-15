@@ -1,7 +1,7 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 pkgname=genesi-forge
 pkgver=2.3.0
-pkgrel=6
+pkgrel=7
 pkgdesc='Genesi Forge: the project hub — full git panel, GitHub pipelines, deployments and the Forge Canvas workflow builder'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

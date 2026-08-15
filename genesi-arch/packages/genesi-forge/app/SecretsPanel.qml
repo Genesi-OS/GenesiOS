@@ -111,7 +111,7 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 12
                 spacing: 10
-                FIcon { theme: root.theme; name: "lock"; color: root.theme.red; size: 18 }
+                FIcon { name: "lock"; color: root.theme.red; size: 18 }
                 QQC2.Label {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
@@ -137,7 +137,6 @@ Item {
                 anchors.margins: 12
                 spacing: 10
                 FIcon {
-                    theme: root.theme
                     name: "shield"
                     color: root.gitState.tracked ? root.theme.red : root.theme.turboBright
                     size: 18
@@ -258,7 +257,6 @@ Item {
                             spacing: 10
 
                             FIcon {
-                                theme: root.theme
                                 name: "lock"
                                 color: modelData.resolved ? root.theme.greenBright : root.theme.red
                                 size: 15
