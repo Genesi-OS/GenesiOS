@@ -28,6 +28,117 @@ STARS = STATE / "stars.json"
 RECENT = STATE / "recent.json"
 IMPORTS = STATE / "imports.json"
 WORKFLOWS = STATE / "workflows"
+# Key NAMES only. Values live in the OS keyring and are never written here.
+SECRETS_INDEX = STATE / "secrets-index.json"
+
+SECRETS_SERVICE = "genesi-forge"
+SECRETS_MISSING_MSG = (
+    "The system keyring is not reachable. Install `libsecret` and make sure a "
+    "keyring service is running (KWallet on Plasma, gnome-keyring elsewhere)."
+)
+ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _project_key(path):
+    """Stable id for a project directory. Hashed rather than raw, because this
+    value becomes a keyring attribute and there is no reason to record the
+    user's directory layout in there."""
+    resolved = str(Path(path).expanduser().resolve())
+    return hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:16]
+
+
+def secrets_available():
+    return shutil.which("secret-tool") is not None
+
+
+def secret_set(project, name, value):
+    """Store one value. The value is fed on STDIN, never as an argument —
+    everything in argv is visible to any process that can read /proc, so
+    passing a credential there would leak it to every user on the machine."""
+    if not secrets_available():
+        return False
+    try:
+        proc = subprocess.run(
+            ["secret-tool", "store", "--label=Genesi Forge: %s" % name,
+             "service", SECRETS_SERVICE, "project", project, "name", name],
+            input=(value or "").encode("utf-8"),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+        return proc.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def secret_get(project, name):
+    """The stored value, or None. `secret-tool lookup` emits the raw value with
+    no trailing newline, so it is returned verbatim."""
+    if not secrets_available():
+        return None
+    try:
+        proc = subprocess.run(
+            ["secret-tool", "lookup", "service", SECRETS_SERVICE,
+             "project", project, "name", name],
+            capture_output=True, timeout=20)
+        if proc.returncode != 0:
+            return None
+        return proc.stdout.decode("utf-8", "replace")
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def secret_clear(project, name):
+    if not secrets_available():
+        return False
+    try:
+        return subprocess.run(
+            ["secret-tool", "clear", "service", SECRETS_SERVICE,
+             "project", project, "name", name],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=20).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def parse_env(text):
+    """Parse .env content into [(key, value)], plus a count of skipped lines.
+
+    Handles the dialect people actually write: `export` prefixes, `#` comments,
+    blank lines, and single/double quoted values. Escapes are expanded only
+    inside double quotes, matching how a shell and every dotenv library behave —
+    a Windows path in single quotes must survive unmangled."""
+    pairs, skipped = [], 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if "=" not in line:
+            skipped += 1
+            continue
+        name, value = line.split("=", 1)
+        name, value = name.strip(), value.strip()
+        if not ENV_KEY_RE.match(name):
+            skipped += 1
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            quote, value = value[0], value[1:-1]
+            if quote == '"':
+                value = (value.replace("\\n", "\n").replace("\\t", "\t")
+                              .replace('\\"', '"').replace("\\\\", "\\"))
+        else:
+            # An unquoted trailing comment is a comment; inside quotes it is not.
+            hash_at = value.find(" #")
+            if hash_at >= 0:
+                value = value[:hash_at].rstrip()
+        pairs.append((name, value))
+    return pairs, skipped
+
+
+def shell_quote_env(value):
+    """Quote a value so it survives both `.env` loaders and a shell `eval`.
+    Single quotes are literal everywhere, so wrap in them and escape any that
+    appear in the value itself."""
+    return "'" + (value or "").replace("'", "'\\''") + "'"
 SKIP_DIRS = {
     ".cache", ".local", ".npm", ".cargo", ".rustup", ".var", ".Trash",
     "node_modules", "vendor", "target", "dist", "build", ".venv", "venv",
@@ -1626,6 +1737,217 @@ class Backend(QObject):
             save_json(IMPORTS, [])
             self.message.emit("Imported projects cleared.")
         self.refresh()
+
+    # ── Secrets ─────────────────────────────────────────────────────────────
+    # Per-project environment variables, with the VALUES held in the OS keyring
+    # (Secret Service) instead of a .env file sitting in the working tree.
+    #
+    # Why the keyring and not a file: a .env is plaintext, survives in backups,
+    # and is one `git add .` away from being published forever. The keyring is
+    # already running on every Genesi desktop, is unlocked with the login
+    # session, and keeps values out of the repo entirely.
+    #
+    # Only the KEY NAMES are cached locally (secrets-index.json). Names are not
+    # sensitive, and keeping them makes listing instant and independent of how
+    # well `secret-tool search` happens to behave. Values are never written to
+    # disk by Forge, never logged, and never emitted in a message.
+
+    @Slot(result=bool)
+    def secretsAvailable(self):
+        return secrets_available()
+
+    @Slot(str, result=str)
+    def listSecrets(self, path):
+        """Key names for this project + whether each value still resolves.
+
+        A key can be present in the index but missing from the keyring — the
+        user cleared the keyring, or the entry was created on another machine
+        that synced this project. Report that instead of pretending it is fine,
+        because a silently-empty variable is a miserable thing to debug."""
+        key = _project_key(path)
+        names = sorted(load_json(SECRETS_INDEX, {}).get(key, []))
+        rows = [{"key": n, "resolved": secret_get(key, n) is not None} for n in names]
+        return json.dumps({
+            "available": secrets_available(),
+            "items": rows,
+            "git": self._env_git_state(path),
+        })
+
+    def _env_git_state(self, path):
+        """Is a .env sitting in this repo, and is git watching it?
+
+        Forge is a Git client, so it is the right place to notice that the file
+        the user just imported is also about to be committed."""
+        env_file = Path(path) / ".env"
+        if not env_file.exists():
+            return {"envFile": False, "tracked": False, "ignored": False}
+        code, out, _ = run(["git", "ls-files", "--error-unmatch", ".env"],
+                           cwd=path, timeout=10)
+        tracked = code == 0
+        code, _, _ = run(["git", "check-ignore", "-q", ".env"], cwd=path, timeout=10)
+        return {"envFile": True, "tracked": tracked, "ignored": code == 0}
+
+    @Slot(str, str, result=str)
+    def importEnv(self, path, env_path):
+        """Read a .env and move every variable into the keyring.
+
+        Deliberately does NOT delete the source file: losing the only copy of a
+        production credential because an import half-worked is unforgivable.
+        The UI offers gitignoring it as a separate, explicit step."""
+        if not secrets_available():
+            return json.dumps({"ok": False, "error": SECRETS_MISSING_MSG})
+        src = Path(env_path.replace("file://", "")) if env_path else Path(path) / ".env"
+        if not src.exists():
+            return json.dumps({"ok": False, "error": "No .env file at %s" % src})
+
+        try:
+            text = src.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+
+        pairs, skipped = parse_env(text)
+        if not pairs:
+            return json.dumps({"ok": False,
+                               "error": "No KEY=value lines found in %s" % src.name})
+
+        key = _project_key(path)
+        index = load_json(SECRETS_INDEX, {})
+        names = set(index.get(key, []))
+        stored, failed = 0, []
+        for name, value in pairs:
+            if secret_set(key, name, value):
+                names.add(name)
+                stored += 1
+            else:
+                failed.append(name)
+        index[key] = sorted(names)
+        save_json(SECRETS_INDEX, index)
+
+        self.message.emit("Imported %d secret%s from %s."
+                          % (stored, "" if stored == 1 else "s", src.name))
+        return json.dumps({"ok": True, "stored": stored, "skipped": skipped,
+                           "failed": failed, "source": str(src),
+                           "git": self._env_git_state(path)})
+
+    @Slot(str, str, str, result=str)
+    def setSecret(self, path, name, value):
+        if not secrets_available():
+            return json.dumps({"ok": False, "error": SECRETS_MISSING_MSG})
+        name = (name or "").strip()
+        if not ENV_KEY_RE.match(name):
+            return json.dumps({"ok": False, "error":
+                               "Invalid name. Use letters, digits and _ "
+                               "(and don't start with a digit)."})
+        key = _project_key(path)
+        if not secret_set(key, name, value):
+            return json.dumps({"ok": False, "error": "The keyring refused to store it."})
+        index = load_json(SECRETS_INDEX, {})
+        names = set(index.get(key, []))
+        names.add(name)
+        index[key] = sorted(names)
+        save_json(SECRETS_INDEX, index)
+        self.message.emit("Saved %s." % name)
+        return json.dumps({"ok": True})
+
+    @Slot(str, str)
+    def deleteSecret(self, path, name):
+        key = _project_key(path)
+        secret_clear(key, name)
+        index = load_json(SECRETS_INDEX, {})
+        names = [n for n in index.get(key, []) if n != name]
+        index[key] = names
+        save_json(SECRETS_INDEX, index)
+        self.message.emit("Deleted %s." % name)
+
+    @Slot(str, str, result=str)
+    def revealSecret(self, path, name):
+        """Return one value, for an explicit click. Never called in bulk."""
+        value = secret_get(_project_key(path), name)
+        return value if value is not None else ""
+
+    @Slot(str, str)
+    def copySecret(self, path, name):
+        value = secret_get(_project_key(path), name)
+        if value is None:
+            self.message.emit("%s is not in the keyring." % name)
+            return
+        QGuiApplication.clipboard().setText(value)
+        # Deliberately does not name the value, only the key.
+        self.message.emit("Copied %s to the clipboard." % name)
+
+    @Slot(str, result=str)
+    def exportEnvFile(self, path):
+        """Write the project's secrets back out as a .env.
+
+        Sometimes a tool simply demands the file (docker compose, a framework
+        loader). Written 0600 so it is at least not world-readable, and the UI
+        pushes the user to gitignore it."""
+        key = _project_key(path)
+        names = sorted(load_json(SECRETS_INDEX, {}).get(key, []))
+        if not names:
+            return json.dumps({"ok": False, "error": "No secrets for this project."})
+        lines = []
+        for name in names:
+            value = secret_get(key, name)
+            if value is None:
+                continue
+            lines.append("%s=%s" % (name, shell_quote_env(value)))
+        target = Path(path) / ".env"
+        try:
+            target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            os.chmod(target, 0o600)
+        except OSError as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+        self.message.emit("Wrote %d secret%s to .env (mode 600)."
+                          % (len(lines), "" if len(lines) == 1 else "s"))
+        return json.dumps({"ok": True, "count": len(lines),
+                           "git": self._env_git_state(path)})
+
+    @Slot(str)
+    def copyShellExport(self, path):
+        """`export K=V` lines for pasting into a shell / `eval`."""
+        key = _project_key(path)
+        names = sorted(load_json(SECRETS_INDEX, {}).get(key, []))
+        lines = []
+        for name in names:
+            value = secret_get(key, name)
+            if value is not None:
+                lines.append("export %s=%s" % (name, shell_quote_env(value)))
+        if not lines:
+            self.message.emit("No secrets to export.")
+            return
+        QGuiApplication.clipboard().setText("\n".join(lines))
+        self.message.emit("Copied %d export line%s to the clipboard."
+                          % (len(lines), "" if len(lines) == 1 else "s"))
+
+    @Slot(str, result=str)
+    def gitignoreEnv(self, path):
+        """Append .env to .gitignore, and untrack it if git already has it.
+
+        `git rm --cached` matters: adding a tracked file to .gitignore does
+        nothing, which is the classic way people believe they have secured a
+        secret and have not. The file itself is left on disk."""
+        gitignore = Path(path) / ".gitignore"
+        try:
+            existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+            if not any(line.strip() in (".env", "/.env") for line in existing.splitlines()):
+                prefix = "" if (not existing or existing.endswith("\n")) else "\n"
+                gitignore.write_text(existing + prefix + ".env\n", encoding="utf-8")
+        except OSError as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+
+        code, _, _ = run(["git", "ls-files", "--error-unmatch", ".env"],
+                         cwd=path, timeout=10)
+        untracked = False
+        if code == 0:
+            rc, _, _ = run(["git", "rm", "--cached", "--quiet", ".env"],
+                           cwd=path, timeout=15)
+            untracked = rc == 0
+
+        self.message.emit(".env is now ignored by git." if not untracked
+                          else ".env is now ignored and untracked (commit the removal).")
+        return json.dumps({"ok": True, "untracked": untracked,
+                           "git": self._env_git_state(path)})
 
 
 def main():

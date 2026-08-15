@@ -122,6 +122,7 @@ Item {
                 }
 
                 QQC2.Label { text: "TOOLS"; color: root.theme.textLo; font.pixelSize: 9; font.bold: true; Layout.leftMargin: 4; Layout.topMargin: 10 }
+                NavItem { theme: root.theme; compact: true; icon: "lock";     label: "Secrets";  active: root.page === "secrets";  onClicked: root.page = "secrets" }
                 NavItem { theme: root.theme; compact: true; icon: "terminal"; label: "Terminal"; active: root.page === "terminal"; onClicked: root.page = "terminal" }
                 NavItem { theme: root.theme; compact: true; icon: "sliders";  label: "Settings"; active: root.page === "settings"; onClicked: root.page = "settings" }
 
@@ -170,7 +171,7 @@ Item {
                     anchors.topMargin: 24        // bigger top padding
                     anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.bottomMargin: 16
                     currentIndex: {
-                        var order = ["overview", "commits", "branches", "prs", "stash", "tags", "remotes", "canvas", "terminal", "settings", "graph"]
+                        var order = ["overview", "commits", "branches", "prs", "stash", "tags", "remotes", "canvas", "terminal", "settings", "graph", "secrets"]
                         var i = order.indexOf(root.page)
                         return i < 0 ? 0 : i
                     }
@@ -503,6 +504,15 @@ Item {
                     GitGraph {
                         theme: root.theme
                         commits: root.pageGraph
+                    }
+
+                    // 11 — Secrets (project env vars, held in the OS keyring)
+                    SecretsPanel {
+                        theme: root.theme
+                        projectPath: root.project ? root.project.path : ""
+                        // Re-read on every visit: the keyring can be unlocked,
+                        // or a .env can appear, while Forge is already open.
+                        onVisibleChanged: if (visible) reload()
                     }
                 }
             }
