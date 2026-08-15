@@ -37,7 +37,12 @@ pkgver=1.0.0
 # pkgrel 10: add Genesi Mesh. It shipped to the [genesi] repo in pkgrel 1 but
 # was NOT listed here, so `pacman -Syu` had no reason to install it and it never
 # reached any machine — the exact failure mode this file's header warns about.
-pkgrel=10
+# pkgrel 11: drop genesi-sandboxes (Workspaces). Its UI was broken and Genesi
+# Forge already covers what a dev needs from a project workspace. Removing it
+# from this meta stops NEW installs from getting it; machines that already have
+# it keep it (pacman never removes a package on its own) -- uninstall by hand
+# with `sudo pacman -Rns genesi-sandboxes`.
+pkgrel=11
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -72,7 +77,6 @@ depends=(
     'genesi-containers'    # Plasma widget for Docker/Podman
     'genesi-ports'         # port -> PID dashboard, Plasma widget + SNI tray
     'genesi-forge'         # local Git projects, pipelines + deploy integrations
-    'genesi-sandboxes'     # Distrobox workspaces with stack templates
     'genesi-netinspect'    # mitmproxy HTTP/HTTPS debug proxy + toggle
     'genesi-db-explorer'   # DB client launcher + Dolphin integration
     # "Indestructible OS": snapper + snap-pac + grub-btrfs, wired ENXUTO, with a

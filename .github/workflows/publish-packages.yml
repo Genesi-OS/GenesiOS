@@ -371,7 +371,10 @@ jobs:
             "genesi-containers"
             "genesi-ports"
             "genesi-forge"
-            "genesi-sandboxes"
+            # genesi-sandboxes (Workspaces) is NO LONGER BUILT (2026-08-15). Its
+            # UI was broken and Genesi Forge covers the project-workspace need.
+            # The source stays in genesi-arch/packages/ so it can be revived by
+            # putting this line back; nothing else references it.
             "genesi-netinspect"
             "genesi-db-explorer"
             # "Indestructible OS" — effortless Btrfs snapshots (snapper + snap-pac

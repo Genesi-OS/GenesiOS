@@ -242,7 +242,18 @@ QQC2.ApplicationWindow {
 
         ColumnLayout {
             id: body
-            anchors.fill: parent
+            // Anchored on three sides, NOT filled.
+            //
+            // The window's height binding reads body.implicitHeight (see the
+            // top of this file). With `anchors.fill: parent` the layout's
+            // height came from the window while the window's height came from
+            // the layout — a feedback loop that settles at the 620 cap, so the
+            // bar was always tall no matter how little was in it. Leaving the
+            // bottom unanchored makes implicitHeight genuinely content-driven
+            // and breaks the cycle.
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
             anchors.margins: 16
             spacing: 12
 
