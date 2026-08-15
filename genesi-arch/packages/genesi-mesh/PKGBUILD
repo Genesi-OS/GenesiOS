@@ -28,7 +28,14 @@
 # doctor` says so plainly when it is missing rather than failing obscurely.
 pkgname=genesi-mesh
 pkgver=1.0.0
-pkgrel=2
+# 2026-08-15 (3): find the RPC server under its real name. Upstream installs it
+# as `ggml-rpc-server`; we only probed `rpc-server`, so `genesi-mesh doctor` and
+# `selftest` reported it MISSING on a machine where it was correctly installed,
+# and worker mode refused to start. Both names are tried now. Also drops the
+# ">= pkgrel 4" hint from the error text: pkgver() moved r0 -> r10443, which
+# makes makepkg reset pkgrel to 1, so that advice pointed people away from a
+# perfectly good package.
+pkgrel=3
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -328,7 +328,7 @@ def cmd_selftest():
         print("Run `genesi-mesh doctor` for the fix.")
         return 1
 
-    binp = mesh.llama_bin("rpc-server")
+    binp = mesh.rpc_server_bin()
     port = mesh.conf_int(mesh.load_conf(), "rpc_port", mesh.DEFAULT_RPC_PORT) + 1
     print("  starting rpc-server on 127.0.0.1:%d ... " % port, end="", flush=True)
     try:

@@ -74,10 +74,11 @@ class Daemon:
     def start_worker(self):
         if self.worker_proc and self.worker_proc.poll() is None:
             return
-        binp = mesh.llama_bin("rpc-server")
+        binp = mesh.rpc_server_bin()
         if not binp:
-            self.log("worker requested but `rpc-server` is missing — install a "
-                     "llama.cpp built with GGML_RPC=ON (genesi-llama-cpp >= 4)")
+            self.log("worker requested but no RPC server binary was found "
+                     "(looked for %s) — install a llama.cpp built with "
+                     "GGML_RPC=ON" % ", ".join(mesh.RPC_SERVER_NAMES))
             return
 
         bind = self.conf.get("rpc_bind", "127.0.0.1").strip() or "127.0.0.1"

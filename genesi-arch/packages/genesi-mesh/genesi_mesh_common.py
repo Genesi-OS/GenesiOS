@@ -303,6 +303,25 @@ def llama_bin(name):
     return None
 
 
+# What upstream calls the RPC server binary, newest name first.
+#
+# llama.cpp renamed it: builds now install `ggml-rpc-server`, older ones shipped
+# `rpc-server`. Probing only one name means reporting "not installed" on a
+# machine where it IS installed — `genesi-mesh doctor` would send the user off
+# to reinstall a package they already have. Same reason the Turbo flags are
+# probed from `--help` instead of hardcoded.
+RPC_SERVER_NAMES = ("ggml-rpc-server", "rpc-server")
+
+
+def rpc_server_bin():
+    """Path to the llama.cpp RPC server under whichever name this build uses."""
+    for name in RPC_SERVER_NAMES:
+        found = llama_bin(name)
+        if found:
+            return found
+    return None
+
+
 # Device names that mean "this GPU has no memory of its own".
 #
 # An integrated GPU's "VRAM" is a slice of system RAM, which changes everything
@@ -381,7 +400,7 @@ def probe_gpu():
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
 
-    binp = llama_bin("llama-server") or llama_bin("rpc-server")
+    binp = llama_bin("llama-server") or rpc_server_bin()
     if binp:
         try:
             res = subprocess.run([binp, "--list-devices"],
@@ -415,7 +434,7 @@ def rpc_supported():
     other: the `rpc-server` binary (needed to BE a worker) and the `--rpc` flag
     on llama-server (needed to USE workers). Reported separately so the CLI can
     tell the user which half is missing instead of a vague 'unsupported'."""
-    has_server = llama_bin("rpc-server") is not None
+    has_server = rpc_server_bin() is not None
     has_flag = False
     binp = llama_bin("llama-server")
     if binp:
