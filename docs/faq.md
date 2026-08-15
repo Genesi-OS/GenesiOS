@@ -265,6 +265,131 @@ Not yet, but we appreciate stars on GitHub! ⭐
 
 ---
 
+## Installing apps
+
+### How do I install an app that isn't in the Genesi Package Installer?
+
+You already have three tools for this — every Genesi install ships them, and
+none of them require compiling anything by hand.
+
+**1. Pamac (graphical, easiest).** A full app store with AUR search built in.
+Open it from the menu ("Add/Remove Software"), search, click Install. If you are
+coming from Windows and just want a button, use this.
+
+**2. `paru` (terminal).** Installs from both the official repos and the AUR:
+
+```bash
+paru -S nome-do-pacote
+```
+
+**3. `pacman` (terminal, official repos only).**
+
+```bash
+sudo pacman -S nome-do-pacote
+```
+
+You should almost never need to clone a repo and run `makepkg` yourself — that
+is what `paru` does for you, including keeping the package updated afterwards.
+
+### Example: the Minecraft launcher
+
+```bash
+paru -S minecraft-launcher
+```
+
+Search first if you are unsure of the exact name:
+
+```bash
+paru -Ss minecraft
+```
+
+### Minecraft Forge fails to install with a checksum mismatch
+
+Symptom, during the Forge installer:
+
+```
+Expected: 7bd7f36bd766bec3edf78c230b792f2f4aa6b401
+Actual:   05453ce3dab0940380fc804bba55ed0e81a9160d
+There was an error during installation
+```
+
+This is a Forge/ForgeWrapper issue, not a Genesi one: the wrapper verifies a
+hash that does not match what recent Forge builds actually ship. Two steps:
+
+1. Install the 32-bit compression libraries the Minecraft native launcher needs
+   (a missing `lib32-zlib` shows up later as native-library crashes):
+
+   ```bash
+   sudo pacman -S zlib lib32-zlib
+   ```
+
+2. Add this JVM argument to the launcher profile so ForgeWrapper skips the
+   broken check:
+
+   ```
+   -Dforgewrapper.skipHashCheck=true
+   ```
+
+   In the official launcher: Installations → your Forge profile → Edit → More
+   Options → JVM Arguments, and append it to the existing line.
+
+---
+
+## Genesi Mesh
+
+### Can I use Genesi Mesh over the internet, not just my LAN?
+
+Yes, but **never by forwarding the port**. `rpc-server` (the llama.cpp component
+Mesh drives) performs no authentication and no validation of what it receives —
+exposing it to the open internet hands anyone who finds it your machine. Treat
+it exactly like an unauthenticated database port.
+
+The correct way is a private network overlay, which makes the remote machine
+behave as if it were on your LAN:
+
+**Tailscale (easiest):**
+
+```bash
+sudo pacman -S tailscale
+sudo systemctl enable --now tailscaled
+sudo tailscale up
+```
+
+Run that on both machines, on the same account. Each gets a stable `100.x.y.z`
+address. Then, on the worker:
+
+```bash
+sudo genesi-mesh worker on
+```
+
+and on the client, point at the worker's Tailscale address directly, since
+multicast discovery does not cross the internet:
+
+```bash
+GENESI_MESH_ENDPOINTS=100.x.y.z:50052 genesi-ai-turbo serve
+```
+
+**WireGuard** works identically if you prefer to run your own.
+
+### Should I expect it to be fast over the internet?
+
+No — and this is worth being blunt about. Pooling sends layer activations across
+the link **on every single token**. On gigabit Ethernet that is already the
+limiting factor; over a home internet connection (tens of megabits, tens of
+milliseconds of latency) it will be *much* slower than the same model running on
+CPU locally.
+
+Remote Mesh is worth it for one situation: a model that your local machine
+genuinely cannot run at all, and where a slow answer beats no answer. If the
+model fits locally, `genesi-ai-turbo` will refuse to use the mesh on purpose.
+
+If what you actually want is "use my powerful desktop from my laptop", do not
+pool — run Genesi Turbo on the desktop and point the laptop at its OpenAI-
+compatible endpoint (`:11435`) over Tailscale. Only the text crosses the
+network, so it stays fast.
+
+---
+
 ## Still have questions?
 
 - [GitHub Discussions](https://github.com/Genesi-OS/GenesiOS/discussions)
