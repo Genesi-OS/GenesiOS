@@ -1,0 +1,39 @@
+[Unit]
+Description=Genesi Mesh node daemon (pool GPU memory across machines)
+Documentation=https://github.com/Genesi-OS/GenesiOS
+# Ordered after the network so the first beacon has somewhere to go. Not a hard
+# requirement: a node with no network is simply a mesh of one, and the daemon
+# recovers on its own once an interface appears.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/genesi-meshd
+# Reload re-reads mesh.conf and starts/stops the worker without dropping the
+# peer table — this is what `genesi-mesh worker on` triggers.
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# The daemon reads a machine-wide secret and supervises rpc-server; it never
+# needs to write outside /run, so give it as little as possible.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+RuntimeDirectory=genesi-mesh
+RuntimeDirectoryMode=0755
+ReadWritePaths=/run/genesi-mesh
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+# AF_INET for the multicast beacons; AF_UNIX for the local socket plumbing
+# subprocess and the GPU probes use.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""genesi-meshd — the Genesi Mesh node daemon.
+
+Runs on every machine that participates in a mesh and does exactly three things:
+
+  1. ANNOUNCE  — multicast a signed beacon describing this machine's GPU.
+  2. DISCOVER  — collect peers' beacons into /run/genesi-mesh/peers.json, which
+                 genesi-ai-turbo reads when deciding whether to pool.
+  3. SERVE     — when worker mode is on, supervise a llama.cpp `rpc-server` so
+                 this machine's GPU is usable by a peer running the model.
+
+Deliberately NOT here: anything that touches inference itself. The daemon never
+loads a model and never proxies tokens — llama.cpp's own RPC transport does
+that, directly between the two machines. Keeping the daemon out of the data path
+means a daemon restart cannot interrupt a running generation.
+
+Config lives at /etc/genesi-mesh/mesh.conf and is re-read on SIGHUP, so
+`genesi-mesh worker on` takes effect without dropping the peer table.
+"""
+
+import os
+import signal
+import socket
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, "/usr/lib/genesi-mesh")
+import genesi_mesh_common as mesh   # noqa: E402
+
+
+class Daemon:
+    def __init__(self):
+        self.conf = mesh.load_conf()
+        self.secret = mesh.read_secret()
+        self.gpu = mesh.probe_gpu()
+        self.caps = mesh.rpc_supported()
+        self.peers = {}              # node id -> peer record
+        self.worker_proc = None
+        self.running = True
+        self.reload_pending = False
+        self.node = mesh.node_id()
+
+    # ── lifecycle ────────────────────────────────────────────────────────────
+
+    def handle_term(self, *_):
+        self.running = False
+
+    def handle_hup(self, *_):
+        # Only set a flag: the handler runs on the main thread between socket
+        # timeouts, and doing config/process work inside a signal handler risks
+        # re-entering subprocess machinery mid-call.
+        self.reload_pending = True
+
+    def reload(self):
+        self.reload_pending = False
+        old_worker = mesh.conf_flag(self.conf, "worker")
+        self.conf = mesh.load_conf()
+        self.secret = mesh.read_secret()
+        new_worker = mesh.conf_flag(self.conf, "worker")
+        if old_worker != new_worker:
+            self.log("worker mode -> %s" % ("on" if new_worker else "off"))
+            if new_worker:
+                self.start_worker()
+            else:
+                self.stop_worker()
+
+    def log(self, msg):
+        # journald captures stdout; keep it single-line and greppable.
+        print("[genesi-meshd] %s" % msg, flush=True)
+
+    # ── worker (rpc-server) supervision ──────────────────────────────────────
+
+    def start_worker(self):
+        if self.worker_proc and self.worker_proc.poll() is None:
+            return
+        binp = mesh.llama_bin("rpc-server")
+        if not binp:
+            self.log("worker requested but `rpc-server` is missing — install a "
+                     "llama.cpp built with GGML_RPC=ON (genesi-llama-cpp >= 4)")
+            return
+
+        bind = self.conf.get("rpc_bind", "127.0.0.1").strip() or "127.0.0.1"
+        port = mesh.conf_int(self.conf, "rpc_port", mesh.DEFAULT_RPC_PORT)
+        cmd = [binp, "-H", bind, "-p", str(port)]
+
+        mem_mb = mesh.conf_int(self.conf, "rpc_mem_mb", 0)
+        if mem_mb > 0:
+            cmd += ["-m", str(mem_mb)]
+
+        if bind not in ("127.0.0.1", "localhost", "::1"):
+            # Say this loudly and every time. rpc-server does no authentication
+            # and no input validation, so a LAN bind is a real exposure and the
+            # operator should be reminded whenever it is in effect.
+            self.log("WARNING: rpc-server is bound to %s (LAN-visible). It has "
+                     "NO authentication — only do this on a network you control."
+                     % bind)
+
+        try:
+            self.worker_proc = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.log("worker up: %s" % " ".join(cmd))
+        except OSError as exc:
+            self.worker_proc = None
+            self.log("worker failed to start: %s" % exc)
+
+    def stop_worker(self):
+        if not self.worker_proc:
+            return
+        if self.worker_proc.poll() is None:
+            self.worker_proc.terminate()
+            try:
+                self.worker_proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.worker_proc.kill()
+                self.worker_proc.wait(timeout=5)
+        self.worker_proc = None
+        self.log("worker stopped")
+
+    def supervise_worker(self):
+        """Restart a worker that died. rpc-server exits on some client
+        disconnects, which is normal — it must come back for the next run
+        rather than leaving the machine silently out of the mesh."""
+        if not mesh.conf_flag(self.conf, "worker"):
+            return
+        if self.worker_proc is None or self.worker_proc.poll() is not None:
+            if self.worker_proc is not None:
+                self.log("worker exited — restarting")
+            self.start_worker()
+
+    # ── discovery ────────────────────────────────────────────────────────────
+
+    def announce(self, sender):
+        if not self.secret or not mesh.conf_flag(self.conf, "discovery"):
+            return
+        beacon = mesh.build_beacon(self.conf, self.gpu)
+        try:
+            sender.sendto(mesh.sign_beacon(beacon, self.secret),
+                          (mesh.MULTICAST_GROUP, mesh.DISCOVERY_PORT))
+        except OSError:
+            # No route to the multicast group (NIC down, no network). Not fatal:
+            # a node with no network is simply a mesh of one.
+            pass
+
+    def absorb(self, raw, addr):
+        if not self.secret:
+            return
+        payload = mesh.verify_beacon(raw, self.secret)
+        if payload is None:
+            return
+        if payload.get("node") == self.node:
+            return                    # our own multicast loopback echo
+        self.peers[payload["node"]] = {
+            "node": payload["node"],
+            "host": payload.get("host") or addr[0],
+            "addr": addr[0],          # the source IP, never a self-reported one
+            "worker": bool(payload.get("worker")),
+            "rpc_port": int(payload.get("rpc_port") or mesh.DEFAULT_RPC_PORT),
+            "backend": payload.get("backend") or "CPU",
+            "vram_mb": int(payload.get("vram_mb") or 0),
+            "last_seen": time.time(),
+        }
+
+    def publish(self):
+        now = time.time()
+        live = {k: v for k, v in self.peers.items()
+                if (now - v["last_seen"]) <= mesh.PEER_TTL}
+        self.peers = live
+        mesh.write_json_atomic(mesh.PEERS_PATH, {
+            "updated": now,
+            "peers": sorted(live.values(), key=lambda p: p["host"]),
+        })
+        mesh.write_json_atomic(mesh.STATE_PATH, {
+            "updated": now,
+            "node": self.node,
+            "host": self.conf.get("name") or socket.gethostname(),
+            "addr": mesh.primary_address(),
+            "backend": self.gpu.get("backend"),
+            "vram_mb": self.gpu.get("vram_mb"),
+            "worker": mesh.conf_flag(self.conf, "worker"),
+            "worker_running": bool(self.worker_proc
+                                   and self.worker_proc.poll() is None),
+            "rpc_bind": self.conf.get("rpc_bind"),
+            "rpc_port": mesh.conf_int(self.conf, "rpc_port",
+                                      mesh.DEFAULT_RPC_PORT),
+            "capabilities": self.caps,
+            "peer_count": len(live),
+            "protocol": mesh.PROTOCOL,
+        })
+
+    # ── main loop ────────────────────────────────────────────────────────────
+
+    def run(self):
+        signal.signal(signal.SIGTERM, self.handle_term)
+        signal.signal(signal.SIGINT, self.handle_term)
+        signal.signal(signal.SIGHUP, self.handle_hup)
+
+        if not self.secret:
+            self.log("no mesh secret at %s — run `genesi-mesh init` (first "
+                     "machine) or `genesi-mesh join` (the others). Discovery is "
+                     "inert until then." % mesh.SECRET_PATH)
+
+        self.log("node %s | %s %d MiB | rpc=%s" % (
+            self.node, self.gpu.get("backend"), self.gpu.get("vram_mb"),
+            "yes" if self.caps.get("rpc_server") else "MISSING"))
+
+        listener = mesh.open_listen_socket()
+        listener.settimeout(1.0)
+        sender = mesh.open_send_socket()
+
+        if mesh.conf_flag(self.conf, "worker"):
+            self.start_worker()
+
+        last_beacon = 0.0
+        last_publish = 0.0
+        try:
+            while self.running:
+                if self.reload_pending:
+                    self.reload()
+
+                try:
+                    raw, addr = listener.recvfrom(8192)
+                    self.absorb(raw, addr)
+                except socket.timeout:
+                    pass
+                except OSError:
+                    pass
+
+                now = time.time()
+                if now - last_beacon >= mesh.BEACON_INTERVAL:
+                    last_beacon = now
+                    self.announce(sender)
+                    self.supervise_worker()
+                # Publish on the same cadence as the TTL sweep so a peer that
+                # goes away disappears from readers within one interval.
+                if now - last_publish >= 2.0:
+                    last_publish = now
+                    self.publish()
+        finally:
+            self.stop_worker()
+            listener.close()
+            sender.close()
+            self.log("stopped")
+
+
+def main():
+    os.makedirs(mesh.RUN_DIR, mode=0o755, exist_ok=True)
+    Daemon().run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

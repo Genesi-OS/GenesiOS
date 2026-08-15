@@ -402,6 +402,10 @@ jobs:
             "genesi-caelestia-cli"
             "genesi-caelestia-shell"
             "genesi-caelestia-settings"
+            # Genesi Mesh — pools GPU memory across machines on the LAN. Pure
+            # Python + a systemd unit, so it is cheap to build; it needs a
+            # GGML_RPC=ON llama.cpp at RUNTIME (optdepends), not at build time.
+            "genesi-mesh"
             # NOTE: genesi-code is NOT built here. Its package is 172 MB, which
             # exceeds GitHub's 100 MB git file limit, so it can't be committed to
             # the git-hosted repo. It is built and published to the separate

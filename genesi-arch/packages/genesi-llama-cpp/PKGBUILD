@@ -8,7 +8,12 @@
 # hardware; the CPU fallback (generic, GGML_NATIVE=OFF) keeps it portable.
 pkgname=genesi-llama-cpp
 pkgver=r0
-pkgrel=3
+# 2026-08-15 (4): build the RPC backend (-DGGML_RPC=ON). This is what produces
+# the `rpc-server` binary and teaches `llama-server` the `--rpc host:port` flag,
+# which is the entire foundation of Genesi Mesh (pooling VRAM across machines on
+# the LAN). Without it `genesi-mesh` has nothing to drive. Costs nothing when
+# unused: it is an extra backend, inert unless --rpc is passed.
+pkgrel=4
 pkgdesc='llama.cpp (Vulkan) — local LLM inference backing Genesi Turbo'
 arch=('x86_64')
 url='https://github.com/ggml-org/llama.cpp'
@@ -66,6 +71,7 @@ build() {
         -DGGML_NATIVE=OFF \
         -DGGML_BACKEND_DL=ON \
         -DGGML_CPU_ALL_VARIANTS=ON \
+        -DGGML_RPC=ON \
         -DLLAMA_CURL=OFF \
         -DBUILD_SHARED_LIBS=ON
     cmake --build build --config Release -j"${jobs}"

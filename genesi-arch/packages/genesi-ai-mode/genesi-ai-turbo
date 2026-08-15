@@ -1127,11 +1127,65 @@ def load_tune_profile(main_gguf):
     return {}
 
 
+def mesh_plan(main_gb):
+    """Ask Genesi Mesh whether this model should be spread across machines.
+
+    Returns (endpoints, extra_budget_gb, reason) — ([], 0.0, "") whenever the
+    mesh is absent, empty, disabled, or simply not worth using.
+
+    Mesh is a LAST RESORT by construction, not a speed-up: every token's
+    activations cross the network, so pooling a model that already fits locally
+    makes it SLOWER. genesi_mesh_common.plan_pool encodes that rule, and we
+    honour its verdict rather than second-guessing it here. The payoff is
+    binary: a model that would otherwise not run at all, runs.
+
+    Fails open in every direction — no genesi-mesh package, no daemon, no peers,
+    an llama-server without --rpc: Turbo behaves exactly as it does today."""
+    if _env_flag("GENESI_TURBO_NO_MESH"):
+        return [], 0.0, ""
+
+    # An explicit override wins, so a user can point at machines that discovery
+    # cannot reach (different subnet, a VPN, a host with discovery off).
+    forced = os.environ.get("GENESI_MESH_ENDPOINTS", "").strip()
+
+    if not _pick_flag(_llama_help(), "--rpc"):
+        if forced:
+            print("   [mesh] GENESI_MESH_ENDPOINTS is set but this llama-server "
+                  "has no --rpc (needs a GGML_RPC=ON build) — ignoring.",
+                  flush=True)
+        return [], 0.0, ""
+
+    if forced:
+        return [e.strip() for e in forced.split(",") if e.strip()], 0.0, \
+               "forced via GENESI_MESH_ENDPOINTS"
+
+    sys.path.insert(0, "/usr/lib/genesi-mesh")
+    try:
+        import genesi_mesh_common as _mesh
+    except ImportError:
+        return [], 0.0, ""          # genesi-mesh not installed: nothing to do
+
+    try:
+        peers = _mesh.read_peers()
+        if not peers:
+            return [], 0.0, ""
+        plan = _mesh.plan_pool({"vram_mb": _detect_vram_mb()}, peers, main_gb)
+    except Exception:
+        # Never let a mesh problem stop a local server from starting.
+        return [], 0.0, ""
+
+    if not plan.get("use_mesh"):
+        return [], 0.0, ""
+    return (plan["endpoints"],
+            max(plan["pooled_gb"] - plan["local_gb"], 0.0),
+            plan["reason"])
+
+
 def server_cmd(main_gguf, draft_gguf):
     binp = llama_bin("llama-server")
     if not binp:
         return None
-        
+
     try:
         s = json.load(open("/run/genesi-ai-mode/state.json"))
         hw = s.get("hardware") or {}
@@ -1165,6 +1219,23 @@ def server_cmd(main_gguf, draft_gguf):
         draft_gb = os.path.getsize(draft_gguf) / (1024**3) if draft_gguf else 0.0
     except OSError:
         draft_gb = 0.0
+
+    # Genesi Mesh: when the model does not fit this machine's VRAM but DOES fit
+    # across the GPUs of paired machines on the LAN, llama.cpp can treat each
+    # remote GPU as an extra device (`--rpc host:port`) and spread the layers.
+    # The budget grows accordingly, so every fit decision below — full offload
+    # vs partial vs MoE expert-offload — is made against the POOLED VRAM.
+    # mesh_plan returns nothing unless pooling genuinely beats running locally.
+    mesh_endpoints, mesh_extra_gb, mesh_reason = mesh_plan(main_gb)
+    if mesh_endpoints:
+        budget_gb += mesh_extra_gb
+        gpu = True
+        print("   [mesh] %s" % mesh_reason, flush=True)
+        print("   [mesh] pooling across: %s" % ", ".join(mesh_endpoints),
+              flush=True)
+        print("   [mesh] note: layer activations cross the network each token, "
+              "so this trades speed for being able to run the model at all.",
+              flush=True)
 
     fits_main = main_gb <= budget_gb if budget_gb > 0 else False
     fits_both = (main_gb + draft_gb) <= budget_gb if budget_gb > 0 else False
@@ -1331,6 +1402,10 @@ def server_cmd(main_gguf, draft_gguf):
     cmd = [binp, "-m", main_gguf, "--host", "127.0.0.1",
            "--port", str(TURBO_PORT),
            "-c", str(total_ctx),
+           # Remote GPUs first: --rpc must be on the command line before -ngl is
+           # interpreted, since the RPC devices are what the layer count is
+           # distributed across. Empty unless mesh_plan approved pooling.
+           *(["--rpc", ",".join(mesh_endpoints)] if mesh_endpoints else []),
            "-b", str(batch),               # logical prefill batch
            "-ub", str(ubatch),             # physical prefill batch (n_ubatch)
            # KV-cache reuse: keep matching prefix chunks across requests via KV

@@ -14,7 +14,10 @@
 # NOT shipped on the live ISO (NVIDIA-only + heavy); it lands post-install only.
 pkgname=genesi-llama-cpp-cuda
 pkgver=r0
-pkgrel=1
+# 2026-08-15 (2): build the RPC backend (-DGGML_RPC=ON), matching the Vulkan
+# build. Produces `rpc-server` and the `llama-server --rpc host:port` flag that
+# Genesi Mesh drives to pool VRAM across machines. Inert unless --rpc is passed.
+pkgrel=2
 pkgdesc='llama.cpp (CUDA) — fast NVIDIA local LLM inference backing Genesi Turbo'
 arch=('x86_64')
 url='https://github.com/ggml-org/llama.cpp'
@@ -74,6 +77,7 @@ build() {
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DCMAKE_BUILD_TYPE=Release \
         -DGGML_CUDA=ON \
+        -DGGML_RPC=ON \
         -DCMAKE_CUDA_COMPILER=/opt/cuda/bin/nvcc \
         -DCMAKE_CUDA_ARCHITECTURES="${archs}" \
         -DGGML_NATIVE=OFF \

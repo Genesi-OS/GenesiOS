@@ -1,0 +1,57 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# Genesi Mesh — pool GPU memory across machines on a LAN so a model that fits on
+# no single box still runs accelerated.
+#
+# Built on llama.cpp's RPC backend: a worker machine runs `rpc-server`, the
+# client runs `llama-server --rpc host:port` and treats the remote GPU as an
+# extra device. This package supplies the part llama.cpp leaves out — signed
+# LAN discovery, a machine-wide trust secret, worker supervision, and the
+# fits/doesn't-fit planning that keeps Turbo from pooling when pooling would be
+# slower than running locally.
+#
+# Deliberately NOT a hard dependency of genesi-ai-mode: the mesh is opt-in, and
+# a machine with no second box loses nothing by having the daemon idle.
+#
+# 2026-08-15 (1): initial release. Requires a llama.cpp built with GGML_RPC=ON
+# (genesi-llama-cpp >= r0-4 or genesi-llama-cpp-cuda >= r0-2); `genesi-mesh
+# doctor` says so plainly when it is missing rather than failing obscurely.
+pkgname=genesi-mesh
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL3')
+depends=('python')
+# llama.cpp is what actually moves the tensors. Not a hard dep so the daemon can
+# be installed and configured before the backend is chosen (Vulkan vs CUDA).
+optdepends=('genesi-llama-cpp: Vulkan RPC backend (any GPU)'
+            'genesi-llama-cpp-cuda: CUDA RPC backend (NVIDIA)'
+            'genesi-ai-mode: automatic mesh use from Genesi Turbo')
+backup=('etc/genesi-mesh/mesh.conf')
+source=()
+sha256sums=()
+
+package() {
+    # Shared module, imported by both the daemon and the CLI via an explicit
+    # sys.path entry (not installed into site-packages: it is private to this
+    # package and must not collide with anything else).
+    install -Dm644 "${startdir}/genesi_mesh_common.py" \
+        "$pkgdir/usr/lib/genesi-mesh/genesi_mesh_common.py"
+
+    install -Dm755 "${startdir}/genesi-meshd" "$pkgdir/usr/bin/genesi-meshd"
+    install -Dm755 "${startdir}/genesi-mesh"  "$pkgdir/usr/bin/genesi-mesh"
+
+    install -Dm644 "${startdir}/genesi-meshd.service" \
+        "$pkgdir/usr/lib/systemd/system/genesi-meshd.service"
+
+    # 0644: the config is readable by anyone (so `genesi-mesh status` works
+    # unprivileged). The SECRET is a separate file, created 0600 at runtime by
+    # `genesi-mesh init` — never shipped in the package.
+    install -Dm644 "${startdir}/mesh.conf" \
+        "$pkgdir/etc/genesi-mesh/mesh.conf"
+
+    install -Dm644 "${startdir}/README.md" \
+        "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
