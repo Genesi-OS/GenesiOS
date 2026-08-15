@@ -680,7 +680,18 @@ pkgver=1.0.0
 # sends activations over the network each token, so it buys "runs at all", not
 # speed. Opt out with GENESI_TURBO_NO_MESH=1; force endpoints with
 # GENESI_MESH_ENDPOINTS=host:port,...
-pkgrel=141
+# 2026-08-15 (142): Genesi AI Assist. A shared gate (genesi_ai_assist.py) that
+# every passive, always-on AI helper must ask before touching the model, plus
+# the first helper: `genesi-explain`, which puts two dim lines under a command
+# that just failed. The gate's rules are the point -- a passive helper NEVER
+# loads a model (it rides one already warm on the Turbo daemon or does not run
+# at all), stands down while a real inference is running or Studio Mode has the
+# machine, is off on battery by default, and caches so the same typo is never
+# paid for twice. Fails silent everywhere: no warm model means nothing is
+# printed. The shell hook never re-runs the failed command -- it only sees the
+# command line and exit code -- because re-running is how a helper deletes
+# something twice; pipe `cmd 2>&1 | genesi-explain` when the output matters.
+pkgrel=142
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -718,7 +729,7 @@ optdepends=(
 install="$pkgname.install"
 # Opt-in advanced tweaks config (all OFF by default). backup() so pacman writes
 # .pacnew instead of clobbering a user's edits on upgrade.
-backup=('etc/genesi-ai-mode/advanced.conf')
+backup=('etc/genesi-ai-mode/advanced.conf' 'etc/genesi-ai-assist.conf')
 source=()
 sha256sums=()
 
@@ -787,6 +798,21 @@ package() {
         "$pkgdir/usr/share/plasma/plasmoids/org.genesi.aimode/"
 
     # AI Mode Monitor — standalone Qt6/Kirigami dashboard app
+    # Genesi AI Assist — the shared gate for passive helpers, plus the first
+    # one (explain a failed command). Shipped inside genesi-ai-mode rather than
+    # as its own package on purpose: this is already installed on every machine,
+    # so the helper cannot repeat genesi-mesh's mistake of existing in the repo
+    # but never reaching anyone.
+    install -Dm644 "${startdir}/genesi_ai_assist.py" \
+        "$pkgdir/usr/share/genesi-ai-mode/genesi_ai_assist.py"
+    install -Dm755 "${startdir}/genesi-explain" \
+        "$pkgdir/usr/local/bin/genesi-explain"
+    # profile.d so interactive shells pick the hook up with no dotfile edits.
+    install -Dm644 "${startdir}/genesi-assist.sh" \
+        "$pkgdir/etc/profile.d/genesi-assist.sh"
+    install -Dm644 "${startdir}/genesi-ai-assist.conf" \
+        "$pkgdir/etc/genesi-ai-assist.conf"
+
     install -Dm644 "${startdir}/monitor/genesi_ai_monitor.py" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_ai_monitor.py"
     install -Dm644 "${startdir}/monitor/genesi_agent.py" \

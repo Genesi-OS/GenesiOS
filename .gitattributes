@@ -21,6 +21,7 @@ genesi-arch/packages/genesi-ai-mode/genesi-ai-kwin-helper  text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-turbo        text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-tune         text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-cuda-notify  text eol=lf
+genesi-arch/packages/genesi-ai-mode/genesi-explain         text eol=lf
 genesi-arch/packages/genesi-ai-mode/monitor/genesi-ai-monitor text eol=lf
 genesi-arch/archiso/airootfs/usr/local/bin/genesi-dev-cuda-setup text eol=lf
 # genesi-snapshots CLI + GUI launcher + first-boot helper (extensionless bash).

@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""genesi-explain — say what a failed command means, using the local model.
+
+Two ways in:
+
+  1. Automatically, from the shell hook (genesi-assist.sh). When a command
+     exits non-zero the hook calls us with the command line and exit code, and
+     two dim lines appear under the failure. This path is silent about
+     everything: no model warm, no network, no anything -> nothing is printed.
+
+  2. Explicitly, when you want the real output considered:
+
+         some-command 2>&1 | genesi-explain
+         genesi-explain "pacman -S foo"
+
+Why the automatic path does not capture stderr: doing so means either wrapping
+every command in a pty or re-running it. Re-running is unacceptable — a failed
+`rm`, `git push` or `curl -X POST` must never be executed twice behind the
+user's back. So the hook passes what it can honestly see (the command line and
+the exit status), which is enough for the common cases (a typo, a missing
+package, a wrong flag), and piping is there for when it is not.
+"""
+
+import hashlib
+import os
+import sys
+
+sys.path.insert(0, "/usr/share/genesi-ai-mode")
+import genesi_ai_assist as assist   # noqa: E402
+
+DIM = "\033[2m"
+CYAN = "\033[36m"
+RESET = "\033[0m"
+
+SYSTEM = (
+    "You explain failed shell commands on Genesi OS, an Arch Linux based "
+    "distribution that uses pacman, and paru for the AUR. Answer in at most "
+    "two short lines. Line 1: what went wrong, in plain language. Line 2: the "
+    "exact command to fix it, or omit line 2 if there is no single fix. Never "
+    "repeat the failing command back. No preamble, no markdown, no code fences."
+)
+
+MAX_OUTPUT = 2000     # characters of piped output handed to the model
+
+
+def color(text, code):
+    return text if not sys.stdout.isatty() else code + text + RESET
+
+
+def main(argv):
+    # Non-ASCII in a POSIX/C locale would raise on print and leave a traceback
+    # in the user's shell. Degrade the glyph, never the shell.
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
+    command = " ".join(argv[1:]).strip()
+    exit_code = os.environ.get("GENESI_EXPLAIN_STATUS", "").strip()
+
+    # Read stdin ONLY in the pipe form (`cmd 2>&1 | genesi-explain`), i.e. when
+    # no command was given as an argument.
+    #
+    # The obvious `if not sys.stdin.isatty()` is a trap: the shell hook always
+    # passes a command AND runs us in the background, where stdin is neither a
+    # tty nor closed. We would then block forever on a read that is never going
+    # to return, holding the terminal's stdin against the interactive shell.
+    # Keying off argv instead makes each entry point read exactly what it owns.
+    piped = ""
+    if not command and not sys.stdin.isatty():
+        try:
+            piped = sys.stdin.read(MAX_OUTPUT).strip()
+        except (OSError, UnicodeDecodeError):
+            piped = ""
+
+    if not command and not piped:
+        print("usage: genesi-explain <command>   |   <command> 2>&1 | genesi-explain",
+              file=sys.stderr)
+        return 2
+
+    parts = []
+    if command:
+        parts.append("Command: %s" % command)
+    if exit_code:
+        parts.append("Exit code: %s" % exit_code)
+    if piped:
+        parts.append("Output:\n%s" % piped)
+    question = "\n".join(parts)
+
+    # Cache on the question, so hammering the same typo is free. Piped output
+    # is included in the key: different output means a different failure.
+    key = hashlib.sha256(question.encode("utf-8")).hexdigest()
+
+    answer = assist.ask(SYSTEM, question, feature="explain_errors", cache_key=key)
+    if not answer:
+        # Deliberately silent. This runs after EVERY failed command; a helper
+        # that complains when it cannot help would be worse than no helper.
+        return 1
+
+    lines = [ln.strip() for ln in answer.splitlines() if ln.strip()][:2]
+    for i, line in enumerate(lines):
+        prefix = "  " if i == 0 else "  $ " if not line.startswith("$") else "  "
+        if i == 0:
+            print(color("  " + line, DIM))
+        else:
+            print(color(prefix + line.lstrip("$ "), CYAN))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv))
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception:
+        # Absolutely never leave a traceback in an interactive shell.
+        sys.exit(1)
