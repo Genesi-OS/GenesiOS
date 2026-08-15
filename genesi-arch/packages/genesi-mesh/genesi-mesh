@@ -111,7 +111,10 @@ def cmd_status():
     print("  node:    %s  (%s)" % (mesh.node_id(),
                                    conf.get("name") or socket.gethostname()))
     print("  address: %s" % mesh.primary_address())
-    print("  gpu:     %s, %d MiB VRAM" % (gpu["backend"], gpu["vram_mb"]))
+    kind = " (integrated — shared system RAM)" if gpu.get("integrated") else ""
+    print("  gpu:     %s%s, %d MiB%s"
+          % (gpu["backend"], (" " + gpu["name"]) if gpu.get("name") else "",
+             gpu["vram_mb"], color(kind, YELLOW) if kind else ""))
 
     secret = mesh.read_secret()
     print("  mesh:    %s" % (color("configured", GREEN) if secret
@@ -143,11 +146,22 @@ def cmd_status():
 
 def _print_peers(peers):
     print(color("Peers (%d)" % len(peers), BOLD))
+    any_integrated = False
     for p in peers:
         role = color("worker", GREEN) if p.get("worker") else color("idle", DIM)
-        print("  %-18s %-15s %-7s %6d MiB  %s"
+        tag = ""
+        if p.get("integrated"):
+            any_integrated = True
+            tag = color("  [integrated]", YELLOW)
+        print("  %-18s %-15s %-7s %6d MiB  %s%s"
               % (p.get("host", "?"), p.get("addr", "?"),
-                 p.get("backend", "?"), int(p.get("vram_mb") or 0), role))
+                 p.get("backend", "?"), int(p.get("vram_mb") or 0), role, tag))
+    if any_integrated:
+        print()
+        print(color("  [integrated] = shared system RAM, not dedicated VRAM. Not", DIM))
+        print(color("  pooled by default: llama.cpp splits layers by capacity, not", DIM))
+        print(color("  speed, so such a peer takes a full share and slows every", DIM))
+        print(color("  token. Override with pool_integrated = on in mesh.conf.", DIM))
 
 
 def cmd_peers():
@@ -255,11 +269,22 @@ def cmd_plan(arg):
     if size <= 0:
         print("usage: genesi-mesh plan <model.gguf|SIZE_IN_GB>")
         return 2
-    decision = mesh.plan_pool(mesh.probe_gpu(), mesh.read_peers(), size)
+    conf = mesh.load_conf()
+    gpu = mesh.probe_gpu()
+    decision = mesh.plan_pool(gpu, mesh.read_peers(), size,
+                              pool_integrated=mesh.conf_flag(conf, "pool_integrated"))
 
     print(color("Model %.1f GB" % size, BOLD))
+    if gpu.get("integrated"):
+        # Say it, or the 0.0 GB budget below looks like a detection failure.
+        print(color("  this machine's GPU is integrated (%s) — its memory is "
+                    "system RAM," % (gpu.get("name") or "?"), YELLOW))
+        print(color("  so it counts as 0 dedicated VRAM. That is what lets the "
+                    "mesh step in.", YELLOW))
     print("  local VRAM budget:  %.1f GB" % decision["local_gb"])
     print("  pooled across mesh: %.1f GB" % decision["pooled_gb"])
+    for host in decision.get("skipped_integrated", []):
+        print(color("  skipped %s (integrated graphics)" % host, DIM))
     print()
     if decision["use_mesh"]:
         print(color("  → use the mesh", GREEN))

@@ -77,6 +77,8 @@ DEFAULTS = {
     "rpc_mem_mb": "0",         # 0 = let rpc-server decide from the device
     "discovery": "on",
     "name": "",                # display name; defaults to the hostname
+    # Use peers whose only GPU is integrated? Off by default — see plan_pool.
+    "pool_integrated": "off",
 }
 
 
@@ -229,6 +231,10 @@ def build_beacon(conf, gpu):
         "rpc_port": conf_int(conf, "rpc_port", DEFAULT_RPC_PORT),
         "backend": gpu.get("backend", "CPU"),
         "vram_mb": int(gpu.get("vram_mb") or 0),
+        # Advertised so the CLIENT can decide. Whether an integrated peer is
+        # worth using depends on the model and the link, which only the machine
+        # planning the run knows — the worker just states what it is.
+        "integrated": bool(gpu.get("integrated")),
         "ts": time.time(),
     }
 
@@ -297,8 +303,57 @@ def llama_bin(name):
     return None
 
 
+# Device names that mean "this GPU has no memory of its own".
+#
+# An integrated GPU's "VRAM" is a slice of system RAM, which changes everything
+# for a mesh: contributing it does not add a separate fast memory pool, it adds
+# ordinary RAM reached over the network, backed by ~50-90 GB/s of bandwidth
+# shared with the CPU instead of a discrete card's 200+ GB/s. Since llama.cpp
+# splits layers by reported CAPACITY and not by speed, an integrated peer takes
+# a full share of the work and then makes every token wait for it.
+_INTEGRATED_HINTS = re.compile(
+    r"\b(uhd graphics|hd graphics|iris|integrated|igpu|vega \d+ graphics|"
+    r"radeon graphics|radeon vega|llvmpipe|swiftshader|softpipe|lavapipe)\b",
+    re.I)
+
+
+def _total_ram_mb():
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0
+
+
+def _looks_integrated(name, vram_mb):
+    """Best-effort 'is this GPU's memory really system RAM?'.
+
+    Two independent signals, because neither alone is reliable across drivers:
+
+      * The device NAME. Intel's UHD/Iris and AMD's APU graphics identify
+        themselves clearly, and the software rasterizers (llvmpipe, lavapipe)
+        are the same story taken further — they are the CPU wearing a hat.
+      * The SIZE relative to system RAM. A discrete card's VRAM is unrelated to
+        how much RAM the host has; shared memory is carved straight out of it,
+        so a device claiming a large fraction of total RAM is almost certainly
+        not holding memory of its own.
+
+    Deliberately conservative: when in doubt, treat it as discrete. A false
+    'integrated' would silently drop a real GPU from the mesh, which is a worse
+    failure than including a weak one the user can exclude by hand."""
+    if name and _INTEGRATED_HINTS.search(name):
+        return True
+    total_ram = _total_ram_mb()
+    if total_ram and vram_mb and vram_mb >= total_ram * 0.4:
+        return True
+    return False
+
+
 def probe_gpu():
-    """What this machine can contribute: {backend, vram_mb}.
+    """What this machine can contribute: {backend, vram_mb, name, integrated}.
 
     Mirrors genesi-ai-turbo's detection deliberately — nvidia-smi first (it is
     authoritative where the proprietary/open driver is loaded), then llama.cpp's
@@ -309,13 +364,20 @@ def probe_gpu():
     if shutil.which("nvidia-smi"):
         try:
             out = subprocess.run(
-                ["nvidia-smi", "--query-gpu=memory.total",
+                ["nvidia-smi", "--query-gpu=memory.total,name",
                  "--format=csv,noheader,nounits"],
                 capture_output=True, text=True, timeout=5).stdout
-            best = max([int(v.strip()) for v in out.splitlines()
-                        if v.strip().isdigit()], default=0)
+            best, best_name = 0, ""
+            for line in out.splitlines():
+                parts = [p.strip() for p in line.split(",")]
+                if parts and parts[0].isdigit() and int(parts[0]) > best:
+                    best = int(parts[0])
+                    best_name = parts[1] if len(parts) > 1 else ""
             if best:
-                return {"backend": "CUDA", "vram_mb": best}
+                # nvidia-smi answering at all means a real NVIDIA card with its
+                # own memory; NVIDIA ships no integrated consumer GPU here.
+                return {"backend": "CUDA", "vram_mb": best,
+                        "name": best_name or "NVIDIA GPU", "integrated": False}
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
 
@@ -325,14 +387,25 @@ def probe_gpu():
             res = subprocess.run([binp, "--list-devices"],
                                  capture_output=True, text=True, timeout=20)
             text = (res.stdout or "") + (res.stderr or "")
-            best = max([int(m.group(1))
-                        for m in re.finditer(r"\((\d+)\s*MiB", text)], default=0)
+            best, best_name = 0, ""
+            # e.g. "  Vulkan0: Intel(R) Iris(R) Xe Graphics (7808 MiB, ...)"
+            for match in re.finditer(r"^\s*\w+\d+:\s*(.+?)\s*\((\d+)\s*MiB",
+                                     text, re.M):
+                size = int(match.group(2))
+                if size > best:
+                    best, best_name = size, match.group(1)
+            if not best:            # older builds print only the size
+                best = max([int(m.group(1))
+                            for m in re.finditer(r"\((\d+)\s*MiB", text)],
+                           default=0)
             if best:
                 backend = "CUDA" if re.search(r"\bCUDA\d", text) else "Vulkan"
-                return {"backend": backend, "vram_mb": best}
+                return {"backend": backend, "vram_mb": best,
+                        "name": best_name,
+                        "integrated": _looks_integrated(best_name, best)}
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
-    return {"backend": "CPU", "vram_mb": 0}
+    return {"backend": "CPU", "vram_mb": 0, "name": "", "integrated": False}
 
 
 def rpc_supported():
@@ -392,7 +465,7 @@ def write_json_atomic(path, data):
 GPU_OVERHEAD_GB = 1.2
 
 
-def plan_pool(local_gpu, peers, model_gb):
+def plan_pool(local_gpu, peers, model_gb, pool_integrated=False):
     """Decide whether pooling helps for a model of `model_gb`.
 
     Returns a dict describing the decision, always including `endpoints` (what
@@ -404,16 +477,36 @@ def plan_pool(local_gpu, peers, model_gb):
     fits locally we deliberately return no endpoints — using the mesh there
     would be slower, and silently doing it would make Mesh look bad for a reason
     the user could never guess."""
-    local_mb = int(local_gpu.get("vram_mb") or 0)
+    # An integrated GPU has no memory of its own, so it contributes nothing to a
+    # POOL of dedicated memory — on either side of the link.
+    #
+    # Locally that means the budget is 0, which is correct and is what makes the
+    # interesting case work: a laptop with only integrated graphics reports "the
+    # model does not fit here", so the mesh engages and the remote discrete GPU
+    # does the work. That is the whole point of Mesh, and treating the iGPU's
+    # shared memory as real VRAM would wrongly conclude the model already fits
+    # and refuse to pool.
+    local_mb = 0 if local_gpu.get("integrated") else int(local_gpu.get("vram_mb") or 0)
     local_budget = max(local_mb / 1024.0 - GPU_OVERHEAD_GB, 0.0)
 
-    usable = [p for p in peers
-              if p.get("worker") and int(p.get("vram_mb") or 0) > 0]
+    usable, skipped_integrated = [], []
+    for peer in peers:
+        if not peer.get("worker") or int(peer.get("vram_mb") or 0) <= 0:
+            continue
+        if peer.get("integrated") and not pool_integrated:
+            skipped_integrated.append(peer)
+            continue
+        usable.append(peer)
     usable.sort(key=lambda p: int(p.get("vram_mb") or 0), reverse=True)
 
     pooled = local_budget + sum(
         max(int(p.get("vram_mb") or 0) / 1024.0 - GPU_OVERHEAD_GB, 0.0)
         for p in usable)
+
+    def _result(**kw):
+        kw.setdefault("skipped_integrated",
+                      [p.get("host", "?") for p in skipped_integrated])
+        return kw
 
     if model_gb <= 0:
         return {"use_mesh": False, "endpoints": [], "local_gb": local_budget,
@@ -421,26 +514,37 @@ def plan_pool(local_gpu, peers, model_gb):
                 "reason": "model size unknown"}
 
     if model_gb <= local_budget:
-        return {"use_mesh": False, "endpoints": [], "local_gb": local_budget,
-                "pooled_gb": pooled, "peers": usable,
-                "reason": ("fits in local VRAM (%.1f GB of %.1f GB) — pooling "
-                           "would only add network latency" % (model_gb, local_budget))}
+        return _result(use_mesh=False, endpoints=[], local_gb=local_budget,
+                       pooled_gb=pooled, peers=usable,
+                       reason=("fits in local VRAM (%.1f GB of %.1f GB) — pooling "
+                               "would only add network latency"
+                               % (model_gb, local_budget)))
 
     if not usable:
-        return {"use_mesh": False, "endpoints": [], "local_gb": local_budget,
-                "pooled_gb": pooled, "peers": [],
-                "reason": "no worker peers online"}
+        if skipped_integrated:
+            names = ", ".join(p.get("host", "?") for p in skipped_integrated)
+            return _result(
+                use_mesh=False, endpoints=[], local_gb=local_budget,
+                pooled_gb=pooled, peers=[],
+                reason=("only integrated-graphics peers online (%s). Their "
+                        "memory IS system RAM, and llama.cpp splits layers by "
+                        "capacity rather than speed, so they would take a full "
+                        "share of the work and make every token wait. Set "
+                        "pool_integrated = on to use them anyway." % names))
+        return _result(use_mesh=False, endpoints=[], local_gb=local_budget,
+                       pooled_gb=pooled, peers=[],
+                       reason="no worker peers online")
 
     if model_gb > pooled:
-        return {"use_mesh": False, "endpoints": [], "local_gb": local_budget,
-                "pooled_gb": pooled, "peers": usable,
-                "reason": ("too big even pooled (%.1f GB needed, %.1f GB across "
-                           "the mesh)" % (model_gb, pooled))}
+        return _result(use_mesh=False, endpoints=[], local_gb=local_budget,
+                       pooled_gb=pooled, peers=usable,
+                       reason=("too big even pooled (%.1f GB needed, %.1f GB "
+                               "across the mesh)" % (model_gb, pooled)))
 
     endpoints = ["%s:%d" % (p["addr"], int(p.get("rpc_port") or DEFAULT_RPC_PORT))
                  for p in usable if p.get("addr")]
-    return {"use_mesh": True, "endpoints": endpoints, "local_gb": local_budget,
-            "pooled_gb": pooled, "peers": usable,
-            "reason": ("%.1f GB model does not fit locally (%.1f GB) but fits "
-                       "across %d machine(s) (%.1f GB pooled)"
-                       % (model_gb, local_budget, len(usable), pooled))}
+    return _result(use_mesh=True, endpoints=endpoints, local_gb=local_budget,
+                   pooled_gb=pooled, peers=usable,
+                   reason=("%.1f GB model does not fit locally (%.1f GB) but fits "
+                           "across %d machine(s) (%.1f GB pooled)"
+                           % (model_gb, local_budget, len(usable), pooled)))

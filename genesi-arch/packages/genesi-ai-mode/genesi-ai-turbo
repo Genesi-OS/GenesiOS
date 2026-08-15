@@ -1169,7 +1169,15 @@ def mesh_plan(main_gb):
         peers = _mesh.read_peers()
         if not peers:
             return [], 0.0, ""
-        plan = _mesh.plan_pool({"vram_mb": _detect_vram_mb()}, peers, main_gb)
+        # Pass the FULL probe, not just a VRAM number: plan_pool has to know
+        # whether this machine's GPU is integrated. On a laptop with only
+        # integrated graphics the shared memory would otherwise look like real
+        # VRAM, the model would appear to "fit locally", and the mesh would be
+        # refused in exactly the case it exists for.
+        conf = _mesh.load_conf()
+        plan = _mesh.plan_pool(
+            _mesh.probe_gpu(), peers, main_gb,
+            pool_integrated=_mesh.conf_flag(conf, "pool_integrated"))
     except Exception:
         # Never let a mesh problem stop a local server from starting.
         return [], 0.0, ""

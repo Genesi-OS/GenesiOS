@@ -13,12 +13,22 @@
 # Deliberately NOT a hard dependency of genesi-ai-mode: the mesh is opt-in, and
 # a machine with no second box loses nothing by having the daemon idle.
 #
+# 2026-08-15 (2): refuse to pool integrated GPUs. An iGPU's "VRAM" is a slice of
+# system RAM, and llama.cpp splits layers by CAPACITY rather than speed, so an
+# integrated peer takes a full share of the work and then makes every token wait
+# for it -- including one usually makes the run slower than leaving it out. Such
+# peers are now detected, advertised, and skipped by default (pool_integrated =
+# on to override). The client side is the mirror image and matters just as much:
+# a laptop whose only GPU is integrated now reports a local budget of ZERO, so
+# "the model does not fit here" is true and the mesh engages -- which is the
+# whole point of Mesh. Counting its shared memory as real VRAM would have
+# refused the mesh in exactly the case it exists for.
 # 2026-08-15 (1): initial release. Requires a llama.cpp built with GGML_RPC=ON
 # (genesi-llama-cpp >= r0-4 or genesi-llama-cpp-cuda >= r0-2); `genesi-mesh
 # doctor` says so plainly when it is missing rather than failing obscurely.
 pkgname=genesi-mesh
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

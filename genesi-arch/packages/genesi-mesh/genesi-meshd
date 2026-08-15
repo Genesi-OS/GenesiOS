@@ -158,6 +158,7 @@ class Daemon:
             "rpc_port": int(payload.get("rpc_port") or mesh.DEFAULT_RPC_PORT),
             "backend": payload.get("backend") or "CPU",
             "vram_mb": int(payload.get("vram_mb") or 0),
+            "integrated": bool(payload.get("integrated")),
             "last_seen": time.time(),
         }
 
@@ -177,6 +178,8 @@ class Daemon:
             "addr": mesh.primary_address(),
             "backend": self.gpu.get("backend"),
             "vram_mb": self.gpu.get("vram_mb"),
+            "gpu_name": self.gpu.get("name"),
+            "integrated": bool(self.gpu.get("integrated")),
             "worker": mesh.conf_flag(self.conf, "worker"),
             "worker_running": bool(self.worker_proc
                                    and self.worker_proc.poll() is None),
