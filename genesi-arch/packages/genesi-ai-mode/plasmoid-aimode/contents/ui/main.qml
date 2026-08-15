@@ -35,15 +35,45 @@ PlasmoidItem {
         connectedSources: []
         onNewData: function(source, data) {
             disconnectSource(source)
-            if (source.indexOf("cat ") === 0)
-                root.applyState((data["stdout"] || "").trim())
+            var out = (data["stdout"] || "").trim()
+            // Two different `cat` sources now, so dispatch on the path rather
+            // than on the "cat " prefix alone — otherwise the benchmark file
+            // would be parsed as state and blank the whole widget.
+            if (source.indexOf("bench.json") >= 0)
+                root.applyBench(out)
+            else if (source.indexOf("cat ") === 0)
+                root.applyState(out)
             else
                 root.readState()        // a control command ran; refresh now
         }
         function exec(cmd) { connectSource(cmd) }
     }
 
-    function readState() { executable.exec("cat /run/genesi-ai-mode/state.json") }
+    // Last measured OFF-vs-ON result, written by `genesi-ai-mode bench`.
+    // Empty until the user has ever run one — the widget then invites them to.
+    property var bench: ({})
+
+    function applyBench(txt) {
+        try {
+            root.bench = JSON.parse(txt)
+        } catch (e) {
+            root.bench = ({})          // never benchmarked, or the file is mid-write
+        }
+    }
+
+    function readBench() {
+        executable.exec("cat $HOME/.cache/genesi-ai-mode/bench.json")
+    }
+    function runBench() {
+        // Long-running and interactive-ish: give it a terminal instead of
+        // freezing the panel for the couple of minutes it takes.
+        executable.exec("setsid -f konsole -e sh -c 'genesi-ai-mode bench; echo; read -p \"Enter para fechar...\" _'")
+    }
+
+    function readState() {
+        executable.exec("cat /run/genesi-ai-mode/state.json")
+        root.readBench()
+    }
     function setMode(mode) { executable.exec("genesi-ai-mode " + mode) }
     function openMonitor() { executable.exec("setsid -f /usr/local/bin/genesi-ai-monitor") }
     function openQuickChat() { executable.exec("setsid -f /usr/local/bin/genesi-ai-quick --show") }
@@ -289,6 +319,37 @@ PlasmoidItem {
                     opacity: 0.7
                     font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 }
+
+                // What AI Mode is actually buying you.
+                //
+                // Every optimizer in this daemon was invisible before: the
+                // benchmark printed a number once and it was lost. Showing the
+                // last measured OFF-vs-ON result makes the tuning legible —
+                // and it is a MEASURED figure from this machine, never an
+                // estimate, so it stays honest.
+                PlasmaComponents.Label {
+                    visible: root.bench && root.bench.on_tps !== undefined
+                    text: {
+                        if (!root.bench || root.bench.on_tps === undefined)
+                            return ""
+                        var g = root.bench.gain_pct
+                        var sign = g > 0 ? "+" : ""
+                        return "Turbo: " + sign + g.toFixed(0) + "% medido  ("
+                             + root.bench.off_tps.toFixed(1) + " → "
+                             + root.bench.on_tps.toFixed(1) + " tok/s)"
+                    }
+                    color: (root.bench && root.bench.gain_pct > 0)
+                           ? Kirigami.Theme.positiveTextColor
+                           : Kirigami.Theme.textColor
+                    opacity: 0.85
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                }
+                PlasmaComponents.Label {
+                    visible: !(root.bench && root.bench.on_tps !== undefined)
+                    text: "Turbo: ganho ainda não medido nesta máquina"
+                    opacity: 0.55
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                }
             }
 
             // Quick Chat entry + visible global shortcut.
@@ -297,6 +358,16 @@ PlasmoidItem {
                 text: "Open Quick Chat"
                 icon.name: "input-keyboard"
                 onClicked: root.openQuickChat()
+            }
+
+            // Offered only until there IS a number. Once measured, the result
+            // sits in the status line above and this button stops taking space.
+            PlasmaComponents.Button {
+                visible: !(root.bench && root.bench.on_tps !== undefined)
+                Layout.fillWidth: true
+                text: "Medir o ganho do Turbo"
+                icon.name: "speedometer"
+                onClicked: root.runBench()
             }
             PlasmaComponents.Label {
                 Layout.alignment: Qt.AlignHCenter

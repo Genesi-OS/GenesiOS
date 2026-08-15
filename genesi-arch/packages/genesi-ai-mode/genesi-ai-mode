@@ -147,6 +147,43 @@ for label, key in rows:
 ro, rn = num(off.get("eval rate")), num(on.get("eval rate"))
 if ro and rn:
     print(f"\n  >> generation: {ro:.2f} -> {rn:.2f} tokens/s  ({(rn-ro)/ro*100:+.1f}%)")
+    # Persist it. Until now this number was printed once and lost, so nothing in
+    # the OS could ever tell the user what AI Mode was actually buying them —
+    # all that tuning work was invisible. The panel widget reads this file.
+    #
+    # Written to the invoking USER's cache, not /var/lib: the widget runs in the
+    # user session, and SUDO_USER is honoured so a privileged bench still lands
+    # somewhere the desktop can read.
+    # Broad except on purpose: the benchmark has already printed its result by
+    # this point, so nothing here is allowed to turn a successful run into a
+    # traceback in the user's terminal. A benchmark that cannot save is still a
+    # benchmark.
+    try:
+        import json, pwd, time
+        home = os.path.expanduser("~")
+        sudo_user = os.environ.get("SUDO_USER")
+        pw = None
+        if sudo_user:
+            try:
+                pw = pwd.getpwnam(sudo_user)
+                home = pw.pw_dir
+            except KeyError:
+                pw = None
+        d = os.path.join(home, ".cache", "genesi-ai-mode")
+        os.makedirs(d, exist_ok=True)
+        target = os.path.join(d, "bench.json")
+        with open(target, "w") as fh:
+            json.dump({"model": os.environ["MODEL"], "off_tps": round(ro, 2),
+                       "on_tps": round(rn, 2),
+                       "gain_pct": round((rn - ro) / ro * 100, 1),
+                       "ts": time.time()}, fh)
+        # Run under sudo, the file would otherwise be root-owned and the
+        # user-session widget could not read it.
+        if pw is not None:
+            os.chown(target, pw.pw_uid, pw.pw_gid)
+            os.chown(d, pw.pw_uid, pw.pw_gid)
+    except Exception:
+        pass
 print("\n  (on a VM expect ~0%: the CPU governor, the biggest lever, is a")
 print("   no-op without real cpufreq. Run on bare metal for the true gain.)")
 PY

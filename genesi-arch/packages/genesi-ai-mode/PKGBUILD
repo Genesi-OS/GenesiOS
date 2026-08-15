@@ -691,7 +691,15 @@ pkgver=1.0.0
 # printed. The shell hook never re-runs the failed command -- it only sees the
 # command line and exit code -- because re-running is how a helper deletes
 # something twice; pipe `cmd 2>&1 | genesi-explain` when the output matters.
-pkgrel=142
+# 2026-08-15 (143): make the Turbo gain visible. `bench` now PERSISTS its
+# OFF-vs-ON result to ~/.cache/genesi-ai-mode/bench.json instead of printing a
+# number once and losing it, and the Plasma widget shows it ("Turbo: +62%
+# medido (21.0 -> 34.0 tok/s)"). Every optimizer in this daemon was invisible
+# before -- the user had no way to know what AI Mode bought them. The figure is
+# MEASURED on that machine, never estimated, and a negative result is shown as
+# a negative result. Until a benchmark exists the widget says so and offers to
+# run one.
+pkgrel=143
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
