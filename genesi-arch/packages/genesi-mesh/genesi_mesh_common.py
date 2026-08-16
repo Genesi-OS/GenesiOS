@@ -225,8 +225,14 @@ def verify_beacon(raw, secret, now=None):
 
 
 def build_beacon(conf, gpu):
-    """The advertisement this node broadcasts: who I am, what I can contribute."""
-    return {
+    """The advertisement this node broadcasts: who I am, what I can contribute.
+
+    `free_mb` is included only when this machine can actually measure it. An
+    absent key means UNKNOWN and consumers fall back to capacity; a present 0
+    means genuinely nothing free. Collapsing those two into a single number
+    would either make every un-pollable machine look permanently full, or make
+    a genuinely full one look available — opposite bugs, both silent."""
+    beacon = {
         "v": PROTOCOL,
         "node": node_id(),
         "host": conf.get("name") or socket.gethostname(),
@@ -240,6 +246,14 @@ def build_beacon(conf, gpu):
         "integrated": bool(gpu.get("integrated")),
         "ts": time.time(),
     }
+    # What a peer could actually ALLOCATE here right now. Capacity alone is a
+    # promise this machine may not be able to keep: a worker busy with its own
+    # model still advertises a full card while having almost nothing left, and
+    # the client finds out only when llama.cpp fails to allocate the buffer.
+    # Re-sent every beacon (5s) because, unlike capacity, it changes constantly.
+    if gpu.get("free_mb") is not None:
+        beacon["free_mb"] = int(gpu["free_mb"])
+    return beacon
 
 
 # ── Sockets ──────────────────────────────────────────────────────────────────
@@ -398,7 +412,17 @@ def _looks_integrated(name, vram_mb):
 
 
 def probe_gpu():
-    """What this machine can contribute: {backend, vram_mb, name, integrated}.
+    """What this machine can contribute:
+    {backend, vram_mb, free_mb, name, integrated}.
+
+    `vram_mb` is the card's TOTAL memory; `free_mb` is what is unused right now.
+    Both are reported because they answer different questions, and confusing
+    them is a bug with a very confusing symptom: a worker whose GPU is busy
+    still has its full capacity, but a peer can only ALLOCATE what is free. A
+    mesh that advertises capacity invites a client to plan a run against memory
+    that does not exist, and llama.cpp then fails at load time with a raw
+    "failed to allocate RPC0 buffer" — long after the point where anything
+    could have explained why.
 
     Mirrors genesi-ai-turbo's detection deliberately — nvidia-smi first (it is
     authoritative where the proprietary/open driver is loaded), then llama.cpp's
@@ -409,19 +433,21 @@ def probe_gpu():
     if shutil.which("nvidia-smi"):
         try:
             out = subprocess.run(
-                ["nvidia-smi", "--query-gpu=memory.total,name",
+                ["nvidia-smi", "--query-gpu=memory.total,memory.free,name",
                  "--format=csv,noheader,nounits"],
                 capture_output=True, text=True, timeout=5).stdout
-            best, best_name = 0, ""
+            best, best_free, best_name = 0, None, ""
             for line in out.splitlines():
                 parts = [p.strip() for p in line.split(",")]
                 if parts and parts[0].isdigit() and int(parts[0]) > best:
                     best = int(parts[0])
-                    best_name = parts[1] if len(parts) > 1 else ""
+                    best_free = int(parts[1]) if len(parts) > 1 \
+                        and parts[1].isdigit() else None
+                    best_name = parts[2] if len(parts) > 2 else ""
             if best:
                 # nvidia-smi answering at all means a real NVIDIA card with its
                 # own memory; NVIDIA ships no integrated consumer GPU here.
-                return {"backend": "CUDA", "vram_mb": best,
+                return {"backend": "CUDA", "vram_mb": best, "free_mb": best_free,
                         "name": best_name or "NVIDIA GPU", "integrated": False}
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
@@ -432,13 +458,16 @@ def probe_gpu():
             res = subprocess.run([binp, "--list-devices"],
                                  capture_output=True, text=True, timeout=20)
             text = (res.stdout or "") + (res.stderr or "")
-            best, best_name = 0, ""
-            # e.g. "  Vulkan0: Intel(R) Iris(R) Xe Graphics (7808 MiB, ...)"
-            for match in re.finditer(r"^\s*\w+\d+:\s*(.+?)\s*\((\d+)\s*MiB",
-                                     text, re.M):
+            best, best_free, best_name = 0, None, ""
+            # e.g. "  CUDA0: NVIDIA GeForce RTX 3050 (7837 MiB, 801 MiB free)".
+            # The free figure is optional: older builds print only the capacity.
+            for match in re.finditer(
+                    r"^\s*\w+\d+:\s*(.+?)\s*\((\d+)\s*MiB"
+                    r"(?:,\s*(\d+)\s*MiB\s+free)?", text, re.M):
                 size = int(match.group(2))
                 if size > best:
                     best, best_name = size, match.group(1)
+                    best_free = int(match.group(3)) if match.group(3) else None
             if not best:            # older builds print only the size
                 best = max([int(m.group(1))
                             for m in re.finditer(r"\((\d+)\s*MiB", text)],
@@ -446,11 +475,39 @@ def probe_gpu():
             if best:
                 backend = "CUDA" if re.search(r"\bCUDA\d", text) else "Vulkan"
                 return {"backend": backend, "vram_mb": best,
-                        "name": best_name,
+                        "free_mb": best_free, "name": best_name,
                         "integrated": _looks_integrated(best_name, best)}
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
-    return {"backend": "CPU", "vram_mb": 0, "name": "", "integrated": False}
+    return {"backend": "CPU", "vram_mb": 0, "free_mb": None, "name": "",
+            "integrated": False}
+
+
+def probe_free_mb():
+    """Free VRAM right now, or None when it cannot be measured cheaply.
+
+    Deliberately nvidia-smi only. probe_gpu()'s other path shells out to
+    `llama-server --list-devices`, which INITIALISES the backend — seconds of
+    work that touches the GPU. Fine once at startup, unacceptable every five
+    seconds on a beacon timer.
+
+    Returning None where we cannot poll is the point: it makes the beacon omit
+    the field, so peers fall back to capacity instead of trusting a boot-time
+    reading that went stale the instant anything allocated."""
+    if not shutil.which("nvidia-smi"):
+        return None
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.free",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5).stdout
+        vals = [int(line.strip()) for line in out.splitlines()
+                if line.strip().isdigit()]
+        # The largest card, matching probe_gpu's "best device" choice — they
+        # must describe the SAME GPU or the free figure belongs to another one.
+        return max(vals) if vals else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def rpc_supported():
@@ -534,6 +591,31 @@ def write_json_atomic(path, data):
 GPU_OVERHEAD_GB = 1.2
 
 
+def peer_available_mb(peer):
+    """What a peer can actually give us, in MiB.
+
+    Its FREE memory when the peer reports it, its capacity when it does not
+    (an older node, or a machine that cannot poll cheaply). Capacity is the
+    optimistic answer and it is what this planner used to assume for everyone,
+    which is precisely the bug: a worker with an 8 GB card busy running its own
+    5.7 GB model advertised 8 GB, this planner promised the client 6.8 GB of
+    pooled VRAM, and llama.cpp then died with
+
+        failed to allocate RPC0[host:50052] buffer of size 2011539712
+
+    after the model was already loading. The number has to be honest here, at
+    planning time, or the failure surfaces where nothing can explain it."""
+    free = peer.get("free_mb")
+    if isinstance(free, (int, float)):
+        return int(free)
+    return int(peer.get("vram_mb") or 0)
+
+
+def peer_budget_gb(peer):
+    """A peer's usable contribution in GB, after per-GPU overhead."""
+    return max(peer_available_mb(peer) / 1024.0 - GPU_OVERHEAD_GB, 0.0)
+
+
 def plan_pool(local_gpu, peers, model_gb, pool_integrated=False):
     """Decide whether pooling helps for a model of `model_gb`.
 
@@ -558,24 +640,41 @@ def plan_pool(local_gpu, peers, model_gb, pool_integrated=False):
     local_mb = 0 if local_gpu.get("integrated") else int(local_gpu.get("vram_mb") or 0)
     local_budget = max(local_mb / 1024.0 - GPU_OVERHEAD_GB, 0.0)
 
-    usable, skipped_integrated = [], []
+    usable, skipped_integrated, skipped_busy = [], [], []
     for peer in peers:
         if not peer.get("worker") or int(peer.get("vram_mb") or 0) <= 0:
             continue
         if peer.get("integrated") and not pool_integrated:
             skipped_integrated.append(peer)
             continue
+        if peer_budget_gb(peer) <= 0:
+            # Capacity it has; room it does not. Almost always the peer is busy
+            # running something on the GPU it is offering.
+            skipped_busy.append(peer)
+            continue
         usable.append(peer)
-    usable.sort(key=lambda p: int(p.get("vram_mb") or 0), reverse=True)
+    usable.sort(key=peer_budget_gb, reverse=True)
 
-    pooled = local_budget + sum(
-        max(int(p.get("vram_mb") or 0) / 1024.0 - GPU_OVERHEAD_GB, 0.0)
-        for p in usable)
+    pooled = local_budget + sum(peer_budget_gb(p) for p in usable)
 
     def _result(**kw):
         kw.setdefault("skipped_integrated",
                       [p.get("host", "?") for p in skipped_integrated])
+        kw.setdefault("skipped_busy",
+                      ["%s (%d MiB free)" % (p.get("host", "?"),
+                                             peer_available_mb(p))
+                       for p in skipped_busy])
         return kw
+
+    def _busy_note():
+        """A peer with a GPU but no room is the confusing case: `peers` lists it
+        as a healthy worker, so "no worker peers online" would flatly contradict
+        what the user just saw. Name it and say what to do."""
+        if not skipped_busy:
+            return ""
+        return (" %s has a GPU but almost nothing free — something is already "
+                "using it there (check `nvidia-smi` on that machine)."
+                % ", ".join(p.get("host", "?") for p in skipped_busy))
 
     if model_gb <= 0:
         return {"use_mesh": False, "endpoints": [], "local_gb": local_budget,
@@ -602,13 +701,15 @@ def plan_pool(local_gpu, peers, model_gb, pool_integrated=False):
                         "pool_integrated = on to use them anyway." % names))
         return _result(use_mesh=False, endpoints=[], local_gb=local_budget,
                        pooled_gb=pooled, peers=[],
-                       reason="no worker peers online")
+                       reason="no worker peers with free VRAM." + _busy_note()
+                       if skipped_busy else "no worker peers online")
 
     if model_gb > pooled:
         return _result(use_mesh=False, endpoints=[], local_gb=local_budget,
                        pooled_gb=pooled, peers=usable,
                        reason=("too big even pooled (%.1f GB needed, %.1f GB "
-                               "across the mesh)" % (model_gb, pooled)))
+                               "free across the mesh)%s"
+                               % (model_gb, pooled, _busy_note())))
 
     endpoints = ["%s:%d" % (p["addr"], int(p.get("rpc_port") or DEFAULT_RPC_PORT))
                  for p in usable if p.get("addr")]

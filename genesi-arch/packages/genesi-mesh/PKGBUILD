@@ -59,7 +59,16 @@ pkgver=1.0.0
 # blob name carries no hint of the model, so a wrong resolution would be
 # invisible), and when nothing matches says the model was not found instead of
 # implying the argument was malformed.
-pkgrel=9
+# 2026-08-16 (10): the mesh advertises FREE VRAM, not capacity. probe_gpu read
+# nvidia-smi's memory.total, so a worker busy running its own 5.7 GB model still
+# announced a full 8 GB card. The planner promised a client 6.8 GB of pooled
+# VRAM that did not exist, and llama.cpp died mid-load with "failed to allocate
+# RPC0[host:50052] buffer of size 2011539712" -- a real two-machine test failed
+# exactly there. Beacons now carry free_mb (re-sampled every 5s; omitted, not
+# zeroed, where it cannot be measured), plan_pool budgets against it, peers/
+# status/doctor show free alongside total, and doctor flags a worker that is ON
+# with no room to give.
+pkgrel=10
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

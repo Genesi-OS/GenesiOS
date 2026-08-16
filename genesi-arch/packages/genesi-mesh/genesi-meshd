@@ -131,6 +131,18 @@ class Daemon:
 
     # ── discovery ────────────────────────────────────────────────────────────
 
+    def refresh_free_vram(self):
+        """Re-read free VRAM before beaconing.
+
+        Capacity is fixed; free memory is not, and it is the number that decides
+        whether a peer's allocation succeeds. Probing once at startup would
+        advertise an idle card forever — including while this machine runs its
+        own model on the very GPU it is offering, which is exactly when a client
+        must NOT plan against it. probe_free_mb is the cheap nvidia-smi-only
+        path; where it cannot measure, the field drops out of the beacon and
+        peers fall back to capacity."""
+        self.gpu["free_mb"] = mesh.probe_free_mb()
+
     def announce(self, sender):
         if not self.secret or not mesh.conf_flag(self.conf, "discovery"):
             return
@@ -168,6 +180,12 @@ class Daemon:
             "rpc_port": int(payload.get("rpc_port") or mesh.DEFAULT_RPC_PORT),
             "backend": payload.get("backend") or "CPU",
             "vram_mb": int(payload.get("vram_mb") or 0),
+            # None, not 0, when the peer did not send it: an older node simply
+            # cannot report free memory, and recording that as "0 MiB free"
+            # would make every pre-upgrade peer look permanently full.
+            "free_mb": (int(payload["free_mb"])
+                        if isinstance(payload.get("free_mb"), (int, float))
+                        else None),
             "integrated": bool(payload.get("integrated")),
             "last_seen": time.time(),
         }
@@ -188,6 +206,10 @@ class Daemon:
             "addr": mesh.primary_address(),
             "backend": self.gpu.get("backend"),
             "vram_mb": self.gpu.get("vram_mb"),
+            # None when unmeasurable. The Monitor and the CLI both show this,
+            # and it is what tells a user why a healthy-looking worker is not
+            # being pooled.
+            "free_mb": self.gpu.get("free_mb"),
             "gpu_name": self.gpu.get("name"),
             "integrated": bool(self.gpu.get("integrated")),
             "worker": mesh.conf_flag(self.conf, "worker"),
@@ -250,6 +272,11 @@ class Daemon:
                 now = time.time()
                 if now - last_beacon >= mesh.BEACON_INTERVAL:
                     last_beacon = now
+                    # Before announcing AND before the next publish, so the
+                    # local UI and remote peers read the same figure. Outside
+                    # announce() because state.json must stay current even with
+                    # discovery off or no secret — worker mode still works then.
+                    self.refresh_free_vram()
                     self.announce(sender)
                     self.supervise_worker()
                 # Publish on the same cadence as the TTL sweep so a peer that

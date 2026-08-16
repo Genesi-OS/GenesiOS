@@ -297,6 +297,20 @@ def _library_gguf(name):
     return None
 
 
+def _free_note(gpu):
+    """" (N MiB free)", coloured by whether that is enough to be worth pooling.
+
+    Shown next to capacity everywhere, because capacity is the number that
+    misleads: an 8 GB card busy with its own model is still an 8 GB card, and
+    reading only that is how a client ends up planning a run against memory
+    the worker cannot give it."""
+    free = gpu.get("free_mb")
+    if not isinstance(free, (int, float)):
+        return ""
+    usable = free / 1024.0 - mesh.GPU_OVERHEAD_GB > 0
+    return color(" (%d MiB free)" % int(free), GREEN if usable else RED)
+
+
 def _secret_state():
     """"present" / "absent" / "unreadable" for the mesh secret.
 
@@ -465,9 +479,10 @@ def cmd_status():
                                    conf.get("name") or socket.gethostname()))
     print("  address: %s" % mesh.primary_address())
     kind = " (integrated — shared system RAM)" if gpu.get("integrated") else ""
-    print("  gpu:     %s%s, %d MiB%s"
+    print("  gpu:     %s%s, %d MiB%s%s"
           % (gpu["backend"], (" " + gpu["name"]) if gpu.get("name") else "",
-             gpu["vram_mb"], color(kind, YELLOW) if kind else ""))
+             gpu["vram_mb"], _free_note(gpu),
+             color(kind, YELLOW) if kind else ""))
 
     print("  mesh:    %s" % {
         "present": color("configured", GREEN),
@@ -531,16 +546,35 @@ def _explain_empty_peers():
 
 def _print_peers(peers):
     print(color("Peers (%d)" % len(peers), BOLD))
-    any_integrated = False
+    any_integrated, any_busy = False, False
     for p in peers:
         role = color("worker", GREEN) if p.get("worker") else color("idle", DIM)
         tag = ""
         if p.get("integrated"):
             any_integrated = True
             tag = color("  [integrated]", YELLOW)
-        print("  %-18s %-15s %-7s %6d MiB  %s%s"
+        # FREE memory, not capacity, is what decides whether a run can use this
+        # peer — so it is what the column shows, with capacity beside it. A
+        # worker busy with its own model reads as full-sized and unavailable at
+        # the same time, which is the truth and used to be invisible.
+        total = int(p.get("vram_mb") or 0)
+        free = p.get("free_mb")
+        if isinstance(free, (int, float)):
+            mem = "%5d / %5d MiB" % (int(free), total)
+            if p.get("worker") and mesh.peer_budget_gb(p) <= 0:
+                any_busy = True
+                tag += color("  [no room]", RED)
+        else:
+            mem = "%13d MiB" % total
+        print("  %-18s %-15s %-7s %s  %s%s"
               % (p.get("host", "?"), p.get("addr", "?"),
-                 p.get("backend", "?"), int(p.get("vram_mb") or 0), role, tag))
+                 p.get("backend", "?"), mem, role, tag))
+    print(color("  (free / total VRAM)", DIM))
+    if any_busy:
+        print()
+        print(color("  [no room] = the GPU is there but something else is using", DIM))
+        print(color("  it. Pooling needs memory it can ALLOCATE, so this peer is", DIM))
+        print(color("  skipped until it frees up — check `nvidia-smi` there.", DIM))
     if any_integrated:
         print()
         print(color("  [integrated] = shared system RAM, not dedicated VRAM. Not", DIM))
@@ -874,7 +908,16 @@ def cmd_doctor():
 
     print()
     print("This machine")
-    print("  GPU:                   %s, %d MiB" % (gpu["backend"], gpu["vram_mb"]))
+    print("  GPU:                   %s, %d MiB%s"
+          % (gpu["backend"], gpu["vram_mb"], _free_note(gpu)))
+    if worker_on and isinstance(gpu.get("free_mb"), (int, float)) \
+            and gpu["free_mb"] / 1024.0 - mesh.GPU_OVERHEAD_GB <= 0:
+        problems.append(
+            "worker is ON but only %d MiB of VRAM is free, so a peer has "
+            "nothing to\n  allocate here — pooling will be skipped, or fail at "
+            "load time if forced.\n  Something on THIS machine is using the "
+            "GPU it is offering (check nvidia-smi);\n  a local llama-server or "
+            "ollama model is the usual culprit." % int(gpu["free_mb"]))
     if gpu["vram_mb"] == 0:
         problems.append(
             "No GPU detected. This machine can still USE a mesh, but it has "
