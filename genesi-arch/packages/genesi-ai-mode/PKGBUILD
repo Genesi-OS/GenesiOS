@@ -735,7 +735,16 @@ pkgver=1.0.0
 # noisy exit-1 commands (grep/diff/test) are handled by the command skip-list,
 # which is the right place for them. 126/127 stay skipped because the shell and
 # Arch's pkgfile handler already cover 'command not found'.
-pkgrel=148
+# 2026-08-15 (149): the error explainer no longer types over the user. It ran
+# in the BACKGROUND, so the model's answer (a second or two later) landed after
+# the prompt had been drawn -- printing into the middle of whatever was being
+# typed, and sometimes explaining a command from a while back. It now runs
+# synchronously in the postexec hook, before the next prompt, so the
+# explanation appears directly under the failed command like a comment and can
+# never interrupt typing. Cost: a short pause after a FAILED command only,
+# bounded by `timeout` (now 4s), instant when no model is warm, free on a cache
+# hit. Reported from real use.
+pkgrel=149
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

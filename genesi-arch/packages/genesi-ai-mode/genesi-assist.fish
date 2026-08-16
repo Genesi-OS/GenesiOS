@@ -56,15 +56,19 @@ if status is-interactive; and test -x /usr/local/bin/genesi-explain
         __genesi_assist_skip_status $st; and return 0
         __genesi_assist_skip_cmd "$cmd"; and return 0
 
-        # Backgrounded so the prompt never waits on the model. Each descriptor is
-        # deliberate:
-        #   stdin  -> /dev/null, or the background process holds the terminal's
-        #             stdin and competes with the shell for keystrokes.
-        #   stdout -> INHERITED. This is the explanation; discarding it would
-        #             silently disable the whole feature.
-        #   stderr -> /dev/null. A helper must never put noise in the terminal.
-        GENESI_EXPLAIN_STATUS=$st /usr/local/bin/genesi-explain "$cmd" \
-            </dev/null 2>/dev/null &
-        disown
+        # Run SYNCHRONOUSLY, here in fish_postexec, which is before the next
+        # prompt is drawn.
+        #
+        # This used to be backgrounded, and that was the wrong call: the model
+        # takes a second or two, so the answer always landed AFTER the prompt
+        # had been drawn -- printing into the middle of whatever the user had
+        # started typing, and sometimes explaining a command from a while back.
+        # Running it here means the explanation appears directly under the
+        # failed command, like a comment, and never interrupts anything.
+        #
+        # The cost is a short pause after a FAILED command only. That is
+        # bounded by `timeout` in genesi-ai-assist.conf, returns instantly when
+        # no model is warm (connection refused), and is free on a cache hit.
+        GENESI_EXPLAIN_STATUS=$st /usr/local/bin/genesi-explain "$cmd" </dev/null 2>/dev/null
     end
 end

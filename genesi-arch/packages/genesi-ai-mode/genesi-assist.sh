@@ -51,16 +51,17 @@ _genesi_assist_report() {
     local status="$1" cmd="$2"
     _genesi_assist_skip_status "$status" && return 0
     _genesi_assist_skip_cmd "$cmd" && return 0
-    # Backgrounded so the prompt never waits on the model. Each descriptor is
-    # deliberate:
-    #   stdin  -> /dev/null. Otherwise the background process holds the
-    #             terminal's stdin and competes with the shell for keystrokes.
-    #   stdout -> INHERITED. This is the explanation; sending it to /dev/null
-    #             would silently disable the whole feature.
-    #   stderr -> /dev/null. A helper must never put noise in the terminal.
-    # The subshell wrapper suppresses bash's "[1]+ Done" job notification.
-    ( GENESI_EXPLAIN_STATUS="$status" /usr/local/bin/genesi-explain "$cmd" \
-        </dev/null 2>/dev/null & )
+    # Run SYNCHRONOUSLY, before the next prompt is drawn.
+    #
+    # This used to be backgrounded, which meant the model's answer arrived
+    # AFTER the prompt -- printing into the middle of whatever the user had
+    # started typing, and occasionally explaining a command from a while back.
+    # Running it inline puts the explanation directly under the failed command,
+    # like a comment, and it can never interrupt typing.
+    #
+    # The cost is a short pause after a FAILED command only, bounded by
+    # `timeout` in genesi-ai-assist.conf, instant when no model is warm.
+    GENESI_EXPLAIN_STATUS="$status" /usr/local/bin/genesi-explain "$cmd" </dev/null 2>/dev/null
     return 0
 }
 
