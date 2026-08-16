@@ -18,13 +18,21 @@
 
 if status is-interactive; and test -x /usr/local/bin/genesi-explain
 
-    # Exit codes that are normal user actions rather than failures worth
-    # explaining: 1 and 2 are far too common and usually meaningful on their own
-    # (grep found nothing, a usage error the tool already described), 126/127
-    # already produce the shell's own message, 130/148 are Ctrl-C and Ctrl-Z.
+    # Exit codes that are NOT worth explaining.
+    #
+    # 1 and 2 used to be here and that was wrong: exit 1 is what pacman, git,
+    # cargo, make and almost every real tool returns when it genuinely fails, so
+    # skipping it threw away nearly every case the helper exists for. A user
+    # tested the feature, saw nothing, and reasonably concluded it was broken.
+    # The noisy-exit-1 commands (grep, diff, test...) are already handled by the
+    # command skip-list below, which is the right place for them.
+    #
+    # 126/127 stay skipped: the shell already prints "command not found", and
+    # Arch's pkgfile handler already suggests which package provides it.
+    # 130/148 are Ctrl-C and Ctrl-Z.
     function __genesi_assist_skip_status
         switch $argv[1]
-            case 0 1 2 126 127 130 148
+            case 0 126 127 130 148
                 return 0
         end
         return 1

@@ -22,15 +22,19 @@ esac
 
 [ -x /usr/local/bin/genesi-explain ] || return 0 2>/dev/null || true
 
-# Exit codes that are normal user actions, not failures worth explaining:
-#   1   far too common and usually meaningful on its own (grep found nothing,
-#       diff differed, test was false)
-#   2   usage errors are usually self-explanatory from the tool's own message
-#   126/127 handled by the shell's own "command not found" message
-#   130 Ctrl-C, 148 Ctrl-Z
+# Exit codes NOT worth explaining.
+#
+# 1 and 2 used to be here and that was wrong: exit 1 is what pacman, git, cargo,
+# make and almost every real tool returns when it genuinely fails, so skipping
+# it threw away nearly every case this helper exists for. The noisy-exit-1
+# commands (grep, diff, test) are handled by the command skip-list instead,
+# which is the right place for them.
+#
+# 126/127 stay: the shell already says "command not found" and Arch's pkgfile
+# handler already suggests the package. 130/148 are Ctrl-C and Ctrl-Z.
 _genesi_assist_skip_status() {
     case "$1" in
-        0|1|2|126|127|130|148) return 0 ;;
+        0|126|127|130|148) return 0 ;;
         *) return 1 ;;
     esac
 }
