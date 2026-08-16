@@ -546,7 +546,7 @@ def _explain_empty_peers():
 
 def _print_peers(peers):
     print(color("Peers (%d)" % len(peers), BOLD))
-    any_integrated, any_busy = False, False
+    any_integrated, any_busy, any_free = False, False, False
     for p in peers:
         role = color("worker", GREEN) if p.get("worker") else color("idle", DIM)
         tag = ""
@@ -560,6 +560,7 @@ def _print_peers(peers):
         total = int(p.get("vram_mb") or 0)
         free = p.get("free_mb")
         if isinstance(free, (int, float)):
+            any_free = True
             mem = "%5d / %5d MiB" % (int(free), total)
             if p.get("worker") and mesh.peer_budget_gb(p) <= 0:
                 any_busy = True
@@ -569,7 +570,12 @@ def _print_peers(peers):
         print("  %-18s %-15s %-7s %s  %s%s"
               % (p.get("host", "?"), p.get("addr", "?"),
                  p.get("backend", "?"), mem, role, tag))
-    print(color("  (free / total VRAM)", DIM))
+    # Only when a peer actually reported free memory. A CPU-only machine has
+    # none to report, and captioning a lone "0 MiB" as "free / total" explains
+    # a column that is not there — worse than no caption, because it makes the
+    # reader hunt for a second number.
+    if any_free:
+        print(color("  (free / total VRAM)", DIM))
     if any_busy:
         print()
         print(color("  [no room] = the GPU is there but something else is using", DIM))

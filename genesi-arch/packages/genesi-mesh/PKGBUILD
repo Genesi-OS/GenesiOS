@@ -68,7 +68,11 @@ pkgver=1.0.0
 # zeroed, where it cannot be measured), plan_pool budgets against it, peers/
 # status/doctor show free alongside total, and doctor flags a worker that is ON
 # with no room to give.
-pkgrel=10
+# 2026-08-16 (11): `peers` only captions the VRAM column when a peer actually
+# reported free memory. A CPU-only machine has none to report, so the list showed
+# a lone "0 MiB" under a "(free / total VRAM)" caption -- explaining a column
+# that was not there, and sending the reader hunting for a second number.
+pkgrel=11
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

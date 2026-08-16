@@ -780,7 +780,16 @@ pkgver=1.0.0
 # is there for. Measured: a 1.9 GB model with 5.3 GB pooled chose 2 slots, -c
 # became 16384, and the load died on the worker; the single-slot retry, identical
 # but for that, came up and served fine.
-pkgrel=153
+# 2026-08-16 (154): a failed pooled load is no longer silent. Turbo sent the
+# server's stdout to /dev/null and llama.cpp splits output across both streams,
+# so a crash left a log that stopped at "loading model" and explained nothing --
+# which is exactly what a failing mesh load looked like twice in a row. Both
+# streams are kept now, the failure line reports HOW the process ended (Popen
+# returns a signal as a negative code, so "killed by SIGSEGV" is knowable and
+# was being thrown away), and a pooled load that dies mid-way with nothing to
+# say now names the likeliest cause: mismatched llama.cpp builds, whose RPC wire
+# format is not stable between versions and does not fail politely.
+pkgrel=154
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

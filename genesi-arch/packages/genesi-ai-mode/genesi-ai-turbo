@@ -1839,13 +1839,52 @@ _RPC_ALLOC_RE = re.compile(
     r"failed to allocate RPC\d+\[([^\]]+)\] buffer of size (\d+)")
 
 
-def _explain_load_failure(text):
+def _exit_note(code):
+    """How the process ended, in words. Popen reports a signal as a NEGATIVE
+    returncode, and that distinction carries the diagnosis: a clean non-zero
+    exit means llama.cpp decided to stop and (usually) said why, while a signal
+    means it was killed mid-flight and the log stops wherever it happened to
+    be — which is why an empty-looking log is itself information."""
+    if code is None:
+        return "still running"
+    if code < 0:
+        try:
+            name = signal.Signals(-code).name
+        except (ValueError, AttributeError):
+            name = "signal %d" % -code
+        return "killed by %s" % name
+    return "exit code %d" % code
+
+
+def _explain_load_failure(text, code=None, pooled=False):
     """Turn a loader error into something the user can act on, or "".
 
     Only patterns we can genuinely diagnose. A confident wrong guess is worse
     than the raw log, which at least does not send anyone down the wrong path,
     so anything unrecognised falls through to printing the log as before."""
-    match = _RPC_ALLOC_RE.search(text or "")
+    text = text or ""
+
+    # Died mid-load, over the mesh, with nothing to say. llama.cpp reports the
+    # errors it can see; a crash during RPC setup usually means the two machines
+    # are not running the same llama.cpp. The RPC backend's wire format is
+    # explicitly not stable between builds, and a mismatch does not fail
+    # politely — it corrupts a message and takes the process down.
+    if pooled and code is not None and code != 0 \
+            and not _RPC_ALLOC_RE.search(text) \
+            and "error" not in text.lower():
+        return (
+            "   It stopped during load (%s) without reporting an error, which "
+            "over the\n   mesh usually means the two machines are running "
+            "DIFFERENT llama.cpp builds.\n   The RPC wire format is not stable "
+            "between versions and a mismatch does not\n   fail politely. "
+            "Compare them:\n"
+            "       llama-server --version          (here)\n"
+            "       llama-server --version          (on the worker)\n"
+            "   They must match. Full log: run the printed command by hand to "
+            "see everything."
+            % _exit_note(code))
+
+    match = _RPC_ALLOC_RE.search(text)
     if match:
         endpoint, size = match.group(1), int(match.group(2))
         return (
@@ -1946,8 +1985,12 @@ def _serve_with_fallback(main_g, draft_g):
             os.execvp(cmd[0], cmd)            # final attempt becomes the process
             return
         log = tempfile.NamedTemporaryFile("w", delete=False, suffix=".log").name
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                                stderr=open(log, "w"))
+        # stdout used to go to /dev/null. llama.cpp splits its output across both
+        # streams, so a failure whose last words went to stdout left a log that
+        # stopped at "loading model" and explained nothing — which is exactly
+        # what a failing pooled load looked like. Keep everything.
+        proc = subprocess.Popen(cmd, stdout=open(log, "w"),
+                                stderr=subprocess.STDOUT)
         ok, end = False, time.time() + 900    # a big model can take minutes to load
         while time.time() < end:
             if turbo_healthy():
@@ -1965,14 +2008,15 @@ def _serve_with_fallback(main_g, draft_g):
                 stop(proc)
             return
         tail = _tail(log)
-        explained = _explain_load_failure(tail)
+        explained = _explain_load_failure(tail, proc.returncode,
+                                          "--rpc" in cmd)
         if explained:
             skip_mesh = bool(_RPC_ALLOC_RE.search(tail))
             print("[!] %s failed to come up.\n%s" % (label, explained),
                   file=sys.stderr, flush=True)
         else:
-            print(f"[!] {label} failed to come up — falling back:\n{tail}",
-                  file=sys.stderr, flush=True)
+            print(f"[!] {label} failed to come up ({_exit_note(proc.returncode)})"
+                  f" — falling back:\n{tail}", file=sys.stderr, flush=True)
         try:
             proc.kill()
         except Exception:
