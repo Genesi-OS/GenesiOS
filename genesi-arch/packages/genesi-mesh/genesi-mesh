@@ -141,7 +141,32 @@ def cmd_status():
         _print_peers(peers)
     else:
         print(color("  no peers online", DIM))
+        _explain_empty_peers()
     return 0
+
+
+def _explain_empty_peers():
+    """Say WHY the list is empty when the answer is structural.
+
+    Over a VPN this is the correct result, not a failure: discovery is UDP
+    multicast and no overlay forwards it. Without this note the user does
+    everything right, sees a blank list, and reasonably concludes it is broken --
+    which is exactly what happened in testing."""
+    vpns = mesh.vpn_interfaces()
+    if not vpns:
+        return
+    print()
+    print(color("  A VPN interface is up (%s)." % ", ".join(vpns), YELLOW))
+    print(color("  Discovery is UDP multicast, which no VPN forwards, so peers on"
+                " the other", DIM))
+    print(color("  side will NEVER appear here. That is expected — and the shared"
+                " secret", DIM))
+    print(color("  (init/join) only ever authenticated discovery, so it is not"
+                " needed either.", DIM))
+    print()
+    print("  Name the worker explicitly instead:")
+    print(color("    GENESI_MESH_ENDPOINTS=<vpn-ip>:%d genesi-ai-turbo serve"
+                % mesh.DEFAULT_RPC_PORT, CYAN))
 
 
 def _print_peers(peers):
@@ -171,6 +196,7 @@ def cmd_peers():
         if not os.path.exists(mesh.STATE_PATH):
             print("the daemon does not look like it is running: "
                   "sudo systemctl enable --now genesi-meshd")
+        _explain_empty_peers()
         return 0
     _print_peers(peers)
     return 0

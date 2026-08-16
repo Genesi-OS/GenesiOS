@@ -449,6 +449,30 @@ def rpc_supported():
 
 # ── Peer table ───────────────────────────────────────────────────────────────
 
+# Interfaces that mean "this machine reaches others over a VPN/overlay".
+# Multicast does not cross any of them, so LAN discovery is structurally
+# impossible there and an empty peer list is the CORRECT result, not a fault.
+VPN_IFACE_HINTS = ("tailscale", "wg", "zt", "tun", "nebula")
+
+
+def vpn_interfaces():
+    """Names of VPN-ish interfaces that are UP on this machine."""
+    found = []
+    try:
+        for iface in sorted(os.listdir("/sys/class/net")):
+            if not iface.startswith(VPN_IFACE_HINTS):
+                continue
+            try:
+                state = open("/sys/class/net/%s/operstate" % iface).read().strip()
+            except OSError:
+                state = "unknown"
+            if state != "down":
+                found.append(iface)
+    except OSError:
+        pass
+    return found
+
+
 def read_peers(path=PEERS_PATH, now=None):
     """Live peers, already expired-filtered. Readers (the CLI, Turbo, the
     Monitor) never need to know the TTL rule — they just get what is usable
