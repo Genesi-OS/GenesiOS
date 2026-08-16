@@ -43,7 +43,15 @@ pkgver=1.0.0
 # (2) Ship fish + bash completions: `genesi-mesh` is a prefix of
 # `genesi-meshd`, so Tab rewrote the CLI into the daemon and it looked like
 # a hang; a user had to type the full /usr/bin path to work around it.
-pkgrel=7
+# 2026-08-16 (8): `doctor` diagnoses the layers below the config. It only ever
+# read mesh.conf and the daemon's own state -- what was REQUESTED and what was
+# STARTED -- so it printed "Everything checks out" on a machine where firewalld
+# dropped every mesh packet. A two-machine test lost an afternoon to exactly
+# that. It now checks the listening socket, identifies the RUNNING firewall
+# (and flags rules written to an inactive one, which report success and do
+# nothing), reads the firewalld zone of each VPN interface, and probes
+# registered peers -- separating "unreachable" from "reachable but silent".
+pkgrel=8
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -90,6 +90,246 @@ def read_state():
         return {}
 
 
+# ── firewall and reachability probes ─────────────────────────────────────────
+#
+# The single most common reason a correctly configured mesh does not work is
+# that the ports are closed, and nothing else in this file can see that. The
+# config says what the user ASKED for and the daemon's state says what it
+# STARTED — both can be perfect while every packet is dropped one layer down.
+# So doctor probes the live system instead of only reading intentions.
+
+# Firewall managers a Genesi machine might be running. `nftables`/`iptables` are
+# the raw ones: their rules are whatever the admin loaded, so we can report that
+# they are in charge but never judge their contents.
+FIREWALL_UNITS = ("firewalld", "ufw", "nftables", "iptables")
+
+
+def _unit_active(unit):
+    try:
+        res = subprocess.run(["systemctl", "is-active", unit],
+                             capture_output=True, text=True, timeout=5)
+        return res.stdout.strip() == "active"
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _ufw_has_rules():
+    """True when ufw has user rules on disk.
+
+    Only interesting when ufw is NOT running, and then it is the most valuable
+    signal doctor has. `sudo ufw allow ...` on a machine where firewalld is the
+    active firewall writes the rule, prints "Rules updated", exits 0, and
+    changes nothing. The user then has documented proof they opened the port and
+    a mesh that still cannot connect, with no way to tell those apart."""
+    try:
+        with open("/etc/ufw/user.rules", "r", encoding="utf-8") as fh:
+            return "### tuple ###" in fh.read()
+    except OSError:
+        return False
+
+
+def _fw_cmd(*args):
+    try:
+        res = subprocess.run(["firewall-cmd"] + list(args),
+                             capture_output=True, text=True, timeout=8)
+        return res.returncode, (res.stdout or "").strip()
+    except (OSError, subprocess.SubprocessError):
+        return 1, ""
+
+
+def _firewalld_zone_for(iface):
+    """(zone, is_default) that `iface` is filtered by.
+
+    An interface in "no zone" is NOT unfiltered — it falls into the default
+    zone, which on a stock install allows about two services. That is exactly
+    how a VPN interface ends up silently dropping every mesh packet while the
+    admin sees no rule anywhere that mentions it."""
+    rc, out = _fw_cmd("--get-zone-of-interface=" + iface)
+    if rc == 0 and out and out != "no zone":
+        return out, False
+    _, default = _fw_cmd("--get-default-zone")
+    return (default or "public"), True
+
+
+def _firewalld_allows(zone, port, proto):
+    """Does `zone` admit `port/proto`? True / False / None when we cannot tell.
+
+    The zone TARGET is checked first: a target of ACCEPT (the `trusted` zone)
+    admits everything, and `--query-port` there answers "no" while the traffic
+    sails straight through. Trusting that answer would make doctor report a
+    problem that does not exist, which is worse than saying nothing."""
+    rc, out = _fw_cmd("--zone=" + zone, "--list-all")
+    if rc != 0:
+        return None
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("target:"):
+            if line.split(":", 1)[1].strip() == "ACCEPT":
+                return True
+        elif line.startswith("ports:"):
+            if ("%d/%s" % (port, proto)) in line:
+                return True
+    return False
+
+
+def _probe_tcp(host, port, timeout=2.5):
+    """Connect and classify the outcome. Returns one of:
+
+        "open"        something is listening and accepted the connection
+        "refused"     the packet ARRIVED and the kernel said no — the host is
+                      reachable and nothing is filtering, there is simply no
+                      listener on that port
+        "blocked"     no answer at all, which is what a firewall DROP looks
+                      like from the outside
+        "unreachable" no route / name does not resolve
+
+    The refused-versus-blocked split is the whole point. Both look like "it does
+    not work", but one means "start the worker" and the other means "open the
+    port", and guessing wrong costs an afternoon."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect((host, port))
+        return "open"
+    except socket.timeout:
+        return "blocked"
+    except ConnectionRefusedError:
+        return "refused"
+    except OSError:
+        return "unreachable"
+    finally:
+        sock.close()
+
+
+def _hex_ip(hexstr):
+    """Decode /proc/net/tcp's address form. Each 4-byte word is little-endian,
+    so the bytes come out reversed per word — IPv4 is one word, IPv6 is four."""
+    try:
+        if len(hexstr) == 8:
+            return socket.inet_ntop(socket.AF_INET, bytes.fromhex(hexstr)[::-1])
+        if len(hexstr) == 32:
+            raw = b"".join(bytes.fromhex(hexstr[i:i + 8])[::-1]
+                           for i in range(0, 32, 8))
+            return socket.inet_ntop(socket.AF_INET6, raw)
+    except (ValueError, OSError):
+        pass
+    return "?"
+
+
+def _socket_state(port):
+    """(listening, [connected peer ip, ...]) for `port`, from /proc/net/tcp{,6}.
+
+    Read from the kernel rather than probed, because probing rpc-server has a
+    real cost: it serves ONE client at a time behind a listen backlog of 1. A
+    diagnostic connection opened while it is busy with a peer gets no accept, so
+    it times out and looks exactly like a firewall DROP — doctor would report a
+    healthy, actively-serving worker as broken. Worse, the probe occupies the
+    single backlog slot while it hangs, so the check degrades the thing it is
+    checking. Asking what the socket is doing costs nothing and cannot lie."""
+    listening, connected = False, []
+    for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                next(fh, None)                      # column header
+                for line in fh:
+                    parts = line.split()
+                    if len(parts) < 4:
+                        continue
+                    local, remote, st = parts[1], parts[2], parts[3]
+                    try:
+                        if int(local.rsplit(":", 1)[1], 16) != port:
+                            continue
+                    except (ValueError, IndexError):
+                        continue
+                    if st == "0A":                  # TCP_LISTEN
+                        listening = True
+                    elif st == "01":                # TCP_ESTABLISHED
+                        connected.append(_hex_ip(remote.rsplit(":", 1)[0]))
+        except OSError:
+            continue
+    return listening, connected
+
+
+def _source_address_for(host):
+    """The address a peer at `host` sees us as, or None.
+
+    The same routing trick primary_address() uses, but aimed at a specific
+    destination. That distinction matters the moment a VPN is involved: the LAN
+    address is not the one carrying mesh traffic, and telling the user to test
+    against it sends them to check a path their peers never use."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect((host, 9))
+        return sock.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        sock.close()
+
+
+def _needed_ports(worker_on, rpc_port, discovery_on):
+    """Every port this machine must be able to RECEIVE on, and why."""
+    needed = []
+    if worker_on:
+        needed.append(("tcp", rpc_port, "peers connect here to use this GPU"))
+    if discovery_on:
+        needed.append(("udp", mesh.DISCOVERY_PORT,
+                       "peer beacons arrive here (this is what fills "
+                       "`genesi-mesh peers`)"))
+    return needed
+
+
+def _open_port_commands(manager, needed, vpn_iface, zone=None,
+                        zone_is_default=True):
+    """The commands that actually open `needed` under the RUNNING firewall.
+
+    Keyed to the active manager on purpose rather than printing every variant.
+    The failure this exists to prevent is a user applying perfectly correct
+    syntax for a firewall that is not the one filtering their traffic.
+
+    When the VPN interface already sits in a zone of its own, the advice adds
+    ports to THAT zone. Suggesting the usual `--zone=trusted --change-interface`
+    there would silently undo a deliberate, narrower setup — advice that breaks
+    working configuration is worse than no advice."""
+    if manager == "firewalld":
+        if vpn_iface and zone and not zone_is_default:
+            cmds = ["sudo firewall-cmd --permanent --zone=%s --add-port=%d/%s"
+                    % (zone, p, proto) for proto, p, _ in needed]
+            return cmds + ["sudo firewall-cmd --reload"], (
+                "%s is already in zone `%s`, so the ports go there rather than "
+                "moving the interface." % (vpn_iface, zone))
+        if vpn_iface:
+            return ([
+                "sudo firewall-cmd --permanent --zone=trusted "
+                "--change-interface=%s" % vpn_iface,
+                "sudo firewall-cmd --reload",
+            ], "Trusts the %s interface as a whole — what Tailscale and "
+               "WireGuard recommend on firewalld, since the overlay is already "
+               "an authenticated network. For something narrower, give %s its "
+               "own zone and add only the ports listed above."
+               % (vpn_iface, vpn_iface))
+        cmds = ["sudo firewall-cmd --permanent --add-port=%d/%s" % (p, proto)
+                for proto, p, _ in needed]
+        return cmds + ["sudo firewall-cmd --reload"], ""
+
+    if manager == "ufw":
+        if vpn_iface:
+            cmds = ["sudo ufw allow in on %s to any port %d proto %s"
+                    % (vpn_iface, p, proto) for proto, p, _ in needed]
+        else:
+            cmds = ["sudo ufw allow %d/%s" % (p, proto)
+                    for proto, p, _ in needed]
+        return cmds, ""
+
+    # Raw nftables/iptables: we do not know the ruleset's shape, so telling the
+    # user to append a rule could land it after a DROP and do nothing. Name the
+    # ports and let them place the rule correctly.
+    return [], ("%s is managing the ruleset directly. Make sure it accepts %s "
+                "on the interface your peers arrive on."
+                % (manager, ", ".join("%d/%s" % (p, proto)
+                                      for proto, p, _ in needed)))
+
+
 # ── commands ─────────────────────────────────────────────────────────────────
 
 def cmd_status():
@@ -434,10 +674,28 @@ def cmd_selftest():
 
 
 def cmd_doctor():
+    """Check every layer between "the config looks right" and "a peer can
+    actually use this GPU".
+
+    Reading the config is not enough and never was: mesh.conf records what the
+    user ASKED for, state.json records what the daemon STARTED, and a machine
+    can be perfect on both while a firewall silently drops every packet. So this
+    walks outward — binaries, GPU, membership, daemon, listener, firewall,
+    reachability — and each section reports what is TRUE, not what was
+    requested."""
     caps = mesh.rpc_supported()
     gpu = mesh.probe_gpu()
     conf = mesh.load_conf()
+    state = read_state()
     problems = []
+
+    worker_on = mesh.conf_flag(conf, "worker")
+    discovery_on = mesh.conf_flag(conf, "discovery")
+    bind = (conf.get("rpc_bind") or "127.0.0.1").strip()
+    rpc_port = mesh.conf_int(conf, "rpc_port", mesh.DEFAULT_RPC_PORT)
+    vpns = mesh.vpn_interfaces()
+    vpn_iface = vpns[0] if vpns else None
+    daemon_live = bool(state) and (time.time() - (state.get("updated") or 0)) < 10
 
     print(color("Genesi Mesh doctor", BOLD))
     print()
@@ -466,25 +724,276 @@ def cmd_doctor():
     print("Mesh membership")
     has_secret = mesh.read_secret() is not None
     print("  secret:                %s"
-          % (color("present", GREEN) if has_secret else color("absent", YELLOW)))
-    if not has_secret:
+          % (color("present", GREEN) if has_secret else color("absent", DIM)))
+    if not has_secret and not vpns:
         problems.append(
             "No mesh yet. On the first machine: sudo genesi-mesh init\n"
             "  On every other machine:  sudo genesi-mesh join <secret>")
+    elif not has_secret:
+        # Over a VPN the secret would authenticate a discovery that cannot
+        # happen anyway. Calling it a problem sends the user to fix something
+        # that is not broken, which buries the thing that is.
+        print(color("     (not needed here: it only authenticates multicast "
+                    "discovery, which a VPN cannot carry)", DIM))
 
-    print("  worker mode:           %s"
-          % ("on" if mesh.conf_flag(conf, "worker") else "off"))
-    print("  rpc bind:              %s:%s"
-          % (conf.get("rpc_bind"), conf.get("rpc_port")))
+    print("  worker mode:           %s" % ("on" if worker_on else "off"))
+    print("  rpc bind:              %s:%d" % (bind, rpc_port))
+    if worker_on and bind in ("127.0.0.1", "localhost", "::1"):
+        problems.append(
+            "worker is ON but rpc_bind is %s, so the GPU is offered to this\n"
+            "  machine only — no peer can ever reach it. Fix:\n"
+            "      sudo genesi-mesh worker on      (sets rpc_bind = 0.0.0.0)" % bind)
 
     print()
     print("Daemon")
-    state = read_state()
-    if state and (time.time() - (state.get("updated") or 0)) < 10:
-        print("  genesi-meshd:          %s" % color("running", GREEN))
-    else:
-        print("  genesi-meshd:          %s" % color("not running", YELLOW))
+    print("  genesi-meshd:          %s"
+          % (color("running", GREEN) if daemon_live else color("not running", RED)))
+    if not daemon_live:
         problems.append("Start it: sudo systemctl enable --now genesi-meshd")
+
+    # ── is the GPU actually being served? ────────────────────────────────────
+    #
+    # "worker mode: on" is a config line. Whether rpc-server survived startup is
+    # a different question, and the daemon sends its output to /dev/null, so a
+    # worker that dies on every launch looks identical to a healthy one from the
+    # outside. Check the process AND the socket.
+    if worker_on:
+        print()
+        print("Worker service")
+        if not daemon_live:
+            print("  rpc-server process:    %s"
+                  % color("unknown (daemon not running)", YELLOW))
+        elif state.get("worker_running"):
+            print("  rpc-server process:    %s" % color("running", GREEN))
+        else:
+            print("  rpc-server process:    %s" % color("NOT running", RED))
+            problems.append(
+                "worker is ON but rpc-server is not running. The daemon "
+                "discards its\n  output, so the reason is in the journal:\n"
+                "      sudo journalctl -u genesi-meshd -n 50\n"
+                "  A `genesi-mesh selftest` reproduces the launch on its own.")
+
+        listening, connected = _socket_state(rpc_port)
+        if connected:
+            # The best possible state, and the one a naive probe misreads as a
+            # dead port. Report it and probe nothing.
+            print("  port %-17s %s"
+                  % ("%d:" % rpc_port,
+                     color("serving %s" % ", ".join(sorted(set(connected))),
+                           GREEN)))
+            print(color("     A peer is using this GPU right now. rpc-server "
+                        "takes one client at a", DIM))
+            print(color("     time, so further connections wait — that is "
+                        "normal, not a fault.", DIM))
+        elif listening:
+            print("  port %-17s %s"
+                  % ("%s:%d:" % (bind, rpc_port), color("listening", GREEN)))
+            # Say this out loud or the green line above becomes false comfort.
+            # The socket being open locally says nothing about whether a packet
+            # from another machine survives the firewall — and a connection from
+            # this host to its OWN vpn/LAN address takes the loopback path, so
+            # even that would not test it. Only the peer can answer this.
+            print(color("     (local check — proves the listener exists, not "
+                        "that a peer can reach it)", DIM))
+        else:
+            print("  port %-17s %s"
+                  % ("%s:%d:" % (bind, rpc_port), color("NOT open", RED)))
+            if daemon_live and state.get("worker_running"):
+                problems.append(
+                    "rpc-server is running but nothing is listening on %d. It "
+                    "may still be\n  initialising the GPU — retry in a few "
+                    "seconds — or it failed after start:\n"
+                    "      sudo journalctl -u genesi-meshd -n 50" % rpc_port)
+
+    # ── the layer that reads correct and still drops everything ──────────────
+    print()
+    print("Firewall")
+    active = [u for u in FIREWALL_UNITS if _unit_active(u)]
+    needed = _needed_ports(worker_on, rpc_port, discovery_on)
+
+    if not active:
+        print("  active manager:        %s" % color("none", GREEN))
+        print(color("     (nothing is filtering — no ports to open)", DIM))
+    else:
+        print("  active manager:        %s" % color(", ".join(active), CYAN))
+
+    # The trap that costs the most time: rules applied to a firewall that is not
+    # running. `ufw allow` succeeds, writes the rule, prints "Rules updated",
+    # and filters nothing, because a different firewall owns the ruleset. The
+    # user then has written proof the port is open and a mesh that cannot
+    # connect, with no way to reconcile the two.
+    ufw_trap = "ufw" not in active and _ufw_has_rules()
+    if ufw_trap:
+        print("  ufw:                   %s"
+              % color("INACTIVE, but has rules on disk", YELLOW))
+
+    if needed:
+        print()
+        for proto, p, why in needed:
+            print("  needs %-16s %s" % ("%d/%s" % (p, proto), color(why, DIM)))
+    elif active:
+        print(color("     (worker and discovery are both off — this machine "
+                    "receives nothing)", DIM))
+
+    # firewalld can be interrogated precisely, so do: an interface in no zone is
+    # not unfiltered, it inherits the default zone, and that is invisible to
+    # anyone reading their own rules.
+    #
+    # `admitted` stays None for every firewall we cannot verify (ufw needs root
+    # to read its status; raw nftables rulesets cannot be judged at all). None
+    # means "unknown", never "fine" — the advice below is still offered, just
+    # phrased as a maybe.
+    admitted = None
+    fw_zone, fw_zone_is_default = None, True
+    if "firewalld" in active and needed and vpns:
+        print()
+        admitted = True
+        for iface in vpns:
+            zone, is_default = _firewalld_zone_for(iface)
+            if iface == vpn_iface:
+                fw_zone, fw_zone_is_default = zone, is_default
+            note = " (default zone — %s is in no zone of its own)" % iface \
+                if is_default else ""
+            print("  %-22s %s%s" % (iface + " zone:", zone, color(note, DIM)))
+            blocked = [(proto, p) for proto, p, _ in needed
+                       if _firewalld_allows(zone, p, proto) is False]
+            if blocked:
+                admitted = False
+                print("  %-22s %s" % ("", color(
+                    "zone `%s` does not admit %s" % (zone, ", ".join(
+                        "%d/%s" % (p, proto) for proto, p in blocked)), RED)))
+                problems.append(
+                    "%s carries your peers, but firewalld filters it with zone "
+                    "`%s`,\n  which drops %s. Ping still works (the default "
+                    "zone allows ICMP),\n  so the link looks fine while every "
+                    "mesh packet is discarded."
+                    % (iface, zone, ", ".join("%d/%s" % (p, proto)
+                                              for proto, p in blocked)))
+            else:
+                print("  %-22s %s" % ("", color(
+                    "admits %s" % ", ".join("%d/%s" % (p, proto)
+                                            for proto, p, _ in needed), GREEN)))
+
+    # The ufw verdict has to wait until the real firewall has been checked,
+    # because the same fact means two different things. With the ports open, the
+    # stale rules break nothing today — but the next `ufw allow` will still
+    # report success and do nothing, so it is worth saying out loud either way.
+    if ufw_trap:
+        others = " and ".join(active)
+        # `not needed` means this node receives nothing, so no port of ours is
+        # closed and the stale rules cannot be the cause of anything. Still
+        # worth naming — it is a landmine for the next time worker mode goes on.
+        if admitted is True or not needed:
+            print()
+            print(color("  Note: ufw is not running, so its rules in "
+                        "/etc/ufw/user.rules are inert.", DIM))
+            print(color("  Nothing is broken — %s is what opened the ports "
+                        "above — but any future" % others, DIM))
+            print(color("  `sudo ufw allow ...` will report success and change "
+                        "nothing. Use %s." % others, DIM))
+        else:
+            problems.append(
+                "ufw has rules but is not running%s.\n"
+                "  Every `sudo ufw allow ...` you ran reported success and "
+                "changed NOTHING —\n  the rules sit in /etc/ufw/user.rules "
+                "unenforced. Re-apply them to the\n  firewall that is actually "
+                "running, or enable ufw instead:\n"
+                "      sudo systemctl enable --now ufw"
+                % ((", while %s is" % others) if active else ""))
+
+    # Only walk the user through opening ports that are not already open.
+    # Printing "To open them: ..." under a verified-correct firewall reads as an
+    # instruction to change something that works — and here it would have talked
+    # them out of a deliberately narrow zone and into a blanket one.
+    if needed and active and admitted is not True:
+        for manager in active:
+            cmds, note = _open_port_commands(manager, needed, vpn_iface,
+                                             fw_zone, fw_zone_is_default)
+            if not cmds and not note:
+                continue
+            print()
+            print("  %s under %s:"
+                  % ("To open them" if admitted is False
+                     else "If they are not open yet", color(manager, CYAN)))
+            for cmd in cmds:
+                print(color("      %s" % cmd, CYAN))
+            if note:
+                print(color("      %s" % note, DIM))
+        if discovery_on:
+            print(color("  Run this on BOTH machines — %d/udp is needed on each "
+                        "side for peers to\n  find each other."
+                        % mesh.DISCOVERY_PORT, DIM))
+
+    # ── discovery and peers ──────────────────────────────────────────────────
+    print()
+    print("Discovery")
+    print("  multicast discovery:   %s" % ("on" if discovery_on else "off"))
+    static = mesh.static_peers(conf)
+    peers = mesh.read_peers()
+    print("  peers seen:            %d" % len(peers))
+
+    seen_addrs = {p.get("addr") for p in peers}
+    missing = [host for host, _ in static if host not in seen_addrs]
+
+    if vpns and static and not missing:
+        # Everything registered is answering, so state the structural fact
+        # without the call to action — telling a working setup to go configure
+        # peers reads as "still broken" when it is not.
+        print(color("     A VPN interface is up (%s). Multicast cannot cross "
+                    "it; the peers" % ", ".join(vpns), DIM))
+        print(color("     below work because they are registered explicitly, "
+                    "which is the fix.", DIM))
+    elif vpns:
+        print(color("     A VPN interface is up (%s). Discovery is UDP "
+                    "multicast and no VPN" % ", ".join(vpns), YELLOW))
+        print(color("     forwards it, so peers there will NEVER appear on "
+                    "their own. Register", DIM))
+        print(color("     each one explicitly, on BOTH machines:", DIM))
+        print(color("         sudo genesi-mesh peer <their-vpn-ip>", CYAN))
+
+    if static:
+        print()
+        print("  registered peers:")
+        for host, _port in static:
+            # A TCP probe of their RPC port separates the two very different
+            # reasons a registered peer never shows up. "refused" means the host
+            # is reachable and nothing filters — so the silence is on their end
+            # (no `genesi-mesh peer` back at us, or discovery off). "blocked"
+            # means packets are being dropped and no amount of config will help.
+            seen = host in seen_addrs
+            result = "open" if seen else _probe_tcp(host, mesh.DEFAULT_RPC_PORT,
+                                                    timeout=3.0)
+            if seen:
+                verdict = color("in the peer table", GREEN)
+            elif result == "open":
+                verdict = color("reachable, but no beacon received — run "
+                                "`sudo genesi-mesh peer` on THAT machine too",
+                                YELLOW)
+            elif result == "refused":
+                verdict = color("reachable (no worker there), but no beacon — "
+                                "run `sudo genesi-mesh peer` on THAT machine "
+                                "too", YELLOW)
+            else:
+                verdict = color("NOT reachable (%s) — firewall or VPN" % result,
+                                RED)
+            print("    %-18s %s" % (host, verdict))
+            if not seen and result in ("blocked", "unreachable"):
+                problems.append(
+                    "peer %s is registered but unreachable. Check that machine's "
+                    "firewall\n  (same commands as above) and that it is up on "
+                    "the VPN." % host)
+            elif not seen:
+                problems.append(
+                    "peer %s is reachable but has never beaconed. Registration is "
+                    "per-machine:\n  run `sudo genesi-mesh peer %s` on THAT "
+                    "machine as well, and confirm\n  UDP %d is open there."
+                    % (host, mesh.primary_address(), mesh.DISCOVERY_PORT))
+    elif not peers and not discovery_on:
+        problems.append(
+            "discovery is off and no peers are registered, so this node will "
+            "never find\n  anyone. Either set `discovery = on` in %s,\n"
+            "  or name peers directly: sudo genesi-mesh peer <address>"
+            % mesh.CONF_PATH)
 
     print()
     if problems:
@@ -493,6 +1002,17 @@ def cmd_doctor():
             print("  %d. %s" % (i, p))
         return 1
     print(color("Everything checks out.", GREEN))
+    if worker_on:
+        # Address the peer would actually reach us on, not the LAN one — over a
+        # VPN those differ, and only the peer's view of us is worth testing.
+        known = [h for h, _ in static] or sorted(seen_addrs - {None})
+        addr = (_source_address_for(known[0]) if known else None) \
+            or mesh.primary_address()
+        print(color("Note: everything above was checked from this machine, "
+                    "which cannot see its", DIM))
+        print(color("own firewall. To prove the path end to end, run this on "
+                    "the peer:", DIM))
+        print(color("    nc -vz %s %d" % (addr, rpc_port), CYAN))
     return 0
 
 
