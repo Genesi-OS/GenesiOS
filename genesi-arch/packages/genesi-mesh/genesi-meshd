@@ -200,9 +200,17 @@ class Daemon:
         signal.signal(signal.SIGHUP, self.handle_hup)
 
         if not self.secret:
-            self.log("no mesh secret at %s — run `genesi-mesh init` (first "
-                     "machine) or `genesi-mesh join` (the others). Discovery is "
-                     "inert until then." % mesh.SECRET_PATH)
+            # NOT an error. The secret authenticates LAN DISCOVERY and nothing
+            # else: worker mode still serves this GPU, and a client pointed at an
+            # explicit GENESI_MESH_ENDPOINTS never consults it. Over a VPN there
+            # is no discovery at all, so this is the normal, correct state --
+            # word it so it does not read as a failure on every start.
+            self.log("LAN discovery is off (no secret at %s). This is fine for a "
+                     "VPN/explicit-endpoint setup; worker mode and "
+                     "GENESI_MESH_ENDPOINTS work without it. Run `genesi-mesh "
+                     "init` (or `join`) only if you want peers on the same "
+                     "network to find each other automatically."
+                     % mesh.SECRET_PATH)
 
         self.log("node %s | %s %d MiB | rpc=%s" % (
             self.node, self.gpu.get("backend"), self.gpu.get("vram_mb"),

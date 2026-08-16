@@ -35,7 +35,7 @@ pkgver=1.0.0
 # ">= pkgrel 4" hint from the error text: pkgver() moved r0 -> r10443, which
 # makes makepkg reset pkgrel to 1, so that advice pointed people away from a
 # perfectly good package.
-pkgrel=3
+pkgrel=4
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
