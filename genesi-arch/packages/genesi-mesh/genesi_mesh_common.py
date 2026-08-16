@@ -224,7 +224,7 @@ def verify_beacon(raw, secret, now=None):
     return payload
 
 
-def build_beacon(conf, gpu):
+def build_beacon(conf, gpu, llama=None):
     """The advertisement this node broadcasts: who I am, what I can contribute.
 
     `free_mb` is included only when this machine can actually measure it. An
@@ -253,6 +253,13 @@ def build_beacon(conf, gpu):
     # Re-sent every beacon (5s) because, unlike capacity, it changes constantly.
     if gpu.get("free_mb") is not None:
         beacon["free_mb"] = int(gpu["free_mb"])
+    # llama.cpp identity, so the other end can refuse a pairing that would hang
+    # rather than discovering it minutes into a load. Only the fields we could
+    # actually read — an absent one means "unknown", which rpc_compatibility
+    # treats as usable.
+    for key, value in (llama or {}).items():
+        if value is not None:
+            beacon["llama_" + key] = value
     return beacon
 
 
@@ -483,6 +490,87 @@ def probe_gpu():
             "integrated": False}
 
 
+def llama_build():
+    """This machine's llama.cpp identity: {build, proto, ops} — any may be None.
+
+    Why the mesh cares about a version number at all: the RPC backend's wire
+    format is tied to the ggml build on BOTH ends, and a mismatch does not fail
+    cleanly. It fails like this, observed on two real machines —
+
+        worker: build 10438      client: build 10454
+        the weights transfer fine (2002 MiB land on the worker's GPU)
+        and then the client hangs forever at "loading model"
+
+    — because the handshake compares only RPC_PROTO_*, which matched, while the
+    thing that actually diverged was the ggml OPERATION ENUM. Op codes are sent
+    as bare integers, so once the two sides disagree about what op 47 means, the
+    server does the wrong work and the client waits for a reply that fits a
+    shape it will never get. Upstream marks this with a static_assert on
+    GGML_OP_COUNT precisely because the protocol version is easy to forget.
+
+    So `ops` is the discriminating field, not `proto`: proto catches the
+    mismatches that already announce themselves, ops catches the silent one."""
+    info = {"build": None, "proto": None, "ops": None}
+
+    # The installed header is authoritative and free to read — no subprocess,
+    # no GPU touched. Absent on a runtime-only install, hence the build number
+    # as a coarser fallback.
+    try:
+        with open("/usr/include/ggml-rpc.h", "r", encoding="utf-8") as fh:
+            text = fh.read()
+        ver = [re.search(r"RPC_PROTO_%s_VERSION\s+(\d+)" % part, text)
+               for part in ("MAJOR", "MINOR", "PATCH")]
+        if all(ver):
+            info["proto"] = ".".join(m.group(1) for m in ver)
+        ops = re.search(r"GGML_OP_COUNT\s*==\s*(\d+)", text)
+        if ops:
+            info["ops"] = int(ops.group(1))
+    except (OSError, ValueError):
+        pass
+
+    binp = llama_bin("llama-server") or rpc_server_bin()
+    if binp:
+        try:
+            res = subprocess.run([binp, "--version"], capture_output=True,
+                                 text=True, timeout=15)
+            match = re.search(r"build\s+(\d+)",
+                              (res.stdout or "") + (res.stderr or ""))
+            if match:
+                info["build"] = int(match.group(1))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+    return info
+
+
+def rpc_compatibility(local, peer):
+    """(ok, note) for pooling between two llama.cpp builds.
+
+    Conservative in one direction only. A KNOWN difference is reported as
+    incompatible, because the failure mode is a silent hang that costs minutes
+    and explains nothing. Anything unknown stays usable — refusing to pool over
+    a version we could not read would break working setups to prevent a
+    hypothetical one."""
+    l_ops, p_ops = local.get("ops"), peer.get("ops")
+    if l_ops and p_ops and l_ops != p_ops:
+        return False, ("different ggml operation sets (%d here, %d there). The "
+                       "RPC protocol sends op codes as plain numbers, so the "
+                       "two ends would disagree about what each one means — "
+                       "the load hangs instead of failing" % (l_ops, p_ops))
+
+    l_proto, p_proto = local.get("proto"), peer.get("proto")
+    if l_proto and p_proto and l_proto.split(".")[0] != p_proto.split(".")[0]:
+        return False, ("incompatible RPC protocol (v%s here, v%s there)"
+                       % (l_proto, p_proto))
+
+    l_build, p_build = local.get("build"), peer.get("build")
+    if l_build and p_build and l_build != p_build:
+        # Not fatal on its own — many builds interoperate — but it is the first
+        # thing to check when a pooled load misbehaves, so say it out loud.
+        return True, ("different llama.cpp builds (%d here, %d there); if a "
+                      "pooled load hangs, match them first" % (l_build, p_build))
+    return True, ""
+
+
 def probe_free_mb():
     """Free VRAM right now, or None when it cannot be measured cheaply.
 
@@ -616,7 +704,12 @@ def peer_budget_gb(peer):
     return max(peer_available_mb(peer) / 1024.0 - GPU_OVERHEAD_GB, 0.0)
 
 
-def plan_pool(local_gpu, peers, model_gb, pool_integrated=False):
+def peer_llama(peer):
+    """The llama.cpp identity a peer advertised, in llama_build()'s shape."""
+    return {key: peer.get("llama_" + key) for key in ("build", "proto", "ops")}
+
+
+def plan_pool(local_gpu, peers, model_gb, pool_integrated=False, local_llama=None):
     """Decide whether pooling helps for a model of `model_gb`.
 
     Returns a dict describing the decision, always including `endpoints` (what
@@ -640,12 +733,22 @@ def plan_pool(local_gpu, peers, model_gb, pool_integrated=False):
     local_mb = 0 if local_gpu.get("integrated") else int(local_gpu.get("vram_mb") or 0)
     local_budget = max(local_mb / 1024.0 - GPU_OVERHEAD_GB, 0.0)
 
+    local_llama = local_llama if local_llama is not None else llama_build()
     usable, skipped_integrated, skipped_busy = [], [], []
+    skipped_incompatible = []
     for peer in peers:
         if not peer.get("worker") or int(peer.get("vram_mb") or 0) <= 0:
             continue
         if peer.get("integrated") and not pool_integrated:
             skipped_integrated.append(peer)
+            continue
+        # Before memory, before anything: can these two llama.cpp builds even
+        # talk? Pooling with a mismatched peer does not fail, it HANGS, so this
+        # has to be caught while there is still someone to report it to.
+        compatible, note = rpc_compatibility(local_llama, peer_llama(peer))
+        if not compatible:
+            peer = dict(peer, incompatible=note)
+            skipped_incompatible.append(peer)
             continue
         if peer_budget_gb(peer) <= 0:
             # Capacity it has; room it does not. Almost always the peer is busy
@@ -660,11 +763,20 @@ def plan_pool(local_gpu, peers, model_gb, pool_integrated=False):
     def _result(**kw):
         kw.setdefault("skipped_integrated",
                       [p.get("host", "?") for p in skipped_integrated])
+        kw.setdefault("skipped_incompatible",
+                      [p.get("host", "?") for p in skipped_incompatible])
         kw.setdefault("skipped_busy",
                       ["%s (%d MiB free)" % (p.get("host", "?"),
                                              peer_available_mb(p))
                        for p in skipped_busy])
         return kw
+
+    def _incompatible_note():
+        if not skipped_incompatible:
+            return ""
+        return " " + "; ".join(
+            "%s skipped: %s" % (p.get("host", "?"), p.get("incompatible"))
+            for p in skipped_incompatible)
 
     def _busy_note():
         """A peer with a GPU but no room is the confusing case: `peers` lists it
@@ -699,10 +811,17 @@ def plan_pool(local_gpu, peers, model_gb, pool_integrated=False):
                         "capacity rather than speed, so they would take a full "
                         "share of the work and make every token wait. Set "
                         "pool_integrated = on to use them anyway." % names))
+        if skipped_incompatible:
+            return _result(use_mesh=False, endpoints=[], local_gb=local_budget,
+                           pooled_gb=pooled, peers=[],
+                           reason="no usable worker peers." + _incompatible_note())
+        if skipped_busy:
+            return _result(use_mesh=False, endpoints=[], local_gb=local_budget,
+                           pooled_gb=pooled, peers=[],
+                           reason="no worker peers with free VRAM." + _busy_note())
         return _result(use_mesh=False, endpoints=[], local_gb=local_budget,
                        pooled_gb=pooled, peers=[],
-                       reason="no worker peers with free VRAM." + _busy_note()
-                       if skipped_busy else "no worker peers online")
+                       reason="no worker peers online")
 
     if model_gb > pooled:
         return _result(use_mesh=False, endpoints=[], local_gb=local_budget,

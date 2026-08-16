@@ -35,6 +35,9 @@ class Daemon:
         self.secret = mesh.read_secret()
         self.gpu = mesh.probe_gpu()
         self.caps = mesh.rpc_supported()
+        # Static for the life of the process: a llama.cpp upgrade replaces the
+        # binaries, and the daemon is restarted by the package hook anyway.
+        self.llama = mesh.llama_build()
         self.peers = {}              # node id -> peer record
         self.worker_proc = None
         self.running = True
@@ -146,7 +149,7 @@ class Daemon:
     def announce(self, sender):
         if not self.secret or not mesh.conf_flag(self.conf, "discovery"):
             return
-        beacon = mesh.build_beacon(self.conf, self.gpu)
+        beacon = mesh.build_beacon(self.conf, self.gpu, self.llama)
         signed = mesh.sign_beacon(beacon, self.secret)
         try:
             sender.sendto(signed, (mesh.MULTICAST_GROUP, mesh.DISCOVERY_PORT))
@@ -180,6 +183,10 @@ class Daemon:
             "rpc_port": int(payload.get("rpc_port") or mesh.DEFAULT_RPC_PORT),
             "backend": payload.get("backend") or "CPU",
             "vram_mb": int(payload.get("vram_mb") or 0),
+            # Whatever llama.cpp identity the peer chose to advertise. Absent
+            # keys stay absent so "unknown" never masquerades as a value.
+            **{k: payload[k] for k in ("llama_build", "llama_proto", "llama_ops")
+               if k in payload},
             # None, not 0, when the peer did not send it: an older node simply
             # cannot report free memory, and recording that as "0 MiB free"
             # would make every pre-upgrade peer look permanently full.
@@ -219,6 +226,7 @@ class Daemon:
             "rpc_port": mesh.conf_int(self.conf, "rpc_port",
                                       mesh.DEFAULT_RPC_PORT),
             "capabilities": self.caps,
+            "llama": self.llama,
             "peer_count": len(live),
             "protocol": mesh.PROTOCOL,
         })

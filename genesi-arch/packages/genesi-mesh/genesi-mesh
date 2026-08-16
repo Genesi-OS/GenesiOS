@@ -905,6 +905,12 @@ def cmd_doctor():
           % (color("found", GREEN) if caps["rpc_server"] else color("missing", RED)))
     print("  llama-server --rpc:    %s"
           % (color("supported", GREEN) if caps["rpc_flag"] else color("missing", RED)))
+    llama = mesh.llama_build()
+    print("  build:                 %s"
+          % (("%s (RPC protocol v%s, %s ops)"
+              % (llama.get("build") or "?", llama.get("proto") or "?",
+                 llama.get("ops") or "?"))
+             if any(llama.values()) else color("unknown", YELLOW)))
     if not (caps["rpc_server"] and caps["rpc_flag"]):
         problems.append(
             "Install a llama.cpp built with GGML_RPC=ON:\n"
@@ -1209,6 +1215,22 @@ def cmd_doctor():
             "never find\n  anyone. Either set `discovery = on` in %s,\n"
             "  or name peers directly: sudo genesi-mesh peer <address>"
             % mesh.CONF_PATH)
+
+    # Version pairing, against every live peer. This failure is invisible until
+    # it has cost someone an hour: the handshake succeeds, the weights transfer,
+    # and THEN the load hangs with nothing printed on either end.
+    for peer in peers:
+        compatible, note = mesh.rpc_compatibility(llama, mesh.peer_llama(peer))
+        if not note:
+            continue
+        name = peer.get("host", "?")
+        if compatible:
+            print()
+            print(color("  note: %s — %s" % (name, note), YELLOW))
+        else:
+            problems.append(
+                "cannot pool with %s: %s.\n  Install the same llama.cpp build on "
+                "both machines." % (name, note))
 
     print()
     if problems:

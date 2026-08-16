@@ -72,7 +72,15 @@ pkgver=1.0.0
 # reported free memory. A CPU-only machine has none to report, so the list showed
 # a lone "0 MiB" under a "(free / total VRAM)" caption -- explaining a column
 # that was not there, and sending the reader hunting for a second number.
-pkgrel=11
+# 2026-08-16 (12): the mesh checks that two llama.cpp builds can actually talk.
+# A worker on build 10438 and a client on 10454 handshake fine, transfer the
+# weights (2002 MiB landed on the worker's GPU), and then the client hangs
+# forever at "loading model" -- because the handshake compares RPC_PROTO_*,
+# which matched, while what really diverged was the ggml OPERATION ENUM. Op
+# codes travel as bare integers, so the two ends silently disagree about what
+# each one means. Beacons now carry build/proto/ops, plan_pool refuses a peer
+# whose op set differs, and doctor reports the pairing.
+pkgrel=12
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
