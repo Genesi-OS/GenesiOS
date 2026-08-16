@@ -1127,6 +1127,31 @@ def load_tune_profile(main_gguf):
     return {}
 
 
+def _mesh_opted_in(_mesh, forced):
+    """True when this machine was deliberately set up for a mesh.
+
+    Governs whether Turbo EXPLAINS a mesh it decided not to use. The distinction
+    matters because the two audiences want opposite things: on a machine that
+    never joined a mesh, a line about it on every start is noise about a feature
+    the user does not have; on a machine where they ran init/join/worker/peer
+    and are waiting for pooling to kick in, silence is the bug.
+
+    Any deliberate act counts — an explicit endpoint override, a secret from
+    init/join, worker mode, or a hand-registered peer."""
+    if forced:
+        return True
+    if _mesh is None:
+        return False
+    try:
+        if os.path.exists(_mesh.SECRET_PATH):
+            return True
+        conf = _mesh.load_conf()
+        return bool(_mesh.conf_flag(conf, "worker")
+                    or str(conf.get("peers", "") or "").strip())
+    except Exception:
+        return False
+
+
 def mesh_plan(main_gb):
     """Ask Genesi Mesh whether this model should be spread across machines.
 
@@ -1140,40 +1165,63 @@ def mesh_plan(main_gb):
     binary: a model that would otherwise not run at all, runs.
 
     Fails open in every direction — no genesi-mesh package, no daemon, no peers,
-    an llama-server without --rpc: Turbo behaves exactly as it does today."""
-    if _env_flag("GENESI_TURBO_NO_MESH"):
+    an llama-server without --rpc: Turbo behaves exactly as it does today.
+
+    Failing open used to mean failing SILENT. Four different situations — no
+    peers, no --rpc, mesh switched off, model too big even pooled — all returned
+    the same empty tuple and printed nothing, so a user who had set up a mesh
+    and was waiting for it got a completely ordinary local start with no hint
+    that pooling had been considered and declined, or why. Turbo knows the
+    answer in every one of those cases; it just never said it."""
+    forced = os.environ.get("GENESI_MESH_ENDPOINTS", "").strip()
+
+    sys.path.insert(0, "/usr/lib/genesi-mesh")
+    try:
+        import genesi_mesh_common as _mesh
+    except ImportError:
+        _mesh = None                # genesi-mesh not installed: nothing to do
+
+    opted_in = _mesh_opted_in(_mesh, forced)
+
+    def _decline(why):
+        """Skip the mesh, saying why to the people who are waiting for it."""
+        if opted_in and why:
+            print("   [mesh] not used: %s" % why, flush=True)
         return [], 0.0, ""
 
-    # An explicit override wins, so a user can point at machines that discovery
-    # cannot reach (different subnet, a VPN, a host with discovery off).
-    forced = os.environ.get("GENESI_MESH_ENDPOINTS", "").strip()
+    if _env_flag("GENESI_TURBO_NO_MESH"):
+        return _decline("disabled by GENESI_TURBO_NO_MESH")
 
     if not _pick_flag(_llama_help(), "--rpc"):
         if forced:
             print("   [mesh] GENESI_MESH_ENDPOINTS is set but this llama-server "
                   "has no --rpc (needs a GGML_RPC=ON build) — ignoring.",
                   flush=True)
-        return [], 0.0, ""
+            return [], 0.0, ""
+        return _decline("this llama-server has no --rpc — it needs a llama.cpp "
+                        "built with GGML_RPC=ON (`genesi-mesh doctor`)")
 
+    # An explicit override wins, so a user can point at machines that discovery
+    # cannot reach (different subnet, a VPN, a host with discovery off).
     if forced:
         return [e.strip() for e in forced.split(",") if e.strip()], 0.0, \
                "forced via GENESI_MESH_ENDPOINTS"
 
-    sys.path.insert(0, "/usr/lib/genesi-mesh")
-    try:
-        import genesi_mesh_common as _mesh
-    except ImportError:
-        return [], 0.0, ""          # genesi-mesh not installed: nothing to do
+    if _mesh is None:
+        return [], 0.0, ""
 
     try:
         peers = _mesh.read_peers()
-        if not peers:
-            return [], 0.0, ""
         # Pass the FULL probe, not just a VRAM number: plan_pool has to know
         # whether this machine's GPU is integrated. On a laptop with only
         # integrated graphics the shared memory would otherwise look like real
         # VRAM, the model would appear to "fit locally", and the mesh would be
         # refused in exactly the case it exists for.
+        #
+        # Called even with an empty peer list, because plan_pool answers the
+        # question we actually need: with no peers it reports whether the model
+        # fits locally anyway, which decides whether an empty mesh is worth
+        # mentioning at all.
         conf = _mesh.load_conf()
         plan = _mesh.plan_pool(
             _mesh.probe_gpu(), peers, main_gb,
@@ -1182,11 +1230,29 @@ def mesh_plan(main_gb):
         # Never let a mesh problem stop a local server from starting.
         return [], 0.0, ""
 
-    if not plan.get("use_mesh"):
+    if plan.get("use_mesh"):
+        return (plan["endpoints"],
+                max(plan["pooled_gb"] - plan["local_gb"], 0.0),
+                plan["reason"])
+
+    reason = plan.get("reason") or ""
+
+    # The model fitting locally is the correct, healthy outcome, not a problem
+    # — and it is the COMMON case on exactly the machines that have a mesh, the
+    # ones with a GPU big enough to be a worker. Announcing it on every start
+    # would train the user to ignore the [mesh] prefix, which costs us the
+    # messages that do matter.
+    if reason.startswith("fits in local VRAM"):
         return [], 0.0, ""
-    return (plan["endpoints"],
-            max(plan["pooled_gb"] - plan["local_gb"], 0.0),
-            plan["reason"])
+
+    if not peers:
+        # plan_pool says "no worker peers online" here, which is true but reads
+        # as "your peers are idle" when the real state is an empty table. That
+        # is nearly always discovery, and discovery has one specific failure.
+        reason = ("no peers online. Multicast discovery cannot cross a VPN — "
+                  "register the worker with `sudo genesi-mesh peer <addr>` on "
+                  "BOTH machines, or check `genesi-mesh doctor`")
+    return _decline(reason)
 
 
 def server_cmd(main_gguf, draft_gguf):
