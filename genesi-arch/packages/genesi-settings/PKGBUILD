@@ -147,7 +147,14 @@ pkgver=1.3.4
 # LIST whose marker name is derived from that list, because the old fixed
 # "panel-migrate-containers.done" marker meant an already-migrated user could
 # never receive a widget added later: the script saw the marker and exited.
-pkgrel=49
+# pkgrel 50: genesi-apply-theme.sh no longer deletes its own autostart entry.
+# That self-delete made it one-shot, which is why the "selected text goes
+# colourless, icons go black" contrast bug returned after every system update
+# and had to be fixed by hand each time -- the repair had removed itself. The
+# contrast/icon/KWin repair now runs at every login (idempotent), while the
+# taste parts (wallpaper, colour scheme) stay one-shot behind a marker so a
+# user's own choices survive.
+pkgrel=50
 epoch=1
 groups=(genesi)
 arch=('any')
