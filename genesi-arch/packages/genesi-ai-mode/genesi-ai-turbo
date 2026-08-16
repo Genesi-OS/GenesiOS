@@ -1482,7 +1482,24 @@ def server_cmd(main_gguf, draft_gguf):
         # generous headroom left AFTER that slot's KV — single-stream latency must
         # never regress for throughput nobody's using. Heavy multi-agent workloads
         # (Genesi Code) should pin GENESI_TURBO_PARALLEL=4 explicitly.
-        if ngl_value == "999" and fits_main and not is_moe:
+        # Never over the mesh. This heuristic was written for a LOCAL card,
+        # where a spare slot costs some idle VRAM and nothing else. Pooled,
+        # every one of its assumptions inverts:
+        #
+        #   * the headroom it measures is on ANOTHER machine, sampled when we
+        #     planned and spendable by that machine's own workload before we
+        #     load — so being wrong is not a tight fit, it is a failed load
+        #     minutes in;
+        #   * the extra slot's KV lands on the remote GPU, so every access to
+        #     it crosses the network;
+        #   * extra slots buy CONCURRENT throughput, which is not what anyone
+        #     pooling is here for. They accepted network latency per token to
+        #     run a model at all.
+        #
+        # Measured: on a 1.9 GB model with 5.3 GB pooled this chose 2 slots,
+        # so -c became 16384, and the load died on the worker. The single-slot
+        # retry — identical but for this — came up and served fine.
+        if ngl_value == "999" and fits_main and not is_moe and not mesh_endpoints:
             kv_per_slot = 0.5                     # GB, generous q8 KV @ 4k upper bound
             if (budget_gb - main_gb) > (2.0 + kv_per_slot):
                 n_parallel = 2
