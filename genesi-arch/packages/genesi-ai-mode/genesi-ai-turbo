@@ -1800,6 +1800,33 @@ def cmd_bench(main, draft):
         print("  (incomplete — run `genesi-ai-turbo serve %s` to see server logs)" % main)
 
 
+# llama.cpp's own words when a remote mesh device cannot give us the memory:
+#   failed to allocate RPC0[100.64.162.89:50052] buffer of size 2011539712
+_RPC_ALLOC_RE = re.compile(
+    r"failed to allocate RPC\d+\[([^\]]+)\] buffer of size (\d+)")
+
+
+def _explain_load_failure(text):
+    """Turn a loader error into something the user can act on, or "".
+
+    Only patterns we can genuinely diagnose. A confident wrong guess is worse
+    than the raw log, which at least does not send anyone down the wrong path,
+    so anything unrecognised falls through to printing the log as before."""
+    match = _RPC_ALLOC_RE.search(text or "")
+    if match:
+        endpoint, size = match.group(1), int(match.group(2))
+        return (
+            "   The mesh worker at %s could not give us %.1f GB.\n"
+            "   Its GPU has the capacity but not that much FREE right now — "
+            "something\n   else on that machine is using it, and a local model "
+            "is the usual cause.\n"
+            "   Check from here:      genesi-mesh peers     (shows free / total "
+            "VRAM)\n"
+            "   or on the worker:     nvidia-smi"
+            % (endpoint, size / (1024.0 ** 3)))
+    return ""
+
+
 def _serve_with_fallback(main_g, draft_g):
     """Launch the Turbo server, degrading GRACEFULLY if an optimisation makes it
     fail to load. Some models load in ollama (its own bundled llama.cpp) but trip
@@ -1842,6 +1869,26 @@ def _serve_with_fallback(main_g, draft_g):
             variants.append(("single-slot offload", solo))
         risky = True
 
+    # Pooling is an optimisation that can fail for a reason this machine cannot
+    # see. The worker's free VRAM is measured when we PLAN and consumed when we
+    # LOAD, and the peer can start its own model in between — so a pooled run
+    # that was honestly planned still dies with
+    #
+    #     failed to allocate RPC0[host:50052] buffer of size 2011539712
+    #
+    # Worse, a pooled command is otherwise "not risky", so it went straight to
+    # os.execvp: Turbo replaced itself with llama-server, and when the load
+    # failed there was no Turbo left to explain it or to retry. The local
+    # variant goes LAST so the process the user ends up in never depends on
+    # another machine staying free.
+    if "--rpc" in full:
+        os.environ["GENESI_TURBO_NO_MESH"] = "1"
+        local = server_cmd(main_g, draft_g)
+        os.environ.pop("GENESI_TURBO_NO_MESH", None)
+        if local and all(local != c for _, c in variants):
+            variants.append(("local only, without the mesh", local))
+            risky = True
+
     last = len(variants) - 1
     for i, (label, cmd) in enumerate(variants):
         if risky:
@@ -1869,8 +1916,14 @@ def _serve_with_fallback(main_g, draft_g):
             except KeyboardInterrupt:
                 stop(proc)
             return
-        print(f"[!] {label} failed to come up — falling back:\n{_tail(log)}",
-              file=sys.stderr, flush=True)
+        tail = _tail(log)
+        explained = _explain_load_failure(tail)
+        if explained:
+            print("[!] %s failed to come up.\n%s" % (label, explained),
+                  file=sys.stderr, flush=True)
+        else:
+            print(f"[!] {label} failed to come up — falling back:\n{tail}",
+                  file=sys.stderr, flush=True)
         try:
             proc.kill()
         except Exception:

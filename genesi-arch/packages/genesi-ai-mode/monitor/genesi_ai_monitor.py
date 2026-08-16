@@ -143,6 +143,17 @@ class Backend(QObject):
             return '{"peers": []}'
 
     @Slot(result=str)
+    def meshUsage(self):
+        """Whether the Turbo server running right now is pooling, and across
+        what. This is the question the CLIENT machine's user actually has —
+        `peers` says a mesh EXISTS, this says it is being USED — and until now
+        the page could only answer the first one."""
+        try:
+            return json.dumps(turbo_ctl.turbo_mesh_usage())
+        except Exception:
+            return '{"running": false, "pooling": false, "endpoints": []}'
+
+    @Slot(result=str)
     def meshDoctor(self):
         try:
             r = subprocess.run(["genesi-mesh", "doctor"], capture_output=True,

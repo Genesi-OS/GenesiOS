@@ -754,7 +754,18 @@ pkgver=1.0.0
 # peer, or GENESI_MESH_ENDPOINTS) and never when the model simply fits in
 # local VRAM -- that is the correct outcome and the common one on exactly the
 # GPU machines that have a mesh. Found in a two-machine test.
-pkgrel=150
+# 2026-08-16 (151): the Mesh page answers "is it being USED", and a failed
+# pooled load no longer kills the server. The page could only show that a mesh
+# EXISTED, which is not the question the client machine's user has. It now reads
+# the live llama-server's command line (not a marker file, so it stays right
+# when a fallback dropped the mesh) and says whether Turbo is pooling and with
+# whom, and shows free/total VRAM per machine so a worker with no room left is
+# visible instead of silently dropping out of the pool. Turbo also keeps a
+# no-mesh variant as the LAST fallback: pooling can fail for a reason this
+# machine cannot see (the peer's free VRAM is measured at plan time and consumed
+# at load time), and because a pooled command was otherwise "not risky" it went
+# straight to os.execvp -- so the load failed with no Turbo left to explain it.
+pkgrel=151
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

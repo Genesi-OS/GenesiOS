@@ -21,9 +21,16 @@ Item {
 
     property var st: ({})
     property var peers: []
+    property var usage: ({ running: false, pooling: false, endpoints: [] })
     property bool available: true
     property string busyText: ""
     property string output: ""
+
+    // Reserva por GPU para KV cache/ativações — o MESMO 1.2 GB que o
+    // genesi_mesh_common usa. Se divergir, a página diz que cabe um modelo que
+    // o planejador vai recusar, e o usuário fica sem entender qual dos dois
+    // está mentindo.
+    readonly property real overheadMb: 1.2 * 1024
 
     function refresh() {
         available = backend.meshAvailable()
@@ -32,6 +39,29 @@ Item {
         try { st = JSON.parse(backend.meshState()) } catch (e) { st = ({}) }
         try { peers = (JSON.parse(backend.meshPeers()).peers) || [] }
         catch (e) { peers = [] }
+        try { usage = JSON.parse(backend.meshUsage()) }
+        catch (e) { usage = ({ running: false, pooling: false, endpoints: [] }) }
+    }
+
+    // free_mb ausente = a máquina não consegue medir, e aí a capacidade é a
+    // única resposta possível. Ausente NÃO é zero: tratar como zero faria toda
+    // máquina antiga parecer permanentemente cheia.
+    function knowsFree(o) {
+        return o && o.free_mb !== undefined && o.free_mb !== null
+    }
+
+    // O que dá pra ALOCAR, que é o que decide se o pool funciona. Capacidade é
+    // o número que engana: uma placa de 8 GB ocupada continua sendo de 8 GB.
+    function usableMb(o) {
+        if (!o) return 0
+        var have = knowsFree(o) ? o.free_mb : (o.vram_mb || 0)
+        return Math.max(have - overheadMb, 0)
+    }
+
+    function vramText(o) {
+        if (!o) return "—"
+        if (!knowsFree(o)) return (o.vram_mb || 0) + " MiB"
+        return o.free_mb + " livres de " + (o.vram_mb || 0) + " MiB"
     }
 
     function admin(cmd, arg) {
@@ -92,6 +122,79 @@ Item {
             }
 
             // ── esta máquina ─────────────────────────────────────────────────
+            // ── uso agora ────────────────────────────────────────────────────
+            // `peers` diz que um mesh EXISTE; isto diz se ele está sendo USADO.
+            // São perguntas diferentes e a segunda é a que o usuário da máquina
+            // cliente tem — ele liga o Turbo e quer saber se a GPU da outra
+            // máquina entrou. Lido do processo llama-server vivo, então vale
+            // mesmo quando o Turbo caiu pro modo local sozinho.
+            Rectangle {
+                visible: root.available && root.usage.running
+                Layout.fillWidth: true
+                implicitHeight: useCol.implicitHeight + 28
+                radius: 14
+                color: root.usage.pooling ? theme.a(theme.greenBright, 0.10)
+                                          : theme.a(theme.white, 0.04)
+                border.width: 1
+                border.color: root.usage.pooling ? theme.a(theme.greenBright, 0.45)
+                                                 : theme.a(theme.white, 0.10)
+
+                ColumnLayout {
+                    id: useCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 14
+                    spacing: 6
+
+                    QQC2.Label {
+                        text: root.usage.pooling ? "Turbo está usando o mesh"
+                                                 : "Turbo está rodando local"
+                        color: root.usage.pooling ? theme.greenBright : theme.white
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    QQC2.Label {
+                        visible: root.usage.pooling
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: theme.white
+                        font.pixelSize: 11
+                        text: "Camadas do modelo estão na GPU de: "
+                              + root.usage.endpoints.join(", ")
+                    }
+
+                    QQC2.Label {
+                        visible: root.usage.pooling
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: theme.a(theme.white, 0.55)
+                        font.pixelSize: 10
+                        // O trade-off precisa aparecer junto do estado, ou o
+                        // usuário conclui que o mesh deixou tudo mais lento sem
+                        // motivo. Ele deixa mesmo — em troca de rodar.
+                        text: "As ativações atravessam a rede a cada token, então "
+                              + "isso troca velocidade pela possibilidade de rodar "
+                              + "um modelo que não caberia aqui."
+                    }
+
+                    QQC2.Label {
+                        visible: !root.usage.pooling
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: theme.a(theme.white, 0.65)
+                        font.pixelSize: 11
+                        // Sem isto, "rodando local" com um worker à vista parece
+                        // defeito. Quase sempre não é.
+                        text: root.peers.length === 0
+                              ? "Nenhuma outra máquina visível — o mesh não tinha como entrar."
+                              : "O modelo coube nesta máquina, ou nenhum worker tinha "
+                                + "VRAM livre suficiente. O diagnóstico abaixo diz qual dos dois."
+                    }
+                }
+            }
+
             Rectangle {
                 visible: root.available
                 Layout.fillWidth: true
@@ -131,9 +234,14 @@ Item {
 
                         QQC2.Label { text: "GPU"; color: theme.a(theme.white, 0.55); font.pixelSize: 11 }
                         QQC2.Label {
-                            color: theme.white
+                            // Vermelho quando não há o que emprestar. A placa
+                            // continua do mesmo tamanho, e é exatamente esse
+                            // número que fazia o pool falhar sem explicação.
+                            color: (root.st.worker && root.knowsFree(root.st)
+                                    && root.usableMb(root.st) <= 0)
+                                   ? theme.red : theme.white
                             font.pixelSize: 11
-                            text: (root.st.backend || "?") + " · " + (root.st.vram_mb || 0) + " MiB"
+                            text: (root.st.backend || "?") + " · " + root.vramText(root.st)
                                   + (root.st.integrated ? "  (integrada — é RAM do sistema)" : "")
                         }
 
@@ -239,11 +347,19 @@ Item {
                             }
                             QQC2.Label {
                                 Layout.fillWidth: true
-                                color: theme.a(theme.white, 0.75); font.pixelSize: 11
+                                // Um worker cheio some do pool sem aviso. Marcar
+                                // aqui é a diferença entre "o mesh está quebrado"
+                                // e "aquela máquina está ocupada agora".
+                                readonly property bool noRoom:
+                                    modelData.worker && root.knowsFree(modelData)
+                                    && root.usableMb(modelData) <= 0
+                                color: noRoom ? theme.red : theme.a(theme.white, 0.75)
+                                font.pixelSize: 11
                                 text: (modelData.backend || "?") + " · "
-                                      + (modelData.vram_mb || 0) + " MiB"
+                                      + root.vramText(modelData)
                                       + (modelData.integrated ? "  [integrada]" : "")
                                       + (modelData.worker ? "" : "  (não compartilha)")
+                                      + (noRoom ? "  [sem espaço agora]" : "")
                             }
                         }
                     }

@@ -127,6 +127,56 @@ def turbo_alive():
         return False
 
 
+def turbo_mesh_usage():
+    """Is the running Turbo server pooling across the mesh, and with whom?
+
+    Returns {"running": bool, "pooling": bool, "endpoints": [...]}.
+
+    Read from the live process's own command line, never from anything Turbo
+    recorded at launch. A marker file states an INTENTION; /proc states what is
+    actually running, and the two diverge in exactly the cases a user needs the
+    truth: a server started outside Genesi, a pooled load that failed and fell
+    back to local, or a stale marker that outlived its process. This is also why
+    the answer is derived rather than stored — one source, so the GUI and the
+    terminal cannot tell different stories."""
+    result = {"running": False, "pooling": False, "endpoints": []}
+    want_port = str(TURBO_PORT)
+    fallback = None
+    try:
+        pids = os.listdir("/proc")
+    except OSError:
+        return result
+
+    for pid in pids:
+        if not pid.isdigit():
+            continue
+        try:
+            with open("/proc/%s/cmdline" % pid, "rb") as fh:
+                argv = [a for a in fh.read().split(b"\0") if a]
+        except OSError:
+            continue
+        if not argv or not os.path.basename(
+                argv[0].decode("utf-8", "replace")).startswith("llama-server"):
+            continue
+        args = [a.decode("utf-8", "replace") for a in argv]
+
+        info = {"running": True, "pooling": False, "endpoints": []}
+        if "--rpc" in args:
+            i = args.index("--rpc")
+            if i + 1 < len(args):
+                info["endpoints"] = [e.strip() for e in args[i + 1].split(",")
+                                     if e.strip()]
+                info["pooling"] = bool(info["endpoints"])
+
+        # Prefer the server on the Turbo port; a machine can have several
+        # llama-servers and only that one is what this UI controls.
+        if want_port in args:
+            return info
+        fallback = fallback or info
+
+    return fallback or result
+
+
 def current_model():
     """Tag of the model the running Turbo server is serving, or "" if Turbo is
     down or was started outside Genesi (unknown)."""
