@@ -154,7 +154,12 @@ pkgver=1.3.4
 # contrast/icon/KWin repair now runs at every login (idempotent), while the
 # taste parts (wallpaper, colour scheme) stay one-shot behind a marker so a
 # user's own choices survive.
-pkgrel=50
+# pkgrel 51: make the theme repair actually take effect. plasma-apply-colorscheme
+# is a no-op when the scheme NAME already matches, which is precisely the broken
+# state, so the repair pass now bounces through another scheme to force a real
+# rewrite; and kwriteconfig6 emits no change signal, so already-open Qt apps kept
+# the stale palette -- KGlobalSettings.notifyChange is now sent too.
+pkgrel=51
 epoch=1
 groups=(genesi)
 arch=('any')
