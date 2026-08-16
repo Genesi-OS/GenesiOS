@@ -80,8 +80,8 @@ package() {
     # Shell completions. Not cosmetic: `genesi-mesh` is a PREFIX of the
     # daemon `genesi-meshd`, so without these Tab silently turns the CLI
     # into the daemon, which then sits in its main loop looking like a hang.
-    install -Dm644 "${startdir}/genesi-mesh.fish" \n        "$pkgdir/usr/share/fish/vendor_completions.d/genesi-mesh.fish"
-    install -Dm644 "${startdir}/genesi-mesh.bash" \n        "$pkgdir/usr/share/bash-completion/completions/genesi-mesh"
+    install -Dm644 "${startdir}/genesi-mesh.fish" "$pkgdir/usr/share/fish/vendor_completions.d/genesi-mesh.fish"
+    install -Dm644 "${startdir}/genesi-mesh.bash" "$pkgdir/usr/share/bash-completion/completions/genesi-mesh"
 
     install -Dm644 "${startdir}/README.md" \
         "$pkgdir/usr/share/doc/$pkgname/README.md"
