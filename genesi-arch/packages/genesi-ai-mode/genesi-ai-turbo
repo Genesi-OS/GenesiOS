@@ -1127,6 +1127,24 @@ def load_tune_profile(main_gguf):
     return {}
 
 
+# server_cmd() is called several times per launch — once for the real command
+# and again for each fallback variant _serve_with_fallback builds — and it
+# re-plans the mesh every time. Printing from there repeated the whole [mesh]
+# block four times in one start. These two keep the OUTPUT to once per launch
+# without making the planning itself stateful (a cached plan would go stale
+# exactly when it matters: between the failed pooled attempt and the retry).
+_mesh_said = set()          # lines already shown this run
+_mesh_quiet = False         # set while building a variant the user did not ask for
+
+
+def _mesh_say(line):
+    """Print a [mesh] line at most once, and never while rebuilding variants."""
+    if _mesh_quiet or not line or line in _mesh_said:
+        return
+    _mesh_said.add(line)
+    print("   [mesh] %s" % line, flush=True)
+
+
 def _mesh_opted_in(_mesh, forced):
     """True when this machine was deliberately set up for a mesh.
 
@@ -1186,7 +1204,7 @@ def mesh_plan(main_gb):
     def _decline(why):
         """Skip the mesh, saying why to the people who are waiting for it."""
         if opted_in and why:
-            print("   [mesh] not used: %s" % why, flush=True)
+            _mesh_say("not used: " + why)
         return [], 0.0, ""
 
     if _env_flag("GENESI_TURBO_NO_MESH"):
@@ -1304,12 +1322,10 @@ def server_cmd(main_gguf, draft_gguf):
     if mesh_endpoints:
         budget_gb += mesh_extra_gb
         gpu = True
-        print("   [mesh] %s" % mesh_reason, flush=True)
-        print("   [mesh] pooling across: %s" % ", ".join(mesh_endpoints),
-              flush=True)
-        print("   [mesh] note: layer activations cross the network each token, "
-              "so this trades speed for being able to run the model at all.",
-              flush=True)
+        _mesh_say(mesh_reason)
+        _mesh_say("pooling across: %s" % ", ".join(mesh_endpoints))
+        _mesh_say("note: layer activations cross the network each token, "
+                  "so this trades speed for being able to run the model at all.")
 
     fits_main = main_gb <= budget_gb if budget_gb > 0 else False
     fits_both = (main_gb + draft_gb) <= budget_gb if budget_gb > 0 else False
@@ -1882,15 +1898,30 @@ def _serve_with_fallback(main_g, draft_g):
     # variant goes LAST so the process the user ends up in never depends on
     # another machine staying free.
     if "--rpc" in full:
+        global _mesh_quiet
+        # Building this variant re-plans the mesh with pooling switched off,
+        # which would otherwise announce "[mesh] not used: disabled by
+        # GENESI_TURBO_NO_MESH" — reporting our own scaffolding back to the user
+        # as if it were their configuration.
+        _mesh_quiet = True
         os.environ["GENESI_TURBO_NO_MESH"] = "1"
         local = server_cmd(main_g, draft_g)
         os.environ.pop("GENESI_TURBO_NO_MESH", None)
+        _mesh_quiet = False
         if local and all(local != c for _, c in variants):
             variants.append(("local only, without the mesh", local))
             risky = True
 
     last = len(variants) - 1
+    skip_mesh = False
     for i, (label, cmd) in enumerate(variants):
+        # Once a worker has told us it cannot spare the memory, every remaining
+        # pooled variant asks the same machine for the same thing and waits the
+        # same minutes to be refused again. Jump to the first variant that does
+        # not need it. (Never skip the LAST one — it is the exec'd fallback, and
+        # by construction it is the local one.)
+        if skip_mesh and "--rpc" in cmd and i != last:
+            continue
         if risky:
             print(f":: Genesi Turbo: trying {label}…", flush=True)
         print("   " + " ".join(cmd), flush=True)
@@ -1919,6 +1950,7 @@ def _serve_with_fallback(main_g, draft_g):
         tail = _tail(log)
         explained = _explain_load_failure(tail)
         if explained:
+            skip_mesh = bool(_RPC_ALLOC_RE.search(tail))
             print("[!] %s failed to come up.\n%s" % (label, explained),
                   file=sys.stderr, flush=True)
         else:
