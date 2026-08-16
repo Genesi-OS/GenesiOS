@@ -484,7 +484,8 @@ Kirigami.ApplicationWindow {
                         { "icon": "icons/nav-dashboard.svg", "key": "nav.dashboard" },
                         { "icon": "icons/nav-chat.svg",      "key": "nav.chat" },
                         { "icon": "icons/nav-models.svg",    "key": "nav.models" },
-                        { "icon": "icons/zap.svg",           "key": "nav.automations", "label": "Automations" }
+                        { "icon": "icons/zap.svg",           "key": "nav.automations", "label": "Automations" },
+                        { "icon": "icons/nav-models.svg",    "key": "nav.mesh", "label": "Mesh" }
                     ]
                     delegate: Rectangle {
                         required property int index
@@ -1351,6 +1352,9 @@ Kirigami.ApplicationWindow {
 
         // ───────────────────────── 4. AUTOMAÇÕES ─────────────────────────
         AutomationsPage { id: automationsPage }
+
+        // ───────────────────────── 5. MESH ─────────────────────────
+        MeshPage { id: meshPage; i18n: i18n }
         }
         }
 

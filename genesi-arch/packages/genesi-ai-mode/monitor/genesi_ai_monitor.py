@@ -115,6 +115,77 @@ class Backend(QObject):
         except OSError:
             return "{}"
 
+    # ── Genesi Mesh ──────────────────────────────────────────────────────────
+    # The daemon already publishes everything the UI needs as JSON, and the CLI
+    # already owns every privileged action. So this is deliberately a thin
+    # bridge: read two files, shell out for anything that writes. No mesh logic
+    # is reimplemented here, which is what keeps the GUI and the terminal from
+    # drifting apart.
+
+    @Slot(result=bool)
+    def meshAvailable(self):
+        return shutil.which("genesi-mesh") is not None
+
+    @Slot(result=str)
+    def meshState(self):
+        try:
+            with open("/run/genesi-mesh/state.json") as f:
+                return f.read()
+        except OSError:
+            return "{}"
+
+    @Slot(result=str)
+    def meshPeers(self):
+        try:
+            with open("/run/genesi-mesh/peers.json") as f:
+                return f.read()
+        except OSError:
+            return '{"peers": []}'
+
+    @Slot(result=str)
+    def meshDoctor(self):
+        try:
+            r = subprocess.run(["genesi-mesh", "doctor"], capture_output=True,
+                               text=True, timeout=60)
+            return (r.stdout or "") + (r.stderr or "")
+        except (OSError, subprocess.SubprocessError) as exc:
+            return "Could not run `genesi-mesh doctor`: %s" % exc
+
+    @Slot(str, str, result=str)
+    def meshAdmin(self, command, arg):
+        """Run a privileged genesi-mesh subcommand through pkexec.
+
+        Only a fixed set is accepted. The GUI must never become a way to run
+        arbitrary commands as root just because a string reached it, and
+        pkexec's own dialog is what authorises the user."""
+        allowed = {"init", "join", "peer", "worker", "show-secret"}
+        if command not in allowed:
+            return "refused: unknown command"
+        argv = ["pkexec", "genesi-mesh", command]
+        if arg:
+            argv.append(arg)
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+            out = ((r.stdout or "") + (r.stderr or "")).strip()
+            # 126/127 is pkexec's "dismissed or not authorised".
+            if r.returncode in (126, 127) and not out:
+                return "Authorisation cancelled."
+            return out or ("done" if r.returncode == 0 else
+                           "failed (exit %d)" % r.returncode)
+        except subprocess.TimeoutExpired:
+            return "timed out"
+        except (OSError, subprocess.SubprocessError) as exc:
+            return str(exc)
+
+    @Slot(str, result=str)
+    def meshPlan(self, size_gb):
+        try:
+            r = subprocess.run(["genesi-mesh", "plan", size_gb],
+                               capture_output=True, text=True, timeout=60)
+            return (r.stdout or "") + (r.stderr or "")
+        except (OSError, subprocess.SubprocessError) as exc:
+            return str(exc)
+
     @Slot(result=bool)
     def hasOllama(self):
         return shutil.which("ollama") is not None

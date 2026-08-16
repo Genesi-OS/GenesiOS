@@ -720,7 +720,15 @@ pkgver=1.0.0
 # literal words given people type fast and abbreviated into a one-line box, to
 # stay brief because this is a summon bar, and not to reach for a tool when the
 # user only asked a question.
-pkgrel=146
+# 2026-08-15 (147): Genesi Mesh page in the AI Mode Monitor, so the feature is
+# usable without the terminal: share this GPU, register a machine by address
+# (the path that works over a VPN, where multicast discovery cannot), create or
+# join a mesh, and run the doctor. Deliberately a thin front-end -- it reads the
+# daemon's state.json/peers.json and shells out to `genesi-mesh` via pkexec for
+# anything privileged, so the GUI and the CLI cannot drift apart. It also states
+# the two things that made a real test fail: an empty peer list is EXPECTED
+# across a VPN, and rpc-server has no authentication -- said next to the button.
+pkgrel=147
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -854,6 +862,8 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_ai_quick.py"
     install -Dm644 "${startdir}/monitor/Main.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/Main.qml"
+    install -Dm644 "${startdir}/monitor/MeshPage.qml" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/MeshPage.qml"
     install -Dm644 "${startdir}/monitor/ChatPage.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatPage.qml"
     install -Dm644 "${startdir}/monitor/AdvisorPage.qml" \
