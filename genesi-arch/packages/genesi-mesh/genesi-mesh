@@ -23,6 +23,7 @@ With ONE machine, `selftest` exercises the identical code path against your own
 GPU over loopback, so the mesh is proven working before a second box exists.
 """
 
+import json
 import os
 import socket
 import subprocess
@@ -83,7 +84,6 @@ def set_conf(key, value):
 
 def read_state():
     try:
-        import json
         with open(mesh.STATE_PATH, "r", encoding="utf-8") as fh:
             return json.load(fh)
     except (OSError, ValueError):
@@ -199,6 +199,102 @@ def _probe_tcp(host, port, timeout=2.5):
         return "unreachable"
     finally:
         sock.close()
+
+
+# ── naming a model ───────────────────────────────────────────────────────────
+#
+# `plan` answers "would pooling help for THIS model", and users name a model the
+# way they RUN it — `llama3.2:3b` — not by the path into ollama's
+# content-addressed blob store. Accepting only a filesystem path or a bare
+# number meant the obvious command bounced off a usage line:
+#
+#     $ genesi-mesh plan llama3.2:3b
+#     usage: genesi-mesh plan <model.gguf|SIZE_IN_GB>
+#
+# genesi-ai-turbo owns the complete resolver — sharded sets, quant metadata,
+# the GGUF library index. Mesh needs exactly one number, the size on disk, so it
+# carries the small read-only subset instead of depending on the AI Mode
+# package, which is only an optdepend here and may not be installed.
+
+def _ollama_roots():
+    """Every plausible ollama model root, daemon's own first.
+
+    More than one can exist at once (a stale ~/.ollama beside the real
+    /var/lib/ollama), so callers probe them ALL for the specific model rather
+    than locking onto the first that merely has a manifests/ dir."""
+    daemon = None
+    try:
+        out = subprocess.run(["systemctl", "show", "ollama", "-p", "Environment"],
+                             capture_output=True, text=True, timeout=5).stdout
+        for tok in out.replace("Environment=", "", 1).split():
+            if tok.startswith("OLLAMA_MODELS="):
+                daemon = tok.split("=", 1)[1].strip() or None
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    roots, seen = [], set()
+    for d in (os.environ.get("OLLAMA_MODELS"), daemon, "/var/lib/ollama",
+              "/usr/share/ollama/.ollama/models", "/usr/share/ollama",
+              "/var/lib/ollama/.ollama/models", "/var/lib/ollama/models",
+              os.path.expanduser("~/.ollama/models")):
+        if d and d not in seen and os.path.isdir(os.path.join(d, "manifests")):
+            seen.add(d)
+            roots.append(d)
+    return roots
+
+
+def _ollama_gguf(tag):
+    """The GGUF blob ollama stored for `tag` (e.g. 'llama3.2:3b'), or None."""
+    name, _, ver = str(tag).partition(":")
+    ver = ver or "latest"
+    for root in _ollama_roots():
+        man = os.path.join(root, "manifests", "registry.ollama.ai", "library",
+                           name, ver)
+        if not os.path.isfile(man):
+            continue
+        try:
+            with open(man, "r", encoding="utf-8") as fh:
+                layers = json.load(fh).get("layers", [])
+        except (OSError, ValueError):
+            continue
+        for layer in layers:
+            if str(layer.get("mediaType", "")).endswith("image.model"):
+                # The digest is written as sha256:xxx or sha256-xxx; the file on
+                # disk is always the dashed form.
+                blob = os.path.join(
+                    root, "blobs",
+                    str(layer.get("digest", "")).replace(":", "-"))
+                if os.path.isfile(blob) and os.access(blob, os.R_OK):
+                    return blob
+    return None
+
+
+def _library_gguf(name):
+    """A .gguf matched by file name in the Genesi library and the usual places a
+    browser drops a Hugging Face download."""
+    want = name.lower()
+    if want.endswith(".gguf"):
+        want = want[:-5]
+    data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    dirs = [d for d in (os.environ.get("GENESI_GGUF_DIR") or "").split(":") if d]
+    dirs += [os.path.join(data, "genesi", "models"),
+             os.path.expanduser("~/Downloads"),
+             os.path.expanduser("~/Models"),
+             "/var/lib/genesi/models"]
+    for d in dirs:
+        d = os.path.expanduser(d)
+        try:
+            entries = os.listdir(d)
+        except OSError:
+            continue
+        for fn in entries:
+            if not fn.lower().endswith(".gguf"):
+                continue
+            if want in (fn.lower(), fn.lower()[:-5]):
+                path = os.path.join(d, fn)
+                if os.path.isfile(path):
+                    return path
+    return None
 
 
 def _secret_state():
@@ -563,25 +659,65 @@ def cmd_worker(arg):
 
 
 def _model_size_gb(arg):
-    """Accept either a path to a .gguf or a bare number of gigabytes, so this is
-    useful both for a model you have and one you are only considering."""
+    """(size_gb, how_we_found_it) for whatever the user typed.
+
+    Accepts every form a model gets named in this OS, because `plan` is only
+    useful if you can ask it about the model you actually run:
+
+        a bare number       12  /  12GB      a model you are only considering
+        a path              ./mistral.gguf   one you already have
+        an ollama tag       llama3.2:3b      resolved through ollama's manifest
+        gguf:<name>         gguf:qwen3       the Genesi GGUF library
+
+    Returns (0.0, "") when nothing matches, so the caller can explain."""
     if arg is None:
-        return 0.0
-    if os.path.exists(arg):
-        try:
-            return os.path.getsize(arg) / (1024 ** 3)
-        except OSError:
-            return 0.0
+        return 0.0, ""
+
+    ref = str(arg).strip()
+
+    # A number first: "3" is a size, not a model named 3.
     try:
-        return float(str(arg).lower().rstrip("gb").strip())
+        val = float(ref.lower().rstrip("b").rstrip("g").strip())
+        if val > 0:
+            return val, "as given"
     except ValueError:
-        return 0.0
+        pass
+
+    path = None
+    if ref.startswith("gguf:"):
+        path = _library_gguf(ref[5:].strip())
+    elif os.path.exists(os.path.expanduser(ref)):
+        path = os.path.expanduser(ref)
+    elif ref.lower().endswith(".gguf"):
+        path = _library_gguf(ref)
+    else:
+        path = _ollama_gguf(ref) or _library_gguf(ref)
+
+    if not path:
+        return 0.0, ""
+    try:
+        return os.path.getsize(path) / (1024 ** 3), path
+    except OSError:
+        return 0.0, ""
 
 
 def cmd_plan(arg):
-    size = _model_size_gb(arg)
+    size, found = _model_size_gb(arg)
     if size <= 0:
-        print("usage: genesi-mesh plan <model.gguf|SIZE_IN_GB>")
+        if arg:
+            # Say what was tried. "usage:" alone implies the argument was the
+            # wrong SHAPE, when the usual truth is that the model is simply not
+            # on this machine — a different problem with a different fix.
+            print(color("Could not find a model called '%s'." % arg, YELLOW))
+            print()
+            print("Tried: a size in GB, a path, the ollama library, and the "
+                  "Genesi GGUF library.")
+            print("If it is an ollama model, check the exact tag with: "
+                  "ollama list")
+            print()
+        print("usage: genesi-mesh plan <model>")
+        print("  <model> is an ollama tag (llama3.2:3b), a path to a .gguf,")
+        print("  gguf:<name> from the Genesi library, or a plain size in GB.")
         return 2
     conf = mesh.load_conf()
     gpu = mesh.probe_gpu()
@@ -589,6 +725,11 @@ def cmd_plan(arg):
                               pool_integrated=mesh.conf_flag(conf, "pool_integrated"))
 
     print(color("Model %.1f GB" % size, BOLD))
+    if found and found != "as given":
+        # Which file was measured. With an ollama tag the answer is a blob whose
+        # name carries no hint of the model, so a wrong resolution would
+        # otherwise be invisible — and the verdict below is only as good as it.
+        print(color("  %s" % found, DIM))
     if gpu.get("integrated"):
         # Say it, or the 0.0 GB budget below looks like a detection failure.
         print(color("  this machine's GPU is integrated (%s) — its memory is "

@@ -51,7 +51,15 @@ pkgver=1.0.0
 # (and flags rules written to an inactive one, which report success and do
 # nothing), reads the firewalld zone of each VPN interface, and probes
 # registered peers -- separating "unreachable" from "reachable but silent".
-pkgrel=8
+# 2026-08-16 (9): `plan` accepts the name you actually run a model by. It took
+# a path or a bare number, so `genesi-mesh plan llama3.2:3b` -- the obvious
+# command, and the one the tool's own docs imply -- answered with a usage line.
+# It now resolves ollama tags through ollama's manifests, gguf:<name> from the
+# Genesi library, paths, and sizes, prints WHICH file it measured (an ollama
+# blob name carries no hint of the model, so a wrong resolution would be
+# invisible), and when nothing matches says the model was not found instead of
+# implying the argument was malformed.
+pkgrel=9
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
