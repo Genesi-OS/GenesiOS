@@ -17,7 +17,11 @@ pkgver=r0
 # 2026-08-15 (2): build the RPC backend (-DGGML_RPC=ON), matching the Vulkan
 # build. Produces `rpc-server` and the `llama-server --rpc host:port` flag that
 # Genesi Mesh drives to pool VRAM across machines. Inert unless --rpc is passed.
-pkgrel=2
+# 2026-08-16 (3): pin the upstream commit, in lockstep with genesi-llama-cpp.
+# Both tracked the branch tip, so whichever was rebuilt later moved ahead and
+# the two stopped being RPC-compatible -- which a mesh only discovers as a
+# hang, minutes into a load. See the note on _commit above.
+pkgrel=3
 pkgdesc='llama.cpp (CUDA) — fast NVIDIA local LLM inference backing Genesi Turbo'
 arch=('x86_64')
 url='https://github.com/ggml-org/llama.cpp'
@@ -29,7 +33,25 @@ makedepends=('git' 'cmake' 'cuda')
 provides=('llama.cpp')
 conflicts=('llama.cpp' 'llama.cpp-vulkan' 'llama.cpp-cuda' 'llama.cpp-git'
            'genesi-llama-cpp')
-source=("git+https://github.com/ggml-org/llama.cpp.git")
+# PINNED, and it must stay in lockstep with genesi-llama-cpp's `_commit`.
+#
+# These two packages are alternatives for the same machine, but on a MESH they
+# are peers: one box runs the CUDA build as the worker while another runs the
+# Vulkan build as the client. llama.cpp's RPC backend puts the ggml operation
+# enum on the wire as bare integers, so two builds from different commits can
+# disagree about what an op code means. That does not fail cleanly — it hangs.
+# Observed: worker on build 10438, client on 10454, weights transferred fine
+# (2002 MiB landed on the worker's GPU) and the client then waited forever at
+# "loading model", with nothing logged on either side.
+#
+# Tracking the branch tip made that inevitable rather than unlucky: whichever
+# package was rebuilt later silently moved ahead of the other. Both now name the
+# same commit, so a rebuild of either one reproduces a compatible peer.
+#
+# To move llama.cpp forward: change `_commit` in BOTH PKGBUILDs, in the same
+# change, and rebuild both.
+_commit=4df29be4f4c3673f428170fda944a5b19f743bb8
+source=("git+https://github.com/ggml-org/llama.cpp.git#commit=${_commit}")
 sha256sums=('SKIP')
 
 pkgver() {
@@ -55,9 +77,16 @@ build() {
     # that needs the RAM/6 throttle), so drive it by CPU count with a light ~1
     # job-per-2GB RAM cap. The old RAM/6 cap pinned this to -j2 on a 4-core
     # runner and it timed out at 44% — CPU-bound parallelism is the fix.
+    # RAM from /proc/meminfo, NOT `free`. free(1) translates its row labels, so
+    # under a non-English locale the header reads "Mem.:" and an /^Mem:/ match
+    # yields nothing -- mem_gb came out empty, the arithmetic below read it as
+    # 0, and the whole CUDA build silently dropped to -j1. CI never saw it
+    # because CI runs in English; a maintainer building locally lost hours to a
+    # translated colon. /proc/meminfo is the same in every locale.
     local mem_gb jobs
     jobs=$(nproc)
-    mem_gb=$(free -g | awk '/^Mem:/{print $2}' 2>/dev/null || echo 8)
+    mem_gb=$(awk '/^MemTotal:/{printf "%d", $2/1048576}' /proc/meminfo 2>/dev/null)
+    [ -z "$mem_gb" ] && mem_gb=8
     [ $(( mem_gb / 2 )) -lt "$jobs" ] && jobs=$(( mem_gb / 2 ))
     [ "$jobs" -lt 1 ] && jobs=1
     echo "genesi-llama-cpp-cuda: building with -j${jobs} (RAM ${mem_gb} GB, $(nproc) CPUs), CUDA archs=${archs}"

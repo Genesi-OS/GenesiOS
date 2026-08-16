@@ -13,7 +13,11 @@ pkgver=r0
 # which is the entire foundation of Genesi Mesh (pooling VRAM across machines on
 # the LAN). Without it `genesi-mesh` has nothing to drive. Costs nothing when
 # unused: it is an extra backend, inert unless --rpc is passed.
-pkgrel=4
+# 2026-08-16 (5): pin the upstream commit, in lockstep with
+# genesi-llama-cpp-cuda. Both tracked the branch tip, so whichever was rebuilt
+# later moved ahead and the two stopped being RPC-compatible -- which a mesh
+# only discovers as a hang, minutes into a load. See the note on _commit.
+pkgrel=5
 pkgdesc='llama.cpp (Vulkan) — local LLM inference backing Genesi Turbo'
 arch=('x86_64')
 url='https://github.com/ggml-org/llama.cpp'
@@ -23,7 +27,22 @@ makedepends=('git' 'cmake' 'vulkan-headers' 'shaderc' 'glslang'
              'spirv-headers' 'spirv-tools')
 provides=('llama.cpp')
 conflicts=('llama.cpp' 'llama.cpp-vulkan' 'llama.cpp-cuda' 'llama.cpp-git')
-source=("git+https://github.com/ggml-org/llama.cpp.git")
+# PINNED, and it must stay in lockstep with genesi-llama-cpp-cuda's `_commit`.
+#
+# These two packages are alternatives on one machine, but PEERS on a mesh: an
+# NVIDIA box runs the CUDA build as the worker while a laptop runs this one as
+# the client. llama.cpp's RPC backend sends the ggml operation enum as bare
+# integers, so builds from different commits can disagree about what an op code
+# means — and that hangs rather than erroring. Observed: worker on build 10438,
+# client on 10454, weights transferred (2002 MiB reached the worker's GPU) and
+# the client then waited forever at "loading model", nothing logged either side.
+#
+# Following the branch tip made that inevitable: whichever package was rebuilt
+# later silently moved ahead. Both now name the same commit.
+#
+# To move llama.cpp forward: change `_commit` in BOTH PKGBUILDs together.
+_commit=4df29be4f4c3673f428170fda944a5b19f743bb8
+source=("git+https://github.com/ggml-org/llama.cpp.git#commit=${_commit}")
 sha256sums=('SKIP')
 
 pkgver() {
@@ -38,8 +57,13 @@ build() {
     # Failed to fork process" (2026-06-09, after upstream added the fp4 shaders).
     # Cap parallelism to ~1 job per 6 GB of RAM (min 1) so the peak fits; the CI
     # job also adds swap headroom. Local builds on big machines still scale.
+    # RAM from /proc/meminfo, NOT `free`. free(1) translates its row labels, so
+    # on a non-English system the header reads "Mem.:" and /^Mem:/ matches
+    # nothing -- mem_gb ends up empty and this cap collapses to -j1 no matter
+    # how big the machine is. Invisible in CI, which runs in English.
     local mem_gb jobs
-    mem_gb=$(free -g | awk '/^Mem:/{print $2}' 2>/dev/null || echo 8)
+    mem_gb=$(awk '/^MemTotal:/{printf "%d", $2/1048576}' /proc/meminfo 2>/dev/null)
+    [ -z "$mem_gb" ] && mem_gb=8
     jobs=$(( mem_gb / 6 )); [ "$jobs" -lt 1 ] && jobs=1
     [ "$jobs" -gt "$(nproc)" ] && jobs=$(nproc)
     echo "genesi-llama-cpp: building with -j${jobs} (RAM ${mem_gb} GB)"

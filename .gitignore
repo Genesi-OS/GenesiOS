@@ -50,3 +50,6 @@ genesi-arch/repo/
 genesi-arch/packages/*/*.pkg.tar.zst
 genesi-arch/packages/*/pkg/
 genesi-arch/packages/*/src/
+# The bare git clone a VCS PKGBUILD caches next to itself (llama.cpp is
+# gigabytes of upstream history).
+genesi-arch/packages/*/llama.cpp/
