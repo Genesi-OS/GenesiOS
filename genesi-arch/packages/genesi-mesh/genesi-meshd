@@ -256,6 +256,26 @@ class Daemon:
 
 
 def main():
+    # Reject arguments instead of silently ignoring them.
+    #
+    # `genesi-mesh` is a PREFIX of `genesi-meshd`, so tab completion happily
+    # turns the CLI into the daemon. Typing `genesi-mesh init<TAB>` gets you
+    # `genesi-meshd init`, which used to ignore argv, print two startup lines
+    # and then sit in its main loop forever -- indistinguishable from a hang,
+    # with no hint that the wrong binary is running. Say so instead.
+    if len(sys.argv) > 1:
+        if sys.argv[1] in ("-h", "--help", "help"):
+            print((__doc__ or "").strip())
+            return 0
+        sys.stderr.write(
+            "genesi-meshd is the background DAEMON and takes no arguments.\n\n"
+            "Did you mean the command-line tool?\n"
+            "    genesi-mesh " + " ".join(sys.argv[1:]) + "\n\n"
+            "(`genesi-mesh` is a prefix of `genesi-meshd`, so tab completion\n"
+            "often lands here by mistake.)\n\n"
+            "To run the daemon: sudo systemctl enable --now genesi-meshd\n")
+        return 2
+
     os.makedirs(mesh.RUN_DIR, mode=0o755, exist_ok=True)
     Daemon().run()
     return 0
