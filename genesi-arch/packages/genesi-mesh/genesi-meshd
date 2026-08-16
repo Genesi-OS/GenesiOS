@@ -135,13 +135,22 @@ class Daemon:
         if not self.secret or not mesh.conf_flag(self.conf, "discovery"):
             return
         beacon = mesh.build_beacon(self.conf, self.gpu)
+        signed = mesh.sign_beacon(beacon, self.secret)
         try:
-            sender.sendto(mesh.sign_beacon(beacon, self.secret),
-                          (mesh.MULTICAST_GROUP, mesh.DISCOVERY_PORT))
+            sender.sendto(signed, (mesh.MULTICAST_GROUP, mesh.DISCOVERY_PORT))
         except OSError:
             # No route to the multicast group (NIC down, no network). Not fatal:
             # a node with no network is simply a mesh of one.
             pass
+        # Unicast to any explicitly configured peers. This is what makes
+        # discovery work over a VPN, where multicast is silently dropped: the
+        # machines can reach each other perfectly well, just not via a group
+        # address. Same signed beacon, same verification on the far side.
+        for addr in mesh.static_peers(self.conf):
+            try:
+                sender.sendto(signed, addr)
+            except OSError:
+                pass
 
     def absorb(self, raw, addr):
         if not self.secret:

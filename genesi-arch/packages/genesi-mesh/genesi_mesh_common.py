@@ -77,6 +77,9 @@ DEFAULTS = {
     "rpc_mem_mb": "0",         # 0 = let rpc-server decide from the device
     "discovery": "on",
     "name": "",                # display name; defaults to the hostname
+    # Extra peer addresses to beacon DIRECTLY (comma/space separated).
+    # Multicast cannot cross a VPN, but unicast can — see static_peers().
+    "peers": "",
     # Use peers whose only GPU is integrated? Off by default — see plan_pool.
     "pool_integrated": "off",
 }
@@ -264,6 +267,29 @@ def open_listen_socket(port=DISCOVERY_PORT, group=MULTICAST_GROUP):
         # loopback-only, which is exactly what the single-machine mode needs.
         pass
     return sock
+
+
+def static_peers(conf):
+    """Addresses to beacon directly, from the `peers` config key.
+
+    Multicast does not cross a VPN, a routed subnet or most APs' client
+    isolation — but plain unicast does. Beaconing to a known address makes
+    discovery work anywhere the machines can reach each other at all, which is
+    the whole point of having them on a VPN in the first place. Both sides
+    announce, so listing the other machine on either end is enough for both to
+    learn about each other.
+
+    Accepts "host", "host:port", comma- or space-separated.
+    """
+    out = []
+    raw = str(conf.get("peers", "") or "")
+    for item in raw.replace(",", " ").split():
+        host, _, port = item.rpartition(":")
+        if host and port.isdigit():
+            out.append((host, int(port)))
+        else:
+            out.append((item, DISCOVERY_PORT))
+    return out
 
 
 def open_send_socket(ttl=2):

@@ -6,6 +6,7 @@
     genesi-mesh init                start a NEW mesh here (generates the secret)
     genesi-mesh show-secret         print this mesh's secret, to carry to a peer
     genesi-mesh join <secret>       join an EXISTING mesh
+    genesi-mesh peer <addr>         add a peer reachable over a VPN
     genesi-mesh worker on|off       offer / stop offering this machine's GPU
     genesi-mesh plan <model|GB>     would pooling help for this model?
     genesi-mesh selftest            prove the RPC path works on THIS machine
@@ -164,7 +165,11 @@ def _explain_empty_peers():
     print(color("  (init/join) only ever authenticated discovery, so it is not"
                 " needed either.", DIM))
     print()
-    print("  Name the worker explicitly instead:")
+    print("  Either register the peer so discovery works over the VPN:")
+    print(color("    sudo genesi-mesh peer <their-vpn-ip>      (on BOTH machines)",
+                CYAN))
+    print()
+    print("  ...or skip discovery and name the worker directly:")
     print(color("    GENESI_MESH_ENDPOINTS=<vpn-ip>:%d genesi-ai-turbo serve"
                 % mesh.DEFAULT_RPC_PORT, CYAN))
 
@@ -244,6 +249,30 @@ def cmd_join(value):
     print(color("Joined. Peers should appear within a few seconds.", GREEN))
     print("Share this machine's GPU too with: sudo genesi-mesh worker on")
     reload_daemon()
+    return 0
+
+
+def cmd_peer(addr):
+    """Register a peer to beacon DIRECTLY, for networks multicast cannot cross.
+
+    A VPN carries unicast perfectly well and drops multicast, so naming the far
+    machine here is all discovery needs to start working across one."""
+    if not addr:
+        print("usage: genesi-mesh peer <address>    (e.g. the peer's Tailscale IP)")
+        return 2
+    if not need_root("peer %s" % addr):
+        return 1
+    conf = mesh.load_conf()
+    have = [a for a in str(conf.get("peers", "") or "").replace(",", " ").split()]
+    if addr in have:
+        print(color("%s is already listed." % addr, DIM))
+        return 0
+    have.append(addr)
+    set_conf("peers", ", ".join(have))
+    reload_daemon()
+    print(color("Added %s. It should appear in `genesi-mesh peers` within a few "
+                "seconds," % addr, GREEN))
+    print(color("once the same is done on the other machine.", GREEN))
     return 0
 
 
@@ -493,6 +522,7 @@ def main(argv):
         "init": lambda: cmd_init(),
         "show-secret": lambda: cmd_show_secret(),
         "join": lambda: cmd_join(arg),
+        "peer": lambda: cmd_peer(arg),
         "worker": lambda: cmd_worker(arg),
         "plan": lambda: cmd_plan(arg),
         "selftest": lambda: cmd_selftest(),

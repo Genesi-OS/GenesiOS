@@ -48,3 +48,5 @@ genesi-arch/packages/genesi-mesh/genesi-mesh               text eol=lf
 *.py          text eol=lf
 *.qml         text eol=lf
 *.desktop     text eol=lf
+genesi-arch/packages/genesi-mesh/genesi-mesh.fish text eol=lf
+genesi-arch/packages/genesi-mesh/genesi-mesh.bash text eol=lf
