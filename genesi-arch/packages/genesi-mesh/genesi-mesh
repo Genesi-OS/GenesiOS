@@ -201,6 +201,22 @@ def _probe_tcp(host, port, timeout=2.5):
         sock.close()
 
 
+def _secret_state():
+    """"present" / "absent" / "unreadable" for the mesh secret.
+
+    read_secret() returns None for BOTH "no such file" and "permission denied",
+    which is right for the daemon (it runs as root, so None can only mean
+    missing) and wrong for every command a user runs unprivileged. The secret is
+    0600 root, so a plain `genesi-mesh doctor` reported "absent" on a machine
+    that had just been through `init` — and then helpfully suggested running
+    `init` again, which refuses because the secret it could not read exists."""
+    if os.geteuid() == 0:
+        return "present" if mesh.read_secret() is not None else "absent"
+    if mesh.read_secret() is not None:
+        return "present"
+    return "unreadable" if os.path.exists(mesh.SECRET_PATH) else "absent"
+
+
 def _hex_ip(hexstr):
     """Decode /proc/net/tcp's address form. Each 4-byte word is little-endian,
     so the bytes come out reversed per word — IPv4 is one word, IPv6 is four."""
@@ -357,9 +373,12 @@ def cmd_status():
           % (gpu["backend"], (" " + gpu["name"]) if gpu.get("name") else "",
              gpu["vram_mb"], color(kind, YELLOW) if kind else ""))
 
-    secret = mesh.read_secret()
-    print("  mesh:    %s" % (color("configured", GREEN) if secret
-                             else color("no secret — run `genesi-mesh init`", YELLOW)))
+    print("  mesh:    %s" % {
+        "present": color("configured", GREEN),
+        "unreadable": color("configured", GREEN)
+            + color(" (secret is 0600 root; not read as this user)", DIM),
+        "absent": color("no secret — run `genesi-mesh init`", YELLOW),
+    }[_secret_state()])
 
     worker_on = mesh.conf_flag(conf, "worker")
     running = state.get("worker_running")
@@ -722,14 +741,20 @@ def cmd_doctor():
 
     print()
     print("Mesh membership")
-    has_secret = mesh.read_secret() is not None
+    secret = _secret_state()
     print("  secret:                %s"
-          % (color("present", GREEN) if has_secret else color("absent", DIM)))
-    if not has_secret and not vpns:
+          % {"present": color("present", GREEN),
+             "absent": color("absent", DIM),
+             "unreadable": color("present", GREEN)
+                + color(" (0600 root — run doctor with sudo to verify it)",
+                        DIM)}[secret])
+    if secret != "absent":
+        pass
+    elif not vpns:
         problems.append(
             "No mesh yet. On the first machine: sudo genesi-mesh init\n"
             "  On every other machine:  sudo genesi-mesh join <secret>")
-    elif not has_secret:
+    else:
         # Over a VPN the secret would authenticate a discovery that cannot
         # happen anyway. Calling it a problem sends the user to fix something
         # that is not broken, which buries the thing that is.
