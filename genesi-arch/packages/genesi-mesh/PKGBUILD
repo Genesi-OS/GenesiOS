@@ -35,7 +35,15 @@ pkgver=1.0.0
 # ">= pkgrel 4" hint from the error text: pkgver() moved r0 -> r10443, which
 # makes makepkg reset pkgrel to 1, so that advice pointed people away from a
 # perfectly good package.
-pkgrel=6
+# 2026-08-15 (7): discovery that works over a VPN, and completions.
+# (1) New `peers` config key / `genesi-mesh peer <addr>`: the daemon also
+# beacons by UNICAST to listed addresses. Multicast cannot cross a VPN, a
+# routed subnet or AP client isolation -- unicast can -- so naming the far
+# machine makes discovery work wherever the two can reach each other.
+# (2) Ship fish + bash completions: `genesi-mesh` is a prefix of
+# `genesi-meshd`, so Tab rewrote the CLI into the daemon and it looked like
+# a hang; a user had to type the full /usr/bin path to work around it.
+pkgrel=7
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -68,6 +76,12 @@ package() {
     # `genesi-mesh init` — never shipped in the package.
     install -Dm644 "${startdir}/mesh.conf" \
         "$pkgdir/etc/genesi-mesh/mesh.conf"
+
+    # Shell completions. Not cosmetic: `genesi-mesh` is a PREFIX of the
+    # daemon `genesi-meshd`, so without these Tab silently turns the CLI
+    # into the daemon, which then sits in its main loop looking like a hang.
+    install -Dm644 "${startdir}/genesi-mesh.fish" \n        "$pkgdir/usr/share/fish/vendor_completions.d/genesi-mesh.fish"
+    install -Dm644 "${startdir}/genesi-mesh.bash" \n        "$pkgdir/usr/share/bash-completion/completions/genesi-mesh"
 
     install -Dm644 "${startdir}/README.md" \
         "$pkgdir/usr/share/doc/$pkgname/README.md"
