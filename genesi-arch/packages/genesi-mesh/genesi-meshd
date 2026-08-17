@@ -19,6 +19,7 @@ Config lives at /etc/genesi-mesh/mesh.conf and is re-read on SIGHUP, so
 """
 
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -27,6 +28,16 @@ import time
 
 sys.path.insert(0, "/usr/lib/genesi-mesh")
 import genesi_mesh_common as mesh   # noqa: E402
+
+
+# A worker exiting when its client disconnects is normal and expected. Several
+# exits inside one short window is a crash loop -- the process is dying on its
+# own, faster than any real session could end. Sized so a legitimate burst of
+# short client runs does not trip it, while a worker that cannot survive its own
+# startup (SIGILL from a package built for a newer CPU, a missing GPU backend)
+# is caught within about a minute.
+WORKER_CRASH_WINDOW = 120.0
+WORKER_CRASH_RESTARTS = 5
 
 
 class Daemon:
@@ -40,6 +51,7 @@ class Daemon:
         self.llama = mesh.llama_build()
         self.peers = {}              # node id -> peer record
         self.worker_proc = None
+        self.worker_restarts = []    # timestamps, trimmed to the crash window
         self.running = True
         self.reload_pending = False
         self.node = mesh.node_id()
@@ -92,6 +104,15 @@ class Daemon:
         if mem_mb > 0:
             cmd += ["-m", str(mem_mb)]
 
+        # rpc-server writes its banner with plain printf(3), which switches to
+        # 4 KB block buffering the moment stdout is a file instead of a tty. The
+        # banner is a few hundred bytes, so it would sit in the child's buffer
+        # for the entire life of the process and the log would read as empty for
+        # exactly as long as it was useful. stdbuf forces line buffering.
+        stdbuf = shutil.which("stdbuf")
+        if stdbuf:
+            cmd = [stdbuf, "-oL", "-eL"] + cmd
+
         if bind not in ("127.0.0.1", "localhost", "::1"):
             # Say this loudly and every time. rpc-server does no authentication
             # and no input validation, so a LAN bind is a real exposure and the
@@ -100,13 +121,35 @@ class Daemon:
                      "NO authentication — only do this on a network you control."
                      % bind)
 
+        # Keep rpc-server's output. Its startup banner names the DEVICE it is
+        # serving, and that is the one fact that separates a worker which
+        # offloads to the GPU from one that quietly fell back to the CPU and is
+        # now doing network-attached CPU inference -- slower than no mesh at
+        # all. DEVNULL threw exactly that away, so a worker pegged at 100% CPU
+        # with an idle GPU looked identical to a healthy one from every tool we
+        # ship. Truncated per start: only the current run is ever of interest.
+        try:
+            os.makedirs(mesh.RUN_DIR, mode=0o755, exist_ok=True)
+            logfh = open(mesh.WORKER_LOG, "w", encoding="utf-8")
+        except OSError as exc:
+            self.log("worker log unavailable (%s) — starting without it" % exc)
+            logfh = None
+
         try:
             self.worker_proc = subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                cmd,
+                stdout=logfh or subprocess.DEVNULL,
+                stderr=subprocess.STDOUT if logfh else subprocess.DEVNULL)
             self.log("worker up: %s" % " ".join(cmd))
         except OSError as exc:
             self.worker_proc = None
             self.log("worker failed to start: %s" % exc)
+        finally:
+            # The child holds its own dup of the fd; ours would otherwise leak
+            # one per restart, and a supervised worker restarts on every client
+            # disconnect.
+            if logfh is not None:
+                logfh.close()
 
     def stop_worker(self):
         if not self.worker_proc:
@@ -129,8 +172,28 @@ class Daemon:
             return
         if self.worker_proc is None or self.worker_proc.poll() is not None:
             if self.worker_proc is not None:
-                self.log("worker exited — restarting")
+                rc = self.worker_proc.poll()
+                # Negative = killed by a signal, and the signal is the whole
+                # story: a SIGILL here means the llama.cpp build executes an
+                # instruction this CPU lacks (a package compiled for a newer
+                # ISA), which no amount of mesh configuration can fix.
+                how = ("signal %d" % -rc) if rc is not None and rc < 0 \
+                    else "exit %s" % rc
+                self.worker_restarts.append(time.time())
+                self.log("worker exited (%s) — restarting" % how)
             self.start_worker()
+
+    def worker_crash_looping(self):
+        """True when the worker keeps dying as fast as we restart it.
+
+        A worker that exits when its client disconnects is NORMAL. One that
+        exits seconds after every start is broken, and the difference is
+        invisible from outside: at any single instant both look like "running".
+        """
+        now = time.time()
+        self.worker_restarts = [t for t in self.worker_restarts
+                                if now - t <= WORKER_CRASH_WINDOW]
+        return len(self.worker_restarts) >= WORKER_CRASH_RESTARTS
 
     # ── discovery ────────────────────────────────────────────────────────────
 
@@ -222,6 +285,11 @@ class Daemon:
             "worker": mesh.conf_flag(self.conf, "worker"),
             "worker_running": bool(self.worker_proc
                                    and self.worker_proc.poll() is None),
+            # "running" is a snapshot, and a crash loop passes that test at
+            # every single instant while giving a peer nothing. Publish the
+            # restart rate so the CLI can tell the two apart.
+            "worker_restarts": len(self.worker_restarts),
+            "worker_crash_looping": self.worker_crash_looping(),
             "rpc_bind": self.conf.get("rpc_bind"),
             "rpc_port": mesh.conf_int(self.conf, "rpc_port",
                                       mesh.DEFAULT_RPC_PORT),

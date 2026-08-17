@@ -80,7 +80,18 @@ pkgver=1.0.0
 # codes travel as bare integers, so the two ends silently disagree about what
 # each one means. Beacons now carry build/proto/ops, plan_pool refuses a peer
 # whose op set differs, and doctor reports the pairing.
-pkgrel=12
+# 2026-08-16 (13): keep the worker's own output, and notice a crash loop.
+# rpc-server was launched with stdout/stderr on /dev/null, which threw away the
+# one line that says WHICH device it is serving -- it takes every non-CPU device
+# it can find and falls back to the CPU silently, and a CPU-serving worker is
+# network-attached CPU inference: slower than not meshing. The output now lands
+# in /run/genesi-mesh/worker.log (line-buffered via stdbuf, or printf's block
+# buffering would hold the banner until exit) and `doctor` reports the device.
+# The same blindness hid a harder failure: on a real two-machine test the worker
+# was SIGILL-ing on startup and being restarted every ~8s, while `doctor` said
+# "running" -- true at every instant it was sampled. The daemon now tracks
+# restart rate and reports a crash loop, naming the signal.
+pkgrel=13
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -369,6 +369,61 @@ def rpc_server_bin():
     return None
 
 
+# rpc-server picks its own device: it takes every non-CPU device it can see and
+# only falls back to the CPU when there is NO accelerator. That fallback is the
+# difference between a mesh that offloads and a mesh that hands a remote machine
+# a pile of CPU work over the network -- which is strictly worse than not
+# meshing at all, and looks like "the worker's CPU is pinned at 100% while its
+# GPU idles at 5%". It happens silently whenever the backend module fails to
+# load: a CUDA build whose driver/toolkit libraries are not on the loader path,
+# a Vulkan build with no usable ICD, a container without /dev/dri.
+#
+# The server ANNOUNCES its choice on stdout at startup ("Devices:" followed by
+# one line per device). We used to send that to DEVNULL, so the single fact that
+# distinguishes a working worker from a useless one was thrown away. It is now
+# kept here, and `genesi-mesh doctor` reads it.
+WORKER_LOG = os.path.join(RUN_DIR, "worker.log")
+
+_DEV_LINE = re.compile(r"^\s{2}(\w+):\s+(.+?)\s+\((\d+)\s*MiB,\s*(\d+)\s*MiB free\)")
+
+
+def worker_devices(path=WORKER_LOG):
+    """Devices the running rpc-server reported serving, newest run only.
+
+    Returns a list of {name, desc, total_mb, free_mb, is_cpu}. Empty when the
+    log is missing or the server has not got as far as its banner.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return []
+
+    # A supervised worker restarts (rpc-server exits when a client disconnects),
+    # and the log is truncated per start -- but read the LAST banner regardless,
+    # so a stale prefix can never be reported as the current device.
+    idx = text.rfind("Devices:")
+    if idx < 0:
+        return []
+
+    out = []
+    for line in text[idx:].splitlines()[1:]:
+        m = _DEV_LINE.match(line)
+        if not m:
+            break                       # the banner is one contiguous block
+        name, desc, total, free = m.group(1), m.group(2), m.group(3), m.group(4)
+        out.append({
+            "name": name,
+            "desc": desc,
+            "total_mb": int(total),
+            "free_mb": int(free),
+            # Name, not description: ggml calls the CPU device "CPU" on every
+            # backend, while the description is the marketing CPU model string.
+            "is_cpu": name.upper().startswith("CPU"),
+        })
+    return out
+
+
 # Device names that mean "this GPU has no memory of its own".
 #
 # An integrated GPU's "VRAM" is a slice of system RAM, which changes everything

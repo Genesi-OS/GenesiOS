@@ -60,6 +60,39 @@ jobs:
             systemd systemd-sysvcompat \
             cmake cuda
 
+      - name: Normalize build flags for broad CPU compatibility
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # SAME normalization publish-packages.yml does, and it must stay in
+          # sync with it. This lane was created separately (CUDA needs its own
+          # slow runner) and never got the step, so genesi-llama-cpp-cuda was
+          # the ONE package Genesi shipped built with the runner's -march=native
+          # -- while genesi-llama-cpp, built in the other workflow, was pinned.
+          #
+          # 2026-08-16: reproduced on real hardware. The published CUDA package
+          # SIGILL'd instantly on a Ryzen 5 5600 (Zen 3, no AVX-512), inside
+          # ggml_backend_load_all_from_path -> libggml-cpu-haswell.so. Every
+          # ggml-cpu variant .so carried EVEX AVX-512 (`vmovups (%rdi),%zmm0` in
+          # ggml_cpu_fp32_to_fp16), INCLUDING the x64 baseline one -- so the
+          # runtime CPU-variant dispatch that GGML_CPU_ALL_VARIANTS exists to
+          # provide could not save it: there was no safe variant left to pick.
+          # The symptom was the mesh worker crash-looping every ~8s while
+          # `genesi-mesh doctor` reported a healthy worker.
+          #
+          # The [genesi] repo ships ONE build to every machine, so that build
+          # has to be baseline x86-64. The catch-all also covers -march=v3/v4.
+          for f in /etc/makepkg.conf /etc/makepkg.conf.d/*.conf; do
+            [ -f "$f" ] || continue
+            sed -i -E \
+              -e 's/-march=[^ "]+/-march=x86-64/g' \
+              -e 's/-mtune=[^ "]+/-mtune=generic/g' \
+              -e 's/(-C[[:space:]]*target-cpu=)[^ "]+/\1x86-64/g' \
+              "$f"
+          done
+          echo "Effective arch flags after normalization:"
+          grep -RHE 'march=|mtune=|target-cpu=' /etc/makepkg.conf /etc/makepkg.conf.d/ || true
+
       - name: Headroom (overcommit + swap)
         shell: bash
         run: |

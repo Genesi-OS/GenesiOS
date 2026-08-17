@@ -975,24 +975,40 @@ def cmd_doctor():
     # ── is the GPU actually being served? ────────────────────────────────────
     #
     # "worker mode: on" is a config line. Whether rpc-server survived startup is
-    # a different question, and the daemon sends its output to /dev/null, so a
-    # worker that dies on every launch looks identical to a healthy one from the
-    # outside. Check the process AND the socket.
+    # a different question, and a worker that dies on every launch looks
+    # identical to a healthy one from the outside. Check the process, the
+    # socket, AND which device it actually ended up serving.
     if worker_on:
         print()
         print("Worker service")
         if not daemon_live:
             print("  rpc-server process:    %s"
                   % color("unknown (daemon not running)", YELLOW))
+        elif state.get("worker_crash_looping"):
+            print("  rpc-server process:    %s"
+                  % color("crash-looping (%d restarts in the last 2 min)"
+                          % state.get("worker_restarts", 0), RED))
+            problems.append(
+                "rpc-server keeps dying and being restarted. A peer that "
+                "connects gets the\n  connection dropped mid-load, which looks "
+                "like a hang on its end. The reason\n  is in the daemon's log "
+                "and in %s:\n"
+                "      sudo journalctl -u genesi-meshd -n 50\n"
+                "      sudo tail -n 20 %s\n"
+                "  If it exited on signal 4 (SIGILL) the llama.cpp package was "
+                "built for a\n  newer CPU than this one and must be rebuilt or "
+                "reinstalled."
+                % (mesh.WORKER_LOG, mesh.WORKER_LOG))
         elif state.get("worker_running"):
             print("  rpc-server process:    %s" % color("running", GREEN))
         else:
             print("  rpc-server process:    %s" % color("NOT running", RED))
             problems.append(
-                "worker is ON but rpc-server is not running. The daemon "
-                "discards its\n  output, so the reason is in the journal:\n"
+                "worker is ON but rpc-server is not running. Its own output is "
+                "kept at\n  %s, and the daemon's reason is in the journal:\n"
                 "      sudo journalctl -u genesi-meshd -n 50\n"
-                "  A `genesi-mesh selftest` reproduces the launch on its own.")
+                "  A `genesi-mesh selftest` reproduces the launch on its own."
+                % mesh.WORKER_LOG)
 
         listening, connected = _socket_state(rpc_port)
         if connected:
@@ -1025,6 +1041,41 @@ def cmd_doctor():
                     "may still be\n  initialising the GPU — retry in a few "
                     "seconds — or it failed after start:\n"
                     "      sudo journalctl -u genesi-meshd -n 50" % rpc_port)
+
+        # WHICH device is being served. rpc-server takes every non-CPU device it
+        # can find and falls back to the CPU only when it finds none — and that
+        # fallback is silent. A worker in that state accepts the connection,
+        # loads the weights and computes every offloaded layer on its CPU, over
+        # the network: strictly slower than the client not meshing at all. From
+        # the outside it is indistinguishable from a healthy worker; the only
+        # symptom is the far machine's CPU pinned while its GPU sits idle.
+        devs = mesh.worker_devices()
+        if not devs:
+            print("  serving device:        %s"
+                  % color("unknown (no banner yet)", DIM))
+            print(color("     (rpc-server logs its device on startup; restart "
+                        "the daemon to capture it)", DIM))
+        elif all(d["is_cpu"] for d in devs):
+            print("  serving device:        %s"
+                  % color("CPU — %s" % devs[0]["desc"], RED))
+            problems.append(
+                "rpc-server is serving the CPU, not a GPU. It only does that "
+                "when it can\n  find no accelerator, so the GPU backend failed "
+                "to load. A peer using this\n  worker gets network-attached CPU "
+                "inference — slower than no mesh at all.\n"
+                "  Check what the backend sees (the last lines name each "
+                "backend loaded):\n"
+                "      %s -d __probe__\n"
+                "  A CUDA build needs its runtime on the loader path "
+                "(/opt/cuda/lib64 via\n  ld.so.conf.d); a Vulkan build needs a "
+                "working ICD (`vulkaninfo --summary`)."
+                % (mesh.rpc_server_bin() or "ggml-rpc-server"))
+        else:
+            for d in devs:
+                print("  serving device:        %s"
+                      % color("%s — %s (%d MiB free / %d MiB)"
+                              % (d["name"], d["desc"], d["free_mb"],
+                                 d["total_mb"]), GREEN))
 
     # ── the layer that reads correct and still drops everything ──────────────
     print()
