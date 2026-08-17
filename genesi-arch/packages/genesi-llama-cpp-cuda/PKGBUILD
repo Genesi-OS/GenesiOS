@@ -13,7 +13,11 @@
 # in Genesi that talks to :11435 (Turbo, the Monitor, Genesi Code) keeps working.
 # NOT shipped on the live ISO (NVIDIA-only + heavy); it lands post-install only.
 pkgname=genesi-llama-cpp-cuda
-pkgver=r0
+# Kept in sync with what pkgver() below produces for the pinned _commit. When
+# they disagree makepkg rewrites this line AND resets pkgrel to 1, which the
+# publish workflow relies on not happening (it stamps a unique pkgrel to keep
+# release assets immutable). Update this whenever _commit moves.
+pkgver=r10453
 # 2026-08-15 (2): build the RPC backend (-DGGML_RPC=ON), matching the Vulkan
 # build. Produces `rpc-server` and the `llama-server --rpc host:port` flag that
 # Genesi Mesh drives to pool VRAM across machines. Inert unless --rpc is passed.
@@ -21,7 +25,13 @@ pkgver=r0
 # Both tracked the branch tip, so whichever was rebuilt later moved ahead and
 # the two stopped being RPC-compatible -- which a mesh only discovers as a
 # hang, minutes into a load. See the note on _commit above.
-pkgrel=3
+# 2026-08-16 (4): no change to the recipe -- the FIX is in the workflow. This
+# package was published from its own lane, which never had
+# publish-packages.yml's build-flag normalization, so it alone was compiled
+# with the runner's -march=native. Every ggml-cpu variant, x64 baseline
+# included, came out carrying EVEX AVX-512 and the package SIGILL'd on any CPU
+# without it (reproduced on a Zen 3 Ryzen 5 5600).
+pkgrel=4
 pkgdesc='llama.cpp (CUDA) — fast NVIDIA local LLM inference backing Genesi Turbo'
 arch=('x86_64')
 url='https://github.com/ggml-org/llama.cpp'

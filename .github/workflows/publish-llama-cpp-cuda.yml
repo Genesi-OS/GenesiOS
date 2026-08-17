@@ -127,17 +127,33 @@ jobs:
           OUT="$GITHUB_WORKSPACE/genesi-arch/packages/cuda-repo"
           mkdir -p "$OUT"; chown builder:builder "$OUT"
 
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/$PKG"
+
+          # Settle pkgver() BEFORE stamping pkgrel, and never in the other
+          # order. This PKGBUILD derives pkgver from the checked-out llama.cpp
+          # tag, and makepkg RESETS pkgrel to 1 whenever pkgver() yields a value
+          # different from the committed one -- silently wiping the unique
+          # stamp set below. That is not cosmetic: it made the build produce
+          # the same filename as the previous publish, and the immutability
+          # guard in the publish step then (correctly) refused to overwrite the
+          # asset -- after 52 minutes of CUDA compilation. `--nobuild` runs the
+          # source fetch and pkgver() and stops, so the reset happens here,
+          # where it costs seconds; the stamp applied afterwards survives.
+          # `-e` on the real build then reuses the already-extracted source.
+          runuser -u builder -- env PATH="/opt/cuda/bin:$PATH" PKGDEST="$OUT" \
+            makepkg --nobuild --noconfirm --noprogressbar
+
           # Unique pkgrel per publish so package filenames are immutable (pacman
           # caches the compressed size; replacing a filename later trips curl's
           # "Maximum file size exceeded"). The committed pkgrel is just a floor.
-          cd "$GITHUB_WORKSPACE/genesi-arch/packages/$PKG"
           PUBLISH_REL="${GITHUB_RUN_ID}${GITHUB_RUN_ATTEMPT}"
           sed -i "s/^pkgrel=.*/pkgrel=${PUBLISH_REL}/" PKGBUILD
+          echo "building $(grep -E '^pkg(ver|rel)=' PKGBUILD | tr '\n' ' ')"
 
           start=$(date +%s)
           if timeout 7200 runuser -u builder -- env \
               PATH="/opt/cuda/bin:$PATH" PKGDEST="$OUT" \
-              makepkg -f --noconfirm --noprogressbar; then
+              makepkg -ef --noconfirm --noprogressbar; then
             rc=0
           else
             rc=$?
