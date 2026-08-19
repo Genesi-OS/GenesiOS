@@ -2199,6 +2199,36 @@ def cmd_serve(main, draft, spec=False):
 
 
 TURBO_ENV_PATH = "/etc/genesi-ai-mode/turbo.env"
+ADVANCED_CONF_PATH = "/etc/genesi-ai-mode/advanced.conf"
+
+
+def _conf_set(path, key, value):
+    """Set `key = value` in a genesi advanced.conf, keeping comments and order.
+
+    Same job as _env_file_set for the other file format. Appends when the key is
+    absent so this still works on a config predating the key."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        lines = []
+    out, done = [], False
+    for line in lines:
+        st = line.strip()
+        if st and not st.startswith("#") and "=" in st \
+                and st.split("=", 1)[0].strip() == key:
+            if not done:
+                out.append("%s = %s" % (key, value))
+                done = True
+            continue
+        out.append(line)
+    if not done:
+        out.append("%s = %s" % (key, value))
+    os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(out).rstrip() + "\n")
+    os.replace(tmp, path)
 
 
 def _env_file_set(path, key, value):
@@ -2290,6 +2320,15 @@ def cmd_share(arg):
     print(":: %s -> GENESI_TURBO_HOST=%s"
           % (TURBO_ENV_PATH, "0.0.0.0" if on else "(removed, back to loopback)"))
     print(":: " + _firewall_port(TURBO_PORT, on))
+
+    # genesi-aid owns whether the warm unit runs: every poll it reads
+    # always_warm_turbo and STOPS the unit when the knob is off. Enabling the
+    # unit without flipping the knob starts a server that aid kills a second
+    # later -- observed exactly that, and the journal reads "Deactivated
+    # successfully", which looks like a clean shutdown rather than a fight.
+    _conf_set(ADVANCED_CONF_PATH, "always_warm_turbo", "on" if on else "off")
+    print(":: %s -> always_warm_turbo = %s"
+          % (ADVANCED_CONF_PATH, "on" if on else "off"))
 
     # enable/disable + restart so the new bind takes effect now, not next boot.
     subprocess.run(["systemctl", "enable" if on else "disable",
