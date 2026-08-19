@@ -789,7 +789,16 @@ pkgver=1.0.0
 # was being thrown away), and a pooled load that dies mid-way with nothing to
 # say now names the likeliest cause: mismatched llama.cpp builds, whose RPC wire
 # format is not stable between versions and does not fail politely.
-pkgrel=154
+# 2026-08-19 (155): the restart rate limits were never in force. StartLimit*
+# belong to [Unit]; genesi-turbo.service and genesi-automationd.service both put
+# them in [Service], where systemd ignores them and says so once per unit per
+# daemon-reload -- so the ONLY thing those units ever logged was
+# "Unknown key 'StartLimitIntervalSec' in section [Service], ignoring", pages of
+# it, hiding whatever the service actually had to say. Worse than the noise: a
+# Turbo that cannot load its model was meant to give up after 5 tries in 5 min
+# and instead retried every RestartSec forever. genesi-studiod.service was fixed
+# for exactly this in an earlier release; the other two were missed.
+pkgrel=155
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

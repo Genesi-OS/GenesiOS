@@ -11,6 +11,14 @@ Documentation=https://github.com/Genesi-OS/GenesiOS
 # drop-in opens the perms on start); harmless if ollama isn't installed.
 After=ollama.service genesi-aid.service
 Wants=genesi-aid.service
+# Don't restart-storm if the model can't load (bad model, no VRAM, OOM): give up
+# after 5 failures in 5 min so a misconfig doesn't peg the box.
+# StartLimit* belong to [Unit], not [Service] — in [Service] systemd ignores
+# them with "Unknown key 'StartLimitIntervalSec' in section [Service]" and the
+# rate limit never applies, so a Turbo that cannot load its model retried every
+# RestartSec forever instead of giving up.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -21,10 +29,6 @@ EnvironmentFile=-/etc/genesi-ai-mode/turbo.env
 ExecStart=/bin/sh -c 'm="${GENESI_WARM_MODEL:-$(genesi-ai-turbo recommend 2>/dev/null | head -n1)}"; [ -n "$m" ] || m=llama3.2:3b; echo "genesi-turbo: warming $m"; exec genesi-ai-turbo serve "$m"'
 Restart=on-failure
 RestartSec=15
-# Don't restart-storm if the model can't load (bad model, no VRAM, OOM): give up
-# after 5 failures in 5 min so a misconfig doesn't peg the box.
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 # Inference server: needs the GPU + to read the model blobs, so we keep the
 # sandbox light. NoNewPrivileges is safe; ProtectHome only costs the optional
