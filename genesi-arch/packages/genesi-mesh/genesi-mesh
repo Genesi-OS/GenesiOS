@@ -434,8 +434,14 @@ def _open_port_commands(manager, needed, vpn_iface, zone=None,
                "an authenticated network. For something narrower, give %s its "
                "own zone and add only the ports listed above."
                % (vpn_iface, vpn_iface))
-        cmds = ["sudo firewall-cmd --permanent --add-port=%d/%s" % (p, proto)
-                for proto, p, _ in needed]
+        # Name the zone explicitly whenever we know it. A bare --add-port lands
+        # in the DEFAULT zone, which is only the right target by coincidence —
+        # on a machine whose LAN NIC sits in a zone of its own it opens a zone
+        # nothing arrives on, and the user has a correct command that fixed
+        # nothing.
+        where = ("--zone=%s " % zone) if zone else ""
+        cmds = ["sudo firewall-cmd --permanent %s--add-port=%d/%s"
+                % (where, p, proto) for proto, p, _ in needed]
         return cmds + ["sudo firewall-cmd --reload"], ""
 
     if manager == "ufw":
@@ -1117,20 +1123,38 @@ def cmd_doctor():
     # phrased as a maybe.
     admitted = None
     fw_zone, fw_zone_is_default = None, True
-    if "firewalld" in active and needed and vpns:
+    # EVERY interface a peer can arrive on, not just the VPN. A mesh whose two
+    # machines sit on one LAN never touches the overlay for the bulk traffic:
+    # the beacon advertises primary_address(), so the client dials the LAN IP
+    # and lands on the LAN interface's zone. Checking only the VPN passed that
+    # machine as healthy while the stock `public` zone (ssh + dhcpv6-client and
+    # nothing else) dropped every connection to rpc-server.
+    lan_iface = mesh.primary_interface()
+    advice_iface = vpn_iface
+    fw_targets = []
+    fw_ifaces = list(vpns) + ([lan_iface] if lan_iface and lan_iface not in vpns
+                              else [])
+    if "firewalld" in active and needed and fw_ifaces:
         print()
         admitted = True
-        for iface in vpns:
+        blocked_zones = {}
+        unsure_zones = {}
+        for iface in fw_ifaces:
             zone, is_default = _firewalld_zone_for(iface)
-            if iface == vpn_iface:
+            if iface == (vpn_iface or lan_iface):
                 fw_zone, fw_zone_is_default = zone, is_default
             note = " (default zone — %s is in no zone of its own)" % iface \
                 if is_default else ""
-            print("  %-22s %s%s" % (iface + " zone:", zone, color(note, DIM)))
-            blocked = [(proto, p) for proto, p, _ in needed
-                       if _firewalld_allows(zone, p, proto) is False]
+            kind = "VPN" if iface in vpns else "LAN"
+            print("  %-22s %s%s" % ("%s zone (%s):" % (iface, kind), zone,
+                                    color(note, DIM)))
+            verdicts = [(proto, p, _firewalld_allows(zone, p, proto))
+                        for proto, p, _ in needed]
+            blocked = [(proto, p) for proto, p, ok in verdicts if ok is False]
+            unknown = [(proto, p) for proto, p, ok in verdicts if ok is None]
             if blocked:
                 admitted = False
+                blocked_zones.setdefault(zone, (iface, is_default))
                 print("  %-22s %s" % ("", color(
                     "zone `%s` does not admit %s" % (zone, ", ".join(
                         "%d/%s" % (p, proto) for proto, p in blocked)), RED)))
@@ -1141,10 +1165,27 @@ def cmd_doctor():
                     "mesh packet is discarded."
                     % (iface, zone, ", ".join("%d/%s" % (p, proto)
                                               for proto, p in blocked)))
+            elif unknown:
+                # firewalld answers --get-zone-of-interface to anyone but needs
+                # privilege for --list-all, so an unprivileged doctor knows the
+                # zone and NOT its contents. Printing "admits" here is the exact
+                # false all-clear this whole section exists to prevent.
+                if admitted is not False:
+                    admitted = None
+                unsure_zones.setdefault(zone, (iface, is_default))
+                print("  %-22s %s" % ("", color(
+                    "contents not readable without root — re-run as "
+                    "`sudo genesi-mesh doctor` to verify", YELLOW)))
             else:
                 print("  %-22s %s" % ("", color(
                     "admits %s" % ", ".join("%d/%s" % (p, proto)
                                             for proto, p, _ in needed), GREEN)))
+        # Point the advice at whichever zone is actually blocking. With both a
+        # VPN and a LAN in play these are different zones, and opening the wrong
+        # one is a change that appears to work and fixes nothing.
+        # Blocked zones first: if one is proven shut, that is the fix. Only
+        # when nothing is proven do the unverifiable ones become the advice.
+        fw_targets = list((blocked_zones or unsure_zones).items())
 
     # The ufw verdict has to wait until the real firewall has been checked,
     # because the same fact means two different things. With the ports open, the
@@ -1179,18 +1220,29 @@ def cmd_doctor():
     # them out of a deliberately narrow zone and into a blanket one.
     if needed and active and admitted is not True:
         for manager in active:
-            cmds, note = _open_port_commands(manager, needed, vpn_iface,
-                                             fw_zone, fw_zone_is_default)
-            if not cmds and not note:
-                continue
-            print()
-            print("  %s under %s:"
-                  % ("To open them" if admitted is False
-                     else "If they are not open yet", color(manager, CYAN)))
-            for cmd in cmds:
-                print(color("      %s" % cmd, CYAN))
-            if note:
-                print(color("      %s" % note, DIM))
+            # One block per zone that needs opening. A machine with the mesh on
+            # a VPN AND on the LAN has two different zones filtering it, and
+            # opening only the first leaves half the paths shut — which reads as
+            # "I already did that" the next time it fails.
+            targets = fw_targets if manager == "firewalld" and fw_targets \
+                else [(fw_zone, (advice_iface, fw_zone_is_default))]
+            for zone, (iface, is_default) in targets:
+                # _open_port_commands only offers the "trust the whole
+                # interface" shortcut for an overlay: safe there, wrong on a LAN.
+                cmds, note = _open_port_commands(
+                    manager, needed, iface if iface in vpns else None,
+                    zone, is_default)
+                if not cmds and not note:
+                    continue
+                print()
+                print("  %s under %s%s:"
+                      % ("To open them" if admitted is False
+                         else "If they are not open yet", color(manager, CYAN),
+                         (" for %s" % iface) if iface else ""))
+                for cmd in cmds:
+                    print(color("      %s" % cmd, CYAN))
+                if note:
+                    print(color("      %s" % note, DIM))
         if discovery_on:
             print(color("  Run this on BOTH machines — %d/udp is needed on each "
                         "side for peers to\n  find each other."

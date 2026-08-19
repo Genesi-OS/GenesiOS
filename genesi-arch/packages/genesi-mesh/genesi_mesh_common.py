@@ -38,6 +38,7 @@ validation** of what it receives, and must never face an untrusted network. So:
 Stdlib only, matching the rest of the Genesi AI stack.
 """
 
+import fcntl
 import hashlib
 import hmac
 import json
@@ -338,6 +339,38 @@ def primary_address():
         return "127.0.0.1"
     finally:
         sock.close()
+
+
+def primary_interface(addr=None):
+    """The interface that carries primary_address(), or None.
+
+    Peers on the SAME LAN arrive here, not on the VPN — and that interface has
+    its own firewall zone, which nothing else in Mesh ever looked at. Found by
+    matching the address rather than by parsing routes, so a bond, a bridge or a
+    renamed NIC all resolve the same way."""
+    addr = addr or primary_address()
+    if addr == "127.0.0.1":
+        return None
+    try:
+        ifaces = sorted(os.listdir("/sys/class/net"))
+    except OSError:
+        return None
+    for iface in ifaces:
+        if iface == "lo":
+            continue
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                packed = fcntl.ioctl(
+                    sock.fileno(), 0x8915,               # SIOCGIFADDR
+                    struct.pack("256s", iface[:15].encode()))
+                if socket.inet_ntoa(packed[20:24]) == addr:
+                    return iface
+            finally:
+                sock.close()
+        except OSError:
+            continue
+    return None
 
 
 # ── GPU probing ──────────────────────────────────────────────────────────────

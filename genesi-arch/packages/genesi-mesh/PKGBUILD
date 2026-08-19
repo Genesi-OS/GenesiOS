@@ -91,7 +91,22 @@ pkgver=1.0.0
 # was SIGILL-ing on startup and being restarted every ~8s, while `doctor` said
 # "running" -- true at every instant it was sampled. The daemon now tracks
 # restart rate and reports a crash loop, naming the signal.
-pkgrel=13
+# 2026-08-19 (14): the firewall check had two holes, and a same-LAN mesh fell
+# through both. (1) It only ever read the zone of VPN interfaces. Two machines
+# on one LAN never use the overlay for bulk traffic -- the beacon advertises
+# primary_address(), so the client dials the LAN IP and lands on the LAN NIC's
+# zone, which on a stock install is `public`: ssh, dhcpv6-client, and nothing
+# else. doctor inspected the (correctly opened) tailscale0 zone, said
+# "Everything checks out", and every connection to rpc-server was dropped by a
+# zone it never looked at. It now checks the interface holding
+# primary_address() too, and prints open-port commands per BLOCKING ZONE rather
+# than one block for the VPN. (2) firewalld answers --get-zone-of-interface to
+# anyone but requires privilege for --list-all, so an unprivileged doctor knew
+# each zone and NOTHING about its contents -- and printed a green "admits
+# 50052/tcp, 47100/udp" built from that. A verdict of "unknown" was being
+# rendered as "verified open": the exact false all-clear this section exists to
+# prevent. Unverifiable now says so and points at `sudo genesi-mesh doctor`.
+pkgrel=14
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
