@@ -22,6 +22,7 @@ Item {
     property var st: ({})
     property var peers: []
     property var usage: ({ running: false, pooling: false, endpoints: [] })
+    property var turbo: ({ source: "auto", url: "", options: [] })
     property bool available: true
     property string busyText: ""
     property string output: ""
@@ -41,6 +42,8 @@ Item {
         catch (e) { peers = [] }
         try { usage = JSON.parse(backend.meshUsage()) }
         catch (e) { usage = ({ running: false, pooling: false, endpoints: [] }) }
+        try { turbo = JSON.parse(backend.turboSources()) }
+        catch (e) { turbo = ({ source: "auto", url: "", options: [] }) }
     }
 
     // free_mb ausente = a máquina não consegue medir, e aí a capacidade é a
@@ -294,6 +297,134 @@ Item {
                         font.pixelSize: 10
                         text: "O servidor RPC não tem autenticação nenhuma. Só compartilhe "
                               + "numa rede que você controla (LAN de casa ou VPN)."
+                    }
+
+                    // Compartilhar o Turbo inteiro por HTTP. É a outra forma de
+                    // emprestar a GPU, e quase sempre a melhor: emprestar VRAM
+                    // manda ativação de camada a cada token, isto manda texto.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 8
+                        spacing: 10
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: theme.a(theme.white, 0.75)
+                            font.pixelSize: 11
+                            text: root.st.turbo_serving
+                                  ? "Servindo o Turbo para a rede"
+                                    + (root.st.turbo_model ? " — " + root.st.turbo_model : "")
+                                  : "Esta máquina NÃO está servindo o Turbo. Prefira isto a "
+                                    + "emprestar VRAM quando o modelo couber aqui: o pool "
+                                    + "manda ativação de camada a cada token, isto manda texto."
+                        }
+
+                        QQC2.Button {
+                            text: root.st.turbo_serving ? "Parar de servir" : "Servir Turbo"
+                            enabled: root.busyText === ""
+                            onClicked: root.admin("serve", root.st.turbo_serving ? "off" : "on")
+                        }
+                    }
+
+                    QQC2.Label {
+                        visible: root.st.turbo_serving
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: theme.turboBright
+                        font.pixelSize: 10
+                        text: "O Turbo também não tem autenticação. Quem alcançar a porta "
+                              + "11435 usa esta GPU."
+                    }
+                }
+            }
+
+            // ── Onde a IA roda ──────────────────────────────────────────────
+            // A escolha que faltava. `serve` decide o que esta máquina OFERECE;
+            // isto decide o que ela USA. Automático é um bom padrão e um péssimo
+            // comportamento único: quem quer a IA na máquina à frente dele, ou
+            // presa numa específica, não está mal configurado.
+            FCard {
+                Layout.fillWidth: true
+                visible: root.available
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 8
+
+                    QQC2.Label {
+                        text: "Onde a IA roda"
+                        color: theme.white
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: theme.a(theme.white, 0.6)
+                        font.pixelSize: 11
+                        text: "Escolha qual Turbo os apps DESTA máquina usam. "
+                              + "Em uso agora: " + (root.turbo.url || "—")
+                    }
+
+                    Repeater {
+                        model: root.turbo.options || []
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            QQC2.Label {
+                                Layout.preferredWidth: 14
+                                color: theme.greenBright
+                                text: modelData.effective ? "●" : ""
+                            }
+
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                color: modelData.available ? theme.white
+                                                           : theme.a(theme.white, 0.4)
+                                font.pixelSize: 11
+                                text: (modelData.key === "local" ? "Esta máquina"
+                                                                 : modelData.label)
+                                      + (modelData.model ? " — " + modelData.model : "")
+                                      + (modelData.available ? "" : "  (não está servindo)")
+                            }
+
+                            QQC2.Button {
+                                text: modelData.selected ? "em uso" : "usar"
+                                enabled: root.busyText === "" && !modelData.selected
+                                         && modelData.available
+                                onClicked: root.admin("use", modelData.key)
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        spacing: 10
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: theme.a(theme.white, 0.6)
+                            font.pixelSize: 10
+                            text: root.turbo.source === "auto"
+                                  ? "Automático: usa o Turbo desta máquina se houver, "
+                                    + "senão o de um peer que esteja servindo."
+                                  : "Fixado em \"" + root.turbo.source + "\"."
+                        }
+
+                        QQC2.Button {
+                            visible: root.turbo.source !== "auto"
+                            text: "Voltar ao automático"
+                            enabled: root.busyText === ""
+                            onClicked: root.admin("use", "auto")
+                        }
                     }
                 }
             }

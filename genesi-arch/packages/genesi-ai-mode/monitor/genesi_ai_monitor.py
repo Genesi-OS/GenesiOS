@@ -45,7 +45,21 @@ except ImportError:
 
 STATE_FILE = "/run/genesi-ai-mode/state.json"
 OLLAMA = "http://127.0.0.1:11434"
-TURBO = "http://127.0.0.1:11435"      # genesi-ai-turbo's llama-server
+def _turbo_base():
+    """Where Turbo is, for THIS machine: the mesh's answer, or loopback.
+
+    Not a constant any more. On a machine with no GPU the Turbo it should be
+    talking to often runs on a peer, and a hardcoded loopback made the Monitor
+    the last component still insisting inference happens here."""
+    try:
+        sys.path.insert(0, "/usr/lib/genesi-mesh")
+        import genesi_mesh_common as _mesh
+        return _mesh.turbo_url()
+    except Exception:
+        return "http://127.0.0.1:11435"
+
+
+TURBO = _turbo_base()                 # genesi-ai-turbo's llama-server
 BRIDGE = "http://127.0.0.1:11436"     # genesi-mempalace recall bridge (opt-in)
 # One JSON file per conversation. This is what the HISTORY rail reads and — once
 # the user turns on "remember" — what genesi-mempalace `watch` sweeps into the
@@ -169,7 +183,11 @@ class Backend(QObject):
         Only a fixed set is accepted. The GUI must never become a way to run
         arbitrary commands as root just because a string reached it, and
         pkexec's own dialog is what authorises the user."""
-        allowed = {"init", "join", "peer", "worker", "show-secret"}
+        # `serve` offers this machine's Turbo to peers; `use` picks which Turbo
+        # this machine talks to. Both are the mesh's own subcommands and both
+        # need root, which is exactly what this bridge is for.
+        allowed = {"init", "join", "peer", "worker", "show-secret",
+                   "serve", "use"}
         if command not in allowed:
             return "refused: unknown command"
         argv = ["pkexec", "genesi-mesh", command]
@@ -187,6 +205,22 @@ class Backend(QObject):
             return "timed out"
         except (OSError, subprocess.SubprocessError) as exc:
             return str(exc)
+
+    @Slot(result=str)
+    def turboSources(self):
+        """Every Turbo this machine could use, and which one is in effect.
+
+        JSON for the UI: [{key, label, url, model, available, selected,
+        effective}]. `selected` is what the user chose, `effective` is what is
+        actually being used — they differ when a chosen peer stopped serving,
+        which is the moment the difference matters."""
+        try:
+            sys.path.insert(0, "/usr/lib/genesi-mesh")
+            import genesi_mesh_common as _mesh
+            return json.dumps(_mesh.turbo_options())
+        except Exception as exc:
+            return json.dumps({"source": "auto", "url": TURBO,
+                               "options": [], "error": str(exc)})
 
     @Slot(str, result=str)
     def meshPlan(self, size_gb):

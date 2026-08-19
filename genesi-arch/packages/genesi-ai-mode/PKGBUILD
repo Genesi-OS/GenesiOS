@@ -862,7 +862,18 @@ pkgver=1.0.0
 # clean shutdown, not as another daemon undoing you. `share` now sets the knob
 # in the same operation, and advanced.conf no longer tells people to enable the
 # unit directly.
-pkgrel=162
+# 2026-08-19 (163): the Monitor gets the choice, and stops assuming loopback.
+# TURBO was a hardcoded 127.0.0.1 constant, which made the Monitor the last
+# component still insisting inference happens on this machine; it resolves
+# through the mesh now. New turboSources() slot feeds a "Onde a IA roda" card on
+# the Mesh page listing every Turbo available (this machine and each serving
+# peer, each with the model it is running) and letting the user pick, plus a
+# Servir Turbo button beside the existing Compartilhar GPU one. `serve` and
+# `use` added to meshAdmin's whitelist -- both are mesh subcommands needing
+# root, which is what that pkexec bridge exists for. `serve` also records the
+# model tag to /run/genesi-ai-mode/turbo-model, since llama.cpp's /props reports
+# the GGUF blob path and under ollama that is a sha256 filename.
+pkgrel=163
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

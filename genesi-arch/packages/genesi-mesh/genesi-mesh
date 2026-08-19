@@ -9,6 +9,7 @@
     genesi-mesh peer <addr>         add a peer reachable over a VPN
     genesi-mesh worker on|off       offer / stop offering this machine's VRAM
     genesi-mesh serve on|off        offer / stop offering this machine's Turbo
+    genesi-mesh use auto|local|<peer>  which Turbo THIS machine's apps talk to
     genesi-mesh plan <model|GB>     would pooling help for this model?
     genesi-mesh selftest            prove the RPC path works on THIS machine
     genesi-mesh doctor              check prerequisites and explain what is missing
@@ -563,7 +564,9 @@ def _print_peers(peers):
         # so it has to be visible here, next to the worker role it competes
         # with, rather than only inside Turbo's own resolution logic.
         if p.get("turbo_port"):
-            tag += color("  [turbo]", CYAN)
+            tag += color("  [turbo%s]"
+                         % (": " + p["turbo_model"] if p.get("turbo_model")
+                            else ""), CYAN)
         if p.get("integrated"):
             any_integrated = True
             tag = color("  [integrated]", YELLOW)
@@ -759,6 +762,56 @@ def cmd_serve(arg):
         print("      sudo pacman -S genesi-ai-mode")
         return 1
     return subprocess.run([turbo, "share", arg]).returncode
+
+
+def cmd_use(arg):
+    """Choose which Turbo this machine's Genesi apps talk to.
+
+    The mirror of `serve`: that one decides what this machine OFFERS, this one
+    decides what it USES. Both matter, and only the offering side existed --
+    routing was automatic, which is right as a default and wrong as the only
+    behaviour. Someone who wants the chat on the box in front of them, or pinned
+    to one particular machine, is not misconfigured, and quietly sending them
+    elsewhere is the kind of helpfulness they cannot even see to argue with."""
+    opts = mesh.turbo_options()
+    if not arg:
+        print(color("Turbo source: %s" % opts["source"], BOLD))
+        print(color("  (%s)" % opts["url"], DIM))
+        print()
+        for o in opts["options"]:
+            mark = color("*", GREEN) if o["effective"] else " "
+            model = o["model"] or color("no model reported", DIM)
+            state = "" if o["available"] else color("  [not serving]", DIM)
+            print("  %s %-18s %-24s %s%s"
+                  % (mark, o["key"], model, color(o["url"], DIM), state))
+        print()
+        print("  genesi-mesh use auto      the local Turbo if there is one, "
+              "else a peer's")
+        print("  genesi-mesh use local     always this machine")
+        print("  genesi-mesh use <peer>    always that machine")
+        if opts["source"] != "auto" and not any(o["selected"] and o["effective"]
+                                                for o in opts["options"]):
+            print()
+            print(color("  Note: `%s` is not serving Turbo right now, so this "
+                        "machine is falling" % opts["source"], YELLOW))
+            print(color("  back to its own. It will switch back on its own when "
+                        "that peer returns.", YELLOW))
+        return 0
+
+    keys = {o["key"] for o in opts["options"]} | {"auto", "local"}
+    if arg not in keys:
+        print(color("Unknown Turbo source: %s" % arg, RED))
+        print("Known: %s" % ", ".join(sorted(keys)))
+        print("Run `genesi-mesh use` with no argument to see them.")
+        return 2
+    if not need_root("use %s" % arg):
+        return 1
+    set_conf("turbo_source", arg)
+    reload_daemon()
+    after = mesh.turbo_options()
+    print(color("Turbo source: %s" % arg, GREEN))
+    print(color("  -> %s" % after["url"], DIM))
+    return 0
 
 
 def _model_size_gb(arg):
@@ -1462,6 +1515,7 @@ def main(argv):
         "selftest": lambda: cmd_selftest(),
         "doctor": lambda: cmd_doctor(),
         "serve": lambda: cmd_serve(arg),
+        "use": lambda: cmd_use(arg),
     }
     handler = handlers.get(cmd)
     if not handler:

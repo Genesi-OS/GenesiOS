@@ -262,6 +262,8 @@ class Daemon:
             # guessed port is a client hanging on something that will not answer.
             **({"turbo_port": int(payload["turbo_port"])}
                if payload.get("turbo_port") else {}),
+            **({"turbo_model": str(payload["turbo_model"])[:120]}
+               if payload.get("turbo_model") else {}),
             "last_seen": time.time(),
         }
 
@@ -302,7 +304,9 @@ class Daemon:
             # local clients should be sending inference. Published so the CLI
             # and the Monitor can show it without re-deriving the rule.
             "turbo_serving": mesh.turbo_reachable(),
-            "turbo_url": mesh.turbo_url(list(live.values())),
+            "turbo_model": mesh.turbo_model(),
+            "turbo_url": mesh.turbo_url(list(live.values()), conf=self.conf),
+            "turbo_source": self.conf.get("turbo_source", "auto"),
             "capabilities": self.caps,
             "llama": self.llama,
             "peer_count": len(live),

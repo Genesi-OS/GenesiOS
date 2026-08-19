@@ -2161,6 +2161,19 @@ def cmd_serve(main, draft, spec=False):
     if not server_cmd(main_g, None):
         sys.exit("llama-server not found — install the Genesi Vulkan build:\n"
                  "  sudo pacman -S genesi-llama-cpp   (ships llama.cpp + Vulkan)")
+
+    # Record WHICH model this Turbo serves, by the name a human typed. The
+    # server's own /props and /v1/models report the GGUF blob path, which under
+    # ollama is a sha256 filename — true, and useless to a peer deciding whether
+    # to route its chat here. Written before the variant loop because the last
+    # variant os.execvp()s and never returns. A stale file cannot mislead: Genesi
+    # Mesh only advertises a model while the port is actually listening.
+    try:
+        os.makedirs("/run/genesi-ai-mode", mode=0o755, exist_ok=True)
+        with open("/run/genesi-ai-mode/turbo-model", "w", encoding="utf-8") as fh:
+            fh.write(str(main).strip() + "\n")
+    except OSError:
+        pass                    # advisory only; never block a serve on it
     # Genesi Fit (opt-in, GENESI_TURBO_FIT=1): if this model would SPILL VRAM,
     # requantize it down to the best quant that fits 100% on the GPU and serve
     # THAT — full-GPU speed beats a spilling higher quant, and spec still stacks

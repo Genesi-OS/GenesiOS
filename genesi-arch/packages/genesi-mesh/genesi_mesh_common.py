@@ -60,6 +60,10 @@ DISCOVERY_PORT = 47100                 # UDP, beacons
 MULTICAST_GROUP = "239.255.42.99"      # site-local scope, unassigned
 DEFAULT_RPC_PORT = 50052               # llama.cpp rpc-server's own default
 TURBO_PORT = 11435                     # genesi-ai-turbo's OpenAI-compatible API
+# Written by `genesi-ai-turbo serve`: the model tag a human typed. The server's
+# own /props reports the GGUF blob path, which under ollama is a sha256
+# filename — accurate and useless when the question is "what is running there?"
+TURBO_MODEL_PATH = "/run/genesi-ai-mode/turbo-model"
 
 # Local addresses that only THIS machine can reach, in /proc/net/tcp's hex form.
 # A Turbo bound to one of these is useless to a peer, so it must not be
@@ -87,6 +91,12 @@ DEFAULTS = {
     "rpc_port": str(DEFAULT_RPC_PORT),
     "rpc_mem_mb": "0",         # 0 = let rpc-server decide from the device
     "discovery": "on",
+    # Which Turbo this machine's Genesi apps talk to:
+    #   auto        this machine's own if it has one, else a peer serving one
+    #   local       always this machine, even when a peer offers a GPU
+    #   <host|addr> that specific peer
+    # Set it with `genesi-mesh use`.
+    "turbo_source": "auto",
     "name": "",                # display name; defaults to the hostname
     # Extra peer addresses to beacon DIRECTLY (comma/space separated).
     # Multicast cannot cross a VPN, but unicast can — see static_peers().
@@ -267,6 +277,15 @@ def turbo_reachable(port=TURBO_PORT):
     return any(a not in _LOOPBACK_HEX for a in listening_addrs(port))
 
 
+def turbo_model(path=TURBO_MODEL_PATH):
+    """The model tag this machine's Turbo is serving, or None."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.read().strip() or None
+    except OSError:
+        return None
+
+
 def turbo_peer(peers=None, now=None):
     """The peer offering Turbo over HTTP, or None.
 
@@ -286,21 +305,83 @@ def turbo_peer(peers=None, now=None):
     return candidates[0]
 
 
-def turbo_url(peers=None, env=None):
+def _peer_turbo_url(peer):
+    return "http://%s:%d" % (peer["addr"], int(peer["turbo_port"]))
+
+
+def turbo_url(peers=None, env=None, conf=None):
     """Where this machine's Genesi clients should send inference.
 
-    Order: an explicit GENESI_TURBO_URL, then a mesh peer advertising Turbo,
-    then loopback. The env var stays first so a manual setup always wins over
-    discovery -- but nobody should NEED to set it, which is the whole point."""
+    GENESI_TURBO_URL wins, then the `turbo_source` preference, then loopback:
+
+        local        this machine, always -- even with a GPU peer offering one
+        <host|addr>  that specific peer, if it is still advertising Turbo
+        auto         our own if we have one, else the best peer serving one
+
+    `auto` is the default and does the obvious thing, but it must remain a
+    DEFAULT and not the only behaviour: a user who wants their chat on the box
+    in front of them, or pinned to one particular machine, is not misconfigured
+    -- and silently routing them elsewhere is the kind of helpfulness nobody can
+    argue with because they cannot see it."""
     env = env if env is not None else os.environ
     override = (env.get("GENESI_TURBO_URL") or "").strip()
     if override:
         return override.rstrip("/")
+
+    local = "http://127.0.0.1:%d" % TURBO_PORT
+    source = str((conf if conf is not None else load_conf())
+                 .get("turbo_source", "auto") or "auto").strip()
+    if source == "local":
+        return local
+
+    peers = peers if peers is not None else read_peers()
+    if source and source != "auto":
+        for peer in peers:
+            if peer.get("turbo_port") and source in (peer.get("host"),
+                                                     peer.get("addr")):
+                return _peer_turbo_url(peer)
+        # Named peer is gone or stopped serving. Fall back to local rather than
+        # to a DIFFERENT machine: the user picked one on purpose, and quietly
+        # substituting another is worse than plainly using this one.
+        return local
+
     if not turbo_reachable():           # our own Turbo, if any, comes first
         peer = turbo_peer(peers)
         if peer and peer.get("addr"):
-            return "http://%s:%d" % (peer["addr"], int(peer["turbo_port"]))
-    return "http://127.0.0.1:%d" % TURBO_PORT
+            return _peer_turbo_url(peer)
+    return local
+
+
+def turbo_options(peers=None, conf=None):
+    """Every Turbo this machine could use, for a UI to offer as a choice.
+
+    Each entry: key (what `genesi-mesh use` accepts), label, url, model, and
+    whether it is `selected` (the configured preference) and/or `effective`
+    (what turbo_url actually resolves to right now). Those differ whenever a
+    chosen peer stopped serving, which is precisely when a user needs to see it.
+    """
+    conf = conf if conf is not None else load_conf()
+    peers = peers if peers is not None else read_peers()
+    source = str(conf.get("turbo_source", "auto") or "auto").strip()
+    active = turbo_url(peers, conf=conf)
+
+    opts = [{"key": "local", "label": "this machine",
+             "url": "http://127.0.0.1:%d" % TURBO_PORT,
+             "model": turbo_model() if turbo_reachable() else None,
+             "available": turbo_reachable()}]
+    for peer in peers:
+        if not peer.get("turbo_port") or not peer.get("addr"):
+            continue
+        opts.append({"key": peer.get("host") or peer["addr"],
+                     "label": peer.get("host") or peer["addr"],
+                     "url": _peer_turbo_url(peer),
+                     "model": peer.get("turbo_model"),
+                     "available": True})
+    for o in opts:
+        o["selected"] = (source == o["key"]
+                         or (source == "auto" and o["url"] == active))
+        o["effective"] = (o["url"] == active)
+    return {"source": source, "url": active, "options": opts}
 
 
 def build_beacon(conf, gpu, llama=None):
@@ -337,6 +418,11 @@ def build_beacon(conf, gpu, llama=None):
     # user toggles, and a stale "yes" points clients at a dead port.
     if turbo_reachable():
         beacon["turbo_port"] = TURBO_PORT
+        # Which model, so a peer can say "run llama3.2:3b on the desktop"
+        # instead of offering an anonymous endpoint.
+        model = turbo_model()
+        if model:
+            beacon["turbo_model"] = model
     # llama.cpp identity, so the other end can refuse a pairing that would hang
     # rather than discovering it minutes into a load. Only the fields we could
     # actually read — an absent one means "unknown", which rpc_compatibility

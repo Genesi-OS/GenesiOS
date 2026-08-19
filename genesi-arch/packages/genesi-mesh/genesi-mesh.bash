@@ -6,11 +6,12 @@ _genesi_mesh() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=($(compgen -W "status peers init show-secret join peer worker serve plan selftest doctor" -- "$cur"))
+        COMPREPLY=($(compgen -W "status peers init show-secret join peer worker serve use plan selftest doctor" -- "$cur"))
         return
     fi
     case "$prev" in
         worker|serve) COMPREPLY=($(compgen -W "on off" -- "$cur")) ;;
+        use) COMPREPLY=($(compgen -W "auto local" -- "$cur")) ;;
         plan)   COMPREPLY=($(compgen -f -- "$cur")) ;;
         *)      COMPREPLY=() ;;
     esac

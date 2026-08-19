@@ -131,7 +131,18 @@ pkgver=1.0.0
 # `serve` sits next to `worker` and delegates the mechanics to genesi-ai-turbo,
 # whose env file, unit and port they are; missing Turbo is refused cleanly, the
 # same way `worker on` refuses without rpc-server. Completions updated.
-pkgrel=17
+# 2026-08-19 (18): `genesi-mesh use auto|local|<peer>` -- the choice half. So
+# far the mesh could OFFER a Turbo and route to one automatically, and a user
+# had no way to say where they wanted their AI to run. Automatic is the right
+# default and the wrong only-behaviour: wanting the chat on the machine in front
+# of you, or pinned to one box, is not a misconfiguration. New `turbo_source`
+# key in mesh.conf; turbo_url() honours it; a pinned peer that stops serving
+# falls back to THIS machine rather than silently to a different peer, and
+# returns on its own. Beacons also carry `turbo_model` now (from the tag
+# genesi-ai-turbo records when it starts), because "192.168.1.4:11435" is not an
+# answer to "which AI is running over there" -- `peers` shows
+# [turbo: llama3.2:3b] and `use` lists each option with its model.
+pkgrel=18
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
