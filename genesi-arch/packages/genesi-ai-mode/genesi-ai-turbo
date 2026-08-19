@@ -10,6 +10,8 @@ already downloaded — no re-download.
 
   genesi-ai-turbo bench <model> [draft]   prove the speedup (spec vs no-spec)
   genesi-ai-turbo serve <model> [--spec]  run a Turbo server on :11435
+                                          (defers to a mesh peer already
+                                          serving one; --local overrides)
   genesi-ai-turbo recommend               print the biggest model that fits VRAM
   genesi-ai-turbo share on|off            bind Turbo to the LAN (what
                                           `genesi-mesh serve` calls — prefer
@@ -1735,14 +1737,32 @@ def wait_ready(timeout=900):   # big models on a CPU-only VM can take 5-8 min
     return False
 
 
-def turbo_healthy():
-    """Is a Turbo server already up and serving on our port?"""
+def turbo_healthy(url=None, timeout=2):
+    """Is a Turbo serving at `url`? Defaults to THIS machine's own.
+
+    Local by default, deliberately. Every caller that omits the argument is
+    waiting on a server it just started here, and _turbo_url() can legitimately
+    point at a PEER's Turbo while ours is still loading — so resolving through
+    it would let a peer's /health answer make a failed local load look like a
+    success, then hand the user a server that was never running."""
+    base = url or "http://127.0.0.1:%d" % TURBO_PORT
     try:
-        with urllib.request.urlopen(f"{_turbo_url()}/health",
-                                    timeout=2) as r:
+        with urllib.request.urlopen(base.rstrip("/") + "/health",
+                                    timeout=timeout) as r:
             return json.loads(r.read()).get("status") == "ok"
     except Exception:
         return False
+
+
+def remote_turbo():
+    """A PEER's Turbo that is up and answering, or None.
+
+    Only a peer's: never this machine's own, so callers can use it to decide
+    whether starting a local server is pointless."""
+    url = _turbo_url()
+    if url.startswith("http://127.0.0.1") or url.startswith("http://localhost"):
+        return None
+    return url if turbo_healthy(url, timeout=3) else None
 
 
 def port_busy(port=TURBO_PORT):
@@ -2075,7 +2095,8 @@ def cmd_serve(main, draft, spec=False):
     # If it's bound but unresponsive, it's a stale llama-server: free the port.
     if port_busy():
         if turbo_healthy():
-            print(f":: Turbo is already running at {_turbo_url()} — reusing it.")
+            print(f":: Turbo is already running at http://127.0.0.1:{TURBO_PORT}"
+                  " — reusing it.")
             return
         print(f"[!] Port {TURBO_PORT} is held by an unresponsive process — freeing it…",
               file=sys.stderr, flush=True)
@@ -2083,6 +2104,27 @@ def cmd_serve(main, draft, spec=False):
         if port_busy():
             sys.exit(f"port {TURBO_PORT} is still busy. Stop the process manually:\n"
                      f"  pkill -f 'llama-server.*{TURBO_PORT}'")
+
+    # A peer already serving Turbo, on a machine with no GPU of its own: a local
+    # server here means CPU inference while a real GPU sits idle one hop away.
+    # That is exactly what Turbo-over-HTTP exists for, and it is invisible to
+    # someone who just typed `serve` -- so say it, and use the peer.
+    #
+    # Gated on having no usable GPU: on a machine WITH one, `serve` means "serve
+    # from here" and hijacking that would be worse than the slow path. --local
+    # forces a local server either way.
+    if not _env_flag("GENESI_TURBO_LOCAL") and _vram_budget_gb() <= 0:
+        peer_url = remote_turbo()
+        if peer_url:
+            print(f":: Genesi Mesh: {peer_url} is already serving Turbo.")
+            print("   This machine has no GPU, so a local server would run on "
+                  "CPU while")
+            print("   that one sits idle. Genesi apps here already use it — "
+                  "nothing to start.")
+            print(f"   API: {peer_url}/v1")
+            print("   Serve locally anyway with --local.")
+            return
+
     main_g = ensure(main)
     if not main_g:
         sys.exit(f"could not resolve/pull {main}")
@@ -2264,6 +2306,8 @@ def main():
             spec, spec_pinned = True, True
         elif al in ("--no-spec", "--no-speculative"):
             spec, spec_pinned = False, True
+        elif al == "--local":
+            os.environ["GENESI_TURBO_LOCAL"] = "1"   # serve HERE, not via a peer
         else:
             pos.append(a)
     if not pos:

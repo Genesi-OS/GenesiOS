@@ -830,7 +830,19 @@ pkgver=1.0.0
 # next to `genesi-mesh worker`; this stays because turbo.env, the unit and the
 # port are ai-mode's to own, and Mesh delegates rather than reaching into
 # another package's files. `genesi-mesh serve on|off` is what users run.
-pkgrel=159
+# 2026-08-19 (160): `serve` on a GPU-less machine defers to a peer already
+# serving Turbo. Discovery (157) only rerouted the CLIENTS -- the passive
+# helpers and the Monitor -- so `genesi-ai-turbo serve llama3.2:3b`, the one
+# command a user actually types, still built a local CPU server while a real
+# GPU sat idle one hop away. It now says what it found and uses the peer;
+# --local (or GENESI_TURBO_LOCAL=1) forces a local server, and a machine WITH a
+# GPU is never redirected, since there `serve` means "serve from here".
+# Also fixes a bug (157) introduced by that same discovery: turbo_healthy()
+# resolved through turbo_url(), so while a local load was still in progress it
+# would ask a PEER whether Turbo was up -- a failed local start could report
+# success on the strength of another machine answering. It now checks loopback
+# unless given an explicit URL.
+pkgrel=160
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
