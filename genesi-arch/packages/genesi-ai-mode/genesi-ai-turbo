@@ -11,7 +11,9 @@ already downloaded — no re-download.
   genesi-ai-turbo bench <model> [draft]   prove the speedup (spec vs no-spec)
   genesi-ai-turbo serve <model> [--spec]  run a Turbo server on :11435
   genesi-ai-turbo recommend               print the biggest model that fits VRAM
-  genesi-ai-turbo share on|off            serve this GPU to the rest of the mesh
+  genesi-ai-turbo share on|off            bind Turbo to the LAN (what
+                                          `genesi-mesh serve` calls — prefer
+                                          that; sharing compute is Mesh's job)
   genesi-ai-turbo <model> [--spec]        same as `serve`
 
 <model> is either an ollama tag (llama3.1:8b) or ANY GGUF on this machine —
@@ -2194,13 +2196,14 @@ def _firewall_port(port, opening):
 
 
 def cmd_share(arg):
-    """Turn this machine into the mesh's inference server, or stop.
+    """Bind Turbo to the LAN (or back to loopback) and open/close its port.
 
-    This is the counterpart to `genesi-mesh worker on`, and the one to reach for
-    FIRST: worker mode pools VRAM, which ships layer activations for every token
-    and leaves the far GPU waiting on round trips. Sharing Turbo ships the text
-    of a conversation instead, so the network stops mattering for any model that
-    fits on this machine.
+    The MECHANISM only. Deciding to share compute with other machines is Genesi
+    Mesh's job, and `genesi-mesh serve on|off` is the command users should
+    reach for -- it sits next to `worker on|off`, which shares this machine's
+    VRAM, so both ways of lending a GPU are in one place. This lives here
+    because turbo.env, genesi-turbo.service and the port are ai-mode's to own;
+    Mesh delegates rather than reaching into another package's files.
 
     Deliberately a command and not a default: Turbo has NO authentication, so
     binding it beyond loopback is the user's decision to make, once, knowingly."""

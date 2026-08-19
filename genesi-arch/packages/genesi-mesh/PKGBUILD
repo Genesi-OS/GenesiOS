@@ -121,7 +121,17 @@ pkgver=1.0.0
 # better path for any model that fits on the GPU box -- so the slower option was
 # the only discoverable one. "This machine" now reports whether Turbo is served
 # and, on a real GPU that is not, points at `sudo genesi-ai-turbo share on`.
-pkgrel=16
+# 2026-08-19 (17): `genesi-mesh serve on|off`, because the toggle was in the
+# wrong package. Mesh exists to share compute between machines, and it already
+# owned every part of this except the switch -- the beacon advertises
+# turbo_port, turbo_url() resolves it, `peers` tags [turbo] -- while turning it
+# on lived in genesi-ai-turbo. So the two ways to lend a GPU (VRAM via `worker`,
+# the whole server via `serve`) sat in different commands in different packages,
+# which is precisely the discoverability hole (16) papered over with a hint.
+# `serve` sits next to `worker` and delegates the mechanics to genesi-ai-turbo,
+# whose env file, unit and port they are; missing Turbo is refused cleanly, the
+# same way `worker on` refuses without rpc-server. Completions updated.
+pkgrel=17
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

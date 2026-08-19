@@ -7,7 +7,8 @@
     genesi-mesh show-secret         print this mesh's secret, to carry to a peer
     genesi-mesh join <secret>       join an EXISTING mesh
     genesi-mesh peer <addr>         add a peer reachable over a VPN
-    genesi-mesh worker on|off       offer / stop offering this machine's GPU
+    genesi-mesh worker on|off       offer / stop offering this machine's VRAM
+    genesi-mesh serve on|off        offer / stop offering this machine's Turbo
     genesi-mesh plan <model|GB>     would pooling help for this model?
     genesi-mesh selftest            prove the RPC path works on THIS machine
     genesi-mesh doctor              check prerequisites and explain what is missing
@@ -25,6 +26,7 @@ GPU over loopback, so the mesh is proven working before a second box exists.
 
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -728,6 +730,37 @@ def cmd_worker(arg):
     return 0
 
 
+def cmd_serve(arg):
+    """Offer this machine's Turbo to the mesh — the other way to share a GPU.
+
+    `worker` shares this machine's VRAM: peers run their OWN llama-server and
+    stream layer activations here for every token, so the far GPU spends most of
+    its time waiting on the network. That is the price of running a model that
+    fits on no single machine, and it is worth paying only for that.
+
+    `serve` shares the whole inference server instead. Peers send text and get
+    text back, so a model that FITS here runs at full GPU speed no matter how
+    slow the link is. It is the right default whenever the model fits, which is
+    why doctor points at it.
+
+    Turbo itself belongs to genesi-ai-mode, so the mechanics — its env file, its
+    unit, its port — are delegated there. Mesh owns the DECISION to share
+    compute with other machines, in one place, next to `worker`."""
+    if arg not in ("on", "off"):
+        print("usage: genesi-mesh serve on|off")
+        return 2
+    if not need_root("serve %s" % arg):
+        return 1
+    turbo = shutil.which("genesi-ai-turbo")
+    if not turbo:
+        # Same shape as `worker on` without rpc-server: refuse clearly rather
+        # than half-configure something that cannot run.
+        print(color("Cannot %s: Genesi Turbo is not installed." % arg, RED))
+        print("      sudo pacman -S genesi-ai-mode")
+        return 1
+    return subprocess.run([turbo, "share", arg]).returncode
+
+
 def _model_size_gb(arg):
     """(size_gb, how_we_found_it) for whatever the user typed.
 
@@ -977,7 +1010,7 @@ def cmd_doctor():
             and not gpu.get("integrated"):
         print(color("     Peers with no GPU could run models HERE instead of "
                     "pooling this card:", DIM))
-        print(color("         sudo genesi-ai-turbo share on", CYAN))
+        print(color("         sudo genesi-mesh serve on", CYAN))
         print(color("     Prefer that whenever the model FITS on this machine "
                     "— pooling ships", DIM))
         print(color("     layer activations per token, HTTP ships text.", DIM))
@@ -1428,6 +1461,7 @@ def main(argv):
         "plan": lambda: cmd_plan(arg),
         "selftest": lambda: cmd_selftest(),
         "doctor": lambda: cmd_doctor(),
+        "serve": lambda: cmd_serve(arg),
     }
     handler = handlers.get(cmd)
     if not handler:
