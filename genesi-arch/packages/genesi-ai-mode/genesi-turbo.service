@@ -33,7 +33,21 @@ Type=simple
 # layer activations for every token. Turbo has no authentication, so only bind
 # beyond loopback on a network you control.
 EnvironmentFile=-/etc/genesi-ai-mode/turbo.env
-ExecStart=/bin/sh -c 'm="${GENESI_WARM_MODEL:-$(genesi-ai-turbo recommend 2>/dev/null | head -n1)}"; [ -n "$m" ] || m=llama3.2:3b; echo "genesi-turbo: warming $m"; exec genesi-ai-turbo serve "$m"'
+# HOME must exist. Without it `ollama` does not fail, it PANICS --
+# "panic: $HOME is not defined" out of envconfig.Models() before the CLI is even
+# built -- so a warm model that is not downloaded yet could never be pulled, and
+# the unit just exited 1 in a loop with the panic buried in the journal. A
+# service that runs another program's CLI has to give it an environment that
+# program can start in. StateDirectory gives us a real one (and somewhere for
+# the optional slot cache to live, which ProtectHome otherwise denies).
+StateDirectory=genesi-turbo
+Environment=HOME=/var/lib/genesi-turbo
+# --installed: recommend WITHOUT it answers "the biggest model this GPU could
+# run", which is advice, not a boot decision. A machine with a 3B downloaded got
+# told 8B and started its day pulling 5 GB nobody asked for -- then failed,
+# because the pull needs an environment ollama can start in. Serve what is here;
+# fall back to a small pull only when nothing is.
+ExecStart=/bin/sh -c 'm="${GENESI_WARM_MODEL:-$(genesi-ai-turbo recommend --installed 2>/dev/null | head -n1)}"; [ -n "$m" ] || m=llama3.2:3b; echo "genesi-turbo: warming $m"; exec genesi-ai-turbo serve "$m"'
 Restart=on-failure
 RestartSec=15
 

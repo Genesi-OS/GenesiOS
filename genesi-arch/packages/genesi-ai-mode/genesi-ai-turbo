@@ -12,7 +12,8 @@ already downloaded — no re-download.
   genesi-ai-turbo serve <model> [--spec]  run a Turbo server on :11435
                                           (defers to a mesh peer already
                                           serving one; --local overrides)
-  genesi-ai-turbo recommend               print the biggest model that fits VRAM
+  genesi-ai-turbo recommend [--installed] print the biggest model that fits VRAM
+                                          (--installed: only ones already pulled)
   genesi-ai-turbo share on|off            bind Turbo to the LAN (what
                                           `genesi-mesh serve` calls — prefer
                                           that; sharing compute is Mesh's job)
@@ -1068,25 +1069,54 @@ def recommend_moe(vram_mb, ram_gb):
     return best
 
 
-def recommend_model():
+def tag_installed(tag):
+    """Is `tag` already pulled? Quietly — gguf_path() reports misses on stderr,
+    which is right when a user asked for that model and wrong when we are merely
+    surveying a catalogue."""
+    name, _, ver = tag.partition(":")
+    ver = ver or "latest"
+    return any(os.path.isfile(os.path.join(md, "manifests", "registry.ollama.ai",
+                                           "library", name, ver))
+               for md in _candidate_model_dirs())
+
+
+def recommend_model(installed_only=False):
     """Advisor → Turbo model pick: the BIGGEST model whose Q4_K_M weights fit
     100% in VRAM (so Turbo offloads it fully — the single biggest speed lever).
-    Returns (tag, vram_mb, budget_gb). Falls back to a small model with no GPU."""
+    Returns (tag, vram_mb, budget_gb). Falls back to a small model with no GPU.
+
+    installed_only restricts the pick to models already on disk, and returns
+    tag=None when none qualify. That is the mode a SERVICE wants: the plain
+    recommendation is advice about what this GPU could run, and genesi-turbo
+    was using it to decide what to serve at boot — so a machine that had a 3B
+    downloaded got an unrequested multi-GB pull of an 8B on startup instead."""
     vram_mb = _detect_vram_mb()
     budget = max(vram_mb / 1024.0 - 1.2, 0.0)     # overhead + KV headroom
     best = None
     for tag, p in RECOMMEND_MODELS:
         q4 = p * 4.8 / 8.0                          # GGUF GB ≈ params * bpw / 8
-        if q4 <= budget and (best is None or p > best[1]):
-            best = (tag, p)
+        if q4 > budget or (best is not None and p <= best[1]):
+            continue
+        if installed_only and not tag_installed(tag):
+            continue
+        best = (tag, p)
+    if installed_only:
+        return (best[0] if best else None), vram_mb, budget
     tag = best[0] if best else ("llama3.2:3b" if budget >= 1.8 else "llama3.2:1b")
     return tag, vram_mb, budget
 
 
-def cmd_recommend():
+def cmd_recommend(installed_only=False):
     """Print the recommended Turbo model. stdout = just the tag (machine-readable
-    for the Monitor); human detail goes to stderr."""
-    tag, vram_mb, budget = recommend_model()
+    for the Monitor); human detail goes to stderr.
+
+    With --installed, prints nothing when no downloaded model fits, so a caller
+    can fall back rather than trigger a download it never asked for."""
+    tag, vram_mb, budget = recommend_model(installed_only)
+    if tag is None:
+        print(":: no downloaded model fits this GPU — nothing to recommend "
+              "without pulling one", file=sys.stderr)
+        return
     print(tag)
     if vram_mb > 0:
         print(f":: {vram_mb / 1024.0:.1f}GB VRAM → fits ~{budget:.1f}GB on GPU → "
@@ -2315,7 +2345,7 @@ def main():
         return
     action, rest = pos[0], pos[1:]
     if action == "recommend":
-        cmd_recommend()
+        cmd_recommend(any(a.lower() == "--installed" for a in rest))
         return
     if action == "share":
         cmd_share(rest[0] if rest else "")
