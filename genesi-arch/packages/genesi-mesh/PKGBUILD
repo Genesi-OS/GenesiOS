@@ -106,7 +106,17 @@ pkgver=1.0.0
 # 50052/tcp, 47100/udp" built from that. A verdict of "unknown" was being
 # rendered as "verified open": the exact false all-clear this section exists to
 # prevent. Unverifiable now says so and points at `sudo genesi-mesh doctor`.
-pkgrel=14
+# 2026-08-19 (15): the mesh advertises Turbo, so borrowing a GPU needs no
+# configuration. Pooling VRAM was the only discoverable way to use another
+# machine's GPU, and it is the WRONG one whenever the model fits on that
+# machine -- pooling ships layer activations per token, while Turbo-over-HTTP
+# ships text. A beacon now carries `turbo_port` while a Turbo is reachable
+# off-box (checked per beacon from /proc/net/tcp, so a loopback-only bind is
+# never advertised and a stopped Turbo stops being advertised), turbo_url()
+# resolves GENESI_TURBO_URL -> local Turbo -> best peer serving one -> loopback,
+# and `peers` tags such a peer [turbo] and says when to prefer it. The env var
+# survives as an override for hand-built setups; nothing should need it.
+pkgrel=15
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

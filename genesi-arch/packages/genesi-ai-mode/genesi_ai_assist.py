@@ -29,17 +29,31 @@ Stdlib only, matching the rest of the Genesi AI stack.
 import hashlib
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-# Loopback by default. GENESI_TURBO_URL points every passive helper at another
-# machine's Turbo — the right move when only one box in the house has a GPU, and
-# far cheaper than pooling VRAM over the network (that ships tensors per token;
-# this ships text).
-TURBO_URL = os.environ.get("GENESI_TURBO_URL",
-                           "http://127.0.0.1:11435").rstrip("/")
+
+
+def turbo_url():
+    """Where to send inference: GENESI_TURBO_URL, else a mesh peer serving
+    Turbo, else loopback.
+
+    A machine with no GPU finds the one that has it through the same discovery
+    the mesh already runs, so nothing has to be configured by hand. Serving over
+    HTTP beats pooling VRAM whenever the model fits on the far box: this ships
+    the text of a conversation, pooling ships layer activations per token."""
+    override = (os.environ.get("GENESI_TURBO_URL") or "").strip()
+    if override:
+        return override.rstrip("/")
+    sys.path.insert(0, "/usr/lib/genesi-mesh")
+    try:
+        import genesi_mesh_common as _mesh
+        return _mesh.turbo_url()
+    except Exception:
+        return "http://127.0.0.1:11435"
 STATE_JSON = "/run/genesi-ai-mode/state.json"
 STUDIO_STATE = "/run/genesi-studio/state.json"
 
@@ -132,7 +146,7 @@ def warm_model():
     not run at all; asking /v1/models is cheap and, crucially, does NOT cause a
     load the way a completion request against a cold server would."""
     try:
-        with urllib.request.urlopen(TURBO_URL + "/v1/models", timeout=1.5) as resp:
+        with urllib.request.urlopen(turbo_url() + "/v1/models", timeout=1.5) as resp:
             data = json.load(resp)
     except (urllib.error.URLError, OSError, ValueError, TimeoutError):
         return None
@@ -223,7 +237,7 @@ def ask(system, user, feature="", cache_key=None, conf=None):
     }).encode("utf-8")
 
     req = urllib.request.Request(
-        TURBO_URL + "/v1/chat/completions", data=body,
+        turbo_url() + "/v1/chat/completions", data=body,
         headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=_int(conf, "timeout", 6)) as resp:

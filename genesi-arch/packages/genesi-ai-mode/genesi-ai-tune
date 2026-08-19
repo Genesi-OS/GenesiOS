@@ -147,8 +147,13 @@ def _turbo_busy():
     from a live session. Checks the /slots endpoint for a processing slot."""
     import urllib.request
     try:
-        base = os.environ.get("GENESI_TURBO_URL",
-                              "http://127.0.0.1:11435").rstrip("/")
+        sys.path.insert(0, "/usr/lib/genesi-mesh")
+        try:
+            import genesi_mesh_common as _mesh
+            base = _mesh.turbo_url()
+        except Exception:
+            base = (os.environ.get("GENESI_TURBO_URL")
+                    or "http://127.0.0.1:11435").rstrip("/")
         with urllib.request.urlopen(base + "/slots", timeout=2) as r:
             slots = json.loads(r.read())
         return any((s.get("is_processing") or s.get("state") in (1, 2))

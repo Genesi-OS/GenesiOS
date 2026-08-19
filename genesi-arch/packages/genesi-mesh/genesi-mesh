@@ -556,6 +556,12 @@ def _print_peers(peers):
     for p in peers:
         role = color("worker", GREEN) if p.get("worker") else color("idle", DIM)
         tag = ""
+        # A peer serving Turbo over HTTP is usually the BETTER answer than
+        # pooling its VRAM — it ships text instead of per-token activations —
+        # so it has to be visible here, next to the worker role it competes
+        # with, rather than only inside Turbo's own resolution logic.
+        if p.get("turbo_port"):
+            tag += color("  [turbo]", CYAN)
         if p.get("integrated"):
             any_integrated = True
             tag = color("  [integrated]", YELLOW)
@@ -595,6 +601,23 @@ def _print_peers(peers):
         print(color("  token. Override with pool_integrated = on in mesh.conf.", DIM))
 
 
+def _explain_turbo_peers(peers):
+    """Say what [turbo] means, and that it usually beats pooling."""
+    serving = [p for p in peers if p.get("turbo_port")]
+    if not serving:
+        return
+    print()
+    print(color("  [turbo] = this peer runs Genesi Turbo and will answer over "
+                "HTTP.", DIM))
+    print(color("  Genesi clients here find it automatically — no configuration "
+                "needed.", DIM))
+    print(color("  Prefer it over pooling whenever the model FITS on that "
+                "machine: HTTP", DIM))
+    print(color("  moves the text, pooling moves layer activations for every "
+                "token and", DIM))
+    print(color("  leaves the far GPU waiting on the network.", DIM))
+
+
 def cmd_peers():
     peers = mesh.read_peers()
     if not peers:
@@ -605,6 +628,7 @@ def cmd_peers():
         _explain_empty_peers()
         return 0
     _print_peers(peers)
+    _explain_turbo_peers(peers)
     return 0
 
 

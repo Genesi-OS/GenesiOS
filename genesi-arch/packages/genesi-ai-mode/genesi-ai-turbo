@@ -140,10 +140,34 @@ TURBO_PORT = 11435
 # mattering.
 TURBO_HOST = os.environ.get("GENESI_TURBO_HOST", "127.0.0.1").strip() or "127.0.0.1"
 
-# Where CLIENTS look for Turbo. Same default; point it at another machine's
-# GENESI_TURBO_HOST to use its GPU without meshing.
-TURBO_URL = os.environ.get(
-    "GENESI_TURBO_URL", "http://127.0.0.1:%d" % TURBO_PORT).rstrip("/")
+
+
+def _turbo_url():
+    """Where CLIENTS should send inference, resolved fresh at each call.
+
+    Order: an explicit GENESI_TURBO_URL, then a mesh peer advertising Turbo,
+    then loopback. Nobody should have to set the variable -- a machine with no
+    GPU that can see a peer serving Turbo finds it through the same discovery
+    that already powers the mesh. The override stays first so a hand-built setup
+    always beats discovery.
+
+    Resolved per call rather than cached at import: peers come and go, and the
+    long-lived processes that use this (the passive helpers) would otherwise be
+    pinned to whatever was true the moment they started."""
+    override = (os.environ.get("GENESI_TURBO_URL") or "").strip()
+    if override:
+        return override.rstrip("/")
+    sys.path.insert(0, "/usr/lib/genesi-mesh")
+    try:
+        import genesi_mesh_common as _mesh
+    except ImportError:
+        return "http://127.0.0.1:%d" % TURBO_PORT
+    try:
+        return _mesh.turbo_url()
+    except Exception:
+        # Discovery must never be the reason inference fails: a malformed
+        # peers.json, a permissions change, anything -- fall back to local.
+        return "http://127.0.0.1:%d" % TURBO_PORT
 PROMPT = "Explain how a CPU instruction pipeline works, in about 200 words."
 
 # (family substring in the target tag -> a tiny, SAME-tokenizer draft model)
@@ -1698,7 +1722,7 @@ def wait_ready(timeout=900):   # big models on a CPU-only VM can take 5-8 min
     end = time.time() + timeout
     while time.time() < end:
         try:
-            with urllib.request.urlopen(f"{TURBO_URL}/health",
+            with urllib.request.urlopen(f"{_turbo_url()}/health",
                                         timeout=2) as r:
                 if json.loads(r.read()).get("status") == "ok":
                     return True
@@ -1711,7 +1735,7 @@ def wait_ready(timeout=900):   # big models on a CPU-only VM can take 5-8 min
 def turbo_healthy():
     """Is a Turbo server already up and serving on our port?"""
     try:
-        with urllib.request.urlopen(f"{TURBO_URL}/health",
+        with urllib.request.urlopen(f"{_turbo_url()}/health",
                                     timeout=2) as r:
             return json.loads(r.read()).get("status") == "ok"
     except Exception:
@@ -1769,7 +1793,7 @@ def free_turbo_port():
 def measure(n=256):
     body = json.dumps({"prompt": PROMPT, "n_predict": n,
                        "temperature": 0.7, "cache_prompt": False}).encode()
-    req = urllib.request.Request(f"{TURBO_URL}/completion",
+    req = urllib.request.Request(f"{_turbo_url()}/completion",
                                  data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=900) as r:
         t = json.loads(r.read()).get("timings", {})
@@ -2019,7 +2043,7 @@ def _serve_with_fallback(main_g, draft_g):
             time.sleep(1)
         if ok:
             print(f":: Genesi Turbo up ({label}). API: "
-                  f"{TURBO_URL}/v1   Ctrl-C to stop", flush=True)
+                  f"{_turbo_url()}/v1   Ctrl-C to stop", flush=True)
             try:
                 proc.wait()
             except KeyboardInterrupt:
@@ -2048,7 +2072,7 @@ def cmd_serve(main, draft, spec=False):
     # If it's bound but unresponsive, it's a stale llama-server: free the port.
     if port_busy():
         if turbo_healthy():
-            print(f":: Turbo is already running at {TURBO_URL} — reusing it.")
+            print(f":: Turbo is already running at {_turbo_url()} — reusing it.")
             return
         print(f"[!] Port {TURBO_PORT} is held by an unresponsive process — freeing it…",
               file=sys.stderr, flush=True)
@@ -2093,7 +2117,7 @@ def cmd_serve(main, draft, spec=False):
     print(f":: Genesi Turbo serving {main}" +
           (f" + draft {draft} (speculative)" if draft_g
            else " (full GPU offload)"))
-    print(f"   API: {TURBO_URL}/v1   (OpenAI-compatible)  Ctrl-C to stop")
+    print(f"   API: {_turbo_url()}/v1   (OpenAI-compatible)  Ctrl-C to stop")
     # Launch with graceful degradation: if MoE/draft trips the loader, fall back
     # to plain offload (what ollama does) instead of dying on a model ollama runs.
     _serve_with_fallback(main_g, draft_g)

@@ -59,6 +59,16 @@ PROTOCOL = 1
 DISCOVERY_PORT = 47100                 # UDP, beacons
 MULTICAST_GROUP = "239.255.42.99"      # site-local scope, unassigned
 DEFAULT_RPC_PORT = 50052               # llama.cpp rpc-server's own default
+TURBO_PORT = 11435                     # genesi-ai-turbo's OpenAI-compatible API
+
+# Local addresses that only THIS machine can reach, in /proc/net/tcp's hex form.
+# A Turbo bound to one of these is useless to a peer, so it must not be
+# advertised: a peer that believed it would sit there retrying a port that can
+# never answer.
+_LOOPBACK_HEX = frozenset((
+    "0100007F",                                          # 127.0.0.1
+    "00000000000000000000000001000000",                  # ::1
+))
 
 BEACON_INTERVAL = 5.0                  # seconds between our announcements
 PEER_TTL = 20.0                        # drop a peer unheard-from for this long
@@ -225,6 +235,74 @@ def verify_beacon(raw, secret, now=None):
     return payload
 
 
+def listening_addrs(port):
+    """Hex local addresses holding a LISTEN socket on `port`.
+
+    Read from /proc/net/tcp{,6} rather than shelling out to ss: this runs every
+    beacon interval on every node, and it must not depend on iproute2 being
+    installed or on parsing a localised tool."""
+    want = ":%04X" % port
+    found = set()
+    for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                next(fh, None)                            # header
+                for line in fh:
+                    fields = line.split()
+                    if len(fields) < 4 or fields[3] != "0A":   # 0A = LISTEN
+                        continue
+                    if fields[1].endswith(want):
+                        found.add(fields[1].rsplit(":", 1)[0])
+        except OSError:
+            pass
+    return found
+
+
+def turbo_reachable(port=TURBO_PORT):
+    """Is a Turbo listening on an address a PEER could dial?
+
+    Loopback-only does not count. Turbo binds 127.0.0.1 unless
+    GENESI_TURBO_HOST says otherwise, so this is what separates "I run a model
+    for myself" from "I can run models for you"."""
+    return any(a not in _LOOPBACK_HEX for a in listening_addrs(port))
+
+
+def turbo_peer(peers=None, now=None):
+    """The peer offering Turbo over HTTP, or None.
+
+    This is the answer to "who should I ask to run a model?" whenever a machine
+    has no GPU of its own. It is deliberately preferred over pooling VRAM: HTTP
+    moves the TEXT of a conversation, while the mesh moves layer activations for
+    every token and leaves the far GPU idle waiting on round trips. Pooling is
+    for a model that fits on no single machine; this is for every other case.
+
+    Ties break toward the most free VRAM, so the box best able to hold the model
+    wins."""
+    candidates = [p for p in (peers if peers is not None else read_peers(now=now))
+                  if p.get("turbo_port")]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: peer_available_mb(p), reverse=True)
+    return candidates[0]
+
+
+def turbo_url(peers=None, env=None):
+    """Where this machine's Genesi clients should send inference.
+
+    Order: an explicit GENESI_TURBO_URL, then a mesh peer advertising Turbo,
+    then loopback. The env var stays first so a manual setup always wins over
+    discovery -- but nobody should NEED to set it, which is the whole point."""
+    env = env if env is not None else os.environ
+    override = (env.get("GENESI_TURBO_URL") or "").strip()
+    if override:
+        return override.rstrip("/")
+    if not turbo_reachable():           # our own Turbo, if any, comes first
+        peer = turbo_peer(peers)
+        if peer and peer.get("addr"):
+            return "http://%s:%d" % (peer["addr"], int(peer["turbo_port"]))
+    return "http://127.0.0.1:%d" % TURBO_PORT
+
+
 def build_beacon(conf, gpu, llama=None):
     """The advertisement this node broadcasts: who I am, what I can contribute.
 
@@ -254,6 +332,11 @@ def build_beacon(conf, gpu, llama=None):
     # Re-sent every beacon (5s) because, unlike capacity, it changes constantly.
     if gpu.get("free_mb") is not None:
         beacon["free_mb"] = int(gpu["free_mb"])
+    # Advertised ONLY while a Turbo is actually reachable from off-box, so a
+    # peer never has to guess. Re-evaluated every beacon: Turbo is a service a
+    # user toggles, and a stale "yes" points clients at a dead port.
+    if turbo_reachable():
+        beacon["turbo_port"] = TURBO_PORT
     # llama.cpp identity, so the other end can refuse a pairing that would hang
     # rather than discovering it minutes into a load. Only the fields we could
     # actually read — an absent one means "unknown", which rpc_compatibility

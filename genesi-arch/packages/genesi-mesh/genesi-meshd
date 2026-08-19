@@ -257,6 +257,11 @@ class Daemon:
                         if isinstance(payload.get("free_mb"), (int, float))
                         else None),
             "integrated": bool(payload.get("integrated")),
+            # Present only while that peer's Turbo is reachable off-box. Absent
+            # means "not offering", never "offering on the default port" — a
+            # guessed port is a client hanging on something that will not answer.
+            **({"turbo_port": int(payload["turbo_port"])}
+               if payload.get("turbo_port") else {}),
             "last_seen": time.time(),
         }
 
@@ -293,6 +298,11 @@ class Daemon:
             "rpc_bind": self.conf.get("rpc_bind"),
             "rpc_port": mesh.conf_int(self.conf, "rpc_port",
                                       mesh.DEFAULT_RPC_PORT),
+            # Whether THIS machine is offering Turbo over HTTP, and where the
+            # local clients should be sending inference. Published so the CLI
+            # and the Monitor can show it without re-deriving the rule.
+            "turbo_serving": mesh.turbo_reachable(),
+            "turbo_url": mesh.turbo_url(list(live.values())),
             "capabilities": self.caps,
             "llama": self.llama,
             "peer_count": len(live),
