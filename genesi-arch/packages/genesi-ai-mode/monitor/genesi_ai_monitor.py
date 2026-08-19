@@ -59,7 +59,12 @@ def _turbo_base():
         return "http://127.0.0.1:11435"
 
 
-TURBO = _turbo_base()                 # genesi-ai-turbo's llama-server
+# Two different questions, and conflating them is a bug we already shipped once
+# in genesi-ai-turbo: LOCAL_TURBO is "the server on THIS box", which is what a
+# liveness check on a process we started must ask; _turbo_base() is "where our
+# inference should go", which may be a peer. Asking the peer whether our local
+# load succeeded lets another machine's health answer for ours.
+LOCAL_TURBO = "http://127.0.0.1:11435"
 BRIDGE = "http://127.0.0.1:11436"     # genesi-mempalace recall bridge (opt-in)
 # One JSON file per conversation. This is what the HISTORY rail reads and — once
 # the user turns on "remember" — what genesi-mempalace `watch` sweeps into the
@@ -219,7 +224,7 @@ class Backend(QObject):
             import genesi_mesh_common as _mesh
             return json.dumps(_mesh.turbo_options())
         except Exception as exc:
-            return json.dumps({"source": "auto", "url": TURBO,
+            return json.dumps({"source": "auto", "url": _turbo_base(),
                                "options": [], "error": str(exc)})
 
     @Slot(str, result=str)
@@ -669,7 +674,7 @@ class Backend(QObject):
                 "max_tokens": 768,
                 "cache_prompt": True,
             }).encode()
-            base = BRIDGE if self._recall else TURBO
+            base = BRIDGE if self._recall else _turbo_base()
             req = urllib.request.Request(
                 base + "/v1/chat/completions", data=body,
                 headers={"Content-Type": "application/json"},
@@ -933,7 +938,7 @@ class Backend(QObject):
         # When "remember" is on, talk to the mempalace bridge instead of Turbo
         # directly: it injects recalled memory + restores the per-wing KV slot,
         # then proxies to Turbo. Off by default (it grows the prompt = heavier).
-        base = BRIDGE if self._recall else TURBO
+        base = BRIDGE if self._recall else _turbo_base()
         req = urllib.request.Request(base + "/v1/chat/completions", data=body,
                                      headers={"Content-Type": "application/json"})
         timings = {}
@@ -1176,7 +1181,7 @@ class Backend(QObject):
                     "temperature": 0,
                 }).encode()
                 req = urllib.request.Request(
-                    TURBO + "/v1/chat/completions", data=body,
+                    _turbo_base() + "/v1/chat/completions", data=body,
                     headers={"Content-Type": "application/json"})
                 urllib.request.urlopen(req, timeout=30).read()
             except Exception:
@@ -1206,6 +1211,15 @@ class Backend(QObject):
                     p.kill()
                 except Exception:
                     pass
+        # Nothing local to tear down when the Turbo we were using belongs to
+        # another machine — and the backstop below would kill THIS machine's own
+        # warm server, which we never started and nobody asked us to stop.
+        if self._remote_turbo():
+            turbo_ctl.clear_marker()
+            self.turboReady.emit(False)
+            self.turboStatus.emit("")
+            return
+
         # Backstop: a llama-server may hold the Turbo port even when we didn't
         # start it (e.g. the user ran `genesi-ai-turbo <model>` in a terminal),
         # so our tracked proc is None and stopping would otherwise leave it
@@ -1226,7 +1240,7 @@ class Backend(QObject):
     def _turbo_alive(self):
         """Is a Turbo llama-server still answering on the port?"""
         try:
-            with urllib.request.urlopen(TURBO + "/health", timeout=1) as r:
+            with urllib.request.urlopen(LOCAL_TURBO + "/health", timeout=1) as r:
                 return r.status == 200
         except Exception:
             return False
@@ -1377,7 +1391,38 @@ class Backend(QObject):
             except Exception:
                 pass
 
+    def _remote_turbo(self):
+        """A PEER's Turbo that is up and answering, or None.
+
+        When one exists there is nothing to start here: the model is already
+        loaded on that machine's GPU. Never returns our own — a local server is
+        something we own and must actually launch."""
+        base = _turbo_base()
+        if base.startswith("http://127.0.0.1") or base.startswith("http://localhost"):
+            return None
+        try:
+            with urllib.request.urlopen(base + "/health", timeout=3) as r:
+                return base if json.loads(r.read()).get("status") == "ok" else None
+        except Exception:
+            return None
+
     def _start_turbo(self, model, spec=False):
+        # A peer is already serving: use it, start nothing. Without this the
+        # toggle spawned a local llama-server even on a machine with no GPU and
+        # even while the Mesh page said, correctly, that Turbo lived on another
+        # machine — so the UI reported the peer and the work went to the local
+        # CPU, which then sat at "loading model" on a model too big for it.
+        remote = self._remote_turbo()
+        if remote:
+            self._turbo = True
+            self._turbo_model = model
+            self._turbo_spec = spec
+            turbo_ctl.write_marker(model)
+            self.turboReady.emit(True)
+            self.turboStatus.emit("Turbo em %s (Genesi Mesh) — nada a iniciar aqui"
+                                  % remote)
+            return
+
         # Already serving this exact model + same spec mode AND the server is
         # still alive? Nothing to do. The poll() check matters: a dead Popen
         # object would otherwise make us think Turbo is up and never restart a
@@ -1456,7 +1501,7 @@ class Backend(QObject):
                 # running Turbo and exited 0 right away (its helper proc is gone,
                 # but the server is healthy). So health wins over a dead proc.
                 try:
-                    with urllib.request.urlopen(TURBO + "/health", timeout=2) as r:
+                    with urllib.request.urlopen(LOCAL_TURBO + "/health", timeout=2) as r:
                         if json.loads(r.read()).get("status") == "ok":
                             self._turbo = True
                             # Record the served tag so current_model() (shared with

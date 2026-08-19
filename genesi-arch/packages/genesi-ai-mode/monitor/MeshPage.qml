@@ -344,13 +344,26 @@ Item {
             // isto decide o que ela USA. Automático é um bom padrão e um péssimo
             // comportamento único: quem quer a IA na máquina à frente dele, ou
             // presa numa específica, não está mal configurado.
-            FCard {
-                Layout.fillWidth: true
+            // Same shape as every other section on this page: a Rectangle whose
+            // implicitHeight follows its column. An FCard with `anchors.fill`
+            // has NO height of its own -- the layout collapsed to zero while its
+            // children kept painting, so this card drew straight on top of
+            // "Máquinas".
+            Rectangle {
                 visible: root.available
+                Layout.fillWidth: true
+                implicitHeight: turboCol.implicitHeight + 28
+                radius: 14
+                color: theme.a(theme.white, 0.04)
+                border.width: 1
+                border.color: theme.a(theme.white, 0.10)
 
                 ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
+                    id: turboCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 14
                     spacing: 8
 
                     QQC2.Label {

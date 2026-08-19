@@ -873,7 +873,21 @@ pkgver=1.0.0
 # root, which is what that pkexec bridge exists for. `serve` also records the
 # model tag to /run/genesi-ai-mode/turbo-model, since llama.cpp's /props reports
 # the GGUF blob path and under ollama that is a sha256 filename.
-pkgrel=163
+# 2026-08-19 (164): the Monitor's Turbo toggle still started a LOCAL server even
+# when the Mesh page was, correctly, showing that Turbo lived on another
+# machine. _start_turbo() spawned `genesi-ai-turbo serve` unconditionally, so a
+# GPU-less client reported the peer in the UI and sent the work to its own CPU,
+# where it sat at "loading model" on a model far too big for it. It now checks
+# for a healthy peer first and starts nothing; the off path no longer kills a
+# local warm server it never started. Also splits the endpoint in two, the same
+# distinction (162) fixed inside genesi-ai-turbo: LOCAL_TURBO for "is the server
+# WE started alive", _turbo_base() for "where should inference go" -- one
+# constant for both means a peer's /health can answer for our own failed load.
+# And the Mesh page's new card had no height: an FCard is a plain Rectangle, so
+# `anchors.fill` collapsed the layout to zero while its children kept painting,
+# drawing the card on top of "Máquinas". It follows the page's own convention
+# now (implicitHeight bound to its column).
+pkgrel=164
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
