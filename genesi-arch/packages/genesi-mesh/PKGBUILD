@@ -116,7 +116,12 @@ pkgver=1.0.0
 # resolves GENESI_TURBO_URL -> local Turbo -> best peer serving one -> loopback,
 # and `peers` tags such a peer [turbo] and says when to prefer it. The env var
 # survives as an override for hand-built setups; nothing should need it.
-pkgrel=15
+# 2026-08-19 (16): doctor names the choice. A user who found `worker on` had no
+# way to learn that serving Turbo over HTTP exists, let alone that it is the
+# better path for any model that fits on the GPU box -- so the slower option was
+# the only discoverable one. "This machine" now reports whether Turbo is served
+# and, on a real GPU that is not, points at `sudo genesi-ai-turbo share on`.
+pkgrel=16
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -965,6 +965,23 @@ def cmd_doctor():
             "No GPU detected. This machine can still USE a mesh, but it has "
             "nothing to contribute as a worker.")
 
+    # Turbo-over-HTTP versus pooling. A machine with a real GPU almost always
+    # wants to be the one SERVING, and that is not discoverable from anywhere
+    # else — a user who found `worker on` has no reason to suspect a better
+    # option exists, and pooling a model that fits is the slower path.
+    print("  serving Turbo:         %s"
+          % (color("yes — peers use this GPU over HTTP", GREEN)
+             if mesh.turbo_reachable()
+             else color("no (loopback only)", DIM)))
+    if not mesh.turbo_reachable() and gpu["vram_mb"] > 0 \
+            and not gpu.get("integrated"):
+        print(color("     Peers with no GPU could run models HERE instead of "
+                    "pooling this card:", DIM))
+        print(color("         sudo genesi-ai-turbo share on", CYAN))
+        print(color("     Prefer that whenever the model FITS on this machine "
+                    "— pooling ships", DIM))
+        print(color("     layer activations per token, HTTP ships text.", DIM))
+
     print()
     print("Mesh membership")
     secret = _secret_state()

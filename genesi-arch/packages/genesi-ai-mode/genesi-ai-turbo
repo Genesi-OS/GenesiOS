@@ -11,6 +11,7 @@ already downloaded — no re-download.
   genesi-ai-turbo bench <model> [draft]   prove the speedup (spec vs no-spec)
   genesi-ai-turbo serve <model> [--spec]  run a Turbo server on :11435
   genesi-ai-turbo recommend               print the biggest model that fits VRAM
+  genesi-ai-turbo share on|off            serve this GPU to the rest of the mesh
   genesi-ai-turbo <model> [--spec]        same as `serve`
 
 <model> is either an ollama tag (llama3.1:8b) or ANY GGUF on this machine —
@@ -2123,6 +2124,123 @@ def cmd_serve(main, draft, spec=False):
     _serve_with_fallback(main_g, draft_g)
 
 
+TURBO_ENV_PATH = "/etc/genesi-ai-mode/turbo.env"
+
+
+def _env_file_set(path, key, value):
+    """Set one KEY=value in an env file, keeping comments and other keys.
+
+    value=None removes the key. Written whole so a half-written file can never
+    be read by systemd: EnvironmentFile has no notion of a partial line."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        lines = []
+    out, done = [], False
+    for line in lines:
+        st = line.strip()
+        if st and not st.startswith("#") and "=" in st \
+                and st.split("=", 1)[0].strip() == key:
+            if value is not None and not done:
+                out.append("%s=%s" % (key, value))
+                done = True
+            continue                      # drop duplicates / the removed key
+        out.append(line)
+    if value is not None and not done:
+        out.append("%s=%s" % (key, value))
+    os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(out).rstrip() + "\n")
+    os.replace(tmp, path)
+
+
+def _firewall_port(port, opening):
+    """Open or close `port`/tcp under whichever firewall is RUNNING.
+
+    Returns a line describing what happened, honestly. Applying a rule to a
+    firewall that is not running is the classic time sink -- `ufw allow` prints
+    "Rules updated", exits 0, and filters nothing while firewalld owns the
+    ruleset -- so we act only on an active manager and say when we found none."""
+    def active(unit):
+        try:
+            return subprocess.run(["systemctl", "is-active", unit],
+                                  capture_output=True, text=True,
+                                  timeout=5).stdout.strip() == "active"
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    did = "opened" if opening else "closed"
+    if active("firewalld"):
+        zone = subprocess.run(["firewall-cmd", "--get-default-zone"],
+                              capture_output=True, text=True
+                              ).stdout.strip() or "public"
+        rc = subprocess.run(
+            ["firewall-cmd", "--permanent", "--zone=" + zone,
+             "%s=%d/tcp" % ("--add-port" if opening else "--remove-port", port)],
+            capture_output=True).returncode
+        subprocess.run(["firewall-cmd", "--reload"], capture_output=True)
+        if rc != 0:
+            return "firewalld: could NOT change %d/tcp — do it by hand" % port
+        return "firewalld: %s %d/tcp in zone %s" % (did, port, zone)
+    if active("ufw"):
+        args = (["ufw", "allow", "%d/tcp" % port] if opening
+                else ["ufw", "delete", "allow", "%d/tcp" % port])
+        if subprocess.run(args, capture_output=True).returncode != 0:
+            return "ufw: could NOT change %d/tcp — do it by hand" % port
+        return "ufw: %s %d/tcp" % (did, port)
+    return "no firewall running — nothing to open"
+
+
+def cmd_share(arg):
+    """Turn this machine into the mesh's inference server, or stop.
+
+    This is the counterpart to `genesi-mesh worker on`, and the one to reach for
+    FIRST: worker mode pools VRAM, which ships layer activations for every token
+    and leaves the far GPU waiting on round trips. Sharing Turbo ships the text
+    of a conversation instead, so the network stops mattering for any model that
+    fits on this machine.
+
+    Deliberately a command and not a default: Turbo has NO authentication, so
+    binding it beyond loopback is the user's decision to make, once, knowingly."""
+    if arg not in ("on", "off"):
+        sys.exit("usage: genesi-ai-turbo share on|off")
+    if os.geteuid() != 0:
+        sys.exit("This needs root: sudo genesi-ai-turbo share %s" % arg)
+
+    on = arg == "on"
+    _env_file_set(TURBO_ENV_PATH, "GENESI_TURBO_HOST",
+                  "0.0.0.0" if on else None)
+    print(":: %s -> GENESI_TURBO_HOST=%s"
+          % (TURBO_ENV_PATH, "0.0.0.0" if on else "(removed, back to loopback)"))
+    print(":: " + _firewall_port(TURBO_PORT, on))
+
+    # enable/disable + restart so the new bind takes effect now, not next boot.
+    subprocess.run(["systemctl", "enable" if on else "disable",
+                    "genesi-turbo.service"], capture_output=True)
+    subprocess.run(["systemctl", "restart" if on else "stop",
+                    "genesi-turbo.service"], capture_output=True)
+    print(":: genesi-turbo %s" % ("enabled and restarted" if on else "stopped"))
+
+    if on:
+        addr = "this machine"
+        try:
+            sys.path.insert(0, "/usr/lib/genesi-mesh")
+            import genesi_mesh_common as _mesh
+            addr = _mesh.primary_address()
+        except Exception:
+            pass
+        print()
+        print("   Serving http://%s:%d/v1 to your network." % (addr, TURBO_PORT))
+        print("   Other Genesi machines find it through the mesh on their next")
+        print("   beacon — nothing to configure on them.")
+        print()
+        print("   Turbo has NO authentication. Anyone who can reach this port can")
+        print("   use this GPU. Only do this on a network you control.")
+    return
+
+
 def main():
     argv = sys.argv[1:]
     if argv and argv[0] in ("-h", "--help"):
@@ -2151,6 +2269,9 @@ def main():
     action, rest = pos[0], pos[1:]
     if action == "recommend":
         cmd_recommend()
+        return
+    if action == "share":
+        cmd_share(rest[0] if rest else "")
         return
     # Resolve an ollama tag to its GGUF blob path (used by genesi-ai-tune so the
     # autotuner benches the exact file Turbo would serve). Prints the path on
