@@ -126,6 +126,24 @@ import urllib.parse
 import urllib.request
 
 TURBO_PORT = 11435
+
+# Which address llama-server binds. Loopback by default: Turbo has no auth, and
+# a warm inference server reachable from the LAN is a real exposure.
+#
+# GENESI_TURBO_HOST=0.0.0.0 makes one machine serve the whole house, which is
+# the RIGHT shape when only one box has the GPU. The alternative -- Genesi Mesh
+# -- pools VRAM by shipping layer activations over the wire for EVERY token, so
+# it is how you run a model that fits nowhere, not how you make a fitting model
+# fast. Measured on a 3B over WiFi: the remote GPU sat at 2-3% utilisation,
+# idle, waiting on a 9 ms round trip. Serving the same model over HTTP from the
+# machine that owns the GPU moves text instead of tensors and the network stops
+# mattering.
+TURBO_HOST = os.environ.get("GENESI_TURBO_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+# Where CLIENTS look for Turbo. Same default; point it at another machine's
+# GENESI_TURBO_HOST to use its GPU without meshing.
+TURBO_URL = os.environ.get(
+    "GENESI_TURBO_URL", "http://127.0.0.1:%d" % TURBO_PORT).rstrip("/")
 PROMPT = "Explain how a CPU instruction pipeline works, in about 200 words."
 
 # (family substring in the target tag -> a tiny, SAME-tokenizer draft model)
@@ -1506,7 +1524,7 @@ def server_cmd(main_gguf, draft_gguf):
     n_parallel = max(1, min(n_parallel, 8))
     total_ctx = ctx * n_parallel                 # per-slot ctx preserved
 
-    cmd = [binp, "-m", main_gguf, "--host", "127.0.0.1",
+    cmd = [binp, "-m", main_gguf, "--host", TURBO_HOST,
            "--port", str(TURBO_PORT),
            "-c", str(total_ctx),
            # Remote GPUs first: --rpc must be on the command line before -ngl is
@@ -1680,7 +1698,7 @@ def wait_ready(timeout=900):   # big models on a CPU-only VM can take 5-8 min
     end = time.time() + timeout
     while time.time() < end:
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{TURBO_PORT}/health",
+            with urllib.request.urlopen(f"{TURBO_URL}/health",
                                         timeout=2) as r:
                 if json.loads(r.read()).get("status") == "ok":
                     return True
@@ -1693,7 +1711,7 @@ def wait_ready(timeout=900):   # big models on a CPU-only VM can take 5-8 min
 def turbo_healthy():
     """Is a Turbo server already up and serving on our port?"""
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{TURBO_PORT}/health",
+        with urllib.request.urlopen(f"{TURBO_URL}/health",
                                     timeout=2) as r:
             return json.loads(r.read()).get("status") == "ok"
     except Exception:
@@ -1701,7 +1719,7 @@ def turbo_healthy():
 
 
 def port_busy(port=TURBO_PORT):
-    """True only if something is ACTIVELY LISTENING on 127.0.0.1:<port>.
+    """True only if something is ACTIVELY LISTENING on TURBO_HOST:<port>.
 
     We set SO_REUSEADDR before bind. Without it, a just-stopped llama-server
     leaves the port in TIME_WAIT (the kernel holds 127.0.0.1:11435 for ~1-2 min
@@ -1714,7 +1732,7 @@ def port_busy(port=TURBO_PORT):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            s.bind(("127.0.0.1", port))
+            s.bind((TURBO_HOST, port))
             return False
         except OSError:
             return True
@@ -1751,7 +1769,7 @@ def free_turbo_port():
 def measure(n=256):
     body = json.dumps({"prompt": PROMPT, "n_predict": n,
                        "temperature": 0.7, "cache_prompt": False}).encode()
-    req = urllib.request.Request(f"http://127.0.0.1:{TURBO_PORT}/completion",
+    req = urllib.request.Request(f"{TURBO_URL}/completion",
                                  data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=900) as r:
         t = json.loads(r.read()).get("timings", {})
@@ -2001,7 +2019,7 @@ def _serve_with_fallback(main_g, draft_g):
             time.sleep(1)
         if ok:
             print(f":: Genesi Turbo up ({label}). API: "
-                  f"http://127.0.0.1:{TURBO_PORT}/v1   Ctrl-C to stop", flush=True)
+                  f"{TURBO_URL}/v1   Ctrl-C to stop", flush=True)
             try:
                 proc.wait()
             except KeyboardInterrupt:
@@ -2030,7 +2048,7 @@ def cmd_serve(main, draft, spec=False):
     # If it's bound but unresponsive, it's a stale llama-server: free the port.
     if port_busy():
         if turbo_healthy():
-            print(f":: Turbo is already running at http://127.0.0.1:{TURBO_PORT} — reusing it.")
+            print(f":: Turbo is already running at {TURBO_URL} — reusing it.")
             return
         print(f"[!] Port {TURBO_PORT} is held by an unresponsive process — freeing it…",
               file=sys.stderr, flush=True)
@@ -2075,7 +2093,7 @@ def cmd_serve(main, draft, spec=False):
     print(f":: Genesi Turbo serving {main}" +
           (f" + draft {draft} (speculative)" if draft_g
            else " (full GPU offload)"))
-    print(f"   API: http://127.0.0.1:{TURBO_PORT}/v1   (OpenAI-compatible)  Ctrl-C to stop")
+    print(f"   API: {TURBO_URL}/v1   (OpenAI-compatible)  Ctrl-C to stop")
     # Launch with graceful degradation: if MoE/draft trips the loader, fall back
     # to plain offload (what ollama does) instead of dying on a model ollama runs.
     _serve_with_fallback(main_g, draft_g)

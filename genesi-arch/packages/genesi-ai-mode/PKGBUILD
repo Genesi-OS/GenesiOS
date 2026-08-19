@@ -798,7 +798,17 @@ pkgver=1.0.0
 # Turbo that cannot load its model was meant to give up after 5 tries in 5 min
 # and instead retried every RestartSec forever. genesi-studiod.service was fixed
 # for exactly this in an earlier release; the other two were missed.
-pkgrel=155
+# 2026-08-19 (156): Turbo can serve a machine that has no GPU. The bind address
+# and the client URL were both hardcoded to 127.0.0.1, so the ONLY way to use a
+# remote GPU was Genesi Mesh -- and Mesh is the wrong tool whenever the model
+# fits on the far box, because it ships layer activations for every token
+# instead of text. Measured on a 3B, client on WiFi, worker on a 3050: weights
+# landed on the GPU fine and the GPU then sat at 2-3% utilisation, idle, waiting
+# on a 9 ms round trip with 5 ms of jitter; 1.2 MB/s of tensor traffic bought
+# almost no work. GENESI_TURBO_HOST (server) and GENESI_TURBO_URL (clients) now
+# override both, defaulting to loopback exactly as before. Turbo has no auth, so
+# the docs say plainly this is for a network you control.
+pkgrel=156
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

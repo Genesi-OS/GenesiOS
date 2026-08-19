@@ -25,6 +25,13 @@ Type=simple
 # Resolve the model to keep warm: an explicit GENESI_WARM_MODEL (optional env
 # file) wins, else the advisor's biggest-fits-VRAM pick, else a safe small model.
 # `exec` so llama-server becomes the main process (clean stop/restart).
+#
+# The same env file takes GENESI_TURBO_HOST=0.0.0.0 to serve the LAN instead of
+# loopback, which is how one GPU box serves machines that have no GPU. Clients
+# set GENESI_TURBO_URL=http://<that-box>:11435. Prefer this over Genesi Mesh
+# whenever the model FITS on the GPU box: Turbo-over-HTTP moves text, Mesh moves
+# layer activations for every token. Turbo has no authentication, so only bind
+# beyond loopback on a network you control.
 EnvironmentFile=-/etc/genesi-ai-mode/turbo.env
 ExecStart=/bin/sh -c 'm="${GENESI_WARM_MODEL:-$(genesi-ai-turbo recommend 2>/dev/null | head -n1)}"; [ -n "$m" ] || m=llama3.2:3b; echo "genesi-turbo: warming $m"; exec genesi-ai-turbo serve "$m"'
 Restart=on-failure

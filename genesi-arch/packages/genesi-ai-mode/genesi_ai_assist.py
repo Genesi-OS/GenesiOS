@@ -34,7 +34,12 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-TURBO_URL = "http://127.0.0.1:11435"
+# Loopback by default. GENESI_TURBO_URL points every passive helper at another
+# machine's Turbo — the right move when only one box in the house has a GPU, and
+# far cheaper than pooling VRAM over the network (that ships tensors per token;
+# this ships text).
+TURBO_URL = os.environ.get("GENESI_TURBO_URL",
+                           "http://127.0.0.1:11435").rstrip("/")
 STATE_JSON = "/run/genesi-ai-mode/state.json"
 STUDIO_STATE = "/run/genesi-studio/state.json"
 

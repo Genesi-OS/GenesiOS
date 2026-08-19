@@ -147,7 +147,9 @@ def _turbo_busy():
     from a live session. Checks the /slots endpoint for a processing slot."""
     import urllib.request
     try:
-        with urllib.request.urlopen("http://127.0.0.1:11435/slots", timeout=2) as r:
+        base = os.environ.get("GENESI_TURBO_URL",
+                              "http://127.0.0.1:11435").rstrip("/")
+        with urllib.request.urlopen(base + "/slots", timeout=2) as r:
             slots = json.loads(r.read())
         return any((s.get("is_processing") or s.get("state") in (1, 2))
                    for s in (slots if isinstance(slots, list) else []))
