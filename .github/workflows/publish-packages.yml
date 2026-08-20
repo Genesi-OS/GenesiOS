@@ -87,12 +87,24 @@ jobs:
         id: channel
         shell: bash
         run: |
+          # `db` is the pacman REPOSITORY NAME, and it has to differ per channel.
+          #
+          # pacman fetches "<repo-name>.db" from a repo's Server URL, so the
+          # block called [genesi-testing] in pacman.conf asks for
+          # genesi-testing.db. This job published genesi.db unconditionally on
+          # every branch, which meant the testing channel 404'd on the very
+          # first `pacman -Syy` — nobody could ever have used it. Both channels
+          # still publish to the same path; the branch in the URL is what keeps
+          # them apart, and this name is what lets a machine subscribe to both
+          # at once and let pacman pick the newer package.
           if [ "${GITHUB_REF_NAME}" = "main" ]; then
             echo "name=stable"  >> "$GITHUB_OUTPUT"
             echo "branch=main"  >> "$GITHUB_OUTPUT"
+            echo "db=genesi"    >> "$GITHUB_OUTPUT"
           else
             echo "name=testing" >> "$GITHUB_OUTPUT"
             echo "branch=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "db=genesi-testing" >> "$GITHUB_OUTPUT"
           fi
           echo "Channel: $(cat "$GITHUB_OUTPUT" | grep '^name=' | cut -d= -f2)"
 
@@ -301,6 +313,8 @@ jobs:
 
       - name: Build packages
         shell: bash
+        env:
+          DB: ${{ steps.channel.outputs.db }}
         run: |
           set -euo pipefail
           useradd -m -G wheel builder
@@ -570,8 +584,13 @@ jobs:
           echo "All genesi-desktop package dependencies are present."
 
           cd repo
-          rm -f genesi.db* genesi.files*
-          repo-add genesi.db.tar.gz *.pkg.tar.zst
+          # Fail loudly rather than build a repo called ".db": an empty DB here
+          # would silently publish an unusable database over the STABLE channel.
+          : "${DB:?the channel step did not provide a repo db name}"
+          # Clear BOTH names, not just ours: a branch that used to publish the
+          # wrong one must not leave it behind for pacman to find.
+          rm -f genesi.db* genesi.files* genesi-testing.db* genesi-testing.files*
+          repo-add "${DB}.db.tar.gz" *.pkg.tar.zst
           ls -lh
 
       - name: Commit packages to in-repo registry
@@ -579,6 +598,7 @@ jobs:
         env:
           CHANNEL: ${{ steps.channel.outputs.name }}
           BRANCH:  ${{ steps.channel.outputs.branch }}
+          DB:      ${{ steps.channel.outputs.db }}
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
@@ -592,20 +612,29 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
           # Place built artifacts where pacman.conf expects them.
-          # Both channels publish to genesi-arch/repo/x86_64 — channel
-          # separation is by branch (main = stable, develop = testing).
+          #
+          # Both channels publish to genesi-arch/repo/x86_64 — what separates
+          # them is the BRANCH in the raw.githubusercontent URL (main = stable,
+          # develop = testing) and the DB NAME (genesi vs genesi-testing). Both
+          # halves are required: the branch decides which packages a client
+          # sees, and the name is what a client can actually ask for, since
+          # pacman fetches "<repo-name>.db". A machine on the testing channel
+          # subscribes to BOTH repos and pacman installs whichever is newer.
+          : "${DB:?the channel step did not provide a repo db name}"
           mkdir -p genesi-arch/repo/x86_64
-          rm -f genesi-arch/repo/x86_64/*.pkg.tar.zst genesi-arch/repo/x86_64/genesi.*
+          rm -f genesi-arch/repo/x86_64/*.pkg.tar.zst \
+                genesi-arch/repo/x86_64/genesi.* \
+                genesi-arch/repo/x86_64/genesi-testing.*
           cp genesi-arch/packages/repo/*.pkg.tar.zst genesi-arch/repo/x86_64/ || true
-          cp genesi-arch/packages/repo/genesi.db.tar.gz genesi-arch/repo/x86_64/ || true
-          cp genesi-arch/packages/repo/genesi.files.tar.gz genesi-arch/repo/x86_64/ || true
+          cp "genesi-arch/packages/repo/${DB}.db.tar.gz" genesi-arch/repo/x86_64/ || true
+          cp "genesi-arch/packages/repo/${DB}.files.tar.gz" genesi-arch/repo/x86_64/ || true
           # Pacman expects unsuffixed pointers as well. Use copies (not
           # symlinks) — raw.githubusercontent.com serves git symlinks as
           # plaintext (the link target path), which would break pacman when
           # a client points at the GitHub-raw URL.
           ( cd genesi-arch/repo/x86_64 && \
-            cp -f genesi.db.tar.gz    genesi.db && \
-            cp -f genesi.files.tar.gz genesi.files )
+            cp -f "${DB}.db.tar.gz"    "${DB}.db" && \
+            cp -f "${DB}.files.tar.gz" "${DB}.files" )
 
           git config user.email "actions@github.com"
           git config user.name  "Genesi Bot"

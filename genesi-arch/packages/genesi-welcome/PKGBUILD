@@ -40,7 +40,14 @@ pkgver=1.0.0
 # pkgrel 8: add the branded Gaming tile and install genesi-gaming instead of
 # only the raw CachyOS metas, so one click also applies Genesi's defaults.
 # pkgrel 9: hide Gaming on the live ISO; it is an installed-system feature.
-pkgrel=9
+# 2026-08-20: bumped 9 -> 10. Maintenance page gains the experimental-updates
+# switch the pacman.conf comment had been promising ("or via the Welcome app
+# channel switch"). It drives genesi-channel through its polkit action, and is
+# deliberately NOT optimistic: when the command finishes the checkbox is set to
+# what the system actually reports, so cancelling the password prompt or a
+# testing repo that does not answer leaves the box telling the truth. Hidden on
+# the live ISO, where the setting would die with the session.
+pkgrel=10
 pkgdesc="Welcome application for Genesi OS"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"

@@ -1,44 +1,146 @@
 #!/bin/bash
-# genesi-channel: switch between stable and testing Genesi update channels
-# SPDX-License-Identifier: GPL-3.0-or-later
+# genesi-channel: switch between the stable and testing Genesi update channels
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# stable  — [genesi] only, packages built from `main`.
+# testing — [genesi] AND [genesi-testing], the latter built from `develop`.
+#
+# Testing is ADDITIVE on purpose. The machine stays subscribed to stable and
+# gains a second repo, so pacman installs whichever build of a package is newer.
+# A tester therefore never falls behind stable, and going back to stable is just
+# dropping the extra repo.
+#
+# Three things this script must guarantee, because it edits the file that every
+# future `pacman -Syu` depends on:
+#
+#   1. It works on a system that has never seen the testing block. The block is
+#      WRITTEN if missing rather than assumed. The previous version only
+#      uncommented an existing block, and /etc/pacman-target.conf — the config
+#      the installer writes to a real install — never had one, so `set testing`
+#      printed success and did nothing at all on every installed machine.
+#   2. It never leaves pacman.conf broken. The file is backed up before the
+#      edit and restored if anything about the result is wrong.
+#   3. It never leaves an unreachable repo enabled. A repo whose db 404s makes
+#      EVERY later `pacman -Syu` fail, which would turn "I tried the beta" into
+#      "my system cannot update any more". If the database refresh fails after
+#      enabling, the change is rolled back automatically.
 
 set -euo pipefail
 
 PACMAN_CONF="${GENESI_PACMAN_CONF:-/etc/pacman.conf}"
-TESTING_HEADER='[genesi-testing]'
+PACMAN_BIN="${GENESI_PACMAN_BIN:-pacman}"
+# Scratch files, cleaned by the EXIT trap below.
+#
+# Declared at script scope on purpose. They used to be `local` to cmd_set, and
+# the EXIT trap fires AFTER the function's locals are gone — so under `set -u`
+# the cleanup itself failed with "backup: unbound variable" and a switch that
+# had completely succeeded exited 1. Every caller that checks the exit status,
+# the Welcome toggle and the polkit action included, would have called it a
+# failure.
+_backup=""
+_tmp=""
+_cleanup() {
+    [ -n "$_backup" ] && rm -f -- "$_backup"
+    [ -n "$_tmp" ] && rm -f -- "$_tmp"
+    return 0
+}
+trap _cleanup EXIT
+
+REPO_NAME="genesi-testing"
+TESTING_BRANCH="develop"
+TESTING_URL="https://raw.githubusercontent.com/Genesi-OS/GenesiOS/${TESTING_BRANCH}/genesi-arch/repo/\$arch"
 
 usage() {
     cat <<EOF
-genesi-channel — switch Genesi update channel
+genesi-channel — switch the Genesi update channel
 
 Usage:
-    genesi-channel get                  Show current channel
-    genesi-channel set stable           Disable [genesi-testing], sync DB
-    genesi-channel set testing          Enable  [genesi-testing], sync DB
+    genesi-channel get                  Show the current channel
+    genesi-channel set stable           Stable only (default)
+    genesi-channel set testing          Stable + experimental packages
     genesi-channel -h | --help          Show this help
 
-Notes:
-    'set' requires root; the CLI re-invokes itself via pkexec when called as a
-    user. The Welcome app uses the polkit action 'org.genesi.channel.set'.
+The testing channel adds packages built from the '${TESTING_BRANCH}' branch on
+top of the stable ones. They are pre-release: they can break your system, and
+that is the point of trying them. Switching back to stable is safe at any time.
+
+'set' requires root; the CLI re-invokes itself via pkexec when run as a user.
+The Welcome app uses the polkit action 'org.genesi.channel.set'.
 EOF
 }
 
-is_testing_enabled() {
-    grep -Eq "^\s*\[genesi-testing\]\s*$" "$PACMAN_CONF"
+# ── reading the current state ────────────────────────────────────────────────
+
+has_block() {          # the block exists, enabled or commented out
+    grep -Eq "^[[:space:]]*#?\[${REPO_NAME}\][[:space:]]*$" "$PACMAN_CONF"
+}
+
+is_testing_enabled() { # the block exists AND is not commented out
+    grep -Eq "^[[:space:]]*\[${REPO_NAME}\][[:space:]]*$" "$PACMAN_CONF"
 }
 
 cmd_get() {
-    if is_testing_enabled; then
-        echo "testing"
-    else
-        echo "stable"
-    fi
+    if is_testing_enabled; then echo "testing"; else echo "stable"; fi
 }
 
+# ── editing ──────────────────────────────────────────────────────────────────
+
 require_root() {
+    # Pointing the tool at your own file is not a privileged operation; only
+    # touching the real system config is. This also makes the script testable.
+    [ "$PACMAN_CONF" = "/etc/pacman.conf" ] || return 0
     if [ "$(id -u)" -ne 0 ]; then
         exec pkexec --disable-internal-agent /usr/bin/genesi-channel "$@"
     fi
+}
+
+# Append the block, commented out. Called only when it is missing entirely.
+#
+# Appended at the end rather than spliced next to [genesi]: a repo section runs
+# until the next header, so appending cannot corrupt whatever came before it.
+# Position only decides ties between repos carrying the same version, and there
+# is no meaningful tie here — the whole point is picking the newer package.
+write_block() {
+    {
+        echo ""
+        echo "# Genesi testing channel — packages built from the '${TESTING_BRANCH}' branch."
+        echo "# Disabled by default. Toggle with 'genesi-channel set testing', or with"
+        echo "# the experimental-updates switch in the Genesi Welcome app."
+        echo "# These are pre-release packages and they can break your system."
+        echo "#[${REPO_NAME}]"
+        echo "#SigLevel = Optional TrustAll"
+        echo "#Server = ${TESTING_URL}"
+    } >> "$PACMAN_CONF"
+}
+
+# Uncomment the block: the header, then every following line that still looks
+# like a commented-out `Key = value`. Stops at the first line that does not, so
+# a hand-edited block with two lines or four is handled the same way.
+enable_block() {
+    awk -v repo="$REPO_NAME" '
+        $0 ~ "^[[:space:]]*#\\[" repo "\\][[:space:]]*$" {
+            sub(/^[[:space:]]*#/, ""); print; inblock = 1; next
+        }
+        inblock && /^[[:space:]]*#[A-Za-z]+[[:space:]]*=/ {
+            sub(/^[[:space:]]*#/, ""); print; next
+        }
+        inblock { inblock = 0 }
+        { print }
+    ' "$PACMAN_CONF"
+}
+
+# The mirror image: comment the header, then every following `Key = value`.
+disable_block() {
+    awk -v repo="$REPO_NAME" '
+        $0 ~ "^[[:space:]]*\\[" repo "\\][[:space:]]*$" {
+            print "#" $0; inblock = 1; next
+        }
+        inblock && /^[[:space:]]*[A-Za-z]+[[:space:]]*=/ {
+            print "#" $0; next
+        }
+        inblock { inblock = 0 }
+        { print }
+    ' "$PACMAN_CONF"
 }
 
 cmd_set() {
@@ -50,34 +152,64 @@ cmd_set() {
 
     require_root set "$target"
 
-    local tmp
-    tmp="$(mktemp)"
-    trap 'rm -f "$tmp"' EXIT
-
-    if [ "$target" = "testing" ]; then
-        # Uncomment the [genesi-testing] block (header + 2 following lines)
-        awk '
-            BEGIN { in_block = 0 }
-            /^#\[genesi-testing\][[:space:]]*$/ { in_block = 3; sub(/^#/, ""); print; next }
-            in_block > 0 { sub(/^#/, ""); in_block--; print; next }
-            { print }
-        ' "$PACMAN_CONF" > "$tmp"
-    else
-        # Re-comment the [genesi-testing] block
-        awk '
-            BEGIN { in_block = 0 }
-            /^\[genesi-testing\][[:space:]]*$/ { in_block = 3; print "#" $0; next }
-            in_block > 0 && /^[^#]/ { print "#" $0; in_block--; next }
-            in_block > 0 { in_block--; print; next }
-            { print }
-        ' "$PACMAN_CONF" > "$tmp"
+    if [ ! -w "$PACMAN_CONF" ]; then
+        echo "Error: cannot write $PACMAN_CONF" >&2
+        exit 1
     fi
 
-    install -m644 "$tmp" "$PACMAN_CONF"
+    # Self-heal: an installed system that predates this block gets one now,
+    # which is what makes the switch work anywhere instead of only on the ISO.
+    if ! has_block; then
+        echo "Adding the ${REPO_NAME} repository to $PACMAN_CONF…"
+        write_block
+    fi
+
+    if [ "$(cmd_get)" = "$target" ]; then
+        echo "Already on: $target"
+        exit 0
+    fi
+
+    _backup="$(mktemp)"
+    _tmp="$(mktemp)"
+    cp -- "$PACMAN_CONF" "$_backup"
+
+    if [ "$target" = "testing" ]; then
+        enable_block > "$_tmp"
+    else
+        disable_block > "$_tmp"
+    fi
+    install -m644 -- "$_tmp" "$PACMAN_CONF"
+
+    # Say what actually happened, not what was attempted. The old version
+    # printed "Channel switched" unconditionally, which is how a switch that
+    # edited nothing still looked like it had worked.
+    if [ "$(cmd_get)" != "$target" ]; then
+        install -m644 -- "$_backup" "$PACMAN_CONF"
+        echo "Error: could not switch to '$target'; $PACMAN_CONF left unchanged." >&2
+        exit 1
+    fi
+
     echo "Channel switched to: $target"
-    echo "Refreshing package database..."
-    pacman -Syy
-    echo "Done. To pull testing packages now: pacman -Syu"
+    echo "Refreshing the package database…"
+    if ! "$PACMAN_BIN" -Syy; then
+        # Enabling a repo that cannot be reached would break every future
+        # upgrade, so it is not a state we are willing to leave behind.
+        install -m644 -- "$_backup" "$PACMAN_CONF"
+        "$PACMAN_BIN" -Syy >/dev/null 2>&1 || true
+        echo >&2
+        echo "Error: the '$target' repository did not answer." >&2
+        echo "Your channel was rolled back and pacman still works." >&2
+        exit 1
+    fi
+
+    if [ "$target" = "testing" ]; then
+        echo
+        echo "You are on the testing channel: stable packages PLUS pre-release"
+        echo "ones from '${TESTING_BRANCH}'. Install them now with:  pacman -Syu"
+        echo "Back to stable at any time with:  genesi-channel set stable"
+    else
+        echo "Back on stable only."
+    fi
 }
 
 case "${1:-}" in

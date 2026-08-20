@@ -24,7 +24,7 @@ from PyQt5.QtWidgets import (
     QLabel, QGridLayout, QFrame, QStackedWidget, QComboBox, QCheckBox,
     QScrollArea, QSizePolicy,
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QProcess
 from PyQt5.QtGui import QFont, QPixmap
 
 AUTOSTART = os.path.expanduser("~/.config/autostart/genesi-welcome.desktop")
@@ -83,6 +83,15 @@ STR = {
         "svc_psd": "Profile-sync-daemon", "svc_oomd": "Systemd-oomd",
         "svc_bpftune": "Bpftune", "svc_ananicy": "Ananicy Cpp",
         "svc_bt": "Bluetooth",
+        # canal de atualizações (genesi-channel)
+        "chan_h": "Atualizações",
+        "chan_beta": "Receber atualizações experimentais (beta)",
+        "chan_desc": "Além das atualizações normais, você também recebe pacotes "
+                     "pré-lançamento do canal de testes. Eles podem quebrar o "
+                     "sistema — é justamente pra isso que servem. Dá pra "
+                     "desligar a qualquer momento.",
+        "chan_busy": "Trocando o canal…",
+        "chan_fail": "Não foi possível trocar o canal. Nada foi alterado.",
     },
     "English": {
         "title": "Genesi OS",
@@ -121,6 +130,15 @@ STR = {
         "svc_psd": "Profile-sync-daemon", "svc_oomd": "Systemd-oomd",
         "svc_bpftune": "Bpftune", "svc_ananicy": "Ananicy Cpp",
         "svc_bt": "Bluetooth",
+        # update channel (genesi-channel)
+        "chan_h": "Updates",
+        "chan_beta": "Receive experimental (beta) updates",
+        "chan_desc": "On top of the normal updates, you also get pre-release "
+                     "packages from the testing channel. They can break your "
+                     "system — that is what they are for. You can turn this off "
+                     "at any time.",
+        "chan_busy": "Switching channel…",
+        "chan_fail": "Could not switch the channel. Nothing was changed.",
     },
 }
 
@@ -446,6 +464,22 @@ class GenesiWelcome(QMainWindow):
             toggles.addWidget(chk, i // 3, i % 3)
         lay.addLayout(toggles)
 
+        # Update channel — installed systems only. On the live ISO the setting
+        # would be discarded with the session, so offering it would be a lie.
+        if not self.live and shutil.which("genesi-channel"):
+            lay.addWidget(self._h(self.tr("chan_h")))
+            self.chan_chk = QCheckBox(self.tr("chan_beta"))
+            self.chan_chk.setChecked(self._channel_is_testing())
+            # Connected AFTER setChecked: toggled fires on a programmatic set
+            # too, and wiring it first would switch the channel just by opening
+            # the page.
+            self.chan_chk.toggled.connect(self._channel_toggle)
+            lay.addWidget(self.chan_chk)
+            self.chan_note = QLabel(self.tr("chan_desc"))
+            self.chan_note.setObjectName("subtitle")
+            self.chan_note.setWordWrap(True)
+            lay.addWidget(self.chan_note)
+
         # Applications
         lay.addWidget(self._h(self.tr("apps_h")))
         apps = QHBoxLayout(); apps.setSpacing(10)
@@ -509,6 +543,50 @@ class GenesiWelcome(QMainWindow):
             self.run_user(["systemctl", "--user", verb, "--now", unit])
         else:
             self.run_user(["pkexec", "systemctl", verb, "--now", unit])
+
+    # ── update channel ──────────────────────────────────────────────────────
+    #
+    # Backed by genesi-channel through its polkit action. The checkbox is NEVER
+    # applied optimistically: when the command finishes, the box is set to what
+    # the system actually reports. So cancelling the password prompt, or a
+    # testing repo that does not answer (genesi-channel rolls that back on its
+    # own), leaves the box showing the truth rather than the intention.
+    def _channel_is_testing(self):
+        try:
+            out = subprocess.run(["genesi-channel", "get"], capture_output=True,
+                                 text=True, timeout=5)
+            return out.stdout.strip() == "testing"
+        except Exception:
+            return False
+
+    def _channel_toggle(self, on):
+        self._chan_want = bool(on)
+        self.chan_chk.setEnabled(False)
+        self.chan_note.setText(self.tr("chan_busy"))
+        # QProcess rather than subprocess.run: `genesi-channel set` performs a
+        # pacman -Syy, which takes seconds against the network, and blocking
+        # here would freeze the window in the middle of the user's click.
+        self._chan_proc = QProcess(self)
+        self._chan_proc.finished.connect(lambda *_: self._channel_done())
+        self._chan_proc.errorOccurred.connect(lambda *_: self._channel_done())
+        self._chan_proc.start(
+            "pkexec", ["/usr/bin/genesi-channel", "set",
+                       "testing" if on else "stable"])
+
+    def _channel_done(self):
+        try:
+            real = self._channel_is_testing()
+            self.chan_chk.blockSignals(True)
+            self.chan_chk.setChecked(real)
+            self.chan_chk.blockSignals(False)
+            self.chan_chk.setEnabled(True)
+            self.chan_note.setText(
+                self.tr("chan_desc") if real == getattr(self, "_chan_want", real)
+                else self.tr("chan_fail"))
+        except RuntimeError:
+            # The page was rebuilt (a language switch) while we were waiting;
+            # the widgets we are holding no longer exist. Nothing to update.
+            pass
 
     # ── command runners ─────────────────────────────────────────────────────
     def _terminal(self):

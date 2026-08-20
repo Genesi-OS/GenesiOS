@@ -1,7 +1,16 @@
 # Maintainer: Genesi OS Team
 pkgname=genesi-channel
 pkgver=1.0.0
-pkgrel=1
+# 2026-08-20: bumped 1 -> 2. The channel switch never worked on an installed
+# system. It only UNCOMMENTED an existing [genesi-testing] block, and
+# /etc/pacman-target.conf -- the config the installer writes to a real install
+# -- never contained one, so `set testing` printed success and changed nothing.
+# It now WRITES the block when it is missing, which fixes every machine
+# installed before the channel existed without needing a migration scriptlet.
+# It also verifies the result instead of announcing it, and rolls the change
+# back if the testing repo does not answer -- an unreachable repo left enabled
+# would break every later `pacman -Syu`. Covered by ci/channel-switch-test.sh.
+pkgrel=2
 pkgdesc="Switch between stable and testing update channels for Genesi OS"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"
