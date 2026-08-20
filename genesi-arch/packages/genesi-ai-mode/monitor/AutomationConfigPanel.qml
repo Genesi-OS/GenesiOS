@@ -222,11 +222,82 @@ Item {
                 FieldLabel { text: "…or daily at (HH:MM, optional)"; visible: root.kindIs("evt_schedule") }
                 GField { visible: root.kindIs("evt_schedule"); text: root.cfg("time", ""); icon: "clock"
                     onAccepted: root.setConfig("time", value) }
+
+                // ── evt_schedule: the visual cron builder ────────────────
+                //
+                // Cron is five fields of syntax that nobody remembers and
+                // everybody gets wrong by one field. The pickers below WRITE
+                // that syntax, and the sentence underneath reads the result
+                // back in plain language — so the check is "does that sentence
+                // describe what I wanted", not "did I count the asterisks".
+                //
+                // The raw field stays, and stays authoritative: anything the
+                // pickers cannot express (a stepped range, a list of months)
+                // can still be typed, and the pickers simply stop claiming to
+                // describe it.
+                FieldLabel { text: "…or build a schedule"; visible: root.kindIs("evt_schedule") }
+                RowLayout {
+                    visible: root.kindIs("evt_schedule")
+                    Layout.fillWidth: true; spacing: 6
+                    Combo {
+                        id: cronEvery
+                        Layout.preferredWidth: 132
+                        model: ["every minute", "every 5 min", "every 15 min",
+                                "every 30 min", "hourly", "daily", "weekly", "monthly"]
+                        currentIndex: root.cronPreset()
+                        onActivated: root.setConfig("cron", root.cronBuild(
+                            currentIndex, cronHour.currentIndex, cronDay.currentIndex))
+                    }
+                    Combo {
+                        id: cronHour
+                        Layout.preferredWidth: 92
+                        visible: cronEvery.currentIndex >= 5
+                        model: root.hourList()
+                        currentIndex: root.cronHourIndex()
+                        onActivated: root.setConfig("cron", root.cronBuild(
+                            cronEvery.currentIndex, currentIndex, cronDay.currentIndex))
+                    }
+                    Combo {
+                        id: cronDay
+                        Layout.fillWidth: true
+                        visible: cronEvery.currentIndex === 6 || cronEvery.currentIndex === 7
+                        model: cronEvery.currentIndex === 7
+                            ? root.monthDayList()
+                            : ["Sunday", "Monday", "Tuesday", "Wednesday",
+                               "Thursday", "Friday", "Saturday"]
+                        currentIndex: root.cronDayIndex()
+                        onActivated: root.setConfig("cron", root.cronBuild(
+                            cronEvery.currentIndex, cronHour.currentIndex, currentIndex))
+                    }
+                }
+                // What the daemon will actually do, read back from the string.
+                Rectangle {
+                    visible: root.kindIs("evt_schedule") && ("" + root.cfg("cron", "")).length > 0
+                    Layout.fillWidth: true
+                    implicitHeight: cronRead.implicitHeight + 16
+                    radius: 8
+                    color: root.theme.cardHi
+                    border.width: 1
+                    border.color: root.cronValid() ? root.theme.line : root.theme.red
+                    RowLayout {
+                        anchors.fill: parent; anchors.margins: 8; spacing: 8
+                        FIcon { size: 13; name: root.cronValid() ? "clock" : "alert"
+                            color: root.cronValid() ? root.theme.greenBright : root.theme.red }
+                        QQC2.Label {
+                            id: cronRead
+                            Layout.fillWidth: true; wrapMode: Text.Wrap
+                            text: root.cronExplain()
+                            color: root.cronValid() ? root.theme.textMid : root.theme.red
+                            font.pixelSize: 11
+                        }
+                    }
+                }
+
                 FieldLabel { text: "…or a cron expression (optional)"; visible: root.kindIs("evt_schedule") }
                 GField { visible: root.kindIs("evt_schedule"); text: root.cfg("cron", ""); icon: "code"
                     onAccepted: root.setConfig("cron", value) }
                 QQC2.Label { visible: root.kindIs("evt_schedule"); Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: "Cron wins over the other two when it is filled in. Five fields — minute hour day month weekday — with *, lists (0,30), ranges (9-17) and steps (*/15). \"*/15 9-17 * * 1-5\" is every quarter of an hour during weekday office hours."
+                    text: "A cron expression wins over the two fields above. Use the pickers, or type it: five fields — minute hour day month weekday — with *, lists (0,30), ranges (9-17) and steps (*/15)."
                     color: root.theme.textLo; font.pixelSize: 10 }
 
                 // ── act_cond ────────────────────────────────────────────
@@ -703,6 +774,116 @@ Item {
     // Every OTHER automation, by name. A workflow cannot call itself, so the
     // one being edited is left out of the list rather than offered and refused.
     // The declared outputs, always an array so the UI never has to guess.
+    // ── cron, read and written ──────────────────────────────────────────────
+    //
+    // These mirror _cron_match in genesi-automationd. The daemon is the
+    // authority on what a field MEANS; this side only has to write fields the
+    // daemon understands and describe them back honestly. When it meets a field
+    // it cannot describe, it says so instead of guessing — a schedule the user
+    // was told runs "every weekday at 9" but actually runs hourly is worse than
+    // one nobody explained.
+    function hourList() {
+        var out = []
+        for (var h = 0; h < 24; h++) out.push((h < 10 ? "0" + h : "" + h) + ":00")
+        return out
+    }
+    function monthDayList() {
+        var out = []
+        for (var d = 1; d <= 28; d++) out.push("day " + d)
+        return out
+    }
+    function cronFields() {
+        var raw = ("" + cfg("cron", "")).trim()
+        return raw.length ? raw.split(/\s+/) : []
+    }
+    function cronValid() {
+        var f = cronFields()
+        if (f.length !== 5) return false
+        for (var i = 0; i < 5; i++)
+            if (!/^[\d*,\/-]+$/.test(f[i])) return false
+        return true
+    }
+    // Which preset, if any, the current expression corresponds to. -1 means the
+    // expression is hand-written and the pickers must not pretend to own it.
+    function cronPreset() {
+        var f = cronFields()
+        if (f.length !== 5) return 5
+        var m = f[0], h = f[1], dom = f[2], dow = f[4]
+        if (m === "*") return 0
+        if (m === "*/5") return 1
+        if (m === "*/15") return 2
+        if (m === "*/30") return 3
+        if (h === "*" && dom === "*" && dow === "*") return 4
+        if (dom === "*" && dow === "*") return 5
+        if (dow !== "*") return 6
+        if (dom !== "*") return 7
+        return 5
+    }
+    function cronHourIndex() {
+        var f = cronFields()
+        var h = (f.length === 5) ? parseInt(f[1], 10) : 9
+        return (isFinite(h) && h >= 0 && h < 24) ? h : 9
+    }
+    function cronDayIndex() {
+        var f = cronFields()
+        if (f.length !== 5) return 1
+        if (f[4] !== "*") {
+            var d = parseInt(f[4], 10)
+            return (isFinite(d) && d >= 0 && d < 7) ? d : 1
+        }
+        var dom = parseInt(f[2], 10)
+        return (isFinite(dom) && dom >= 1 && dom <= 28) ? dom - 1 : 0
+    }
+    function cronBuild(preset, hour, day) {
+        var h = (hour >= 0 && hour < 24) ? hour : 9
+        if (preset === 0) return "* * * * *"
+        if (preset === 1) return "*/5 * * * *"
+        if (preset === 2) return "*/15 * * * *"
+        if (preset === 3) return "*/30 * * * *"
+        if (preset === 4) return "0 * * * *"
+        if (preset === 5) return "0 " + h + " * * *"
+        if (preset === 6) return "0 " + h + " * * " + ((day >= 0 && day < 7) ? day : 1)
+        if (preset === 7) return "0 " + h + " " + ((day >= 0 && day < 28) ? day + 1 : 1) + " * *"
+        return "0 " + h + " * * *"
+    }
+    function cronField(part, unit) {
+        if (part === "*") return "every " + unit
+        if (part.indexOf("*/") === 0) return "every " + part.substring(2) + " " + unit + "s"
+        if (part.indexOf("-") > 0) return unit + " " + part.replace("-", " to ")
+        if (part.indexOf(",") >= 0) return unit + " " + part.replace(/,/g, ", ")
+        return unit + " " + part
+    }
+    function cronExplain() {
+        var f = cronFields()
+        if (f.length !== 5)
+            return "A cron expression needs exactly five fields: minute hour day month weekday."
+        if (!cronValid())
+            return "This is not a cron expression Genesi can read, so the schedule would never fire."
+        var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
+                    "Friday", "Saturday"]
+        var m = f[0], h = f[1], dom = f[2], mon = f[3], dow = f[4]
+        var when = ""
+        if (m === "*" && h === "*") when = "Every minute"
+        else if (m.indexOf("*/") === 0 && h === "*") when = "Every " + m.substring(2) + " minutes"
+        else if (m === "0" && h === "*") when = "Every hour, on the hour"
+        else if (h === "*") when = "At " + cronField(m, "minute") + " of every hour"
+        else if (/^\d+$/.test(h) && /^\d+$/.test(m))
+            when = "At " + (h.length < 2 ? "0" + h : h) + ":" + (m.length < 2 ? "0" + m : m)
+        else when = "At " + cronField(h, "hour") + ", " + cronField(m, "minute")
+
+        var scope = ""
+        if (dow !== "*") {
+            if (/^\d$/.test(dow)) scope = " on " + days[parseInt(dow, 10)] + "s"
+            else if (dow === "1-5") scope = " on weekdays"
+            else scope = " on weekdays " + dow
+        } else if (dom !== "*") {
+            scope = /^\d+$/.test(dom) ? " on day " + dom + " of the month"
+                                      : " on days " + dom
+        }
+        if (mon !== "*") scope += " (months " + mon + ")"
+        return when + scope + "."
+    }
+
     function outputs() {
         var v = cfg("outputs", [])
         return (v && v.length !== undefined) ? v : []

@@ -121,6 +121,20 @@ Item {
         return { x: x, y: p.y + ((p.h || 120) - total) / 2 + idx * 26 + 8 }
     }
 
+    // ── flow animation ──────────────────────────────────────────────────────
+    // The dashes march along a link while the automation is actually running,
+    // so a run reads as movement rather than as cards changing colour. It is
+    // deliberately tied to `running`: an idle canvas repaints zero times, which
+    // matters on a machine whose whole selling point is having CPU left for the
+    // model.
+    property real flowPhase: 0
+    onFlowPhaseChanged: linkLayer.requestPaint()
+    NumberAnimation on flowPhase {
+        running: root.running
+        loops: Animation.Infinite
+        from: 0; to: 18; duration: 700
+    }
+
     Shortcut {
         sequence: StandardKey.Undo
         enabled: root.ready && root.undoStack.length > 0
@@ -611,10 +625,16 @@ Item {
                                     var x2 = b.x, y2 = b.y + (b.h || 120) / 2
                                     var acc = root.portColor(root.links[i].fromPort || "")
                                              || root.nodeAccent(root.links[i].from)
-                                    ctx.strokeStyle = Qt.rgba(acc.r, acc.g, acc.b, 0.65)
+                                    // A link whose source already ran is a path
+                                    // the data really took; the rest stay still.
+                                    var live = root.running
+                                            && root.nodeStates[root.links[i].from] === "ok"
+                                    ctx.strokeStyle = Qt.rgba(acc.r, acc.g, acc.b, live ? 0.95 : 0.65)
                                     var dx = Math.max(46, Math.abs(x2 - x1) * 0.5)
+                                    if (live) { ctx.setLineDash([10, 8]); ctx.lineDashOffset = -root.flowPhase }
                                     ctx.beginPath(); ctx.moveTo(x1, y1)
                                     ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2, y2); ctx.stroke()
+                                    if (live) { ctx.setLineDash([]); ctx.lineDashOffset = 0 }
                                     ctx.fillStyle = ctx.strokeStyle
                                     ctx.beginPath(); ctx.arc(x2, y2, 4, 0, 6.283); ctx.fill()
                                     ctx.beginPath(); ctx.arc(x1, y1, 4, 0, 6.283); ctx.fill()

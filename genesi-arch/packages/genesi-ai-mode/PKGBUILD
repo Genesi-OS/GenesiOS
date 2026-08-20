@@ -975,7 +975,17 @@ pkgver=1.0.0
 # genesi_workflow_gen.py so they are testable without PySide6.
 # Covered by ci/automation-engine-test.py (94 checks) and
 # ci/workflow-generator-test.py (33).
-pkgrel=169
+# 2026-08-20 (170): the schedule node gets a VISUAL cron builder — pickers that
+# write the expression and a sentence underneath that reads it back in plain
+# language ("At 09:00 on weekdays."), so the check is "does that describe what I
+# wanted" instead of "did I count the asterisks". The raw field stays and stays
+# authoritative: anything the pickers cannot express can still be typed, and
+# they stop claiming to describe it rather than guessing. An expression Genesi
+# cannot parse says so, because a schedule that silently never fires is the
+# worst outcome here. Also: links now animate while a run is in flight, and only
+# while it is — an idle canvas repaints zero times, which matters on a machine
+# whose selling point is having CPU left for the model.
+pkgrel=170
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
