@@ -130,12 +130,58 @@ def _alive(pid):
 
 
 def _ai_mode_active():
-    """True when genesi-aid currently owns the global CPU knobs."""
+    """True when AI Mode is on at all (reported to callers, not used to gate)."""
     try:
         with open(AID_STATE) as fh:
             return bool(json.load(fh).get("ai_mode_active"))
     except Exception:
         return False
+
+
+# genesi-aid names every lever it took in state.json's "applied" list. Matching
+# those prefixes tells us which knobs it is actually holding right now.
+_AID_LEVER_PREFIXES = (
+    ("cpu governor", "governor"),
+    ("epp", "epp"),
+    ("swappiness", "swappiness"),
+    ("amd gpu", "gpu"),
+    ("intel gpu", "gpu"),
+)
+
+
+def _ai_mode_held_levers():
+    """The global levers genesi-aid holds right now, as a set of lever names.
+
+    Ownership is PER LEVER, not all-or-nothing. The first cut stood down from
+    every global knob the moment AI Mode was on, which meant a warm ollama in
+    the background silently disabled the GPU lever — the one lever that matters
+    for a game, and one genesi-aid may not even be holding. So ask genesi-aid
+    what it actually took and skip exactly that.
+
+    NVIDIA is never in this set: genesi-aid drives nvidia-smi (persistence,
+    power limit, locked clocks) while Studio Mode drives nvidia-settings
+    (PowerMizer mode). Different knobs, no fight.
+    """
+    try:
+        with open(AID_STATE) as fh:
+            st = json.load(fh)
+    except Exception:
+        return set()
+    if not st.get("ai_mode_active"):
+        return set()
+    applied = st.get("applied")
+    if applied is None:
+        # AI Mode is on but has not published its lever list (an older genesi-aid,
+        # or a state file written mid-enable). Assume it holds everything rather
+        # than racing it for a knob it may be about to take.
+        return {"governor", "epp", "swappiness", "gpu"}
+    held = set()
+    for item in applied:
+        low = str(item).lower()
+        for prefix, lever in _AID_LEVER_PREFIXES:
+            if low.startswith(prefix):
+                held.add(lever)
+    return held
 
 
 def _performance_cpu_ids():
@@ -191,6 +237,79 @@ def _cgroup_path(pid):
     return None
 
 
+# Cgroups that hold the whole session rather than one app. Writing a share into
+# any of these raises a group against itself, and their memory knobs cover
+# everything the user is running.
+_SHARED_CGROUP_NAMES = ("init.scope",)
+
+
+def _cgroup_is_exclusive(cg, pid):
+    """True when `cg` holds this app and nothing else the user is running.
+
+    cpu.weight and io.weight are shares measured against SIBLINGS inside the
+    same parent — so they only mean something when the target has a cgroup to
+    itself. An app launched straight from the compositor lands in the shared
+    `session-N.scope` alongside the compositor and everything else the session
+    started (measured: 23 processes, Hyprland among them). Writing cpu.weight
+    there raises the whole group against itself, which is no boost at all, and
+    memory.swap.max / memory.low would quietly rewrite the memory policy of the
+    entire session — a side effect nobody asked Studio Mode for.
+
+    Two checks, because either alone is wrong:
+
+    * by name — `session-N.scope`, `user@N.service`, `init.scope` and any
+      `.slice` are session containers by construction, however few processes
+      happen to be in them at the moment;
+    * by ancestry — a launcher may still drop several apps into one scope, so
+      every member must be the target or one of its descendants. Orphans
+      (reparented to init) are counted as the app's own: Firefox's crashhelper
+      sits in Firefox's scope with ppid 1, and rejecting the scope over it would
+      disable the levers for every app that outlives its launcher.
+    """
+    base = os.path.basename(cg.rstrip("/"))
+    if (base.endswith(".slice") or base in _SHARED_CGROUP_NAMES
+            or re.fullmatch(r"session-\d+\.scope", base)
+            or re.fullmatch(r"user@\d+\.service", base)):
+        return False
+    try:
+        with open(os.path.join(cg, "cgroup.procs")) as fh:
+            members = [int(x) for x in fh.read().split()]
+    except (OSError, ValueError):
+        return False
+    if not members:
+        return False
+    for other in members:
+        if other == pid or _descends_from(other, pid):
+            continue
+        if _ppid(other) <= 1:          # orphaned child of the app
+            continue
+        return False
+    return True
+
+
+def _descends_from(pid, ancestor):
+    """True when `pid` is a child, grandchild … of `ancestor`."""
+    cur, hops = pid, 0
+    while hops < 64:
+        cur = _ppid(cur)
+        if cur == ancestor:
+            return True
+        if cur <= 1:
+            return False
+        hops += 1
+    return False
+
+
+def _ppid(pid):
+    """Parent pid, or 0 when it cannot be read."""
+    try:
+        with open(f"/proc/{pid}/stat") as fh:
+            raw = fh.read()
+        return int(raw[raw.rindex(")") + 2:].split()[1])
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
 # ── the levers ───────────────────────────────────────────────────────────────
 class Levers:
     """Applies and reverses every privileged tweak, remembering the originals."""
@@ -211,14 +330,24 @@ class Levers:
             return []                        # already boosted; don't re-capture
 
         saved = {}
+        # Every thread, not just the tgid — see _threads(). The tid list is a
+        # snapshot: threads the app spawns after this run at their inherited
+        # priority, which is the honest ceiling without a scheduler hook.
+        tids = _threads(pid)
+        saved["threads"] = [str(t) for t in tids]
+
         # nice: a gentle ordering nudge (see NICE_BOOST — going harder starves
         # the compositor and fights ananicy-cpp).
-        try:
-            saved["nice"] = os.getpriority(os.PRIO_PROCESS, pid)
-            os.setpriority(os.PRIO_PROCESS, pid, NICE_BOOST)
+        nice_saved = {}
+        for tid in tids:
+            try:
+                nice_saved[str(tid)] = os.getpriority(os.PRIO_PROCESS, tid)
+                os.setpriority(os.PRIO_PROCESS, tid, NICE_BOOST)
+            except OSError:
+                continue
+        if nice_saved:
+            saved["nice"] = nice_saved
             applied.append("nice")
-        except OSError:
-            pass
 
         # ionice: best-effort priority 0. Deliberately NOT realtime class —
         # RT I/O can starve journald/systemd and wedge the desktop, which is
@@ -226,19 +355,24 @@ class Levers:
         # Capture the real class/priority first: restoring to a hardcoded
         # default would silently change the I/O behaviour of any process that
         # was not on the default to begin with.
-        prev = _ionice_get(pid)
-        if subprocess_ok(["ionice", "-c", "2", "-n", "0", "-p", str(pid)]):
-            saved["ionice"] = prev            # [class, prio] or None
+        prev = _ionice_get(tids)
+        if subprocess_ok(["ionice", "-c", "2", "-n", "0", "-p"]
+                         + [str(t) for t in tids]):
+            saved["ionice"] = {str(t): v for t, v in prev.items()}
             applied.append("ionice")
 
         # affinity: keep it on the fast cores.
         if perf_cpus:
-            try:
-                saved["affinity"] = sorted(os.sched_getaffinity(pid))
-                os.sched_setaffinity(pid, set(perf_cpus))
+            aff_saved = {}
+            for tid in tids:
+                try:
+                    aff_saved[str(tid)] = sorted(os.sched_getaffinity(tid))
+                    os.sched_setaffinity(tid, set(perf_cpus))
+                except OSError:
+                    continue
+            if aff_saved:
+                saved["affinity"] = aff_saved
                 applied.append("affinity")
-            except OSError:
-                pass
 
         # oom_score_adj: make the focused app the LAST thing the kernel kills.
         adj = f"/proc/{pid}/oom_score_adj"
@@ -251,6 +385,12 @@ class Levers:
         # the actual slice, and the memory ones remove the biggest source of
         # visible stutter — being paged out or reclaimed mid-use.
         cg = _cgroup_path(pid)
+        if cg and not _cgroup_is_exclusive(cg, pid):
+            # Shared with the rest of the session — see _cgroup_is_exclusive().
+            # Say so rather than reporting a lever that would do nothing.
+            log(f"pid {pid}: cgroup levers skipped, "
+                f"{os.path.basename(cg.rstrip('/'))} is shared with the session")
+            cg = None
         if cg:
             knobs = [
                 ("cpu.weight", CGROUP_BOOST_WEIGHT),
@@ -284,18 +424,37 @@ class Levers:
         # A dead process needs no restoring, but its cgroup knobs might still
         # exist (the scope outlives the leader briefly), so do those anyway.
         if _alive(pid):
-            if "nice" in saved:
-                try:
-                    os.setpriority(os.PRIO_PROCESS, pid, int(saved["nice"]))
-                except OSError:
-                    pass
+            # A baseline written by the pre-thread helper (a package upgrade
+            # restarts this daemon without a reboot, and /run outlives that)
+            # holds one scalar per lever instead of one per tid. Read it as the
+            # main thread's value so an in-place upgrade still restores cleanly.
+            if saved.get("nice") is not None and not isinstance(saved["nice"], dict):
+                saved["nice"] = {str(pid): saved["nice"]}
+            if saved.get("affinity") is not None and not isinstance(saved["affinity"], dict):
+                saved["affinity"] = {str(pid): saved["affinity"]}
+            if "ionice" in saved and not isinstance(saved["ionice"], dict):
+                saved["ionice"] = {str(pid): saved["ionice"]}
+
+            # Restore per thread, skipping any that exited in the meantime.
+            tids = [int(t) for t in saved.get("threads") or [pid]]
+            live = [t for t in tids if os.path.exists(f"/proc/{pid}/task/{t}")]
+            nice_saved = saved.get("nice") or {}
+            for tid in live:
+                if str(tid) in nice_saved:
+                    try:
+                        os.setpriority(os.PRIO_PROCESS, tid,
+                                       int(nice_saved[str(tid)]))
+                    except OSError:
+                        pass
             if "ionice" in saved:
-                _ionice_set(pid, saved["ionice"])
-            if "affinity" in saved:
-                try:
-                    os.sched_setaffinity(pid, set(saved["affinity"]))
-                except OSError:
-                    pass
+                _ionice_set_many(live, saved["ionice"])
+            aff_saved = saved.get("affinity") or {}
+            for tid in live:
+                if str(tid) in aff_saved:
+                    try:
+                        os.sched_setaffinity(tid, set(aff_saved[str(tid)]))
+                    except OSError:
+                        pass
             if "oom_score_adj" in saved:
                 _write(f"/proc/{pid}/oom_score_adj", saved["oom_score_adj"])
         for _knob, (path, cur) in (saved.get("cgroup") or {}).items():
@@ -304,55 +463,74 @@ class Levers:
 
     # -- global ------------------------------------------------------------
     def apply_global(self):
-        """Governor + EPP to performance. Skipped while AI Mode owns them."""
-        if _ai_mode_active():
-            return [], "ai-mode-owns-cpu"
+        """Governor, EPP, swappiness and GPU clocks to their performance state.
+
+        Each lever stands down on its own if genesi-aid is holding that one —
+        see _ai_mode_held_levers(). Anything AI Mode is NOT holding is still
+        taken, so a warm ollama no longer costs the game its GPU lever.
+        """
         if "global" in self.state:
             return [], "already"
-        saved, applied = {}, []
-        govs = []
-        for cpu in sorted(os.listdir(CPU_BASE)):
-            if not re.fullmatch(r"cpu\d+", cpu):
-                continue
-            p = f"{CPU_BASE}/{cpu}/cpufreq/scaling_governor"
-            cur = _read(p)
-            if cur is not None and _write(p, "performance"):
-                govs.append([p, cur])
-        if govs:
-            saved["governor"] = govs
-            applied.append("governor")
-        epps = []
-        for cpu in sorted(os.listdir(CPU_BASE)):
-            if not re.fullmatch(r"cpu\d+", cpu):
-                continue
-            p = f"{CPU_BASE}/{cpu}/cpufreq/energy_performance_preference"
-            cur = _read(p)
-            if cur is not None and _write(p, "performance"):
-                epps.append([p, cur])
-        if epps:
-            saved["epp"] = epps
-            applied.append("epp")
+        held = _ai_mode_held_levers()
+        saved, applied, skipped = {}, [], []
+        if "governor" in held:
+            skipped.append("governor")
+        else:
+            govs = []
+            for cpu in sorted(os.listdir(CPU_BASE)):
+                if not re.fullmatch(r"cpu\d+", cpu):
+                    continue
+                p = f"{CPU_BASE}/{cpu}/cpufreq/scaling_governor"
+                cur = _read(p)
+                if cur is not None and _write(p, "performance"):
+                    govs.append([p, cur])
+            if govs:
+                saved["governor"] = govs
+                applied.append("governor")
+        if "epp" in held:
+            skipped.append("epp")
+        else:
+            epps = []
+            for cpu in sorted(os.listdir(CPU_BASE)):
+                if not re.fullmatch(r"cpu\d+", cpu):
+                    continue
+                p = f"{CPU_BASE}/{cpu}/cpufreq/energy_performance_preference"
+                cur = _read(p)
+                if cur is not None and _write(p, "performance"):
+                    epps.append([p, cur])
+            if epps:
+                saved["epp"] = epps
+                applied.append("epp")
         # Keep the machine out of swap while a session is running. Same reason
         # as memory.swap.max on the target: a page-out mid-frame is a visible
         # hitch that no scheduler priority can undo.
-        cur = _read("/proc/sys/vm/swappiness")
-        if cur is not None and _write("/proc/sys/vm/swappiness", "10"):
-            saved["swappiness"] = cur
-            applied.append("swappiness")
+        if "swappiness" in held:
+            skipped.append("swappiness")
+        else:
+            cur = _read("/proc/sys/vm/swappiness")
+            if cur is not None and _write("/proc/sys/vm/swappiness", "10"):
+                saved["swappiness"] = cur
+                applied.append("swappiness")
 
         # GPU to its performance state. This is the lever that matters for a
-        # game, and nothing else in Genesi owns it while AI Mode is off.
-        gpu = []
-        for card in sorted(glob.glob("/sys/class/drm/card[0-9]")):
-            # AMD: forcing the DPM level stops the clocks bouncing back down
-            # between frames.
-            p = os.path.join(card, "device/power_dpm_force_performance_level")
-            cur = _read(p)
-            if cur is not None and _write(p, "high"):
-                gpu.append([p, cur])
-        if gpu:
-            saved["gpu"] = gpu
-            applied.append("gpu-clocks")
+        # game — everything above only reorders a CPU that a GPU-bound game was
+        # never waiting on.
+        if "gpu" in held:
+            skipped.append("gpu-clocks")
+        else:
+            gpu = []
+            for card in sorted(glob.glob("/sys/class/drm/card[0-9]")):
+                # AMD: forcing the DPM level stops the clocks bouncing back down
+                # between frames.
+                p = os.path.join(card, "device/power_dpm_force_performance_level")
+                cur = _read(p)
+                if cur is not None and _write(p, "high"):
+                    gpu.append([p, cur])
+            if gpu:
+                saved["gpu"] = gpu
+                applied.append("gpu-clocks")
+        # NVIDIA PowerMizer is never in `held`: genesi-aid drives nvidia-smi,
+        # this drives nvidia-settings, and the two knobs do not overlap.
         if _nvidia_prefer_max_performance():
             saved["nvidia"] = True
             applied.append("nvidia-powermizer")
@@ -360,7 +538,7 @@ class Levers:
         if saved:
             self.state["global"] = saved
             self._save()
-        return applied, None
+        return applied, ("ai-mode-owns:" + ",".join(skipped) if skipped else None)
 
     def restore_global(self):
         saved = self.state.pop("global", None)
@@ -404,40 +582,100 @@ def _nvidia_prefer_max_performance():
 _IONICE_CLASSES = {"none": 0, "realtime": 1, "best-effort": 2, "idle": 3}
 
 
-def _ionice_get(pid):
-    """Current I/O class and priority as [class, prio], or None if unreadable.
-
-    `ionice -p PID` prints e.g. "best-effort: prio 4", or just "idle" for the
-    classes that carry no priority.
-    """
-    try:
-        out = subprocess.run(["ionice", "-p", str(pid)], capture_output=True,
-                             text=True, timeout=5)
-        if out.returncode != 0:
-            return None
-        txt = out.stdout.strip().lower()
-    except Exception:
-        return None
-    name = txt.split(":", 1)[0].strip()
-    cls = _IONICE_CLASSES.get(name)
+def _ionice_parse(txt):
+    """One line of `ionice -p` output as [class, prio], or None if unreadable."""
+    txt = txt.strip().lower()
+    cls = _IONICE_CLASSES.get(txt.split(":", 1)[0].strip())
     if cls is None:
         return None
     m = re.search(r"prio\s+(\d+)", txt)
     return [cls, int(m.group(1)) if m else None]
 
 
-def _ionice_set(pid, saved):
-    """Put a process back on the I/O class it had before we touched it."""
-    if not saved:
+def _ionice_get(tids):
+    """Current [class, prio] per tid, as {tid: [class, prio] or None}.
+
+    `ionice -p A B C` prints one line per tid, in order — so the whole thread
+    list costs one fork rather than one per thread. The line reads e.g.
+    "best-effort: prio 4", or just "idle" for the classes with no priority.
+
+    The environment is forced to LC_ALL=C: util-linux translates that line, and
+    a localised "prioridade 4" does not match the priority pattern, so on a
+    non-English desktop we would restore the class but silently drop the
+    priority the process started with.
+    """
+    tids = list(tids)
+    if not tids:
+        return {}
+    lines = _ionice_lines(tids)
+    if len(lines) == len(tids):
+        return {t: _ionice_parse(line) for t, line in zip(tids, lines)}
+    if len(tids) == 1:
+        return {}
+    # A thread exited mid-read and the lines no longer line up with the tids.
+    # Pairing them anyway would restore one thread's I/O class onto another, so
+    # fall back to one read per thread — slower, but it cannot misalign, and
+    # losing the whole app's baseline over one dead thread would put every
+    # remaining thread back on the kernel default instead of its own class.
+    out = {}
+    for tid in tids:
+        one = _ionice_lines([tid])
+        if len(one) == 1:
+            out[tid] = _ionice_parse(one[0])
+    return out
+
+
+def _ionice_lines(tids):
+    """Raw `ionice -p` output lines for a tid list, or [] if the call failed."""
+    try:
+        env = dict(os.environ, LC_ALL="C", LANGUAGE="C")
+        out = subprocess.run(["ionice", "-p"] + [str(t) for t in tids],
+                             capture_output=True, text=True, timeout=5, env=env)
+    except Exception:
+        return []
+    if out.returncode != 0:
+        return []
+    return out.stdout.strip().splitlines()
+
+
+def _ionice_set_many(tids, saved):
+    """Put threads back on the I/O class they had before we touched them.
+
+    Threads that shared a class are set together, so a 60-thread process costs
+    a handful of forks instead of 60.
+    """
+    groups = {}
+    for tid in tids:
+        prev = (saved or {}).get(str(tid), saved.get(tid) if saved else None)
         # We could not read the original; "none" restores the kernel default,
-        # which is where an unreadable process almost certainly was.
-        subprocess_ok(["ionice", "-c", "0", "-p", str(pid)])
-        return
-    cls, prio = saved[0], saved[1] if len(saved) > 1 else None
-    cmd = ["ionice", "-c", str(cls)]
-    if prio is not None and cls in (1, 2):     # only these carry a priority
-        cmd += ["-n", str(prio)]
-    subprocess_ok(cmd + ["-p", str(pid)])
+        # which is where an unreadable thread almost certainly was.
+        key = (0, None) if not prev else \
+            (prev[0], prev[1] if len(prev) > 1 else None)
+        groups.setdefault(key, []).append(str(tid))
+    for (cls, prio), members in groups.items():
+        cmd = ["ionice", "-c", str(cls)]
+        if prio is not None and cls in (1, 2):   # only these carry a priority
+            cmd += ["-n", str(prio)]
+        subprocess_ok(cmd + ["-p"] + members)
+
+
+def _threads(pid):
+    """Every live thread id of a process, the main thread first.
+
+    nice, ionice and CPU affinity are PER THREAD on Linux: setting them on the
+    tgid moves the main thread and nothing else. A game or a DAW does its real
+    work on threads that are not the main one — Minecraft renders and builds
+    chunks off it — so boosting only the tgid was very close to boosting
+    nothing at all.
+    """
+    try:
+        tids = sorted(int(t) for t in os.listdir(f"/proc/{pid}/task"))
+    except OSError:
+        return [pid]
+    if pid in tids:
+        tids.remove(pid)
+        tids.insert(0, pid)
+    return tids or [pid]
 
 
 def subprocess_ok(cmd):

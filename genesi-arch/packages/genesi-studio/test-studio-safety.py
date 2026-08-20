@@ -220,9 +220,11 @@ class FakeRun:
     def __init__(self, stdout=""):
         self.stdout = stdout
         self.calls = []
+        self.kwargs = []
 
     def __call__(self, cmd, **kw):
         self.calls.append(cmd)
+        self.kwargs.append(kw)
         return types.SimpleNamespace(returncode=0, stdout=self.stdout,
                                      stderr="")
 
@@ -235,19 +237,75 @@ for text, want in [
     ("unparseable garbage", None),
 ]:
     hd.subprocess.run = FakeRun(text)
-    check(f"parse {text!r}", hd._ionice_get(1234), want)
+    check(f"parse {text!r}", hd._ionice_get([1234]), {1234: want})
+
+# One fork for the whole thread list, and the reply lines map back in order.
+hd.subprocess.run = FakeRun("best-effort: prio 4\nidle\nnone: prio 0\n")
+check("read three threads at once",
+      hd._ionice_get([10, 11, 12]),
+      {10: [2, 4], 11: [3, None], 12: [0, 0]})
+
+# A thread that exits mid-read shortens the output. Pairing the remaining lines
+# with the tids anyway would restore one thread's class onto another, so the
+# batch is discarded and each thread is read on its own instead — losing the
+# whole app's baseline over one dead thread would put every surviving thread
+# back on the kernel default rather than its own class.
+class FakeRunSeq:
+    """subprocess.run stand-in with a different stdout per call."""
+
+    def __init__(self, outs):
+        self.outs = list(outs)
+        self.calls = []
+        self.kwargs = []
+
+    def __call__(self, cmd, **kw):
+        self.calls.append(cmd)
+        self.kwargs.append(kw)
+        return types.SimpleNamespace(
+            returncode=0, stdout=self.outs.pop(0), stderr="")
+
+
+rec = FakeRunSeq(["best-effort: prio 4\nidle\n",     # batch: 2 lines for 3 tids
+                  "best-effort: prio 4", "idle", "none: prio 0"])
+hd.subprocess.run = rec
+check("a short reply falls back to one read per thread",
+      hd._ionice_get([10, 11, 12]), {10: [2, 4], 11: [3, None], 12: [0, 0]})
+check("...and it really did read them one at a time",
+      [c[2:] for c in rec.calls], [["10", "11", "12"], ["10"], ["11"], ["12"]])
+# A single unreadable thread is dropped, not guessed at.
+hd.subprocess.run = FakeRun("")
+check("no output for one thread → no baseline", hd._ionice_get([10]), {})
+
+# util-linux translates that line. Without LC_ALL=C a localised "prioridade 4"
+# loses the priority and restore silently puts the app on prio 0.
+rec = FakeRun("best-effort: prio 4")
+hd.subprocess.run = rec
+hd._ionice_get([1234])
+check("ionice is read under LC_ALL=C", rec.kwargs[-1].get("env", {}).get("LC_ALL"), "C")
 
 # Restoring must rebuild the ORIGINAL class, not a hardcoded default.
 for saved, want in [
-    ([2, 4], ["ionice", "-c", "2", "-n", "4", "-p", "1234"]),
-    ([1, 0], ["ionice", "-c", "1", "-n", "0", "-p", "1234"]),
-    ([3, None], ["ionice", "-c", "3", "-p", "1234"]),   # idle carries no prio
-    (None, ["ionice", "-c", "0", "-p", "1234"]),        # unknown -> kernel default
+    ({"1234": [2, 4]}, ["ionice", "-c", "2", "-n", "4", "-p", "1234"]),
+    ({"1234": [1, 0]}, ["ionice", "-c", "1", "-n", "0", "-p", "1234"]),
+    # idle carries no prio
+    ({"1234": [3, None]}, ["ionice", "-c", "3", "-p", "1234"]),
+    # unknown -> kernel default
+    ({"1234": None}, ["ionice", "-c", "0", "-p", "1234"]),
+    ({}, ["ionice", "-c", "0", "-p", "1234"]),
 ]:
     rec = FakeRun()
     hd.subprocess.run = rec
-    hd._ionice_set(1234, saved)
+    hd._ionice_set_many([1234], saved)
     check(f"restore {saved}", rec.calls[-1], want)
+
+# Threads that shared a class go back together, in one call per class.
+rec = FakeRun()
+hd.subprocess.run = rec
+hd._ionice_set_many([10, 11, 12], {"10": [2, 4], "11": [2, 4], "12": [3, None]})
+check("threads are regrouped by class",
+      sorted(tuple(c) for c in rec.calls),
+      sorted([("ionice", "-c", "2", "-n", "4", "-p", "10", "11"),
+              ("ionice", "-c", "3", "-p", "12")]))
 
 print("\ndesktop entries — icons and human names for the app picker")
 import tempfile  # noqa: E402
@@ -547,6 +605,107 @@ check("hybrid P/E CPU → pins to the P-cores", hd._performance_cpu_ids(),
 _fake_cpus({0: 4000000, 1: 3000000})
 check("2-core machine → no pinning", hd._performance_cpu_ids(), [])
 hd.os.listdir, hd._read = _hd_listdir, _hd_read
+
+
+print("\ncgroup levers — a share is meaningless in a cgroup shared with the session")
+# cpu.weight/io.weight are shares against SIBLINGS. An app launched straight
+# from the compositor lands in the shared session-N.scope next to Hyprland and
+# everything else, where raising the weight raises the group against itself —
+# and memory.swap.max/memory.low would rewrite the whole session's memory
+# policy as a side effect. So the cgroup levers must stand down there.
+import builtins as _builtins  # noqa: E402
+
+_hd_open = _builtins.open
+
+
+def _fake_cgroup(members, parents):
+    """cgroup.procs holds `members`; `parents` maps pid -> ppid."""
+    import io as _io
+
+    def fake_open(path, *a, **kw):
+        if path.endswith("cgroup.procs"):
+            return _io.StringIO("\n".join(str(m) for m in members) + "\n")
+        m = _re.search(r"/proc/(\d+)/stat$", str(path))
+        if m:
+            pid = int(m.group(1))
+            if pid not in parents:
+                raise OSError("no such pid")
+            # pid (comm) state ppid …
+            return _io.StringIO(f"{pid} (app) S {parents[pid]} 0 0")
+        return _hd_open(path, *a, **kw)
+    hd.open = fake_open
+
+
+# The app alone in its own scope: the levers apply.
+_fake_cgroup([500], {500: 1})
+check("app alone in its scope → exclusive",
+      hd._cgroup_is_exclusive("/sys/fs/cgroup/…/app-firefox.scope", 500), True)
+# The app plus its own children (a game and its helper processes).
+_fake_cgroup([500, 501, 502], {500: 1, 501: 500, 502: 501})
+check("app plus its own children → exclusive",
+      hd._cgroup_is_exclusive("/sys/fs/cgroup/…/app-firefox.scope", 500), True)
+# A helper reparented to init when the launcher exited — Firefox's crashhelper
+# lives in Firefox's own scope with ppid 1. Rejecting the scope over it would
+# disable the levers for every app that outlives its launcher.
+_fake_cgroup([500, 504], {500: 1, 504: 1})
+check("orphaned helper in the app's own scope → still exclusive",
+      hd._cgroup_is_exclusive("/sys/fs/cgroup/…/app-firefox.scope", 500), True)
+# A launcher that dropped a second, unrelated app into the same scope.
+_fake_cgroup([500, 700, 701], {500: 1, 700: 42, 701: 700})
+check("an unrelated process tree in the scope → NOT exclusive",
+      hd._cgroup_is_exclusive("/sys/fs/cgroup/…/app-firefox.scope", 500), False)
+# The session containers are shared by construction, however empty they look.
+_fake_cgroup([500], {500: 1})
+for base in ("session-2.scope", "user@1000.service", "app.slice",
+             "user-1000.slice", "init.scope"):
+    check(f"{base} → NOT exclusive",
+          hd._cgroup_is_exclusive("/sys/fs/cgroup/…/" + base, 500), False)
+# An unreadable cgroup is not a licence to write to it.
+hd.open = lambda *a, **kw: (_ for _ in ()).throw(OSError("nope"))
+check("unreadable cgroup.procs → NOT exclusive",
+      hd._cgroup_is_exclusive("/sys/fs/cgroup/…/app-firefox.scope", 500), False)
+del hd.open
+
+
+print("\nAI Mode ownership — per lever, never all-or-nothing")
+# The first cut stood down from EVERY global knob whenever AI Mode was on, so a
+# warm ollama in the background silently disabled the GPU lever — the one lever
+# that matters for a game, and one genesi-aid may not even be holding.
+import json as _json  # noqa: E402
+import tempfile as _tf  # noqa: E402
+
+_aid_state = hd.AID_STATE
+_aid_file = os.path.join(_tf.mkdtemp(), "state.json")
+hd.AID_STATE = _aid_file
+
+
+def _aid(payload):
+    with open(_aid_file, "w", encoding="utf-8") as fh:
+        _json.dump(payload, fh)
+
+
+_aid({"ai_mode_active": False, "applied": ["CPU governor: performance"]})
+check("AI Mode off → nothing is held", hd._ai_mode_held_levers(), set())
+_aid({"ai_mode_active": True,
+      "applied": ["CPU governor: performance", "swappiness: 10",
+                  "THP: madvise", "EPP: performance",
+                  "NVIDIA max power+clocks (1 GPU)"]})
+check("CPU knobs held, GPU lever left free",
+      hd._ai_mode_held_levers(), {"governor", "epp", "swappiness"})
+_aid({"ai_mode_active": True, "applied": ["AMD GPU high (1)"]})
+check("AMD DPM held → Studio skips only the GPU",
+      hd._ai_mode_held_levers(), {"gpu"})
+_aid({"ai_mode_active": True, "applied": []})
+check("AI Mode on holding nothing → Studio takes every lever",
+      hd._ai_mode_held_levers(), set())
+# An older genesi-aid publishes no lever list at all: assume it holds
+# everything rather than racing it for a knob it may be about to take.
+_aid({"ai_mode_active": True})
+check("no lever list published → assume everything is held",
+      hd._ai_mode_held_levers(), {"governor", "epp", "swappiness", "gpu"})
+os.unlink(_aid_file)
+check("no state file at all → nothing is held", hd._ai_mode_held_levers(), set())
+hd.AID_STATE = _aid_state
 
 
 print("\nsession env harvest — the daemon has no DISPLAY of its own")

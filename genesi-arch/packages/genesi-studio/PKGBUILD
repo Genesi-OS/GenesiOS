@@ -91,7 +91,19 @@ pkgver=1.0.0
 # popped a wait/force-quit dialog over every paused app — reported on Hyprland +
 # caelestia. Throttling keeps them alive-enough to pong while giving the focused
 # app the machine. True freeze stays available via `suspend_method=freeze`.
-pkgrel=12
+# pkgrel 13: the boost reached one thread of the app and stood down from the GPU.
+# nice/ionice/affinity are per-thread on Linux, so setting them on the tgid moved
+# the main thread and nothing else — measured on Firefox, 1 of 113 threads — and a
+# game renders off its main thread, which made the whole per-process boost close
+# to a no-op. They now cover every thread. AI Mode ownership is per lever instead
+# of all-or-nothing: a warm ollama used to disable EVERY global knob including the
+# GPU, the one lever a game actually feels. And the cgroup levers now require the
+# app to have a cgroup to itself — an app launched from the compositor sits in the
+# shared session-N.scope, where cpu.weight raises the group against itself and the
+# memory knobs rewrite the whole session's policy. Also forces LC_ALL=C when
+# reading ionice: a localised "prioridade 4" did not match the priority pattern,
+# so restore put the app back on the right class at the wrong priority.
+pkgrel=13
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

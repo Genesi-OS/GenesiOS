@@ -78,11 +78,34 @@ Per focused process, applied by the root helper:
 | `cpu.weight` / `io.weight` = 400 | 4x share of a saturated machine |
 | `oom_score_adj -500` | the last thing the kernel kills |
 
-Machine-wide: the CPU governor and EPP go to `performance` — but **only if AI
-Mode is not already holding them**. `genesi-aid` owns the same sysfs knobs and
-restores them from its own captured baseline; two daemons writing the same file
-would fight and the loser's restore would write a stale value. The helper checks
-and stands down, reporting `ai-mode-owns-cpu`.
+The first three are applied to **every thread**, not to the process. nice,
+ionice and affinity are per-thread on Linux, so setting them on the tgid moved
+the main thread and nothing else — and a game does its real work off the main
+thread (Minecraft renders and builds chunks on other threads), which made the
+whole per-process boost close to a no-op. The thread list is a snapshot: threads
+the app spawns afterwards run at their inherited priority.
+
+The cgroup levers apply **only when the app has a cgroup to itself**. `cpu.weight`
+and `io.weight` are shares against siblings inside the same parent, so an app
+launched straight from the compositor — which lands in the shared
+`session-N.scope` next to the compositor and everything else the session started
+— gains nothing from them, and `memory.swap.max`/`memory.low` there would rewrite
+the memory policy of the whole session as a side effect. In that case the helper
+logs the skip instead of applying a lever that does nothing.
+
+Machine-wide: the CPU governor, EPP, `swappiness` and the GPU's performance
+state — but **per lever, standing down from whichever ones AI Mode is holding**.
+`genesi-aid` writes the same sysfs knobs and restores them from its own captured
+baseline; two daemons writing one file would fight and the loser's restore would
+write a stale value. So the helper reads `genesi-aid`'s published lever list and
+skips exactly those, reporting `ai-mode-owns:<levers>`.
+
+Ownership used to be all-or-nothing, and that was a real bug: a warm `ollama` in
+the background made Studio Mode stand down from **every** global knob including
+the GPU — the one lever that matters to a game, and one `genesi-aid` may not
+even be holding. NVIDIA never collides at all: `genesi-aid` drives `nvidia-smi`
+(persistence, power limit, locked clocks) while Studio Mode drives
+`nvidia-settings` (PowerMizer mode).
 
 I/O priority is deliberately best-effort and **not** realtime: an RT I/O class
 can starve journald and systemd and wedge the desktop — exactly the outcome
@@ -182,6 +205,22 @@ disagree about what Studio Mode is doing:
 The tray is appindicator and not Qt for the reason `genesi-ai-tray` documents:
 Qt 6.11's StatusNotifierItem never serves its properties to the caelestia
 (Quickshell) bar, so the icon simply never appears.
+
+## What Studio Mode cannot do
+
+Every lever here is CPU, I/O and memory. They pay off on a **contended** machine
+— many apps fighting for a saturated CPU. They do nothing for a machine that has
+CPU to spare and is waiting on its GPU: `cpu.weight` is a share of a queue that
+is empty, and `nice` reorders a run queue nobody is waiting in. On a desktop
+already running Genesi's `ananicy-cpp` (which classifies games and reapplies its
+own nice) and already sitting on the `performance` governor, the CPU levers are
+close to a no-op by the time Studio Mode gets there.
+
+If a game drops frames with plenty of CPU idle, look at the GPU first — and
+note that a **model loaded in VRAM** by AI Mode is not something Studio Mode
+touches: `ollama` and `llama-server` are daemons with no window, so they are
+never freeze or throttle candidates, and their VRAM is not a lever this daemon
+owns.
 
 ## Status
 
