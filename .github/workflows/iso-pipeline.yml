@@ -477,64 +477,6 @@ jobs:
           } > CHANGELOG_ROLLING.md
           echo "----- changelog rolling -----"; cat CHANGELOG_ROLLING.md
 
-      - name: 🧹 Drop the rolling release so it republishes with TODAY's date
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Why delete instead of updating in place.
-          #
-          # GitHub sorts and dates the Releases page by `published_at`, and
-          # `published_at` is NOT writable: the Update-a-release API accepts
-          # tag_name, target_commitish, name, body, draft, prerelease,
-          # make_latest and discussion_category_name, and nothing else. So
-          # updating `rolling` every build left its date frozen at the moment
-          # the tag was first cut -- the ONE release carrying the "Latest" badge
-          # sat at the BOTTOM of the page, dated three months ago, beneath a
-          # dozen newer build-<sha> pre-releases. The ISO behind it was current
-          # the entire time. The page simply said otherwise, which is worse than
-          # being out of date, because it reads as an abandoned project.
-          #
-          # A newly CREATED release always gets published_at = now, so we drop
-          # the release and its tag here and let the next step recreate both.
-          # Recreating the tag also re-points it at THIS commit -- it was still
-          # pinned to the commit the tag was born on -- and it makes the old
-          # "clean stale assets" pass unnecessary, since a release that does not
-          # exist has no assets to go stale.
-          #
-          # The cost is the few seconds between this step and the next, during
-          # which /releases/latest 404s. The download itself does not move: it
-          # is a Cloudflare R2 URL, not a release asset. The verify step at the
-          # end of this job fails the build if the recreate did not happen, so
-          # a missing download page can never pass silently.
-          pacman -Sy --noconfirm --needed github-cli || true
-          gh release delete rolling -R "$GITHUB_REPOSITORY" --yes --cleanup-tag \
-            || echo "no rolling release to delete (first run, or already gone)"
-
-      - name: 🚀 Publish the rolling release (main)
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: rolling
-          # The previous release and tag were deleted in the step above, so this
-          # CREATES both: the release is dated now and the tag lands on this
-          # commit. That is the whole reason the delete exists -- see it for why
-          # updating in place could not fix the date.
-          target_commitish: ${{ github.sha }}
-          name: "Genesi OS — Download (latest build)"
-          # Mark this as the repo's "Latest" so visitors land on the actual ISO
-          # build, not the infra "repo" release. prerelease=false is required for
-          # GitHub to consider it Latest. Real version tags (v*) will supersede it.
-          #
-          # This is deliberately the ONLY release on the page that is NOT a
-          # prerelease: the build-<sha> archives and the [infra] pacman-repo
-          # releases are all flagged prerelease, so a visitor sees exactly one
-          # thing to click. Keep it that way.
-          prerelease: false
-          make_latest: true
-          body_path: CHANGELOG_ROLLING.md
-          files: genesi-os-latest.iso.sha256
-
       # ── Per-build archive release (main) ───────────────────────────────────
       # Every main ISO build ALSO gets its own permanent GitHub Release, so the
       # Releases page becomes a browsable build history. GitHub Release storage
@@ -657,6 +599,105 @@ jobs:
                 2>/dev/null || true
             done
 
+      - name: 🚀 Republish the rolling release, dated TODAY (main)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Why this runs LAST, after the per-build archive release.
+          #
+          # GitHub orders the page by publish time, so whatever is created last
+          # sits on top. Creating `rolling` before the build-<sha> archive put
+          # the archive 19 seconds above it -- a "Pre-release" sitting above the
+          # download, which is half of the problem this whole change exists to
+          # fix. Running last also means the delete/create swap happens after
+          # every heavy, failure-prone step (the 3GB split and its upload), so a
+          # build that dies in one of those never touches the download page.
+          #
+          # Why delete instead of updating in place.
+          #
+          # GitHub sorts and dates the Releases page by `published_at`, and
+          # `published_at` is NOT writable: the Update-a-release API accepts
+          # tag_name, target_commitish, name, body, draft, prerelease,
+          # make_latest and discussion_category_name, and nothing else. So
+          # updating `rolling` every build left its date frozen at the moment
+          # the tag was first cut -- the ONE release carrying the "Latest" badge
+          # sat at the BOTTOM of the page, dated three months ago, beneath a
+          # dozen newer build-<sha> pre-releases. The ISO behind it was current
+          # the entire time. The page simply said otherwise, which is worse than
+          # being out of date, because it reads as an abandoned project.
+          #
+          # A newly CREATED release always gets published_at = now, so the
+          # release and its tag are dropped and immediately recreated below.
+          # Recreating the tag also re-points it at THIS commit -- it was still
+          # pinned to the commit the tag was born on -- and it makes the old
+          # "clean stale assets" pass unnecessary, since a release that does not
+          # exist has no assets to go stale.
+          #
+          # The delete and the create are ONE step on purpose. This workflow runs
+          # with cancel-in-progress, so a newer ISO request kills this run at an
+          # arbitrary moment -- and a cancellation landing between a delete step
+          # and a create step would take the download page down silently, since
+          # the verify step at the end gets cancelled too. Same step means the
+          # gap is one API call wide, and the restore net below closes even that.
+          #
+          # The download itself never moves during any of this: it is a
+          # Cloudflare R2 URL, uploaded several steps earlier, not a release
+          # asset. Only the landing page is being replaced.
+          #
+          # `gh` rather than softprops/action-gh-release for this one release,
+          # because an action cannot share a step with the delete it depends on.
+          # --latest is what puts the badge on it; no --prerelease is what allows
+          # the badge at all. It is deliberately the ONLY release on the page
+          # that is not a prerelease: the build-<sha> archives and the [infra]
+          # pacman-repo releases are all flagged prerelease, so a visitor sees
+          # exactly one thing to click. Keep it that way.
+          pacman -Sy --noconfirm --needed github-cli || true
+          gh release delete rolling -R "$GITHUB_REPOSITORY" --yes --cleanup-tag \
+            || echo "no rolling release to delete (first run, or already gone)"
+          gh release create rolling genesi-os-latest.iso.sha256 \
+            -R "$GITHUB_REPOSITORY" \
+            --title "Genesi OS — Download (latest build)" \
+            --notes-file CHANGELOG_ROLLING.md \
+            --target "$GITHUB_SHA" \
+            --latest
+
+      # ── Restore net ────────────────────────────────────────────────────────
+      # always() so this still runs when the job is CANCELLED, which is the only
+      # way the step above can leave the page missing: cancel-in-progress fires
+      # whenever a newer ISO is requested, and it can land between the delete and
+      # the create. Recreating from whatever is on disk beats a 404 on the link
+      # docs/installation.md hands every new user.
+      - name: 🛟 Restore the download page if this run was cancelled mid-swap
+        if: always() && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          command -v gh >/dev/null 2>&1 \
+            || pacman -Sy --noconfirm --needed github-cli \
+            || exit 0
+          if gh release view rolling -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "rolling is present — nothing to restore"
+            exit 0
+          fi
+          echo "::warning::the rolling release was missing — restoring the download page"
+          if [ ! -s CHANGELOG_ROLLING.md ]; then
+            {
+              echo "## ⬇️ Download"
+              echo
+              echo "**https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso**"
+              echo
+              echo "_Restored after an interrupted build; the ISO above is the newest one published._"
+            } > CHANGELOG_ROLLING.md
+          fi
+          sha=""
+          [ -f genesi-os-latest.iso.sha256 ] && sha=genesi-os-latest.iso.sha256
+          gh release create rolling $sha -R "$GITHUB_REPOSITORY" \
+            --title "Genesi OS — Download (latest build)" \
+            --notes-file CHANGELOG_ROLLING.md \
+            --target "$GITHUB_SHA" \
+            --latest || true
+
       # ── The download page has to exist when this job ends ─────────────────
       # `rolling` is deleted and recreated above, and it is what /releases/latest
       # resolves to -- the link docs/installation.md hands every new user. If the
@@ -670,10 +711,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pacman -Sy --noconfirm --needed github-cli || true
-          latest=$(gh release view rolling -R "$GITHUB_REPOSITORY" \
-                     --json isLatest --jq '.isLatest' 2>/dev/null || echo missing)
-          if [ "$latest" != "true" ]; then
-            echo "::error::the rolling release is $latest, not the repo's Latest — /releases/latest is broken"
+          # Ask the endpoint /releases/latest actually resolves to, rather than
+          # asking gh about the release.
+          #
+          # The first version of this check used
+          #   gh release view rolling --json isLatest
+          # and `isLatest` is not a field `gh release view` supports -- only
+          # `gh release list` has it. So gh errored, the check read "missing",
+          # and it failed the build on a run where the release had in fact been
+          # republished correctly. Hitting the API asks the real question: what
+          # does the link in docs/installation.md land on?
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" \
+                  --jq '.tag_name' 2>/dev/null || echo none)
+          if [ "$tag" != "rolling" ]; then
+            echo "::error::/releases/latest resolves to '$tag', not the rolling download page"
             exit 1
           fi
-          echo "rolling exists and holds the Latest badge"
+          echo "/releases/latest -> rolling"
