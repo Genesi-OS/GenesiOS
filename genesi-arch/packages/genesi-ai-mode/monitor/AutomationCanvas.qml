@@ -42,6 +42,7 @@ Item {
     property bool ready: false
     property bool hotkeyAvailable: false
 
+    property var genModels: []
     property var undoStack: []
     property bool restoringHistory: false
 
@@ -60,7 +61,18 @@ Item {
     // only fires when that condition holds (user feedback 2026-07-19: three
     // dots there duplicated what the properties already say). Mirrors
     // PORT_KINDS + the run_chain gate in the daemon.
+    // A Condition answers rather than succeeds, so its dots are True/False —
+    // the shape everyone already reads in a flowchart. A Loop's dots are the
+    // body and what comes after it. Both mirror COND_KINDS / LOOP_KINDS and the
+    // routing in the daemon's _walk; if these two ever disagree, the canvas is
+    // drawing a graph that is not the one that runs.
     function portsFor(kind) {
+        if (kind === "act_cond")
+            return [ { port: "true",  label: "True",  color: theme.greenBright },
+                     { port: "false", label: "False", color: theme.turbo } ]
+        if (kind === "act_loop")
+            return [ { port: "each", label: "for each", color: theme.violet },
+                     { port: "done", label: "after",    color: theme.blue } ]
         if (kind === "act_script" || kind === "act_ai" || kind === "act_http"
                 || kind === "act_file")
             return [ { port: "ok",  label: "on ok",    color: theme.greenBright },
@@ -72,13 +84,20 @@ Item {
     // "any output produced", which bypassed a Command sensor's gate entirely).
     // Render it like a default link so the canvas matches what actually runs.
     function portColor(port) {
-        if (port === "ok") return theme.greenBright
+        if (port === "ok" || port === "true") return theme.greenBright
         if (port === "err") return theme.red
+        if (port === "false") return theme.turbo
+        if (port === "each") return theme.violet
+        if (port === "done") return theme.blue
         return null
     }
     function portLabel(port) {
         if (port === "ok") return "on ok"
         if (port === "err") return "on error"
+        if (port === "true") return "True"
+        if (port === "false") return "False"
+        if (port === "each") return "for each"
+        if (port === "done") return "after"
         return ""
     }
     // Sheet-space point a link leaves a node from (must mirror the dot layout
@@ -268,7 +287,19 @@ Item {
         } else if (n.kind === "evt_hotkey") {
             out.push(c.combo ? c.combo : "press Capture to set")
         } else if (n.kind === "evt_schedule") {
-            out.push(c.time ? ("at " + c.time) : ("every " + (c.interval || "60") + " min"))
+            out.push(c.cron ? ("cron " + c.cron)
+                   : c.time ? ("at " + c.time)
+                   : ("every " + (c.interval || "60") + " min"))
+        } else if (n.kind === "evt_clipboard") {
+            out.push(c.onlyUrl ? "a link is copied"
+                   : c.contains ? ("copied ~ " + c.contains) : "anything is copied")
+        } else if (n.kind === "evt_screenshot") {
+            out.push("a screenshot is taken")
+            if (c.path) out.push("in " + baseName(c.path))
+        } else if (n.kind === "evt_webhook") {
+            out.push("POST /" + ((c.path || "hook").replace(/^\/+/, "")))
+            out.push(c.token ? ("port " + (c.port || 8737) + " · token set")
+                             : ("port " + (c.port || 8737) + " · no token"))
         } else if (n.kind === "evt_startup") {
             out.push("on login / boot")
         } else if (n.kind === "evt_log") {
@@ -278,6 +309,22 @@ Item {
             out.push("on " + (c.on || "exit0"))
         } else if (n.kind === "evt_manual") {
             out.push("Run on demand")
+        } else if (n.kind === "act_cond") {
+            out.push((c.mode === "ai") ? (c.prompt ? ("ask: " + ("" + c.prompt).substring(0, 26))
+                                                   : "no question")
+                                       : (c.expr || "no condition"))
+        } else if (n.kind === "act_loop") {
+            var src = c.source || "lines"
+            out.push(src === "list" ? ("list: " + (c.list || "—"))
+                   : src === "range" ? ((c.from || 1) + " → " + (c.to || 0))
+                   : src === "json" ? "each JSON item" : "each input line")
+            out.push("max " + (c.max || 100))
+        } else if (n.kind === "act_subflow") {
+            out.push(c.workflow ? ("run: " + c.workflow) : "pick a workflow")
+        } else if (n.kind === "act_email") {
+            out.push((c.mode === "read") ? ("read " + (c.folder || "INBOX"))
+                                         : ("send → " + (c.to || "—")))
+            out.push(c.account || "no account")
         } else if (n.kind === "act_script") {
             out.push(c.command ? ("" + c.command).split("\n")[0].substring(0, 30) : "no command")
             if (c.terminal) out.push("in a terminal window")
@@ -394,6 +441,9 @@ Item {
             GButton { theme: root.theme; kind: "tonal"; text: root.tight ? "" : "New"; iconSource: "icons/plus.svg"
                 tooltip: root.tight ? "New automation" : ""
                 onClicked: { var id = backend.createAutomation("New automation"); root.refreshList(); root.switchTo(id) } }
+            GButton { theme: root.theme; kind: "tonal"; text: root.tight ? "" : "Build with AI"; iconSource: "icons/bot.svg"
+                tooltip: "Describe an automation and have it built"
+                onClicked: { backend.loadModels(); genPopup.open() } }
             GButton { theme: root.theme; kind: "tonal"; text: root.tight ? "" : "Template"; iconSource: "icons/layout-grid.svg"
                 tooltip: root.tight ? "Start from a template" : ""
                 onClicked: templatePopup.open() }
@@ -447,8 +497,15 @@ Item {
                                     { label: "On startup / login", icon: "rocket", accent: root.theme.green, accentKey: "green", kind: "evt_startup" },
                                     { label: "Log line match", icon: "file-text", accent: root.theme.turbo, accentKey: "turbo", kind: "evt_log" },
                                     { label: "Command sensor", icon: "search", accent: root.theme.purple, accentKey: "purple", kind: "evt_command" },
+                                    { label: "Clipboard copy", icon: "copy", accent: root.theme.purple, accentKey: "purple", kind: "evt_clipboard" },
+                                    { label: "Screenshot taken", icon: "image", accent: root.theme.turbo, accentKey: "turbo", kind: "evt_screenshot" },
+                                    { label: "Webhook (HTTP)", icon: "cloud", accent: root.theme.blue, accentKey: "blue", kind: "evt_webhook" },
                                     { label: "Manual trigger", icon: "play", accent: root.theme.green, accentKey: "green", kind: "evt_manual" },
                                     { section: "ACTIONS (DO…)" },
+                                    { label: "Condition (if / else)", icon: "git-branch", accent: root.theme.turbo, accentKey: "turbo", kind: "act_cond" },
+                                    { label: "Loop / for each", icon: "refresh-cw", accent: root.theme.purple, accentKey: "purple", kind: "act_loop" },
+                                    { label: "Sub-workflow", icon: "layers", accent: root.theme.blue, accentKey: "blue", kind: "act_subflow" },
+                                    { label: "Email (send / read)", icon: "mail", accent: root.theme.green, accentKey: "green", kind: "act_email" },
                                     { label: "Run Script", icon: "terminal", accent: root.theme.purple, accentKey: "purple", kind: "act_script" },
                                     { label: "AI Action", icon: "bot", accent: root.theme.turbo, accentKey: "turbo", kind: "act_ai" },
                                     { label: "Notification", icon: "alert", accent: root.theme.green, accentKey: "green", kind: "act_notify" },
@@ -780,6 +837,219 @@ Item {
         { id: "morning",   name: "Morning routine",    sub: "08:00 → open your browser + a good-morning ping", icon: "clock" },
         { id: "aihotkey",  name: "AI on a hotkey",     sub: "Ctrl+Alt+G → ask the local AI for a quick status", icon: "bot" }
     ]
+
+
+    // ── Describe it, and let the model build it ─────────────────────────────
+    //
+    // The honesty rules are the whole feature. A generator that quietly builds
+    // something adjacent to what was asked is worse than one that refuses:
+    // the user only finds out weeks later, when the automation does not fire.
+    // So the panel has three states and never blurs them — it built what you
+    // asked, it built PART of it and says which part is missing, or it could
+    // not and says why.
+    property string genStatus: ""       // "" | working | ok | partial | error
+    property string genNote: ""
+    property var genGraph: null
+    property string genName: ""
+
+    Connections {
+        target: backend
+        function onWorkflowGenerated(payload) {
+            var res = {}
+            try { res = JSON.parse(payload) } catch (e) { res = { status: "error",
+                note: "The reply could not be read." } }
+            root.genStatus = res.status || "error"
+            root.genNote = res.note || ""
+            root.genGraph = res.graph || null
+            root.genName = res.name || ""
+        }
+        function onNoticeToast(msg) { root.toast(msg) }
+        function onModelsLoaded(jsonStr) {
+            try { root.genModels = JSON.parse(jsonStr) } catch (e) { root.genModels = [] }
+        }
+    }
+
+    QQC2.Popup {
+        id: genPopup
+        parent: QQC2.Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(680, parent ? parent.width - 24 : 680)
+        height: Math.min(560, parent ? parent.height - 24 : 560)
+        modal: true; focus: true
+        closePolicy: QQC2.Popup.CloseOnEscape
+        background: Rectangle {
+            radius: 14; color: root.theme.card
+            border.width: 1
+            // The border breathes while the model is thinking. It is the only
+            // thing on screen that moves, so "it is working" needs no spinner.
+            border.color: root.genStatus === "working" ? root.theme.violet
+                                                       : root.theme.lineHi
+            Behavior on border.color { ColorAnimation { duration: 400 } }
+            SequentialAnimation on opacity {
+                running: root.genStatus === "working"
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.88; duration: 900; easing.type: Easing.InOutQuad }
+                NumberAnimation { to: 1.0;  duration: 900; easing.type: Easing.InOutQuad }
+            }
+        }
+        onOpened: { root.genStatus = ""; root.genNote = ""; root.genGraph = null }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            RowLayout {
+                Layout.fillWidth: true; spacing: 10
+                FIcon { size: 20; name: "bot"; color: root.theme.violet }
+                QQC2.Label { text: "Describe the automation"
+                    color: root.theme.textHi; font.family: root.theme.display
+                    font.pixelSize: 20; font.bold: true }
+                Item { Layout.fillWidth: true }
+                GButton { theme: root.theme; kind: "ghost"; text: "✕"
+                    onClicked: genPopup.close() }
+            }
+            QQC2.Label {
+                Layout.fillWidth: true; wrapMode: Text.Wrap
+                text: "In your own words — what should start it, and what should happen. It runs on your machine, on the model you picked."
+                color: root.theme.textMid; font.pixelSize: 12 }
+
+            Rectangle {
+                Layout.fillWidth: true; implicitHeight: 96
+                radius: 10; color: root.theme.cardHi
+                border.width: 1
+                border.color: genInput.activeFocus ? root.theme.violet : root.theme.line
+                QQC2.TextArea {
+                    id: genInput
+                    anchors.fill: parent; anchors.margins: 10
+                    background: null; color: root.theme.textHi
+                    font.pixelSize: 13; wrapMode: TextEdit.Wrap
+                    placeholderText: "every morning at 9, check if my disk is above 90% and warn me with the exact number"
+                    placeholderTextColor: root.theme.textLo
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                QQC2.Label { text: "Model"; color: root.theme.textMid; font.pixelSize: 12 }
+                QQC2.ComboBox {
+                    id: genModel
+                    Layout.fillWidth: true; implicitHeight: 36
+                    model: root.genModels
+                    background: Rectangle { radius: 9; color: root.theme.cardHi
+                        border.width: 1; border.color: root.theme.lineHi }
+                    contentItem: QQC2.Label {
+                        leftPadding: 10; rightPadding: 26; verticalAlignment: Text.AlignVCenter
+                        text: genModel.displayText; color: root.theme.textHi
+                        font.pixelSize: 12; elide: Text.ElideRight }
+                }
+                GButton {
+                    theme: root.theme; kind: "filled"
+                    text: root.genStatus === "working" ? "Designing…" : "Generate"
+                    enabled: root.genStatus !== "working" && genInput.text.trim().length > 3
+                    onClicked: {
+                        root.genStatus = "working"; root.genNote = ""; root.genGraph = null
+                        backend.generateWorkflow(genInput.text,
+                                                 genModel.currentText || "")
+                    }
+                }
+            }
+
+            // What came back. Three states, never blurred together.
+            Rectangle {
+                Layout.fillWidth: true; Layout.fillHeight: true
+                radius: 10; color: root.theme.bgTop
+                border.width: 1
+                border.color: root.genStatus === "error" ? root.theme.red
+                            : root.genStatus === "partial" ? root.theme.turbo
+                            : root.genStatus === "ok" ? root.theme.greenBright
+                            : root.theme.line
+                Behavior on border.color { ColorAnimation { duration: 250 } }
+
+                ColumnLayout {
+                    anchors.fill: parent; anchors.margins: 12; spacing: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 8
+                        visible: root.genStatus !== "" && root.genStatus !== "working"
+                        FIcon { size: 14
+                            name: root.genStatus === "error" ? "x"
+                                : root.genStatus === "partial" ? "alert" : "check"
+                            color: root.genStatus === "error" ? root.theme.red
+                                 : root.genStatus === "partial" ? root.theme.turbo
+                                 : root.theme.greenBright }
+                        QQC2.Label {
+                            color: root.theme.textHi; font.pixelSize: 13; font.bold: true
+                            text: root.genStatus === "error" ? "It could not build this"
+                                : root.genStatus === "partial" ? "Built, with something left out"
+                                : ("Ready: " + root.genName) }
+                    }
+
+                    QQC2.Label {
+                        Layout.fillWidth: true; wrapMode: Text.Wrap
+                        visible: root.genNote.length > 0
+                        text: root.genNote
+                        color: root.theme.textMid; font.pixelSize: 12 }
+
+                    QQC2.Label {
+                        Layout.fillWidth: true; wrapMode: Text.Wrap
+                        visible: root.genStatus === ""
+                        text: "Nothing yet. Describe it above and press Generate."
+                        color: root.theme.textLo; font.pixelSize: 12 }
+
+                    // A plain-language reading of the graph, so the user checks
+                    // the WORKFLOW rather than trusting a drawing they have not
+                    // read yet.
+                    QQC2.ScrollView {
+                        Layout.fillWidth: true; Layout.fillHeight: true
+                        visible: root.genGraph !== null
+                        contentWidth: availableWidth
+                        ColumnLayout {
+                            width: parent ? parent.width : 0
+                            spacing: 4
+                            Repeater {
+                                model: root.genGraph ? root.genGraph.nodes : []
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true; spacing: 8
+                                    QQC2.Label { text: (index + 1) + "."
+                                        color: root.theme.textLo; font.pixelSize: 11 }
+                                    FIcon { size: 13; name: modelData.icon || "box"
+                                        color: root.accentFor(modelData.accentKey) }
+                                    QQC2.Label { text: modelData.title || modelData.kind
+                                        color: root.theme.textHi; font.pixelSize: 12 }
+                                    QQC2.Label { text: modelData.kind
+                                        color: root.theme.textLo; font.pixelSize: 10
+                                        font.family: root.theme.mono }
+                                    Item { Layout.fillWidth: true }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Item { Layout.fillWidth: true }
+                GButton { theme: root.theme; kind: "ghost"; text: "Cancel"
+                    onClicked: genPopup.close() }
+                GButton {
+                    theme: root.theme; kind: "tonal"; text: "Replace this workflow"
+                    enabled: root.genGraph !== null
+                    onClicked: {
+                        root.recordHistory()
+                        root.applyGraph({ nodes: root.genGraph.nodes,
+                                          links: root.genGraph.links,
+                                          name: root.genName || root.activeName,
+                                          enabled: root.activeEnabled })
+                        root.persist()
+                        genPopup.close()
+                        root.toast("Workflow built — check it, then enable it.")
+                    }
+                }
+            }
+        }
+    }
 
     QQC2.Popup {
         id: templatePopup

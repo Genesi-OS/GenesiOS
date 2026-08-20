@@ -21,14 +21,29 @@ Event nodes (triggers), each with config.mode = "once" | "always":
     evt_resource  cpu% or ram% crosses a threshold (psutil, edge-triggered)
     evt_app       a process name opens / closes (psutil)
     evt_hotkey    a global key or key-combo (evdev; needs the 'input' group)
-    evt_schedule  every N minutes, or a HH:MM time of day
+    evt_schedule  every N minutes, a HH:MM time of day, or a cron expression
+    evt_clipboard something new was copied (polled; no display-server dep)
+    evt_screenshot a new image landed in the screenshots folder
+    evt_webhook   an HTTP call to a local endpoint (loopback unless a token is set)
     evt_manual     fired only by the GUI's "Run now"
 
 Action nodes:
     act_script    run a shell command / script
     act_ai        drive local AI: pick model, optionally AI Mode + Turbo (on the
-                  chosen model), optionally let it act autonomously; run a prompt
+                  chosen model), optionally let it act autonomously; run a prompt.
+                  Declared `outputs` publish named values for later blocks.
+    act_cond      a branch: True/False ports, by expression or by asking the model
+    act_loop      repeat the `each` branch per item; `done` continues after
+    act_subflow   run another automation as one step of this one
+    act_email     send over SMTP / read over IMAP (password from the keyring)
     act_notify    desktop notification (notify-send)
+
+Values between blocks:
+    {input}   the previous block's whole output (unchanged, still works)
+    {{name}}  a NAMED value published earlier in the run — by an AI block's
+              declared outputs, by a loop ({{item}}, {{index}}, {{count}}) or by
+              the email reader ({{mail_subject}}, …). An unknown name renders as
+              itself, so a wiring mistake is visible instead of silently blank.
 
 Reuses genesi_agent (tool layer) and genesi_turbo_ctl (shared Turbo control).
 Stdlib only besides psutil; inotify + evdev are done with ctypes/struct so there
@@ -38,6 +53,8 @@ is no compiled dependency and it stays DE- and display-server-agnostic.
 from __future__ import annotations
 
 import ctypes
+import hashlib
+import hmac
 import fnmatch
 import glob as globmod
 import json
@@ -110,9 +127,51 @@ EVENT_KINDS = {"evt_fs", "evt_resource", "evt_app", "evt_hotkey",
                "evt_schedule", "evt_manual", "evt_power", "evt_temperature",
                "evt_disk", "evt_usb", "evt_network", "evt_process",
                "evt_idle", "evt_startup", "evt_log", "evt_command",
-               "evt_bluetooth"}
+               "evt_bluetooth", "evt_clipboard", "evt_screenshot",
+               "evt_webhook"}
 ACTION_KINDS = {"act_script", "act_ai", "act_notify", "act_http", "act_file",
-                "act_app", "act_sound", "act_power", "act_wait"}
+                "act_app", "act_sound", "act_power", "act_wait", "act_cond",
+                "act_loop", "act_subflow", "act_email"}
+
+# Nodes whose outcome is a BRANCH, not a success/failure. They answer "true" or
+# "false" and their two ports carry those names, so the canvas can draw the
+# shape everyone already expects from a flowchart.
+#
+# They are deliberately not modelled on the older mid-chain gate (an evt_* node
+# with an incoming link, which has one port and simply stops the flow when it
+# does not match). A gate can only say "stop"; a condition has to be able to say
+# "go this other way", and that is most of what people draw.
+COND_KINDS = {"act_cond"}
+
+# Nodes that replay a branch. Their `each` port is walked by the node itself,
+# once per item; `done` continues after the whole loop.
+LOOP_KINDS = {"act_loop"}
+
+
+class _Walk:
+    """Everything one automation run needs to carry, including nested walks.
+
+    A single object instead of six parameters threaded through every executor.
+    It is created per run and never touched by another: two automations can be
+    walking at the same moment, and one reading the other's values would be a
+    bug nobody could reproduce on purpose.
+    """
+
+    # A whole run, loop bodies included. The old guard was 128 steps for a flat
+    # walk; a loop of 50 items over a 4-block branch is 200 legitimate steps, so
+    # the ceiling has to be a budget for the RUN rather than for the graph.
+    BUDGET = 2000
+
+    def __init__(self, auto, nodes, outgoing, detail):
+        self.auto = auto
+        self.nodes = nodes
+        self.outgoing = outgoing
+        self.vars = {"trigger": detail or ""}
+        self.ran = set()
+        self.skipped = set()
+        self.steps = 0
+        self.budget = self.BUDGET
+        self.depth = 0          # nesting: loops and sub-workflows raise it
 
 # Result ports. Links carry an optional `fromPort`: "" (none) = always follow;
 # "ok" / "err" follow only when the source node succeeded / failed ("output" is
@@ -129,9 +188,199 @@ PORT_KINDS = {"act_script", "act_ai", "act_http", "act_file"}
 POLL_SECONDS = 2.0
 LOG_KEEP = 200
 
+# {{name}} in any node field. Deliberately narrow: a name, not an expression.
+# Anything cleverer here becomes a language nobody documented, and the field it
+# renders into is often a shell command.
+_VAR_RE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}")
+
+
+_SHOT_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".avif"}
+
+
+def _cron_match(field, value):
+    """One cron field against one number: *, a list, a range, or */step."""
+    field = field.strip()
+    if field in ("*", "?"):
+        return True
+    for part in field.split(","):
+        part = part.strip()
+        step = 1
+        if "/" in part:
+            part, _, raw_step = part.partition("/")
+            try:
+                step = max(1, int(raw_step))
+            except ValueError:
+                return False
+            part = part or "*"
+        if part == "*":
+            if value % step == 0:
+                return True
+            continue
+        if "-" in part:
+            lo, _, hi = part.partition("-")
+            try:
+                lo, hi = int(lo), int(hi)
+            except ValueError:
+                return False
+            if lo <= value <= hi and (value - lo) % step == 0:
+                return True
+            continue
+        try:
+            if int(part) == value:
+                return True
+        except ValueError:
+            return False
+    return False
+
+
+def _keyring_get(service, account):
+    """Read a secret from the session keyring, or None.
+
+    Shelling out to secret-tool rather than binding libsecret: the daemon is
+    stdlib-only by design, and this keeps the credential out of our address
+    space for everything but the moment it is used.
+    """
+    if not shutil.which("secret-tool"):
+        return None
+    try:
+        done = subprocess.run(
+            ["secret-tool", "lookup", "service", service, "account", account],
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() or None
+
 
 def _now():
     return int(time.time())
+
+
+def _parse_json_fields(reply, names):
+    """Pull the declared fields out of a model's reply, or None.
+
+    Tolerant on the way in, strict on the way out. Small local models wrap JSON
+    in a ```json fence, or bracket it with a sentence, no matter how firmly the
+    prompt says not to — refusing those would make the feature feel broken for
+    a mistake that costs nothing to forgive. What is NOT forgiven is a missing
+    field: the declared outputs are a contract with every block downstream, and
+    half of them silently empty is the failure mode this design exists to stop.
+    """
+    text = (reply or "").strip()
+    if not text:
+        return None
+    # Drop a surrounding code fence, with or without a language tag.
+    fence = re.match(r"^```[a-zA-Z]*\s*(.*?)\s*```$", text, re.S)
+    if fence:
+        text = fence.group(1).strip()
+    # Otherwise take the first balanced object in the text.
+    if not text.startswith("{"):
+        start = text.find("{")
+        if start < 0:
+            return None
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    text = text[start:i + 1]
+                    break
+        else:
+            return None
+    try:
+        obj = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(obj, dict):
+        return None
+
+    out = {}
+    for name in names:
+        if name not in obj:
+            return None
+        value = obj[name]
+        if isinstance(value, bool):
+            value = "true" if value else "false"
+        elif isinstance(value, (list, dict)):
+            value = json.dumps(value, ensure_ascii=False)
+        out[name] = str(value)
+    return out
+
+
+# Comparisons a Condition node understands. There is no eval() here on purpose:
+# this string arrives from a JSON file on disk, and eval would quietly turn
+# "an automation" into "a way to run arbitrary Python at login".
+_COND_OPS = ("<=", ">=", "!=", "==", "<", ">",
+             " contains ", " startswith ", " endswith ", " matches ")
+_TRUTHY = {"true", "1", "yes", "on", "ok", "sim"}
+
+
+def _cond_eval(expr):
+    """Evaluate a rendered condition string. Returns True/False."""
+    text = (expr or "").strip()
+    if not text:
+        return False
+
+    op = None
+    for candidate in _COND_OPS:
+        idx = text.find(candidate)
+        if idx > 0:
+            op, left, right = candidate.strip(), text[:idx], text[idx + len(candidate):]
+            break
+    if op is None:
+        # No operator: treat the whole thing as a flag. This is what makes
+        # "{{answer}}" work as a condition straight out of an AI block.
+        return text.strip().strip('"').strip("'").lower() in _TRUTHY
+
+    left = left.strip().strip('"').strip("'")
+    right = right.strip().strip('"').strip("'")
+
+    if op == "contains":
+        return right.lower() in left.lower()
+    if op == "startswith":
+        return left.lower().startswith(right.lower())
+    if op == "endswith":
+        return left.lower().endswith(right.lower())
+    if op == "matches":
+        try:
+            return re.search(right, left) is not None
+        except re.error:
+            return False
+
+    # Numbers when both sides are numbers, text otherwise, so "cpu > 80" and
+    # "status == running" both behave the way they read. A percent sign is
+    # tolerated because a model asked for a CPU figure often answers "83%".
+    def _num(value):
+        try:
+            return float(value.rstrip("% "))
+        except (ValueError, AttributeError):
+            return None
+
+    lnum, rnum = _num(left), _num(right)
+    if op == "==":
+        return (lnum == rnum) if (lnum is not None and rnum is not None) \
+            else left.lower() == right.lower()
+    if op == "!=":
+        return (lnum != rnum) if (lnum is not None and rnum is not None) \
+            else left.lower() != right.lower()
+
+    # Ordering needs NUMBERS on both sides. Falling back to comparing text
+    # alphabetically looks tolerant and is a trap: "{{cpu}} > 80" where the AI
+    # answered "quite high" would compare "quite high" > "80", which is true in
+    # ASCII, and the automation would fire on an answer nobody could measure.
+    # A comparison we cannot make is false — the automation stays quiet.
+    if lnum is None or rnum is None:
+        return False
+    if op == ">":
+        return lnum > rnum
+    if op == ">=":
+        return lnum >= rnum
+    if op == "<":
+        return lnum < rnum
+    if op == "<=":
+        return lnum <= rnum
+    return False
 
 
 # ── inotify (filesystem events), via ctypes — no third-party dep ──────────────
@@ -593,82 +842,151 @@ class Engine:
         # everything else is blank until the walk reaches it.
         self.status.nodes_reset(aid, {start_id: "ok"})
         self.status.log(aid, "▶ triggered — " + (detail or "event"), "step")
-        skipped = set()
+        # Named values published during THIS run, readable by later nodes as
+        # {{name}}. Scoped to the run and carried on the walk rather than kept
+        # on the engine: two automations can be walking at the same time, and
+        # one must never read the other's values.
+        walk = _Walk(auto, nodes, outgoing, detail)
         try:
             # A trigger has no run result: every outgoing link fires, whatever
             # dot it was drawn from, carrying the event detail as payload.
-            queue = [(to, detail or "") for _port, to in first]
-            ran = set()
-            steps = 0
-            while queue and steps < 128:          # cycle guard
-                nid, payload = queue.pop(0)
-                node = nodes.get(nid)
-                if node is None:
-                    continue
-                steps += 1
-                # One node at a time, in order: mark it running, execute it to
-                # completion, then record its outcome before moving on.
-                self.status.node_state(aid, nid, "running")
-                outcome, output = self._run_node(auto, node, payload)
-                ran.add(nid)
-                skipped.discard(nid)
-                self.status.node_state(aid, nid,
-                                       "ok" if outcome == "ok" else "failed")
-                # A condition node (evt_* mid-chain, e.g. the Command sensor)
-                # GATES the flow: when its configured condition did not hold,
-                # NOTHING downstream runs — whatever port the link was drawn
-                # from. This is absolute: the legacy "output" port used to mean
-                # "fire if the node printed anything", which bypassed the gate
-                # entirely and let the next block run after a "did NOT match"
-                # (reported 2026-07-19).
-                gated = node.get("kind") in EVENT_KINDS
-                blocked = gated and outcome != "ok"
-                for port, to in outgoing.get(nid, []):
-                    if blocked:
-                        fires = False
-                    elif port == "" or port == "output":
-                        # "output" is a legacy port (its dot was removed in
-                        # pkgrel 130); treat it as the plain default link.
-                        fires = True
-                    else:
-                        fires = (port == outcome)
-                    if fires:
-                        queue.append((to, output if (output or "").strip()
-                                      else payload))
-                    elif to not in ran:
-                        # The branch was not taken — show it as skipped so the
-                        # path that DID run is unambiguous on the canvas.
-                        skipped.add(to)
-            for nid in skipped:
-                if nid not in ran:
+            self._walk(walk, [(to, detail or "") for _port, to in first])
+            for nid in walk.skipped:
+                if nid not in walk.ran:
                     self.status.node_state(aid, nid, "skipped")
         finally:
             self.status.state(aid, "listening" if auto.get("enabled") else "idle",
                               running=False)
             self.status.log(aid, "✓ finished", "ok")
 
-    def _run_node(self, auto, node, payload):
+    def _walk(self, walk, queue):
+        """Drain a queue of (node_id, payload), executing each node in order.
+
+        Split out of run_chain so a Loop can replay a branch, and a Sub-workflow
+        can run another graph, through the SAME routing rules. A second copy of
+        this logic is exactly how the branch inside a loop would quietly start
+        behaving differently from the branch outside one.
+        """
+        aid = walk.auto["id"]
+        nodes, outgoing, vars = walk.nodes, walk.outgoing, walk.vars
+        while queue and walk.steps < walk.budget:
+            nid, payload = queue.pop(0)
+            node = nodes.get(nid)
+            if node is None:
+                continue
+            walk.steps += 1
+            # One node at a time, in order: mark it running, execute it to
+            # completion, then record its outcome before moving on.
+            self.status.node_state(aid, nid, "running")
+            outcome, output = self._run_node(walk.auto, node, payload, vars, walk)
+            walk.ran.add(nid)
+            walk.skipped.discard(nid)
+            # "true"/"false" are ANSWERS, not failures. A condition that
+            # correctly says false is a node that worked, and painting it red
+            # would teach people that a working graph looks broken.
+            self.status.node_state(aid, nid,
+                                   "failed" if outcome == "err" else "ok")
+            kind = node.get("kind")
+            # A condition node (evt_* mid-chain, e.g. the Command sensor)
+            # GATES the flow: when its configured condition did not hold,
+            # NOTHING downstream runs — whatever port the link was drawn
+            # from. This is absolute: the legacy "output" port used to mean
+            # "fire if the node printed anything", which bypassed the gate
+            # entirely and let the next block run after a "did NOT match"
+            # (reported 2026-07-19).
+            blocked = kind in EVENT_KINDS and outcome != "ok"
+            is_cond = kind in COND_KINDS
+            is_loop = kind in LOOP_KINDS
+            for port, to in outgoing.get(nid, []):
+                if is_loop:
+                    # The `each` branch belongs to the loop, which already ran
+                    # it once per item. Letting the outer walk follow it too
+                    # would run the body one extra time with no item bound —
+                    # the classic off-by-one that only shows up in production.
+                    # A link from the plain dot means "after the loop", which
+                    # is what `done` means.
+                    fires = outcome != "err" and port in ("", "done")
+                elif is_cond:
+                    # A condition routes by its ANSWER. A link drawn from the
+                    # plain dot (no port) follows the true branch — "carry on
+                    # if it holds" is what someone who did not bother picking a
+                    # port meant, and silently running the rest of the graph on
+                    # false would be the worst reading of it.
+                    if outcome == "err":
+                        fires = False
+                    elif port in ("true", "false"):
+                        fires = (port == outcome)
+                    else:
+                        fires = (outcome == "true")
+                elif blocked:
+                    fires = False
+                elif port == "" or port == "output":
+                    # "output" is a legacy port (its dot was removed in
+                    # pkgrel 130); treat it as the plain default link.
+                    fires = True
+                else:
+                    fires = (port == outcome)
+                if fires:
+                    queue.append((to, output if (output or "").strip()
+                                  else payload))
+                elif to not in walk.ran:
+                    # The branch was not taken — show it as skipped so the
+                    # path that DID run is unambiguous on the canvas.
+                    walk.skipped.add(to)
+
+
+    def _run_node(self, auto, node, payload, vars=None, walk=None):
         """Execute one node mid-chain. Actions dispatch to their executor; an
         evt_command with an incoming link acts as a CONDITION over the payload;
         any other event node just passes the payload through."""
         kind = node.get("kind")
         if kind in ACTION_KINDS:
-            return self._run_action(auto, node, payload)
+            return self._run_action(auto, node, payload, vars, walk)
         if kind == "evt_command":
-            return self._cond_command(auto, node, payload)
+            return self._cond_command(auto, node, payload, vars)
         return "ok", payload
 
     @staticmethod
-    def _sub(text, payload):
-        return (text or "").replace("{input}", payload or "")
+    def _sub(text, payload, vars=None):
+        """Render a node field: {input} plus {{named}} variables.
 
-    def _cond_command(self, auto, node, payload):
+        {input} is the whole output of the previous block and predates this —
+        it keeps working exactly as before.
+
+        {{name}} pulls a NAMED value out of the run, which is what makes an AI
+        block useful to the blocks after it. An AI node that declares outputs
+        (say `cpu` and `gpu`) publishes them here, so a notification can say
+        "CPU {{cpu}}%, GPU {{gpu}}%" instead of pasting a paragraph of prose.
+
+        An unknown {{name}} is left ON THE SCREEN rather than replaced with
+        nothing. A notification reading "CPU {{cpu}}%" tells the user their
+        wiring is wrong; one reading "CPU %" looks like the computer is broken.
+        """
+        text = text or ""
+
+        def _resolve(match):
+            key = match.group(1).strip()
+            if key == "input":
+                return payload or ""
+            if vars and key in vars:
+                return str(vars[key])
+            return match.group(0)
+
+        # {{...}} FIRST, then the bare {input}. The other order looks harmless
+        # and is not: "{{input}}" contains "{input}" as a substring, so
+        # replacing the short form first turns it into "{payload}" — braces and
+        # all — and the {{ }} pass never sees it.
+        if "{{" in text:
+            text = _VAR_RE.sub(_resolve, text)
+        return text.replace("{input}", payload or "")
+
+    def _cond_command(self, auto, node, payload, vars=None):
         """evt_command chained after another node: run its command ONCE with
         the upstream output in $GENESI_INPUT / {input} (empty command = test
         the payload itself), then report ok/err + the produced output."""
         aid = auto["id"]
         cfg = node.get("config", {}) or {}
-        command = self._sub((cfg.get("command") or "").strip(), payload)
+        command = self._sub((cfg.get("command") or "").strip(), payload, vars)
         out, base_ok = (payload or "").strip(), bool((payload or "").strip())
         if command:
             self.status.log(aid, "? " + command.splitlines()[0], "cmd")
@@ -762,7 +1080,7 @@ class Engine:
     # -- action executors --------------------------------------------------
     # Every executor returns (outcome, output): outcome "ok"/"err" drives the
     # result ports, output feeds the next node's payload.
-    def _run_action(self, auto, node, payload=""):
+    def _run_action(self, auto, node, payload="", vars=None, walk=None):
         aid = auto["id"]
         kind = node.get("kind")
         cfg = node.get("config", {}) or {}
@@ -770,13 +1088,15 @@ class Engine:
         _ensure_display_env()               # so launched GUI apps actually appear
         try:
             if kind == "act_script":
-                return self._act_script(aid, cfg, title, payload)
+                return self._act_script(aid, cfg, title, payload, vars)
             elif kind == "act_notify":
-                return self._act_notify(aid, cfg, payload)
+                return self._act_notify(aid, cfg, payload, vars)
             elif kind == "act_ai":
-                return self._act_ai(aid, cfg, title, payload)
+                return self._act_ai(aid, cfg, title, payload, vars)
+            elif kind == "act_cond":
+                return self._act_cond(aid, cfg, title, payload, vars)
             elif kind == "act_http":
-                return self._act_http(aid, cfg, payload)
+                return self._act_http(aid, cfg, payload, vars)
             elif kind == "act_file":
                 return self._act_file(aid, cfg)
             elif kind == "act_app":
@@ -785,11 +1105,376 @@ class Engine:
                 return self._act_sound(aid, cfg)
             elif kind == "act_power":
                 return self._act_power(aid, cfg)
+            elif kind == "act_email":
+                return self._act_email(aid, cfg, payload, vars)
+            elif kind == "act_loop":
+                return self._act_loop(auto, node, payload, vars, walk)
+            elif kind == "act_subflow":
+                return self._act_subflow(auto, node, payload, vars, walk)
             elif kind == "act_wait":
                 return self._act_wait(aid, cfg)
         except Exception as exc:
             self.status.log(aid, "%s: %s" % (title, exc), "err")
             return "err", ""
+        return "ok", ""
+
+    def _act_cond(self, aid, cfg, title, payload="", vars=None):
+        """A branch: answers "true" or "false", and its two ports carry those
+        names. Returns "err" only when it could not decide at all — a condition
+        that is simply false is a node that worked.
+
+        Two modes:
+          expr  a comparison over the run's values — "{{cpu}} > 80".
+          ai    the local model answers the question about the input.
+
+        The AI mode delegates to the AI block rather than reimplementing it, so
+        it inherits the whole shipped path: model choice, Turbo, local GGUF
+        loading, logging. It forces advisory execution on the way through,
+        because a question must never be able to take an action while answering
+        itself.
+        """
+        mode = (cfg.get("mode") or "expr").strip().lower()
+
+        if mode == "ai":
+            question = (cfg.get("prompt") or "").strip()
+            if not question:
+                self.status.log(aid, "condition: no question — skipped", "err")
+                return "err", ""
+            sub = dict(cfg)
+            sub["exec"] = "advisory"
+            sub["autonomous"] = False
+            sub["prompt"] = (question +
+                             "\n\nAnswer the question above about the input. "
+                             "true if it holds, false if it does not.")
+            sub["outputs"] = [{"name": "answer",
+                               "desc": "true or false, nothing else"}]
+            local = dict(vars or {})
+            outcome, _out = self._act_ai(aid, sub, title, payload, local)
+            if outcome != "ok":
+                return "err", ""
+            answer = str(local.get("answer", "")).strip().lower()
+            result = answer in _TRUTHY
+            # The answer is published so the blocks after the branch can quote
+            # the model's own words, and so a second condition can chain off it.
+            if vars is not None:
+                vars["answer"] = answer
+                for key, value in local.items():
+                    vars.setdefault(key, value)
+            self.status.log(aid, "condition → %s" % ("true" if result else "false"),
+                            "ok")
+            return ("true" if result else "false"), payload
+
+        expr = (cfg.get("expr") or "").strip()
+        if not expr:
+            self.status.log(aid, "condition: empty expression — skipped", "err")
+            return "err", ""
+        rendered = self._sub(expr, payload, vars)
+        result = _cond_eval(rendered)
+        self.status.log(aid, "condition: %s → %s"
+                        % (rendered, "true" if result else "false"), "ok")
+        return ("true" if result else "false"), payload
+
+    # ── Loop ────────────────────────────────────────────────────────────────
+
+    def _loop_items(self, cfg, payload, vars):
+        """The list a Loop walks. Four sources, because the useful ones differ:
+        a script prints lines, an HTTP call returns a JSON array, a person types
+        a short list by hand, and a counter is just a range."""
+        source = (cfg.get("source") or "lines").strip().lower()
+        if source == "list":
+            raw = self._sub(cfg.get("list") or "", payload, vars)
+            return [p.strip() for p in raw.split(",") if p.strip()]
+        if source == "range":
+            try:
+                start = int(float(self._sub(str(cfg.get("from", 1)), payload, vars)))
+                stop = int(float(self._sub(str(cfg.get("to", 0)), payload, vars)))
+            except (TypeError, ValueError):
+                return []
+            step = 1 if stop >= start else -1
+            return [str(n) for n in range(start, stop + step, step)]
+        if source == "json":
+            try:
+                obj = json.loads((payload or "").strip())
+            except ValueError:
+                return []
+            if isinstance(obj, dict):
+                obj = obj.get("items") if isinstance(obj.get("items"), list) else [obj]
+            if not isinstance(obj, list):
+                return []
+            return [v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+                    for v in obj]
+        return [ln for ln in (payload or "").splitlines() if ln.strip()]
+
+    def _act_loop(self, auto, node, payload="", vars=None, walk=None):
+        """Run the `each` branch once per item; `done` continues afterwards.
+
+        The branch is executed HERE, synchronously, rather than by queueing its
+        nodes once per item on the outer walk. That is not a style choice: the
+        walk is breadth-first and {{item}} lives in one shared dict, so queueing
+        five iterations would run them all after the loop finished and every one
+        of them would read the fifth item. Running each iteration to completion
+        before binding the next is the only way {{item}} means what it says.
+        """
+        aid = auto["id"]
+        cfg = node.get("config") or {}
+        if walk is None:
+            # A lone node fired from the GUI's "test this block" has no graph
+            # around it, so there is no branch to repeat.
+            self.status.log(aid, "loop: nothing to repeat outside a workflow", "err")
+            return "err", ""
+        if walk.depth >= 3:
+            self.status.log(aid, "loop: nested too deep (3 levels) — stopping", "err")
+            return "err", ""
+
+        targets = [to for port, to in walk.outgoing.get(node.get("id"), [])
+                   if port == "each"]
+        if not targets:
+            self.status.log(aid, "loop: nothing connected to the 'each' output",
+                            "err")
+            return "err", ""
+
+        try:
+            cap = int(float(cfg.get("max", 100)))
+        except (TypeError, ValueError):
+            cap = 100
+        cap = max(1, min(1000, cap))
+
+        items = self._loop_items(cfg, payload, vars)
+        if not items:
+            self.status.log(aid, "loop: nothing to iterate", "out")
+            return "ok", ""
+        if len(items) > cap:
+            self.status.log(aid, "loop: %d items, capped at %d" % (len(items), cap),
+                            "out")
+            items = items[:cap]
+
+        self.status.log(aid, "🔁 %d item(s)" % len(items), "step")
+        outer = dict(vars) if vars else {}
+        done = 0
+        for index, item in enumerate(items):
+            if walk.steps >= walk.budget:
+                self.status.log(aid, "loop: step budget reached — stopping", "err")
+                break
+            if vars is not None:
+                vars["item"] = item
+                vars["index"] = str(index)
+                vars["count"] = str(len(items))
+            walk.depth += 1
+            try:
+                self._walk(walk, [(t, item) for t in targets])
+            finally:
+                walk.depth -= 1
+            done += 1
+
+        # The loop's own bookkeeping is not something the blocks after it should
+        # inherit: {{item}} after a loop has finished means nothing, and leaving
+        # the last one bound is how a notification ends up quoting item five
+        # forever. Values the BODY published are kept, because publishing them
+        # is usually the point of the loop.
+        if vars is not None:
+            for key in ("item", "index", "count"):
+                if key in outer:
+                    vars[key] = outer[key]
+                else:
+                    vars.pop(key, None)
+        return "ok", "%d item(s)" % done
+
+    # ── Sub-workflow ────────────────────────────────────────────────────────
+
+    def _find_auto(self, ref):
+        """Another automation by id or by name. In-memory first (the daemon
+        keeps them fresh), the config directory as the fallback so this also
+        works from a test-run and from the GUI's preview."""
+        ref = (ref or "").strip()
+        if not ref:
+            return None
+        provider = getattr(self, "autos_provider", None)
+        pool = {}
+        if callable(provider):
+            try:
+                pool = dict(provider() or {})
+            except Exception:
+                pool = {}
+        if not pool:
+            base = os.path.expanduser("~/.config/genesi-ai-monitor/automations")
+            for path in sorted(globmod.glob(os.path.join(base, "*.json"))):
+                try:
+                    with open(path, "r", encoding="utf-8") as fh:
+                        obj = json.load(fh)
+                    if isinstance(obj, dict) and obj.get("id"):
+                        pool[obj["id"]] = obj
+                except (OSError, ValueError):
+                    continue
+        if ref in pool:
+            return pool[ref]
+        for auto in pool.values():
+            if (auto.get("name") or "").strip().lower() == ref.lower():
+                return auto
+        return None
+
+    def _act_subflow(self, auto, node, payload="", vars=None, walk=None):
+        """Run another automation as one step of this one.
+
+        The sub-workflow shares this run's step budget and its own values are
+        merged back on the way out, so a workflow can be factored into pieces
+        the same way a program is factored into functions — without either half
+        having to know it is being reused.
+        """
+        aid = auto["id"]
+        cfg = node.get("config") or {}
+        target = self._find_auto(self._sub(cfg.get("workflow") or "", payload, vars))
+        if target is None:
+            self.status.log(aid, "sub-workflow: '%s' not found"
+                            % (cfg.get("workflow") or ""), "err")
+            return "err", ""
+        if target.get("id") == aid:
+            # Cheap and worth it: the graph cannot see itself, so the only
+            # protection against "call myself" is here.
+            self.status.log(aid, "sub-workflow: a workflow cannot call itself",
+                            "err")
+            return "err", ""
+        if walk is not None and walk.depth >= 3:
+            self.status.log(aid, "sub-workflow: nested too deep (3 levels)", "err")
+            return "err", ""
+
+        sub_nodes = {n.get("id"): n for n in target.get("nodes", [])}
+        sub_out = {}
+        for link in target.get("links", []):
+            sub_out.setdefault(link.get("from"), []).append(
+                ((link.get("fromPort") or ""), link.get("to")))
+        # Start where a manual "Run now" would: every trigger that nothing
+        # feeds into. A sub-workflow's own triggers are not armed — it runs
+        # because THIS graph reached it.
+        fed = {to for links in sub_out.values() for _p, to in links}
+        starts = [nid for nid, n in sub_nodes.items()
+                  if n.get("kind") in EVENT_KINDS and nid not in fed]
+        queue = []
+        for nid in starts:
+            queue.extend([(to, payload) for _p, to in sub_out.get(nid, [])])
+        if not queue:
+            self.status.log(aid, "sub-workflow '%s' has nothing to run"
+                            % target.get("name", "?"), "err")
+            return "err", ""
+
+        self.status.log(aid, "↪ %s" % target.get("name", target.get("id")), "step")
+        sub_walk = _Walk(target, sub_nodes, sub_out, payload)
+        sub_walk.vars.update(vars or {})
+        if walk is not None:
+            sub_walk.depth = walk.depth + 1
+            sub_walk.budget = max(1, walk.budget - walk.steps)
+        # The sub-workflow reports against ITS OWN id, so its nodes light up on
+        # its own canvas rather than painting node states onto a graph that does
+        # not contain them.
+        self._walk(sub_walk, queue)
+        if walk is not None:
+            walk.steps += sub_walk.steps
+        if vars is not None:
+            for key, value in sub_walk.vars.items():
+                if key != "trigger":
+                    vars[key] = value
+        return "ok", ""
+
+    # ── Email ───────────────────────────────────────────────────────────────
+
+    def _act_email(self, aid, cfg, payload="", vars=None):
+        """Send mail over SMTP, or read the newest unread messages over IMAP.
+
+        THE PASSWORD IS NEVER IN THE WORKFLOW. The node stores an account name;
+        the credential lives in the session keyring (libsecret) where the user
+        put it, and is read here at send time. A workflow file is a document
+        people copy, paste into a forum when asking for help, and sync between
+        machines — an app password sitting in one would leak the first time
+        somebody shared their automation.
+        """
+        import smtplib
+        import imaplib
+        import email as _email
+        from email.message import EmailMessage
+
+        account = (cfg.get("account") or "").strip()
+        if not account:
+            self.status.log(aid, "email: no account configured", "err")
+            return "err", ""
+        secret = _keyring_get("genesi-automation-email", account)
+        if not secret:
+            self.status.log(
+                aid, "email: no password stored for '%s' — add it in the node's "
+                     "Account panel" % account, "err")
+            return "err", ""
+
+        host = (cfg.get("host") or "").strip()
+        user = (cfg.get("user") or account).strip()
+        mode = (cfg.get("mode") or "send").strip().lower()
+
+        if mode == "read":
+            port = int(cfg.get("port") or 993)
+            folder = (cfg.get("folder") or "INBOX").strip() or "INBOX"
+            limit = max(1, min(20, int(cfg.get("limit") or 5)))
+            box = imaplib.IMAP4_SSL(host, port, timeout=30)
+            try:
+                box.login(user, secret)
+                box.select(folder, readonly=not cfg.get("markRead"))
+                typ, data = box.search(None, cfg.get("search") or "UNSEEN")
+                ids = (data[0].split() if data and data[0] else [])[-limit:]
+                out = []
+                for num in ids:
+                    typ, raw = box.fetch(num, "(RFC822)")
+                    if typ != "OK" or not raw or not raw[0]:
+                        continue
+                    msg = _email.message_from_bytes(raw[0][1])
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == "text/plain":
+                                body = part.get_payload(decode=True) \
+                                    .decode(part.get_content_charset() or "utf-8",
+                                            "replace")
+                                break
+                    else:
+                        body = (msg.get_payload(decode=True) or b"").decode(
+                            msg.get_content_charset() or "utf-8", "replace")
+                    out.append({"from": str(msg.get("From", "")),
+                                "subject": str(msg.get("Subject", "")),
+                                "date": str(msg.get("Date", "")),
+                                "body": body.strip()[:4000]})
+                if vars is not None and out:
+                    vars["mail_from"] = out[-1]["from"]
+                    vars["mail_subject"] = out[-1]["subject"]
+                    vars["mail_body"] = out[-1]["body"]
+                    vars["mail_count"] = str(len(out))
+                self.status.log(aid, "📥 %d message(s)" % len(out), "ok")
+                return "ok", json.dumps(out, ensure_ascii=False)
+            finally:
+                try:
+                    box.logout()
+                except Exception:
+                    pass
+
+        to = self._sub(cfg.get("to") or "", payload, vars).strip()
+        if not to:
+            self.status.log(aid, "email: no recipient", "err")
+            return "err", ""
+        msg = EmailMessage()
+        msg["From"] = cfg.get("from") or user
+        msg["To"] = to
+        msg["Subject"] = self._sub(cfg.get("subject") or "Genesi Automation",
+                                   payload, vars)
+        msg.set_content(self._sub(cfg.get("body") or "", payload, vars))
+        port = int(cfg.get("port") or 587)
+        if port == 465:
+            server = smtplib.SMTP_SSL(host, port, timeout=30)
+        else:
+            server = smtplib.SMTP(host, port, timeout=30)
+            server.starttls()
+        try:
+            server.login(user, secret)
+            server.send_message(msg)
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                pass
+        self.status.log(aid, "📤 sent to %s" % to, "ok")
         return "ok", ""
 
     def _act_wait(self, aid, cfg):
@@ -814,8 +1499,8 @@ class Engine:
         return next((argv for name, argv in self._TERMS
                      if shutil.which(name)), None)
 
-    def _act_script(self, aid, cfg, title, payload=""):
-        command = self._sub((cfg.get("command") or "").strip(), payload)
+    def _act_script(self, aid, cfg, title, payload="", vars=None):
+        command = self._sub((cfg.get("command") or "").strip(), payload, vars)
         if not command:
             self.status.log(aid, "script: empty command — skipped", "out")
             return "err", ""
@@ -865,9 +1550,9 @@ class Engine:
             out = (proc.stderr or "").strip()
         return ("ok" if proc.returncode == 0 else "err", out)
 
-    def _act_notify(self, aid, cfg, payload=""):
-        title = self._sub(cfg.get("title") or "Genesi Automation", payload)
-        body = self._sub(cfg.get("body") or "", payload)
+    def _act_notify(self, aid, cfg, payload="", vars=None):
+        title = self._sub(cfg.get("title") or "Genesi Automation", payload, vars)
+        body = self._sub(cfg.get("body") or "", payload, vars)
         if not shutil.which("notify-send"):
             self.status.log(aid, "notify: notify-send missing", "err")
             return "err", ""
@@ -882,13 +1567,13 @@ class Engine:
             self.status.log(aid, "notify failed: %s" % exc, "err")
             return "err", ""
 
-    def _act_http(self, aid, cfg, payload=""):
-        url = self._sub((cfg.get("url") or "").strip(), payload)
+    def _act_http(self, aid, cfg, payload="", vars=None):
+        url = self._sub((cfg.get("url") or "").strip(), payload, vars)
         if not url:
             self.status.log(aid, "http: no URL — skipped", "out")
             return "err", ""
         method = (cfg.get("method") or "GET").upper()
-        body = self._sub(cfg.get("body") or "", payload)
+        body = self._sub(cfg.get("body") or "", payload, vars)
         data = body.encode() if (body and method != "GET") else None
         headers = {"Content-Type": "application/json"} if data else {}
         try:
@@ -1004,11 +1689,11 @@ class Engine:
             self.status.log(aid, "power %s failed: %s" % (op, exc), "err")
             return "err", ""
 
-    def _act_ai(self, aid, cfg, title, payload=""):
+    def _act_ai(self, aid, cfg, title, payload="", vars=None):
         if not _AGENT_OK:
             self.status.log(aid, "AI action unavailable (agent lib missing)", "err")
             return "err", ""
-        prompt = self._sub((cfg.get("prompt") or "").strip(), payload)
+        prompt = self._sub((cfg.get("prompt") or "").strip(), payload, vars)
         if not prompt:
             self.status.log(aid, "AI: empty prompt — skipped", "out")
             return "err", ""
@@ -1016,6 +1701,21 @@ class Engine:
         # doesn't already place it via {input} — so "summarize this" works.
         if payload and "{input}" not in (cfg.get("prompt") or ""):
             prompt = prompt + "\n\nInput from the previous block:\n" + payload
+
+        # Declared outputs turn the free-text answer into named values. The
+        # schema goes in the prompt so the model knows the shape before it
+        # writes, which is the only reliable way to get JSON out of a small
+        # local model; the reply is validated on the way back regardless.
+        outs = [o for o in (cfg.get("outputs") or [])
+                if isinstance(o, dict) and (o.get("name") or "").strip()]
+        for o in outs:
+            o["name"] = o["name"].strip()
+        if outs:
+            schema = ", ".join('"%s": "<%s>"' % (o["name"],
+                                                 (o.get("desc") or "value").strip())
+                               for o in outs)
+            prompt += ("\n\nReply with ONE JSON object and NOTHING else — no "
+                       "prose, no explanation, no markdown fence:\n{%s}" % schema)
         model = cfg.get("model") or ""
         want_turbo = bool(cfg.get("turbo"))
         spec = bool(cfg.get("spec"))
@@ -1058,6 +1758,32 @@ class Engine:
         except Exception as exc:
             self.status.log(aid, "AI error: %s" % exc, "err")
             return "err", ""
+        # Declared outputs: publish them as {{name}} for the blocks downstream.
+        #
+        # This is what turns the AI block from "prints a paragraph" into a
+        # source of values. "Check whether the PC is under heavy load" with
+        # outputs cpu and gpu lets the notification after it say
+        # "CPU {{cpu}}%, GPU {{gpu}}%" instead of pasting prose at the user.
+        if outs:
+            fields = _parse_json_fields(reply, [o["name"] for o in outs])
+            if fields is None:
+                # Deliberately a failure, not a shrug. If we carried on, every
+                # {{name}} downstream would render as itself and the automation
+                # would "work" while producing a notification full of braces.
+                # Failing routes the graph down the err port instead, which is
+                # a branch the user can actually handle.
+                self.status.log(
+                    aid, "AI: expected JSON with %s — got something else"
+                    % ", ".join(o["name"] for o in outs), "err")
+                for line in (reply or "").splitlines()[:4]:
+                    self.status.log(aid, line, "out")
+                return "err", (reply or "").strip()
+            if vars is not None:
+                vars.update(fields)
+            summary = ", ".join("%s=%s" % (k, fields[k]) for k in fields)
+            self.status.log(aid, "→ " + summary, "ok")
+            return "ok", summary
+
         # Surface the assistant's final words in the log; an advisory block also
         # notifies (it takes no action, so the answer is the whole point).
         if reply:
@@ -1265,6 +1991,12 @@ class Daemon:
         self._app_prev = set()             # process names seen last tick
         self._app_primed = False           # skip firing on the first app snapshot
         self._sched_prev = {}              # (aid,nid) -> monotonic/date marker
+        self._clip_prev = {}               # (aid,nid) -> last clipboard digest
+        self._webhook_srv = None           # the HTTP listener, when one is needed
+        self._webhook_addr = None          # (host, port) it is bound to
+        self._webhook_target = {}          # path -> (auto, node, cfg)
+        self._webhook_err = None           # last bind error, logged once
+        self._shot_prev = {}               # (aid,nid) -> {screenshot: mtime}
         self._edge = {}                    # (aid,nid) -> bool, generic edge memory
         self._snap = {}                    # (aid,nid) -> set/str, diff snapshots
         self._offset = {}                  # (aid,nid) -> int, evt_log file offset
@@ -1301,6 +2033,9 @@ class Daemon:
             # gone, so toggling one off then on lets it fire again.
             enabled_ids = {aid for aid, a in autos.items() if a.get("enabled")}
             self._fired_once = {k for k in self._fired_once if k[0] in enabled_ids}
+        # Outside the lock: _webhook_sync takes it again to read the automations,
+        # and binding a socket is not something to do while holding it.
+        self._webhook_sync()
         self.status.sync(autos)
         self._rearm()
         self._fire_startup()
@@ -1529,6 +2264,10 @@ class Daemon:
                         self._poll_command(a, n)
                     elif k == "evt_bluetooth" and self._bt_primed:
                         self._poll_bluetooth(a, n, btset)
+                    elif k == "evt_clipboard":
+                        self._poll_clipboard(a, n)
+                    elif k == "evt_screenshot":
+                        self._poll_screenshot(a, n)
                 except Exception:
                     pass
 
@@ -1580,6 +2319,10 @@ class Daemon:
     def _poll_schedule(self, auto, node):
         cfg = node.get("config", {}) or {}
         key = (auto["id"], node.get("id"))
+        cron = (cfg.get("cron") or "").strip()
+        if cron:
+            self._poll_cron(auto, node, cron)
+            return
         at = (cfg.get("time") or "").strip()
         if at and ":" in at:                # HH:MM daily
             today = time.strftime("%Y-%m-%d")
@@ -1598,6 +2341,264 @@ class Daemon:
         elif now - last >= minutes * 60:
             self._sched_prev[key] = now
             self._fire(auto, node, "every %g min" % minutes)
+
+    # -- webhook -----------------------------------------------------------
+    #
+    # An HTTP endpoint that fires a workflow. This is the one trigger that
+    # opens a socket, so the defaults are the careful ones:
+    #
+    #   * it binds 127.0.0.1 unless the node explicitly asks otherwise, and
+    #     asking otherwise REQUIRES a token. A webhook runs shell commands; a
+    #     port on 0.0.0.0 with no secret is a remote shell for the whole LAN,
+    #     and that must not be something a user can switch on by accident.
+    #   * the token is compared with compare_digest, so the reply time does not
+    #     tell an attacker how much of it they guessed right.
+    #   * it only ever exists while an enabled automation has a webhook node.
+    #
+    # Loopback-only is not a limitation in practice: a tunnel or a reverse proxy
+    # is how a public webhook should reach a laptop anyway, and both terminate
+    # somewhere that already does TLS.
+    def _webhook_routes(self):
+        routes = {}
+        with self.lock:
+            autos = [a for a in self.autos.values() if a.get("enabled")]
+        for auto in autos:
+            fed = {l.get("to") for l in auto.get("links", [])}
+            for node in auto.get("nodes", []):
+                if node.get("kind") != "evt_webhook" or node.get("id") in fed:
+                    continue
+                cfg = node.get("config", {}) or {}
+                path = "/" + (cfg.get("path") or node.get("id") or "hook").strip("/")
+                routes[path] = (auto, node, cfg)
+        return routes
+
+    def _webhook_sync(self):
+        """Bring the listener in line with the current automations."""
+        routes = self._webhook_routes()
+        if not routes:
+            self._webhook_stop()
+            return
+        port, bind_all = 8737, False
+        for _path, (_a, _n, cfg) in routes.items():
+            try:
+                port = int(cfg.get("port") or 8737)
+            except (TypeError, ValueError):
+                port = 8737
+            if cfg.get("bindAll") and (cfg.get("token") or "").strip():
+                bind_all = True
+            break
+        host = "0.0.0.0" if bind_all else "127.0.0.1"
+        self._webhook_target = routes
+        if self._webhook_srv is not None:
+            if (self._webhook_addr == (host, port)):
+                return                       # same socket, new routes: done
+            self._webhook_stop()
+
+        import http.server
+        daemon = self
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *_a):      # never spam the journal
+                pass
+
+            def _reply(self, code, text):
+                body = text.encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _handle(self, payload):
+                path = self.path.split("?", 1)[0].rstrip("/") or "/"
+                entry = (daemon._webhook_target or {}).get(path)
+                if entry is None:
+                    self._reply(404, "no such hook\n")
+                    return
+                auto, node, cfg = entry
+                token = (cfg.get("token") or "").strip()
+                if token:
+                    got = (self.headers.get("X-Genesi-Token") or "").strip()
+                    if not got:
+                        query = self.path.split("?", 1)
+                        if len(query) == 2:
+                            for pair in query[1].split("&"):
+                                key, _, value = pair.partition("=")
+                                if key == "token":
+                                    got = value
+                    if not hmac.compare_digest(got, token):
+                        self._reply(403, "bad token\n")
+                        return
+                daemon._fire(auto, node, payload[:8000])
+                self._reply(200, "fired\n")
+
+            def do_POST(self):
+                try:
+                    length = int(self.headers.get("Content-Length") or 0)
+                except ValueError:
+                    length = 0
+                raw = self.rfile.read(min(length, 1 << 20)) if length else b""
+                self._handle(raw.decode("utf-8", "replace"))
+
+            def do_GET(self):
+                query = self.path.split("?", 1)
+                self._handle(query[1] if len(query) == 2 else "")
+
+        try:
+            srv = http.server.ThreadingHTTPServer((host, port), _Handler)
+        except OSError as exc:
+            # A port already in use must not take the daemon down with it: every
+            # other trigger in every other automation still has to work.
+            if self._webhook_err != str(exc):
+                self._webhook_err = str(exc)
+                sys.stderr.write("genesi-automationd: webhook %s:%d — %s\n"
+                                 % (host, port, exc))
+            return
+        self._webhook_err = None
+        srv.daemon_threads = True
+        self._webhook_srv = srv
+        self._webhook_addr = (host, port)
+        threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.5},
+                         daemon=True).start()
+        sys.stderr.write("genesi-automationd: webhook listening on http://%s:%d %s\n"
+                         % (host, port, " ".join(sorted(routes))))
+
+    def _webhook_stop(self):
+        srv, self._webhook_srv = self._webhook_srv, None
+        self._webhook_addr = None
+        self._webhook_target = {}
+        if srv is not None:
+            try:
+                srv.shutdown()
+                srv.server_close()
+            except Exception:
+                pass
+
+    # -- clipboard ---------------------------------------------------------
+    #
+    # Polled, not subscribed. Both Wayland and X11 can push clipboard changes,
+    # but only through a toolkit connection to the compositor — and this daemon
+    # deliberately has no display-server dependency so it can run on Plasma,
+    # Hyprland, a bare tty and a "No Desktop" install alike. A read every couple
+    # of seconds costs one short-lived process and cannot get stuck.
+    def _clipboard_text(self):
+        for argv in (["wl-paste", "--no-newline", "--type", "text/plain"],
+                     ["xclip", "-selection", "clipboard", "-o"],
+                     ["xsel", "--clipboard", "--output"]):
+            if not shutil.which(argv[0]):
+                continue
+            try:
+                done = subprocess.run(argv, capture_output=True, text=True,
+                                      timeout=3, env=_graphical_env())
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if done.returncode == 0:
+                return done.stdout
+        return None
+
+    def _poll_clipboard(self, auto, node):
+        cfg = node.get("config", {}) or {}
+        key = (auto["id"], node.get("id"))
+        text = self._clipboard_text()
+        if text is None:
+            return
+        digest = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
+        prev = self._clip_prev.get(key)
+        self._clip_prev[key] = digest
+        # The first read only establishes what is already there. Firing on it
+        # would mean every login triggers on whatever was copied yesterday.
+        if prev is None or digest == prev:
+            return
+        stripped = text.strip()
+        if not stripped:
+            return
+        contains = (cfg.get("contains") or "").strip()
+        if contains and contains.lower() not in stripped.lower():
+            return
+        if cfg.get("onlyUrl") and not re.match(r"^[a-z][a-z0-9+.-]*://\S+$",
+                                               stripped, re.I):
+            return
+        self._fire(auto, node, stripped[:2000])
+
+    # -- screenshot --------------------------------------------------------
+    #
+    # A new image landing in the screenshots folder. Every desktop Genesi ships
+    # writes one there (Spectacle, grim, gnome-screenshot, flameshot), and
+    # watching the folder is the one method that works for all of them without
+    # hooking a single one.
+    def _shot_dir(self, cfg):
+        explicit = (cfg.get("path") or "").strip()
+        if explicit:
+            return os.path.expanduser(explicit)
+        home = os.path.expanduser("~")
+        pics = home + "/Pictures"
+        try:
+            with open(home + "/.config/user-dirs.dirs", encoding="utf-8") as fh:
+                for line in fh:
+                    m = re.match(r'\s*XDG_PICTURES_DIR="(.*)"', line)
+                    if m:
+                        pics = m.group(1).replace("$HOME", home)
+                        break
+        except OSError:
+            pass
+        for name in ("Screenshots", "Capturas de tela", "Screenshot"):
+            candidate = os.path.join(pics, name)
+            if os.path.isdir(candidate):
+                return candidate
+        return pics
+
+    def _poll_screenshot(self, auto, node):
+        cfg = node.get("config", {}) or {}
+        key = (auto["id"], node.get("id"))
+        folder = self._shot_dir(cfg)
+        try:
+            entries = {}
+            with os.scandir(folder) as it:
+                for entry in it:
+                    if not entry.is_file(follow_symlinks=False):
+                        continue
+                    if os.path.splitext(entry.name)[1].lower() not in _SHOT_EXTS:
+                        continue
+                    entries[entry.name] = entry.stat().st_mtime
+        except OSError:
+            return
+        prev = self._shot_prev.get(key)
+        self._shot_prev[key] = entries
+        if prev is None:                    # first pass: learn, do not fire
+            return
+        fresh = [n for n in entries if n not in prev]
+        if not fresh:
+            return
+        newest = max(fresh, key=lambda n: entries[n])
+        self._fire(auto, node, os.path.join(folder, newest))
+
+    # -- cron --------------------------------------------------------------
+
+    def _poll_cron(self, auto, node, expr):
+        """A 5-field cron expression, checked once a minute.
+
+        Written out rather than pulled from a library because the daemon is
+        stdlib-only, and because the subset people actually type — *, lists,
+        ranges and */step — is a dozen lines. Anything it cannot parse does not
+        fire, which is the safe direction for something that runs commands.
+        """
+        key = (auto["id"], node.get("id"))
+        stamp = time.strftime("%Y-%m-%d %H:%M")
+        if self._sched_prev.get(key) == stamp:
+            return                          # already handled this minute
+        now = time.localtime()
+        fields = (now.tm_min, now.tm_hour, now.tm_mday, now.tm_mon,
+                  0 if now.tm_wday == 6 else now.tm_wday + 1)
+        parts = expr.split()
+        if len(parts) != 5:
+            return
+        for part, value in zip(parts, fields):
+            if not _cron_match(part, value):
+                return
+        self._sched_prev[key] = stamp
+        self._fire(auto, node, "cron " + expr)
 
     # -- power / battery ---------------------------------------------------
     def _poll_power(self, auto, node, batt):

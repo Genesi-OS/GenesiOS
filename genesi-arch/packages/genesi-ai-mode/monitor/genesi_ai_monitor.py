@@ -8,6 +8,8 @@ UI lives in Main.qml; this is just the QML engine plus a tiny backend object the
 QML can call.
 """
 import os
+import shlex
+import re
 import sys
 import json
 import time
@@ -32,6 +34,8 @@ from genesi_agent import (
     summarize_tool_result,
 )
 import genesi_turbo_ctl as turbo_ctl
+from genesi_workflow_gen import (_WORKFLOW_SYSTEM, _first_json_object,
+                                 _sanitise_graph)
 
 try:
     from PySide6.QtCore import QObject, Slot, Signal, QUrl, Qt
@@ -80,6 +84,9 @@ AUTOMATION_SOCK = os.path.join(
     os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "genesi-automationd.sock")
 
 
+
+
+
 class Backend(QObject):
     # Chat signals (emitted from a worker thread; Qt queues them to the GUI).
     chatToken = Signal(str)      # one streamed token
@@ -107,6 +114,8 @@ class Backend(QObject):
     agentModeChanged = Signal(str)
     automationStatusChanged = Signal(str)  # JSON run state/logs from the daemon
     hotkeyCaptured = Signal(str)     # captured "ctrl+alt+a" combo ("" on cancel)
+    workflowGenerated = Signal(str)   # JSON: {status, note, name, graph}
+    noticeToast = Signal(str)         # a one-line message for the canvas
 
     def __init__(self):
         super().__init__()
@@ -1947,6 +1956,138 @@ class Backend(QObject):
         threading.Thread(
             target=lambda: self._automation_cmd({"cmd": "reload"}, timeout=8),
             daemon=True).start()
+
+    # ── Email credentials ───────────────────────────────────────────────────
+
+    @Slot(str)
+    def storeEmailSecret(self, account):
+        """Hand the user to secret-tool so THEY type the password.
+
+        The app never reads, holds or transports the credential — it opens the
+        keyring's own prompt and gets out of the way. That is not squeamishness:
+        an app password typed into a Qt field would sit in this process's memory,
+        in the clipboard history if pasted, and one careless `saveAutomation`
+        away from a JSON file people share when asking for help.
+        """
+        account = (account or "").strip()
+        if not account:
+            self.noticeToast.emit("Give the account a name first.")
+            return
+        if not shutil.which("secret-tool"):
+            self.noticeToast.emit("Install libsecret to store the password "
+                            "(sudo pacman -S libsecret).")
+            return
+        term = None
+        for candidate in ("konsole", "alacritty", "kitty", "xterm",
+                          "gnome-terminal", "x-terminal-emulator"):
+            if shutil.which(candidate):
+                term = candidate
+                break
+        inner = ("echo 'Genesi — password for %s'; "
+                 "echo 'Use an APP PASSWORD, not your main account password.'; "
+                 "echo; secret-tool store --label='Genesi automation email' "
+                 "service genesi-automation-email account %s && "
+                 "echo && echo 'Saved to your keyring.' || echo 'Not saved.'; "
+                 "echo; read -p 'Enter…' _" % (account, shlex.quote(account)))
+        try:
+            if term:
+                subprocess.Popen([term, "-e", "bash", "-lc", inner],
+                                 start_new_session=True)
+            else:
+                subprocess.Popen(["bash", "-lc", inner], start_new_session=True)
+            self.noticeToast.emit("Type the app password in the terminal window.")
+        except OSError as exc:
+            self.noticeToast.emit("Could not open a terminal: %s" % exc)
+
+    # ── Build a workflow from a sentence ────────────────────────────────────
+
+    @Slot(str, str)
+    def generateWorkflow(self, description, model):
+        """Ask the local model for a graph, then check it before showing it.
+
+        Two rules make this trustworthy rather than a party trick:
+
+        1. Every node kind, and every field of every kind, is described to the
+           model up front, and anything it invents is DROPPED on the way back.
+           A graph is a program; a hallucinated node kind would be a workflow
+           that looks right on the canvas and silently never runs.
+        2. When it cannot build what was asked, it says so and offers the
+           closest thing it can build, instead of quietly producing something
+           adjacent and letting the user discover the gap later.
+        """
+        description = (description or "").strip()
+        if not description:
+            return
+        threading.Thread(target=self._generate_workflow,
+                         args=(description, model or ""), daemon=True).start()
+
+    def _generate_workflow(self, description, model):
+        self.workflowGenerated.emit(json.dumps(
+            {"status": "working", "note": "Designing the workflow…"}))
+        try:
+            reply = self._chat_once(model, _WORKFLOW_SYSTEM, description)
+        except Exception as exc:
+            self.workflowGenerated.emit(json.dumps(
+                {"status": "error", "note": "The model could not be reached: %s" % exc}))
+            return
+
+        obj = _first_json_object(reply)
+        if obj is None:
+            self.workflowGenerated.emit(json.dumps(
+                {"status": "error",
+                 "note": "The model did not return a workflow. Try describing it "
+                         "in one sentence: what should start it, and what should "
+                         "happen."}))
+            return
+
+        graph, dropped = _sanitise_graph(obj)
+        if not graph["nodes"]:
+            self.workflowGenerated.emit(json.dumps(
+                {"status": "error",
+                 "note": obj.get("cannot")
+                         or "Nothing in that answer was a usable block."}))
+            return
+
+        note = (obj.get("cannot") or "").strip()
+        partial = bool(note)
+        if dropped:
+            extra = "Left out what Genesi has no block for: " + ", ".join(sorted(dropped))
+            note = (note + "\n\n" + extra) if note else extra
+            partial = True
+        self.workflowGenerated.emit(json.dumps({
+            "status": "partial" if partial else "ok",
+            "note": note,
+            "name": (obj.get("name") or "Generated workflow")[:60],
+            "graph": graph}))
+
+    def _chat_once(self, model, system, user):
+        """One completion with OUR system prompt.
+
+        Not _agent_model_reply: that one prepends the agent's tool-calling
+        prompt, and a model told it can run commands answers a "design me a
+        workflow" request by trying to run one.
+        """
+        messages = [{"role": "system", "content": system},
+                    {"role": "user", "content": user}]
+        if self._turbo or turbo_ctl.is_gguf_ref(model):
+            body = json.dumps({"messages": messages, "stream": False,
+                               "max_tokens": 1600, "cache_prompt": True}).encode()
+            req = urllib.request.Request(
+                _turbo_base() + "/v1/chat/completions", data=body,
+                headers={"Content-Type": "application/json"})
+            obj = json.loads(self._read_agent_response(req).decode())
+            choices = obj.get("choices") or []
+            if not choices:
+                raise RuntimeError("Turbo returned no response.")
+            return (choices[0].get("message") or {}).get("content", "")
+        if not self._ensure_ollama():
+            raise RuntimeError("Ollama isn't running (systemctl start ollama)")
+        body = json.dumps({"model": model, "messages": messages, "stream": False,
+                           "keep_alive": "15m"}).encode()
+        req = urllib.request.Request(OLLAMA + "/api/chat", data=body,
+                                     headers={"Content-Type": "application/json"})
+        obj = json.loads(self._read_agent_response(req).decode())
+        return (obj.get("message") or {}).get("content", "")
 
     @Slot(result=str)
     def listAutomations(self):

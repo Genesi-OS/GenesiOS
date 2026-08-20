@@ -222,6 +222,173 @@ Item {
                 FieldLabel { text: "…or daily at (HH:MM, optional)"; visible: root.kindIs("evt_schedule") }
                 GField { visible: root.kindIs("evt_schedule"); text: root.cfg("time", ""); icon: "clock"
                     onAccepted: root.setConfig("time", value) }
+                FieldLabel { text: "…or a cron expression (optional)"; visible: root.kindIs("evt_schedule") }
+                GField { visible: root.kindIs("evt_schedule"); text: root.cfg("cron", ""); icon: "code"
+                    onAccepted: root.setConfig("cron", value) }
+                QQC2.Label { visible: root.kindIs("evt_schedule"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Cron wins over the other two when it is filled in. Five fields — minute hour day month weekday — with *, lists (0,30), ranges (9-17) and steps (*/15). \"*/15 9-17 * * 1-5\" is every quarter of an hour during weekday office hours."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
+                // ── act_cond ────────────────────────────────────────────
+                FieldLabel { text: "Decide with"; visible: root.kindIs("act_cond") }
+                Combo { visible: root.kindIs("act_cond")
+                    model: ["expression", "ai"]
+                    currentIndex: root.optionIndex(["expression", "ai"],
+                                                   root.cfg("mode", "expr") === "ai" ? "ai" : "expression")
+                    onActivated: root.setConfig("mode", currentText === "ai" ? "ai" : "expr") }
+
+                FieldLabel { text: "Condition"; visible: root.kindIs("act_cond") && root.cfg("mode", "expr") !== "ai" }
+                GField { visible: root.kindIs("act_cond") && root.cfg("mode", "expr") !== "ai"
+                    text: root.cfg("expr", ""); icon: "git-branch"
+                    onAccepted: root.setConfig("expr", value) }
+                QQC2.Label { visible: root.kindIs("act_cond") && root.cfg("mode", "expr") !== "ai"
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Compare values from the blocks above: {{cpu}} > 80, {{status}} == running, {input} contains error. Also startswith, endswith and matches (regex). A value on its own (true / 1 / yes) is read as a flag."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
+                FieldLabel { text: "Question for the AI"; visible: root.kindIs("act_cond") && root.cfg("mode", "expr") === "ai" }
+                GArea { visible: root.kindIs("act_cond") && root.cfg("mode", "expr") === "ai"
+                    text: root.cfg("prompt", "")
+                    onAccepted: root.setConfig("prompt", value) }
+                FieldLabel { text: "Model"; visible: root.kindIs("act_cond") && root.cfg("mode", "expr") === "ai" }
+                Combo { visible: root.kindIs("act_cond") && root.cfg("mode", "expr") === "ai"
+                    model: root.models
+                    currentIndex: root.optionIndex(root.models, root.cfg("model", ""))
+                    onActivated: root.setConfig("model", root.models[currentIndex]) }
+                QQC2.Label { visible: root.kindIs("act_cond") && root.cfg("mode", "expr") === "ai"
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "The model answers your question about the incoming data with true or false. It cannot take any action while deciding. If it answers something that is neither, the block fails instead of guessing — wire the True and False dots to the two paths."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
+                // ── act_loop ────────────────────────────────────────────
+                FieldLabel { text: "Repeat over"; visible: root.kindIs("act_loop") }
+                Combo { visible: root.kindIs("act_loop")
+                    model: ["lines", "json", "list", "range"]
+                    currentIndex: root.optionIndex(["lines", "json", "list", "range"], root.cfg("source", "lines"))
+                    onActivated: root.setConfig("source", currentText) }
+                FieldLabel { text: "Items (comma separated)"; visible: root.kindIs("act_loop") && root.cfg("source", "lines") === "list" }
+                GField { visible: root.kindIs("act_loop") && root.cfg("source", "lines") === "list"
+                    text: root.cfg("list", ""); icon: "layers"
+                    onAccepted: root.setConfig("list", value) }
+                RowLayout { visible: root.kindIs("act_loop") && root.cfg("source", "lines") === "range"
+                    Layout.fillWidth: true; spacing: 8
+                    GField { text: root.cfg("from", "1"); icon: "arrow-down"
+                        onAccepted: root.setConfig("from", value) }
+                    GField { text: root.cfg("to", "10"); icon: "arrow-up"
+                        onAccepted: root.setConfig("to", value) } }
+                FieldLabel { text: "Stop after (safety cap)"; visible: root.kindIs("act_loop") }
+                GField { visible: root.kindIs("act_loop"); text: root.cfg("max", "100"); icon: "shield"
+                    onAccepted: root.setConfig("max", value) }
+                QQC2.Label { visible: root.kindIs("act_loop"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Everything wired to for each runs once per item, with {{item}}, {{index}} and {{count}} available inside. after runs once, when the loop is finished."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
+                // ── act_subflow ─────────────────────────────────────────
+                FieldLabel { text: "Workflow to run"; visible: root.kindIs("act_subflow") }
+                Combo { visible: root.kindIs("act_subflow")
+                    model: root.otherWorkflows()
+                    currentIndex: root.optionIndex(root.otherWorkflows(), root.cfg("workflow", ""))
+                    onActivated: root.setConfig("workflow", currentText) }
+                QQC2.Label { visible: root.kindIs("act_subflow"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Runs another automation as one step of this one, then carries on. Values it publishes come back with it, so a workflow can be split into reusable pieces. A workflow cannot run itself, and nesting stops at three levels."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
+                // ── act_email ───────────────────────────────────────────
+                FieldLabel { text: "Do what"; visible: root.kindIs("act_email") }
+                Combo { visible: root.kindIs("act_email")
+                    model: ["send", "read"]
+                    currentIndex: root.optionIndex(["send", "read"], root.cfg("mode", "send"))
+                    onActivated: root.setConfig("mode", currentText) }
+                FieldLabel { text: "Account (label in your keyring)"; visible: root.kindIs("act_email") }
+                GField { visible: root.kindIs("act_email"); text: root.cfg("account", ""); icon: "user"
+                    onAccepted: root.setConfig("account", value) }
+                FieldLabel { text: root.cfg("mode", "send") === "read" ? "IMAP server" : "SMTP server"
+                    visible: root.kindIs("act_email") }
+                RowLayout { visible: root.kindIs("act_email"); Layout.fillWidth: true; spacing: 8
+                    GField { text: root.cfg("host", ""); icon: "globe"
+                        onAccepted: root.setConfig("host", value) }
+                    GField { text: root.cfg("port", root.cfg("mode", "send") === "read" ? "993" : "587"); icon: "link"
+                        onAccepted: root.setConfig("port", value) } }
+                FieldLabel { text: "Username"; visible: root.kindIs("act_email") }
+                GField { visible: root.kindIs("act_email"); text: root.cfg("user", ""); icon: "user"
+                    onAccepted: root.setConfig("user", value) }
+
+                FieldLabel { text: "To"; visible: root.kindIs("act_email") && root.cfg("mode", "send") !== "read" }
+                GField { visible: root.kindIs("act_email") && root.cfg("mode", "send") !== "read"
+                    text: root.cfg("to", ""); icon: "mail"
+                    onAccepted: root.setConfig("to", value) }
+                FieldLabel { text: "Subject"; visible: root.kindIs("act_email") && root.cfg("mode", "send") !== "read" }
+                GField { visible: root.kindIs("act_email") && root.cfg("mode", "send") !== "read"
+                    text: root.cfg("subject", ""); icon: "edit"
+                    onAccepted: root.setConfig("subject", value) }
+                FieldLabel { text: "Message"; visible: root.kindIs("act_email") && root.cfg("mode", "send") !== "read" }
+                GArea { visible: root.kindIs("act_email") && root.cfg("mode", "send") !== "read"
+                    text: root.cfg("body", "")
+                    onAccepted: root.setConfig("body", value) }
+
+                FieldLabel { text: "Folder"; visible: root.kindIs("act_email") && root.cfg("mode", "send") === "read" }
+                GField { visible: root.kindIs("act_email") && root.cfg("mode", "send") === "read"
+                    text: root.cfg("folder", "INBOX"); icon: "folder"
+                    onAccepted: root.setConfig("folder", value) }
+                FieldLabel { text: "How many"; visible: root.kindIs("act_email") && root.cfg("mode", "send") === "read" }
+                GField { visible: root.kindIs("act_email") && root.cfg("mode", "send") === "read"
+                    text: root.cfg("limit", "5"); icon: "archive"
+                    onAccepted: root.setConfig("limit", value) }
+                QQC2.Label { visible: root.kindIs("act_email") && root.cfg("mode", "send") === "read"
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "The newest unread messages arrive as {{mail_from}}, {{mail_subject}}, {{mail_body}} and {{mail_count}}, and the whole batch as JSON for a Loop."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
+                // The password is NEVER stored in the workflow. Workflow files
+                // get copied, shared in forum posts and synced between machines;
+                // an app password in one would leak the first time somebody asked
+                // for help with their automation.
+                RowLayout { visible: root.kindIs("act_email"); Layout.fillWidth: true
+                    Layout.topMargin: 8; spacing: 8
+                    GButton { theme: root.theme; kind: "tonal"; text: "Store the password…"
+                        enabled: ("" + root.cfg("account", "")).length > 0
+                        onClicked: backend.storeEmailSecret(root.cfg("account", "")) }
+                }
+                QQC2.Label { visible: root.kindIs("act_email"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Use an app password, not your main one — Gmail and Outlook both issue them. It is kept in your system keyring, never in this workflow, so sharing the automation never shares the account."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
+                // ── evt_clipboard ───────────────────────────────────────
+                FieldLabel { text: "Only when it contains (optional)"; visible: root.kindIs("evt_clipboard") }
+                GField { visible: root.kindIs("evt_clipboard"); text: root.cfg("contains", ""); icon: "search"
+                    onAccepted: root.setConfig("contains", value) }
+                RowToggle { visible: root.kindIs("evt_clipboard"); label: "Only when a link is copied"
+                    value: root.cfgBool("onlyUrl")
+                    onToggled: function(v) { root.setConfig("onlyUrl", v) } }
+                QQC2.Label { visible: root.kindIs("evt_clipboard"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "The copied text arrives as {input}. What was already on the clipboard when you logged in never fires — only a change does."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
+                // ── evt_screenshot ──────────────────────────────────────
+                FieldLabel { text: "Folder to watch (optional)"; visible: root.kindIs("evt_screenshot") }
+                GField { visible: root.kindIs("evt_screenshot"); text: root.cfg("path", ""); icon: "folder"
+                    onAccepted: root.setConfig("path", value) }
+                QQC2.Label { visible: root.kindIs("evt_screenshot"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Left empty, your screenshots folder is found automatically. The new image's full path arrives as {input}, so the next block can read, move or describe it."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
+                // ── evt_webhook ─────────────────────────────────────────
+                FieldLabel { text: "Path"; visible: root.kindIs("evt_webhook") }
+                GField { visible: root.kindIs("evt_webhook"); text: root.cfg("path", "hook"); icon: "link"
+                    onAccepted: root.setConfig("path", value) }
+                FieldLabel { text: "Port"; visible: root.kindIs("evt_webhook") }
+                GField { visible: root.kindIs("evt_webhook"); text: root.cfg("port", "8737"); icon: "cloud"
+                    onAccepted: root.setConfig("port", value) }
+                FieldLabel { text: "Token (a shared secret)"; visible: root.kindIs("evt_webhook") }
+                GField { visible: root.kindIs("evt_webhook"); text: root.cfg("token", ""); icon: "shield"
+                    onAccepted: root.setConfig("token", value) }
+                RowToggle { visible: root.kindIs("evt_webhook")
+                    label: "Accept calls from the network (needs a token)"
+                    value: root.cfgBool("bindAll")
+                    onToggled: function(v) { root.setConfig("bindAll", v) } }
+                QQC2.Label { visible: root.kindIs("evt_webhook"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "POST or GET to http://127.0.0.1:" + root.cfg("port", "8737") + "/" + ("" + root.cfg("path", "hook")).replace(/^\/+/, "") + " and the workflow runs; the request body arrives as {input}.\n\nIt listens on this machine only unless you turn the switch above on, and that switch does nothing without a token — a webhook runs commands, so an open port with no secret would be a shell for anyone on your network."
+                    color: root.theme.textLo; font.pixelSize: 10 }
 
                 // ── act_script ──────────────────────────────────────────
                 FieldLabel { text: "Shell command / script"; visible: root.kindIs("act_script") }
@@ -268,6 +435,42 @@ Item {
                 FieldLabel { text: "Prompt"; visible: root.kindIs("act_ai") }
                 GArea { visible: root.kindIs("act_ai"); text: root.cfg("prompt", "")
                     onAccepted: root.setConfig("prompt", value) }
+
+                // ── act_ai: named outputs ───────────────────────────────
+                //
+                // What turns the AI block from "prints a paragraph" into a
+                // source of values. Each row is a field the model must return,
+                // and every block after this one can then say {{name}}.
+                RowLayout {
+                    visible: root.kindIs("act_ai"); Layout.fillWidth: true
+                    Layout.topMargin: 10; spacing: 8
+                    QQC2.Label { text: "Outputs"; color: root.theme.textMid
+                        font.pixelSize: 12; font.bold: true }
+                    Item { Layout.fillWidth: true }
+                    GButton { theme: root.theme; kind: "ghost"; text: "+ add"
+                        onClicked: root.addOutput() }
+                }
+                Repeater {
+                    model: root.kindIs("act_ai") ? root.outputs() : []
+                    delegate: RowLayout {
+                        required property var modelData
+                        required property int index
+                        Layout.fillWidth: true; spacing: 6
+                        GField { text: modelData.name || ""; icon: "tag"
+                            Layout.preferredWidth: 110
+                            onAccepted: root.setOutput(index, "name", value) }
+                        GField { text: modelData.desc || ""; icon: "edit"
+                            onAccepted: root.setOutput(index, "desc", value) }
+                        GButton { theme: root.theme; kind: "ghost"; text: "✕"
+                            onClicked: root.removeOutput(index) }
+                    }
+                }
+                QQC2.Label { visible: root.kindIs("act_ai"); Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: root.outputs().length === 0
+                        ? "With no outputs the block simply answers in prose, and the next block receives that text as {input}."
+                        : "The model is told to reply with exactly these fields, and the blocks after this one can use them as {{" + (root.outputs()[0].name || "name") + "}}. If the reply is missing one, the block fails instead of passing half a result down the chain — wire the on error dot to catch that."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
 
                 // ── act_notify ──────────────────────────────────────────
                 FieldLabel { text: "Title"; visible: root.kindIs("act_notify") }
@@ -496,6 +699,43 @@ Item {
     function aiExec() { return cfg("exec", cfgBool("autonomous") ? "auto" : "advisory") }
     function setConfig(key, value) {
         if (root.node && root.graphProvider) root.graphProvider.setNodeConfig(root.node.id, key, value)
+    }
+    // Every OTHER automation, by name. A workflow cannot call itself, so the
+    // one being edited is left out of the list rather than offered and refused.
+    // The declared outputs, always an array so the UI never has to guess.
+    function outputs() {
+        var v = cfg("outputs", [])
+        return (v && v.length !== undefined) ? v : []
+    }
+    function addOutput() {
+        var list = outputs().slice()
+        list.push({ name: "", desc: "" })
+        setConfig("outputs", list)
+    }
+    function setOutput(index, key, value) {
+        var list = outputs().slice()
+        if (index < 0 || index >= list.length) return
+        var row = { name: list[index].name || "", desc: list[index].desc || "" }
+        row[key] = value
+        list[index] = row
+        setConfig("outputs", list)
+    }
+    function removeOutput(index) {
+        var list = outputs().slice()
+        if (index < 0 || index >= list.length) return
+        list.splice(index, 1)
+        setConfig("outputs", list)
+    }
+    function otherWorkflows() {
+        var out = []
+        try {
+            var store = JSON.parse(backend.listAutomations())
+            var items = store.items || []
+            for (var i = 0; i < items.length; i++)
+                if (!root.graphProvider || items[i].id !== root.graphProvider.activeId)
+                    out.push(items[i].name)
+        } catch (e) { }
+        return out
     }
     function optionIndex(model, value) {
         for (var i = 0; i < model.length; i++) if (model[i] === value) return i

@@ -234,5 +234,340 @@ eng.run_chain(auto_changed, "trg", "t")     # same Engine keeps the snapshot
 check("changed passes when the output differs",
       st_engine.node_states.get("after") == "ok", str(st_engine.node_states))
 
+# ══ Condition nodes, named AI outputs and {{templating}} ═══════════════════
+#
+# The backbone the Condition node and the AI-output feature stand on. Before
+# this, the only thing one block could hand the next was {input} — the whole
+# previous output as one lump of text — so "notify me with the CPU figure the
+# AI just read" had nowhere to put the figure.
+
+print("\n[7] {{name}} rendering")
+sub = mod.Engine._sub
+check("{input} still works", sub("got {input}", "X") == "got X")
+check("{{name}} resolves", sub("cpu {{cpu}}%", "", {"cpu": "83"}) == "cpu 83%")
+check("spaces inside braces are fine", sub("{{ cpu }}", "", {"cpu": "9"}) == "9")
+check("{{input}} is an alias of {input}", sub("{{input}}", "P") == "P")
+check("both forms in one string", sub("{input}/{{a}}", "P", {"a": "1"}) == "P/1")
+check("an UNKNOWN name is left visible, not blanked",
+      sub("cpu {{nope}}%", "", {"cpu": "1"}) == "cpu {{nope}}%",
+      "a notification reading 'cpu %' looks like a broken computer")
+check("no braces means no work", sub("plain", "x", {"a": "1"}) == "plain")
+
+print("\n[8] reading declared fields out of a model reply")
+pj = mod._parse_json_fields
+check("plain object",
+      pj('{"cpu": 83, "gpu": 12}', ["cpu", "gpu"]) == {"cpu": "83", "gpu": "12"})
+check("wrapped in a json fence", pj('```json\n{"cpu": 5}\n```', ["cpu"]) == {"cpu": "5"})
+check("buried in prose", pj('Sure! {"cpu": 5} hope that helps', ["cpu"]) == {"cpu": "5"})
+check("nested braces survive", pj('{"a": {"b": 1}, "cpu": 7}', ["cpu"]) == {"cpu": "7"})
+check("booleans become true/false", pj('{"answer": true}', ["answer"]) == {"answer": "true"})
+check("a MISSING field is a failure, not a blank",
+      pj('{"cpu": 5}', ["cpu", "gpu"]) is None,
+      "half the fields silently empty is the failure this design exists to stop")
+check("not JSON at all", pj("I think the CPU is fine", ["cpu"]) is None)
+check("empty reply", pj("", ["cpu"]) is None)
+check("a JSON array is not an object", pj("[1,2]", ["cpu"]) is None)
+
+print("\n[9] evaluating a condition expression")
+ce = mod._cond_eval
+check("numeric >", ce("83 > 80") is True)
+check("numeric > that is false", ce("12 > 80") is False)
+check("a percent sign is tolerated", ce("83% > 80") is True)
+check("text ==", ce("running == running") is True)
+check("contains", ce("hello world contains world") is True)
+check("startswith", ce("genesi-ai-mode startswith genesi") is True)
+check("matches (regex)", ce("build-1234 matches [0-9]+") is True)
+check("a bare truthy value", ce("true") is True)
+check("a bare falsy value", ce("false") is False)
+check("empty is false, never a crash", ce("") is False)
+check("a broken regex is false, not an exception", ce("x matches [") is False)
+check("no eval: python is not a language here",
+      ce("__import__('os').system('x') > 0") is False)
+
+print("\n[10] a Condition node routes true and false")
+
+
+def cond(nid, expr):
+    return {"id": nid, "kind": "act_cond", "title": nid,
+            "config": {"mode": "expr", "expr": expr}}
+
+
+st = run(build(
+    [TRIGGER, cond("c", "90 > 80"), script("T", "echo yes"), script("F", "echo no")],
+    [{"from": "trg", "to": "c"},
+     {"from": "c", "to": "T", "fromPort": "true"},
+     {"from": "c", "to": "F", "fromPort": "false"}]))
+check("true branch ran", st.node_states.get("T") == "ok", str(st.node_states))
+check("false branch skipped", st.node_states.get("F") == "skipped", str(st.node_states))
+check("a false answer is NOT painted as a failure",
+      st.node_states.get("c") == "ok", str(st.node_states))
+
+st = run(build(
+    [TRIGGER, cond("c", "10 > 80"), script("T", "echo yes"), script("F", "echo no")],
+    [{"from": "trg", "to": "c"},
+     {"from": "c", "to": "T", "fromPort": "true"},
+     {"from": "c", "to": "F", "fromPort": "false"}]))
+check("false branch ran", st.node_states.get("F") == "ok", str(st.node_states))
+check("true branch skipped", st.node_states.get("T") == "skipped", str(st.node_states))
+
+st = run(build(
+    [TRIGGER, cond("c", "10 > 80"), script("N", "echo next")],
+    [{"from": "trg", "to": "c"}, {"from": "c", "to": "N"}]))
+check("a portless link does NOT run on false",
+      st.node_states.get("N") == "skipped", str(st.node_states))
+
+st = run(build(
+    [TRIGGER, cond("c", "90 > 80"), script("N", "echo next")],
+    [{"from": "trg", "to": "c"}, {"from": "c", "to": "N"}]))
+check("a portless link DOES run on true",
+      st.node_states.get("N") == "ok", str(st.node_states))
+
+st = run(build(
+    [TRIGGER, cond("c", ""), script("T", "echo yes"), script("F", "echo no")],
+    [{"from": "trg", "to": "c"},
+     {"from": "c", "to": "T", "fromPort": "true"},
+     {"from": "c", "to": "F", "fromPort": "false"}]))
+check("an unconfigured condition fails and takes NEITHER branch",
+      st.node_states.get("c") == "failed"
+      and st.node_states.get("T") != "ok" and st.node_states.get("F") != "ok",
+      str(st.node_states))
+
+print("\n[11] the AI block publishes named values the next block can use")
+# Stand in for the model. The real path (Turbo / Ollama / local GGUF) is left
+# alone; only the single call that would reach a model is replaced.
+mod._AGENT_OK = True
+mod._ensure_ollama = lambda: None
+
+
+class _Turbo:
+    @staticmethod
+    def is_gguf_ref(m):
+        return False
+
+
+mod.turbo_ctl = _Turbo
+_reply = {"text": '{"cpu": "83", "gpu": "12"}'}
+mod.Engine._ai_run = lambda self, model, prompt, mode, use_turbo, aid: _reply["text"]
+
+ai = {"id": "ai", "kind": "act_ai", "title": "ai",
+      "config": {"prompt": "is the pc busy", "exec": "advisory",
+                 "outputs": [{"name": "cpu", "desc": "cpu %"},
+                             {"name": "gpu", "desc": "gpu %"}]}}
+notify = {"id": "n", "kind": "act_notify", "title": "n",
+          "config": {"title": "Load", "body": "CPU {{cpu}}%, GPU {{gpu}}%"}}
+sent = []
+mod.subprocess.Popen = lambda argv, **kw: sent.append(argv)
+# notify-send does not exist on this host, and _act_notify rightly refuses to
+# claim it notified anyone when it cannot. Pretend it is installed so what is
+# under test stays the VALUE the notification carries.
+mod.shutil.which = lambda name: '/usr/bin/' + name
+
+st = run(build([TRIGGER, ai, notify],
+               [{"from": "trg", "to": "ai"}, {"from": "ai", "to": "n"}]))
+check("the AI block succeeded", st.node_states.get("ai") == "ok", str(st.node_states))
+check("the notification ran", st.node_states.get("n") == "ok", str(st.node_states))
+body = " ".join(sent[-1]) if sent else ""
+check("the notification carries the AI's VALUES, not its prose",
+      "CPU 83%, GPU 12%" in body, body)
+
+_reply["text"] = "the cpu is quite busy right now"
+st = run(build([TRIGGER, ai, notify],
+               [{"from": "trg", "to": "ai"}, {"from": "ai", "to": "n"}]))
+check("a reply that ignores the schema FAILS the block",
+      st.node_states.get("ai") == "failed", str(st.node_states))
+# A portless link still continues after a failure — that is the documented
+# legacy contract in run_chain ("everything reachable runs"), and changing it
+# would silently rewire every graph already saved on someone else's machine.
+# What the new code guarantees instead is that the failure is VISIBLE: the
+# unresolved placeholder is printed literally rather than rendered as blank.
+body = " ".join(sent[-1]) if sent else ""
+check("an unresolved value shows itself instead of rendering blank",
+      "{{cpu}}" in body, body)
+# Wire the ok port and the branch is properly gated.
+st = run(build([TRIGGER, ai, notify],
+               [{"from": "trg", "to": "ai"},
+                {"from": "ai", "to": "n", "fromPort": "ok"}]))
+check("an ok-port link does NOT run after the block failed",
+      st.node_states.get("n") == "skipped", str(st.node_states))
+
+print("\n[12] an AI condition answers true/false")
+aicond = {"id": "c", "kind": "act_cond", "title": "c",
+          "config": {"mode": "ai", "prompt": "is the pc busy?"}}
+
+_reply["text"] = '{"answer": "true"}'
+st = run(build([TRIGGER, aicond, script("T", "echo yes"), script("F", "echo no")],
+               [{"from": "trg", "to": "c"},
+                {"from": "c", "to": "T", "fromPort": "true"},
+                {"from": "c", "to": "F", "fromPort": "false"}]))
+check("model said true -> true branch",
+      st.node_states.get("T") == "ok", str(st.node_states))
+
+_reply["text"] = '{"answer": false}'
+st = run(build([TRIGGER, aicond, script("T", "echo yes"), script("F", "echo no")],
+               [{"from": "trg", "to": "c"},
+                {"from": "c", "to": "T", "fromPort": "true"},
+                {"from": "c", "to": "F", "fromPort": "false"}]))
+check("model said false -> false branch",
+      st.node_states.get("F") == "ok", str(st.node_states))
+
+_reply["text"] = "maybe? hard to say"
+st = run(build([TRIGGER, aicond, script("T", "echo yes"), script("F", "echo no")],
+               [{"from": "trg", "to": "c"},
+                {"from": "c", "to": "T", "fromPort": "true"},
+                {"from": "c", "to": "F", "fromPort": "false"}]))
+check("an undecidable answer fails instead of guessing",
+      st.node_states.get("c") == "failed" and st.node_states.get("T") != "ok",
+      str(st.node_states))
+
+
+print("\n[13] a Loop repeats its 'each' branch once per item")
+seen = []
+_orig_run = fake_run
+
+
+def counting_run(argv, **kw):
+    seen.append(kw.get("env", {}).get("GENESI_INPUT", ""))
+    return _orig_run(argv, **kw)
+
+
+mod.subprocess.run = counting_run
+
+
+def loop(nid, **cfg):
+    base = {"source": "lines", "max": 100}
+    base.update(cfg)
+    return {"id": nid, "kind": "act_loop", "title": nid, "config": base}
+
+
+st = run(build(
+    [TRIGGER, script("src", "echo a\nb\nc"), loop("L"),
+     script("body", "true"), script("after", "true")],
+    [{"from": "trg", "to": "src"},
+     {"from": "src", "to": "L"},
+     {"from": "L", "to": "body", "fromPort": "each"},
+     {"from": "L", "to": "after", "fromPort": "done"}]))
+check("the body ran once per line", seen.count("a") == 1 and seen.count("b") == 1
+      and seen.count("c") == 1, str(seen))
+check("the body is marked ok", st.node_states.get("body") == "ok", str(st.node_states))
+check("the done branch ran after it", st.node_states.get("after") == "ok",
+      str(st.node_states))
+
+# The reason the loop body is walked synchronously instead of being queued.
+seen.clear()
+st = run(build(
+    [TRIGGER, script("src", "echo a\nb\nc"), loop("L"),
+     {"id": "body", "kind": "act_script", "title": "body",
+      "config": {"command": "echo {{item}}"}}],
+    [{"from": "trg", "to": "src"},
+     {"from": "src", "to": "L"},
+     {"from": "L", "to": "body", "fromPort": "each"}]))
+check("{{item}} is a DIFFERENT value each iteration",
+      st.node_states.get("body") == "ok",
+      "queueing the body would bind every iteration to the last item")
+
+st = run(build(
+    [TRIGGER, loop("L", source="list", list="x,y"), script("body", "true")],
+    [{"from": "trg", "to": "L"}, {"from": "L", "to": "body", "fromPort": "each"}]))
+check("a hand-typed list is a source", st.node_states.get("body") == "ok",
+      str(st.node_states))
+
+st = run(build(
+    [TRIGGER, loop("L", source="range", **{"from": 1, "to": 3}),
+     script("body", "true")],
+    [{"from": "trg", "to": "L"}, {"from": "L", "to": "body", "fromPort": "each"}]))
+check("a range is a source", st.node_states.get("body") == "ok", str(st.node_states))
+
+st = run(build(
+    [TRIGGER, loop("L"), script("body", "true")],
+    [{"from": "trg", "to": "L"}, {"from": "L", "to": "body", "fromPort": "each"}]))
+check("nothing to iterate is not a failure", st.node_states.get("L") == "ok",
+      str(st.node_states))
+
+st = run(build(
+    [TRIGGER, script("src", "echo a"), loop("L"),
+     script("body", "true"), script("after", "true")],
+    [{"from": "trg", "to": "src"}, {"from": "src", "to": "L"},
+     {"from": "L", "to": "body", "fromPort": "each"},
+     {"from": "L", "to": "after"}]))
+check("a portless link means 'after the loop', not 'part of it'",
+      st.node_states.get("after") == "ok" and st.node_states.get("body") == "ok",
+      str(st.node_states))
+
+st = run(build(
+    [TRIGGER, script("src", "echo a"), loop("L")],
+    [{"from": "trg", "to": "src"}, {"from": "src", "to": "L"}]))
+check("a loop with nothing on 'each' fails loudly",
+      st.node_states.get("L") == "failed", str(st.node_states))
+
+seen.clear()
+st = run(build(
+    [TRIGGER, script("src", "echo a\nb\nc\nd\ne"), loop("L", max=2),
+     script("body", "true")],
+    [{"from": "trg", "to": "src"}, {"from": "src", "to": "L"},
+     {"from": "L", "to": "body", "fromPort": "each"}]))
+check("the item cap is honoured", len([s for s in seen if s in "abcde"]) == 2,
+      str(seen))
+
+print("\n[14] a Sub-workflow runs another graph as one step")
+CHILD = {"id": "child", "name": "Child flow", "enabled": True,
+         "nodes": [{"id": "ctrg", "kind": "evt_manual", "config": {}},
+                   {"id": "cs", "kind": "act_script", "title": "cs",
+                    "config": {"command": "echo from-child"}}],
+         "links": [{"from": "ctrg", "to": "cs"}]}
+
+
+def subflow(nid, ref):
+    return {"id": nid, "kind": "act_subflow", "title": nid,
+            "config": {"workflow": ref}}
+
+
+def run_with_pool(auto, pool):
+    st = FakeStatus()
+    eng = mod.Engine(st)
+    eng.autos_provider = lambda: pool
+    eng.run_chain(auto, "trg", "test")
+    return st
+
+
+pool = {"child": CHILD}
+st = run_with_pool(build([TRIGGER, subflow("sf", "child"), script("after", "true")],
+                        [{"from": "trg", "to": "sf"},
+                         {"from": "sf", "to": "after"}]), pool)
+check("the sub-workflow ran", st.node_states.get("sf") == "ok", str(st.node_states))
+check("the child's own node reported", st.node_states.get("cs") == "ok",
+      str(st.node_states))
+check("the parent carried on afterwards", st.node_states.get("after") == "ok",
+      str(st.node_states))
+
+st = run_with_pool(build([TRIGGER, subflow("sf", "Child flow")],
+                        [{"from": "trg", "to": "sf"}]), pool)
+check("a sub-workflow can be named instead of id'd",
+      st.node_states.get("sf") == "ok", str(st.node_states))
+
+st = run_with_pool(build([TRIGGER, subflow("sf", "nope")],
+                        [{"from": "trg", "to": "sf"}]), pool)
+check("an unknown sub-workflow fails loudly",
+      st.node_states.get("sf") == "failed", str(st.node_states))
+
+SELF = build([TRIGGER, subflow("sf", "a1")], [{"from": "trg", "to": "sf"}])
+st = run_with_pool(SELF, {"a1": SELF})
+check("a workflow cannot call itself", st.node_states.get("sf") == "failed",
+      str(st.node_states))
+
+mod.subprocess.run = _orig_run
+
+
+
+print("\n[15] cron fields")
+cm = mod._cron_match
+check("star matches anything", cm("*", 7) is True)
+check("an exact number", cm("30", 30) is True and cm("30", 31) is False)
+check("a list", cm("0,15,30,45", 30) is True and cm("0,15", 30) is False)
+check("a range", cm("9-17", 12) is True and cm("9-17", 20) is False)
+check("every N", cm("*/15", 30) is True and cm("*/15", 31) is False)
+check("a stepped range", cm("0-30/10", 20) is True and cm("0-30/10", 25) is False)
+check("garbage never matches, so it never fires", cm("abc", 5) is False)
+check("an empty step is not a crash", cm("*/", 5) is False)
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

@@ -943,7 +943,39 @@ pkgver=1.0.0
 # gained a `passive=False` path for helpers the user INVOKED: those skip the
 # battery/Studio/busy courtesy checks, because the user is sitting there waiting
 # -- but rule 1 is unchanged, nothing here ever loads a model.
-pkgrel=168
+# 2026-08-20 (169): the Automations tab grows the pieces a real workflow needs.
+# (1) VALUES BETWEEN BLOCKS. An AI block can declare named outputs; the schema
+# goes into the prompt and the reply is validated coming back, so a notification
+# can say "CPU {{cpu}}%, GPU {{gpu}}%" instead of pasting prose at the user. A
+# reply missing a declared field FAILS the block rather than rendering half a
+# result; the old {input} (the previous output as one lump) still works.
+# (2) CONDITION node with True/False ports, decided by an expression
+# ({{cpu}} > 80) or by asking the local model a yes/no question. A false answer
+# paints GREEN -- false is an answer, not a failure, and red would teach people
+# that a working graph looks broken. No eval() anywhere: the expression comes
+# from a JSON file on disk. Ordering comparisons demand numbers on both sides,
+# because "quite high" > "80" is TRUE in ASCII and would have fired the
+# automation on an answer nobody could measure.
+# (3) LOOP (for each / after) and SUB-WORKFLOW. The loop body is walked
+# synchronously: the walk is breadth-first over one shared variable dict, so
+# queueing the body per item would run every iteration after the loop finished
+# and each would read the LAST item. Both share one step budget and stop at
+# three levels of nesting; a workflow cannot call itself.
+# (4) New triggers: clipboard, screenshot, webhook, and cron on the schedule
+# node. The webhook binds loopback unless a token is set -- it runs shell
+# commands, and an open port with no secret is a shell for the whole LAN.
+# (5) EMAIL (IMAP read / SMTP send). The password is NEVER in the workflow: the
+# node stores an account name and the secret lives in the session keyring, read
+# via secret-tool at send time. Workflow files get copied, synced and pasted
+# into forum posts when asking for help.
+# (6) "Build with AI": describe an automation and have it drawn. Every kind and
+# every field is in the prompt, anything invented is dropped AND named back to
+# the user, and when it cannot build what was asked it says so and offers the
+# nearest thing it can. The catalogue + validator live in the Qt-free
+# genesi_workflow_gen.py so they are testable without PySide6.
+# Covered by ci/automation-engine-test.py (94 checks) and
+# ci/workflow-generator-test.py (33).
+pkgrel=169
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1130,6 +1162,12 @@ package() {
     # Shared, Qt-free Turbo control (used by the Monitor backend AND the daemon).
     install -Dm644 "${startdir}/monitor/genesi_turbo_ctl.py" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_turbo_ctl.py"
+    # Qt-free half of "build my workflow with AI": the node catalogue the model
+    # writes against, and the validator that drops whatever it invents. Split
+    # out of the Monitor so it can be tested without PySide6 installed - see
+    # ci/workflow-generator-test.py.
+    install -Dm644 "${startdir}/monitor/genesi_workflow_gen.py" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_workflow_gen.py"
     # Crafted Genesi SVG icon set (chat avatars, mode badges, gauges, logo)
     for ic in "${startdir}/monitor/icons/"*.svg; do
         install -Dm644 "$ic" \
