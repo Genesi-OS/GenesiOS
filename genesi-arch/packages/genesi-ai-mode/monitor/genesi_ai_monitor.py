@@ -212,6 +212,48 @@ class Backend(QObject):
             return str(exc)
 
     @Slot(result=str)
+    def localInference(self):
+        """What is actually loaded and burning CPU/GPU on THIS machine.
+
+        Turbo has a unit and a port; Ollama has a keep-alive timer that outlives
+        the window that triggered it. Nothing ever put the two on one screen, so
+        a model could sit resident for 15 minutes after a closed chat and the
+        only way to find it was to suspect it and run `ollama ps`."""
+        out = {"turbo": None, "ollama": []}
+        try:
+            if turbo_ctl.turbo_alive():
+                out["turbo"] = turbo_ctl.current_model() or "?"
+        except Exception:
+            pass
+        try:
+            with urllib.request.urlopen(
+                    "http://127.0.0.1:11434/api/ps", timeout=2) as r:
+                for m in json.loads(r.read().decode()).get("models", []):
+                    total = int(m.get("size") or 0)
+                    vram = int(m.get("size_vram") or 0)
+                    out["ollama"].append({
+                        "name": m.get("name") or m.get("model") or "?",
+                        "gb": round(total / (1024 ** 3), 1),
+                        "where": ("100% CPU" if vram <= 0 else
+                                  "100% GPU" if vram >= total else
+                                  "%d%% GPU" % (vram * 100 // total)),
+                        "until": (m.get("expires_at") or "")[11:19],
+                    })
+        except Exception:
+            pass
+        return json.dumps(out)
+
+    @Slot(result=str)
+    def stopLocalInference(self):
+        """Unload everything running locally. Ollama first: it is the one the
+        user cannot see and did not ask for."""
+        try:
+            turbo_ctl.ollama_unload_all()
+        except Exception as exc:
+            return "falhou ao descarregar o Ollama: %s" % exc
+        return "descarregado"
+
+    @Slot(result=str)
     def turboSources(self):
         """Every Turbo this machine could use, and which one is in effect.
 

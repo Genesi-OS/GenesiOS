@@ -908,7 +908,19 @@ pkgver=1.0.0
 # `serve` also says when the Turbo it was told to use does not answer, instead
 # of falling through to the pooling path whose unrelated "no worker peers
 # online" was the only line on screen.
-pkgrel=166
+# 2026-08-19 (167): you could not see what was running, so you could not stop
+# it. Ollama holds a model for OLLAMA_KEEP_ALIVE (15m as Genesi ships it) after
+# the LAST request, so one closed chat left a 2.3 GB runner pinned to the CPU --
+# defensible behaviour, and invisible: Turbo has a unit and a port, Ollama has a
+# timer, and nothing ever put the two on one screen. A user found theirs by
+# suspecting it and running `ollama ps`. New `genesi-ai-turbo status` (Turbo,
+# every Ollama-resident model with size/processor/expiry, and whether inference
+# is actually happening on a mesh peer) and `genesi-ai-turbo stop` (unload it
+# all). `serve off` now lists what it did NOT stop -- it ends the server, never
+# Ollama's keep-alive, and to whoever typed "stop serving" both are "the AI".
+# The Monitor grows a "Rodando nesta máquina agora" card with a Descarregar
+# button, so this is answerable without a terminal.
+pkgrel=167
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

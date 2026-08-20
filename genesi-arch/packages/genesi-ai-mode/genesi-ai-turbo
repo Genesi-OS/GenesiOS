@@ -12,6 +12,8 @@ already downloaded — no re-download.
   genesi-ai-turbo serve <model> [--spec]  run a Turbo server on :11435
                                           (defers to a mesh peer already
                                           serving one; --local overrides)
+  genesi-ai-turbo status                  what is loaded and burning CPU/GPU here
+  genesi-ai-turbo stop                    unload everything running locally
   genesi-ai-turbo recommend [--installed] print the biggest model that fits VRAM
                                           (--installed: only ones already pulled)
   genesi-ai-turbo share on|off            bind Turbo to the LAN (what
@@ -2395,6 +2397,118 @@ def _firewall_port(port, opening):
     return "no firewall running — nothing to open"
 
 
+OLLAMA_API = "http://127.0.0.1:11434"
+
+
+def _ollama_loaded():
+    """Models Ollama is holding in memory right now.
+
+    Ollama keeps a model resident for OLLAMA_KEEP_ALIVE after the LAST request
+    (15 minutes as Genesi ships it), so one chat leaves a couple of GB and a
+    CPU-resident runner behind long after the window that asked for it is gone.
+    That is defensible behaviour and completely invisible: nothing in Genesi
+    showed it, so a user could only find it by running `ollama ps` on a hunch."""
+    try:
+        with urllib.request.urlopen(OLLAMA_API + "/api/ps", timeout=2) as r:
+            return json.loads(r.read().decode()).get("models", [])
+    except Exception:
+        return []
+
+
+def _ollama_unload(name):
+    try:
+        body = json.dumps({"model": name, "keep_alive": 0}).encode()
+        req = urllib.request.Request(OLLAMA_API + "/api/generate", data=body,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=15).read()
+        return True
+    except Exception:
+        return False
+
+
+def _where(m):
+    """CPU / GPU / split, from the sizes Ollama reports."""
+    total = int(m.get("size") or 0)
+    vram = int(m.get("size_vram") or 0)
+    if not total:
+        return "?"
+    if vram <= 0:
+        return "100% CPU"
+    if vram >= total:
+        return "100% GPU"
+    return "%d%% GPU / %d%% CPU" % (vram * 100 // total,
+                                    100 - vram * 100 // total)
+
+
+def cmd_status():
+    """Everything running local inference on this machine, in one place.
+
+    This exists because a user found a 2.3 GB model pinned to their CPU by
+    accident and had no way to see it: Turbo has a unit and a port, Ollama has a
+    keep-alive timer, and nothing ever put the two on the same screen."""
+    running = False
+
+    if turbo_healthy():
+        model = None
+        try:
+            with open("/run/genesi-ai-mode/turbo-model", encoding="utf-8") as fh:
+                model = fh.read().strip()
+        except OSError:
+            pass
+        print(":: Genesi Turbo   %s   http://127.0.0.1:%d"
+              % (model or "(modelo desconhecido)", TURBO_PORT))
+        running = True
+    else:
+        print(":: Genesi Turbo   parado")
+
+    loaded = _ollama_loaded()
+    for m in loaded:
+        name = m.get("name") or m.get("model") or "?"
+        gb = int(m.get("size") or 0) / (1024 ** 3)
+        print(":: Ollama         %s   %.1f GB   %s   até %s"
+              % (name, gb, _where(m), (m.get("expires_at") or "?")[11:19]))
+        running = True
+    if not loaded:
+        print(":: Ollama         nada carregado")
+
+    remote = remote_turbo()
+    if remote:
+        print(":: Mesh           usando %s (a inferência acontece lá)" % remote)
+
+    if running:
+        print()
+        print("   Parar tudo o que roda AQUI:  genesi-ai-turbo stop")
+    return 0
+
+
+def cmd_stop():
+    """Stop local inference: the Turbo server and anything Ollama is holding."""
+    stopped = []
+    for m in _ollama_loaded():
+        name = m.get("name") or m.get("model")
+        if name and _ollama_unload(name):
+            stopped.append("Ollama: " + name)
+
+    if turbo_healthy():
+        if os.geteuid() == 0:
+            subprocess.run(["systemctl", "stop", "genesi-turbo.service"],
+                           capture_output=True)
+            stopped.append("Genesi Turbo")
+        else:
+            print("[!] O Genesi Turbo está rodando como serviço. Para pará-lo:",
+                  file=sys.stderr)
+            print("        sudo systemctl stop genesi-turbo", file=sys.stderr)
+            print("    (ou `sudo genesi-mesh serve off` para parar e também "
+                  "deixar de servir a rede)", file=sys.stderr)
+
+    if stopped:
+        for s in stopped:
+            print(":: parado — " + s)
+    else:
+        print(":: nada rodando aqui")
+    return 0
+
+
 def cmd_share(arg):
     """Bind Turbo to the LAN (or back to loopback) and open/close its port.
 
@@ -2434,6 +2548,22 @@ def cmd_share(arg):
     subprocess.run(["systemctl", "restart" if on else "stop",
                     "genesi-turbo.service"], capture_output=True)
     print(":: genesi-turbo %s" % ("enabled and restarted" if on else "stopped"))
+
+    # `serve off` stops the SERVER. It does not touch a model Ollama is holding
+    # under its keep-alive, which is a different subsystem with its own timer --
+    # and to the person who just typed "stop serving", both are "the AI". Saying
+    # nothing here is how someone ends up with 2.3 GB pinned to their CPU by a
+    # chat they closed, discoverable only by guessing at `ollama ps`.
+    if not on:
+        held = _ollama_loaded()
+        if held:
+            print()
+            print("   Ainda carregado por fora do Turbo (keep-alive do Ollama):")
+            for m in held:
+                print("     %s  %.1f GB  %s"
+                      % (m.get("name") or m.get("model") or "?",
+                         int(m.get("size") or 0) / (1024 ** 3), _where(m)))
+            print("   Para descarregar agora:  genesi-ai-turbo stop")
 
     if on:
         addr = "this machine"
@@ -2486,6 +2616,12 @@ def main():
         return
     if action == "share":
         cmd_share(rest[0] if rest else "")
+        return
+    if action == "status":
+        cmd_status()
+        return
+    if action == "stop":
+        cmd_stop()
         return
     # Resolve an ollama tag to its GGUF blob path (used by genesi-ai-tune so the
     # autotuner benches the exact file Turbo would serve). Prints the path on

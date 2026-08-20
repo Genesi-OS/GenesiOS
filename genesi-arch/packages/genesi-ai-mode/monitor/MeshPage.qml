@@ -23,6 +23,7 @@ Item {
     property var peers: []
     property var usage: ({ running: false, pooling: false, endpoints: [] })
     property var turbo: ({ source: "auto", url: "", options: [] })
+    property var local_: ({ turbo: null, ollama: [] })
     property bool available: true
     property string busyText: ""
     property string output: ""
@@ -44,6 +45,8 @@ Item {
         catch (e) { usage = ({ running: false, pooling: false, endpoints: [] }) }
         try { turbo = JSON.parse(backend.turboSources()) }
         catch (e) { turbo = ({ source: "auto", url: "", options: [] }) }
+        try { local_ = JSON.parse(backend.localInference()) }
+        catch (e) { local_ = ({ turbo: null, ollama: [] }) }
     }
 
     // free_mb ausente = a máquina não consegue medir, e aí a capacidade é a
@@ -335,6 +338,85 @@ Item {
                         font.pixelSize: 10
                         text: "O Turbo também não tem autenticação. Quem alcançar a porta "
                               + "11435 usa esta GPU."
+                    }
+                }
+            }
+
+            // ── O que está carregado AQUI ───────────────────────────────────
+            // Um modelo pode ficar residente por 15 min depois de um chat
+            // fechado (keep-alive do Ollama), consumindo RAM e CPU. Isso não
+            // aparecia em lugar nenhum: quem descobrisse, descobriria rodando
+            // `ollama ps` por desconfiança.
+            Rectangle {
+                visible: root.available
+                         && (root.local_.turbo || (root.local_.ollama || []).length > 0)
+                Layout.fillWidth: true
+                implicitHeight: loadCol.implicitHeight + 28
+                radius: 14
+                color: theme.a(theme.turboBright, 0.10)
+                border.width: 1
+                border.color: theme.a(theme.turboBright, 0.45)
+
+                ColumnLayout {
+                    id: loadCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 14
+                    spacing: 6
+
+                    QQC2.Label {
+                        text: "Rodando nesta máquina agora"
+                        color: theme.white
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    QQC2.Label {
+                        visible: !!root.local_.turbo
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: theme.white
+                        font.pixelSize: 11
+                        text: "Genesi Turbo — " + (root.local_.turbo || "")
+                    }
+
+                    Repeater {
+                        model: root.local_.ollama || []
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: theme.white
+                            font.pixelSize: 11
+                            text: "Ollama — " + modelData.name + "  ·  "
+                                  + modelData.gb + " GB  ·  " + modelData.where
+                                  + (modelData.until ? "  ·  até " + modelData.until : "")
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        spacing: 10
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: theme.a(theme.white, 0.6)
+                            font.pixelSize: 10
+                            text: "O Ollama segura o modelo por 15 minutos depois do "
+                                  + "último pedido, mesmo com o chat fechado."
+                        }
+
+                        QQC2.Button {
+                            visible: (root.local_.ollama || []).length > 0
+                            text: "Descarregar"
+                            enabled: root.busyText === ""
+                            onClicked: {
+                                root.output = backend.stopLocalInference()
+                                root.refresh()
+                            }
+                        }
                     }
                 }
             }
