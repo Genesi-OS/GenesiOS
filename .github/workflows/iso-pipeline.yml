@@ -60,6 +60,14 @@ jobs:
   # Non-push events (workflow_run / tag / manual) always proceed.
   gate:
     runs-on: ubuntu-latest
+    # A checkout and one `git diff`. Real runs take 3 seconds to under two
+    # minutes; ten is a stall, not a slow day. Without this, a hung step runs to
+    # GitHub's 6-hour default — which is exactly what happened on 2026-08-20,
+    # when actions/checkout wedged and this job sat "in progress" for over an
+    # hour before anyone looked at it. Every job below is capped for the same
+    # reason: a hang should cost minutes and say so, not burn an afternoon of
+    # Actions minutes pretending to work.
+    timeout-minutes: 10
     outputs:
       run: ${{ steps.decide.outputs.run }}
     steps:
@@ -108,6 +116,9 @@ jobs:
        (github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main'))
     runs-on: ubuntu-latest
+    # Dep dry-run + a real pacstrap: ~3 minutes in practice. Ten times that is
+    # a mirror that stopped answering, not a big package set.
+    timeout-minutes: 30
     container:
       image: cachyos/cachyos-v3:latest
       options: --privileged   # Level 2 pacstrap needs full caps
@@ -163,6 +174,11 @@ jobs:
   build-iso:
     needs: validate-install            # só roda se a validação passou
     runs-on: ubuntu-latest
+    # mkarchiso plus a 3GB split and its upload: ~19 minutes in practice. The
+    # ceiling is generous because this one legitimately varies with mirror and
+    # upload speed — but 90 minutes still fails an afternoon earlier than the
+    # 6-hour default would.
+    timeout-minutes: 90
     # R2 creds surfaced as env so the upload step's `if:` can detect whether
     # they're configured. When the repo has no R2 secrets yet, R2_ACCESS_KEY_ID
     # is empty and the upload step is skipped — builds never break on this.
