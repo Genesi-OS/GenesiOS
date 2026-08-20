@@ -1,0 +1,587 @@
+#!/usr/bin/env python3
+"""genesi-find — find a file by describing it, not by naming it.
+
+    genesi-find "the contract PDF I saved last month"
+    genesi-find "aquela foto do churrasco que eu baixei ontem"
+    genesi-find -p ~/Projetos "the config with the database password"
+
+THE MODEL NEVER TOUCHES YOUR DISK. It does exactly one job: turn the sentence
+into a filter — words, extensions, a date range, maybe a standard folder. That
+filter is then validated (an extension has to look like an extension, a folder
+has to be one of a fixed list) and executed locally by this script. A model that
+hallucinated `/etc/shadow` would get a filter with a bad folder name, and the
+filter would be dropped, because nothing it returns is ever treated as a path.
+
+With no model warm it still works. The built-in parser understands the same
+shapes in English and Portuguese — "last month", "mês passado", "photo", "foto",
+"planilha", "spreadsheet" — and searching by those alone is already most of what
+people want. That is the difference between a feature and a demo: it degrades
+into a plain search instead of into an error.
+
+The GUI (genesi-find-ui, and "Search with AI here" in Dolphin) is a front end
+over `genesi-find --json`. This file is the single source of truth.
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import unicodedata
+
+sys.path.insert(0, "/usr/share/genesi-ai-mode")
+try:
+    import genesi_ai_assist as assist        # noqa: E402
+except ImportError:                          # running from a source checkout
+    assist = None
+
+DIM = "\033[2m"
+BOLD = "\033[1m"
+CYAN = "\033[36m"
+RESET = "\033[0m"
+
+# Walking a home directory has to have a ceiling, or one forgotten 200k-file
+# directory turns a search into a hang.
+MAX_ENTRIES = 300000
+MAX_SECONDS = 6.0
+
+# Directories that are never what someone is looking for and are usually the
+# biggest thing in a home directory. Pruning these is most of the speed.
+# `build`, `dist` and `out` are deliberately NOT here: people do look for things
+# in them, and they are rarely enormous. `target` is (Rust), so it is.
+SKIP_DIRS = {
+    ".git", ".svn", ".hg", ".cache", ".ccache", "__pycache__", "node_modules",
+    ".venv", "venv", ".npm", ".yarn", ".pnpm-store", ".cargo", ".rustup",
+    ".gradle", ".m2", ".nuget", ".gem", ".pub-cache", "site-packages",
+    "target", ".next", ".nuxt", ".terraform", ".tox", ".mypy_cache",
+    "Trash", ".Trash", ".local/share/Trash", ".steam", "Steam", ".wine",
+    ".var", ".flatpak", ".mozilla", ".thunderbird", ".zoom", "Snap", "snap",
+}
+
+# What a word means, when someone says it instead of an extension.
+#
+# ONLY words about the FORM of the file belong here. "contract", "report" and
+# "project" were in this list and it was a real bug: they are what the file is
+# ABOUT, so consuming them here meant that "aquele pdf do contrato" searched for
+# any PDF at all and threw away the one word that would have found it. Same
+# reason "arquivo" is not a trigger for archives — in Portuguese it just means
+# "file".
+KINDS = {
+    "image": ("jpg jpeg png gif webp heic bmp tiff svg avif",
+              ("photo", "photos", "picture", "pictures", "image", "images",
+               "screenshot", "foto", "fotos", "imagem", "imagens", "print",
+               "captura")),
+    "video": ("mp4 mkv mov avi webm m4v wmv flv",
+              ("video", "videos", "movie", "movies", "film", "clip", "filme",
+               "filmes")),
+    "audio": ("mp3 flac wav ogg m4a opus aac",
+              ("audio", "song", "songs", "music", "musica", "musicas",
+               "podcast")),
+    "doc": ("pdf docx doc odt rtf txt md tex epub",
+            ("document", "documents", "doc", "docs", "text", "documento",
+             "documentos", "texto")),
+    "sheet": ("xlsx xls csv ods tsv",
+              ("spreadsheet", "spreadsheets", "sheet", "planilha", "planilhas")),
+    "slides": ("pptx ppt odp key",
+               ("presentation", "slides", "deck", "apresentacao", "slide")),
+    "archive": ("zip tar gz xz bz2 7z rar zst iso",
+                ("zip", "compressed", "compactado", "zipado")),
+    "code": ("py js ts tsx jsx rs go c h cpp hpp java kt rb php sh fish lua sql",
+             ("code", "script", "scripts", "codigo", "fonte")),
+    "config": ("conf cfg ini toml yaml yml json env",
+               ("config", "configuration", "settings", "configuracao",
+                "ajustes")),
+}
+
+# "when", in both languages. Longest phrases first so "last month" is not eaten
+# by "month".
+WHEN = [
+    (r"\b(today|hoje)\b", 1),
+    (r"\b(yesterday|ontem)\b", 2),
+    (r"\b(this week|esta semana|essa semana)\b", 7),
+    (r"\b(last week|semana passada|semana retrasada)\b", 14),
+    (r"\b(this month|este mes|esse mes)\b", 31),
+    (r"\b(last month|mes passado)\b", 62),
+    (r"\b(this year|este ano|esse ano)\b", 365),
+    (r"\b(last year|ano passado)\b", 730),
+    (r"\b(recent|recently|recente|recentemente|ultimos dias)\b", 30),
+    (r"\b(\d+)\s*(days?|dias?)\b", None),      # "3 days ago" → 3
+    (r"\b(\d+)\s*(weeks?|semanas?)\b", None),
+    (r"\b(\d+)\s*(months?|meses)\b", None),
+]
+
+# XDG folder names people say out loud. These are PHRASES, not word lists:
+# splitting "area de trabalho" on spaces put a bare "de" in the table, and every
+# Portuguese sentence contains "de", so every search was silently confined to
+# the Desktop.
+DIR_WORDS = {
+    "download": ("download", "downloads", "downloaded", "baixados", "baixei",
+                 "baixado", "baixada"),
+    "document": ("document", "documents", "documento", "documentos"),
+    "picture": ("picture", "pictures", "imagem", "imagens", "foto", "fotos"),
+    "video": ("video", "videos", "filme", "filmes"),
+    "music": ("music", "musica", "musicas", "song", "songs"),
+    "desktop": ("desktop", "area de trabalho"),
+}
+XDG_KEYS = {
+    "download": "XDG_DOWNLOAD_DIR", "document": "XDG_DOCUMENTS_DIR",
+    "picture": "XDG_PICTURES_DIR", "video": "XDG_VIDEOS_DIR",
+    "music": "XDG_MUSIC_DIR", "desktop": "XDG_DESKTOP_DIR",
+}
+
+# Words that describe the ASKING, not the file. Keeping them would make every
+# search look for a file literally named "aquele arquivo que eu baixei".
+STOPWORDS = set("""
+a an the that this those these my mine your his her its our their
+i me we you he she it they them
+file files folder find search show me open where is was were be been
+saved downloaded created made sent got have had with about from into for of on
+in at to and or not do does did can could would should please
+o os as um uma uns umas aquele aquela aqueles aquelas esse essa esses essas
+este esta isso aquilo meu minha meus minhas seu sua teu tua nosso nossa
+eu voce vc ele ela eles elas gente
+arquivo arquivos pasta pastas achar acha procura procurar buscar busca encontrar
+mostra mostrar abrir onde esta estao ta ser sido salvei salvo baixei baixado
+criei criado mandei mandado recebi recebido tem tinha com sobre de do da dos das
+em no na nos nas para pra por pelo pela e ou nao que qual quais quando
+ago atras passado passada ultimo ultima ultimos ultimas
+""".split())
+
+
+# ── small helpers ────────────────────────────────────────────────────────────
+
+def fold(text):
+    """Lowercase and strip accents, so "gravação" matches "gravacao"."""
+    text = unicodedata.normalize("NFKD", str(text))
+    return "".join(c for c in text if not unicodedata.combining(c)).lower()
+
+
+def color(text, code):
+    return text if not sys.stdout.isatty() else code + text + RESET
+
+
+def human_size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return "%.0f %s" % (n, unit) if unit == "B" else "%.1f %s" % (n, unit)
+        n /= 1024.0
+    return "%.1f GB" % n
+
+
+def human_age(seconds):
+    mins = seconds / 60.0
+    if mins < 60:
+        return "%dm ago" % max(1, int(mins))
+    if mins < 1440:
+        return "%dh ago" % int(mins / 60)
+    days = int(mins / 1440)
+    if days < 31:
+        return "%dd ago" % days
+    if days < 365:
+        return "%dmo ago" % int(days / 30)
+    return "%dy ago" % int(days / 365)
+
+
+def xdg_dirs():
+    """The user's real folder names, which on a pt-BR install are not English."""
+    out = {}
+    path = os.path.expanduser("~/.config/user-dirs.dirs")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                m = re.match(r'\s*(XDG_\w+_DIR)="(.*)"\s*$', line)
+                if m:
+                    out[m.group(1)] = os.path.expandvars(
+                        m.group(2).replace("$HOME", os.path.expanduser("~")))
+    except OSError:
+        pass
+    return out
+
+
+# ── turning a sentence into a filter ─────────────────────────────────────────
+
+def parse_locally(phrase):
+    """The built-in parser: what we use when no model is warm.
+
+    Deliberately boring and predictable. It is also the validator's reference —
+    anything the model returns has to survive the same shape.
+    """
+    text = fold(phrase)
+    plan = {"words": [], "exts": [], "days": None, "dir": None, "source": "local"}
+
+    # `residual` is what is LEFT of the sentence after each step has taken the
+    # part it understands. Getting this wrong is the whole difficulty of the
+    # parser: leave "spreadsheet" behind and we go looking for a file with
+    # "spreadsheet" in its name, which is the one thing a file called
+    # planilha-vendas.xlsx does not have.
+    residual = text
+
+    def take(pattern):
+        nonlocal residual
+        residual = re.sub(pattern, " ", residual)
+
+    for pattern, fixed in WHEN:
+        match = re.search(pattern, residual)
+        if not match:
+            continue
+        if fixed is not None:
+            plan["days"] = fixed
+        else:
+            count = int(match.group(1))
+            unit = match.group(2)
+            mult = 1 if unit.startswith(("day", "dia")) else \
+                   7 if unit.startswith(("week", "semana")) else 30
+            plan["days"] = min(3650, max(1, count * mult))
+        take(re.escape(match.group(0)))
+        break
+
+    for kind, (exts, words) in KINDS.items():
+        matched = [w for w in words
+                   if re.search(r"\b%s\b" % re.escape(w), residual)]
+        if matched:
+            plan["exts"] = exts.split()
+            for word in matched:
+                take(r"\b%s\b" % re.escape(word))
+            break
+
+    for key, phrases in DIR_WORDS.items():
+        matched = [p for p in phrases
+                   if re.search(r"\b%s\b" % re.escape(p), residual)]
+        if matched:
+            plan["dir"] = key
+            for phrase_hit in matched:
+                take(r"\b%s\b" % re.escape(phrase_hit))
+            break
+
+    # An extension said out loud ("the pdf", "a .png") beats the category guess.
+    known = {e for exts, _ in KINDS.values() for e in exts.split()}
+    named = [e for e in re.findall(r"\.?\b([a-z0-9]{2,5})\b", residual)
+             if e in known]
+    if named:
+        plan["exts"] = named[:6]
+        for ext in named:
+            take(r"\.?\b%s\b" % re.escape(ext))
+
+    for word in re.findall(r"[a-z0-9][a-z0-9_.-]{2,}", residual):
+        if word in STOPWORDS or word in known or word.isdigit():
+            continue
+        if word not in plan["words"]:
+            plan["words"].append(word)
+    plan["words"] = plan["words"][:5]
+    return plan
+
+
+PLAN_SYSTEM = (
+    "You turn a plain-language description of a file into a JSON search filter. "
+    "The description may be in English or Portuguese. Reply with ONE JSON object "
+    "and nothing else — no prose, no markdown, no code fences.\n"
+    'Keys: "words" (up to 4 lowercase words likely to appear IN THE FILE NAME; '
+    "never generic words like file, document, thing), "
+    '"exts" (up to 6 file extensions without the dot), '
+    '"days" (integer: only if the description says when, else null), '
+    '"dir" (one of download, document, picture, video, music, desktop, or null).'
+)
+
+_EXT_RE = re.compile(r"^[a-z0-9]{1,6}$")
+_WORD_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,30}$")
+
+
+def validate_plan(raw):
+    """Keep only what is shaped like a filter. This is the security boundary:
+    the model's reply is data, and anything that is not a plain word, a plain
+    extension, a small integer or a known folder name is dropped on the floor."""
+    if not isinstance(raw, dict):
+        return None
+    plan = {"words": [], "exts": [], "days": None, "dir": None, "source": "model"}
+
+    for word in (raw.get("words") or [])[:4]:
+        word = fold(word).strip()
+        if _WORD_RE.match(word) and word not in STOPWORDS:
+            plan["words"].append(word)
+    for ext in (raw.get("exts") or [])[:6]:
+        ext = fold(ext).lstrip(".").strip()
+        if _EXT_RE.match(ext):
+            plan["exts"].append(ext)
+    try:
+        days = int(raw.get("days"))
+        plan["days"] = days if 1 <= days <= 3650 else None
+    except (TypeError, ValueError):
+        plan["days"] = None
+    if raw.get("dir") in XDG_KEYS:
+        plan["dir"] = raw["dir"]
+
+    if not (plan["words"] or plan["exts"] or plan["days"] or plan["dir"]):
+        return None
+    return plan
+
+
+def plan_for(phrase, use_model=True):
+    """The filter, plus whether the model actually contributed."""
+    local = parse_locally(phrase)
+    if not use_model or assist is None:
+        return local
+
+    answer = assist.ask(
+        PLAN_SYSTEM, phrase, feature="smart_find",
+        cache_key="find-plan-v1:" + fold(phrase),
+        passive=False, max_tokens=200, timeout=8)
+    if not answer:
+        return local
+
+    # Models like to wrap JSON in a fence no matter how firmly you ask.
+    match = re.search(r"\{.*\}", answer, re.S)
+    if not match:
+        return local
+    try:
+        plan = validate_plan(json.loads(match.group(0)))
+    except ValueError:
+        return local
+    if not plan:
+        return local
+
+    # Union with the local parse rather than replacing it: the local parser is
+    # never wrong about an extension the user typed out loud, and the model is
+    # better at the rest.
+    for word in local["words"]:
+        if word not in plan["words"] and len(plan["words"]) < 6:
+            plan["words"].append(word)
+    if not plan["exts"]:
+        plan["exts"] = local["exts"]
+    if plan["days"] is None:
+        plan["days"] = local["days"]
+    if plan["dir"] is None:
+        plan["dir"] = local["dir"]
+    return plan
+
+
+# ── running the filter ───────────────────────────────────────────────────────
+
+def roots_for(plan, explicit_paths):
+    if explicit_paths:
+        return [os.path.abspath(os.path.expanduser(p)) for p in explicit_paths]
+    if plan.get("dir"):
+        target = xdg_dirs().get(XDG_KEYS[plan["dir"]])
+        if target and os.path.isdir(target):
+            return [target]
+    return [os.path.expanduser("~")]
+
+
+def walk(roots, hidden=False):
+    """Every candidate file under `roots`, with a hard ceiling on both count and
+    wall clock. Yields (path, name, mtime, size)."""
+    deadline = time.monotonic() + MAX_SECONDS
+    seen = 0
+    for root in roots:
+        stack = [root]
+        while stack:
+            current = stack.pop()
+            if time.monotonic() > deadline or seen >= MAX_ENTRIES:
+                return
+            try:
+                entries = list(os.scandir(current))
+            except OSError:
+                continue
+            for entry in entries:
+                name = entry.name
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        if name in SKIP_DIRS:
+                            continue
+                        if not hidden and name.startswith("."):
+                            continue
+                        stack.append(entry.path)
+                        continue
+                    if not entry.is_file(follow_symlinks=False):
+                        continue
+                    if not hidden and name.startswith("."):
+                        continue
+                    info = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                seen += 1
+                yield entry.path, name, info.st_mtime, info.st_size
+
+
+def score_of(path, name, mtime, plan, now):
+    """How well one file answers the description. Name beats path, both beat
+    recency — but recency is what breaks ties, because the file someone is
+    describing from memory is usually a recent one."""
+    fname = fold(name)
+    fpath = fold(path)
+    stem, ext = os.path.splitext(fname)
+    ext = ext.lstrip(".")
+
+    exts = plan.get("exts") or []
+    if exts and ext not in exts:
+        return 0
+
+    words = plan.get("words") or []
+    hits = 0
+    score = 0
+    for word in words:
+        if word in stem:
+            hits += 1
+            score += 6 if stem.startswith(word) else 4
+        elif word in fpath:
+            hits += 1
+            score += 1
+    if words and hits == 0:
+        return 0
+    if words:
+        score += 3 * hits / len(words)      # reward matching MOST of the words
+
+    if exts:
+        score += 2
+
+    age_days = max(0.0, (now - mtime) / 86400.0)
+    limit = plan.get("days")
+    if limit:
+        if age_days > limit:
+            return 0
+        score += 2.0 * (1.0 - age_days / float(limit))
+    else:
+        score += max(0.0, 2.0 - age_days / 120.0)
+
+    # With nothing but a date to go on, a search still has to rank something.
+    if not words and not exts and not limit:
+        return 0
+    return score
+
+
+RANK_SYSTEM = (
+    "You are given a description of a file and a numbered list of candidate file "
+    "paths. Reply with the numbers of the best matches, most likely first, "
+    "comma-separated, at most 8 of them. Numbers only — no prose, no markdown."
+)
+
+
+def rerank(phrase, results, limit):
+    """Let the model reorder the shortlist. Best effort; on any doubt we keep
+    the order we already had, because a wrong order is much cheaper than a wait."""
+    if assist is None or len(results) < 4:
+        return results
+    shortlist = results[:30]
+    listing = "\n".join(
+        "%d. %s" % (i + 1, os.path.basename(r["path"]) + "  —  " + r["dir"])
+        for i, r in enumerate(shortlist))
+    answer = assist.ask(
+        RANK_SYSTEM, "Description: %s\n\nCandidates:\n%s" % (phrase, listing),
+        feature="smart_find", passive=False, max_tokens=60, timeout=8)
+    if not answer:
+        return results
+
+    order, taken = [], set()
+    for token in re.findall(r"\d+", answer)[:8]:
+        idx = int(token) - 1
+        if 0 <= idx < len(shortlist) and idx not in taken:
+            taken.add(idx)
+            order.append(shortlist[idx])
+    if not order:
+        return results
+    rest = [r for i, r in enumerate(shortlist) if i not in taken]
+    return (order + rest + results[30:])[:limit]
+
+
+def search(phrase, paths=None, limit=12, hidden=False, use_model=True,
+           allow_rerank=True):
+    plan = plan_for(phrase, use_model=use_model)
+    roots = roots_for(plan, paths)
+    now = time.time()
+
+    scored = []
+    for path, name, mtime, size in walk(roots, hidden=hidden):
+        value = score_of(path, name, mtime, plan, now)
+        if value > 0:
+            scored.append((value, path, name, mtime, size))
+
+    scored.sort(key=lambda row: (-row[0], -row[3]))
+    results = [{
+        "path": path,
+        "name": name,
+        "dir": os.path.dirname(path).replace(os.path.expanduser("~"), "~"),
+        "mtime": mtime,
+        "age": human_age(now - mtime),
+        "size": size,
+        "hsize": human_size(size),
+        "score": round(value, 2),
+    } for value, path, name, mtime, size in scored[:60]]
+
+    if allow_rerank and use_model and plan.get("source") == "model":
+        results = rerank(phrase, results, limit)
+    return plan, results[:limit], roots
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+
+def main(argv):
+    parser = argparse.ArgumentParser(
+        prog="genesi-find",
+        description="Find a file by describing it.")
+    parser.add_argument("query", nargs="*", help="what the file is, in words")
+    parser.add_argument("-p", "--path", action="append", default=[],
+                        help="search here instead of your home directory")
+    parser.add_argument("-n", "--limit", type=int, default=12)
+    parser.add_argument("--hidden", action="store_true",
+                        help="include dotfiles and dot-directories")
+    parser.add_argument("--no-ai", action="store_true",
+                        help="use only the built-in parser")
+    parser.add_argument("--json", action="store_true",
+                        help="machine-readable output (used by the GUI)")
+    parser.add_argument("--why", action="store_true",
+                        help="show the filter that was actually run")
+    args = parser.parse_args(argv[1:])
+
+    # A POSIX/C locale would raise on the "·" and "…" below and leave a
+    # traceback in the user's terminal. Degrade the glyph, never the output.
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
+    phrase = " ".join(args.query).strip()
+    if not phrase:
+        parser.print_usage(sys.stderr)
+        return 2
+
+    plan, results, roots = search(
+        phrase, paths=args.path, limit=max(1, args.limit),
+        hidden=args.hidden, use_model=not args.no_ai)
+
+    if args.json:
+        json.dump({"query": phrase, "plan": plan, "roots": roots,
+                   "results": results}, sys.stdout)
+        sys.stdout.write("\n")
+        return 0
+
+    if args.why:
+        print(color("  filter: words=%s exts=%s days=%s dir=%s in %s  (%s)" % (
+            ",".join(plan["words"]) or "-", ",".join(plan["exts"]) or "-",
+            plan["days"] or "any", plan["dir"] or "-", ", ".join(roots),
+            "model" if plan.get("source") == "model" else "built-in parser"),
+            DIM))
+
+    if not results:
+        print(color("  nothing matched that description", DIM))
+        return 1
+
+    width = max(len(r["name"]) for r in results)
+    width = min(width, 46)
+    for item in results:
+        name = item["name"]
+        if len(name) > width:
+            name = name[:width - 1] + "…"
+        print("  %s  %s  %s" % (
+            color(name.ljust(width), BOLD),
+            color(item["dir"], CYAN),
+            color("%s · %s" % (item["age"], item["hsize"]), DIM)))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv))
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except BrokenPipeError:
+        sys.exit(0)

@@ -29,6 +29,7 @@ Stdlib only, matching the rest of the Genesi AI stack.
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -64,6 +65,9 @@ CACHE_DIR = Path.home() / ".cache/genesi-ai-assist"
 DEFAULTS = {
     "enabled": "on",           # master switch for every passive helper
     "explain_errors": "on",    # the shell hook that explains a failed command
+    "suggest_fix": "on",       # offer the fix as ghost text, accepted with →
+    "suggest_fix_history": "on",  # fish only: seed the fix into fish's history
+    "smart_find": "on",        # plain-language file search (genesi-find)
     "on_battery": "off",       # run passive helpers while on battery?
     "max_tokens": "160",       # per call; an explanation is a paragraph, not an essay
     "timeout": "6",            # seconds; if the model is busy we would rather give up
@@ -98,6 +102,11 @@ def _int(conf, key, default):
         return int(str(conf.get(key, "")).strip())
     except (TypeError, ValueError):
         return default
+
+
+def flag(conf, key):
+    """Public form of the on/off reader, for the helper scripts."""
+    return _flag(conf, key)
 
 
 # ── Machine state ────────────────────────────────────────────────────────────
@@ -158,22 +167,29 @@ def warm_model():
 
 # ── The gate ─────────────────────────────────────────────────────────────────
 
-def allowed(feature, conf=None):
-    """(ok, reason). `reason` is for `--why`, never for the user's terminal."""
+def allowed(feature, conf=None, passive=True):
+    """(ok, reason). `reason` is for `--why`, never for the user's terminal.
+
+    `passive=False` is for helpers the user INVOKED (genesi-find), as opposed to
+    ones that fire on their own. Those skip the courtesy checks — battery,
+    Studio Mode, an inference already running — because the user asked for this
+    one and is waiting for it. Rule 1 still holds for both: no warm model, no
+    call. Nothing here ever loads a model.
+    """
     conf = conf if conf is not None else load_conf()
 
     if not _flag(conf, "enabled"):
         return False, "genesi-ai-assist is disabled"
     if feature and feature in conf and not _flag(conf, feature):
         return False, "%s is disabled" % feature
-    if on_battery() and not _flag(conf, "on_battery"):
-        return False, "on battery (set on_battery = on to allow)"
-    if studio_active():
-        return False, "Studio Mode has the machine"
 
-    activity = ai_activity()
-    if activity == "active":
-        return False, "a real inference is running"
+    if passive:
+        if on_battery() and not _flag(conf, "on_battery"):
+            return False, "on battery (set on_battery = on to allow)"
+        if studio_active():
+            return False, "Studio Mode has the machine"
+        if ai_activity() == "active":
+            return False, "a real inference is running"
 
     model = warm_model()
     if not model:
@@ -210,12 +226,17 @@ def cache_put(key, text):
         pass
 
 
-def ask(system, user, feature="", cache_key=None, conf=None):
+def ask(system, user, feature="", cache_key=None, conf=None,
+        passive=True, max_tokens=None, timeout=None):
     """One small completion against the already-warm model, or None.
 
     Returns None for every failure — no model, gate closed, timeout, malformed
     reply. Callers print nothing when they get None, so a passive helper can
     never leave an error in the user's terminal.
+
+    `passive=False`, `max_tokens` and `timeout` are for user-invoked helpers,
+    which are allowed a slightly bigger budget than a helper that fires on its
+    own — the user is sitting there waiting for the answer.
     """
     conf = conf if conf is not None else load_conf()
 
@@ -224,14 +245,14 @@ def ask(system, user, feature="", cache_key=None, conf=None):
         if hit is not None:
             return hit
 
-    ok, _reason = allowed(feature, conf)
+    ok, _reason = allowed(feature, conf, passive=passive)
     if not ok:
         return None
 
     body = json.dumps({
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
-        "max_tokens": _int(conf, "max_tokens", 160),
+        "max_tokens": max_tokens or _int(conf, "max_tokens", 160),
         "temperature": 0.1,
         "stream": False,
     }).encode("utf-8")
@@ -240,7 +261,8 @@ def ask(system, user, feature="", cache_key=None, conf=None):
         turbo_url() + "/v1/chat/completions", data=body,
         headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=_int(conf, "timeout", 6)) as resp:
+        with urllib.request.urlopen(
+                req, timeout=timeout or _int(conf, "timeout", 6)) as resp:
             data = json.load(resp)
         text = data["choices"][0]["message"]["content"].strip()
     except (urllib.error.URLError, OSError, ValueError, KeyError,
@@ -252,3 +274,101 @@ def ask(system, user, feature="", cache_key=None, conf=None):
     if cache_key:
         cache_put(cache_key, text)
     return text
+
+
+# ── The pending fix (ghost text in the shell) ────────────────────────────────
+#
+# When the explainer produces a one-line fix, it drops that line in a file the
+# shell reads back at the next prompt, so the shell can offer it as dim ghost
+# text that → accepts. The file is keyed by the SHELL's pid and lives on tmpfs
+# (XDG_RUNTIME_DIR), so it is per-terminal, never survives a logout, and is
+# unreadable by other users.
+#
+# The shell is what actually runs the command, and only after the user presses
+# a key. Nothing here executes anything.
+
+def fix_path(shell_pid):
+    """Where this terminal's pending fix lives, or None.
+
+    No XDG_RUNTIME_DIR (a non-systemd login, a stripped container) means no
+    ghost text — we do NOT fall back to /tmp, where the path would be guessable
+    by another user and the content is a command line about to be offered to a
+    keypress."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "").strip()
+    if not runtime or not str(shell_pid).strip().isdigit():
+        return None
+    # Built with "/" rather than os.path.join: the shell hook composes the very
+    # same path by hand, and the two must agree byte for byte.
+    return "%s/genesi-ai-assist/fix.%s" % (runtime.rstrip("/"), shell_pid)
+
+
+# Fixes that must never be one keypress away.
+#
+# The model is usually right, but "usually" is not the standard for a command
+# the user can run by brushing an arrow key. Anything that deletes, overwrites
+# or rewrites history stays PRINTED (the user can read it and type it out) and
+# is never armed on →. This is the same instinct as the hook never re-running
+# the failed command.
+#
+# Matched on WORD BOUNDARIES, not as substrings: a bare "dd " also appears in
+# the middle of `cargo add serde`, and blocking every fix containing the letters
+# d-d would quietly gut the feature.
+_DANGEROUS_WORDS = re.compile(
+    r"\b(rm|rmdir|shred|dd|fdisk|parted|wipefs|userdel|groupdel|truncate|"
+    r"mkfs(\.\w+)?)\b")
+
+# Phrases that are only dangerous as a whole, so a substring test is right.
+_DANGEROUS_PHRASES = (
+    "chmod -r", "chown -r", "> /dev/", ">/dev/", ":(){",
+    "git reset --hard", "git clean -", "git push --force", "git push -f",
+    "pacman -rdd", "pacman -rns", "systemctl mask", "mv /",
+)
+
+
+def fix_is_offerable(fix, failed_cmd=""):
+    """True when `fix` is safe and sensible to arm on a keypress."""
+    if not fix:
+        return False
+    fix = fix.strip()
+    if not fix or "\n" in fix or len(fix) > 300:
+        return False
+    # A "fix" that is really a description, or a template the user must fill in.
+    # A leading dash is refused too: a command line starts with a command, and
+    # the shells put this string in front of builtins that would read it as a
+    # flag.
+    if fix.startswith(("#", "//", "-")) or "<" in fix or "..." in fix:
+        return False
+    # Never hand back the command that just failed.
+    if failed_cmd and fix == failed_cmd.strip():
+        return False
+    # Piping a download straight into a shell, in any order of words.
+    low = fix.lower()
+    if ("curl" in low or "wget" in low) and ("| sh" in low or "| bash" in low
+                                             or "|sh" in low or "|bash" in low):
+        return False
+    if any(bad in low for bad in _DANGEROUS_PHRASES):
+        return False
+    return not _DANGEROUS_WORDS.search(low)
+
+
+def write_fix(path, fix, hist=False):
+    """Publish the pending fix for the shell. Best effort, never raises.
+
+    Two lines: the fix, then flags. bash and zsh `read` the first line and stop,
+    which costs them nothing; fish reads both, because it is the one shell whose
+    ghost text has to come from its own history (it has no API for setting an
+    autosuggestion — fish-shell#9809), and `hist` says whether it may.
+    """
+    if not path or not fix:
+        return False
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, ("%s\nhist=%d\n" % (fix.strip(), 1 if hist else 0))
+                     .encode("utf-8"))
+        finally:
+            os.close(fd)
+        return True
+    except OSError:
+        return False

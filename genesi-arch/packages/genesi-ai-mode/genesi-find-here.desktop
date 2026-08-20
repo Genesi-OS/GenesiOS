@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+MimeType=inode/directory;
+Actions=genesiFindHere;
+X-KDE-Priority=TopLevel
+
+[Desktop Action genesiFindHere]
+Name=Search with AI here
+Name[pt_BR]=Buscar com IA aqui
+Icon=edit-find
+Exec=genesi-find-ui %f

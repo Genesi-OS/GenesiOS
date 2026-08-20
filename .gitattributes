@@ -50,3 +50,7 @@ genesi-arch/packages/genesi-mesh/genesi-mesh               text eol=lf
 *.desktop     text eol=lf
 genesi-arch/packages/genesi-mesh/genesi-mesh.fish text eol=lf
 genesi-arch/packages/genesi-mesh/genesi-mesh.bash text eol=lf
+# genesi-find CLI + GUI launcher (extensionless; a CRLF shebang would give
+# `bad interpreter: ...^M`).
+genesi-arch/packages/genesi-ai-mode/genesi-find     text eol=lf
+genesi-arch/packages/genesi-ai-mode/genesi-find-ui  text eol=lf

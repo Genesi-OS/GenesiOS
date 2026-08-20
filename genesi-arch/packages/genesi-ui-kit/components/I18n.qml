@@ -215,7 +215,22 @@ Item {
             "rec.confirmTitle": "Restore this snapshot?",
             "rec.confirmBody": "Genesi will make the snapshot you booted your normal system. Your current system is kept as a one-click backup, and nothing is deleted. When it finishes, reboot to use the restored system.",
             "rec.confirmBtn": "Restore this system",
-            "rec.actionsLocked": "Read-only right now — restore this system first (above) to manage snapshots again."
+            "rec.actionsLocked": "Read-only right now — restore this system first (above) to manage snapshots again.",
+            // genesi-find — describe a file instead of naming it
+            "find.title": "Find a file",
+            "find.placeholder": "Describe the file — \"the contract PDF from last month\"",
+            "find.search": "Search",
+            "find.searching": "Searching…",
+            "find.scope": "in",
+            "find.empty": "Nothing matched that description.",
+            "find.hint": "Describe it the way you would describe it to a person. Words from the name help most.",
+            "find.open": "Open",
+            "find.reveal": "Show in folder",
+            "find.copyPath": "Copy path",
+            "find.results": "results",
+            "find.byModel": "refined by the local model",
+            "find.byParser": "built-in parser — no model warm",
+            "find.filter": "filter"
         },
         "pt": {
             // nav / shell
@@ -388,7 +403,22 @@ Item {
             "rec.confirmTitle": "Restaurar este snapshot?",
             "rec.confirmBody": "O Genesi vai tornar o snapshot que você iniciou o seu sistema normal. Seu sistema atual é guardado como backup de um clique, e nada é apagado. Quando terminar, reinicie pra usar o sistema restaurado.",
             "rec.confirmBtn": "Restaurar este sistema",
-            "rec.actionsLocked": "Só-leitura agora — restaure este sistema primeiro (acima) pra voltar a gerenciar os snapshots."
+            "rec.actionsLocked": "Só-leitura agora — restaure este sistema primeiro (acima) pra voltar a gerenciar os snapshots.",
+            // genesi-find — descrever o arquivo em vez de saber o nome
+            "find.title": "Encontrar um arquivo",
+            "find.placeholder": "Descreva o arquivo — \"o pdf do contrato do mês passado\"",
+            "find.search": "Buscar",
+            "find.searching": "Buscando…",
+            "find.scope": "em",
+            "find.empty": "Nada corresponde a essa descrição.",
+            "find.hint": "Descreva do jeito que você descreveria pra uma pessoa. Palavras que estão no nome ajudam mais.",
+            "find.open": "Abrir",
+            "find.reveal": "Mostrar na pasta",
+            "find.copyPath": "Copiar caminho",
+            "find.results": "resultados",
+            "find.byModel": "refinado pelo modelo local",
+            "find.byParser": "parser interno — nenhum modelo quente",
+            "find.filter": "filtro"
         }
     })
 }

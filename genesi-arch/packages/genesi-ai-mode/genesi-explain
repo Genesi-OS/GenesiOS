@@ -13,6 +13,12 @@ Two ways in:
          some-command 2>&1 | genesi-explain
          genesi-explain "pacman -S foo"
 
+When the answer ends in a concrete fix, that command is also published to
+$GENESI_ASSIST_FIX_FILE (a per-terminal file on tmpfs, path supplied by the
+shell hook). The shell reads it back and offers it as dim ghost text at the next
+prompt, which → accepts onto the command line — it is never executed for you,
+and destructive fixes are printed but never armed.
+
 Why the automatic path does not capture stderr: doing so means either wrapping
 every command in a pty or re-running it. Re-running is unacceptable — a failed
 `rm`, `git push` or `curl -X POST` must never be executed twice behind the
@@ -98,12 +104,31 @@ def main(argv):
         return 1
 
     lines = [ln.strip() for ln in answer.splitlines() if ln.strip()][:2]
-    for i, line in enumerate(lines):
-        prefix = "  " if i == 0 else "  $ " if not line.startswith("$") else "  "
-        if i == 0:
-            print(color("  " + line, DIM))
-        else:
-            print(color(prefix + line.lstrip("$ "), CYAN))
+    if not lines:
+        return 1
+
+    print(color("  " + lines[0], DIM))
+    if len(lines) < 2:
+        return 0
+
+    fix = lines[1].lstrip("$ ").strip()
+    if not fix:
+        return 0
+
+    # Hand the fix to the shell, which offers it as dim ghost text that → puts
+    # on the command line. We only publish it; the shell decides how to show it
+    # and NOTHING runs until the user presses a key. Unsafe fixes (anything that
+    # deletes or overwrites) are printed but never armed — see fix_is_offerable.
+    armed = False
+    conf = assist.load_conf()
+    if assist.flag(conf, "suggest_fix") and assist.fix_is_offerable(fix, command):
+        armed = assist.write_fix(os.environ.get("GENESI_ASSIST_FIX_FILE", ""), fix,
+                                 hist=assist.flag(conf, "suggest_fix_history"))
+
+    line = color("  " + fix, CYAN)
+    if armed and sys.stdout.isatty():
+        line += color("   → to use", DIM)
+    print(line)
     return 0
 
 

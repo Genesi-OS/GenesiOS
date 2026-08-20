@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Launch the Genesi Find window (Qt6/QML). An optional folder argument scopes
+# the search to it — that is how Dolphin's "Search with AI here" gets its path.
+exec python3 /usr/share/genesi-ai-mode/find/genesi_find_gui.py "$@"

@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Find
+Name[pt_BR]=Genesi Buscar
+GenericName=Find a file by describing it
+GenericName[pt_BR]=Encontre um arquivo descrevendo ele
+Comment=Search your files in plain language, on your own machine
+Comment[pt_BR]=Busque seus arquivos em linguagem natural, na sua propria maquina
+Exec=genesi-find-ui %f
+Icon=edit-find
+Terminal=false
+Categories=Utility;FileTools;Qt;
+Keywords=find;search;file;ai;buscar;procurar;arquivo;
+StartupNotify=true
+StartupWMClass=genesi-find
