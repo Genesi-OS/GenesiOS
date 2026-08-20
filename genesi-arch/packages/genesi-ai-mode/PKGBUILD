@@ -887,7 +887,18 @@ pkgver=1.0.0
 # `anchors.fill` collapsed the layout to zero while its children kept painting,
 # drawing the card on top of "Máquinas". It follows the page's own convention
 # now (implicitHeight bound to its column).
-pkgrel=164
+# 2026-08-19 (165): the "does this machine have a GPU" test that gates the
+# deferral was measured with _detect_vram_mb(), which falls back to what VULKAN
+# reports -- and inside a VM the software rasteriser answers with a slice of
+# system RAM. So a machine with no GPU at all measured GBs of "VRAM", the gate
+# said "you have a GPU, serve locally", and a client sat loading a model on its
+# CPU with a ready GPU one hop away. It now asks genesi_mesh_common.probe_gpu(),
+# the same number `genesi-mesh plan` prints, so the two finally agree. An
+# explicit `genesi-mesh use <peer>` pin also defers regardless of local
+# hardware -- the user said where they wanted it. And when a peer IS serving but
+# we serve locally anyway, `serve` now SAYS so and names the command to switch:
+# the failure mode was silence, which is why this took a round trip to find.
+pkgrel=165
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

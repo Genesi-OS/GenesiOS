@@ -1795,6 +1795,43 @@ def remote_turbo():
     return url if turbo_healthy(url, timeout=3) else None
 
 
+def _turbo_host_of(url):
+    """The host part of a Turbo URL, for printing a `genesi-mesh use` command."""
+    return url.split("//", 1)[-1].split(":")[0]
+
+
+def _mesh_gpu():
+    """(has_dedicated_gpu, why) as GENESI MESH sees this machine.
+
+    Deliberately the mesh's probe and not _detect_vram_mb(). That one falls back
+    to what Vulkan reports, and inside a VM the software rasteriser answers with
+    a slice of system RAM -- so a machine with no GPU at all measured several GB
+    of "VRAM" and every has-a-GPU test passed. It also means `serve` and
+    `genesi-mesh plan` now agree; they were reading two different numbers and
+    only one of them was on screen."""
+    try:
+        sys.path.insert(0, "/usr/lib/genesi-mesh")
+        import genesi_mesh_common as _mesh
+        gpu = _mesh.probe_gpu()
+    except Exception:
+        return _vram_budget_gb() > 0, "no mesh probe; using local VRAM detection"
+    if gpu.get("integrated"):
+        return False, "integrated graphics (no dedicated VRAM)"
+    mb = int(gpu.get("vram_mb") or 0)
+    return mb > 0, ("%s, %d MiB" % (gpu.get("backend", "?"), mb) if mb
+                    else "no GPU detected")
+
+
+def _turbo_source():
+    """The configured turbo_source, or 'auto'."""
+    try:
+        sys.path.insert(0, "/usr/lib/genesi-mesh")
+        import genesi_mesh_common as _mesh
+        return str(_mesh.load_conf().get("turbo_source", "auto") or "auto").strip()
+    except Exception:
+        return "auto"
+
+
 def port_busy(port=TURBO_PORT):
     """True only if something is ACTIVELY LISTENING on TURBO_HOST:<port>.
 
@@ -2143,17 +2180,32 @@ def cmd_serve(main, draft, spec=False):
     # Gated on having no usable GPU: on a machine WITH one, `serve` means "serve
     # from here" and hijacking that would be worse than the slow path. --local
     # forces a local server either way.
-    if not _env_flag("GENESI_TURBO_LOCAL") and _vram_budget_gb() <= 0:
+    if not _env_flag("GENESI_TURBO_LOCAL"):
         peer_url = remote_turbo()
         if peer_url:
-            print(f":: Genesi Mesh: {peer_url} is already serving Turbo.")
-            print("   This machine has no GPU, so a local server would run on "
-                  "CPU while")
-            print("   that one sits idle. Genesi apps here already use it — "
-                  "nothing to start.")
-            print(f"   API: {peer_url}/v1")
-            print("   Serve locally anyway with --local.")
-            return
+            has_gpu, why = _mesh_gpu()
+            source = _turbo_source()
+            pinned = source not in ("auto", "local")
+            if pinned or not has_gpu:
+                print(f":: Genesi Mesh: {peer_url} is already serving Turbo.")
+                print("   %s, so a local server would run on CPU while that one"
+                      % ("You pinned this machine to it (genesi-mesh use %s)"
+                         % source if pinned
+                         else "This machine has no GPU (%s)" % why))
+                print("   sits idle. Genesi apps here already use it — nothing "
+                      "to start.")
+                print(f"   API: {peer_url}/v1")
+                print("   Serve locally anyway with --local.")
+                return
+            # A peer IS serving and we are starting our own anyway. Never do
+            # that silently: the user is about to wait through a local load
+            # while a ready GPU sits one hop away, and the only clue would be
+            # how long it takes.
+            print(f":: Genesi Mesh: {peer_url} is serving Turbo, but this "
+                  "machine has a GPU")
+            print("   (%s), so `serve` serves from HERE. Use it instead with:"
+                  % why)
+            print("       sudo genesi-mesh use %s" % _turbo_host_of(peer_url))
 
     main_g = ensure(main)
     if not main_g:
