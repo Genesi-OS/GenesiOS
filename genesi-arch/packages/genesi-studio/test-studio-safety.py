@@ -644,15 +644,25 @@ check("app alone in its scope → exclusive",
 _fake_cgroup([500, 501, 502], {500: 1, 501: 500, 502: 501})
 check("app plus its own children → exclusive",
       hd._cgroup_is_exclusive("/sys/fs/cgroup/…/app-firefox.scope", 500), True)
+# The boosted pid is usually a LEAF, not the root of its scope. Minecraft's own
+# scope is rooted at the launcher script with java several levels below it, and
+# asking "does every member descend from the target" rejected it — measured on a
+# real session, which is where this fixture comes from.
+_fake_cgroup([104102, 104112, 104150, 104452, 126397],
+             {104102: 1, 104112: 104102, 104150: 104112,
+              104452: 104112, 126397: 104112})
+check("target is a leaf under its launcher → still exclusive",
+      hd._cgroup_is_exclusive("/…/app-Hyprland-minecraft.scope", 126397), True)
 # A helper reparented to init when the launcher exited — Firefox's crashhelper
 # lives in Firefox's own scope with ppid 1. Rejecting the scope over it would
 # disable the levers for every app that outlives its launcher.
 _fake_cgroup([500, 504], {500: 1, 504: 1})
 check("orphaned helper in the app's own scope → still exclusive",
       hd._cgroup_is_exclusive("/sys/fs/cgroup/…/app-firefox.scope", 500), True)
-# A launcher that dropped a second, unrelated app into the same scope.
-_fake_cgroup([500, 700, 701], {500: 1, 700: 42, 701: 700})
-check("an unrelated process tree in the scope → NOT exclusive",
+# A launcher that dropped a second, unrelated app into the same scope: two live
+# trees, neither orphaned, so the share would be split with something else.
+_fake_cgroup([500, 700, 701], {500: 42, 700: 43, 701: 700})
+check("two unrelated live trees in one scope → NOT exclusive",
       hd._cgroup_is_exclusive("/sys/fs/cgroup/…/app-firefox.scope", 500), False)
 # The session containers are shared by construction, however empty they look.
 _fake_cgroup([500], {500: 1})

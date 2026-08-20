@@ -260,11 +260,18 @@ def _cgroup_is_exclusive(cg, pid):
     * by name — `session-N.scope`, `user@N.service`, `init.scope` and any
       `.slice` are session containers by construction, however few processes
       happen to be in them at the moment;
-    * by ancestry — a launcher may still drop several apps into one scope, so
-      every member must be the target or one of its descendants. Orphans
-      (reparented to init) are counted as the app's own: Firefox's crashhelper
-      sits in Firefox's scope with ppid 1, and rejecting the scope over it would
-      disable the levers for every app that outlives its launcher.
+    * by shape — a launcher may still drop several unrelated apps into one
+      scope, so the members must form a SINGLE process tree.
+
+    The shape test is about the cgroup, not about the target's place in it: the
+    boosted pid is usually a leaf, not the root. Minecraft's own scope is rooted
+    at the launcher script with `java` several levels below it, so asking
+    "does every member descend from the target" rejected the app's own scope.
+    What matters is that nothing unrelated shares the group, so the test is on
+    the roots — members whose parent is not itself a member. One root means one
+    app. Extra roots are allowed only when they were orphaned to init: Firefox's
+    crashhelper sits in Firefox's scope with ppid 1, and rejecting the scope
+    over it would disable the levers for every app that outlives its launcher.
     """
     base = os.path.basename(cg.rstrip("/"))
     if (base.endswith(".slice") or base in _SHARED_CGROUP_NAMES
@@ -278,26 +285,13 @@ def _cgroup_is_exclusive(cg, pid):
         return False
     if not members:
         return False
-    for other in members:
-        if other == pid or _descends_from(other, pid):
-            continue
-        if _ppid(other) <= 1:          # orphaned child of the app
-            continue
-        return False
-    return True
-
-
-def _descends_from(pid, ancestor):
-    """True when `pid` is a child, grandchild … of `ancestor`."""
-    cur, hops = pid, 0
-    while hops < 64:
-        cur = _ppid(cur)
-        if cur == ancestor:
-            return True
-        if cur <= 1:
-            return False
-        hops += 1
-    return False
+    inside = set(members)
+    roots = [m for m in members if _ppid(m) not in inside]
+    if len(roots) <= 1:
+        return True
+    # More than one tree: fine only if the extras are the app's own processes
+    # reparented to init, not separate apps still attached to a live launcher.
+    return all(_ppid(r) <= 1 for r in roots)
 
 
 def _ppid(pid):

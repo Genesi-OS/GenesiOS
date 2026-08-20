@@ -91,7 +91,10 @@ launched straight from the compositor — which lands in the shared
 `session-N.scope` next to the compositor and everything else the session started
 — gains nothing from them, and `memory.swap.max`/`memory.low` there would rewrite
 the memory policy of the whole session as a side effect. In that case the helper
-logs the skip instead of applying a lever that does nothing.
+logs the skip instead of applying a lever that does nothing. "Its own" is a
+question about the cgroup, not about the boosted process's place in it — the
+window's pid is usually a leaf, several levels under the launcher script that
+roots the scope.
 
 Machine-wide: the CPU governor, EPP, `swappiness` and the GPU's performance
 state — but **per lever, standing down from whichever ones AI Mode is holding**.
