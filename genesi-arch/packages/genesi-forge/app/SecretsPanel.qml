@@ -237,11 +237,17 @@ Item {
 
         // ── The list ────────────────────────────────────────────────────────
         QQC2.ScrollView {
+            id: secretScroll
             Layout.fillWidth: true
             Layout.fillHeight: true
+            // Both lines matter. Inside a ScrollView the content's `parent` is
+            // the Flickable's contentItem, whose width is derived FROM the
+            // content — so `width: parent.width` collapsed the column to its
+            // implicit width and every row shrank to the size of its buttons.
+            contentWidth: availableWidth
             clip: true
             ColumnLayout {
-                width: parent.width
+                width: secretScroll.availableWidth
                 spacing: 6
 
                 Repeater {
