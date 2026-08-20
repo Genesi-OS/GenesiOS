@@ -1,7 +1,11 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 pkgname=genesi-forge
 pkgver=2.3.0
-pkgrel=7
+# pkgrel 8: the app did not start at all. SecretsPanel assigned danger: true on a
+# GButton, but `danger` is derived read-only from `kind` in both the local and the
+# kit button — QML rejected the assignment, SecretsPanel failed to build, and the
+# failure cascaded up through ProjectView to Main, so the engine loaded nothing.
+pkgrel=8
 pkgdesc='Genesi Forge: the project hub — full git panel, GitHub pipelines, deployments and the Forge Canvas workflow builder'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

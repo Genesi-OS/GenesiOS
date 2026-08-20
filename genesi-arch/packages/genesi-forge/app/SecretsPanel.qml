@@ -309,8 +309,7 @@ Item {
                             }
                             GButton {
                                 theme: root.theme
-                                kind: "tonal"
-                                danger: true
+                                kind: "danger"
                                 iconSource: "icons/trash.svg"
                                 tooltip: "Delete this secret from the keyring"
                                 onClicked: { backend.deleteSecret(root.projectPath, modelData.key); root.reload() }
