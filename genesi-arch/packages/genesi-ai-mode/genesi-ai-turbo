@@ -2182,6 +2182,22 @@ def cmd_serve(main, draft, spec=False):
     # forces a local server either way.
     if not _env_flag("GENESI_TURBO_LOCAL"):
         peer_url = remote_turbo()
+        # A peer we were told to use that does not answer must be said out loud.
+        # Silence here cost a full debugging round: the mesh had resolved to the
+        # peer's Tailscale address, the Turbo port was open only on the LAN zone,
+        # /health timed out, this returned None, and the ONLY thing printed was
+        # the pooling path's unrelated "no worker peers online".
+        chosen = _turbo_url()
+        if not peer_url and not chosen.startswith(("http://127.0.0.1",
+                                                   "http://localhost")):
+            print(f"[!] {chosen} was chosen for Turbo but is not answering — "
+                  "starting a local server instead.", file=sys.stderr, flush=True)
+            print("    That address is reachable from the mesh's point of view "
+                  "but the port is not.", file=sys.stderr, flush=True)
+            print("    On that machine: sudo genesi-mesh serve on   (it opens "
+                  "11435 on every", file=sys.stderr, flush=True)
+            print("    interface peers arrive on — a LAN-only rule misses the "
+                  "VPN path).", file=sys.stderr, flush=True)
         if peer_url:
             has_gpu, why = _mesh_gpu()
             source = _turbo_source()
@@ -2342,17 +2358,34 @@ def _firewall_port(port, opening):
 
     did = "opened" if opening else "closed"
     if active("firewalld"):
-        zone = subprocess.run(["firewall-cmd", "--get-default-zone"],
-                              capture_output=True, text=True
-                              ).stdout.strip() or "public"
-        rc = subprocess.run(
-            ["firewall-cmd", "--permanent", "--zone=" + zone,
-             "%s=%d/tcp" % ("--add-port" if opening else "--remove-port", port)],
-            capture_output=True).returncode
+        # EVERY zone peers can arrive on, not just the default. A mesh normally
+        # has a LAN NIC and a VPN up at once, in different zones; opening only
+        # the default left the other path shut, and the symptom was a peer whose
+        # advertised Turbo simply did not answer -- which looks like a dead
+        # service, not like a firewall. Measured: the LAN answered /health and
+        # the Tailscale address timed out, and the client had been handed the
+        # Tailscale one.
+        zones = []
+        try:
+            sys.path.insert(0, "/usr/lib/genesi-mesh")
+            import genesi_mesh_common as _mesh
+            zones = _mesh.peer_facing_zones()
+        except Exception:
+            pass
+        if not zones:
+            zones = [subprocess.run(["firewall-cmd", "--get-default-zone"],
+                                    capture_output=True, text=True
+                                    ).stdout.strip() or "public"]
+        flag = "--add-port" if opening else "--remove-port"
+        failed = [z for z in zones
+                  if subprocess.run(["firewall-cmd", "--permanent",
+                                     "--zone=" + z, "%s=%d/tcp" % (flag, port)],
+                                    capture_output=True).returncode != 0]
         subprocess.run(["firewall-cmd", "--reload"], capture_output=True)
-        if rc != 0:
-            return "firewalld: could NOT change %d/tcp — do it by hand" % port
-        return "firewalld: %s %d/tcp in zone %s" % (did, port, zone)
+        if failed:
+            return ("firewalld: could NOT change %d/tcp in %s — do it by hand"
+                    % (port, ", ".join(failed)))
+        return "firewalld: %s %d/tcp in %s" % (did, port, ", ".join(zones))
     if active("ufw"):
         args = (["ufw", "allow", "%d/tcp" % port] if opening
                 else ["ufw", "delete", "allow", "%d/tcp" % port])

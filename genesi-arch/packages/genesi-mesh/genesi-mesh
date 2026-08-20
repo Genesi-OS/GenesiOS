@@ -764,6 +764,17 @@ def cmd_serve(arg):
     return subprocess.run([turbo, "share", arg]).returncode
 
 
+def _turbo_answers(url, timeout=2.5):
+    """Does a Turbo actually reply at `url`? Advertised is not the same as up."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/health",
+                                    timeout=timeout) as r:
+            return json.loads(r.read()).get("status") == "ok"
+    except Exception:
+        return False
+
+
 def cmd_use(arg):
     """Choose which Turbo this machine's Genesi apps talk to.
 
@@ -778,10 +789,21 @@ def cmd_use(arg):
         print(color("Turbo source: %s" % opts["source"], BOLD))
         print(color("  (%s)" % opts["url"], DIM))
         print()
+        # Probe each one. "Advertising Turbo" and "answering on that address"
+        # are different claims, and the gap between them is invisible in every
+        # other view: a peer whose port is open on the LAN but not on the VPN
+        # still beacons perfectly while the address handed to clients times out.
+        unreachable = []
         for o in opts["options"]:
             mark = color("*", GREEN) if o["effective"] else " "
             model = o["model"] or color("no model reported", DIM)
-            state = "" if o["available"] else color("  [not serving]", DIM)
+            if not o["available"]:
+                state = color("  [not serving]", DIM)
+            elif _turbo_answers(o["url"]):
+                state = color("  [ok]", GREEN)
+            else:
+                state = color("  [NÃO RESPONDE]", RED)
+                unreachable.append(o)
             print("  %s %-18s %-24s %s%s"
                   % (mark, o["key"], model, color(o["url"], DIM), state))
         print()
@@ -789,6 +811,17 @@ def cmd_use(arg):
               "else a peer's")
         print("  genesi-mesh use local     always this machine")
         print("  genesi-mesh use <peer>    always that machine")
+        for o in unreachable:
+            print()
+            print(color("  %s advertises Turbo but %s does not answer."
+                        % (o["key"], o["url"]), RED))
+            print(color("  It is beaconing, so the machine is up — the PORT is "
+                        "shut on this path.", DIM))
+            print(color("  On that machine, re-run:  sudo genesi-mesh serve on",
+                        CYAN))
+            print(color("  (it opens 11435 on every interface peers arrive on; "
+                        "a rule added only", DIM))
+            print(color("  to the LAN zone leaves the VPN address dead.)", DIM))
         if opts["source"] != "auto" and not any(o["selected"] and o["effective"]
                                                 for o in opts["options"]):
             print()

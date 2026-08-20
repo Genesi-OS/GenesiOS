@@ -898,7 +898,17 @@ pkgver=1.0.0
 # hardware -- the user said where they wanted it. And when a peer IS serving but
 # we serve locally anyway, `serve` now SAYS so and names the command to switch:
 # the failure mode was silence, which is why this took a round trip to find.
-pkgrel=165
+# 2026-08-19 (166): `share on` opened 11435 in the DEFAULT zone only. A mesh
+# normally has a LAN NIC and a VPN up at once, in different firewalld zones, and
+# clients are handed whichever address the beacon arrived from -- so on a real
+# pair the port was open on `public` (the cable) and shut on `mesh`
+# (tailscale0), the client got the Tailscale address, and /health timed out.
+# It reads like a dead service, not like a firewall, and nothing in any output
+# mentioned either. Now opens/closes on every zone peer_facing_zones() reports.
+# `serve` also says when the Turbo it was told to use does not answer, instead
+# of falling through to the pooling path whose unrelated "no worker peers
+# online" was the only line on screen.
+pkgrel=166
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -384,6 +384,46 @@ def turbo_options(peers=None, conf=None):
     return {"source": source, "url": active, "options": opts}
 
 
+def firewalld_zone_of(iface):
+    """The zone `iface` is filtered by, default zone included.
+
+    An interface in "no zone" is NOT unfiltered -- it falls into the default
+    zone, which on a stock install admits about two services."""
+    def run(*args):
+        try:
+            r = subprocess.run(["firewall-cmd"] + list(args),
+                               capture_output=True, text=True, timeout=8)
+            return r.returncode, (r.stdout or "").strip()
+        except (OSError, subprocess.SubprocessError):
+            return 1, ""
+    rc, out = run("--get-zone-of-interface=" + iface)
+    if rc == 0 and out and out != "no zone":
+        return out
+    _, default = run("--get-default-zone")
+    return default or "public"
+
+
+def peer_facing_zones():
+    """Every firewalld zone that mesh traffic can actually arrive on.
+
+    Two machines reach each other over whichever interface carries the beacon,
+    and that is not always the one you were thinking of: on a LAN it is the NIC,
+    over Tailscale it is the overlay, and a mesh usually has BOTH up. Opening a
+    port in the default zone alone leaves the other path shut -- which fails as
+    an unreachable service rather than as a firewall error, so nothing points at
+    the firewall."""
+    ifaces = list(vpn_interfaces())
+    lan = primary_interface()
+    if lan and lan not in ifaces:
+        ifaces.append(lan)
+    zones = []
+    for iface in ifaces:
+        zone = firewalld_zone_of(iface)
+        if zone and zone not in zones:
+            zones.append(zone)
+    return zones
+
+
 def build_beacon(conf, gpu, llama=None):
     """The advertisement this node broadcasts: who I am, what I can contribute.
 
