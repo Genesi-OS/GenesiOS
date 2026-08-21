@@ -985,7 +985,28 @@ pkgver=1.0.0
 # worst outcome here. Also: links now animate while a run is in flight, and only
 # while it is — an idle canvas repaints zero times, which matters on a machine
 # whose selling point is having CPU left for the model.
-pkgrel=170
+# 2026-08-20 (171): EVERY block now hands named values to the blocks after it.
+# Flow of control was never the missing half — a link already said what runs
+# next. Flow of DATA was: the only channel was {input}, the previous block's
+# whole output as one string, so a graph could sequence three cards correctly
+# and still have no way to take the number out of one and put it in another.
+# Reported from real use, with clipboard -> AI -> notification on screen.
+# Every kind publishes its own values now (script.stdout/stderr/exit,
+# http.status/body, clipboard.text, file.path, resource.value, mail.subject,
+# cond.answer, ai.reply, the AI block's declared fields, …), each landing twice:
+# namespaced ({{script.exit}}) and bare ({{exit}}) for the one-obvious-source
+# case, with the most recent block along the path winning the bare name.
+# One catalogue (NODE_OUTPUTS in genesi_workflow_gen.py) feeds all three places
+# that would otherwise drift: the daemon publishes against it, the config panel
+# shows it, and the generator's prompt carries it so a generated graph wires
+# names that exist instead of names a model imagined.
+# Discoverability was the other half of the report: every block's panel now
+# lists the values reaching it — walked BACKWARDS through the links, so it only
+# ever offers values from blocks that have actually run — click to copy, plus a
+# line saying what this block provides in turn.
+# Fixed on the way: the power trigger referenced a threshold variable that only
+# exists in another branch (NameError at fire time on AC/battery events).
+pkgrel=171
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

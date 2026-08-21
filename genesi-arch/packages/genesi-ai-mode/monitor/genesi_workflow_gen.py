@@ -61,6 +61,108 @@ _WORKFLOW_KINDS = {
     "act_power":       ["action"],
 }
 
+
+# ── What each block HANDS TO the blocks after it ────────────────────────────
+#
+# The flow of control was never the hard part: a link says what runs next, and
+# that worked. The hard part is the flow of DATA, and until now there was one
+# channel for it — {input}, the previous block's entire output as a single
+# string. That is enough to pipe a script into a notification and nothing more.
+# You could not take the number out of it, and with three blocks on a canvas
+# there was no way to even find out what a block had to offer.
+#
+# So every kind now publishes NAMED values, and this table is the single place
+# that says which. It is read by three things that would otherwise drift apart:
+#   * the daemon, which publishes them at run time,
+#   * the config panel, which shows the user what is available to use, and
+#   * the workflow generator's prompt, so a generated graph wires real names
+#     instead of names a model imagined.
+#
+# Values are published twice: bare ({{text}}) and namespaced ({{clipboard.text}}).
+# The bare form is what a person writes when there is one obvious source, which
+# is most graphs; the namespaced form is how you disambiguate when there are two
+# scripts and you mean the first one's exit code. When two blocks publish the
+# same bare name, the most recent one along the path wins — "the one that just
+# ran" is the only reading of {{stdout}} that is ever surprising to nobody.
+NODE_OUTPUTS = {
+    # ── triggers ──
+    "evt_clipboard":   [("clipboard.text", "the text that was copied")],
+    "evt_screenshot":  [("screenshot.path", "full path of the new image"),
+                        ("screenshot.name", "just the file name")],
+    "evt_fs":          [("file.path", "the file that changed"),
+                        ("file.name", "just the file name"),
+                        ("file.change", "created, modified or deleted")],
+    "evt_resource":    [("resource.metric", "cpu or ram"),
+                        ("resource.value", "the reading, as a number")],
+    "evt_temperature": [("temp.value", "degrees Celsius, as a number"),
+                        ("temp.sensor", "which sensor reported it")],
+    "evt_app":         [("app.name", "the application"),
+                        ("app.transition", "opened or closed")],
+    "evt_process":     [("process.name", "the process"),
+                        ("process.metric", "cpu or mem"),
+                        ("process.value", "the reading, as a number")],
+    "evt_power":       [("power.event", "what happened"),
+                        ("power.level", "battery percentage, as a number")],
+    "evt_disk":        [("disk.path", "the mount point or device"),
+                        ("disk.value", "percent used, as a number")],
+    "evt_usb":         [("usb.action", "added or removed"),
+                        ("usb.device", "what was plugged in")],
+    "evt_network":     [("network.event", "what happened"),
+                        ("network.iface", "the interface")],
+    "evt_bluetooth":   [("bt.action", "connected or disconnected"),
+                        ("bt.device", "the device")],
+    "evt_idle":        [("idle.minutes", "how long you were idle, as a number")],
+    "evt_hotkey":      [("hotkey.combo", "the keys you pressed")],
+    "evt_schedule":    [("schedule.at", "the time it fired")],
+    "evt_startup":     [],
+    "evt_log":         [("log.line", "the matching line"),
+                        ("log.path", "the file it came from")],
+    "evt_command":     [("command.output", "what the command printed")],
+    "evt_webhook":     [("webhook.body", "the request body"),
+                        ("webhook.path", "the endpoint that was called")],
+    "evt_manual":      [],
+    # ── actions ──
+    "act_script":      [("script.stdout", "everything it printed"),
+                        ("script.stderr", "everything it printed to stderr"),
+                        ("script.exit", "the exit code, as a number")],
+    "act_ai":          [("ai.reply", "the model's answer in full"),
+                        ("<your outputs>", "one value per field you declare below")],
+    "act_cond":        [("cond.answer", "true or false")],
+    "act_loop":        [("item", "the current item, inside the loop body"),
+                        ("index", "its position, starting at 0"),
+                        ("count", "how many items there are")],
+    "act_subflow":     [("<the sub-workflow's values>",
+                         "everything the workflow you called published")],
+    "act_notify":      [],
+    "act_email":       [("mail.from", "sender of the newest message"),
+                        ("mail.subject", "its subject"),
+                        ("mail.body", "its text"),
+                        ("mail.count", "how many were read")],
+    "act_http":        [("http.status", "the HTTP status code, as a number"),
+                        ("http.body", "the response body")],
+    "act_file":        [("file.dest", "where the file ended up")],
+    "act_app":         [("app.name", "the application acted on")],
+    "act_sound":       [],
+    "act_wait":        [],
+    "act_power":       [],
+}
+
+
+def outputs_for(kind):
+    """The named values a kind publishes, as [(name, description)]."""
+    return list(NODE_OUTPUTS.get(kind, []))
+
+
+def outputs_catalogue_text():
+    """The same table, for the generator's prompt."""
+    lines = []
+    for kind in sorted(NODE_OUTPUTS):
+        fields = NODE_OUTPUTS[kind]
+        if not fields:
+            continue
+        lines.append("  %-16s %s" % (kind, ", ".join(name for name, _ in fields)))
+    return chr(10).join(lines)
+
 _WORKFLOW_SYSTEM = """You design automation workflows for Genesi OS and reply with ONE JSON object, nothing else. No prose, no markdown fence.
 
 {"name": "short title", "cannot": "", "nodes": [...], "links": [...]}
@@ -79,6 +181,9 @@ RULES
 
 KINDS AND THEIR CONFIG FIELDS
 __KINDS__
+
+VALUES EACH KIND PUBLISHES, usable as {{name}} in any later block
+__OUTPUTS__
 
 If the request is impossible or unclear, still return valid JSON: put your explanation in "cannot" and give the nearest workflow you CAN build. An empty "nodes" list is only for a request that is not an automation at all."""
 
@@ -209,6 +314,8 @@ def _sanitise_graph(obj):
 
 # Rendered with replace(), not %-formatting: the prompt itself contains a "%"
 # (in the "cpu load %" example) and %-formatting chokes on it.
+_WORKFLOW_SYSTEM = _WORKFLOW_SYSTEM.replace("__OUTPUTS__",
+                                            outputs_catalogue_text())
 _WORKFLOW_SYSTEM = _WORKFLOW_SYSTEM.replace("__KINDS__", chr(10).join(
     "  %-16s %s" % (kind, ", ".join(fields) if fields else "(no settings)")
     for kind, fields in sorted(_WORKFLOW_KINDS.items())))

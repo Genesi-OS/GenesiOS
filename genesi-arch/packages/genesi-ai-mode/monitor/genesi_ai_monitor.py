@@ -35,7 +35,7 @@ from genesi_agent import (
 )
 import genesi_turbo_ctl as turbo_ctl
 from genesi_workflow_gen import (_WORKFLOW_SYSTEM, _first_json_object,
-                                 _sanitise_graph)
+                                 _sanitise_graph, NODE_OUTPUTS)
 
 try:
     from PySide6.QtCore import QObject, Slot, Signal, QUrl, Qt
@@ -2088,6 +2088,28 @@ class Backend(QObject):
                                      headers={"Content-Type": "application/json"})
         obj = json.loads(self._read_agent_response(req).decode())
         return (obj.get("message") or {}).get("content", "")
+
+    @Slot(str)
+    def copyToClipboard(self, text):
+        """Put a placeholder on the clipboard so it can be pasted into any field."""
+        try:
+            from PySide6.QtGui import QGuiApplication
+            QGuiApplication.clipboard().setText(text or "")
+            self.noticeToast.emit("Copied " + (text or ""))
+        except Exception:
+            pass
+
+    @Slot(result=str)
+    def nodeOutputCatalogue(self):
+        """Which named values each kind of block publishes.
+
+        Served from the same table the daemon publishes against and the
+        generator's prompt is built from, so the list the user is shown cannot
+        drift from the list that actually exists at run time.
+        """
+        return json.dumps({kind: [{"name": name, "desc": desc}
+                                  for name, desc in fields]
+                           for kind, fields in NODE_OUTPUTS.items()})
 
     @Slot(result=str)
     def listAutomations(self):

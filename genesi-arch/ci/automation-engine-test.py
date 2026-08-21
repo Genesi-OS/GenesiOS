@@ -569,5 +569,98 @@ check("a stepped range", cm("0-30/10", 20) is True and cm("0-30/10", 25) is Fals
 check("garbage never matches, so it never fires", cm("abc", 5) is False)
 check("an empty step is not a crash", cm("*/", 5) is False)
 
+
+print("\n[16] every block publishes NAMED values, not just one lump of text")
+pub = mod._publish
+v = {}
+pub(v, [("script.exit", 3)])
+check("a value lands namespaced", v.get("script.exit") == "3", str(v))
+check("and bare, for the common case", v.get("exit") == "3", str(v))
+pub(v, [("http.status", 404)])
+check("two blocks can share a bare name", v.get("status") == "404")
+pub(v, [("script.stdout", "a"), ("http.body", "b")])
+check("the namespaced forms stay apart",
+      v.get("script.stdout") == "a" and v.get("http.body") == "b", str(v))
+v2 = {"stdout": "old", "script.stdout": "old"}
+pub(v2, [("script.stdout", "new")])
+check("the most recent block wins the bare name", v2.get("stdout") == "new")
+pub(None, [("x", "y")])
+check("publishing with no run does not explode", True)
+v3 = {}
+pub(v3, [("a.b", None)])
+check("a value that does not exist is not published", "a.b" not in v3, str(v3))
+
+print("\n[17] a script hands its exit code and streams onward")
+st = run(build(
+    [TRIGGER, script("s", "echo hello"),
+     {"id": "n", "kind": "act_notify", "title": "n",
+      "config": {"title": "T", "body": "out={{script.stdout}} code={{exit}}"}}],
+    [{"from": "trg", "to": "s"}, {"from": "s", "to": "n", "fromPort": "ok"}]))
+body = " ".join(sent[-1]) if sent else ""
+check("stdout and exit code both reached the notification",
+      "out=hello" in body and "code=0" in body, body)
+
+st = run(build(
+    [TRIGGER, script("s", "exit 3"),
+     {"id": "n", "kind": "act_notify", "title": "n",
+      "config": {"title": "T", "body": "failed with {{script.exit}}"}}],
+    [{"from": "trg", "to": "s"}, {"from": "s", "to": "n", "fromPort": "err"}]))
+body = " ".join(sent[-1]) if sent else ""
+check("the error branch can quote the exit code", "failed with 3" in body, body)
+
+print("\n[18] a trigger's own data reaches the chain")
+eng_st = FakeStatus()
+eng = mod.Engine(eng_st)
+auto = build([TRIGGER,
+              {"id": "n", "kind": "act_notify", "title": "n",
+               "config": {"title": "T", "body": "copied: {{clipboard.text}}"}}],
+             [{"from": "trg", "to": "n"}])
+eng.run_chain(auto, "trg", "agora fudeu", {"clipboard.text": "agora fudeu"})
+body = " ".join(sent[-1]) if sent else ""
+check("the clipboard text is a value, not only a sentence",
+      "copied: agora fudeu" in body, body)
+
+print("\n[19] the exact graph from the report: clipboard -> AI -> notification")
+# "identify a specific copy with the AI, then put ITS answer in the
+# notification" — the case that could not be built before.
+_reply["text"] = '{"realmente": "realmente"}'
+ai_node = {"id": "ai", "kind": "act_ai", "title": "AI Action",
+           "config": {"prompt": "if the clipboard says 'agora fudeu', answer 'realmente'",
+                      "exec": "advisory",
+                      "outputs": [{"name": "realmente", "desc": "the reply"}]}}
+notify_node = {"id": "n", "kind": "act_notify", "title": "Notification",
+               "config": {"title": "Genesi", "body": "{{realmente}}"}}
+eng_st = FakeStatus()
+eng = mod.Engine(eng_st)
+auto = build([TRIGGER, ai_node, notify_node],
+             [{"from": "trg", "to": "ai"},
+              {"from": "ai", "to": "n", "fromPort": "ok"}])
+eng.run_chain(auto, "trg", "agora fudeu", {"clipboard.text": "agora fudeu"})
+body = " ".join(sent[-1]) if sent else ""
+check("the AI's own field is what the notification shows",
+      "realmente" in body, body)
+check("the AI block also publishes its full reply as {{ai.reply}}",
+      eng_st.node_states.get("ai") == "ok", str(eng_st.node_states))
+
+print("\n[20] the catalogue the panel shows is the one the daemon uses")
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location(
+    "genesi_workflow_gen",
+    str(DAEMON.parent / "monitor" / "genesi_workflow_gen.py"))
+_gen = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_gen)
+check("every runnable kind appears in the outputs catalogue",
+      set(_gen._WORKFLOW_KINDS) == set(_gen.NODE_OUTPUTS),
+      str(set(_gen._WORKFLOW_KINDS) ^ set(_gen.NODE_OUTPUTS)))
+declared = {name for fields in _gen.NODE_OUTPUTS.values()
+            for name, _d in fields if not name.startswith("<")}
+check("names are namespaced or a documented bare one",
+      all(("." in n) or n in ("item", "index", "count") for n in declared),
+      str(sorted(n for n in declared
+                 if "." not in n and n not in ("item", "index", "count"))))
+check("the generator's prompt carries the catalogue",
+      "script.stdout" in _gen._WORKFLOW_SYSTEM
+      and "clipboard.text" in _gen._WORKFLOW_SYSTEM)
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

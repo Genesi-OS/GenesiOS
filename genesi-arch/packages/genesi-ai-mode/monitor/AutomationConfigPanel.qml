@@ -407,7 +407,7 @@ Item {
                     onAccepted: root.setConfig("limit", value) }
                 QQC2.Label { visible: root.kindIs("act_email") && root.cfg("mode", "send") === "read"
                     Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: "The newest unread messages arrive as {{mail_from}}, {{mail_subject}}, {{mail_body}} and {{mail_count}}, and the whole batch as JSON for a Loop."
+                    text: "The newest unread messages arrive as {{mail.from}}, {{mail.subject}}, {{mail.body}} and {{mail.count}}, and the whole batch as JSON for a Loop."
                     color: root.theme.textLo; font.pixelSize: 10 }
 
                 // The password is NEVER stored in the workflow. Workflow files
@@ -716,6 +716,90 @@ Item {
                     currentIndex: root.optionIndex(model, root.cfg("op", "lock"))
                     onActivated: root.setConfig("op", currentText) }
 
+
+                // ── Values ──────────────────────────────────────────────
+                //
+                // Shown on EVERY block, because "which of these cards can give
+                // me a number, and what is it called" was unanswerable without
+                // reading the daemon. The top list is what the blocks before
+                // this one publish — click one and it lands on the clipboard
+                // ready to paste into any field. The bottom line is what THIS
+                // block hands to the ones after it.
+                Rectangle {
+                    visible: root.node !== null && root.node !== undefined
+                    Layout.fillWidth: true; Layout.topMargin: 14
+                    implicitHeight: valuesCol.implicitHeight + 20
+                    radius: 10
+                    color: root.theme.bgTop
+                    border.width: 1; border.color: root.theme.line
+
+                    ColumnLayout {
+                        id: valuesCol
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 10
+                        spacing: 6
+
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: 6
+                            FIcon { size: 13; name: "link"; color: root.theme.violet }
+                            QQC2.Label {
+                                text: "Values you can use here"
+                                color: root.theme.textMid
+                                font.pixelSize: 12; font.bold: true }
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true; wrapMode: Text.Wrap
+                            visible: root.available().length === 0
+                            text: "Nothing yet — connect a block into this one and whatever it produces shows up here."
+                            color: root.theme.textLo; font.pixelSize: 10 }
+
+                        Repeater {
+                            model: root.available()
+                            delegate: Rectangle {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                implicitHeight: 30
+                                radius: 7
+                                color: valMouse.containsMouse ? root.theme.cardHi : "transparent"
+                                MouseArea {
+                                    id: valMouse
+                                    anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.copyValue(modelData.name)
+                                }
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 6; anchors.rightMargin: 6
+                                    spacing: 8
+                                    QQC2.Label {
+                                        text: "{{" + modelData.name + "}}"
+                                        color: root.theme.accentText
+                                        font.family: root.theme.mono; font.pixelSize: 11 }
+                                    QQC2.Label {
+                                        Layout.fillWidth: true
+                                        text: modelData.desc || ""
+                                        color: root.theme.textLo; font.pixelSize: 10
+                                        elide: Text.ElideRight }
+                                    FIcon {
+                                        size: 12; name: "copy"
+                                        visible: valMouse.containsMouse
+                                        color: root.theme.textMid }
+                                }
+                            }
+                        }
+
+                        Rectangle { Layout.fillWidth: true; implicitHeight: 1
+                            color: root.theme.line
+                            visible: root.provides().length > 0 }
+                        QQC2.Label {
+                            Layout.fillWidth: true; wrapMode: Text.Wrap
+                            visible: root.provides().length > 0
+                            text: "This block then provides: " + root.provides()
+                            color: root.theme.textLo; font.pixelSize: 10 }
+                    }
+                }
+
                 // ── run mode (events only) ──────────────────────────────
                 FieldLabel { text: "After it triggers"; visible: root.isEvent }
                 Combo {
@@ -884,6 +968,34 @@ Item {
         return when + scope + "."
     }
 
+    // What the blocks upstream of this one publish, and what this one publishes
+    // in turn. Both come from the catalogue the daemon actually uses, so the
+    // panel cannot promise a value that does not exist at run time.
+    function available() {
+        if (!root.node || !root.graphProvider) return []
+        return root.graphProvider.upstreamOutputs(root.node.id)
+    }
+    function provides() {
+        if (!root.node || !root.graphProvider) return ""
+        var cat = root.graphProvider.outputCatalogue[root.node.kind] || []
+        var names = []
+        if (root.node.kind === "act_ai") {
+            var declared = root.outputs()
+            for (var d = 0; d < declared.length; d++)
+                if (declared[d].name) names.push("{{" + declared[d].name + "}}")
+        }
+        for (var i = 0; i < cat.length; i++) {
+            if (("" + cat[i].name).indexOf("<") === 0) continue
+            names.push("{{" + cat[i].name + "}}")
+        }
+        return names.join(", ")
+    }
+    function copyValue(name) {
+        // Copy rather than insert: the panel does not know which of a block's
+        // fields the user is aiming at, and pasting into the wrong one is a
+        // worse outcome than one extra keystroke.
+        backend.copyToClipboard("{{" + name + "}}")
+    }
     function outputs() {
         var v = cfg("outputs", [])
         return (v && v.length !== undefined) ? v : []

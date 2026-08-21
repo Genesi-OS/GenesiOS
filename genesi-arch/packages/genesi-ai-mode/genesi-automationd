@@ -251,6 +251,28 @@ def _keyring_get(service, account):
     return done.stdout.strip() or None
 
 
+def _publish(vars, pairs):
+    """Publish a block's named values for the blocks after it.
+
+    Each value lands twice: namespaced ("clipboard.text") and bare ("text").
+    The bare form is what a person writes when there is one obvious source,
+    which is nearly every graph; the namespaced form is how you say WHICH script
+    you meant when there are two. When two blocks publish the same bare name the
+    most recent one along the path wins, because "the one that just ran" is the
+    only reading of {{stdout}} that surprises nobody.
+    """
+    if vars is None:
+        return
+    for name, value in pairs:
+        if value is None:
+            continue
+        text = value if isinstance(value, str) else str(value)
+        vars[name] = text
+        bare = name.split(".", 1)[1] if "." in name else name
+        if bare:
+            vars[bare] = text
+
+
 def _now():
     return int(time.time())
 
@@ -816,7 +838,7 @@ class Engine:
         self.approve = None                # set by Daemon: approve(aid, action)->bool
         self._cond_snap = {}               # (aid,node) -> last output, for "changed"
 
-    def run_chain(self, auto, start_id, detail):
+    def run_chain(self, auto, start_id, detail, values=None):
         """Walk the graph from the fired trigger, following links by RESULT.
 
         Each executed node yields (outcome, output): outcome is "ok"/"err",
@@ -847,6 +869,7 @@ class Engine:
         # on the engine: two automations can be walking at the same time, and
         # one must never read the other's values.
         walk = _Walk(auto, nodes, outgoing, detail)
+        _publish(walk.vars, (values or {}).items())
         try:
             # A trigger has no run result: every outgoing link fires, whatever
             # dot it was drawn from, carrying the event detail as payload.
@@ -1162,6 +1185,7 @@ class Engine:
                     vars.setdefault(key, value)
             self.status.log(aid, "condition → %s" % ("true" if result else "false"),
                             "ok")
+            _publish(vars, [("cond.answer", "true" if result else "false")])
             return ("true" if result else "false"), payload
 
         expr = (cfg.get("expr") or "").strip()
@@ -1172,6 +1196,7 @@ class Engine:
         result = _cond_eval(rendered)
         self.status.log(aid, "condition: %s → %s"
                         % (rendered, "true" if result else "false"), "ok")
+        _publish(vars, [("cond.answer", "true" if result else "false")])
         return ("true" if result else "false"), payload
 
     # ── Loop ────────────────────────────────────────────────────────────────
@@ -1255,10 +1280,8 @@ class Engine:
             if walk.steps >= walk.budget:
                 self.status.log(aid, "loop: step budget reached — stopping", "err")
                 break
-            if vars is not None:
-                vars["item"] = item
-                vars["index"] = str(index)
-                vars["count"] = str(len(items))
+            _publish(vars, (("item", item), ("index", index),
+                            ("count", len(items))))
             walk.depth += 1
             try:
                 self._walk(walk, [(t, item) for t in targets])
@@ -1437,11 +1460,11 @@ class Engine:
                                 "subject": str(msg.get("Subject", "")),
                                 "date": str(msg.get("Date", "")),
                                 "body": body.strip()[:4000]})
-                if vars is not None and out:
-                    vars["mail_from"] = out[-1]["from"]
-                    vars["mail_subject"] = out[-1]["subject"]
-                    vars["mail_body"] = out[-1]["body"]
-                    vars["mail_count"] = str(len(out))
+                if out:
+                    _publish(vars, (("mail.from", out[-1]["from"]),
+                                    ("mail.subject", out[-1]["subject"]),
+                                    ("mail.body", out[-1]["body"]),
+                                    ("mail.count", len(out))))
                 self.status.log(aid, "📥 %d message(s)" % len(out), "ok")
                 return "ok", json.dumps(out, ensure_ascii=False)
             finally:
@@ -1548,6 +1571,9 @@ class Engine:
         out = (proc.stdout or "").strip()
         if not out and proc.returncode != 0:
             out = (proc.stderr or "").strip()
+        _publish(vars, (("script.stdout", (proc.stdout or "").strip()),
+                        ("script.stderr", (proc.stderr or "").strip()),
+                        ("script.exit", proc.returncode)))
         return ("ok" if proc.returncode == 0 else "err", out)
 
     def _act_notify(self, aid, cfg, payload="", vars=None):
@@ -1585,9 +1611,16 @@ class Engine:
                 except Exception:
                     pass
                 self.status.log(aid, "%s %s → %s" % (method, url[:60], r.status), "ok")
+                _publish(vars, (("http.status", r.status),
+                                ("http.body", text.strip())))
                 return "ok", text.strip()
         except Exception as exc:
             self.status.log(aid, "http failed: %s" % exc, "err")
+            # A failed call still has a status worth branching on when the
+            # server answered at all — an err port that cannot tell 404 from
+            # "the host does not exist" is only half a branch.
+            _publish(vars, (("http.status", getattr(exc, "code", "")),
+                            ("http.body", "")))
             return "err", ""
 
     def _act_file(self, aid, cfg):
@@ -1780,6 +1813,7 @@ class Engine:
                 return "err", (reply or "").strip()
             if vars is not None:
                 vars.update(fields)
+            _publish(vars, [("ai.reply", (reply or "").strip())])
             summary = ", ".join("%s=%s" % (k, fields[k]) for k in fields)
             self.status.log(aid, "→ " + summary, "ok")
             return "ok", summary
@@ -1794,6 +1828,7 @@ class Engine:
                                   title or "Genesi AI", reply[:400]],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  start_new_session=True)
+        _publish(vars, [("ai.reply", (reply or "").strip())])
         return "ok", (reply or "").strip()
 
     def _ai_chat(self, model, messages, use_turbo, system=None):
@@ -2086,7 +2121,7 @@ class Daemon:
             self._hotkeys.set_combos(combos)
 
     # -- firing ------------------------------------------------------------
-    def _fire(self, auto, node, detail):
+    def _fire(self, auto, node, detail, values=None):
         aid, nid = auto["id"], node.get("id")
         mode = (node.get("config", {}) or {}).get("mode", "always")
         key = (aid, nid)
@@ -2096,7 +2131,7 @@ class Daemon:
                     return
                 self._fired_once.add(key)
         threading.Thread(target=self.engine.run_chain,
-                         args=(auto, nid, detail), daemon=True).start()
+                         args=(auto, nid, detail, values), daemon=True).start()
 
     def _approval_gate(self, aid, action):
         """Block the AI-block worker until the user approves/denies a proposed
@@ -2141,15 +2176,18 @@ class Daemon:
             pattern = cfg.get("pattern") or "*"
             if pattern != "*" and not fnmatch.fnmatch(os.path.basename(full), pattern):
                 continue
-            self._fire(auto, node, "%s %s: %s" %
-                       ("folder" if is_dir else "file", change, os.path.basename(full)))
+            self._fire(auto, node, full,
+                       {"file.path": full,
+                        "file.name": os.path.basename(full),
+                        "file.change": change})
 
     # -- hotkeys -----------------------------------------------------------
     def _on_combo(self, combo_str):
         keyset = _combo_keyset(combo_str)
         for auto, node, ks in list(self._hotkey_nodes):
             if ks == keyset:
-                self._fire(auto, node, "hotkey " + combo_str)
+                self._fire(auto, node, "hotkey " + combo_str,
+                           {"hotkey.combo": combo_str})
 
     # -- resource / app / schedule poll -----------------------------------
     def _poll_loop(self):
@@ -2194,13 +2232,13 @@ class Daemon:
         self._hk_started = True
         threading.Thread(target=self._hotkeys.run, daemon=True).start()
 
-    def _edge_fire(self, auto, node, satisfied, detail):
+    def _edge_fire(self, auto, node, satisfied, detail, values=None):
         """Fire when a boolean condition crosses from false → true (edge)."""
         key = (auto["id"], node.get("id"))
         prev = self._edge.get(key, False)
         self._edge[key] = satisfied
         if satisfied and not prev:
-            self._fire(auto, node, detail)
+            self._fire(auto, node, detail, values)
 
     def _poll_once(self):
         with self.lock:
@@ -2299,7 +2337,9 @@ class Daemon:
         self._res_prev[key] = satisfied
         if satisfied and not prev:          # edge trigger
             self._fire(auto, node, "%s %s %.0f%% (now %.0f%%)" %
-                       (metric.upper(), op, thr, value))
+                       (metric.upper(), op, thr, value),
+                       {"resource.metric": metric,
+                        "resource.value": "%.0f" % value})
 
     def _poll_app(self, auto, node, appset):
         if not self._app_prev and not appset:
@@ -2312,9 +2352,11 @@ class Daemon:
         was = any(name in n for n in self._app_prev)
         now = any(name in n for n in appset)
         if trans == "opened" and now and not was:
-            self._fire(auto, node, "app opened: " + name)
+            self._fire(auto, node, "app opened: " + name,
+                       {"app.name": name, "app.transition": "opened"})
         elif trans == "closed" and was and not now:
-            self._fire(auto, node, "app closed: " + name)
+            self._fire(auto, node, "app closed: " + name,
+                       {"app.name": name, "app.transition": "closed"})
 
     def _poll_schedule(self, auto, node):
         cfg = node.get("config", {}) or {}
@@ -2328,7 +2370,7 @@ class Daemon:
             today = time.strftime("%Y-%m-%d")
             if time.strftime("%H:%M") == at and self._sched_prev.get(key) != today:
                 self._sched_prev[key] = today
-                self._fire(auto, node, "scheduled " + at)
+                self._fire(auto, node, "scheduled " + at, {"schedule.at": at})
             return
         try:
             minutes = max(0.1, float(cfg.get("interval", 60)))
@@ -2340,7 +2382,8 @@ class Daemon:
             self._sched_prev[key] = now
         elif now - last >= minutes * 60:
             self._sched_prev[key] = now
-            self._fire(auto, node, "every %g min" % minutes)
+            self._fire(auto, node, "every %g min" % minutes,
+                       {"schedule.at": time.strftime("%H:%M")})
 
     # -- webhook -----------------------------------------------------------
     #
@@ -2431,7 +2474,9 @@ class Daemon:
                     if not hmac.compare_digest(got, token):
                         self._reply(403, "bad token\n")
                         return
-                daemon._fire(auto, node, payload[:8000])
+                daemon._fire(auto, node, payload[:8000],
+                             {"webhook.body": payload[:8000],
+                              "webhook.path": path})
                 self._reply(200, "fired\n")
 
             def do_POST(self):
@@ -2520,7 +2565,8 @@ class Daemon:
         if cfg.get("onlyUrl") and not re.match(r"^[a-z][a-z0-9+.-]*://\S+$",
                                                stripped, re.I):
             return
-        self._fire(auto, node, stripped[:2000])
+        self._fire(auto, node, stripped[:2000],
+                   {"clipboard.text": stripped})
 
     # -- screenshot --------------------------------------------------------
     #
@@ -2572,7 +2618,9 @@ class Daemon:
         if not fresh:
             return
         newest = max(fresh, key=lambda n: entries[n])
-        self._fire(auto, node, os.path.join(folder, newest))
+        path = os.path.join(folder, newest)
+        self._fire(auto, node, path,
+                   {"screenshot.path": path, "screenshot.name": newest})
 
     # -- cron --------------------------------------------------------------
 
@@ -2598,7 +2646,7 @@ class Daemon:
             if not _cron_match(part, value):
                 return
         self._sched_prev[key] = stamp
-        self._fire(auto, node, "cron " + expr)
+        self._fire(auto, node, "cron " + expr, {"schedule.at": stamp})
 
     # -- power / battery ---------------------------------------------------
     def _poll_power(self, auto, node, batt):
@@ -2607,9 +2655,13 @@ class Daemon:
         plugged = True if batt is None else bool(batt.power_plugged)
         pct = None if batt is None else batt.percent
         if ev == "on_ac":
-            self._edge_fire(auto, node, plugged, "AC plugged in")
+            self._edge_fire(auto, node, plugged, "AC plugged in",
+                            {"power.event": "on_ac",
+                             "power.level": "" if pct is None else "%.0f" % pct})
         elif ev == "on_battery":
-            self._edge_fire(auto, node, not plugged, "on battery")
+            self._edge_fire(auto, node, not plugged, "on battery",
+                            {"power.event": "on_battery",
+                             "power.level": "" if pct is None else "%.0f" % pct})
         elif ev in ("battery_below", "battery_above") and pct is not None:
             try:
                 level = float(cfg.get("level", 20))
@@ -2617,7 +2669,8 @@ class Daemon:
                 level = 20.0
             sat = pct < level if ev == "battery_below" else pct > level
             self._edge_fire(auto, node, sat, "battery %.0f%% %s %.0f%%" %
-                            (pct, "<" if ev == "battery_below" else ">", level))
+                            (pct, "<" if ev == "battery_below" else ">", level),
+                            {"power.event": ev, "power.level": "%.0f" % pct})
 
     # -- temperature -------------------------------------------------------
     def _poll_temp(self, auto, node):
@@ -2644,7 +2697,9 @@ class Daemon:
         if hottest is None:
             return
         self._edge_fire(auto, node, hottest > thr,
-                        "temp %.0f°C > %.0f°C" % (hottest, thr))
+                        "temp %.0f°C > %.0f°C" % (hottest, thr),
+                        {"temp.value": "%.0f" % hottest,
+                         "temp.sensor": (cfg.get("sensor") or "").strip()})
 
     # -- disk (usage threshold / mount / unmount) --------------------------
     def _mount_set(self):
@@ -2668,7 +2723,8 @@ class Daemon:
             except Exception:
                 return
             self._edge_fire(auto, node, pct > thr,
-                            "disk %s %.0f%% > %.0f%%" % (path, pct, thr))
+                            "disk %s %.0f%% > %.0f%%" % (path, pct, thr),
+                            {"disk.path": path, "disk.value": "%.0f" % pct})
             return
         if mountset is None:
             return
@@ -2679,10 +2735,12 @@ class Daemon:
             return
         if ev == "mounted":
             for m in sorted(mountset - prev):
-                self._fire(auto, node, "mounted: " + m)
+                self._fire(auto, node, "mounted: " + m,
+                           {"disk.path": m, "disk.event": "mounted"})
         elif ev == "unmounted":
             for m in sorted(prev - mountset):
-                self._fire(auto, node, "unmounted: " + m)
+                self._fire(auto, node, "unmounted: " + m,
+                           {"disk.path": m, "disk.event": "unmounted"})
 
     # -- USB device add / remove ------------------------------------------
     def _usb_set(self):
@@ -2713,10 +2771,12 @@ class Daemon:
         removed = prev - usbset
         if action == "added":
             for d in sorted(added):
-                self._fire(auto, node, "USB added: " + d[-40:])
+                self._fire(auto, node, "USB added: " + d[-40:],
+                           {"usb.action": "added", "usb.device": d})
         elif action == "removed":
             for d in sorted(removed):
-                self._fire(auto, node, "USB removed: " + d[-40:])
+                self._fire(auto, node, "USB removed: " + d[-40:],
+                           {"usb.action": "removed", "usb.device": d})
 
     # -- network online/offline, interface up/down ------------------------
     def _net_online(self):
@@ -2734,7 +2794,8 @@ class Daemon:
             if online is None:
                 return
             self._edge_fire(auto, node, online if ev == "online" else not online,
-                            "internet " + ("online" if ev == "online" else "offline"))
+                            "internet " + ("online" if ev == "online" else "offline"),
+                            {"network.event": ev, "network.iface": ""})
         elif ev in ("iface_up", "iface_down") and psutil:
             iface = (cfg.get("iface") or "").strip()
             try:
@@ -2743,7 +2804,8 @@ class Daemon:
                 return
             up = bool(stats.get(iface).isup) if iface in stats else False
             self._edge_fire(auto, node, up if ev == "iface_up" else not up,
-                            "%s %s" % (iface, "up" if ev == "iface_up" else "down"))
+                            "%s %s" % (iface, "up" if ev == "iface_up" else "down"),
+                            {"network.event": ev, "network.iface": iface})
 
     # -- a named process over a CPU% / RAM threshold ----------------------
     def _poll_process(self, auto, node):
@@ -2795,9 +2857,10 @@ class Daemon:
         prev = self._edge.get(key, False)
         self._edge[key] = is_idle
         if ev == "idle" and is_idle and not prev:
-            self._fire(auto, node, "idle for %g min" % mins)
+            self._fire(auto, node, "idle for %g min" % mins,
+                       {"idle.minutes": "%g" % mins})
         elif ev == "active" and (not is_idle) and prev:
-            self._fire(auto, node, "back from idle")
+            self._fire(auto, node, "back from idle", {"idle.minutes": "0"})
 
     # -- a log/text file gets a new line matching a regex -----------------
     def _poll_log(self, auto, node):
@@ -2836,7 +2899,9 @@ class Daemon:
             if not line.strip():
                 continue
             if rx is None or rx.search(line):
-                self._fire(auto, node, "log: " + line.strip()[:80])
+                self._fire(auto, node, line.strip(),
+                           {"log.line": line.strip(),
+                            "log.path": path})
                 if rx is None:
                     break              # no filter → one fire per batch is enough
 
@@ -2908,7 +2973,8 @@ class Daemon:
         for d in sorted(changed):
             if want and want not in d.lower():
                 continue
-            self._fire(auto, node, "BT %s: %s" % (action, d))
+            self._fire(auto, node, "BT %s: %s" % (action, d),
+                       {"bt.action": action, "bt.device": d})
 
     # -- manual run (from the GUI) ----------------------------------------
     def run_now(self, aid):

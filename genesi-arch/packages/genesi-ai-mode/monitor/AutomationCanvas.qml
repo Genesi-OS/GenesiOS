@@ -135,6 +135,72 @@ Item {
         from: 0; to: 18; duration: 700
     }
 
+    // ── what the blocks BEFORE this one can hand it ─────────────────────────
+    //
+    // Flow of control was never the hard part — a link already says what runs
+    // next. Flow of DATA was: the only channel was {input}, the previous
+    // block's whole output as one string, and there was no way to find out what
+    // a block had to offer without reading the daemon's source.
+    //
+    // So: walk the links BACKWARDS from the selected block and collect what
+    // everything upstream publishes. Only upstream, because a value from a
+    // block that has not run yet is not a value, and offering it would be an
+    // invitation to write a workflow that renders {{stdout}} literally.
+    property var outputCatalogue: ({})
+
+    function upstreamOutputs(nodeId) {
+        if (!nodeId) return []
+        var byId = ({})
+        for (var i = 0; i < nodes.length; i++) byId[nodes[i].id] = nodes[i]
+        var feeders = ({})
+        for (var j = 0; j < links.length; j++) {
+            var to = links[j].to
+            if (!feeders[to]) feeders[to] = []
+            feeders[to].push(links[j].from)
+        }
+        // Breadth-first up the graph. `seen` also guards the cycle a user can
+        // absolutely draw on this canvas.
+        var seen = ({})
+        seen[nodeId] = true
+        var queue = (feeders[nodeId] || []).slice()
+        var chain = []
+        while (queue.length > 0 && chain.length < 40) {
+            var id = queue.shift()
+            if (seen[id]) continue
+            seen[id] = true
+            if (byId[id]) chain.push(byId[id])
+            var more = feeders[id] || []
+            for (var k = 0; k < more.length; k++) queue.push(more[k])
+        }
+
+        var out = []
+        var taken = ({})
+        function add(name, desc, from) {
+            if (!name || taken[name]) return
+            taken[name] = true
+            out.push({ name: name, desc: desc, from: from })
+        }
+        for (var c = 0; c < chain.length; c++) {
+            var n = chain[c]
+            var label = n.title || n.kind
+            // An AI block's fields are whatever the user declared on it, so
+            // they come from the graph rather than from the catalogue.
+            if (n.kind === "act_ai") {
+                var declared = (n.config && n.config.outputs) ? n.config.outputs : []
+                for (var d = 0; d < declared.length; d++)
+                    if (declared[d] && declared[d].name)
+                        add(declared[d].name, declared[d].desc || "a value from the AI block", label)
+            }
+            var fields = outputCatalogue[n.kind] || []
+            for (var f = 0; f < fields.length; f++) {
+                if (("" + fields[f].name).indexOf("<") === 0) continue
+                add(fields[f].name, fields[f].desc, label)
+            }
+        }
+        add("input", "everything the previous block produced", "the block just before")
+        return out
+    }
+
     Shortcut {
         sequence: StandardKey.Undo
         enabled: root.ready && root.undoStack.length > 0
@@ -143,6 +209,8 @@ Item {
 
     Component.onCompleted: {
         backend.ensureAutomationDaemon()
+        try { root.outputCatalogue = JSON.parse(backend.nodeOutputCatalogue()) }
+        catch (e) { root.outputCatalogue = ({}) }
         Qt.callLater(initialize)
     }
 
