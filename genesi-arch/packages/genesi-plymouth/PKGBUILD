@@ -1,7 +1,14 @@
 # Maintainer: Genesi OS Team <dev@genesios.org>
 pkgname=genesi-plymouth
 pkgver=1.0.0
-pkgrel=2
+# 2026-08-21: the leaf was clipped along its bottom edge on the boot splash.
+# The outline path ends at y=256 -- exactly the old viewBox edge -- and it is a
+# 13px STROKE, which paints 6.5px either side of the path, so the tip reached
+# y=262.5 and was cut off. Counting the stroke, the real ink runs y=11.5 to
+# y=262.5: 251 tall, centred on y=137. viewBox is now "0 9 256 256", which holds
+# it with 2.5px to spare top and bottom. The box stays 256 square on purpose --
+# the rendered logo is exactly the size it was, only no longer clipped.
+pkgrel=3
 pkgdesc='Genesi OS animated Plymouth boot splash'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

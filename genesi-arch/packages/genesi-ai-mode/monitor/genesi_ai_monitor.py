@@ -125,6 +125,7 @@ class Backend(QObject):
         self._turbo_model = None
         self._turbo_log = None       # captured stderr of the serve subprocess
         self._turbo_spec = False     # is the running Turbo using speculative decoding?
+        self._turbo_busy = False     # a start/stop we asked for is in flight
         self._bench_running = False  # a benchmark is in flight (guard re-entry)
         self._recall = False         # route chat through the mempalace recall bridge?
         self._agent_mode = self._load_agent_mode()
@@ -137,11 +138,35 @@ class Backend(QObject):
 
     @Slot(result=str)
     def state(self):
+        """The daemon's state, plus whether Turbo is ACTUALLY serving.
+
+        The Turbo switch used to show intent: it went on when you flipped it and
+        stayed off when anything else started Turbo — an automation, the CLI, a
+        Mesh peer, a leftover server from the last session. So the machine could
+        be serving a model with the switch sitting at off, which is the UI
+        telling the user something untrue about their own computer.
+
+        The probe is the same one the rest of the stack uses, and it costs a
+        loopback /health with a 1s timeout every couple of seconds.
+        """
         try:
             with open(STATE_FILE) as f:
-                return f.read()
-        except OSError:
-            return "{}"
+                data = json.load(f)
+        except (OSError, ValueError):
+            data = {}
+        try:
+            running = bool(turbo_ctl.turbo_alive())
+            data["turbo_running"] = running
+            data["turbo_model"] = (turbo_ctl.current_model() or "") if running else ""
+        except Exception:
+            # A probe that fails must not blank the switch: say nothing rather
+            # than claim Turbo is off.
+            pass
+        # While we are starting or stopping it ourselves, our own intent is the
+        # truth — the server is not answering yet, and syncing off the probe
+        # would flick the switch back under the user's finger.
+        data["turbo_busy"] = bool(getattr(self, "_turbo_busy", False))
+        return json.dumps(data)
 
     # ── Genesi Mesh ──────────────────────────────────────────────────────────
     # The daemon already publishes everything the UI needs as JSON, and the CLI
@@ -1244,10 +1269,17 @@ class Backend(QObject):
     # ── Turbo (speculative decoding via genesi-ai-turbo) ─────────────────────
     @Slot(bool, str, bool)
     def setTurbo(self, on, model, spec=False):
-        if on:
-            self._start_turbo(model, spec)
-        else:
-            self._stop_turbo()
+        # Marked busy for the whole operation: starting a server takes seconds,
+        # and until it answers /health the probe in state() would read "off" and
+        # flick the switch back while the user is still looking at it.
+        self._turbo_busy = True
+        try:
+            if on:
+                self._start_turbo(model, spec)
+            else:
+                self._stop_turbo()
+        finally:
+            self._turbo_busy = False
 
     def _stop_turbo(self):
         self._turbo = False

@@ -100,13 +100,21 @@ Kirigami.ApplicationWindow {
 
     // Changing the model only (re)starts Turbo — it never stops it. Only the user
     // flipping the switch off (turboRequested=false) stops the Turbo server.
+    // True while poll() is copying the REAL Turbo state into these properties.
+    // Every handler below has to stand down during that, or the sync becomes a
+    // feedback loop: the poll assigns turboRequested, the handler fires, and
+    // setTurbo restarts the very server we were only trying to display.
+    property bool turboSyncing: false
+
     onTurboModelChanged: {
+        if (turboSyncing) return
         // Switching back to a normal Ollama tag clears the GGUF selection, so the
         // library list stops showing a stale "in use" badge.
         if (turboGguf && turboModel !== turboGguf) turboGguf = ""
         if (turboRequested && turboModel) backend.setTurbo(true, turboModel, turboSpec)
     }
     onTurboRequestedChanged: {
+        if (turboSyncing) return
         if (turboRequested && turboModel) backend.setTurbo(true, turboModel, turboSpec)
         else if (!turboRequested) {
             backend.setTurbo(false, "", false)
@@ -115,6 +123,7 @@ Kirigami.ApplicationWindow {
     }
     // Flipping speculative on/off while Turbo runs restarts it in the new mode.
     onTurboSpecChanged: {
+        if (turboSyncing) return
         if (turboRequested && turboModel) backend.setTurbo(true, turboModel, turboSpec)
     }
 
@@ -190,6 +199,29 @@ Kirigami.ApplicationWindow {
         forceMode = st.force_mode || "auto"
         profileMode = st.profile_mode || "auto"
         activity = st.activity || "idle"
+
+        // Reflect what Turbo is ACTUALLY doing, not what this window last asked
+        // for. Anything can start it — an automation, the CLI, a Mesh peer, a
+        // server left over from the previous session — and until now the switch
+        // only ever showed this window's own intent, so the machine could be
+        // serving a model with the switch sitting at off.
+        //
+        // Skipped while turbo_busy: a start takes seconds to answer /health,
+        // and syncing from the probe in that window would flick the switch back
+        // under the user's finger.
+        if (st.turbo_busy !== true && st.turbo_running !== undefined) {
+            turboSyncing = true
+            if (st.turbo_running !== turboRequested)
+                turboRequested = st.turbo_running
+            // Adopt the model it is really serving, so the UI does not label a
+            // running server with the model this window happened to have picked.
+            if (st.turbo_running && st.turbo_model && st.turbo_model !== "?"
+                    && st.turbo_model !== turboModel) {
+                turboModelLocked = true
+                turboModel = st.turbo_model
+            }
+            turboSyncing = false
+        }
     }
 
     Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true; onTriggered: win.poll() }

@@ -7,7 +7,17 @@ pkgver=1.0.0
 # the systray "updates available" icon never lit up on installed systems.
 # 2026-08-07 (3): the tray applet moved from PyQt6 to libappindicator, so the
 # icon finally appears in the Hyprland/caelestia bar. Deps follow.
-pkgrel=3
+# 2026-08-21 (4): the systray applet segfaulted within seconds of logging in on
+# a fresh install -- python3.14 dumping core, reported from a KDE VM. The applet
+# rebuilds its whole menu every 5s, and
+# app_indicator_set_secondary_activate_target() keeps a BARE pointer to the row
+# it is handed. The old menu was then finalised under it, so the next rebuild
+# called gtk_widget_get_parent() on freed memory: Gtk-CRITICAL first, SIGSEGV a
+# few cycles later. Fixed upstream (genesi-update 9277922) by installing the
+# menu in the only safe order -- set_menu, then set_secondary_activate_target,
+# then release the previous references -- and by holding the live menu on the
+# instance, since the C side is not holding it for us.
+pkgrel=4
 pkgdesc="Interactive update notifier & applier for Genesi OS with systray applet"
 install='genesi-update.install'
 arch=('any')
