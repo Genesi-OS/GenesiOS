@@ -1046,7 +1046,17 @@ pkgver=1.0.0
 # "expected JSON with ..." three steps from the mistake. The editor now slugs
 # the name as it is typed and says it did; the daemon refuses the rest and names
 # a spelling that would work.
-pkgrel=173
+# 2026-08-21 (174): "any app closed" ran the workflow forever, and it was my
+# own doing. Running a workflow STARTS processes -- the shell behind Run Script,
+# notify-send, a model server, python -- and when they exit a trigger watching
+# for any app closing sees them and starts the workflow again, which starts more
+# of them. The loop is real, it is fast, and nothing in the user's graph is
+# wrong. A trigger now stands down while its own automation is still running,
+# and for five seconds afterwards, which is when the last run's children are
+# being reaped. Nothing legitimate is lost: the pollers re-check every couple of
+# seconds, so an event that still matters is still there. Covered by five checks
+# in ci/automation-engine-test.py.
+pkgrel=174
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

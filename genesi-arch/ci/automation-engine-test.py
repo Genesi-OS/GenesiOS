@@ -743,5 +743,55 @@ fired = _poll_app_once({"transition": "opened"}, {"bash"},
                        {"bash", "a", "b", "c", "d"})
 check("a login storm fires once, not five times", len(fired) == 1, str(fired))
 
+
+print("\n[23] an automation cannot be re-triggered by its own side effects")
+# Reported as "it just runs forever". With an App block set to "any app closed",
+# the workflow's own children -- the shell behind Run Script, notify-send, a
+# model server -- exit, the trigger sees them, and the workflow starts again.
+# The loop is real and fast, and nothing in the graph is wrong.
+import threading as _th
+
+
+def _daemon_with(running):
+    d = mod.Daemon.__new__(mod.Daemon)
+    d.status = FakeStatus()
+    d.status.is_running = lambda aid: running
+    d.lock = _th.Lock()
+    d._fired_once = set()
+    d._fire_quiet = {}
+    started = []
+    d.engine = type("E", (), {"run_chain": lambda *a, **k: started.append(a)})()
+    return d, started
+
+
+AUTO = {"id": "a1", "enabled": True}
+NODE = {"id": "n", "kind": "evt_app", "config": {}}
+
+d, started = _daemon_with(True)
+d._fire(AUTO, NODE, "app closed: sh")
+check("a trigger stands down while its own workflow runs",
+      not started, str(started))
+
+d, started = _daemon_with(False)
+d._fire(AUTO, NODE, "app closed: sh")
+check("and fires normally when it is idle", len(started) == 1, str(started))
+
+d, started = _daemon_with(False)
+d._quiet_after_run("a1")
+d._fire(AUTO, NODE, "app closed: sh")
+check("it also stays quiet just after a run, while children exit",
+      not started, str(started))
+
+d, started = _daemon_with(False)
+d._fire_quiet["a1"] = 0.0          # window long expired
+d._fire(AUTO, NODE, "app closed: sh")
+check("once the window passes it fires again", len(started) == 1, str(started))
+
+d, started = _daemon_with(False)
+d._quiet_after_run("a1")
+d._fire({"id": "other", "enabled": True}, NODE, "app closed: sh")
+check("the quiet window is per automation, not global",
+      len(started) == 1, str(started))
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

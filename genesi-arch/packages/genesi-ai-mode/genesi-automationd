@@ -786,6 +786,12 @@ class Status:
                 cur["log"] = cur["log"][-LOG_KEEP:]
         self._flush()
 
+    def is_running(self, aid):
+        """Is this automation mid-run right now?"""
+        with self._lock:
+            cur = self._autos.get(aid)
+            return bool(cur and cur.get("running"))
+
     def state(self, aid, state, running=None):
         with self._lock:
             cur = self._autos.get(aid)
@@ -846,6 +852,7 @@ class Engine:
         self.status = status
         self._tools = LocalToolExecutor() if _AGENT_OK else None
         self.approve = None                # set by Daemon: approve(aid, action)->bool
+        self.quiet_after_run = None        # set by Daemon: quiet_after_run(aid)
         self._cond_snap = {}               # (aid,node) -> last output, for "changed"
 
     def run_chain(self, auto, start_id, detail, values=None):
@@ -890,6 +897,10 @@ class Engine:
         finally:
             self.status.state(aid, "listening" if auto.get("enabled") else "idle",
                               running=False)
+            # The run's own children are exiting right about now; hold triggers
+            # off until they have. See _fire for why this exists.
+            if self.quiet_after_run is not None:
+                self.quiet_after_run(aid)
             self.status.log(aid, "✓ finished", "ok")
 
     def _walk(self, walk, queue):
@@ -2103,6 +2114,11 @@ class Daemon:
         self._pending = {}                 # req_id -> {event, approved} (AI "ask")
         self._pending_lock = threading.Lock()
         self._fired_once = set()           # (aid, nid) once-nodes already fired
+        # aid -> monotonic time until which its triggers stay quiet. Set when
+        # a run ends, because that is exactly when the run's own children are
+        # exiting and a process-watching trigger would see them.
+        self._fire_quiet = {}
+        self.engine.quiet_after_run = self._quiet_after_run
         # poll-loop memory
         self._res_prev = {}                # (aid,nid) -> bool satisfied
         self._app_prev = set()             # process names seen last tick
@@ -2203,10 +2219,37 @@ class Daemon:
             self._hotkeys.set_combos(combos)
 
     # -- firing ------------------------------------------------------------
+    # How long a workflow's triggers stay deaf after it finishes. Long enough
+    # for the shells, notify-send and model servers it started to be reaped;
+    # short enough that a real event a moment later is not lost, since the
+    # pollers re-check every couple of seconds anyway.
+    QUIET_AFTER_RUN = 5.0
+
+    def _quiet_after_run(self, aid):
+        self._fire_quiet[aid] = time.monotonic() + self.QUIET_AFTER_RUN
+
     def _fire(self, auto, node, detail, values=None):
         aid, nid = auto["id"], node.get("id")
         mode = (node.get("config", {}) or {}).get("mode", "always")
         key = (aid, nid)
+
+        # An automation must not be re-triggered by its own side effects.
+        #
+        # Running a workflow starts processes: a shell for a Run Script,
+        # notify-send, a model server, python. Those exit, and a trigger
+        # watching for "any app closed" saw them and fired the workflow again,
+        # which started more of them. Reported as "it just runs forever", and it
+        # is: the loop is real, it is fast, and nothing in the graph is wrong.
+        #
+        # So a trigger stands down while its own automation is still running,
+        # and for a short breath afterwards, which is when the children of the
+        # last run are exiting. Nothing legitimate is lost: an event that
+        # matters while a run is in flight will still be there on the next tick.
+        if self.status.is_running(aid):
+            return
+        quiet_until = self._fire_quiet.get(aid, 0.0)
+        if time.monotonic() < quiet_until:
+            return
         if mode == "once":
             with self.lock:
                 if key in self._fired_once:
