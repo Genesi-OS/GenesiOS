@@ -1,10 +1,13 @@
 # Dummy package to replace libpamac-aur and avoid install script errors
 pkgname=libpamac-dummy
 pkgver=1.0.0
-pkgrel=1
+# 2026-08-21: license declaration corrected to AGPL-3.0-or-later, matching the
+# repository's LICENSE and the rest of the Genesi packages. 'GPL' is a deprecated identifier with no version; this stub carries no
+# upstream code of its own.
+pkgrel=2
 pkgdesc='Dummy package to replace libpamac-aur (prevents install script errors)'
 arch=('any')
-license=('GPL')
+license=('AGPL-3.0-or-later')
 provides=('libpamac-aur' 'libpamac' 'pamac-aur')
 conflicts=('libpamac-aur' 'libpamac' 'pamac-aur')
 replaces=('libpamac-aur' 'libpamac' 'pamac-aur')

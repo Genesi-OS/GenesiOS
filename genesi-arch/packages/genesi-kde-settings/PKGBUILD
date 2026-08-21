@@ -13,10 +13,12 @@ pkgver=4.9
 # install with "X and genesi-kde-settings are in conflict". We only need to
 # replace the KDE-specific cachyos-kde-settings, so keep that and drop the
 # generic one; now genesi-kde-settings coexists with a CachyOS WM's settings.
-pkgrel=7
+# 2026-08-21: license declaration corrected to AGPL-3.0-or-later, matching the
+# repository's LICENSE and the rest of the Genesi packages. GPL-1.0-only was a leftover from a PKGBUILD template.
+pkgrel=8
 arch=('any')
 url="https://github.com/Genesi-OS/genesi-pkgbuilds"
-license=(GPL-1.0-only)
+license=('AGPL-3.0-or-later')
 depends=('ttf-fantasque-nerd'
     'noto-fonts'
     'ttf-fira-sans'

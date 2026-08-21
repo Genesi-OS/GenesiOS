@@ -76,13 +76,22 @@ When inference stops, every change is reverted so your compiler can have the res
 
 ## 📥 Download
 
-> **Status:** active development. ISOs are produced by the
-> [ISO pipeline](https://github.com/Genesi-OS/GenesiOS/actions/workflows/iso-pipeline.yml)
-> on every qualifying push (as build artifacts) and attached to a GitHub Release
-> on each `v*` tag.
+**One file, always the current build.**
 
-- **Tagged releases:** [github.com/Genesi-OS/GenesiOS/releases](https://github.com/Genesi-OS/GenesiOS/releases)
-- **Latest CI build:** open the most recent successful **Genesi ISO Pipeline** run and download the `genesi-os-iso` artifact.
+```bash
+# fast, resumable, no account needed
+aria2c -x16 -s16 https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso
+```
+
+Or click through from the
+[Download page](https://github.com/Genesi-OS/GenesiOS/releases/tag/rolling),
+which also carries the checksum and the changelog for the build you are getting.
+
+> `genesi-os-latest.iso` is rebuilt from `main` and replaced in place, so the
+> link never changes and there is only ever one ISO. Older builds are kept as
+> browsable archives under
+> [Releases](https://github.com/Genesi-OS/GenesiOS/releases) (split into parts,
+> since GitHub caps a single file at 2 GB).
 
 ### System requirements
 
@@ -96,7 +105,8 @@ When inference stops, every change is reverted so your compiler can have the res
 ### Verify your download
 
 ```bash
-sha256sum -c genesi-*.iso.sha256
+curl -O https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso.sha256
+sha256sum -c genesi-os-latest.iso.sha256
 ```
 
 ---
@@ -107,7 +117,7 @@ sha256sum -c genesi-*.iso.sha256
 
 ```bash
 # Linux / macOS
-sudo dd if=genesi-*.iso of=/dev/sdX bs=4M status=progress oflag=sync
+sudo dd if=genesi-os-latest.iso of=/dev/sdX bs=4M status=progress oflag=sync
 ```
 On Windows use [Rufus](https://rufus.ie/) or [Ventoy](https://www.ventoy.net/).
 

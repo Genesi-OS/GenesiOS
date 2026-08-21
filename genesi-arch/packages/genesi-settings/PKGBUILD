@@ -159,11 +159,14 @@ pkgver=1.3.4
 # state, so the repair pass now bounces through another scheme to force a real
 # rewrite; and kwriteconfig6 emits no change signal, so already-open Qt apps kept
 # the stale palette -- KGlobalSettings.notifyChange is now sent too.
-pkgrel=51
+# 2026-08-21: license declaration corrected to AGPL-3.0-or-later, matching the
+# repository's LICENSE and the rest of the Genesi packages. GPL-1.0-only was a leftover from a PKGBUILD template -- that is the 1989
+# license, and this is Genesi's own settings app.
+pkgrel=52
 epoch=1
 groups=(genesi)
 arch=('any')
-license=(GPL-1.0-only)
+license=('AGPL-3.0-or-later')
 makedepends=('coreutils' 'git')
 pkgdesc='Genesi OS - System Settings'
 url="https://github.com/Genesi-OS/genesi-settings"

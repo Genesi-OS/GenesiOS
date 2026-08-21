@@ -151,11 +151,14 @@ pkgver=1.0.0
 # Each row now shows [ok] / [NÃO RESPONDE] and names the fix. New
 # peer_facing_zones() helper (every firewalld zone a beacon can arrive on) so
 # the code that OPENS ports uses the same set the doctor already inspects.
-pkgrel=19
+# 2026-08-21: license declaration corrected to AGPL-3.0-or-later, matching the
+# repository's LICENSE and the rest of the Genesi packages. Not a relicense: 'AGPL3' is the deprecated identifier for the same thing,
+# and namcap warns on it.
+pkgrel=20
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
-license=('AGPL3')
+license=('AGPL-3.0-or-later')
 depends=('python')
 # llama.cpp is what actually moves the tensors. Not a hard dep so the daemon can
 # be installed and configured before the backend is chosen (Vulkan vs CUDA).
