@@ -9,30 +9,53 @@
 | Area | Status |
 |------|--------|
 | Bootable ISO based on CachyOS | ✅ Complete |
-| KDE Plasma 6 desktop | ✅ Complete |
+| KDE Plasma 6 desktop (+ 8 more DEs in the installer) | ✅ Complete |
 | Reproducible build system (archiso + Calamares) | ✅ Complete |
 | **Phase 1 — Visual Identity** | ✅ Complete |
-| **Phase 2 — AI Mode (local AI optimizations)** | 🟩 ~90% (core shipping) |
-| **Phase 3 — Own Packages & Repository** | ✅ Operational (8 packages shipping) |
-| **Phase 4 — IDE & Dev Tools** (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) | 🟦 In progress — Genesi Code shipping (local AI agent + LSP); Hermes pending |
-| **Phase 5 — Polish & Distribution** | ⬜ Pending |
-| **Phase 6 — Welcome & Control Center** (app installer + tweaks) | ⬜ Pending |
+| **Phase 2 — AI Mode (local AI optimizations)** | ✅ Shipping — daemon, Plasma widget, Monitor, Turbo, Mesh |
+| **Phase 3 — Own Packages & Repository** | ✅ Operational — **41 packages**, stable + testing channels |
+| **Phase 4 — IDE & Dev Tools** | 🟦 In progress — Genesi Code, Forge, Sandboxes, Ports, DB Explorer, API Inspector shipping; Hermes pending |
+| **Phase 5 — Polish & Distribution** | 🟦 In progress — site, wiki and forum live; DE selector done |
+| **Phase 6 — Welcome & Control Center** | ✅ Shipping — Welcome app, Package Installer, maintenance page, channel switch |
 
-### Two production CI pipelines
+Genesi is **rolling**: every push to `main` rebuilds the ISO and republishes the
+packages. There is no gap between merged and shipped, and no release train to
+wait for.
 
-Genesi OS ships through **two independent GitHub Actions pipelines**:
+### The CI pipelines
 
-1. **Package / Update pipeline** (`.github/workflows/publish-packages.yml`) —
-   builds the eight Genesi packages inside a `cachyos-v3` container, runs
-   `repo-add`, and commits the resulting pacman repository to
-   `genesi-arch/repo/x86_64`. Installed systems pull from this repo, so a
-   normal `pacman -Syu` (or the in-OS update notifier) delivers updates in near
-   real time. `main` = **stable** channel, `develop` = **testing** channel.
-2. **ISO pipeline** (`.github/workflows/iso-pipeline.yml`) — a two-stage build
-   that first **validates the install** (dependency dry-run + a real `pacstrap`
-   into a throwaway root) and only then runs `mkarchiso` to produce a fresh
-   `.iso`. Artifacts are uploaded per run; pushing a `v*` tag cuts a GitHub
-   Release. It only fires on ISO inputs (docs-only commits are skipped).
+Three workflows carry the product. They are deliberately separate, because a
+broken package must not be able to hold up an ISO and vice versa.
+
+1. **Packages / updates** — `publish-packages.yml`. Builds every Genesi package
+   inside a `cachyos-v3` container, runs `repo-add`, and commits the resulting
+   pacman repository into `genesi-arch/repo/x86_64` **on the branch it ran
+   from**. Installed systems pull that path over HTTPS, so a plain
+   `pacman -Syu` (or the in-OS update notifier) delivers updates minutes after a
+   merge. Runs on `main` **and** `develop` — see the channel table below.
+2. **ISO** — `iso-pipeline.yml`. Two stages: it first *validates the install*
+   (dependency dry-run plus a real `pacstrap` into a throwaway root) and only
+   then runs `mkarchiso`. **`main` only.** The finished ISO is uploaded to
+   Cloudflare R2 as a single object that is replaced in place, so the download
+   link never changes and only one ISO is ever stored. Older builds stay
+   browsable as split GitHub Releases.
+3. **Hygiene** — `hygiene-check.yml`. Repository sanity, on both branches.
+
+### Update channels
+
+| | Stable | Testing |
+|---|---|---|
+| Branch | `main` | `develop` |
+| pacman repo | `[genesi]` | `[genesi-testing]` |
+| Database file | `genesi.db` | `genesi-testing.db` |
+| Served from | `raw.githubusercontent.com/Genesi-OS/GenesiOS/**main**/genesi-arch/repo/$arch` | the same path on **`develop`** |
+| Builds an ISO | Yes | **No** — packages only |
+| How to enable | Default | `genesi-channel set testing`, or the switch in the Welcome app |
+
+Testing is **additive**: a machine on it keeps `[genesi]` and gains
+`[genesi-testing]`, and pacman installs whichever build of a package is newer.
+A tester therefore never falls behind stable, and going back is just dropping
+the extra repo.
 
 See [Build & Release Infrastructure](#build--release-infrastructure) for details.
 
@@ -41,11 +64,11 @@ See [Build & Release Infrastructure](#build--release-infrastructure) for details
 ## Phase Order
 
 1. **Phase 1** — Visual Identity ✅ **Complete**
-2. **Phase 2** — AI Mode (local AI optimizations) 🟩 **~90%**
+2. **Phase 2** — AI Mode (local AI optimizations) ✅ **Shipping**
 3. **Phase 3** — Own Packages & Repository (infrastructure) ✅ **Operational**
-4. **Phase 4** — IDE & Dev Tools (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) 🟦 **In progress** (Genesi Code shipping)
-5. **Phase 5** — Polish & Distribution ⬜ Pending
-6. **Phase 6** — Genesi Welcome & Control Center ⬜ Pending
+4. **Phase 4** — IDE & Dev Tools 🟦 **In progress** (Genesi Code, Forge and the dev tools ship; Hermes pending)
+5. **Phase 5** — Polish & Distribution 🟦 **In progress** (site, wiki, forum and DE selector done)
+6. **Phase 6** — Genesi Welcome & Control Center ✅ **Shipping**
 
 ---
 
@@ -75,7 +98,7 @@ See [Build & Release Infrastructure](#build--release-infrastructure) for details
 
 ---
 
-## PHASE 2: AI Mode — Local AI Optimizations 🟩 ~90%
+## PHASE 2: AI Mode — Local AI Optimizations ✅ SHIPPING
 > Make Genesi OS run local AI better than any other desktop OS.
 
 > **★ Core design principle — weak hardware is a first-class target.**
@@ -918,7 +941,7 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 
 ---
 
-## PHASE 5: Polish & Distribution ⬜ PENDING
+## PHASE 5: Polish & Distribution 🟦 IN PROGRESS
 > Final polish and public release.
 
 - [x] Custom Calamares slideshow & imagery — Genesi leaf logo/icon, three
@@ -927,10 +950,10 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
       package and the live ISO read the exact same dir, so an installed system
       can no longer fall back to CachyOS art; `customize_airootfs.sh` copies it
       authoritatively (no fragile CachyOS overlay).
-- [ ] Official Genesi OS website
-- [ ] Complete end-user documentation
-- [ ] Download page with ISOs
-- [ ] Community (Discord/Forum)
+- [x] Official Genesi OS website — genesios.org
+- [x] End-user documentation — the wiki, plus a Privacy Policy and Terms
+- [x] Download page — one ISO on Cloudflare R2, replaced in place
+- [x] Community — forum.genesios.org
 - [x] Automatic updates via the self-hosted repository *(delivered in Phase 3)*
 
 ### 5.1 Desktop Environment selector in the installer (Calamares)
@@ -1066,6 +1089,38 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 ### 6.4 Integration
 - [ ] Launches the AI Mode Monitor (2.9), Genesi Code (4.1) and Genesi Hermes (4.2)
 - [ ] MemPalace status surfaced here too
+
+---
+
+## Known gaps
+
+Things that ship today with a limit worth stating plainly, rather than being
+discovered by the person using them.
+
+### Plain-language file search cannot see inside images
+
+`genesi-find` turns your description into a filter over **file names,
+extensions and dates**, and runs it locally. That works when the file is named
+something ("contrato-aluguel.pdf"), and fails exactly where it would be most
+useful: a photo straight off a phone or a camera is `IMG_20260812_193344.jpg`,
+so "aquela foto do churrasco" has nothing to match on.
+
+Fixing it properly means looking at the pixels, and the design constraint is
+that the search must stay local and must not become expensive:
+
+- **Only with a vision-capable model already warm.** Same rule as every other
+  AI Assist helper: never load a model to be useful.
+- **Bounded.** Never "describe every image on the disk". Narrow by folder and
+  date first, then look at a handful of candidates.
+- **Cached by content hash**, so an image is described once and not again.
+
+Content search inside documents (PDF, text) has the same shape and is easier —
+Baloo already indexes much of it on KDE.
+
+### Other
+
+- Genesi Hermes (Phase 4.2) is designed but not built.
+- The Monitor and API Inspector have no light-theme pass; both assume dark.
 
 ---
 
