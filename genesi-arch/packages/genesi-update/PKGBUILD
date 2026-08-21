@@ -17,7 +17,19 @@ pkgver=1.0.0
 # menu in the only safe order -- set_menu, then set_secondary_activate_target,
 # then release the previous references -- and by holding the live menu on the
 # instance, since the C side is not holding it for us.
-pkgrel=4
+# 2026-08-21 (5): every journal carried "Failed to start Launch the
+# Genesi-Update systray applet", six restarts deep, next to a tray icon that was
+# working fine. The applet is launched from TWO places on purpose so it appears
+# on every desktop Genesi ships -- the systemd user service for systemd-aware
+# Wayland compositors, /etc/xdg/autostart for the classic desktops that never
+# reach graphical-session.target -- so on a session honouring both, one wins the
+# lock and the other finds it taken. That is the design working, and it was
+# being reported as exit 3, so systemd retried to its start limit and called it
+# a failure. The duplicate now says the applet is already running and exits 0
+# (genesi-update 2075a23), the same conclusion genesi-ai-quick reached with its
+# per-user socket. Neither launcher is removed: dropping either one loses a
+# desktop.
+pkgrel=5
 pkgdesc="Interactive update notifier & applier for Genesi OS with systray applet"
 install='genesi-update.install'
 arch=('any')
