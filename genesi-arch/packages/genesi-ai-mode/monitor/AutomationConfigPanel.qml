@@ -180,13 +180,29 @@ Item {
                 }
 
                 // ── evt_app ─────────────────────────────────────────────
-                FieldLabel { text: "Process name"; visible: root.kindIs("evt_app") }
+                FieldLabel { text: "Process name — leave empty for ANY app"
+                    visible: root.kindIs("evt_app") }
                 GField { visible: root.kindIs("evt_app"); text: root.cfg("app", ""); icon: "box"
                     onAccepted: root.setConfig("app", value) }
+                QQC2.Label { visible: root.kindIs("evt_app") && ("" + root.cfg("app", "")).length === 0
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Any app: this fires for whatever opens or closes, and {{app.name}} tells you which. It watches every process, not only windowed ones — pair it with a Condition if you only care about some."
+                    color: root.theme.textLo; font.pixelSize: 10 }
                 FieldLabel { text: "When it"; visible: root.kindIs("evt_app") }
                 Combo { visible: root.kindIs("evt_app"); model: [ "opened", "closed" ]
                     currentIndex: root.optionIndex(model, root.cfg("transition", "opened"))
                     onActivated: root.setConfig("transition", currentText) }
+                // Only meaningful mid-chain, where the block WAITS instead of
+                // triggering — so it only appears once something feeds into it.
+                FieldLabel { text: "Give up after (seconds)"
+                    visible: root.kindIs("evt_app") && root.isFed() }
+                GField { visible: root.kindIs("evt_app") && root.isFed()
+                    text: root.cfg("waitSeconds", "300"); icon: "clock"
+                    onAccepted: root.setConfig("waitSeconds", value) }
+                QQC2.Label { visible: root.kindIs("evt_app") && root.isFed()
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Something is connected INTO this block, so it waits here instead of starting the workflow: the chain pauses until the app is in that state. Name the app — \"any app\" cannot be waited for. If it never happens the block fails, so wire the on-error dot if you want to handle that."
+                    color: root.theme.textLo; font.pixelSize: 10 }
 
                 // ── evt_hotkey ──────────────────────────────────────────
                 FieldLabel { text: "Shortcut"; visible: root.kindIs("evt_hotkey") }
@@ -529,13 +545,24 @@ Item {
                         Layout.fillWidth: true; spacing: 6
                         GField { text: modelData.name || ""; icon: "tag"
                             Layout.preferredWidth: 110
-                            onAccepted: root.setOutput(index, "name", value) }
+                            // Slugged on the way in, not rejected. Someone typed
+                            // "RAM {{app.name}} usage" as a field name; the model
+                            // was then asked for a key that {{ }} could never
+                            // reference, and the block failed three steps later
+                            // with a message about JSON. Correcting it here, in
+                            // front of them, beats explaining it afterwards.
+                            onAccepted: root.setOutput(index, "name",
+                                                       root.slugName(value)) }
                         GField { text: modelData.desc || ""; icon: "edit"
                             onAccepted: root.setOutput(index, "desc", value) }
                         GButton { theme: root.theme; kind: "ghost"; text: "✕"
                             onClicked: root.removeOutput(index) }
                     }
                 }
+                QQC2.Label { visible: root.kindIs("act_ai") && root.badOutput() !== ""
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "\"" + root.badOutput() + "\" was changed: a field name has to be letters, digits and _ so it can be written as {{name}} later."
+                    color: root.theme.turboBright; font.pixelSize: 10 }
                 QQC2.Label { visible: root.kindIs("act_ai"); Layout.fillWidth: true; wrapMode: Text.Wrap
                     text: root.outputs().length === 0
                         ? "With no outputs the block simply answers in prose, and the next block receives that text as {input}."
@@ -995,6 +1022,27 @@ Item {
         // fields the user is aiming at, and pasting into the wrong one is a
         // worse outcome than one extra keystroke.
         backend.copyToClipboard("{{" + name + "}}")
+    }
+    // Does anything link INTO this block? An event block with an incoming link
+    // stops being a trigger and becomes a step in the chain, which changes what
+    // its settings mean — so the panel has to know.
+    // The same shape the daemon accepts (_VAR_NAME_RE): what {{ }} can resolve.
+    property string lastSlugged: ""
+    function slugName(raw) {
+        var clean = ("" + raw).trim().replace(/[^A-Za-z0-9_]+/g, "_")
+                              .replace(/^_+|_+$/g, "").toLowerCase()
+        if (clean.length === 0) clean = "value"
+        if (/^[0-9]/.test(clean)) clean = "v" + clean
+        lastSlugged = (clean !== ("" + raw).trim()) ? ("" + raw).trim() : ""
+        return clean
+    }
+    function badOutput() { return lastSlugged }
+    function isFed() {
+        if (!root.node || !root.graphProvider) return false
+        var links = root.graphProvider.links || []
+        for (var i = 0; i < links.length; i++)
+            if (links[i].to === root.node.id) return true
+        return false
     }
     function outputs() {
         var v = cfg("outputs", [])

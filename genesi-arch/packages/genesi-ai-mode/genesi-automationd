@@ -251,6 +251,16 @@ def _keyring_get(service, account):
     return done.stdout.strip() or None
 
 
+# A declared output name has to be something {{ }} can actually reference.
+_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _slug(name):
+    """The nearest usable name, for the error message."""
+    out = re.sub(r"[^A-Za-z0-9_]+", "_", (name or "").strip()).strip("_")
+    return (out or "value").lower()
+
+
 def _publish(vars, pairs):
     """Publish a block's named values for the blocks after it.
 
@@ -967,6 +977,8 @@ class Engine:
             return self._run_action(auto, node, payload, vars, walk)
         if kind == "evt_command":
             return self._cond_command(auto, node, payload, vars)
+        if kind == "evt_app":
+            return self._wait_app(auto, node, payload, vars)
         return "ok", payload
 
     @staticmethod
@@ -1002,6 +1014,64 @@ class Engine:
         if "{{" in text:
             text = _VAR_RE.sub(_resolve, text)
         return text.replace("{input}", payload or "")
+
+    def _wait_app(self, auto, node, payload="", vars=None):
+        """An App block placed MID-CHAIN waits for the transition to happen.
+
+        As a trigger, this kind starts a workflow. Reached through a link it
+        used to pass straight through, so the obvious graph —
+
+            App opens (firefox) -> AI -> App closes (firefox) -> Notify
+
+        — ran the whole thing the instant Firefox opened, and the "after it
+        closed" half measured nothing. The block looked configured and did
+        nothing, which is the failure mode this codebase keeps having to fix.
+
+        So it blocks the chain until the app is in the state it names, or until
+        it gives up. Giving up is an ERROR, not a silent continue: the run log
+        says it timed out, and the err port is there to handle it. The wait
+        happens on the run's own thread, which is already one per run, so a
+        workflow waiting on a browser does not hold up anything else.
+        """
+        aid = auto["id"]
+        cfg = node.get("config", {}) or {}
+        name = (cfg.get("app") or "").lower().strip()
+        trans = cfg.get("transition", "opened")
+        if not name:
+            # "Any app" cannot be waited for: every tick something starts
+            # somewhere, so it would return immediately and mean nothing.
+            self.status.log(aid, "app: name the app to wait for it here", "err")
+            return "err", payload
+        if psutil is None:
+            self.status.log(aid, "app: psutil missing — cannot watch", "err")
+            return "err", payload
+
+        try:
+            limit = float(cfg.get("waitSeconds", 300))
+        except (TypeError, ValueError):
+            limit = 300.0
+        limit = max(1.0, min(3600.0, limit))
+
+        want_running = (trans != "closed")
+        self.status.log(aid, "⏳ waiting for %s to be %s (up to %gs)"
+                        % (name, "open" if want_running else "closed", limit), "step")
+        deadline = time.monotonic() + limit
+        while True:
+            try:
+                running = any(name in (pr.info.get("name") or "").lower()
+                              for pr in psutil.process_iter(["name"]))
+            except Exception:
+                running = False
+            if running == want_running:
+                _publish(vars, (("app.name", name), ("app.transition", trans)))
+                self.status.log(aid, "%s is %s" % (name, "open" if running else "closed"),
+                                "ok")
+                return "ok", payload
+            if time.monotonic() >= deadline:
+                self.status.log(aid, "gave up waiting for %s to be %s"
+                                % (name, "open" if want_running else "closed"), "err")
+                return "err", payload
+            time.sleep(1.0)
 
     def _cond_command(self, auto, node, payload, vars=None):
         """evt_command chained after another node: run its command ONCE with
@@ -1743,6 +1813,18 @@ class Engine:
                 if isinstance(o, dict) and (o.get("name") or "").strip()]
         for o in outs:
             o["name"] = o["name"].strip()
+        # A name that {{ }} cannot reference is a field nobody can ever use.
+        # The editor used to accept anything, so "RAM {{app.name}} usage" could
+        # be declared, sent to the model, and then never matched — the block
+        # failed with "expected JSON with ..." and the reason was three steps
+        # away from the message. Say it here instead.
+        bad = [o["name"] for o in outs if not _VAR_NAME_RE.match(o["name"])]
+        if bad:
+            self.status.log(
+                aid, "AI: output name %s cannot be used as {{...}} — letters, "
+                     "digits and _ only (try %s)"
+                % (", ".join(repr(b) for b in bad), _slug(bad[0])), "err")
+            return "err", ""
         if outs:
             schema = ", ".join('"%s": "<%s>"' % (o["name"],
                                                  (o.get("desc") or "value").strip())
@@ -2346,9 +2428,26 @@ class Daemon:
             return
         cfg = node.get("config", {}) or {}
         name = (cfg.get("app") or "").lower().strip()
-        if not name:
-            return
         trans = cfg.get("transition", "opened")
+
+        # No name means ANY app. It used to mean "never fire", which is the
+        # worst of the three possible readings: the node sat on the canvas
+        # looking configured and silently did nothing.
+        #
+        # It reports the process that actually changed, so {{app.name}} is
+        # useful downstream and a Condition can filter it. Be aware this sees
+        # every process, not only windowed ones — a shell script counts.
+        if not name:
+            changed = (appset - self._app_prev) if trans == "opened"                 else (self._app_prev - appset)
+            if not changed:
+                return
+            # One event per tick: a login or a build can start dozens at once,
+            # and firing the whole workflow for each is never what was meant.
+            which = sorted(changed)[0]
+            self._fire(auto, node, "app %s: %s" % (trans, which),
+                       {"app.name": which, "app.transition": trans})
+            return
+
         was = any(name in n for n in self._app_prev)
         now = any(name in n for n in appset)
         if trans == "opened" and now and not was:

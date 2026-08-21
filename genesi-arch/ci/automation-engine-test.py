@@ -662,5 +662,86 @@ check("the generator's prompt carries the catalogue",
       "script.stdout" in _gen._WORKFLOW_SYSTEM
       and "clipboard.text" in _gen._WORKFLOW_SYSTEM)
 
+
+print("\n[21] an AI output name has to be usable as {{name}}")
+# Reported from real use: someone declared "RAM {{app.name}} usage" as an output
+# name. The editor took it, the model was asked for it, the model helpfully
+# substituted the placeholder, and the block failed with "expected JSON with RAM
+# {{app.name}} usage" — three steps from the actual mistake, which is that no
+# name with spaces or braces can ever be written back as {{...}}.
+check("a plain name is fine", mod._VAR_NAME_RE.match("cpu") is not None)
+check("underscores and digits are fine",
+      mod._VAR_NAME_RE.match("ram_before_2") is not None)
+check("spaces are not", mod._VAR_NAME_RE.match("ram before") is None)
+check("a placeholder inside the name is not",
+      mod._VAR_NAME_RE.match("RAM {{app.name}} usage") is None)
+check("a leading digit is not", mod._VAR_NAME_RE.match("2nd") is None)
+check("a dot is not, since that is the namespace separator",
+      mod._VAR_NAME_RE.match("app.name") is None)
+check("the suggestion is usable",
+      mod._VAR_NAME_RE.match(mod._slug("RAM {{app.name}} usage")) is not None,
+      mod._slug("RAM {{app.name}} usage"))
+check("and it reads like the original",
+      mod._slug("RAM {{app.name}} usage") == "ram_app_name_usage",
+      mod._slug("RAM {{app.name}} usage"))
+
+_reply["text"] = '{"whatever": "1"}'
+bad_ai = {"id": "ai", "kind": "act_ai", "title": "ai",
+          "config": {"prompt": "how much ram", "exec": "advisory",
+                     "outputs": [{"name": "RAM {{app.name}} usage", "desc": "x"}]}}
+st = run(build([TRIGGER, bad_ai, script("after", "true")],
+               [{"from": "trg", "to": "ai"},
+                {"from": "ai", "to": "after", "fromPort": "ok"}]))
+check("the block fails instead of asking for an unusable field",
+      st.node_states.get("ai") == "failed", str(st.node_states))
+said = " ".join(line for _lvl, line in st.lines)
+check("and the log says WHY, with a name that would work",
+      "cannot be used" in said and "ram_app_name_usage" in said, said[-160:])
+
+print("\n[22] 'any app' means any app, not 'never'")
+
+
+class _P:
+    def __init__(self, name):
+        self.info = {"name": name}
+
+
+def _poll_app_once(cfg, prev, now):
+    """Drive the real poller with two snapshots of the process list."""
+    st = FakeStatus()
+    d = mod.Daemon.__new__(mod.Daemon)
+    d.status = st
+    d.lock = __import__("threading").Lock()
+    d._fired_once = set()
+    d._app_prev = set(prev)
+    fired = []
+    d._fire = lambda auto, node, detail, values=None: fired.append((detail, values))
+    d._poll_app({"id": "a1"}, {"id": "n", "kind": "evt_app", "config": cfg},
+                set(now))
+    return fired
+
+
+fired = _poll_app_once({"app": "firefox", "transition": "opened"},
+                       {"bash"}, {"bash", "firefox"})
+check("a named app still fires on open", len(fired) == 1, str(fired))
+check("and reports itself", fired and fired[0][1].get("app.name") == "firefox",
+      str(fired))
+
+fired = _poll_app_once({"transition": "opened"}, {"bash"}, {"bash", "gimp"})
+check("no name now means ANY app opening", len(fired) == 1, str(fired))
+check("and reports which one it was",
+      fired and fired[0][1].get("app.name") == "gimp", str(fired))
+
+fired = _poll_app_once({"transition": "closed"}, {"bash", "gimp"}, {"bash"})
+check("any app closing works too",
+      len(fired) == 1 and fired[0][1].get("app.name") == "gimp", str(fired))
+
+fired = _poll_app_once({"transition": "opened"}, {"bash"}, {"bash"})
+check("nothing changed, nothing fires", not fired, str(fired))
+
+fired = _poll_app_once({"transition": "opened"}, {"bash"},
+                       {"bash", "a", "b", "c", "d"})
+check("a login storm fires once, not five times", len(fired) == 1, str(fired))
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

@@ -1022,7 +1022,31 @@ pkgver=1.0.0
 # during the copy -- without it the sync is a feedback loop, where the poll
 # assigns turboRequested, the handler fires, and setTurbo restarts the very
 # server it was only trying to display.
-pkgrel=172
+# 2026-08-21 (173): three things reported from one real automation ("when
+# Firefox opens ask the AI for its RAM, when it closes ask again, notify with
+# both"), plus a crash that had been shipping for weeks.
+# (1) QUICK CHAT WAS DEAD ON ARRIVAL. genesi_ai_quick imported TURBO from
+# genesi_ai_monitor; the Mesh work renamed that to LOCAL_TURBO and did not
+# update the importer, so an app that autostarts on every login died on its
+# import line, silently, since c114c95c. It now asks _turbo_base() where Turbo
+# is, which is what the rename was for. New ci/module-imports-test.py checks
+# every cross-module import by AST -- no Qt, no display -- because an
+# autostarted app that fails leaves no window to miss.
+# (2) AN APP BLOCK MID-CHAIN NOW WAITS. Reached through a link it used to pass
+# straight through, so "App opens -> AI -> App closes -> Notify" ran the whole
+# graph the instant the app opened and the second half measured nothing. It
+# blocks until the app is in the state it names, and a timeout is an ERROR
+# rather than a silent continue, so the err port can handle it.
+# (3) "ANY APP" instead of "never". An empty process name meant the node could
+# never fire, while looking perfectly configured. It now fires for whatever
+# opens or closes and reports it as {{app.name}}; a burst fires once.
+# (4) OUTPUT NAMES ARE VALIDATED. Someone declared "RAM {{app.name}} usage" as
+# a field name -- something {{ }} can never reference. The model was asked for
+# it, helpfully substituted the placeholder, and the block failed with
+# "expected JSON with ..." three steps from the mistake. The editor now slugs
+# the name as it is typed and says it did; the daemon refuses the rest and names
+# a spelling that would work.
+pkgrel=173
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

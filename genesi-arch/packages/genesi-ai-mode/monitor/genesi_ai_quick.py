@@ -15,7 +15,12 @@ from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
 import genesi_turbo_ctl as turbo_ctl
-from genesi_ai_monitor import Backend, OLLAMA, TURBO
+# _turbo_base() rather than a constant: on a machine with no GPU, Turbo
+# often runs on a mesh peer, and it has to be asked WHERE it is at the
+# moment of use. The constant this used to import was renamed to
+# LOCAL_TURBO when that landed, and Quick Chat was not updated with it —
+# so it has been dying on the import ever since, on every login.
+from genesi_ai_monitor import Backend, OLLAMA, _turbo_base
 
 
 APP_ID = "org.genesi.aiquick"
@@ -68,7 +73,7 @@ class QuickBackend(Backend):
         # Reuse an already-running Turbo server. The Quick Chat never starts,
         # stops or reconfigures Turbo, so it cannot disturb Monitor performance.
         try:
-            with urllib.request.urlopen(TURBO + "/health", timeout=0.8) as response:
+            with urllib.request.urlopen(_turbo_base() + "/health", timeout=0.8) as response:
                 self._turbo = response.status == 200
         except Exception:
             self._turbo = False
@@ -91,7 +96,7 @@ class QuickBackend(Backend):
                 model = marker            # exact reference, incl. a `gguf:` one
             else:
                 try:
-                    with urllib.request.urlopen(TURBO + "/v1/models", timeout=2) as response:
+                    with urllib.request.urlopen(_turbo_base() + "/v1/models", timeout=2) as response:
                         payload = json.loads(response.read().decode("utf-8"))
                     model = next((item.get("id") for item in payload.get("data", [])
                                   if item.get("id")), "")
