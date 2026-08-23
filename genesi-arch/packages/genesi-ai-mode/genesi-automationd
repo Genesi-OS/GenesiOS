@@ -327,16 +327,45 @@ def _parse_json_fields(reply, names):
     if not isinstance(obj, dict):
         return None
 
-    out = {}
-    for name in names:
-        if name not in obj:
-            return None
-        value = obj[name]
+    def _flat(value):
         if isinstance(value, bool):
-            value = "true" if value else "false"
-        elif isinstance(value, (list, dict)):
-            value = json.dumps(value, ensure_ascii=False)
-        out[name] = str(value)
+            return "true" if value else "false"
+        if isinstance(value, (list, dict)):
+            return json.dumps(value, ensure_ascii=False)
+        return str(value)
+
+    # Match keys the way a person would read them, not byte for byte.
+    #
+    # A small local model asked for {"ram_before": "<...>"} answers with
+    # {"RAM before": ...}, {"ram-before": ...} or {"RAM llama-server usage": ...}
+    # — the shape is right and the spelling is its own. Demanding an exact key
+    # made the block fail on answers that plainly contained what was asked for,
+    # and the user got "expected JSON with ram_before" while looking at a reply
+    # holding exactly that number.
+    def _key(text):
+        return re.sub(r"[^a-z0-9]+", "", str(text).lower())
+
+    folded = {}
+    for key, value in obj.items():
+        folded.setdefault(_key(key), value)
+
+    out, missing = {}, []
+    for name in names:
+        if name in obj:
+            out[name] = _flat(obj[name])
+        elif _key(name) in folded:
+            out[name] = _flat(folded[_key(name)])
+        else:
+            missing.append(name)
+
+    # One field asked for, one value offered: there is nothing to confuse it
+    # with, so take it whatever the model decided to call it. With several
+    # fields this is NOT done — guessing which value belongs in which slot is
+    # how a workflow silently reports the GPU figure as the CPU one.
+    if missing and len(names) == 1 and len(obj) == 1:
+        return {names[0]: _flat(next(iter(obj.values())))}
+    if missing:
+        return None
     return out
 
 

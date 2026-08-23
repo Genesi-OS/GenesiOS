@@ -793,5 +793,32 @@ d._fire({"id": "other", "enabled": True}, NODE, "app closed: sh")
 check("the quiet window is per automation, not global",
       len(started) == 1, str(started))
 
+
+print("\n[24] the model spells the key its own way")
+# Reported twice from real use: "expected JSON with ram_before - got something
+# else", while the reply plainly contained the number that was asked for. Small
+# local models get the SHAPE right and the spelling their own.
+pj = mod._parse_json_fields
+check("exact still works", pj(chr(123) + chr(34) + "ram_before" + chr(34) + ": 512" + chr(125), ["ram_before"]) == {"ram_before": "512"})
+check("different case", pj('{"RAM_Before": 512}', ["ram_before"]) == {"ram_before": "512"})
+check("spaces instead of underscores",
+      pj('{"RAM before": 512}', ["ram_before"]) == {"ram_before": "512"})
+check("hyphens", pj('{"ram-before": 512}', ["ram_before"]) == {"ram_before": "512"})
+check("two fields, both loosely spelled",
+      pj('{"RAM before": 1, "ram after": 2}', ["ram_before", "ram_after"])
+      == {"ram_before": "1", "ram_after": "2"})
+check("one field asked, one value given, any name at all",
+      pj('{"RAM llama-server usage": "17.7"}', ["ram_before"])
+      == {"ram_before": "17.7"},
+      str(pj('{"RAM llama-server usage": "17.7"}', ["ram_before"])))
+check("TWO fields and unrecognisable names is still a failure",
+      pj('{"a": 1, "b": 2}', ["ram_before", "ram_after"]) is None,
+      "guessing which value goes in which slot is how the GPU figure gets reported as the CPU one")
+check("one field but TWO values is still a failure",
+      pj('{"a": 1, "b": 2}', ["ram_before"]) is None)
+check("a missing field is still a failure",
+      pj('{"ram_before": 1}', ["ram_before", "ram_after"]) is None)
+check("still not JSON at all", pj("the ram is fine", ["ram_before"]) is None)
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

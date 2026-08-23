@@ -56,6 +56,10 @@ Item {
         indicator: FIcon { x: cb.width - 26; y: (cb.height - 14) / 2; size: 14; name: "chevron-down"; color: root.theme.textMid }
     }
     component GField: Rectangle {
+        // Referenced by id rather than by parent.parent.parent: a Timer nested
+        // in the TextField sits one level deeper than the handlers do, and
+        // counting parents is how that silently starts calling the wrong thing.
+        id: field
         Layout.fillWidth: true; implicitHeight: 40
         radius: 9; color: root.theme.cardHi; border.width: 1; border.color: root.theme.lineHi
         property alias text: tf.text
@@ -66,7 +70,24 @@ Item {
             FIcon { visible: parent.parent.icon !== ""; name: parent.parent.icon; size: 14; color: root.theme.textMid }
             QQC2.TextField { id: tf; Layout.fillWidth: true; background: null; color: root.theme.textHi; font.pixelSize: 13
                 selectionColor: root.theme.green; selectedTextColor: root.theme.white
-                onEditingFinished: parent.parent.accepted(text) }
+                onEditingFinished: field.accepted(text)
+                // Save while typing, not only on Enter or focus loss. Clicking
+                // straight from a field onto ANOTHER CARD swapped the panel out
+                // before editingFinished ever arrived, so the text was simply
+                // gone — and the block went on running with its previous value,
+                // which is how an output name nobody had typed in a while kept
+                // showing up in the error messages.
+                //
+                // Guarded on activeFocus because `text` is bound to the config:
+                // a save rewrites the config, which rewrites the binding, which
+                // would fire this again. Only a human holding focus starts it.
+                onTextChanged: if (tf.activeFocus) fieldSave.restart()
+                Timer {
+                    id: fieldSave
+                    interval: 350          // a pause in typing, not a keystroke
+                    onTriggered: field.accepted(tf.text)
+                }
+            }
         }
     }
     component GArea: Rectangle {
@@ -81,7 +102,16 @@ Item {
             anchors.fill: parent; anchors.margins: 6; clip: true
             QQC2.TextArea { id: ta; background: null; color: root.theme.textHi; font.pixelSize: 13; wrapMode: Text.Wrap
                 selectionColor: root.theme.green; selectedTextColor: root.theme.white
-                onEditingFinished: area.accepted(text) }
+                onEditingFinished: area.accepted(text)
+                // Same as GField: a prompt is the field people type most and
+                // lose most. See there for why activeFocus guards it.
+                onTextChanged: if (ta.activeFocus) areaSave.restart()
+                Timer {
+                    id: areaSave
+                    interval: 350
+                    onTriggered: area.accepted(ta.text)
+                }
+            }
         }
     }
     component RowToggle: RowLayout {
