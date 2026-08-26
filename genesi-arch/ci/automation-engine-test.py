@@ -348,6 +348,18 @@ class _Turbo:
 mod.turbo_ctl = _Turbo
 _reply = {"text": '{"cpu": "83", "gpu": "12"}'}
 mod.Engine._ai_run = lambda self, model, prompt, mode, use_turbo, aid: _reply["text"]
+# The repair turn (_ai_extract) goes through _ai_chat, not _ai_run. Stubbed too
+# so nothing here reaches the network; "" means the reformat produced no JSON,
+# which is the old behaviour and keeps every existing expectation honest.
+_repair = {"text": "", "asked": []}
+
+
+def _fake_chat(self, model, messages, use_turbo, system=None):
+    _repair["asked"].append(messages[-1]["content"])
+    return _repair["text"]
+
+
+mod.Engine._ai_chat = _fake_chat
 
 ai = {"id": "ai", "kind": "act_ai", "title": "ai",
       "config": {"prompt": "is the pc busy", "exec": "advisory",
@@ -866,6 +878,65 @@ check("a fed card obeys the port it is wired to",
       st.node_states.get("c") != "ok", str(st.node_states))
 
 mod.shutil.which, mod.subprocess.Popen = _which, _popen
+
+
+print("\n[26] an answer in the wrong shape is reformatted, not thrown away")
+# Reported: put an "app opened / closed" block in front of the AI and the
+# outputs start failing with "expected JSON"; take it away and they work. The
+# App block was never the cause. In autonomous / ask mode the AGENT protocol
+# owns the reply format, so the moment the model uses a tool the run ends in a
+# sentence describing what it found -- the right answer wearing the wrong
+# clothes. Whether that happened came down to whether the prompt tempted the
+# model into a tool call, and the event detail riding along in the prompt is
+# exactly such a nudge. So the block now asks once more for the same answer in
+# the shape it declared.
+agent_ai = {"id": "ai", "kind": "act_ai", "title": "ai",
+            "config": {"prompt": "how much ram is firefox using", "exec": "auto",
+                       "outputs": [{"name": "ram", "desc": "MB in use"}]}}
+_reply["text"] = "Descobri que o firefox esta usando 512 MB de memoria."
+_repair["text"] = '{"ram": "512"}'
+_repair["asked"] = []
+st = run(build([TRIGGER, agent_ai, notify],
+               [{"from": "trg", "to": "ai"}, {"from": "ai", "to": "n"}]))
+check("the block succeeds on a prose answer that holds the value",
+      st.node_states.get("ai") == "ok", str(st.node_states))
+said = " ".join(line for _lvl, line in st.lines)
+check("and it says it reformatted", "reformatting it" in said, said[-200:])
+check("the value published is the one the model actually said",
+      "ram=512" in said, said[-200:])
+asked = _repair["asked"][-1] if _repair["asked"] else ""
+check("the repair turn shows the model its own answer",
+      "512 MB de memoria" in asked, asked[:200])
+check("and asks for the declared field", '"ram"' in asked, asked[-120:])
+
+# The repair is a REFORMAT, not a second guess: if it cannot find the field
+# either, the block still fails rather than inventing one.
+_repair["text"] = "still no idea"
+st = run(build([TRIGGER, agent_ai, notify],
+               [{"from": "trg", "to": "ai"}, {"from": "ai", "to": "n"}]))
+check("a reformat that fails too still fails the block",
+      st.node_states.get("ai") == "failed", str(st.node_states))
+said = " ".join(line for _lvl, line in st.lines)
+check("and the log names the autonomous trap",
+      "Advisory" in said and "DESCRIBING" in said, said[-260:])
+
+# An empty reply is not worth a second model call.
+_repair["text"] = '{"ram": "512"}'
+_repair["asked"] = []
+_reply["text"] = ""
+st = run(build([TRIGGER, agent_ai, notify],
+               [{"from": "trg", "to": "ai"}, {"from": "ai", "to": "n"}]))
+check("nothing to reformat means no second call", _repair["asked"] == [],
+      str(_repair["asked"]))
+
+# Advisory blocks that already answer in shape must not pay for any of this.
+_reply["text"] = '{"cpu": "83", "gpu": "12"}'
+_repair["asked"] = []
+st = run(build([TRIGGER, ai, notify],
+               [{"from": "trg", "to": "ai"}, {"from": "ai", "to": "n"}]))
+check("a well-shaped reply costs no extra call",
+      st.node_states.get("ai") == "ok" and _repair["asked"] == [],
+      str(st.node_states) + str(_repair["asked"]))
 
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

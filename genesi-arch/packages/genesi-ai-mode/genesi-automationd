@@ -1916,6 +1916,10 @@ class Engine:
                      "digits and _ only (try %s)"
                 % (", ".join(repr(b) for b in bad), _slug(bad[0])), "err")
             return "err", ""
+        # Kept WITHOUT the schema stapled on: if the answer comes back in the
+        # wrong shape, the repair pass should show the model the question, not
+        # the question plus a formatting instruction it already ignored once.
+        question = prompt
         if outs:
             schema = ", ".join('"%s": "<%s>"' % (o["name"],
                                                  (o.get("desc") or "value").strip())
@@ -1973,6 +1977,11 @@ class Engine:
         if outs:
             fields = _parse_json_fields(reply, [o["name"] for o in outs])
             if fields is None:
+                # Usually the answer is RIGHT and merely dressed wrong. One
+                # repair turn before giving up -- see _ai_extract.
+                fields = self._ai_extract(model, question, reply, outs,
+                                          use_turbo, aid)
+            if fields is None:
                 # Deliberately a failure, not a shrug. If we carried on, every
                 # {{name}} downstream would render as itself and the automation
                 # would "work" while producing a notification full of braces.
@@ -1983,6 +1992,12 @@ class Engine:
                     % ", ".join(o["name"] for o in outs), "err")
                 for line in (reply or "").splitlines()[:4]:
                     self.status.log(aid, line, "out")
+                if exec_mode != "advisory":
+                    self.status.log(
+                        aid, "this block is set to %s: once it uses a tool the "
+                             "run ends by DESCRIBING what it did. Set it to "
+                             "Advisory when you want named outputs." % label,
+                        "out")
                 return "err", (reply or "").strip()
             if vars is not None:
                 vars.update(fields)
@@ -2003,6 +2018,48 @@ class Engine:
                                  start_new_session=True)
         _publish(vars, [("ai.reply", (reply or "").strip())])
         return "ok", (reply or "").strip()
+
+    def _ai_extract(self, model, question, reply, outs, use_turbo, aid):
+        """Second pass: rewrite an answer already given as the declared fields.
+
+        In advisory mode the schema is the last thing the model reads, so it
+        usually complies. In autonomous / ask mode it CANNOT: the agent
+        protocol owns the reply format, and the moment the model uses a tool
+        the run ends in a sentence about what it found --
+
+            "Descobri que seu sistema usa uma Intel UHD Graphics 620."
+
+        -- which is the right answer wearing the wrong clothes. The block then
+        failed on a reply that plainly contained what was asked for. Whether it
+        happened at all came down to whether that particular prompt tempted the
+        model into a tool call, which is why putting an App block in front of
+        the AI could "cause" it: the event detail rides along in the prompt and
+        nudges the model toward looking things up.
+
+        So ask once more, plain chat, no agent prompt in the way. Nothing is
+        invented -- the model sees only the original question and its own
+        answer, and is asked to write that same answer as the object it was
+        given. If this pass fails too, the block fails as before.
+        """
+        if not (reply or "").strip():
+            return None
+        schema = ", ".join('"%s": "<%s>"' % (o["name"],
+                                             (o.get("desc") or "value").strip())
+                           for o in outs)
+        self.status.log(aid, "reply was not the shape asked for — reformatting it",
+                        "out")
+        ask = ("Here is a question and the answer that was given to it.\n\n"
+               "QUESTION:\n%s\n\nANSWER:\n%s\n\n"
+               "Write that same answer as ONE JSON object and NOTHING else — "
+               "no prose, no explanation, no markdown fence. Use only what the "
+               "answer above already says:\n{%s}" % (question, reply, schema))
+        try:
+            second = self._ai_chat(model, [{"role": "user", "content": ask}],
+                                   use_turbo)
+        except Exception as exc:
+            self.status.log(aid, "reformat failed: %s" % exc, "err")
+            return None
+        return _parse_json_fields(second, [o["name"] for o in outs])
 
     def _ai_chat(self, model, messages, use_turbo, system=None):
         msgs = ([{"role": "system", "content": system}] if system else []) + messages

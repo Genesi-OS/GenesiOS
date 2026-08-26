@@ -1086,7 +1086,23 @@ pkgver=1.0.0
 # rules, whether or not there is a trigger on the sheet. Unconnected cards on a
 # sheet still all run -- that is what the old sweep was for. Six checks in
 # ci/automation-engine-test.py, including the reported graph end to end.
-pkgrel=176
+# 2026-08-26 (177): "put an App block in front of the AI and the outputs start
+# failing with expected JSON; take it away and they work." The App block was
+# never the cause. In autonomous / ask mode the AGENT protocol owns the reply
+# format: the moment the model uses a tool, the run ends in a sentence about
+# what it found -- "Descobri que seu sistema usa uma Intel UHD Graphics 620" --
+# which is the right answer wearing the wrong clothes, and the declared outputs
+# were matched against it and failed. Whether that happened at all came down to
+# whether the prompt tempted the model into a tool call, and the trigger detail
+# that rides along in the prompt ("app opened: firefox") is exactly such a
+# nudge -- so the bug looked like it belonged to the block in front. The AI
+# block now spends ONE repair turn: plain chat, no agent prompt in the way,
+# shown only the original question and its own answer, asked to write that same
+# answer as the object it declared. Nothing is invented and a reformat that
+# fails still fails the block. When it does fail from a non-advisory block the
+# log now names the trap instead of leaving it to be deduced. Nine checks in
+# ci/automation-engine-test.py.
+pkgrel=177
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
