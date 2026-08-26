@@ -164,6 +164,26 @@ Item {
                     color: root.theme.textLo; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
 
+                // Two blocks of the same kind publish the same names, so the
+                // later one wins and the first one's value is gone — two App
+                // cards fighting over {{app.name}} is how this was reported,
+                // but two Run Scripts over {{stdout}} is the same bug. Only the
+                // user can say which is which, so let them: this block's values
+                // also arrive under a name they choose, which nothing else can
+                // overwrite. Shown wherever the block actually publishes
+                // something, so it never appears on a block it would do nothing
+                // for. Slugged on the way in, like an AI output name.
+                FieldLabel { text: "Value name (optional)"; visible: root.canName() }
+                GField { visible: root.canName()
+                    text: root.cfg("varName", ""); icon: "tag"
+                    onAccepted: root.setConfig("varName", value ? root.slugPlain(value) : "") }
+                QQC2.Label { visible: root.canName()
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: ("" + root.cfg("varName", "")).length === 0
+                        ? "Give this block a name and its values are also published under it — " + root.handledExample("name") + " — so a second block of the same kind cannot overwrite them."
+                        : "Also publishes " + root.provides(true) + ", which nothing else can overwrite."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
                 FieldLabel { text: "Block name"; visible: root.node }
                 Rectangle {
                     visible: root.node
@@ -222,24 +242,6 @@ Item {
                 Combo { visible: root.kindIs("evt_app"); model: [ "opened", "closed" ]
                     currentIndex: root.optionIndex(model, root.cfg("transition", "opened"))
                     onActivated: root.setConfig("transition", currentText) }
-                // Two App blocks on one sheet both published {{app.name}}, so
-                // the second quietly overwrote the first and the second half of
-                // the graph reported whichever ran last. Only the user can say
-                // which is which, so let them: this block's values also arrive
-                // under a name they choose. Slugged on the way in, like an AI
-                // output name, so what is stored is always something {{ }} can
-                // resolve.
-                FieldLabel { text: "Value name (for {{name.app}} downstream)"
-                    visible: root.kindIs("evt_app") }
-                GField { visible: root.kindIs("evt_app")
-                    text: root.cfg("varName", ""); icon: "tag"
-                    onAccepted: root.setConfig("varName", value ? root.slugPlain(value) : "") }
-                QQC2.Label { visible: root.kindIs("evt_app")
-                    Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: ("" + root.cfg("varName", "")).length === 0
-                        ? "Optional. Every App block publishes {{app.name}} and {{app.transition}}, so with TWO of them on the sheet the later one wins. Give this one a name — \"opened\", \"closed\" — and it also publishes {{name.app.name}}, which nothing else can overwrite."
-                        : "This block also publishes {{" + root.cfg("varName", "") + ".name}} and {{" + root.cfg("varName", "") + ".transition}} — usable in any block after it, and safe from the other App block."
-                    color: root.theme.textLo; font.pixelSize: 10 }
                 // Only meaningful mid-chain, where the block WAITS instead of
                 // triggering — so it only appears once something feeds into it.
                 FieldLabel { text: "Give up after (seconds)"
@@ -1050,7 +1052,24 @@ Item {
         if (!root.node || !root.graphProvider) return []
         return root.graphProvider.upstreamOutputs(root.node.id)
     }
-    function provides() {
+    // Does this block publish anything? Only then is a value name any use.
+    function canName() {
+        if (!root.node || !root.graphProvider) return false
+        var cat = root.graphProvider.outputCatalogue[root.node.kind] || []
+        for (var i = 0; i < cat.length; i++)
+            if (("" + cat[i].name).indexOf("<") !== 0) return true
+        return root.node.kind === "act_ai"
+    }
+    function handledExample(handle) {
+        if (!root.node || !root.graphProvider) return ""
+        var cat = root.graphProvider.outputCatalogue[root.node.kind] || []
+        for (var i = 0; i < cat.length; i++) {
+            if (("" + cat[i].name).indexOf("<") === 0) continue
+            return "{{" + handle + "." + ("" + cat[i].name).split(".").pop() + "}}"
+        }
+        return "{{" + handle + ".value}}"
+    }
+    function provides(handledOnly) {
         if (!root.node || !root.graphProvider) return ""
         var cat = root.graphProvider.outputCatalogue[root.node.kind] || []
         var names = []
@@ -1060,13 +1079,14 @@ Item {
                 if (declared[d].name) names.push("{{" + declared[d].name + "}}")
         }
         var handle = ("" + root.cfg("varName", "")).trim()
+        if (handledOnly) names = []
         for (var i = 0; i < cat.length; i++) {
             if (("" + cat[i].name).indexOf("<") === 0) continue
             // The block's own prefix first: it is the name nothing else can
             // overwrite, which is the reason to have named the block at all.
             if (handle)
                 names.push("{{" + handle + "." + ("" + cat[i].name).split(".").pop() + "}}")
-            names.push("{{" + cat[i].name + "}}")
+            if (!handledOnly) names.push("{{" + cat[i].name + "}}")
         }
         return names.join(", ")
     }

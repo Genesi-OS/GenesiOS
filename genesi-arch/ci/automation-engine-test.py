@@ -1095,5 +1095,133 @@ eng._act_file("a1", {"op": "copy", "src": "{{picked}}",
 check("a file operation renders its paths",
       _os.path.exists(_os.path.join(_tmp, "b.txt")))
 
+
+print("\n[31] the value name works on every block that publishes, not just App")
+# Two App cards fighting over {{app.name}} was the report; two Run Scripts over
+# {{stdout}} is the same bug with a different noun. Every executor that
+# publishes now passes its block's own prefix.
+_pub = mod._publish
+v = {}
+_pub(v, [("script.stdout", "one")], "first")
+_pub(v, [("script.stdout", "two")], "second")
+check("the bare name is still the one that just ran", v.get("stdout") == "two", str(v))
+check("the first script kept its own", v.get("first.stdout") == "one", str(v))
+check("and the second kept its own", v.get("second.stdout") == "two", str(v))
+check("_handle reads a cfg dict directly",
+      mod._handle({"varName": "first"}) == "first")
+check("and refuses one {{ }} could not resolve",
+      mod._handle({"varName": "not a name"}) == "")
+check("an absent config is not a crash", mod._handle(None) == "")
+
+st = FakeStatus()
+eng = mod.Engine(st)
+vars_ = {}
+eng._act_script("a1", {"command": "echo VALUE", "varName": "probe"}, "s", "", vars_)
+check("a real Run Script publishes under its own name",
+      vars_.get("probe.stdout") == "VALUE", str(vars_))
+check("and still under the shared one", vars_.get("stdout") == "VALUE", str(vars_))
+
+print("\n[32] blocks that advertised values now actually publish them")
+# The panel's "Values you can use here" listed {{process.name}},
+# {{command.output}}, {{file.dest}} and {{app.name}} for blocks that published
+# nothing at all, so writing one into the next block rendered it as its own
+# braces. Same shape as the {{ai.reply}} report, one layer down.
+launched = []
+mod.subprocess.Popen = lambda argv, **kw: launched.append(list(argv))
+mod.shutil.which = lambda name: "/usr/bin/" + name
+
+vars_ = {}
+eng = mod.Engine(FakeStatus())
+outcome, out = eng._act_app("a1", {"op": "launch", "app": "kate",
+                                   "varName": "opener"}, "", vars_)
+check("launch app publishes {{app.name}}", vars_.get("app.name") == "kate", str(vars_))
+check("under its own prefix too", vars_.get("opener.name") == "kate", str(vars_))
+check("and hands it on as the payload", out == "kate", repr(out))
+
+import tempfile as _tf2
+import os as _os2
+_d = _tf2.mkdtemp()
+_a = _os2.path.join(_d, "a.txt")
+open(_a, "w").write("x")
+_b = _os2.path.join(_d, "b.txt")
+vars_ = {}
+outcome, out = eng._act_file("a1", {"op": "copy", "src": _a, "dest": _b}, "", vars_)
+check("a file operation publishes {{file.dest}}",
+      vars_.get("file.dest") == _b, str(vars_))
+check("and hands the path on as the payload", out == _b, repr(out))
+
+# evt_process fires with its three values.
+_fired = []
+
+
+class _FakeProcDaemon:
+    def __init__(self):
+        self._proc_cache = {}
+
+    def _edge_fire(self, auto, node, satisfied, detail, values=None):
+        if satisfied:
+            _fired.append((detail, values))
+
+
+_FakeProcDaemon._poll_process = mod.Daemon._poll_process
+
+
+class _PInfo:
+    def __init__(self, name, rss):
+        self.info = {"name": name, "pid": 1}
+        self._rss = rss
+
+    def memory_info(self):
+        return type("m", (), {"rss": self._rss})()
+
+
+mod.psutil = type("psutil", (), {
+    "process_iter": staticmethod(lambda f: [_PInfo("firefox", 900 * 1024 * 1024)]),
+})()
+_FakeProcDaemon()._poll_process(
+    {"id": "a1"}, {"id": "p", "kind": "evt_process",
+                   "config": {"app": "firefox", "metric": "mem", "threshold": "100"}})
+check("the process watcher fires", len(_fired) == 1, str(_fired))
+check("and carries name, metric and value",
+      _fired and _fired[0][1] == {"process.name": "firefox", "process.metric": "mem",
+                                  "process.value": "900"},
+      str(_fired[-1:]))
+
+# evt_command carries its output, as a trigger and mid-chain alike.
+_cfired = []
+
+
+class _FakeCmdDaemon:
+    def __init__(self):
+        self._cmd_next = {}
+        self._snap = {}
+
+    def _edge_fire(self, auto, node, satisfied, detail, values=None):
+        if satisfied:
+            _cfired.append((detail, values))
+
+    def _fire(self, auto, node, detail, values=None):
+        _cfired.append((detail, values))
+
+
+_FakeCmdDaemon._poll_command = mod.Daemon._poll_command
+_FakeCmdDaemon()._poll_command(
+    {"id": "a1"}, {"id": "c", "kind": "evt_command",
+                   "config": {"command": "echo hello", "on": "exit0", "interval": "2"}})
+check("the command sensor fires", len(_cfired) >= 1, str(_cfired))
+check("and carries what the command printed",
+      _cfired and (_cfired[0][1] or {}).get("command.output") == "hello",
+      str(_cfired[-1:]))
+
+st_c = FakeStatus()
+eng_c = mod.Engine(st_c)
+vars_ = {}
+eng_c._cond_command({"id": "a1"},
+                    {"id": "c", "kind": "evt_command",
+                     "config": {"command": "echo hello", "on": "exit0"}},
+                    "", vars_)
+check("mid-chain it publishes the same value",
+      vars_.get("command.output") == "hello", str(vars_))
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

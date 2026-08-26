@@ -150,47 +150,99 @@ check("it explains the true/false ports", "true" in gen._WORKFLOW_SYSTEM
 check("it explains named outputs", "{{cpu}}" in gen._WORKFLOW_SYSTEM)
 
 
-print("\nevery advertised config key is one the daemon actually reads")
-# Three keys in the catalogue named fields that do not exist: act_file said
-# "source" where the panel and daemon say "src", and act_app / act_power said
-# "action" where both say "op". The validator drops any key not in the
-# catalogue, so a generated block carried either the wrong name or nothing at
-# all -- and then sat on the canvas looking perfectly configured while copying
-# no files and launching no apps. Read the daemon and compare.
+print("\nthe catalogue, the panel and the daemon agree on every field")
+# Three classes of bug kept arriving as "the block looks configured and does
+# nothing", and all three are a NAME disagreeing across the three files that
+# have to spell it identically: the panel writes it, the daemon reads it, the
+# catalogue tells the model about it. act_file said "source" where the other
+# two say "src"; act_app and act_power said "action" where both say "op";
+# evt_command said "pattern" where both say "match", and forgot "interval"
+# outright. The validator drops any key not in the catalogue, so each one meant
+# a generated block carried the wrong name or none at all. Read all three.
 import ast as _ast
+import re as _re
 
-_daemon_src = (Path(__file__).resolve().parents[1] / "packages" / "genesi-ai-mode"
-               / "genesi-automationd").read_text(encoding="utf-8")
-_tree = _ast.parse(_daemon_src)
+_PKG = Path(__file__).resolve().parents[1] / "packages" / "genesi-ai-mode"
+_tree = _ast.parse((_PKG / "genesi-automationd").read_text(encoding="utf-8"))
 _funcs = {}
 for _n in _ast.walk(_tree):
     if isinstance(_n, _ast.FunctionDef):
         _funcs.setdefault(_n.name, []).append(_n)
 
 
-def _cfg_keys(*names):
-    """Every cfg.get("x") literal read inside these daemon functions."""
+def _cfg_keys(names):
+    """Config keys read inside these functions, however the dict was reached."""
     found = set()
     for name in names:
         for fn in _funcs.get(name, []):
             for node in _ast.walk(fn):
-                if (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+                if not (isinstance(node, _ast.Call)
+                        and isinstance(node.func, _ast.Attribute)
                         and node.func.attr == "get" and node.args
                         and isinstance(node.args[0], _ast.Constant)
                         and isinstance(node.args[0].value, str)):
-                    target = node.func.value
-                    if isinstance(target, _ast.Name) and target.id == "cfg":
-                        found.add(node.args[0].value)
+                    continue
+                # cfg.get("x"), and also node.get("config", {}).get("x") --
+                # the hotkey registry reads it the second way.
+                recv = _ast.unparse(node.func.value)
+                if "cfg" in recv or "config" in recv:
+                    found.add(node.args[0].value)
     return found
 
 
-# kind -> the daemon function(s) that read its config. Only the action kinds:
-# they are 1:1, which is what makes this checkable at all.
-_READERS = {
+def _published(names):
+    """Value names handed to _fire / _edge_fire / _publish in these functions."""
+    out = set()
+    for name in names:
+        for fn in _funcs.get(name, []):
+            for node in _ast.walk(fn):
+                if not isinstance(node, _ast.Call):
+                    continue
+                fname = (node.func.attr if isinstance(node.func, _ast.Attribute)
+                         else getattr(node.func, "id", ""))
+                if fname not in ("_fire", "_edge_fire", "_publish"):
+                    continue
+                for arg in list(node.args) + [k.value for k in node.keywords]:
+                    for sub in _ast.walk(arg):
+                        if isinstance(sub, _ast.Dict):
+                            for k in sub.keys:
+                                if isinstance(k, _ast.Constant):
+                                    out.add(k.value)
+                        elif isinstance(sub, (_ast.Tuple, _ast.List)):
+                            for el in sub.elts:
+                                if (isinstance(el, _ast.Tuple) and el.elts
+                                        and isinstance(el.elts[0], _ast.Constant)):
+                                    out.add(el.elts[0].value)
+    return out
+
+
+# kind -> the daemon functions that handle it. Keeping this by hand is the
+# price of the check; a wrong entry shows up as a failure, not as silence.
+_HANDLERS = {
+    "evt_fs": ("_on_fs_event", "_rearm"),
+    "evt_resource": ("_poll_resource",),
+    "evt_app": ("_poll_app", "_wait_app"),
+    "evt_process": ("_poll_process",),
+    "evt_power": ("_poll_power",),
+    "evt_disk": ("_poll_disk",),
+    "evt_usb": ("_poll_usb",),
+    "evt_network": ("_poll_network",),
+    "evt_bluetooth": ("_poll_bluetooth",),
+    "evt_idle": ("_poll_idle",),
+    "evt_temperature": ("_poll_temp",),
+    "evt_log": ("_poll_log",),
+    "evt_command": ("_poll_command", "_cond_command"),
+    "evt_clipboard": ("_poll_clipboard",),
+    "evt_screenshot": ("_poll_screenshot", "_shot_dir"),
+    "evt_schedule": ("_poll_schedule", "_poll_cron"),
+    "evt_hotkey": ("_rearm", "_on_combo"),
+    "evt_webhook": ("_webhook_routes", "_webhook_sync"),
+    "evt_startup": ("_fire_startup",),
+    "evt_manual": (),
     "act_script": ("_act_script",),
     "act_ai": ("_act_ai",),
-    # _act_cond copies its whole cfg into _act_ai for the "ai" mode, so its
-    # model / turbo keys are read there, not in its own body.
+    # _act_cond copies its whole cfg into _act_ai for "ai" mode, so its model /
+    # turbo keys are read there rather than in its own body.
     "act_cond": ("_act_cond", "_act_ai"),
     "act_loop": ("_act_loop", "_loop_items"),
     "act_subflow": ("_act_subflow",),
@@ -203,13 +255,50 @@ _READERS = {
     "act_wait": ("_act_wait",),
     "act_power": ("_act_power",),
 }
-for _kind, _fns in sorted(_READERS.items()):
-    _advertised = set(gen._WORKFLOW_KINDS[_kind])
-    _read = _cfg_keys(*_fns)
-    _ghost = sorted(_advertised - _read)
-    check("%s advertises only fields the daemon reads" % _kind, not _ghost,
-          "no daemon reads " + ", ".join(repr(g) for g in _ghost)
-          + " (it reads " + ", ".join(sorted(_read)) + ")")
+# Read by _handle(cfg), not in any executor: the block's own value prefix.
+_INDIRECT = {"varName"}
+
+for _kind, _fns in sorted(_HANDLERS.items()):
+    _ghost = sorted(set(gen._WORKFLOW_KINDS[_kind]) - _INDIRECT - _cfg_keys(_fns))
+    check("%s: the catalogue names only fields the daemon reads" % _kind,
+          not _ghost, "nothing reads " + ", ".join(repr(g) for g in _ghost))
+
+# The panel is the third speller of the same names.
+_panel = (_PKG / "monitor/AutomationConfigPanel.qml").read_text(encoding="utf-8")
+_section, _panel_keys, _order = None, {}, []
+for _line in _panel.split("\n"):
+    _m = _re.search(r"//\s*[-─]+\s*(evt_\w+|act_\w+)\s*[-─]+", _line)
+    if _m:
+        _section = _m.group(1)
+        if _section not in _panel_keys:
+            _panel_keys[_section] = set()
+            _order.append(_section)
+        continue
+    if _section:
+        for _k in _re.findall(r'setConfig\("(\w+)"', _line):
+            _panel_keys[_section].add(_k)
+# All but the LAST section: nothing closes it, so every stray setConfig further
+# down the file (the shared Fire-when row, the JS helpers) lands in it.
+for _kind in _order[:-1]:
+    if _kind not in _HANDLERS:
+        continue
+    _ghost = sorted(_panel_keys[_kind] - _cfg_keys(_HANDLERS[_kind]) - _INDIRECT)
+    check("%s: the panel writes only fields the daemon reads" % _kind,
+          not _ghost, "nothing reads " + ", ".join(repr(g) for g in _ghost))
+
+print("\nevery value the panel offers actually exists at run time")
+# "Values you can use here" listed {{process.name}}, {{command.output}},
+# {{file.dest}} and {{app.name}} for blocks that never published them, so
+# writing one into the next block rendered it as its own braces -- the exact
+# shape of the {{ai.reply}} report, one layer down.
+for _kind, _fields in sorted(gen.NODE_OUTPUTS.items()):
+    _fns = _HANDLERS.get(_kind)
+    if not _fns:
+        continue
+    _missing = [f for f, _d in _fields
+                if not f.startswith("<") and f not in _published(_fns)]
+    check("%s publishes everything it advertises" % _kind, not _missing,
+          "promised but never published: " + ", ".join(_missing))
 
 print("\n" + ("ALL TESTS PASSED" if not failures
               else "FAILURES: " + ", ".join(failures)))

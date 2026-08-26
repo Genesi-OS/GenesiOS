@@ -261,6 +261,12 @@ def _slug(name):
     return (out or "value").lower()
 
 
+def _handle(cfg):
+    """The block prefix from a config dict (see _node_handle)."""
+    name = ((cfg or {}).get("varName") or "").strip()
+    return name if _VAR_NAME_RE.match(name) else ""
+
+
 def _node_handle(node):
     """This block's own prefix for the values it publishes, or "".
 
@@ -274,8 +280,7 @@ def _node_handle(node):
     """
     if not isinstance(node, dict):
         return ""
-    name = ((node.get("config") or {}).get("varName") or "").strip()
-    return name if _VAR_NAME_RE.match(name) else ""
+    return _handle(node.get("config"))
 
 
 _APP_NAMES = {"names": set(), "at": 0.0}
@@ -1341,6 +1346,10 @@ class Engine:
                             % ("succeeded → condition met" if base_ok else
                                "failed → condition NOT met"),
                             "ok" if base_ok else "err")
+        # Same value the polling trigger publishes, so a Command sensor reads
+        # the same {{command.output}} whether it starts a workflow or sits in
+        # the middle of one.
+        _publish(vars, [("command.output", out)], _node_handle(node))
         return outcome, out
 
     def _topo(self, auto, keep):
@@ -1448,7 +1457,7 @@ class Engine:
                     vars.setdefault(key, value)
             self.status.log(aid, "condition → %s" % ("true" if result else "false"),
                             "ok")
-            _publish(vars, [("cond.answer", "true" if result else "false")])
+            _publish(vars, [("cond.answer", "true" if result else "false")], _handle(cfg))
             return ("true" if result else "false"), payload
 
         expr = (cfg.get("expr") or "").strip()
@@ -1459,7 +1468,7 @@ class Engine:
         result = _cond_eval(rendered)
         self.status.log(aid, "condition: %s → %s"
                         % (rendered, "true" if result else "false"), "ok")
-        _publish(vars, [("cond.answer", "true" if result else "false")])
+        _publish(vars, [("cond.answer", "true" if result else "false")], _handle(cfg))
         return ("true" if result else "false"), payload
 
     # ── Loop ────────────────────────────────────────────────────────────────
@@ -1727,7 +1736,7 @@ class Engine:
                     _publish(vars, (("mail.from", out[-1]["from"]),
                                     ("mail.subject", out[-1]["subject"]),
                                     ("mail.body", out[-1]["body"]),
-                                    ("mail.count", len(out))))
+                                    ("mail.count", len(out))), _handle(cfg))
                 self.status.log(aid, "📥 %d message(s)" % len(out), "ok")
                 return "ok", json.dumps(out, ensure_ascii=False)
             finally:
@@ -1837,7 +1846,7 @@ class Engine:
             out = (proc.stderr or "").strip()
         _publish(vars, (("script.stdout", (proc.stdout or "").strip()),
                         ("script.stderr", (proc.stderr or "").strip()),
-                        ("script.exit", proc.returncode)))
+                        ("script.exit", proc.returncode)), _handle(cfg))
         return ("ok" if proc.returncode == 0 else "err", out)
 
     def _act_notify(self, aid, cfg, payload="", vars=None):
@@ -1876,7 +1885,7 @@ class Engine:
                     pass
                 self.status.log(aid, "%s %s → %s" % (method, url[:60], r.status), "ok")
                 _publish(vars, (("http.status", r.status),
-                                ("http.body", text.strip())))
+                                ("http.body", text.strip())), _handle(cfg))
                 return "ok", text.strip()
         except Exception as exc:
             self.status.log(aid, "http failed: %s" % exc, "err")
@@ -1884,7 +1893,7 @@ class Engine:
             # server answered at all — an err port that cannot tell 404 from
             # "the host does not exist" is only half a branch.
             _publish(vars, (("http.status", getattr(exc, "code", "")),
-                            ("http.body", "")))
+                            ("http.body", "")), _handle(cfg))
             return "err", ""
 
     def _act_file(self, aid, cfg, payload="", vars=None):
@@ -1911,7 +1920,10 @@ class Engine:
             else:
                 self.status.log(aid, "file: nothing to do", "out")
                 return "err", ""
-            return "ok", ""
+            # Where it ended up, so the block after this one can act on it.
+            landed = dest or src
+            _publish(vars, [("file.dest", landed)], _handle(cfg))
+            return "ok", landed
         except Exception as exc:
             self.status.log(aid, "file %s failed: %s" % (op, exc), "err")
             return "err", ""
@@ -1931,7 +1943,8 @@ class Engine:
             else:
                 subprocess.run(["pkill", "-f", app], check=False)
                 self.status.log(aid, "closed " + app, "ok")
-            return "ok", ""
+            _publish(vars, [("app.name", app)], _handle(cfg))
+            return "ok", app
         except OSError as exc:
             self.status.log(aid, "app %s failed: %s" % (op, exc), "err")
             return "err", ""
@@ -2106,7 +2119,7 @@ class Engine:
                 return "err", (reply or "").strip()
             if vars is not None:
                 vars.update(fields)
-            _publish(vars, [("ai.reply", (reply or "").strip())])
+            _publish(vars, [("ai.reply", (reply or "").strip())], _handle(cfg))
             summary = ", ".join("%s=%s" % (k, fields[k]) for k in fields)
             self.status.log(aid, "→ " + summary, "ok")
             return "ok", summary
@@ -2121,7 +2134,7 @@ class Engine:
                                   title or "Genesi AI", reply[:400]],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  start_new_session=True)
-        _publish(vars, [("ai.reply", (reply or "").strip())])
+        _publish(vars, [("ai.reply", (reply or "").strip())], _handle(cfg))
         return "ok", (reply or "").strip()
 
     def _ai_extract(self, model, question, reply, outs, use_turbo, aid):
@@ -3229,7 +3242,9 @@ class Daemon:
                 continue
         unit = "%" if metric == "cpu" else "MB"
         self._edge_fire(auto, node, total > thr,
-                        "%s %s %.0f%s > %.0f%s" % (name, metric, total, unit, thr, unit))
+                        "%s %s %.0f%s > %.0f%s" % (name, metric, total, unit, thr, unit),
+                        {"process.name": name, "process.metric": metric,
+                         "process.value": "%.0f" % total})
 
     # -- user idle / active (from the evdev last-input clock) --------------
     def _poll_idle(self, auto, node):
@@ -3321,22 +3336,27 @@ class Daemon:
         out = ((proc.stdout or "").strip() + "\n"
                + (proc.stderr or "").strip()).strip()
         ev = cfg.get("on", "exit0")
+        # The output travels with the event. Without it {{command.output}} was
+        # offered by the panel, written into the notification after it, and
+        # rendered as its own braces -- the value the whole trigger exists to
+        # produce was the one thing it did not hand over.
+        values = {"command.output": out}
         if ev == "exit0":
-            self._edge_fire(auto, node, proc.returncode == 0, "command exit 0")
+            self._edge_fire(auto, node, proc.returncode == 0, "command exit 0", values)
         elif ev == "error":
-            self._edge_fire(auto, node, proc.returncode != 0, "command failed")
+            self._edge_fire(auto, node, proc.returncode != 0, "command failed", values)
         elif ev == "match":
             pattern = cfg.get("match") or ""
             try:
                 hit = bool(re.search(pattern, out)) if pattern else bool(out)
             except re.error:
                 hit = False
-            self._edge_fire(auto, node, hit, "command output matched")
+            self._edge_fire(auto, node, hit, "command output matched", values)
         elif ev == "changed":
             prev = self._snap.get(key)
             self._snap[key] = out
             if prev is not None and out != prev:
-                self._fire(auto, node, "command output changed")
+                self._fire(auto, node, "command output changed", values)
 
     # -- bluetooth device connected / disconnected ------------------------
     def _bt_set(self):
