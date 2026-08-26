@@ -56,11 +56,14 @@ _WORKFLOW_KINDS = {
     "act_email":       ["mode", "account", "host", "port", "user", "to",
                         "subject", "body", "folder", "limit"],
     "act_http":        ["url", "method", "body"],
-    "act_file":        ["op", "source", "dest"],
-    "act_app":         ["app", "action"],
+    # src/dest, NOT source: these are the keys the panel writes and the
+    # daemon reads. A generated block using "source" had the key dropped by
+    # the validator below and copied nothing, silently.
+    "act_file":        ["op", "src", "dest"],
+    "act_app":         ["app", "op"],
     "act_sound":       ["sound"],
     "act_wait":        ["seconds"],
-    "act_power":       ["action"],
+    "act_power":       ["op"],
 }
 
 

@@ -1222,7 +1222,12 @@ class Engine:
         """
         aid = auto["id"]
         cfg = node.get("config", {}) or {}
-        name = (cfg.get("app") or "").lower().strip()
+        # Rendered, not read raw. "App opens (app1) -> AI -> App closes
+        # ({{app1.name}})" is the obvious way to say "wait for THAT app to
+        # close", and it silently waited for a process literally named
+        # "{{app1.name}}" until the timeout instead. (The poller above is the
+        # trigger and stays raw: it runs before there is a run to read from.)
+        name = self._sub(cfg.get("app") or "", payload, vars).lower().strip()
         trans = cfg.get("transition", "opened")
         if not name:
             # "Any app" cannot be waited for: every tick something starts
@@ -1379,11 +1384,11 @@ class Engine:
             elif kind == "act_http":
                 return self._act_http(aid, cfg, payload, vars)
             elif kind == "act_file":
-                return self._act_file(aid, cfg)
+                return self._act_file(aid, cfg, payload, vars)
             elif kind == "act_app":
-                return self._act_app(aid, cfg)
+                return self._act_app(aid, cfg, payload, vars)
             elif kind == "act_sound":
-                return self._act_sound(aid, cfg)
+                return self._act_sound(aid, cfg, payload, vars)
             elif kind == "act_power":
                 return self._act_power(aid, cfg)
             elif kind == "act_email":
@@ -1393,7 +1398,7 @@ class Engine:
             elif kind == "act_subflow":
                 return self._act_subflow(auto, node, payload, vars, walk)
             elif kind == "act_wait":
-                return self._act_wait(aid, cfg)
+                return self._act_wait(aid, cfg, payload, vars)
         except Exception as exc:
             self.status.log(aid, "%s: %s" % (title, exc), "err")
             return "err", ""
@@ -1758,9 +1763,10 @@ class Engine:
         self.status.log(aid, "📤 sent to %s" % to, "ok")
         return "ok", ""
 
-    def _act_wait(self, aid, cfg):
+    def _act_wait(self, aid, cfg, payload="", vars=None):
         try:
-            seconds = min(3600.0, max(0.0, float(cfg.get("seconds", 5))))
+            seconds = min(3600.0, max(0.0, float(
+                self._sub(str(cfg.get("seconds", 5)), payload, vars).strip())))
         except (TypeError, ValueError):
             seconds = 5.0
         self.status.log(aid, "waiting %gs…" % seconds, "out")
@@ -1881,11 +1887,13 @@ class Engine:
                             ("http.body", "")))
             return "err", ""
 
-    def _act_file(self, aid, cfg):
+    def _act_file(self, aid, cfg, payload="", vars=None):
         import shutil as _sh
         op = cfg.get("op", "copy")
-        src = os.path.expanduser(cfg.get("src", "") or "")
-        dest = os.path.expanduser(cfg.get("dest", "") or "")
+        # "{{file.path}}" into Source is the entire point of pairing this with a
+        # Watch-folder trigger, and it was being taken as a literal path.
+        src = os.path.expanduser(self._sub(cfg.get("src", "") or "", payload, vars))
+        dest = os.path.expanduser(self._sub(cfg.get("dest", "") or "", payload, vars))
         try:
             if op == "copy" and src and dest:
                 _sh.copy2(src, dest); self.status.log(aid, "copied → " + dest, "ok")
@@ -1908,9 +1916,9 @@ class Engine:
             self.status.log(aid, "file %s failed: %s" % (op, exc), "err")
             return "err", ""
 
-    def _act_app(self, aid, cfg):
+    def _act_app(self, aid, cfg, payload="", vars=None):
         op = cfg.get("op", "launch")
-        app = (cfg.get("app") or "").strip()
+        app = self._sub(cfg.get("app") or "", payload, vars).strip()
         if not app:
             self.status.log(aid, "app: none set — skipped", "out")
             return "err", ""
@@ -1928,8 +1936,8 @@ class Engine:
             self.status.log(aid, "app %s failed: %s" % (op, exc), "err")
             return "err", ""
 
-    def _act_sound(self, aid, cfg):
-        sound = os.path.expanduser(cfg.get("sound", "") or "")
+    def _act_sound(self, aid, cfg, payload="", vars=None):
+        sound = os.path.expanduser(self._sub(cfg.get("sound", "") or "", payload, vars))
         players = []
         if sound:
             for tool in ("paplay", "aplay", "ffplay", "mpv"):

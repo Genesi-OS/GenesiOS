@@ -1025,5 +1025,75 @@ check("and the log is empty", stt._autos["a1"]["log"] == [])
 check("clearing an automation that is not there is not a crash",
       stt.clear_log("nope") is False)
 
+
+print("\n[30] {{name}} works in the fields that were reading their config raw")
+# Reported: the first App card was named app1, and putting {{app1.name}} in the
+# SECOND card's Process name did not resolve -- the block waited for a process
+# literally called "{{app1.name}}" until it timed out. _wait_app read cfg["app"]
+# straight, and it was not alone: launch/close app, the file operations, the
+# sound path and the wait duration all skipped _sub too, so no value from
+# anywhere in the run could reach them.
+_subf = mod.Engine._sub
+check("the App block's process name renders",
+      _subf("{{app1.name}}", "", {"app1.name": "firefox"}) == "firefox")
+
+
+class _FakeProcInfo:
+    def __init__(self, name):
+        self.info = {"name": name}
+
+
+_procs = {"names": ["systemd"]}
+mod.psutil = type("psutil", (), {
+    "process_iter": staticmethod(lambda fields: [_FakeProcInfo(n) for n in _procs["names"]]),
+})()
+
+eng = mod.Engine(FakeStatus())
+node = {"id": "w", "kind": "evt_app",
+        "config": {"app": "{{app1.name}}", "transition": "closed", "waitSeconds": 1}}
+outcome, _ = eng._wait_app({"id": "a1"}, node, "", {"app1.name": "firefox"})
+check("waiting for {{app1.name}} sees firefox is already closed", outcome == "ok",
+      outcome)
+
+_procs["names"] = ["systemd", "firefox"]
+eng = mod.Engine(FakeStatus())
+st_wait = FakeStatus()
+eng = mod.Engine(st_wait)
+outcome, _ = eng._wait_app({"id": "a1"}, node, "", {"app1.name": "firefox"})
+check("and it waits (then gives up) while firefox is still running",
+      outcome == "err", outcome)
+said = " ".join(line for _lvl, line in st_wait.lines)
+check("the log names the app, not the placeholder",
+      "firefox" in said and "{{app1.name}}" not in said, said[:200])
+
+# The other four that were reading raw.
+launched = []
+mod.subprocess.Popen = lambda argv, **kw: launched.append(list(argv))
+mod.shutil.which = lambda name: "/usr/bin/" + name
+eng = mod.Engine(FakeStatus())
+eng._act_app("a1", {"op": "launch", "app": "{{app1.name}}"}, "", {"app1.name": "kate"})
+check("launch app renders its command",
+      launched and launched[-1][-1] == "kate", str(launched[-1:]))
+
+eng._act_sound("a1", {"sound": "{{dir}}/beep.wav"}, "", {"dir": "/tmp"})
+check("the sound path renders",
+      launched and launched[-1][-1].endswith("/tmp/beep.wav"), str(launched[-1:]))
+
+t0 = mod.time.monotonic()
+eng._act_wait("a1", {"seconds": "{{pause}}"}, "", {"pause": "0"})
+check("the wait duration renders (and did not fall back to 5s)",
+      mod.time.monotonic() - t0 < 1.0)
+
+import tempfile as _tf
+import os as _os
+_tmp = _tf.mkdtemp()
+_src = _os.path.join(_tmp, "a.txt")
+open(_src, "w").write("x")
+eng._act_file("a1", {"op": "copy", "src": "{{picked}}",
+                     "dest": _os.path.join(_tmp, "b.txt")},
+              "", {"picked": _src})
+check("a file operation renders its paths",
+      _os.path.exists(_os.path.join(_tmp, "b.txt")))
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

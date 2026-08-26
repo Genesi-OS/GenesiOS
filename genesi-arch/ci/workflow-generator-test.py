@@ -149,6 +149,68 @@ check("it explains the true/false ports", "true" in gen._WORKFLOW_SYSTEM
       and "false" in gen._WORKFLOW_SYSTEM)
 check("it explains named outputs", "{{cpu}}" in gen._WORKFLOW_SYSTEM)
 
+
+print("\nevery advertised config key is one the daemon actually reads")
+# Three keys in the catalogue named fields that do not exist: act_file said
+# "source" where the panel and daemon say "src", and act_app / act_power said
+# "action" where both say "op". The validator drops any key not in the
+# catalogue, so a generated block carried either the wrong name or nothing at
+# all -- and then sat on the canvas looking perfectly configured while copying
+# no files and launching no apps. Read the daemon and compare.
+import ast as _ast
+
+_daemon_src = (Path(__file__).resolve().parents[1] / "packages" / "genesi-ai-mode"
+               / "genesi-automationd").read_text(encoding="utf-8")
+_tree = _ast.parse(_daemon_src)
+_funcs = {}
+for _n in _ast.walk(_tree):
+    if isinstance(_n, _ast.FunctionDef):
+        _funcs.setdefault(_n.name, []).append(_n)
+
+
+def _cfg_keys(*names):
+    """Every cfg.get("x") literal read inside these daemon functions."""
+    found = set()
+    for name in names:
+        for fn in _funcs.get(name, []):
+            for node in _ast.walk(fn):
+                if (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+                        and node.func.attr == "get" and node.args
+                        and isinstance(node.args[0], _ast.Constant)
+                        and isinstance(node.args[0].value, str)):
+                    target = node.func.value
+                    if isinstance(target, _ast.Name) and target.id == "cfg":
+                        found.add(node.args[0].value)
+    return found
+
+
+# kind -> the daemon function(s) that read its config. Only the action kinds:
+# they are 1:1, which is what makes this checkable at all.
+_READERS = {
+    "act_script": ("_act_script",),
+    "act_ai": ("_act_ai",),
+    # _act_cond copies its whole cfg into _act_ai for the "ai" mode, so its
+    # model / turbo keys are read there, not in its own body.
+    "act_cond": ("_act_cond", "_act_ai"),
+    "act_loop": ("_act_loop", "_loop_items"),
+    "act_subflow": ("_act_subflow",),
+    "act_notify": ("_act_notify",),
+    "act_email": ("_act_email",),
+    "act_http": ("_act_http",),
+    "act_file": ("_act_file",),
+    "act_app": ("_act_app",),
+    "act_sound": ("_act_sound",),
+    "act_wait": ("_act_wait",),
+    "act_power": ("_act_power",),
+}
+for _kind, _fns in sorted(_READERS.items()):
+    _advertised = set(gen._WORKFLOW_KINDS[_kind])
+    _read = _cfg_keys(*_fns)
+    _ghost = sorted(_advertised - _read)
+    check("%s advertises only fields the daemon reads" % _kind, not _ghost,
+          "no daemon reads " + ", ".join(repr(g) for g in _ghost)
+          + " (it reads " + ", ".join(sorted(_read)) + ")")
+
 print("\n" + ("ALL TESTS PASSED" if not failures
               else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)
