@@ -932,6 +932,57 @@ class Engine:
                 self.quiet_after_run(aid)
             self.status.log(aid, "✓ finished", "ok")
 
+    def run_all(self, auto, detail="manual run"):
+        """Run a graph that has NO trigger block, for the GUI's "Run now".
+
+        Same walker, same rules as a triggered run. This used to be a second,
+        poorer runner: a topological sweep calling _run_action(node, payload="")
+        with no vars dict at all. With vars=None every _publish() is a no-op, so
+        an AI block's {{ai.reply}} and its declared outputs were never published
+        and the block after it rendered them as literal braces; the payload was
+        never forwarded either, so {input} came through empty. The graph
+        everyone draws first -- AI Action -> Notification, press Run now -- was
+        the one graph that could not pass a value along.
+
+        Entry points are the nodes nothing links INTO, in the order the sheet
+        reads. From there the LINKS carry the run, so a lone card still runs and
+        a wired chain behaves exactly as it does when a trigger fires it.
+        """
+        aid = auto["id"]
+        nodes = {n.get("id"): n for n in auto.get("nodes", [])}
+        outgoing = {}
+        for link in auto.get("links", []):
+            outgoing.setdefault(link.get("from"), []).append(
+                ((link.get("fromPort") or ""), link.get("to")))
+        keep = {nid for nid, n in nodes.items() if n.get("kind") in ACTION_KINDS}
+        seq = self._topo(auto, keep)
+        fed = {l.get("to") for l in auto.get("links", [])}
+        roots = [n.get("id") for n in seq if n.get("id") not in fed]
+        if not roots and seq:
+            # Every action feeds another one: a cycle someone drew on the sheet.
+            # Start at the first card so "Run now" still does something; the
+            # walk budget is what stops it.
+            roots = [seq[0].get("id")]
+        if not roots:
+            return
+
+        self.status.state(aid, "running", running=True)
+        self.status.nodes_reset(aid)
+        self.status.log(aid, "▶ " + (detail or "manual run")
+                        + " — no trigger block", "step")
+        walk = _Walk(auto, nodes, outgoing, detail)
+        try:
+            self._walk(walk, [(nid, "") for nid in roots])
+            for nid in walk.skipped:
+                if nid not in walk.ran:
+                    self.status.node_state(aid, nid, "skipped")
+        finally:
+            self.status.state(aid, "listening" if auto.get("enabled") else "idle",
+                              running=False)
+            if self.quiet_after_run is not None:
+                self.quiet_after_run(aid)
+            self.status.log(aid, "✓ finished", "ok")
+
     def _walk(self, walk, queue):
         """Drain a queue of (node_id, payload), executing each node in order.
 
@@ -3176,23 +3227,12 @@ class Daemon:
                                  args=(auto, n.get("id"), "test run"),
                                  daemon=True).start()
         else:
-            # No trigger at all: run every action node in order.
-            keep = {n.get("id") for n in auto.get("nodes", [])
-                    if n.get("kind") in ACTION_KINDS}
-            seq = self.engine._topo(auto, keep)
-            self.status.state(aid, "running", running=True)
-            threading.Thread(target=self._run_all,
-                             args=(auto, seq), daemon=True).start()
+            # No trigger at all: walk the action graph itself, through the same
+            # engine a real event uses. Running the cards as a flat list instead
+            # is what made {{ai.reply}} arrive as text.
+            threading.Thread(target=self.engine.run_all,
+                             args=(auto, "manual run"), daemon=True).start()
         return "ok"
-
-    def _run_all(self, auto, seq):
-        aid = auto["id"]
-        try:
-            for node in seq:
-                self.engine._run_action(auto, node, "")
-        finally:
-            self.status.state(aid, "listening" if auto.get("enabled") else "idle",
-                              running=False)
 
     # -- control socket ----------------------------------------------------
     def _serve_socket(self):

@@ -820,5 +820,52 @@ check("a missing field is still a failure",
       pj('{"ram_before": 1}', ["ram_before", "ram_after"]) is None)
 check("still not JSON at all", pj("the ram is fine", ["ram_before"]) is None)
 
+
+print("\n[25] Run now on a graph with NO trigger block still passes values along")
+# The report: AI Action -> Notification, no trigger on the sheet, press Run now,
+# and the notification arrives reading "{{ai.reply}}" in braces. "Run now" with
+# no trigger used a SECOND runner -- a flat topological sweep calling
+# _run_action(node, payload="") with vars=None -- so nothing was ever published
+# and nothing was ever piped. It walks the real graph now.
+_which, _popen = mod.shutil.which, mod.subprocess.Popen
+notified = []
+mod.shutil.which = lambda name: "/usr/bin/" + name
+mod.subprocess.Popen = lambda argv, **kw: notified.append(list(argv))
+
+auto = build([script("s", "echo VALUE"),
+              {"id": "n", "kind": "act_notify", "title": "n",
+               "config": {"title": "got {{stdout}}", "body": "input {input}"}}],
+             [{"from": "s", "to": "n", "fromPort": "ok"}])
+st = FakeStatus()
+mod.Engine(st).run_all(auto, "manual run")
+check("the first card ran", st.node_states.get("s") == "ok", str(st.node_states))
+check("the card wired after it ran too", st.node_states.get("n") == "ok",
+      str(st.node_states))
+title = notified[-1][2] if notified else "<no notification>"
+body = notified[-1][3] if notified else "<no notification>"
+check("{{name}} from the previous block resolved", title == "got VALUE", title)
+check("{input} carried the payload", body == "input VALUE", body)
+
+# A sheet of unconnected cards still runs all of them -- that is what the old
+# sweep was for, and losing it would trade one bug for another.
+auto = build([script("a", "echo one"), script("b", "echo two")], [])
+st = FakeStatus()
+mod.Engine(st).run_all(auto, "manual run")
+check("disconnected cards all still run",
+      st.node_states.get("a") == "ok" and st.node_states.get("b") == "ok",
+      str(st.node_states))
+
+# A card that something links INTO is not an entry point: it must not fire on
+# its own, and it still obeys the port it was wired from.
+auto = build([script("a", "echo one"), script("b", "exit 1"),
+              script("c", "echo three")],
+             [{"from": "b", "to": "c", "fromPort": "ok"}])
+st = FakeStatus()
+mod.Engine(st).run_all(auto, "manual run")
+check("a fed card obeys the port it is wired to",
+      st.node_states.get("c") != "ok", str(st.node_states))
+
+mod.shutil.which, mod.subprocess.Popen = _which, _popen
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)
