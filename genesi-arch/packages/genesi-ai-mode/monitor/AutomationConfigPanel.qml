@@ -216,12 +216,30 @@ Item {
                     onAccepted: root.setConfig("app", value) }
                 QQC2.Label { visible: root.kindIs("evt_app") && ("" + root.cfg("app", "")).length === 0
                     Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: "Any app: this fires for whatever opens or closes, and {{app.name}} tells you which. It watches every process, not only windowed ones — pair it with a Condition if you only care about some."
+                    text: "Any app: this fires for whatever opens or closes, and {{app.name}} tells you which. Only installed applications count — background processes and helper scripts are ignored, which is what stopped this from firing every few seconds on an idle machine."
                     color: root.theme.textLo; font.pixelSize: 10 }
                 FieldLabel { text: "When it"; visible: root.kindIs("evt_app") }
                 Combo { visible: root.kindIs("evt_app"); model: [ "opened", "closed" ]
                     currentIndex: root.optionIndex(model, root.cfg("transition", "opened"))
                     onActivated: root.setConfig("transition", currentText) }
+                // Two App blocks on one sheet both published {{app.name}}, so
+                // the second quietly overwrote the first and the second half of
+                // the graph reported whichever ran last. Only the user can say
+                // which is which, so let them: this block's values also arrive
+                // under a name they choose. Slugged on the way in, like an AI
+                // output name, so what is stored is always something {{ }} can
+                // resolve.
+                FieldLabel { text: "Value name (for {{name.app}} downstream)"
+                    visible: root.kindIs("evt_app") }
+                GField { visible: root.kindIs("evt_app")
+                    text: root.cfg("varName", ""); icon: "tag"
+                    onAccepted: root.setConfig("varName", value ? root.slugPlain(value) : "") }
+                QQC2.Label { visible: root.kindIs("evt_app")
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: ("" + root.cfg("varName", "")).length === 0
+                        ? "Optional. Every App block publishes {{app.name}} and {{app.transition}}, so with TWO of them on the sheet the later one wins. Give this one a name — \"opened\", \"closed\" — and it also publishes {{name.app.name}}, which nothing else can overwrite."
+                        : "This block also publishes {{" + root.cfg("varName", "") + ".name}} and {{" + root.cfg("varName", "") + ".transition}} — usable in any block after it, and safe from the other App block."
+                    color: root.theme.textLo; font.pixelSize: 10 }
                 // Only meaningful mid-chain, where the block WAITS instead of
                 // triggering — so it only appears once something feeds into it.
                 FieldLabel { text: "Give up after (seconds)"
@@ -1041,8 +1059,13 @@ Item {
             for (var d = 0; d < declared.length; d++)
                 if (declared[d].name) names.push("{{" + declared[d].name + "}}")
         }
+        var handle = ("" + root.cfg("varName", "")).trim()
         for (var i = 0; i < cat.length; i++) {
             if (("" + cat[i].name).indexOf("<") === 0) continue
+            // The block's own prefix first: it is the name nothing else can
+            // overwrite, which is the reason to have named the block at all.
+            if (handle)
+                names.push("{{" + handle + "." + ("" + cat[i].name).split(".").pop() + "}}")
             names.push("{{" + cat[i].name + "}}")
         }
         return names.join(", ")
@@ -1058,11 +1081,19 @@ Item {
     // its settings mean — so the panel has to know.
     // The same shape the daemon accepts (_VAR_NAME_RE): what {{ }} can resolve.
     property string lastSlugged: ""
-    function slugName(raw) {
+    // The shape without the bookkeeping. lastSlugged drives a warning that
+    // belongs to the AI block's output rows, so anything ELSE that needs a slug
+    // (an App block's value name) must not leave a stale warning behind for the
+    // next block the user clicks.
+    function slugPlain(raw) {
         var clean = ("" + raw).trim().replace(/[^A-Za-z0-9_]+/g, "_")
                               .replace(/^_+|_+$/g, "").toLowerCase()
         if (clean.length === 0) clean = "value"
         if (/^[0-9]/.test(clean)) clean = "v" + clean
+        return clean
+    }
+    function slugName(raw) {
+        var clean = slugPlain(raw)
         lastSlugged = (clean !== ("" + raw).trim()) ? ("" + raw).trim() : ""
         return clean
     }

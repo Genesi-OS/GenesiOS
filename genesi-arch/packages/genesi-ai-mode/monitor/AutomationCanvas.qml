@@ -192,8 +192,18 @@ Item {
                         add(declared[d].name, declared[d].desc || "a value from the AI block", label)
             }
             var fields = outputCatalogue[n.kind] || []
+            // A block carrying a varName also publishes everything under that
+            // prefix. That form is listed FIRST and separately per block,
+            // because it is the only one two blocks of the same kind cannot
+            // take from each other — with two App cards the shared {{app.name}}
+            // belongs to whichever ran last, and `taken` was hiding the second
+            // card's entry entirely.
+            var handle = (n.config && n.config.varName) ? ("" + n.config.varName) : ""
             for (var f = 0; f < fields.length; f++) {
                 if (("" + fields[f].name).indexOf("<") === 0) continue
+                var bare = ("" + fields[f].name).split(".").pop()
+                if (handle)
+                    add(handle + "." + bare, fields[f].desc + " — from " + label, label)
                 add(fields[f].name, fields[f].desc, label)
             }
         }
@@ -829,6 +839,13 @@ Item {
                             QQC2.Label { text: "Run Log"; color: root.theme.textHi; font.pixelSize: 12; font.bold: true }
                             QQC2.Label { text: root.running ? "running…" : (runLog.count ? "idle" : "")
                                 color: root.theme.textLo; font.pixelSize: 11; Layout.fillWidth: true }
+                            GButton { theme: root.theme; kind: "ghost"; text: "Clear"
+                                visible: runLog.count > 0
+                                // Clears it at the DAEMON. Emptying only this
+                                // model would look right for one poll and then
+                                // refill from status.json half a second later.
+                                onClicked: { runLog.clear(); root.logFollow = true
+                                    backend.clearAutomationLog(root.activeId) } }
                             Rectangle {
                                 width: 22; height: 22; radius: 6; color: xLogMa.containsMouse ? root.theme.cardHi : "transparent"
                                 FIcon { anchors.centerIn: parent; name: "x"; size: 11; color: root.theme.textLo }
@@ -861,14 +878,25 @@ Item {
                             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                             model: runLog
                             QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
-                            onCountChanged: positionViewAtEnd()
-                            delegate: QQC2.Label {
+                            // Follow the tail only while the user IS at the
+                            // tail. Scrolling up to read something and being
+                            // dragged back down by the next log line is the
+                            // whole complaint; a log you cannot read during a
+                            // run is not a log.
+                            onCountChanged: if (root.logFollow) positionViewAtEnd()
+                            onMovementEnded: root.logFollow = logList.atYEnd
+                            delegate: TextEdit {
                                 width: logList.width
                                 text: model.line
+                                readOnly: true
+                                selectByMouse: true
+                                persistentSelection: true
                                 color: model.level === "cmd" ? root.theme.greenBright
                                      : model.level === "step" ? root.theme.blue
                                      : model.level === "ok" ? root.theme.greenBright
                                      : model.level === "err" ? root.theme.red : root.theme.textMid
+                                selectionColor: root.theme.green
+                                selectedTextColor: root.theme.white
                                 font.family: root.theme.mono; font.pixelSize: 11
                                 wrapMode: Text.WrapAnywhere
                             }
@@ -1467,6 +1495,9 @@ Item {
     property bool showLog: false
     property bool running: false
     property var pendingApprovals: []
+    // Is the log view parked at the bottom? Set false the moment the user
+    // scrolls away, true again when they come back (or press Clear).
+    property bool logFollow: true
     ListModel { id: runLog }
 
     Timer {
@@ -1486,10 +1517,16 @@ Item {
         root.pendingApprovals = mine.pending || []
         if (root.pendingApprovals.length > 0) root.showLog = true
         var log = mine.log || []
-        if (runLog.count !== log.length) {
+        // Append what is new instead of rebuilding the whole list. A rebuild
+        // every 1.5s threw away the scroll position and any selection the user
+        // was in the middle of making, which is why the log felt like it was
+        // fighting back. Only a log that SHRANK (cleared, or rolled past
+        // LOG_KEEP) needs the full redraw.
+        if (log.length < runLog.count) {
             runLog.clear()
-            for (var i = 0; i < log.length; i++)
-                runLog.append({ line: log[i].line, level: log[i].level || "out" })
+            root.logFollow = true
         }
+        for (var i = runLog.count; i < log.length; i++)
+            runLog.append({ line: log[i].line, level: log[i].level || "out" })
     }
 }

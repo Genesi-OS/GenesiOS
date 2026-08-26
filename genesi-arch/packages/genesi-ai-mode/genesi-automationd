@@ -261,7 +261,83 @@ def _slug(name):
     return (out or "value").lower()
 
 
-def _publish(vars, pairs):
+def _node_handle(node):
+    """This block's own prefix for the values it publishes, or "".
+
+    Two App blocks on one sheet -- "Firefox opens" and "Firefox closes" -- both
+    published app.name, so the second overwrote the first and {{app.name}} in
+    the second half of the graph reported whatever ran last. The kind alone
+    cannot tell them apart; only the user can. So a block may carry a varName,
+    and its values are published under that too: {{opened.name}} next to the
+    shared {{app.name}}, which stays exactly as it was for every graph already
+    saved.
+    """
+    if not isinstance(node, dict):
+        return ""
+    name = ((node.get("config") or {}).get("varName") or "").strip()
+    return name if _VAR_NAME_RE.match(name) else ""
+
+
+_APP_NAMES = {"names": set(), "at": 0.0}
+
+
+def _application_names():
+    """Process names that belong to an installed application.
+
+    "Any app" meant any PROCESS, and on a live desktop something starts or
+    exits every few seconds -- a shell, a python helper, a thumbnailer, a
+    pacman hook -- so a node with an empty name fired more or less constantly
+    while looking like it was politely waiting for the user to open something.
+    (The self-trigger guard added in pkgrel 174 only stops a workflow feeding
+    ITSELF; everything else on the machine still counted.)
+
+    So read the installed .desktop files and keep only what they actually
+    launch. Both the full basename and its first 15 characters are stored,
+    because psutil reports comm, which the kernel caps at 15.
+
+    If nothing can be read, return an empty set and let the caller fire for
+    anything: a node that never fires is the failure mode this file keeps
+    having to fix, and it is worse than one that fires too often.
+    """
+    now = time.monotonic()
+    if _APP_NAMES["names"] and now - _APP_NAMES["at"] < 300:
+        return _APP_NAMES["names"]
+    names = set()
+    for root in (os.path.expanduser("~/.local/share/applications"),
+                 "/usr/local/share/applications", "/usr/share/applications"):
+        try:
+            entries = os.listdir(root)
+        except OSError:
+            continue
+        for entry in entries:
+            if not entry.endswith(".desktop"):
+                continue
+            try:
+                with open(os.path.join(root, entry), encoding="utf-8",
+                          errors="replace") as fh:
+                    for line in fh:
+                        if not line.startswith("Exec="):
+                            continue
+                        for tok in line[5:].split():
+                            # Skip the wrappers and field codes that sit in
+                            # front of the real binary: env VAR=x, flatpak run,
+                            # %U, --flags.
+                            if (tok.startswith("%") or tok.startswith("-")
+                                    or "=" in tok or tok in ("env", "sh", "bash", "-c")):
+                                continue
+                            base = os.path.basename(tok).lower()
+                            if base:
+                                names.add(base)
+                                names.add(base[:15])
+                            break
+                        break
+            except OSError:
+                continue
+    _APP_NAMES["names"], _APP_NAMES["at"] = names, now
+    return names
+
+
+def _publish(vars, pairs, handle=""):
     """Publish a block's named values for the blocks after it.
 
     Each value lands twice: namespaced ("clipboard.text") and bare ("text").
@@ -281,6 +357,10 @@ def _publish(vars, pairs):
         bare = name.split(".", 1)[1] if "." in name else name
         if bare:
             vars[bare] = text
+            # The block's own prefix. Unlike the two above this one is NEVER
+            # overwritten by another block, which is the whole point of it.
+            if handle:
+                vars[handle + "." + bare] = text
 
 
 def _now():
@@ -815,6 +895,21 @@ class Status:
                 cur["log"] = cur["log"][-LOG_KEEP:]
         self._flush()
 
+    def clear_log(self, aid):
+        """Empty one automation's run log.
+
+        The GUI polls this file and rebuilds its list from it, so a Clear that
+        only emptied the ListModel would refill on the next tick, half a second
+        later. The log has to go from here.
+        """
+        with self._lock:
+            cur = self._autos.get(aid)
+            if cur is None:
+                return False
+            cur["log"] = []
+        self._flush()
+        return True
+
     def is_running(self, aid):
         """Is this automation mid-run right now?"""
         with self._lock:
@@ -915,7 +1010,8 @@ class Engine:
         # on the engine: two automations can be walking at the same time, and
         # one must never read the other's values.
         walk = _Walk(auto, nodes, outgoing, detail)
-        _publish(walk.vars, (values or {}).items())
+        _publish(walk.vars, (values or {}).items(),
+                 _node_handle(nodes.get(start_id)))
         try:
             # A trigger has no run result: every outgoing link fires, whatever
             # dot it was drawn from, carrying the event detail as payload.
@@ -1154,7 +1250,8 @@ class Engine:
             except Exception:
                 running = False
             if running == want_running:
-                _publish(vars, (("app.name", name), ("app.transition", trans)))
+                _publish(vars, (("app.name", name), ("app.transition", trans)),
+                         _node_handle(node))
                 self.status.log(aid, "%s is %s" % (name, "open" if running else "closed"),
                                 "ok")
                 return "ok", payload
@@ -2619,6 +2716,12 @@ class Daemon:
         # every process, not only windowed ones — a shell script counts.
         if not name:
             changed = (appset - self._app_prev) if trans == "opened"                 else (self._app_prev - appset)
+            # ANY APP means any application. Without this it meant any process,
+            # and the node fired every couple of seconds on a machine that was
+            # doing nothing the user would call opening or closing an app.
+            known = _application_names()
+            if known:
+                changed = {c for c in changed if c in known or c[:15] in known}
             if not changed:
                 return
             # One event per tick: a login or a build can start dozens at once,
@@ -3343,6 +3446,8 @@ class Daemon:
         if cmd == "reload":
             self.load()
             return {"ok": True}
+        if cmd == "clear-log":
+            return {"ok": self.status.clear_log(msg.get("id", ""))}
         if cmd == "run-now":
             return {"ok": True, "result": self.run_now(msg.get("id", ""))}
         if cmd in ("approve", "deny"):

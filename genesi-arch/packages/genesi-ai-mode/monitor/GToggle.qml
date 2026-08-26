@@ -32,6 +32,15 @@ Item {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: { root.checked = !root.checked; root.toggled(root.checked) }
+        // Report the click; do NOT flip `checked` here.
+        //
+        // Every call site binds checked to the value it owns
+        // (checked: root.activeEnabled) and writes that value back in
+        // onToggled. Assigning to checked from inside DESTROYS that binding,
+        // so from the first click onwards the switch stopped following the
+        // model: selecting a disabled automation left the label reading
+        // "Disabled" next to a switch still sitting in the on position.
+        // The owner turns it; this only asks.
+        onClicked: root.toggled(!root.checked)
     }
 }

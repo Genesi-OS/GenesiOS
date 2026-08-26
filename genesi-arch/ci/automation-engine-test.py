@@ -938,5 +938,92 @@ check("a well-shaped reply costs no extra call",
       st.node_states.get("ai") == "ok" and _repair["asked"] == [],
       str(st.node_states) + str(_repair["asked"]))
 
+
+print("\n[27] two App blocks stop overwriting each other's {{app.name}}")
+# Reported: a graph that opens Firefox, asks the AI for the RAM, waits for
+# Firefox to close and asks again. Both App cards published app.name, so the
+# second overwrote the first and {{app.name}} in the back half of the graph
+# reported whichever card ran last. A block may now carry a varName and its
+# values also land under that, which nothing else can take.
+_pub = mod._publish
+v = {}
+_pub(v, [("app.name", "firefox"), ("app.transition", "opened")], "started")
+_pub(v, [("app.name", "kate"), ("app.transition", "closed")], "stopped")
+check("the shared name is still last-wins, as every saved graph expects",
+      v.get("app.name") == "kate", str(v))
+check("but the first block kept its own", v.get("started.name") == "firefox", str(v))
+check("and so did the second", v.get("stopped.name") == "kate", str(v))
+check("the other fields are namespaced too",
+      v.get("started.transition") == "opened" and v.get("stopped.transition") == "closed",
+      str(v))
+
+check("a block with no varName publishes exactly what it always did",
+      sorted(k for k in (lambda d: (_pub(d, [("app.name", "x")]), d)[1])({}))
+      == ["app.name", "name"])
+check("a varName that {{ }} could not resolve is ignored, not published",
+      mod._node_handle({"config": {"varName": "not a name"}}) == "")
+check("a usable one is taken as is",
+      mod._node_handle({"config": {"varName": "opened"}}) == "opened")
+check("no config at all is fine", mod._node_handle({}) == "")
+
+print("\n[28] 'any app' means any APPLICATION, not any process")
+# An empty app name fired for every process that came or went -- a shell, a
+# python helper, a thumbnailer -- so the node ran more or less constantly on an
+# idle machine while looking like it was waiting for the user to open something.
+
+
+class _FakeAppDaemon:
+    def __init__(self, prev):
+        self._app_prev = set(prev)
+        self.fired = []
+
+    def _fire(self, auto, node, detail, values=None):
+        self.fired.append((detail, values))
+
+
+_FakeAppDaemon._poll_app = mod.Daemon._poll_app
+mod._APP_NAMES["names"] = {"firefox", "kate"}
+mod._APP_NAMES["at"] = mod.time.monotonic()
+
+any_open = {"id": "n", "kind": "evt_app", "config": {"app": "", "transition": "opened"}}
+d = _FakeAppDaemon({"systemd"})
+d._poll_app({"id": "a1"}, any_open, {"systemd", "sh", "python3", "gvfsd-thumb"})
+check("a burst of helper processes fires nothing", d.fired == [], str(d.fired))
+
+d = _FakeAppDaemon({"systemd"})
+d._poll_app({"id": "a1"}, any_open, {"systemd", "sh", "firefox"})
+check("a real application does fire", len(d.fired) == 1, str(d.fired))
+check("and reports which one",
+      d.fired and d.fired[0][1].get("app.name") == "firefox", str(d.fired))
+
+any_close = {"id": "n", "kind": "evt_app", "config": {"app": "", "transition": "closed"}}
+d = _FakeAppDaemon({"systemd", "sh", "kate"})
+d._poll_app({"id": "a1"}, any_close, {"systemd"})
+check("closing filters the same way", len(d.fired) == 1, str(d.fired))
+check("and it is the application that is reported",
+      d.fired and d.fired[0][1].get("app.name") == "kate", str(d.fired))
+
+# Reading no .desktop files at all must not silence the node: one that never
+# fires is worse than one that fires too often.
+mod._APP_NAMES["names"] = set()
+mod._APP_NAMES["at"] = 0.0
+_real_scan = mod._application_names
+mod._application_names = lambda: set()
+d = _FakeAppDaemon({"systemd"})
+d._poll_app({"id": "a1"}, any_open, {"systemd", "somebinary"})
+check("with no catalogue to filter by it still fires", len(d.fired) == 1, str(d.fired))
+mod._application_names = _real_scan
+
+print("\n[29] the run log can be cleared")
+stt = mod.Status()
+stt.sync({"a1": {"id": "a1", "name": "t", "enabled": True}})
+stt.log("a1", "one")
+stt.log("a1", "two")
+check("lines accumulate", len(stt._autos["a1"]["log"]) == 2)
+check("clearing reports success", stt.clear_log("a1") is True)
+check("and the log is empty", stt._autos["a1"]["log"] == [])
+check("clearing an automation that is not there is not a crash",
+      stt.clear_log("nope") is False)
+
 print("\n" + ("ALL TESTS PASSED" if not failures else "FAILURES: " + ", ".join(failures)))
 sys.exit(1 if failures else 0)

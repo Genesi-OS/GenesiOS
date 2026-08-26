@@ -2237,6 +2237,17 @@ class Backend(QObject):
             target=lambda: self._automation_cmd({"cmd": "run-now", "id": aid}),
             daemon=True).start()
 
+    @Slot(str)
+    def clearAutomationLog(self, aid):
+        """Empty the run log the daemon keeps for this automation.
+
+        Clearing only the ListModel would look right for half a second and then
+        refill: the canvas rebuilds that model from status.json on every poll.
+        """
+        threading.Thread(
+            target=lambda: self._automation_cmd({"cmd": "clear-log", "id": aid}),
+            daemon=True).start()
+
     @Slot(str, bool)
     def resolveAutomationApproval(self, req_id, approved):
         cmd = "approve" if approved else "deny"

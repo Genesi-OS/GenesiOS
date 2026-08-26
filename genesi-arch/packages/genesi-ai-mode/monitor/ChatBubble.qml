@@ -106,15 +106,24 @@ Item {
                 width: bubble.width - 28
                 spacing: 8
 
-                QQC2.Label {
+                // A TextEdit, not a Label, so the answer can be SELECTED and
+                // copied. Reading an answer you cannot take out of the window
+                // is half an answer. readOnly keeps it a bubble rather than an
+                // input; lineHeight goes because TextEdit has no such property
+                // (the Column spacing carries the rhythm instead).
+                TextEdit {
                     id: txt
                     width: parent.width
                     visible: !b.thinking
                     text: b.body
+                    readOnly: true
+                    selectByMouse: true
+                    persistentSelection: true
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
                     color: b.isError ? "#F1B0A8" : b._txt
-                    lineHeight: 1.15
+                    selectionColor: b._accent
+                    selectedTextColor: "#ffffff"
                 }
 
                 Row {

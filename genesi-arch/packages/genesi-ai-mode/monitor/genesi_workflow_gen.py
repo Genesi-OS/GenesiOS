@@ -29,7 +29,9 @@ _WORKFLOW_KINDS = {
     "evt_fs":          ["path", "pattern", "change", "recursive"],
     "evt_resource":    ["metric", "op", "threshold"],
     "evt_temperature": ["threshold", "sensor"],
-    "evt_app":         ["app", "transition"],
+    # varName: this block's own prefix for the values it publishes, so two App
+    # blocks on one sheet do not overwrite each other's {{app.name}}.
+    "evt_app":         ["app", "transition", "varName", "waitSeconds"],
     "evt_process":     ["app", "metric", "threshold"],
     "evt_power":       ["event", "level"],
     "evt_disk":        ["event", "path", "threshold"],
