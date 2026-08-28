@@ -361,7 +361,17 @@ def main():
         pass
     if args.tab is not None:
         win.setProperty("currentTab", args.tab)
-    if args.demo and args.app == "snapshots":
+    if args.demo and args.app == "snapshots" and args.seed_chat:
+        # --seed-chat doubles as "show the recovery branch" here: booted INTO a
+        # snapshot, which is the third code path and the one with the
+        # restoreBooted() button on it.
+        QTimer.singleShot(200, lambda: (
+            backend.statusLoaded.emit(json.dumps(DEMO_SNAP_STATUS)),
+            backend.snapshotsLoaded.emit(json.dumps(
+                {"configured": True, "snapshots": DEMO_SNAPS})),
+            backend.recoveryLoaded.emit(json.dumps(
+                {"recovery": True, "number": 138, "target": "/"}))))
+    elif args.demo and args.app == "snapshots":
         QTimer.singleShot(200, lambda: (
             backend.statusLoaded.emit(json.dumps(DEMO_SNAP_STATUS)),
             backend.snapshotsLoaded.emit(json.dumps(
