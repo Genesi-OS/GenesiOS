@@ -1283,7 +1283,31 @@ pkgver=1.0.0
 # token for token. The canvas keeps its own PALETTE on purpose; it should not
 # also invent its own geometry. The sanity check caught the first attempt at
 # this within seconds of writing it.
-pkgrel=185
+# 2026-08-26 (186): Quick Chat -- the Hyprland sizing bug, and the overlay
+# itself.
+# IT CAME UP THE FULL HEIGHT OF THE SCREEN, and went visibly wrong the moment
+# you asked it something. Two causes, both about who decides the size. The
+# window declared a `height:` binding and nothing else, which is a request the
+# client makes to ITSELF -- it never told the compositor a maximum, so a
+# compositor free to choose a height chose one. And the card inside used
+# anchors.fill, so it was exactly as tall as whatever surface arrived: content
+# in the top fifth of a huge empty panel. The window now declares
+# minimumHeight/maximumHeight (Qt forwards these as the xdg_toplevel min/max
+# size), and the card is sized by its CONTENT, so the panel is the right shape
+# even where the constraint is ignored and the surplus surface is simply
+# transparent. Verified by forcing a 700px window in the preview: the card
+# stays 92px instead of stretching.
+# THE OVERLAY SPEAKS THE APP'S LANGUAGE NOW. Same rounded surface and hairline
+# as the chat composer it is a miniature of. "ASK" was a 34x26 badge with 9px
+# text -- a label pretending to be a button, and the thing you press most in
+# this window; it is a real button with a state. And the settings/close
+# controls used freedesktop icon NAMES, which resolve against whatever icon
+# theme the desktop happens to have -- on a system missing those two they were
+# empty squares. They use the app's own bundled SVGs, like everything else in
+# the window.
+# devtools/preview.py runs Quick Chat too, and picks up an app's Backend
+# SUBCLASS rather than the base class it imports.
+pkgrel=186
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

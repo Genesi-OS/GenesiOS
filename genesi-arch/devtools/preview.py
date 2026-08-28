@@ -43,6 +43,9 @@ UIKIT = PKGS / "genesi-ui-kit" / "components"
 # harness drive all of them.
 APPS = {
     "monitor":    ("genesi-ai-mode/monitor", "genesi_ai_monitor"),
+    # Same directory, different app: the Quick Chat overlay is its own binary
+    # with its own root QML.
+    "quickchat":  ("genesi-ai-mode/monitor", "genesi_ai_quick", "QuickChat.qml"),
     "forge":      ("genesi-forge/app",       "genesi_forge"),
     "netinspect": ("genesi-netinspect/app",  "genesi_netinspect"),
     "ports":      ("genesi-ports/app",       "genesi_ports"),
@@ -205,7 +208,9 @@ def main():
         os.environ.setdefault("QT_QUICK_BACKEND", os.environ.get("QT_QUICK_BACKEND", ""))
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
-    subdir, modname = APPS[args.app]
+    _entry = APPS[args.app]
+    subdir, modname = _entry[0], _entry[1]
+    mainqml = _entry[2] if len(_entry) > 2 else "Main.qml"
     appdir = PKGS / subdir
     staged = _stage(appdir,
                     Path(os.environ.get("TEMP", "/tmp")) / ("genesi-preview-" + args.app))
@@ -260,7 +265,18 @@ def main():
     engine = QQmlApplicationEngine()
     engine.addImportPath(str(HERE / "kirigami-stub"))
 
-    backend = mon.Backend()
+    # Some apps SUBCLASS another app's Backend and add slots (Quick Chat
+    # extends the Monitor's). Instantiating the base class by name would leave
+    # those missing, and QML would report them as "not a function" -- an error
+    # about the harness dressed up as an error about the app.
+    _cls = None
+    for _n in dir(mon):
+        _c = getattr(mon, _n)
+        if (isinstance(_c, type) and _n.endswith("Backend")
+                and _c.__module__ == mon.__name__):
+            _cls = _c
+            break
+    backend = (_cls or mon.Backend)()
     if args.demo and args.app == "monitor":
         _demo(backend)
     engine.rootContext().setContextProperty("backend", backend)
@@ -273,10 +289,10 @@ def main():
     warnings = []
     engine.warnings.connect(lambda errs: warnings.extend(str(e) for e in errs))
 
-    engine.load(QUrl.fromLocalFile(str(staged / "Main.qml")))
+    engine.load(QUrl.fromLocalFile(str(staged / mainqml)))
     roots = engine.rootObjects()
     if not roots:
-        print("FAILED to load Main.qml")
+        print("FAILED to load " + mainqml)
         for w in warnings:
             print("  " + w)
         return 2

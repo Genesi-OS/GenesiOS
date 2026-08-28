@@ -11,6 +11,13 @@ QQC2.ApplicationWindow {
     height: expanded ? Math.min(620, Math.max(182, body.implicitHeight + 42)) : 92
     minimumWidth: 520
     maximumWidth: 820
+    // Say the height bounds OUT LOUD. Qt forwards these as the xdg_toplevel
+    // min/max size, and a compositor that is free to pick a height will pick
+    // one -- on Hyprland the panel came up the full height of the screen. A
+    // `height:` binding is a request the client makes to itself; this is the
+    // constraint the compositor is actually told about.
+    minimumHeight: 92
+    maximumHeight: 620
     visible: false
     color: "transparent"
     flags: Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -203,12 +210,24 @@ QQC2.ApplicationWindow {
     }
 
     Rectangle {
-        anchors.fill: parent
+        // Anchored on three sides and sized to the content, NOT filled.
+        //
+        // Filling meant the card was exactly as tall as whatever surface the
+        // compositor handed over. When Hyprland gave it a full-height one, the
+        // card stretched to match and the content sat in the top fifth of a
+        // huge empty panel — which is what "it goes all weird when you ask it
+        // something" looked like. Sized this way the panel is the right shape
+        // even where the constraint above is ignored, and the surplus surface
+        // is simply transparent.
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
         anchors.margins: 8
-        radius: 8
+        height: Math.min(parent.height - 16, body.implicitHeight + 32)
+        radius: theme.rXl
         color: theme.bgTop
         border.width: 1
-        border.color: root.pendingApproval ? theme.green : theme.lineHi
+        border.color: root.pendingApproval ? theme.a(theme.green, 0.55) : theme.hairline
 
         // Drag-to-move from any non-interactive spot (no titlebar needed). The
         // handler only activates past the drag threshold, so plain clicks are
@@ -281,20 +300,44 @@ QQC2.ApplicationWindow {
                     enabled: !root.thinking && root.pendingApproval === null
                     font.pixelSize: 16
                     background: Rectangle {
-                        radius: 7; color: theme.card
-                        border.width: prompt.activeFocus ? 1 : 0
-                        border.color: theme.green
+                        radius: theme.rMd
+                        color: theme.card
+                        border.width: 1
+                        border.color: prompt.activeFocus ? theme.a(theme.green, 0.55)
+                                                         : theme.hairline
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
                     }
                     Keys.onReturnPressed: root.sendPrompt()
                     Keys.onEscapePressed: root.hideQuick()
                 }
                 Rectangle {
+                    id: askBtn
                     visible: !root.thinking && root.pendingApproval === null
-                    Layout.preferredWidth: 34; Layout.preferredHeight: 26
-                    radius: 6; color: theme.a(theme.green, 0.15)
-                    QQC2.Label {
-                        anchors.centerIn: parent; text: "ASK"
-                        color: "#a7f3cf"; font.bold: true; font.pixelSize: 9
+                    readonly property bool canAsk: prompt.text.trim().length > 0
+                    Layout.preferredWidth: askRow.implicitWidth + 20
+                    Layout.preferredHeight: 30
+                    radius: theme.rMd
+                    color: askBtn.canAsk ? theme.green : theme.a(theme.textHi, 0.07)
+                    Behavior on color { ColorAnimation { duration: 140 } }
+                    RowLayout {
+                        id: askRow
+                        anchors.centerIn: parent
+                        spacing: 5
+                        QQC2.Label {
+                            text: "Ask"
+                            color: askBtn.canAsk ? "#08130E" : theme.textLo
+                            font.bold: true; font.pixelSize: theme.fsSmall
+                        }
+                        FIcon {
+                            name: "arrow-up"; size: 11
+                            color: askBtn.canAsk ? "#08130E" : theme.textLo
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: askBtn.canAsk
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.sendPrompt()
                     }
                 }
                 QQC2.Button {
@@ -307,21 +350,50 @@ QQC2.ApplicationWindow {
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: "Stop the current AI request"
                 }
-                QQC2.ToolButton {
-                    icon.name: "settings-configure"
-                    checked: root.settingsOpen
-                    onClicked: {
-                        root.settingsOpen = !root.settingsOpen
-                        if (root.settingsOpen) backend.loadModels()
+                // The app's own bundled SVGs, not freedesktop icon NAMES. A
+                // name resolves against whatever icon theme the desktop
+                // happens to have; on a system missing those two the buttons
+                // rendered as empty squares, which is how they show up in the
+                // preview. Everything else in this window already uses FIcon.
+                Rectangle {
+                    Layout.preferredWidth: 30; Layout.preferredHeight: 30
+                    radius: theme.rMd
+                    color: root.settingsOpen ? theme.a(theme.green, 0.18)
+                         : (cfgMa.containsMouse ? theme.hover : "transparent")
+                    FIcon {
+                        anchors.centerIn: parent
+                        name: "sliders"; size: 14
+                        color: root.settingsOpen ? theme.accentText : theme.textMid
                     }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: "AI controls"
+                    MouseArea {
+                        id: cfgMa
+                        anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.settingsOpen = !root.settingsOpen
+                            if (root.settingsOpen) backend.loadModels()
+                        }
+                        QQC2.ToolTip.visible: containsMouse
+                        QQC2.ToolTip.text: "AI controls"
+                    }
                 }
-                QQC2.ToolButton {
-                    icon.name: "window-close"
-                    onClicked: root.hideQuick()
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: "Close"
+                Rectangle {
+                    Layout.preferredWidth: 30; Layout.preferredHeight: 30
+                    radius: theme.rMd
+                    color: closeMa.containsMouse ? theme.a(theme.red, 0.20) : "transparent"
+                    FIcon {
+                        anchors.centerIn: parent
+                        name: "x"; size: 14
+                        color: closeMa.containsMouse ? theme.red : theme.textMid
+                    }
+                    MouseArea {
+                        id: closeMa
+                        anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.hideQuick()
+                        QQC2.ToolTip.visible: containsMouse
+                        QQC2.ToolTip.text: "Close"
+                    }
                 }
             }
 
