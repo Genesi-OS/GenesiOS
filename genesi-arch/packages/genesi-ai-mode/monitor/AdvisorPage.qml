@@ -21,6 +21,12 @@ Kirigami.Page {
     property var i18n
     property bool pulling: false
 
+    // Did the advisor FAIL, as opposed to having nothing to say? The backend
+    // returns "" when the CLI is simply not installed and an "error ..." line
+    // only when a real call went wrong, so the two states are distinguishable
+    // without guessing.
+    readonly property bool advFailed: area.text.indexOf("error querying the advisor") === 0
+
     // ── local GGUF library ──
     // Emitted when the user picks a GGUF to run: Main switches Turbo to it.
     // GGUF models only work through Turbo (llama-server loads the file directly;
@@ -265,7 +271,7 @@ Kirigami.Page {
         GlassCard {
             Layout.fillWidth: true
             Layout.preferredHeight: ggufCol.implicitHeight + Kirigami.Units.largeSpacing * 2
-            accent: theme.turbo
+            accent: theme.green
             active: page.ggufImporting
 
             ColumnLayout {
@@ -281,7 +287,7 @@ Kirigami.Page {
                     spacing: Kirigami.Units.smallSpacing
                     Kirigami.Icon {
                         source: "folder-download"
-                        color: theme.turboBright
+                        color: theme.greenBright
                         Layout.preferredWidth: 16; Layout.preferredHeight: 16
                     }
                     QQC2.Label {
@@ -292,13 +298,13 @@ Kirigami.Page {
                         visible: page.ggufModels.length > 0
                         implicitWidth: cntLbl.implicitWidth + 14; implicitHeight: 20
                         radius: 10
-                        color: theme.a(theme.turbo, 0.16)
+                        color: theme.a(theme.green, 0.16)
                         QQC2.Label {
                             id: cntLbl
                             anchors.centerIn: parent
                             text: page.ggufModels.length
                             font.pixelSize: 11; font.bold: true
-                            color: theme.turboBright
+                            color: theme.greenBright
                         }
                     }
                     Item { Layout.fillWidth: true }
@@ -333,7 +339,7 @@ Kirigami.Page {
                         theme: theme
                         kind: "filled"
                         text: i18n.t("gguf.addFile")
-                        accent: theme.turbo
+                        accent: theme.green
                         enabled: !page.ggufImporting
                         onClicked: ggufDialog.open()
                     }
@@ -344,7 +350,7 @@ Kirigami.Page {
                         radius: 19
                         color: theme.card
                         border.width: 1
-                        border.color: ggufUrl.activeFocus ? theme.turbo : theme.line
+                        border.color: ggufUrl.activeFocus ? theme.green : theme.line
                         Behavior on border.color { ColorAnimation { duration: 150 } }
                         QQC2.TextField {
                             id: ggufUrl
@@ -364,7 +370,7 @@ Kirigami.Page {
                     GButton {
                         theme: theme
                         text: page.ggufImporting ? i18n.t("gguf.adding") : i18n.t("gguf.add")
-                        accent: theme.turbo
+                        accent: theme.green
                         enabled: !page.ggufImporting && ggufUrl.text.trim().length > 0
                         onClicked: page.addGguf(ggufUrl.text.trim())
                     }
@@ -470,7 +476,7 @@ Kirigami.Page {
                                         anchors.centerIn: parent
                                         text: "MoE"
                                         font.pixelSize: 9; font.bold: true
-                                        color: theme.turboBright
+                                        color: theme.greenBright
                                     }
                                 }
                                 Item { Layout.fillWidth: true }
@@ -519,7 +525,7 @@ Kirigami.Page {
                                     kind: ggufRow.isActive ? "tonal" : "filled"
                                     text: ggufRow.isActive ? i18n.t("gguf.inUse")
                                                            : i18n.t("gguf.use")
-                                    accent: theme.turbo
+                                    accent: theme.green
                                     enabled: !ggufRow.isActive
                                     onClicked: page.useGguf(modelData.path, modelData.name)
                                 }
@@ -565,18 +571,85 @@ Kirigami.Page {
                     }
                 }
 
+                // An error is a STATE, not the advisor's answer. It used to be
+                // rendered as the prose the advisor had produced, so a missing
+                // CLI looked like advice about your hardware.
+                Rectangle {
+                    visible: page.advFailed
+                    Layout.fillWidth: true
+                    implicitHeight: advErrRow.implicitHeight + theme.sp4
+                    radius: theme.rMd
+                    color: theme.a(theme.red, 0.10)
+                    border.width: 1
+                    border.color: theme.a(theme.red, 0.35)
+                    RowLayout {
+                        id: advErrRow
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: theme.sp3; anchors.rightMargin: theme.sp3
+                        spacing: theme.sp3
+                        FIcon { name: "alert"; size: 16; color: theme.red }
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            text: area.text
+                            color: theme.textMid
+                            font.pixelSize: theme.fsSmall
+                            wrapMode: Text.WordWrap
+                        }
+                        GButton {
+                            theme: theme
+                            kind: "ghost"
+                            text: i18n.t("adv.reload")
+                            onClicked: page.reload()
+                        }
+                    }
+                }
+
                 QQC2.ScrollView {
+                    visible: !page.advFailed && area.text.length > 0
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     QQC2.TextArea {
                         id: area
                         readOnly: true
-                        wrapMode: TextEdit.NoWrap
+                        // WordWrap, not NoWrap. The advisor answers in
+                        // sentences, and NoWrap sent every one of them off the
+                        // right edge of a card that is already full width --
+                        // including its failures, which is how "error querying
+                        // the advisor: [WinError 2] The system cannot find the
+                        // file specified" ended up as the page's only content.
+                        wrapMode: Text.WordWrap
                         textFormat: TextEdit.PlainText
-                        font.family: "monospace"
+                        selectByMouse: true
+                        font.family: theme.mono
+                        font.pixelSize: theme.fsBody
                         color: theme.textMid
                         background: null
                     }
+                }
+
+                // Empty state. A blank card under a heading tells the user
+                // nothing about whether it is loading, broken or simply has
+                // nothing to say yet.
+                ColumnLayout {
+                    visible: area.text.length === 0 && !page.advFailed
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: theme.sp2
+                    Item { Layout.fillHeight: true }
+                    FIcon {
+                        Layout.alignment: Qt.AlignHCenter
+                        name: "cpu"; size: 26; color: theme.a(theme.textLo, 0.55)
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        text: i18n.t("adv.empty")
+                        color: theme.textLo
+                        font.pixelSize: theme.fsSmall
+                        wrapMode: Text.WordWrap
+                    }
+                    Item { Layout.fillHeight: true }
                 }
             }
         }

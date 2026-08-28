@@ -140,6 +140,7 @@ Item {
             // models / advisor page
             "adv.title": "Which model fits your hardware",
             "adv.reload": "Reload",
+            "adv.empty": "Nothing to report yet. Genesi looks at your GPU, your RAM and the models you have, then says which ones actually fit.",
             "adv.placeholder": "e.g. llama3.2:3b   or   llama3.1:8b",
             "adv.download": "Download",
             "adv.downloading": "Downloading…",
@@ -351,6 +352,7 @@ Item {
             // models / advisor page
             "adv.title": "Qual modelo cabe no seu hardware",
             "adv.reload": "Recarregar",
+            "adv.empty": "Nada a relatar ainda. O Genesi olha sua GPU, sua RAM e os modelos que você tem, e diz quais realmente cabem.",
             "adv.placeholder": "ex.: llama3.2:3b   ou   llama3.1:8b",
             "adv.download": "Baixar",
             "adv.downloading": "Baixando…",

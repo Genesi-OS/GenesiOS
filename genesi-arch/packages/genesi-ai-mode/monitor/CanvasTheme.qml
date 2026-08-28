@@ -35,6 +35,12 @@ Item {
 
     readonly property color turbo:        "#E67E22"
     readonly property color turboBright:  "#F8B24D"
+    // violet was referenced by the canvas and the config panel and never
+    // defined here, so two icons -- "Describe the automation" and "Values you
+    // can use here" -- were being handed `undefined` as a colour and rendered
+    // as nothing. Invisible on a dark background, which is why it survived: the
+    // only trace was a QML warning nobody could see without running the app.
+    readonly property color violet:       "#7C5CFF"
     readonly property color purple:       "#9B59B6"
     readonly property color purpleBright: "#C589DE"
     readonly property color blue:         "#3AAFE0"

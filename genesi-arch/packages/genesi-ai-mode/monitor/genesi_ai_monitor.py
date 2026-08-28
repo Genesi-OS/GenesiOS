@@ -325,6 +325,13 @@ class Backend(QObject):
             r = subprocess.run(["genesi-ai-mode", "advise"],
                                capture_output=True, text=True, timeout=10)
             return (r.stdout or r.stderr or "").strip()
+        except FileNotFoundError:
+            # The CLI is not on this machine. That is not a failure to report
+            # in red -- it is simply nothing to say, and the page has an empty
+            # state for exactly that. Returning the raw OSError text put
+            # "[Errno 2] No such file or directory" on screen as the advisor's
+            # ANSWER, which is the worst of both readings.
+            return ""
         except Exception as e:
             return f"error querying the advisor: {e}"
 

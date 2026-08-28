@@ -278,6 +278,29 @@ for _f in sorted(_mon.glob("*.qml")):
     if _f.stem not in _pkgbuild:
         failures.append("%s is not installed by the PKGBUILD" % _f.name)
 
+# ── The Automations family's theme must define what that family uses ───────
+#
+# Those files get a CanvasTheme (a self-contained graphite palette, no
+# dependency on the shared Theme.qml) passed in as `theme`. `violet` was
+# referenced by two of them and defined only in the SHARED theme, so the icons
+# were handed `undefined` as a colour and drew nothing -- invisible on a dark
+# background, and the only trace was a QML warning nobody sees without running
+# the app.
+_CANVAS_FAMILY = ["AutomationsPage.qml", "AutomationCanvas.qml",
+                  "AutomationConfigPanel.qml", "CanvasNode.qml", "PaletteItem.qml"]
+_mondir = PACKAGES / "genesi-ai-mode" / "monitor"
+_ct = (_mondir / "CanvasTheme.qml").read_text(encoding="utf-8")
+_defined = set(re.findall(r"property\s+\w+\s+(\w+)\s*:", _ct))
+_defined |= set(re.findall(r"function\s+(\w+)\s*\(", _ct))
+for _name in _CANVAS_FAMILY:
+    _f = _mondir / _name
+    if not _f.exists():
+        continue
+    _used = set(re.findall(r"theme\.(\w+)", _f.read_text(encoding="utf-8")))
+    for _miss in sorted(_used - _defined):
+        failures.append("%s uses theme.%s, which CanvasTheme.qml does not define"
+                        % (_name, _miss))
+
 print(f"checked {checked} QML files")
 if failures:
     print(f"\n{len(failures)} PROBLEM(S):")

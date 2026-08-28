@@ -1221,7 +1221,28 @@ pkgver=1.0.0
 # carries the colour.
 # Still to do on this app: the Models, Automations and Mesh pages, and
 # QuickChat.
-pkgrel=182
+# 2026-08-26 (183): the Models page, and a bug the preview harness found on a
+# page I was not even working on.
+# THE ADVISOR'S FAILURES WERE ITS ANSWER. advise() returned the raw OSError
+# text on any exception, and the page rendered it in the same monospace box the
+# advice goes in -- with wrapMode NoWrap, so it ran off the right edge. A
+# machine without the genesi-ai-mode CLI therefore showed "error querying the
+# advisor: [Errno 2] No such file or directory" as its hardware advice. Absent
+# and broken are now different things: absent returns "" and gets the page's
+# empty state, a real failure gets a framed error row with a retry, and the
+# advice itself wraps.
+# THE MODELS PAGE STOPPED BORROWING TURBO'S ORANGE. Orange means Turbo in this
+# app; on a page whose nav item is green it was doing duty as "local model
+# file", and it was the loudest thing on screen. The genuinely Turbo-related
+# bits (the ACTIVE model, the MoE fit badge) keep it.
+# AND: CanvasTheme.qml never defined `violet`, which AutomationCanvas.qml and
+# AutomationConfigPanel.qml both use -- so two icons on the Automations page
+# were handed `undefined` as a colour and drew nothing. Invisible on a dark
+# background; the only trace was a QML warning nobody sees without running the
+# app, which is exactly what devtools/preview.py now makes possible. Fixed, and
+# ci/qml-sanity-test.py fails if that family ever again uses a token its own
+# theme does not define (verified by removing violet and watching it fail).
+pkgrel=183
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
