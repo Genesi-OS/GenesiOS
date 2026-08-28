@@ -183,6 +183,23 @@ DEMO_PORTS = [
 ]
 
 
+# Snapshots needs a Btrfs root, which the dev box does not have, so the app
+# only ever shows its "unavailable" branch. This is the working state.
+DEMO_SNAP_STATUS = {"btrfs": True, "configured": True, "snapPac": True,
+                    "grubBtrfs": True, "count": 5}
+DEMO_SNAPS = [
+    {"number": 142, "date": "2026-08-26 11:04", "description": "pacman -Syu", "type": "pre"},
+    {"number": 141, "date": "2026-08-26 11:04", "description": "pacman -Syu", "type": "post"},
+    {"number": 138, "date": "2026-08-25 19:22", "description": "before installing nvidia-dkms", "type": "single"},
+    {"number": 131, "date": "2026-08-24 08:15", "description": "timeline", "type": "timeline"},
+    {"number": 120, "date": "2026-08-22 21:47", "description": "manual — before the mesh test", "type": "single"},
+]
+
+
+def _demo_snapshots(backend):
+    return backend
+
+
 def _demo_ports(backend):
     from PySide6.QtCore import Slot
     cls = type(backend)
@@ -344,6 +361,11 @@ def main():
         pass
     if args.tab is not None:
         win.setProperty("currentTab", args.tab)
+    if args.demo and args.app == "snapshots":
+        QTimer.singleShot(200, lambda: (
+            backend.statusLoaded.emit(json.dumps(DEMO_SNAP_STATUS)),
+            backend.snapshotsLoaded.emit(json.dumps(
+                {"configured": True, "snapshots": DEMO_SNAPS}))))
     if args.demo and args.app == "ports":
         # Push the rows in AFTER the tree is up. Overriding refresh() and
         # relying on the app to call it is a guess about startup order; this is
