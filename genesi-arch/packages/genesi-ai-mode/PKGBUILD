@@ -1202,7 +1202,26 @@ pkgver=1.0.0
 # Layout.preferredHeight, so they stretched to fill the rail.
 # The shared Theme.qml gains a radius/spacing/type scale so the apps stop each
 # inventing their own. Additive -- nothing else changes.
-pkgrel=181
+# 2026-08-26 (182): first pass over the Dashboard, and the card chrome the
+# whole fleet shares.
+# THE METRIC ROW REFLOWS. Three 128px cards side by side stop being readable
+# long before the window stops shrinking -- the gauge and its number end up
+# sharing about ninety pixels. Two columns under 1180, one under 820.
+# THE CARD CHROME IS CALMER. GlassCard's radius was 18 while everything around
+# it used 18/14/12/10, so two cards side by side rounded differently; it is now
+# 16, matching the kit's one card radius. And an ACTIVE card drew the raw
+# accent at full saturation plus a 0.28 ring plus a 0.50 halo -- on the Turbo
+# card that read as an alarm rather than "this is on", and it was the loudest
+# thing in the window, competing with the numbers that are the actual content.
+# 0.30 / 0.12 / 0.22 now. This is the shared GlassCard, so every app using it
+# gets the same calm.
+# THE SHOUTED MICRO-HEADINGS. Five ALL-CAPS letterspaced accent labels (CPU,
+# MEMORY, INFERENCE...) competed with the readings underneath. Same size,
+# normal tracking, secondary colour -- the icon chip beside each already
+# carries the colour.
+# Still to do on this app: the Models, Automations and Mesh pages, and
+# QuickChat.
+pkgrel=182
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

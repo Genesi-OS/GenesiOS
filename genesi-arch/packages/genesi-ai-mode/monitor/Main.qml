@@ -1070,11 +1070,18 @@ Kirigami.ApplicationWindow {
                 }
 
                 // ── METRICS ROW ──
-                RowLayout {
+                //
+                // A GridLayout, not a Row: three 128px-tall cards side by side
+                // stop being readable long before the window stops shrinking --
+                // the gauge and its number end up sharing about ninety pixels.
+                // Two columns first, then one.
+                GridLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: Kirigami.Units.largeSpacing
                     Layout.rightMargin: Kirigami.Units.largeSpacing
-                    spacing: Kirigami.Units.largeSpacing
+                    columns: win.width < 820 ? 1 : (win.width < 1180 ? 2 : 3)
+                    rowSpacing: Kirigami.Units.largeSpacing
+                    columnSpacing: Kirigami.Units.largeSpacing
 
                     // CPU
                     GlassCard {
@@ -1093,7 +1100,7 @@ Kirigami.ApplicationWindow {
                                     color: theme.a(theme.green, 0.16)
                                     Kirigami.Icon { anchors.centerIn: parent; source: "cpu"; width: 15; height: 15; color: theme.greenBright }
                                 }
-                                QQC2.Label { text: i18n.t("card.cpu"); font.bold: true; font.pixelSize: 11; font.letterSpacing: 1; color: theme.green }
+                                QQC2.Label { text: i18n.t("card.cpu"); font.bold: true; font.pixelSize: theme.fsSmall; font.letterSpacing: 0.3; color: theme.textMid }
                                 Item { Layout.fillWidth: true }
                             }
                             RowLayout {
@@ -1132,7 +1139,7 @@ Kirigami.ApplicationWindow {
                                     color: theme.a(theme.blue, 0.16)
                                     Kirigami.Icon { anchors.centerIn: parent; source: "media-flash"; width: 15; height: 15; color: theme.blue }
                                 }
-                                QQC2.Label { text: i18n.t("card.memory"); font.bold: true; font.pixelSize: 11; font.letterSpacing: 1; color: theme.blue }
+                                QQC2.Label { text: i18n.t("card.memory"); font.bold: true; font.pixelSize: theme.fsSmall; font.letterSpacing: 0.3; color: theme.textMid }
                                 Item { Layout.fillWidth: true }
                             }
                             RowLayout {
@@ -1171,7 +1178,7 @@ Kirigami.ApplicationWindow {
                                     color: theme.a(theme.purple, 0.16)
                                     Kirigami.Icon { anchors.centerIn: parent; source: Qt.resolvedUrl("icons/rocket.svg"); isMask: true; width: 15; height: 15; color: theme.purpleBright }
                                 }
-                                QQC2.Label { text: i18n.t("card.inference"); font.bold: true; font.pixelSize: 11; font.letterSpacing: 1; color: theme.purpleBright }
+                                QQC2.Label { text: i18n.t("card.inference"); font.bold: true; font.pixelSize: theme.fsSmall; font.letterSpacing: 0.3; color: theme.textMid }
                                 Item { Layout.fillWidth: true }
                             }
                             RowLayout {
