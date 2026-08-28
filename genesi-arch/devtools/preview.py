@@ -46,6 +46,10 @@ APPS = {
     # Same directory, different app: the Quick Chat overlay is its own binary
     # with its own root QML.
     "quickchat":  ("genesi-ai-mode/monitor", "genesi_ai_quick", "QuickChat.qml"),
+    # find/ borrows FileCard + FIcon + the icon set from monitor/ at build; the
+    # harness has to stage them the same way or the window will not load.
+    "find":       ("genesi-ai-mode/find",    "genesi_find_gui", "Main.qml",
+                   "genesi-ai-mode/monitor"),
     "forge":      ("genesi-forge/app",       "genesi_forge"),
     "netinspect": ("genesi-netinspect/app",  "genesi_netinspect"),
     "ports":      ("genesi-ports/app",       "genesi_ports"),
@@ -54,7 +58,7 @@ APPS = {
 }
 
 
-def _stage(appdir, tmp):
+def _stage(appdir, tmp, borrow=None):
     """Lay an app out the way its package installs it: the shared UI-kit
     components sit NEXT TO the app's own QML, because QML resolves a plain
     `Theme { }` from the same directory. Symlinks would need admin rights on
@@ -68,11 +72,16 @@ def _stage(appdir, tmp):
     tmp.mkdir(parents=True, exist_ok=True)
     for src in UIKIT.glob("*.qml"):
         shutil.copy2(src, tmp / src.name)
+    if borrow is not None:
+        for src in borrow.glob("*.qml"):
+            shutil.copy2(src, tmp / src.name)
+        if (borrow / "icons").is_dir():
+            shutil.copytree(borrow / "icons", tmp / "icons", dirs_exist_ok=True)
     for src in appdir.glob("*.qml"):
         shutil.copy2(src, tmp / src.name)
     icons = appdir / "icons"
     if icons.is_dir():
-        shutil.copytree(icons, tmp / "icons")
+        shutil.copytree(icons, tmp / "icons", dirs_exist_ok=True)
     return tmp
 
 
@@ -265,8 +274,10 @@ def main():
     subdir, modname = _entry[0], _entry[1]
     mainqml = _entry[2] if len(_entry) > 2 else "Main.qml"
     appdir = PKGS / subdir
+    borrow = PKGS / _entry[3] if len(_entry) > 3 else None
     staged = _stage(appdir,
-                    Path(os.environ.get("TEMP", "/tmp")) / ("genesi-preview-" + args.app))
+                    Path(os.environ.get("TEMP", "/tmp")) / ("genesi-preview-" + args.app),
+                    borrow)
     sys.path.insert(0, str(appdir))
 
     from PySide6.QtCore import QUrl, QTimer, QMetaObject, Q_ARG
@@ -335,6 +346,10 @@ def main():
     elif args.demo and args.app == "ports":
         _demo_ports(backend)
     engine.rootContext().setContextProperty("backend", backend)
+    # genesi-find-ui reads a second context property its own main() sets; QML
+    # cannot see an undefined context property at all, so the file fails to load
+    # without it.
+    engine.rootContext().setContextProperty("initialScope", "")
     # Relative icon paths ("icons/x.svg") resolve against the file that
     # DECLARES them; inside the stub Icon.qml that is the stub directory,
     # not the app. Hand the stub the app root so it can rebase them.
@@ -376,6 +391,9 @@ def main():
             backend.statusLoaded.emit(json.dumps(DEMO_SNAP_STATUS)),
             backend.snapshotsLoaded.emit(json.dumps(
                 {"configured": True, "snapshots": DEMO_SNAPS}))))
+    if args.demo and args.app == "find":
+        QTimer.singleShot(200, lambda: backend.resultsReady.emit(
+            json.dumps(DEMO_FILES)))
     if args.demo and args.app == "ports":
         # Push the rows in AFTER the tree is up. Overriding refresh() and
         # relying on the app to call it is a guess about startup order; this is
