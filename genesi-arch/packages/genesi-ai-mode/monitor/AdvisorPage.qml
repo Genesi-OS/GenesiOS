@@ -16,7 +16,12 @@ Kirigami.Page {
     title: "Models"
     padding: 0
 
-    Theme { id: theme }
+    // appTheme, not `theme`: a component that HAS a `theme` property
+    // (GButton, StudioCard, StatusBanner, GlassCard) resolves a bare
+    // `theme` on the right-hand side to its own UNSET property, not to
+    // this id -- so `theme: appTheme` binds the property to itself and every
+    // sibling binding reading appTheme.x gets undefined.
+    Theme { id: appTheme }
     // Shared I18n instance passed in from Main (keeps the language switch in sync).
     property var i18n
     property bool pulling: false
@@ -51,10 +56,10 @@ Kirigami.Page {
     }
     // Colour + short label for how a model will actually run on this machine.
     function fitColor(fit) {
-        if (fit === "gpu")   return theme.green
-        if (fit === "moe")   return theme.turbo
-        if (fit === "spill") return theme.sevLow
-        return theme.blue
+        if (fit === "gpu")   return appTheme.green
+        if (fit === "moe")   return appTheme.turbo
+        if (fit === "spill") return appTheme.sevLow
+        return appTheme.blue
     }
     function fitLabel(fit) {
         if (fit === "gpu")   return i18n.t("gguf.fitGpu")
@@ -65,8 +70,8 @@ Kirigami.Page {
 
     background: Rectangle {
         gradient: Gradient {
-            GradientStop { position: 0.0; color: theme.bgTop }
-            GradientStop { position: 1.0; color: theme.bgBottom }
+            GradientStop { position: 0.0; color: appTheme.bgTop }
+            GradientStop { position: 1.0; color: appTheme.bgBottom }
         }
     }
 
@@ -132,15 +137,15 @@ Kirigami.Page {
             anchors.fill: parent
             visible: parent.containsDrag
             radius: 16
-            color: theme.a(theme.green, 0.10)
+            color: appTheme.a(appTheme.green, 0.10)
             border.width: 2
-            border.color: theme.a(theme.green, 0.55)
+            border.color: appTheme.a(appTheme.green, 0.55)
             QQC2.Label {
                 anchors.centerIn: parent
                 text: i18n.t("gguf.drop")
                 font.bold: true
                 font.pixelSize: 16
-                color: theme.greenBright
+                color: appTheme.greenBright
             }
         }
     }
@@ -154,7 +159,7 @@ Kirigami.Page {
         GlassCard {
             Layout.fillWidth: true
             Layout.preferredHeight: dlCol.implicitHeight + Kirigami.Units.largeSpacing * 2
-            accent: theme.green
+            accent: appTheme.green
             active: page.pulling
 
             ColumnLayout {
@@ -171,18 +176,18 @@ Kirigami.Page {
 
                     Rectangle {
                         width: 40; height: 40; radius: 12
-                        color: theme.a(theme.green, 0.12)
-                        border.color: theme.a(theme.green, 0.4); border.width: 1
-                        Kirigami.Icon { anchors.centerIn: parent; source: "download"; width: 20; height: 20; color: theme.greenBright }
+                        color: appTheme.a(appTheme.green, 0.12)
+                        border.color: appTheme.a(appTheme.green, 0.4); border.width: 1
+                        Kirigami.Icon { anchors.centerIn: parent; source: "download"; width: 20; height: 20; color: appTheme.greenBright }
                     }
 
                     Rectangle {
                         Layout.fillWidth: true
                         implicitHeight: 42
                         radius: 21
-                        color: theme.card
+                        color: appTheme.card
                         border.width: 1
-                        border.color: modelInput.activeFocus ? theme.green : theme.line
+                        border.color: modelInput.activeFocus ? appTheme.green : appTheme.line
                         Behavior on border.color { ColorAnimation { duration: 150 } }
                         QQC2.TextField {
                             id: modelInput
@@ -191,9 +196,9 @@ Kirigami.Page {
                             anchors.rightMargin: 16
                             verticalAlignment: TextInput.AlignVCenter
                             background: null
-                            color: theme.textHi
+                            color: appTheme.textHi
                             placeholderText: i18n.t("adv.placeholder")
-                            placeholderTextColor: theme.textLo
+                            placeholderTextColor: appTheme.textLo
                             enabled: !page.pulling
                             onAccepted: page.pull()
                         }
@@ -206,10 +211,10 @@ Kirigami.Page {
                         implicitWidth: pullLbl.implicitWidth + 34
                         implicitHeight: 42
                         radius: 21
-                        color: page.pulling ? theme.a(theme.green, 0.22)
-                             : (hasModel ? theme.a(theme.green, 0.18) : theme.a(theme.textHi, 0.10))
+                        color: page.pulling ? appTheme.a(appTheme.green, 0.22)
+                             : (hasModel ? appTheme.a(appTheme.green, 0.18) : appTheme.a(appTheme.textHi, 0.10))
                         border.width: 1
-                        border.color: page.pulling || hasModel ? theme.a(theme.green, 0.44) : theme.line
+                        border.color: page.pulling || hasModel ? appTheme.a(appTheme.green, 0.44) : appTheme.line
                         Behavior on color { ColorAnimation { duration: 150 } }
                         RowLayout {
                             anchors.centerIn: parent
@@ -218,13 +223,13 @@ Kirigami.Page {
                                 text: page.pulling ? "..." : "↓"
                                 font.bold: true
                                 font.pixelSize: 18
-                                color: page.pulling || pullBtn.hasModel ? theme.greenBright : theme.textLo
+                                color: page.pulling || pullBtn.hasModel ? appTheme.greenBright : appTheme.textLo
                             }
                             QQC2.Label {
                                 id: pullLbl
                                 text: page.pulling ? i18n.t("adv.downloading") : i18n.t("adv.download")
                                 font.bold: true
-                                color: page.pulling || pullBtn.hasModel ? theme.textHi : theme.textLo
+                                color: page.pulling || pullBtn.hasModel ? appTheme.textHi : appTheme.textLo
                             }
                         }
                         MouseArea { anchors.fill: parent; enabled: pullBtn.canPull; cursorShape: Qt.PointingHandCursor; onClicked: page.pull() }
@@ -236,9 +241,9 @@ Kirigami.Page {
                     visible: status.text.length > 0 || page.pulling
                     implicitHeight: 34
                     radius: 10
-                    color: theme.a(theme.green, page.pulling ? 0.14 : 0.08)
+                    color: appTheme.a(appTheme.green, page.pulling ? 0.14 : 0.08)
                     border.width: 1
-                    border.color: theme.a(theme.green, page.pulling ? 0.40 : 0.22)
+                    border.color: appTheme.a(appTheme.green, page.pulling ? 0.40 : 0.22)
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 10
@@ -254,7 +259,7 @@ Kirigami.Page {
                             id: status
                             Layout.fillWidth: true
                             text: ""
-                            color: theme.textHi
+                            color: appTheme.textHi
                             font.pixelSize: 12
                             elide: Text.ElideRight
                         }
@@ -271,7 +276,7 @@ Kirigami.Page {
         GlassCard {
             Layout.fillWidth: true
             Layout.preferredHeight: ggufCol.implicitHeight + Kirigami.Units.largeSpacing * 2
-            accent: theme.green
+            accent: appTheme.green
             active: page.ggufImporting
 
             ColumnLayout {
@@ -287,24 +292,24 @@ Kirigami.Page {
                     spacing: Kirigami.Units.smallSpacing
                     Kirigami.Icon {
                         source: "folder-download"
-                        color: theme.greenBright
+                        color: appTheme.greenBright
                         Layout.preferredWidth: 16; Layout.preferredHeight: 16
                     }
                     QQC2.Label {
                         text: i18n.t("gguf.title")
-                        font.bold: true; font.pixelSize: 14; color: theme.textHi
+                        font.bold: true; font.pixelSize: 14; color: appTheme.textHi
                     }
                     Rectangle {
                         visible: page.ggufModels.length > 0
                         implicitWidth: cntLbl.implicitWidth + 14; implicitHeight: 20
                         radius: 10
-                        color: theme.a(theme.green, 0.16)
+                        color: appTheme.a(appTheme.green, 0.16)
                         QQC2.Label {
                             id: cntLbl
                             anchors.centerIn: parent
                             text: page.ggufModels.length
                             font.pixelSize: 11; font.bold: true
-                            color: theme.greenBright
+                            color: appTheme.greenBright
                         }
                     }
                     Item { Layout.fillWidth: true }
@@ -327,7 +332,7 @@ Kirigami.Page {
                     text: i18n.t("gguf.subtitle")
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
-                    color: theme.textLo
+                    color: appTheme.textLo
                 }
 
                 // Add: file picker, or paste a direct .gguf URL.
@@ -336,10 +341,10 @@ Kirigami.Page {
                     spacing: Kirigami.Units.smallSpacing
 
                     GButton {
-                        theme: theme
+                        theme: appTheme
                         kind: "filled"
                         text: i18n.t("gguf.addFile")
-                        accent: theme.green
+                        accent: appTheme.green
                         enabled: !page.ggufImporting
                         onClicked: ggufDialog.open()
                     }
@@ -348,9 +353,9 @@ Kirigami.Page {
                         Layout.fillWidth: true
                         implicitHeight: 38
                         radius: 19
-                        color: theme.card
+                        color: appTheme.card
                         border.width: 1
-                        border.color: ggufUrl.activeFocus ? theme.green : theme.line
+                        border.color: ggufUrl.activeFocus ? appTheme.green : appTheme.line
                         Behavior on border.color { ColorAnimation { duration: 150 } }
                         QQC2.TextField {
                             id: ggufUrl
@@ -359,18 +364,18 @@ Kirigami.Page {
                             anchors.rightMargin: 14
                             verticalAlignment: TextInput.AlignVCenter
                             background: null
-                            color: theme.textHi
+                            color: appTheme.textHi
                             placeholderText: i18n.t("gguf.urlPlaceholder")
-                            placeholderTextColor: theme.textLo
+                            placeholderTextColor: appTheme.textLo
                             enabled: !page.ggufImporting
                             onAccepted: page.addGguf(text.trim())
                         }
                     }
 
                     GButton {
-                        theme: theme
+                        theme: appTheme
                         text: page.ggufImporting ? i18n.t("gguf.adding") : i18n.t("gguf.add")
-                        accent: theme.green
+                        accent: appTheme.green
                         enabled: !page.ggufImporting && ggufUrl.text.trim().length > 0
                         onClicked: page.addGguf(ggufUrl.text.trim())
                     }
@@ -383,11 +388,11 @@ Kirigami.Page {
                              || page.ggufError.length > 0
                     implicitHeight: 32
                     radius: 10
-                    readonly property color tone: page.ggufError.length > 0 ? theme.red
-                                                                            : theme.turbo
-                    color: theme.a(tone, 0.10)
+                    readonly property color tone: page.ggufError.length > 0 ? appTheme.red
+                                                                            : appTheme.turbo
+                    color: appTheme.a(tone, 0.10)
                     border.width: 1
-                    border.color: theme.a(tone, 0.34)
+                    border.color: appTheme.a(tone, 0.34)
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 10
@@ -401,7 +406,7 @@ Kirigami.Page {
                         QQC2.Label {
                             Layout.fillWidth: true
                             text: page.ggufError.length > 0 ? page.ggufError : page.ggufStatus
-                            color: page.ggufError.length > 0 ? theme.red : theme.textHi
+                            color: page.ggufError.length > 0 ? appTheme.red : appTheme.textHi
                             font.pixelSize: 11
                             elide: Text.ElideRight
                         }
@@ -416,7 +421,7 @@ Kirigami.Page {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
                     font.italic: true
-                    color: theme.textLo
+                    color: appTheme.textLo
                 }
 
                 // The library itself.
@@ -439,9 +444,9 @@ Kirigami.Page {
                         implicitHeight: rowCol.implicitHeight + 16
                         radius: 12
                         readonly property bool isActive: page.activeGguf === modelData.path
-                        color: isActive ? theme.a(theme.turbo, 0.12) : theme.card
+                        color: isActive ? appTheme.a(appTheme.turbo, 0.12) : appTheme.card
                         border.width: 1
-                        border.color: isActive ? theme.a(theme.turbo, 0.45) : theme.line
+                        border.color: isActive ? appTheme.a(appTheme.turbo, 0.45) : appTheme.line
 
                         ColumnLayout {
                             id: rowCol
@@ -459,7 +464,7 @@ Kirigami.Page {
                                     text: modelData.name
                                     font.bold: true
                                     font.pixelSize: 12
-                                    color: theme.textHi
+                                    color: appTheme.textHi
                                     elide: Text.ElideRight
                                     Layout.maximumWidth: 260
                                 }
@@ -470,13 +475,13 @@ Kirigami.Page {
                                     implicitWidth: moeLbl.implicitWidth + 12
                                     implicitHeight: 18
                                     radius: 9
-                                    color: theme.a(theme.turbo, 0.18)
+                                    color: appTheme.a(appTheme.turbo, 0.18)
                                     QQC2.Label {
                                         id: moeLbl
                                         anchors.centerIn: parent
                                         text: "MoE"
                                         font.pixelSize: 9; font.bold: true
-                                        color: theme.greenBright
+                                        color: appTheme.greenBright
                                     }
                                 }
                                 Item { Layout.fillWidth: true }
@@ -484,7 +489,7 @@ Kirigami.Page {
                                     implicitWidth: fitLbl.implicitWidth + 14
                                     implicitHeight: 18
                                     radius: 9
-                                    color: theme.a(page.fitColor(modelData.fit), 0.16)
+                                    color: appTheme.a(page.fitColor(modelData.fit), 0.16)
                                     QQC2.Label {
                                         id: fitLbl
                                         anchors.centerIn: parent
@@ -504,7 +509,7 @@ Kirigami.Page {
                                     return s && s.length > 0
                                 }).join("  ·  ")
                                 font.pixelSize: 10
-                                color: theme.textMid
+                                color: appTheme.textMid
                                 elide: Text.ElideRight
                             }
 
@@ -513,7 +518,7 @@ Kirigami.Page {
                                 text: modelData.fit_detail || ""
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 10
-                                color: theme.textLo
+                                color: appTheme.textLo
                             }
 
                             RowLayout {
@@ -521,11 +526,11 @@ Kirigami.Page {
                                 Layout.topMargin: 4
                                 spacing: 6
                                 GButton {
-                                    theme: theme
+                                    theme: appTheme
                                     kind: ggufRow.isActive ? "tonal" : "filled"
                                     text: ggufRow.isActive ? i18n.t("gguf.inUse")
                                                            : i18n.t("gguf.use")
-                                    accent: theme.green
+                                    accent: appTheme.green
                                     enabled: !ggufRow.isActive
                                     onClicked: page.useGguf(modelData.path, modelData.name)
                                 }
@@ -560,8 +565,8 @@ Kirigami.Page {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
-                    Kirigami.Icon { source: "help-about"; color: theme.green; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
-                    QQC2.Label { text: i18n.t("adv.title"); font.bold: true; font.pixelSize: 14; color: theme.textHi }
+                    Kirigami.Icon { source: "help-about"; color: appTheme.green; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
+                    QQC2.Label { text: i18n.t("adv.title"); font.bold: true; font.pixelSize: 14; color: appTheme.textHi }
                     Item { Layout.fillWidth: true }
                     QQC2.ToolButton {
                         icon.name: "view-refresh"
@@ -577,27 +582,27 @@ Kirigami.Page {
                 Rectangle {
                     visible: page.advFailed
                     Layout.fillWidth: true
-                    implicitHeight: advErrRow.implicitHeight + theme.sp4
-                    radius: theme.rMd
-                    color: theme.a(theme.red, 0.10)
+                    implicitHeight: advErrRow.implicitHeight + appTheme.sp4
+                    radius: appTheme.rMd
+                    color: appTheme.a(appTheme.red, 0.10)
                     border.width: 1
-                    border.color: theme.a(theme.red, 0.35)
+                    border.color: appTheme.a(appTheme.red, 0.35)
                     RowLayout {
                         id: advErrRow
                         anchors.left: parent.left; anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: theme.sp3; anchors.rightMargin: theme.sp3
-                        spacing: theme.sp3
-                        FIcon { name: "alert"; size: 16; color: theme.red }
+                        anchors.leftMargin: appTheme.sp3; anchors.rightMargin: appTheme.sp3
+                        spacing: appTheme.sp3
+                        FIcon { name: "alert"; size: 16; color: appTheme.red }
                         QQC2.Label {
                             Layout.fillWidth: true
                             text: area.text
-                            color: theme.textMid
-                            font.pixelSize: theme.fsSmall
+                            color: appTheme.textMid
+                            font.pixelSize: appTheme.fsSmall
                             wrapMode: Text.WordWrap
                         }
                         GButton {
-                            theme: theme
+                            theme: appTheme
                             kind: "ghost"
                             text: i18n.t("adv.reload")
                             onClicked: page.reload()
@@ -621,9 +626,9 @@ Kirigami.Page {
                         wrapMode: Text.WordWrap
                         textFormat: TextEdit.PlainText
                         selectByMouse: true
-                        font.family: theme.mono
-                        font.pixelSize: theme.fsBody
-                        color: theme.textMid
+                        font.family: appTheme.mono
+                        font.pixelSize: appTheme.fsBody
+                        color: appTheme.textMid
                         background: null
                     }
                 }
@@ -635,18 +640,18 @@ Kirigami.Page {
                     visible: area.text.length === 0 && !page.advFailed
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: theme.sp2
+                    spacing: appTheme.sp2
                     Item { Layout.fillHeight: true }
                     FIcon {
                         Layout.alignment: Qt.AlignHCenter
-                        name: "cpu"; size: 26; color: theme.a(theme.textLo, 0.55)
+                        name: "cpu"; size: 26; color: appTheme.a(appTheme.textLo, 0.55)
                     }
                     QQC2.Label {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
                         text: i18n.t("adv.empty")
-                        color: theme.textLo
-                        font.pixelSize: theme.fsSmall
+                        color: appTheme.textLo
+                        font.pixelSize: appTheme.fsSmall
                         wrapMode: Text.WordWrap
                     }
                     Item { Layout.fillHeight: true }

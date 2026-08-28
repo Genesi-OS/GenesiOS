@@ -17,9 +17,14 @@ Kirigami.ApplicationWindow {
     height: Kirigami.Units.gridUnit * 40
     minimumWidth: Kirigami.Units.gridUnit * 44
     minimumHeight: Kirigami.Units.gridUnit * 30
-    color: theme.bgBottom
+    color: appTheme.bgBottom
 
-    StudioTheme { id: theme }
+    // appTheme, not `theme`: a component that HAS a `theme` property
+    // (GButton, StudioCard, StatusBanner, GlassCard) resolves a bare
+    // `theme` on the right-hand side to its own UNSET property, not to
+    // this id -- so `theme: appTheme` binds the property to itself and every
+    // sibling binding reading appTheme.x gets undefined.
+    StudioTheme { id: appTheme }
     I18n { id: i18n }
 
     property var boxes: []
@@ -80,7 +85,7 @@ Kirigami.ApplicationWindow {
 
     // Stable per-workspace accent so each row gets its own colour, Doquo-style.
     function accentFor(name) {
-        var pal = [theme.green, theme.blue, theme.purple, theme.turbo, theme.sevLow]
+        var pal = [appTheme.green, appTheme.blue, appTheme.purple, appTheme.turbo, appTheme.sevLow]
         var h = 0
         for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff
         return pal[h % pal.length]
@@ -89,7 +94,7 @@ Kirigami.ApplicationWindow {
     // ════════════════════════════════════════════════════════════════════
     pageStack.initialPage: Kirigami.Page {
         padding: 0
-        background: Rectangle { color: theme.bgBottom }
+        background: Rectangle { color: appTheme.bgBottom }
 
         RowLayout {
             anchors.fill: parent
@@ -99,8 +104,8 @@ Kirigami.ApplicationWindow {
             Rectangle {
                 Layout.preferredWidth: 238
                 Layout.fillHeight: true
-                color: theme.panelTop
-                Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: theme.line }
+                color: appTheme.panelTop
+                Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: appTheme.line }
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -114,23 +119,23 @@ Kirigami.ApplicationWindow {
                         spacing: 10
                         Rectangle {
                             Layout.preferredWidth: 38; Layout.preferredHeight: 38; radius: 8
-                            color: theme.a(theme.green, 0.13)
-                            border.width: 1; border.color: theme.a(theme.green, 0.32)
-                            Kirigami.Icon { anchors.centerIn: parent; width: 22; height: 22; source: "genesi-sandboxes"; color: theme.greenBright }
+                            color: appTheme.a(appTheme.green, 0.13)
+                            border.width: 1; border.color: appTheme.a(appTheme.green, 0.32)
+                            Kirigami.Icon { anchors.centerIn: parent; width: 22; height: 22; source: "genesi-sandboxes"; color: appTheme.greenBright }
                         }
                         ColumnLayout {
                             spacing: -3
-                            QQC2.Label { text: "Workspace Lab"; font.bold: true; font.pixelSize: 16; color: theme.textHi }
-                            QQC2.Label { text: "GENESI SANDBOXES"; font.pixelSize: 9; color: theme.accentText; font.bold: true }
+                            QQC2.Label { text: "Workspace Lab"; font.bold: true; font.pixelSize: 16; color: appTheme.textHi }
+                            QQC2.Label { text: "GENESI SANDBOXES"; font.pixelSize: 9; color: appTheme.accentText; font.bold: true }
                         }
                         Item { Layout.fillWidth: true }
                         // Language switch (EN / PT, live)
                         Rectangle {
                             Layout.preferredWidth: 38; Layout.preferredHeight: 26
                             radius: 8
-                            color: sbLangMa.containsMouse ? theme.a(theme.green, 0.14) : theme.card
-                            border.width: 1; border.color: theme.line
-                            QQC2.Label { anchors.centerIn: parent; text: i18n.code; font.bold: true; font.pixelSize: 11; color: theme.textHi }
+                            color: sbLangMa.containsMouse ? appTheme.a(appTheme.green, 0.14) : appTheme.card
+                            border.width: 1; border.color: appTheme.line
+                            QQC2.Label { anchors.centerIn: parent; text: i18n.code; font.bold: true; font.pixelSize: 11; color: appTheme.textHi }
                             MouseArea {
                                 id: sbLangMa
                                 anchors.fill: parent
@@ -146,7 +151,7 @@ Kirigami.ApplicationWindow {
 
                     // primary action
                     GButton {
-                        theme: theme
+                        theme: appTheme
                         kind: "filled"
                         Layout.fillWidth: true
                         text: i18n.t("sb.newWorkspace")
@@ -171,8 +176,8 @@ Kirigami.ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 36
                             radius: 8
-                            color: navItem.sel ? theme.a(theme.green, 0.14)
-                                 : (nma.containsMouse ? theme.a(theme.textHi, 0.06) : "transparent")
+                            color: navItem.sel ? appTheme.a(appTheme.green, 0.14)
+                                 : (nma.containsMouse ? appTheme.a(appTheme.textHi, 0.06) : "transparent")
                             Behavior on color { ColorAnimation { duration: 130 } }
                             RowLayout {
                                 anchors.fill: parent
@@ -182,19 +187,19 @@ Kirigami.ApplicationWindow {
                                 Kirigami.Icon {
                                     source: navItem.modelData.icon
                                     Layout.preferredWidth: 16; Layout.preferredHeight: 16
-                                    color: navItem.sel ? theme.green : theme.textMid
+                                    color: navItem.sel ? appTheme.green : appTheme.textMid
                                 }
                                 QQC2.Label {
                                     Layout.fillWidth: true
                                     text: i18n.t(navItem.modelData.lk)
-                                    color: navItem.sel ? theme.textHi : theme.textMid
+                                    color: navItem.sel ? appTheme.textHi : appTheme.textMid
                                     font.bold: navItem.sel
                                 }
                                 QQC2.Label {
                                     text: modelData.k === "all" ? win.boxes.length
                                         : modelData.k === "running" ? win.runningCount()
                                         : (win.boxes.length - win.runningCount())
-                                    color: theme.textLo; font.pixelSize: 11
+                                    color: appTheme.textLo; font.pixelSize: 11
                                 }
                             }
                             MouseArea {
@@ -215,19 +220,19 @@ Kirigami.ApplicationWindow {
                         Layout.preferredHeight: 34
                         radius: 8
                         visible: win.containerBackend !== "" && win.containerBackend !== "none"
-                        color: theme.a(win.backendReady ? theme.green : theme.red, 0.10)
+                        color: appTheme.a(win.backendReady ? appTheme.green : appTheme.red, 0.10)
                         border.width: 1
-                        border.color: theme.a(win.backendReady ? theme.green : theme.red, 0.35)
+                        border.color: appTheme.a(win.backendReady ? appTheme.green : appTheme.red, 0.35)
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 10; anchors.rightMargin: 10
                             spacing: 8
-                            Rectangle { width: 8; height: 8; radius: 4; color: win.backendReady ? theme.greenBright : theme.red }
-                            QQC2.Label { Layout.fillWidth: true; text: "backend: " + win.containerBackend; color: theme.textMid; font.pixelSize: 12; elide: Text.ElideRight }
+                            Rectangle { width: 8; height: 8; radius: 4; color: win.backendReady ? appTheme.greenBright : appTheme.red }
+                            QQC2.Label { Layout.fillWidth: true; text: "backend: " + win.containerBackend; color: appTheme.textMid; font.pixelSize: 12; elide: Text.ElideRight }
                         }
                     }
 
-                    Rectangle { Layout.fillWidth: true; height: 1; color: theme.line }
+                    Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.line }
 
                     // OTHER
                     Repeater {
@@ -240,13 +245,13 @@ Kirigami.ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 34
                             radius: 9
-                            color: oma.containsMouse ? theme.a(theme.textHi, 0.06) : "transparent"
+                            color: oma.containsMouse ? appTheme.a(appTheme.textHi, 0.06) : "transparent"
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.leftMargin: 10; anchors.rightMargin: 10
                                 spacing: 9
-                                Kirigami.Icon { source: modelData.icon; Layout.preferredWidth: 15; Layout.preferredHeight: 15; color: theme.textMid }
-                                QQC2.Label { Layout.fillWidth: true; text: modelData.label; color: theme.textMid }
+                                Kirigami.Icon { source: modelData.icon; Layout.preferredWidth: 15; Layout.preferredHeight: 15; color: appTheme.textMid }
+                                QQC2.Label { Layout.fillWidth: true; text: modelData.label; color: appTheme.textMid }
                             }
                             MouseArea {
                                 id: oma
@@ -283,14 +288,14 @@ Kirigami.ApplicationWindow {
                             spacing: 2
                             Rectangle {
                                 radius: 6; implicitHeight: 18; implicitWidth: planLbl.implicitWidth + 16
-                                color: theme.a(theme.green, 0.15)
-                                QQC2.Label { id: planLbl; anchors.centerIn: parent; text: "GENESI OS"; font.pixelSize: 9; font.letterSpacing: 1.5; color: theme.accentText; font.bold: true }
+                                color: appTheme.a(appTheme.green, 0.15)
+                                QQC2.Label { id: planLbl; anchors.centerIn: parent; text: "GENESI OS"; font.pixelSize: 9; font.letterSpacing: 1.5; color: appTheme.accentText; font.bold: true }
                             }
-                            QQC2.Label { text: "Isolated Workspaces"; font.bold: true; font.pixelSize: 27; color: theme.textHi }
-                            QQC2.Label { text: "Container-backed environments with a real project attached."; color: theme.textMid; font.pixelSize: 13 }
+                            QQC2.Label { text: "Isolated Workspaces"; font.bold: true; font.pixelSize: 27; color: appTheme.textHi }
+                            QQC2.Label { text: "Container-backed environments with a real project attached."; color: appTheme.textMid; font.pixelSize: 13 }
                         }
                         GButton {
-                            theme: theme
+                            theme: appTheme
                             kind: "filled"
                             text: "New workspace"
                             iconSource: "list-add"
@@ -307,26 +312,26 @@ Kirigami.ApplicationWindow {
 
                         ColumnLayout {
                             spacing: 0
-                            QQC2.Label { text: win.boxes.length; color: theme.textHi; font.pixelSize: 18; font.bold: true }
-                            QQC2.Label { text: "TOTAL WORKSPACES"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                            QQC2.Label { text: win.boxes.length; color: appTheme.textHi; font.pixelSize: 18; font.bold: true }
+                            QQC2.Label { text: "TOTAL WORKSPACES"; color: appTheme.textLo; font.pixelSize: 9; font.bold: true }
                         }
-                        Rectangle { width: 1; height: 30; color: theme.lineHi }
+                        Rectangle { width: 1; height: 30; color: appTheme.lineHi }
                         ColumnLayout {
                             spacing: 0
-                            QQC2.Label { text: win.runningCount(); color: theme.greenBright; font.pixelSize: 18; font.bold: true }
-                            QQC2.Label { text: "RUNNING"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                            QQC2.Label { text: win.runningCount(); color: appTheme.greenBright; font.pixelSize: 18; font.bold: true }
+                            QQC2.Label { text: "RUNNING"; color: appTheme.textLo; font.pixelSize: 9; font.bold: true }
                         }
-                        Rectangle { width: 1; height: 30; color: theme.lineHi }
+                        Rectangle { width: 1; height: 30; color: appTheme.lineHi }
                         ColumnLayout {
                             spacing: 0
-                            QQC2.Label { text: Math.max(0, win.boxes.length - win.runningCount()); color: theme.textMid; font.pixelSize: 18; font.bold: true }
-                            QQC2.Label { text: "STOPPED"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                            QQC2.Label { text: Math.max(0, win.boxes.length - win.runningCount()); color: appTheme.textMid; font.pixelSize: 18; font.bold: true }
+                            QQC2.Label { text: "STOPPED"; color: appTheme.textLo; font.pixelSize: 9; font.bold: true }
                         }
-                        Rectangle { width: 1; height: 30; color: theme.lineHi }
+                        Rectangle { width: 1; height: 30; color: appTheme.lineHi }
                         ColumnLayout {
                             spacing: 0
-                            QQC2.Label { text: win.containerBackend || "detecting"; color: win.backendReady ? theme.accentText : theme.turboBright; font.pixelSize: 13; font.bold: true }
-                            QQC2.Label { text: "RUNTIME"; color: theme.textLo; font.pixelSize: 9; font.bold: true }
+                            QQC2.Label { text: win.containerBackend || "detecting"; color: win.backendReady ? appTheme.accentText : appTheme.turboBright; font.pixelSize: 13; font.bold: true }
+                            QQC2.Label { text: "RUNTIME"; color: appTheme.textLo; font.pixelSize: 9; font.bold: true }
                         }
                         Item { Layout.fillWidth: true }
                     }
@@ -339,24 +344,24 @@ Kirigami.ApplicationWindow {
                     Layout.rightMargin: Kirigami.Units.largeSpacing * 2
                     spacing: Kirigami.Units.smallSpacing
                     StatusBanner {
-                        theme: theme; visible: !win.hasDistrobox; accent: theme.red; icon: "dialog-error"
+                        theme: appTheme; visible: !win.hasDistrobox; accent: appTheme.red; icon: "dialog-error"
                         title: i18n.t("sb.distroboxMissing")
                         body: "Install it from the Genesi Package Installer (distrobox + podman) to create workspaces."
                     }
                     StatusBanner {
-                        theme: theme; visible: win.hasDistrobox && win.containerBackend === "none"; accent: theme.turbo; icon: "dialog-warning"
+                        theme: appTheme; visible: win.hasDistrobox && win.containerBackend === "none"; accent: appTheme.turbo; icon: "dialog-warning"
                         title: i18n.t("sb.noBackend")
                         body: "Install podman (recommended, rootless — no daemon, no setup) or docker, then Refresh."
                     }
                     StatusBanner {
-                        theme: theme; visible: win.backendIssue === "inactive"; accent: theme.turbo; icon: "media-playback-start"
+                        theme: appTheme; visible: win.backendIssue === "inactive"; accent: appTheme.turbo; icon: "media-playback-start"
                         title: i18n.t("sb.dockerNotRunning")
                         body: "Its service is stopped. Start it once below — it'll also start on every boot. (podman needs none of this.)"
                         action: "Start Docker"; actionIcon: "media-playback-start"; busy: win.busy
                         onActionClicked: backend.startDocker()
                     }
                     StatusBanner {
-                        theme: theme; visible: win.backendIssue === "perm"; accent: theme.turbo; icon: "dialog-warning"
+                        theme: appTheme; visible: win.backendIssue === "perm"; accent: appTheme.turbo; icon: "dialog-warning"
                         title: i18n.t("sb.dockerNoPerm")
                         body: "Add yourself to the docker group, then log out and back in:\n    sudo usermod -aG docker $USER"
                     }
@@ -384,14 +389,14 @@ Kirigami.ApplicationWindow {
                                 height: 32
                                 width: tabLbl.implicitWidth + 26
                                 radius: 8
-                                color: sel ? theme.a(theme.green, 0.16)
-                                     : (tma.containsMouse ? theme.a(theme.textHi, 0.05) : "transparent")
+                                color: sel ? appTheme.a(appTheme.green, 0.16)
+                                     : (tma.containsMouse ? appTheme.a(appTheme.textHi, 0.05) : "transparent")
                                 Behavior on color { ColorAnimation { duration: 130 } }
                                 QQC2.Label {
                                     id: tabLbl
                                     anchors.centerIn: parent
                                     text: modelData.label
-                                    color: parent.sel ? theme.accentText : theme.textMid
+                                    color: parent.sel ? appTheme.accentText : appTheme.textMid
                                     font.bold: parent.sel
                                     font.pixelSize: 13
                                 }
@@ -407,23 +412,23 @@ Kirigami.ApplicationWindow {
                         Layout.preferredWidth: 220
                         Layout.preferredHeight: 32
                         radius: 8
-                        color: theme.a(theme.textHi, theme.dark ? 0.05 : 0.04)
+                        color: appTheme.a(appTheme.textHi, appTheme.dark ? 0.05 : 0.04)
                         border.width: 1
-                        border.color: searchField.activeFocus ? theme.a(theme.green, 0.6) : theme.line
+                        border.color: searchField.activeFocus ? appTheme.a(appTheme.green, 0.6) : appTheme.line
                         Behavior on border.color { ColorAnimation { duration: 130 } }
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 10; anchors.rightMargin: 8
                             spacing: 6
-                            Kirigami.Icon { source: "search"; Layout.preferredWidth: 14; Layout.preferredHeight: 14; color: theme.textLo }
+                            Kirigami.Icon { source: "search"; Layout.preferredWidth: 14; Layout.preferredHeight: 14; color: appTheme.textLo }
                             QQC2.TextField {
                                 id: searchField
                                 Layout.fillWidth: true
                                 placeholderText: "Search workspaces…"
-                                color: theme.textHi
-                                placeholderTextColor: theme.textLo
-                                selectedTextColor: theme.white
-                                selectionColor: theme.a(theme.green, 0.72)
+                                color: appTheme.textHi
+                                placeholderTextColor: appTheme.textLo
+                                selectedTextColor: appTheme.white
+                                selectionColor: appTheme.a(appTheme.green, 0.72)
                                 background: null
                                 onTextChanged: win.query = text
                             }
@@ -431,7 +436,7 @@ Kirigami.ApplicationWindow {
                     }
                 }
 
-                Rectangle { Layout.fillWidth: true; Layout.topMargin: Kirigami.Units.smallSpacing; Layout.leftMargin: Kirigami.Units.largeSpacing*2; Layout.rightMargin: Kirigami.Units.largeSpacing*2; height: 1; color: theme.line }
+                Rectangle { Layout.fillWidth: true; Layout.topMargin: Kirigami.Units.smallSpacing; Layout.leftMargin: Kirigami.Units.largeSpacing*2; Layout.rightMargin: Kirigami.Units.largeSpacing*2; height: 1; color: appTheme.line }
 
                 // ── list ──
                 Item {
@@ -468,7 +473,7 @@ Kirigami.ApplicationWindow {
                                 Rectangle {
                                     Layout.preferredWidth: 46; Layout.preferredHeight: 46
                                     radius: 8
-                                    color: theme.a(win.accentFor(modelData.name), 0.16)
+                                    color: appTheme.a(win.accentFor(modelData.name), 0.16)
                                     QQC2.Label {
                                         anchors.centerIn: parent
                                         text: modelData.name.length > 0 ? modelData.name.charAt(0).toUpperCase() : "?"
@@ -479,8 +484,8 @@ Kirigami.ApplicationWindow {
                                     Rectangle {
                                         visible: modelData.running
                                         width: 11; height: 11; radius: 5.5
-                                        color: theme.greenBright
-                                        border.width: 2; border.color: theme.bgBottom
+                                        color: appTheme.greenBright
+                                        border.width: 2; border.color: appTheme.bgBottom
                                         anchors.right: parent.right; anchors.bottom: parent.bottom
                                         anchors.rightMargin: -2; anchors.bottomMargin: -2
                                     }
@@ -491,35 +496,35 @@ Kirigami.ApplicationWindow {
                                     spacing: 2
                                     RowLayout {
                                         spacing: 8
-                                        QQC2.Label { text: modelData.name; font.bold: true; font.pixelSize: 14; color: theme.textHi }
+                                        QQC2.Label { text: modelData.name; font.bold: true; font.pixelSize: 14; color: appTheme.textHi }
                                         Rectangle {
                                             radius: 6; implicitHeight: 17; implicitWidth: tagLbl.implicitWidth + 14
-                                            color: theme.a(modelData.running ? theme.green : theme.textLo, 0.15)
-                                            QQC2.Label { id: tagLbl; anchors.centerIn: parent; text: modelData.running ? "running" : "stopped"; font.pixelSize: 10; color: modelData.running ? theme.accentText : theme.textMid }
+                                            color: appTheme.a(modelData.running ? appTheme.green : appTheme.textLo, 0.15)
+                                            QQC2.Label { id: tagLbl; anchors.centerIn: parent; text: modelData.running ? "running" : "stopped"; font.pixelSize: 10; color: modelData.running ? appTheme.accentText : appTheme.textMid }
                                         }
                                     }
                                     QQC2.Label {
                                         Layout.fillWidth: true
                                         text: modelData.image + "   ·   " + modelData.status
-                                        color: theme.textLo; font.pixelSize: 11; elide: Text.ElideRight
+                                        color: appTheme.textLo; font.pixelSize: 11; elide: Text.ElideRight
                                     }
                                 }
 
                                 GButton {
-                                    theme: theme; kind: "tonal"; accent: theme.purple
+                                    theme: appTheme; kind: "tonal"; accent: appTheme.purple
                                     text: "Genesi Code"; iconSource: "genesi-code"
                                     visible: win.hasCode; enabled: !win.busy
                                     tooltip: "Open this workspace's project folder in Genesi Code"
                                     onClicked: backend.openInCode(modelData.name)
                                 }
                                 GButton {
-                                    theme: theme; kind: "tonal"; accent: theme.green
+                                    theme: appTheme; kind: "tonal"; accent: appTheme.green
                                     text: "Open"; iconSource: "utilities-terminal"; enabled: !win.busy
                                     tooltip: "Open a terminal inside the sandbox"
                                     onClicked: backend.enterSandbox(modelData.name)
                                 }
                                 GButton {
-                                    theme: theme; kind: "danger"; iconSource: "edit-delete"; enabled: !win.busy
+                                    theme: appTheme; kind: "danger"; iconSource: "edit-delete"; enabled: !win.busy
                                     tooltip: "Delete this workspace"
                                     onClicked: { confirm.boxName = modelData.name; confirm.open() }
                                 }
@@ -534,8 +539,8 @@ Kirigami.ApplicationWindow {
                         visible: list.count === 0
                         spacing: 6
                         Kirigami.Icon { source: "genesi-sandboxes"; Layout.preferredWidth: 44; Layout.preferredHeight: 44; opacity: 0.45; Layout.alignment: Qt.AlignHCenter }
-                        QQC2.Label { Layout.alignment: Qt.AlignHCenter; text: win.boxes.length === 0 ? "No workspaces yet" : "Nothing matches"; color: theme.textMid; font.bold: true; font.pixelSize: 15 }
-                        QQC2.Label { Layout.alignment: Qt.AlignHCenter; text: win.boxes.length === 0 ? "Create your first isolated dev environment." : "Try a different filter or search."; color: theme.textLo; font.pixelSize: 12 }
+                        QQC2.Label { Layout.alignment: Qt.AlignHCenter; text: win.boxes.length === 0 ? "No workspaces yet" : "Nothing matches"; color: appTheme.textMid; font.bold: true; font.pixelSize: 15 }
+                        QQC2.Label { Layout.alignment: Qt.AlignHCenter; text: win.boxes.length === 0 ? "Create your first isolated dev environment." : "Try a different filter or search."; color: appTheme.textLo; font.pixelSize: 12 }
                     }
                 }
 
@@ -544,25 +549,25 @@ Kirigami.ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 120
                     visible: logArea.text.length > 0
-                    color: theme.bgTop
-                    Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: theme.line }
+                    color: appTheme.bgTop
+                    Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: appTheme.line }
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: Kirigami.Units.largeSpacing
                         spacing: 4
                         RowLayout {
                             spacing: 7
-                            Kirigami.Icon { source: "dialog-scripts"; Layout.preferredWidth: 14; Layout.preferredHeight: 14; color: theme.blue }
-                            QQC2.Label { text: "Activity"; font.bold: true; font.pixelSize: 12; color: theme.textMid; Layout.fillWidth: true }
+                            Kirigami.Icon { source: "dialog-scripts"; Layout.preferredWidth: 14; Layout.preferredHeight: 14; color: appTheme.blue }
+                            QQC2.Label { text: "Activity"; font.bold: true; font.pixelSize: 12; color: appTheme.textMid; Layout.fillWidth: true }
                             QQC2.BusyIndicator { running: win.busy; visible: win.busy; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
-                            GButton { theme: theme; kind: "ghost"; text: "Clear"; onClicked: logArea.clear() }
+                            GButton { theme: appTheme; kind: "ghost"; text: "Clear"; onClicked: logArea.clear() }
                         }
                         QQC2.ScrollView {
                             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                             QQC2.TextArea {
                                 id: logArea
                                 readOnly: true; wrapMode: Text.Wrap
-                                color: theme.textMid; font.family: theme.mono; font.pixelSize: 12
+                                color: appTheme.textMid; font.family: appTheme.mono; font.pixelSize: 12
                                 background: null
                             }
                         }
@@ -579,8 +584,8 @@ Kirigami.ApplicationWindow {
             width: 52; height: 52; radius: 26
             visible: win.hasDistrobox
             gradient: Gradient {
-                GradientStop { position: 0.0; color: theme.greenBright }
-                GradientStop { position: 1.0; color: theme.greenDeep }
+                GradientStop { position: 0.0; color: appTheme.greenBright }
+                GradientStop { position: 1.0; color: appTheme.greenDeep }
             }
             scale: fabMa.pressed ? 0.94 : 1.0
             Behavior on scale { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
@@ -612,25 +617,25 @@ Kirigami.ApplicationWindow {
             ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
 
-                QQC2.Label { text: "Name"; color: theme.textMid; font.pixelSize: 12 }
+                QQC2.Label { text: "Name"; color: appTheme.textMid; font.pixelSize: 12 }
                 QQC2.TextField {
                     id: createName
                     Layout.fillWidth: true
                     placeholderText: "e.g. my-api"
                     enabled: !win.busy
-                    color: theme.textHi
-                    placeholderTextColor: theme.textLo
-                    selectedTextColor: theme.white
-                    selectionColor: theme.a(theme.green, 0.72)
+                    color: appTheme.textHi
+                    placeholderTextColor: appTheme.textLo
+                    selectedTextColor: appTheme.white
+                    selectionColor: appTheme.a(appTheme.green, 0.72)
                     background: Rectangle {
                         radius: 9
-                        color: theme.a(theme.textHi, 0.04)
+                        color: appTheme.a(appTheme.textHi, 0.04)
                         border.width: 1
-                        border.color: createName.activeFocus ? theme.a(theme.green, 0.6) : theme.line
+                        border.color: createName.activeFocus ? appTheme.a(appTheme.green, 0.6) : appTheme.line
                     }
                 }
 
-                QQC2.Label { text: "Stack"; color: theme.textMid; font.pixelSize: 12; Layout.topMargin: Kirigami.Units.smallSpacing }
+                QQC2.Label { text: "Stack"; color: appTheme.textMid; font.pixelSize: 12; Layout.topMargin: Kirigami.Units.smallSpacing }
 
                 Repeater {
                     model: win.templates
@@ -640,9 +645,9 @@ Kirigami.ApplicationWindow {
                         Layout.fillWidth: true
                         radius: 9
                         implicitHeight: tRow.implicitHeight + Kirigami.Units.largeSpacing
-                        color: tMa.containsMouse || win.selTpl === index ? theme.a(theme.green, 0.12) : theme.a(theme.textHi, 0.04)
+                        color: tMa.containsMouse || win.selTpl === index ? appTheme.a(appTheme.green, 0.12) : appTheme.a(appTheme.textHi, 0.04)
                         border.width: 1
-                        border.color: win.selTpl === index ? theme.a(theme.green, 0.6) : theme.line
+                        border.color: win.selTpl === index ? appTheme.a(appTheme.green, 0.6) : appTheme.line
                         ColumnLayout {
                             id: tRow
                             anchors.left: parent.left; anchors.right: parent.right
@@ -651,17 +656,17 @@ Kirigami.ApplicationWindow {
                             spacing: 1
                             QQC2.Label {
                                 text: (win.selTpl === index ? "✓ " : "") + modelData.label
-                                color: win.selTpl === index ? theme.greenBright : theme.textHi
+                                color: win.selTpl === index ? appTheme.greenBright : appTheme.textHi
                                 font.bold: win.selTpl === index
                             }
-                            QQC2.Label { Layout.fillWidth: true; text: modelData.hint; color: theme.textLo; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                            QQC2.Label { Layout.fillWidth: true; text: modelData.hint; color: appTheme.textLo; font.pixelSize: 11; wrapMode: Text.WordWrap }
                         }
                         MouseArea { id: tMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.selTpl = index }
                     }
                 }
 
                 GButton {
-                    theme: theme; kind: "filled"; text: "Create workspace"; iconSource: "list-add"
+                    theme: appTheme; kind: "filled"; text: "Create workspace"; iconSource: "list-add"
                     Layout.fillWidth: true
                     Layout.topMargin: Kirigami.Units.smallSpacing
                     enabled: !win.busy && createName.text.trim().length > 0 && win.selTpl >= 0

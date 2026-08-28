@@ -21,9 +21,12 @@ QQC2.ApplicationWindow {
     height: 620
     minimumWidth: 560
     minimumHeight: 360
-    color: theme.bgBottom
+    color: appTheme.bgBottom
 
-    Theme { id: theme }
+    // appTheme, not `theme`: a component that HAS a `theme` property
+    // (GButton, GlassCard, StatusBanner) resolves a bare `theme` on the
+    // right-hand side to its own UNSET property, not to this id.
+    Theme { id: appTheme }
     I18n { id: i18n }
 
     property var results: []
@@ -78,7 +81,7 @@ QQC2.ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: askColumn.implicitHeight + 36
-            color: theme.bgTop
+            color: appTheme.bgTop
 
             ColumnLayout {
                 id: askColumn
@@ -92,8 +95,8 @@ QQC2.ApplicationWindow {
 
                     Text {
                         text: i18n.t("find.title")
-                        color: theme.textHi
-                        font.family: theme.display
+                        color: appTheme.textHi
+                        font.family: appTheme.display
                         font.pixelSize: 20
                         font.weight: Font.DemiBold
                     }
@@ -101,8 +104,8 @@ QQC2.ApplicationWindow {
                     Text {
                         visible: win.scope.length > 0
                         text: i18n.t("find.scope") + "  " + win.scopeLabel()
-                        color: theme.textLo
-                        font.family: theme.mono
+                        color: appTheme.textLo
+                        font.family: appTheme.mono
                         font.pixelSize: 12
                         elide: Text.ElideMiddle
                         Layout.maximumWidth: 380
@@ -117,9 +120,9 @@ QQC2.ApplicationWindow {
                         Layout.fillWidth: true
                         implicitHeight: 44
                         radius: 10
-                        color: theme.cardHi
+                        color: appTheme.cardHi
                         border.width: 1
-                        border.color: field.activeFocus ? theme.accent : theme.line
+                        border.color: field.activeFocus ? appTheme.accent : appTheme.line
 
                         QQC2.TextField {
                             id: field
@@ -127,9 +130,9 @@ QQC2.ApplicationWindow {
                             anchors.leftMargin: 14
                             anchors.rightMargin: 14
                             background: null
-                            color: theme.textHi
+                            color: appTheme.textHi
                             placeholderText: i18n.t("find.placeholder")
-                            placeholderTextColor: theme.textLo
+                            placeholderTextColor: appTheme.textLo
                             font.pixelSize: 14
                             verticalAlignment: Text.AlignVCenter
                             onAccepted: backend.search(text)
@@ -138,7 +141,7 @@ QQC2.ApplicationWindow {
                     }
 
                     GButton {
-                        theme: theme
+                        theme: appTheme
                         kind: "filled"
                         text: win.busy ? i18n.t("find.searching") : i18n.t("find.search")
                         enabled: !win.busy && field.text.trim().length > 0
@@ -148,7 +151,7 @@ QQC2.ApplicationWindow {
             }
         }
 
-        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.line }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: appTheme.line }
 
         // ════════════ RESULTS ════════════
         QQC2.ScrollView {
@@ -172,7 +175,7 @@ QQC2.ApplicationWindow {
 
                     width: list.width
                     height: 58
-                    color: hover.hovered ? theme.cardHi : "transparent"
+                    color: hover.hovered ? appTheme.cardHi : "transparent"
 
                     HoverHandler { id: hover }
                     TapHandler {
@@ -191,7 +194,7 @@ QQC2.ApplicationWindow {
                             Text {
                                 Layout.fillWidth: true
                                 text: modelData.name
-                                color: theme.textHi
+                                color: appTheme.textHi
                                 font.pixelSize: 14
                                 font.weight: Font.DemiBold
                                 elide: Text.ElideMiddle
@@ -199,8 +202,8 @@ QQC2.ApplicationWindow {
                             Text {
                                 Layout.fillWidth: true
                                 text: modelData.dir
-                                color: theme.textLo
-                                font.family: theme.mono
+                                color: appTheme.textLo
+                                font.family: appTheme.mono
                                 font.pixelSize: 11
                                 elide: Text.ElideMiddle
                             }
@@ -208,7 +211,7 @@ QQC2.ApplicationWindow {
 
                         Text {
                             text: modelData.age + "  ·  " + modelData.hsize
-                            color: theme.textLo
+                            color: appTheme.textLo
                             font.pixelSize: 11
                             horizontalAlignment: Text.AlignRight
                         }
@@ -219,19 +222,19 @@ QQC2.ApplicationWindow {
                             Behavior on opacity { NumberAnimation { duration: 120 } }
 
                             GButton {
-                                theme: theme
+                                theme: appTheme
                                 kind: "tonal"
                                 text: i18n.t("find.open")
                                 onClicked: backend.openPath(modelData.path)
                             }
                             GButton {
-                                theme: theme
+                                theme: appTheme
                                 kind: "ghost"
                                 text: i18n.t("find.reveal")
                                 onClicked: backend.revealPath(modelData.path)
                             }
                             GButton {
-                                theme: theme
+                                theme: appTheme
                                 kind: "ghost"
                                 text: i18n.t("find.copyPath")
                                 onClicked: backend.copyPath(modelData.path)
@@ -243,7 +246,7 @@ QQC2.ApplicationWindow {
                         anchors.bottom: parent.bottom
                         width: parent.width
                         height: 1
-                        color: theme.line
+                        color: appTheme.line
                         visible: index < win.results.length - 1
                     }
                 }
@@ -262,7 +265,7 @@ QQC2.ApplicationWindow {
                 width: parent.width - 80
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                color: theme.textLo
+                color: appTheme.textLo
                 font.pixelSize: 14
                 text: win.busy ? i18n.t("find.searching")
                                : (win.searched ? i18n.t("find.empty")
@@ -274,7 +277,7 @@ QQC2.ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 30
-            color: theme.bgTop
+            color: appTheme.bgTop
             visible: win.searched && !win.busy
 
             RowLayout {
@@ -285,22 +288,22 @@ QQC2.ApplicationWindow {
 
                 Text {
                     text: win.results.length + " " + i18n.t("find.results")
-                    color: theme.textLo
+                    color: appTheme.textLo
                     font.pixelSize: 11
                 }
                 Text {
                     Layout.fillWidth: true
                     text: win.filterLabel().length > 0
                           ? i18n.t("find.filter") + ":  " + win.filterLabel() : ""
-                    color: theme.textLo
-                    font.family: theme.mono
+                    color: appTheme.textLo
+                    font.family: appTheme.mono
                     font.pixelSize: 11
                     elide: Text.ElideRight
                 }
                 Text {
                     text: win.plan.source === "model" ? i18n.t("find.byModel")
                                                       : i18n.t("find.byParser")
-                    color: win.plan.source === "model" ? theme.accentText : theme.textLo
+                    color: win.plan.source === "model" ? appTheme.accentText : appTheme.textLo
                     font.pixelSize: 11
                 }
             }

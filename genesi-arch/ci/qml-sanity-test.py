@@ -301,6 +301,32 @@ for _name in _CANVAS_FAMILY:
         failures.append("%s uses theme.%s, which CanvasTheme.qml does not define"
                         % (_name, _miss))
 
+# ── `theme: theme` binds a property to ITSELF ──────────────────────────────
+#
+# QML resolves a bare name on the right-hand side against the object's OWN
+# properties before the enclosing scope's ids. So in
+#
+#     GButton { theme: theme; accent: theme.green }
+#
+# the component is handed `undefined`, and the sibling binding reading
+# theme.green throws. It is invisible without running the app — the only trace
+# is a QML warning — and it shipped in genesi-snapshots (every Restore and
+# Delete button in the list unstyled), genesi-ports, genesi-sandboxes and the
+# Monitor's AdvisorPage. Qualify it (`theme: root.theme`) or name the id
+# something the property cannot shadow (`appTheme`).
+_SELF_BIND = re.compile(r"(?<![.\w])theme:\s*theme(?![.\w])")
+for _f in sorted(PACKAGES.rglob("*.qml")):
+    _txt = _f.read_text(encoding="utf-8", errors="replace")
+    for _n, _line in enumerate(_txt.splitlines(), 1):
+        if _line.lstrip().startswith("//"):
+            continue
+        if _SELF_BIND.search(_line):
+            # The path, not just the basename: five of these files are called
+            # Main.qml, and "Main.qml:228" tells you nothing about which app.
+            failures.append("%s:%d writes `theme: theme`, which binds the "
+                            "property to itself"
+                            % (_f.relative_to(PACKAGES).as_posix(), _n))
+
 print(f"checked {checked} QML files")
 if failures:
     print(f"\n{len(failures)} PROBLEM(S):")
