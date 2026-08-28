@@ -1242,7 +1242,29 @@ pkgver=1.0.0
 # app, which is exactly what devtools/preview.py now makes possible. Fixed, and
 # ci/qml-sanity-test.py fails if that family ever again uses a token its own
 # theme does not define (verified by removing violet and watching it fail).
-pkgrel=183
+# 2026-08-26 (184): the Mesh page, and three more bugs that only a running app
+# could show.
+# "NOT INSTALLED" STOPPED BEING AN ERROR. The Mesh page announced a missing
+# optional package in a red box with a red border -- the same thing the app
+# says when something has gone wrong. Painting "you have not installed this
+# yet" red is how people learn to ignore red. It is an invitation now: what it
+# is, why you would want it, and the pacman command with a copy button.
+# UNDEFINED WAS BEING ASSIGNED TO bool. `a && a.b` evaluates to UNDEFINED, not
+# false, when `a` is missing, and QML cannot coerce that: it warns and KEEPS
+# THE PREVIOUS VALUE. Four `visible:` bindings on the Mesh page were written
+# that way, so a row could stay on screen describing state that was no longer
+# there. Coerced with !!.
+# THE PALETTE DRAG GHOST NEVER WORKED. `PaletteItem { dragGhost: dragGhost }`
+# binds the property to ITSELF -- inside the delegate the component's own
+# property shadows the outer id -- so Qt detected a binding loop, broke it, and
+# every palette item was left holding null. Dragging a block from the palette
+# showed no ghost. The ghost item is `paletteGhost` now.
+# And the canvas's undo Shortcut used the singular `sequence`, which binds only
+# the first of the chords StandardKey.Undo maps to.
+# The Mesh subtitle was hardcoded pt-BR while the rest of the app switches
+# language from the top bar, so an English user read that page in Portuguese.
+# Every tab now renders with ZERO QML warnings.
+pkgrel=184
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

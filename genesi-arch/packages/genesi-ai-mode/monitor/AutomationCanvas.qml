@@ -212,7 +212,10 @@ Item {
     }
 
     Shortcut {
-        sequence: StandardKey.Undo
+        // `sequences`, plural: StandardKey.Undo maps to more than one chord on
+        // some platforms, and a singular `sequence` silently binds only the
+        // first of them.
+        sequences: [ StandardKey.Undo ]
         enabled: root.ready && root.undoStack.length > 0
         onActivated: root.undo()
     }
@@ -625,7 +628,9 @@ Item {
                                         icon: modelData.icon || ""
                                         kind: modelData.kind || ""
                                         accent: modelData.accent || root.theme.green
-                                        dragGhost: dragGhost
+                                        // paletteGhost, not dragGhost: the
+                                        // property shadows the id here.
+                                        dragGhost: paletteGhost
                                         onAdd: root.addNode(modelData)
                                     }
                                 }
@@ -763,10 +768,10 @@ Item {
                     anchors.fill: parent
                     keys: [ "genesi/node" ]
                     onDropped: function(drop) {
-                        if (!dragGhost.def) return
+                        if (!paletteGhost.def) return
                         var cx = (flick.contentX + drop.x) / root.zoom - 107
                         var cy = (flick.contentY + drop.y) / root.zoom - 60
-                        root.addNodeAt(Math.max(0, cx), Math.max(0, cy), dragGhost.def)
+                        root.addNodeAt(Math.max(0, cx), Math.max(0, cy), paletteGhost.def)
                     }
                 }
 
@@ -1212,7 +1217,7 @@ Item {
 
     // Floating drag ghost (shared by every PaletteItem).
     Item {
-        id: dragGhost
+        id: paletteGhost
         property var def: null
         property bool dragging: false
         visible: dragging
@@ -1226,16 +1231,16 @@ Item {
             anchors.fill: parent; radius: 11; opacity: 0.97
             color: root.theme.cardHi
             border.width: 1.5
-            border.color: dragGhost.def ? root.theme.a(dragGhost.def.accent, 0.7) : root.theme.a(root.theme.green, 0.6)
+            border.color: paletteGhost.def ? root.theme.a(paletteGhost.def.accent, 0.7) : root.theme.a(root.theme.green, 0.6)
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; spacing: 9
                 Rectangle {
                     width: 26; height: 26; radius: 7
-                    color: dragGhost.def ? root.theme.a(dragGhost.def.accent, 0.18) : "transparent"
-                    FIcon { anchors.centerIn: parent; name: dragGhost.def ? dragGhost.def.icon : ""; size: 14
-                        color: dragGhost.def ? dragGhost.def.accent : root.theme.green }
+                    color: paletteGhost.def ? root.theme.a(paletteGhost.def.accent, 0.18) : "transparent"
+                    FIcon { anchors.centerIn: parent; name: paletteGhost.def ? paletteGhost.def.icon : ""; size: 14
+                        color: paletteGhost.def ? paletteGhost.def.accent : root.theme.green }
                 }
-                QQC2.Label { text: dragGhost.def ? dragGhost.def.label : ""; color: root.theme.textHi; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                QQC2.Label { text: paletteGhost.def ? paletteGhost.def.label : ""; color: root.theme.textHi; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
             }
         }
     }

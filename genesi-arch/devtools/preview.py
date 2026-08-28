@@ -204,6 +204,13 @@ def main():
     mon = importlib.import_module(modname)
 
     app = QGuiApplication(sys.argv)
+    # The apps set these in their own main(), which the harness never calls --
+    # without them QSettings refuses to initialise and I18n.qml warns that it
+    # cannot persist the language. That warning is the harness's, not the app's,
+    # and a harness that cries wolf is worse than no harness.
+    app.setOrganizationName("Genesi OS")
+    app.setOrganizationDomain("genesios.org")
+    app.setApplicationName("Genesi Preview")
     # The app asks for Rubik (shipped by genesi-ttf-rubik-vf) and the
     # offscreen platform has no fontconfig to fall back through, so every
     # glyph came out as a missing-glyph box. Substitute a font this machine

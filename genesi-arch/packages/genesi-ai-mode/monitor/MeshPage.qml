@@ -102,28 +102,109 @@ Item {
                 wrapMode: Text.WordWrap
                 color: theme.a(theme.white, 0.65)
                 font.pixelSize: 12
-                text: "Junte a memória de vídeo de várias máquinas para rodar um modelo "
-                      + "que não caberia em nenhuma delas sozinha."
+                // Was hardcoded pt-BR while the rest of the app switches
+                // language from the top bar, so an English user read this page
+                // in Portuguese.
+                text: root.i18n ? root.i18n.t("mesh.subtitle")
+                                : "Pool the video memory of several machines to run a model that would not fit on any one of them."
             }
 
             // ── genesi-mesh ausente ──────────────────────────────────────────
+            //
+            // NOT an error. This was a red box with a red border, which is what
+            // the app says when something has gone WRONG — and the only thing
+            // that has happened is that an optional package is not installed.
+            // Painting "you have not installed this yet" red is how people
+            // learn to ignore red. It is an invitation: what it is, why you
+            // would want it, and the command, ready to copy.
             Rectangle {
                 visible: !root.available
                 Layout.fillWidth: true
-                implicitHeight: 64
-                radius: 12
-                color: theme.a(theme.red, 0.12)
+                implicitHeight: missingCol.implicitHeight + theme.sp5 * 2
+                radius: theme.rLg
+                color: theme.surface
                 border.width: 1
-                border.color: theme.a(theme.red, 0.5)
-                QQC2.Label {
-                    anchors.fill: parent
-                    anchors.margins: 14
-                    wrapMode: Text.WordWrap
-                    verticalAlignment: Text.AlignVCenter
-                    color: theme.white
-                    font.pixelSize: 12
-                    text: "O pacote genesi-mesh não está instalado.\n"
-                          + "Instale com:  sudo pacman -S genesi-mesh"
+                border.color: theme.hairline
+
+                ColumnLayout {
+                    id: missingCol
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: theme.sp5; anchors.rightMargin: theme.sp5
+                    spacing: theme.sp3
+
+                    Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        width: 46; height: 46; radius: theme.rMd
+                        color: theme.a(theme.green, 0.12)
+                        border.width: 1
+                        border.color: theme.a(theme.green, 0.28)
+                        FIcon {
+                            anchors.centerIn: parent
+                            name: "layers"; size: 20; color: theme.greenBright
+                        }
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        text: root.i18n ? root.i18n.t("mesh.missingTitle")
+                                        : "Mesh is not installed on this machine"
+                        color: theme.textHi
+                        font.pixelSize: theme.fsHead
+                        font.bold: true
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: root.i18n ? root.i18n.t("mesh.missingBody")
+                                        : "It is an optional package. Install it on every machine you want to pool, then come back here."
+                        color: theme.textLo
+                        font.pixelSize: theme.fsSmall
+                    }
+
+                    Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.topMargin: theme.sp1
+                        implicitWidth: cmdRow.implicitWidth + theme.sp4
+                        implicitHeight: 38
+                        radius: theme.rMd
+                        color: theme.a(theme.textHi, 0.05)
+                        border.width: 1
+                        border.color: theme.hairline
+                        RowLayout {
+                            id: cmdRow
+                            anchors.centerIn: parent
+                            spacing: theme.sp3
+                            QQC2.Label {
+                                text: "sudo pacman -S genesi-mesh"
+                                color: theme.textMid
+                                font.family: theme.mono
+                                font.pixelSize: theme.fsSmall
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 26
+                                Layout.preferredHeight: 26
+                                radius: theme.rSm
+                                color: cpMa.containsMouse ? theme.a(theme.green, 0.18)
+                                                          : "transparent"
+                                FIcon {
+                                    anchors.centerIn: parent
+                                    name: "copy"; size: 13
+                                    color: cpMa.containsMouse ? theme.accentText : theme.textLo
+                                }
+                                MouseArea {
+                                    id: cpMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: backend.copyToClipboard("sudo pacman -S genesi-mesh")
+                                    QQC2.ToolTip.visible: containsMouse
+                                    QQC2.ToolTip.text: root.i18n ? root.i18n.t("find.copy") : "Copy path"
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -162,7 +243,7 @@ Item {
                     }
 
                     QQC2.Label {
-                        visible: root.usage.pooling
+                        visible: !!root.usage.pooling
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: theme.white
@@ -172,7 +253,7 @@ Item {
                     }
 
                     QQC2.Label {
-                        visible: root.usage.pooling
+                        visible: !!root.usage.pooling
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: theme.a(theme.white, 0.55)
@@ -257,9 +338,13 @@ Item {
                         QQC2.Label { text: "Backend RPC"; color: theme.a(theme.white, 0.55); font.pixelSize: 11 }
                         QQC2.Label {
                             font.pixelSize: 11
-                            readonly property bool ok: root.st.capabilities
+                            // !! because `a && a.b` is UNDEFINED, not false,
+                            // when `a` is missing -- and QML cannot coerce
+                            // undefined to bool: it warns and keeps whatever
+                            // the property held before.
+                            readonly property bool ok: !!(root.st.capabilities
                                                        && root.st.capabilities.rpc_server
-                                                       && root.st.capabilities.rpc_flag
+                                                       && root.st.capabilities.rpc_flag)
                             color: ok ? theme.greenBright : theme.red
                             text: ok ? "disponível"
                                      : "ausente — instale genesi-llama-cpp (ou -cuda)"
@@ -293,7 +378,7 @@ Item {
                     // rpc-server tem ZERO autenticação. Dizer isso onde o botão está,
                     // não numa doc que ninguém abre.
                     QQC2.Label {
-                        visible: root.st.worker
+                        visible: !!root.st.worker
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: theme.turboBright
@@ -331,7 +416,7 @@ Item {
                     }
 
                     QQC2.Label {
-                        visible: root.st.turbo_serving
+                        visible: !!root.st.turbo_serving
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: theme.turboBright
