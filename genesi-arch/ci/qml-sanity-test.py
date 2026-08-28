@@ -265,6 +265,19 @@ for path in sorted(PACKAGES.rglob("*.qml")):
     # `{ id: id, name: … }` is not an id declaration at all (AutomationCanvas
     # does). Getting that right needs a real parser; a naive rule only cries wolf.
 
+# ── Every QML file the Monitor uses must be INSTALLED ───────────────────────
+#
+# A .qml that exists in the source tree but is missing from the PKGBUILD loads
+# fine here and is "Type unavailable" on the user's machine, which blanks the
+# page that referenced it. That is exactly how pkgrel 135 shipped a Monitor
+# with no Automations tab, and it is invisible to every other check because the
+# file itself is perfectly valid.
+_mon = PACKAGES / "genesi-ai-mode" / "monitor"
+_pkgbuild = (PACKAGES / "genesi-ai-mode" / "PKGBUILD").read_text(encoding="utf-8")
+for _f in sorted(_mon.glob("*.qml")):
+    if _f.stem not in _pkgbuild:
+        failures.append("%s is not installed by the PKGBUILD" % _f.name)
+
 print(f"checked {checked} QML files")
 if failures:
     print(f"\n{len(failures)} PROBLEM(S):")

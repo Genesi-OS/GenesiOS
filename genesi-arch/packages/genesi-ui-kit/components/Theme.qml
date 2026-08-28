@@ -113,6 +113,43 @@ Item {
     readonly property color textMid:  mix(sysText, sysBg, 0.35)
     readonly property color textLo:   mix(sysText, sysBg, 0.58)
 
+    // ── Shape, rhythm and type scale (2026-08: the modern/minimal pass) ──
+    //
+    // Before this every app picked its own radii and paddings inline, so two
+    // cards side by side rounded differently and nothing lined up on a grid.
+    // These are the whole vocabulary: if a value is not here, it is probably
+    // the wrong value. Numbers, not Kirigami.Units, because the design is a
+    // fixed pixel rhythm rather than a font-relative one -- a card that grows
+    // with the user's font size stops being the shape it was drawn as.
+    readonly property int rSm:   8     // chips, small fields
+    readonly property int rMd:   12    // buttons, list rows
+    readonly property int rLg:   16    // cards, panels
+    readonly property int rXl:   22    // hero surfaces, the composer
+    readonly property int rPill: 999   // fully round ends
+
+    readonly property int sp1: 4
+    readonly property int sp2: 8
+    readonly property int sp3: 12
+    readonly property int sp4: 16
+    readonly property int sp5: 24
+    readonly property int sp6: 36
+
+    // One type scale for every app. Display is for a single hero line only.
+    readonly property int fsDisplay: 30
+    readonly property int fsTitle:   19
+    readonly property int fsHead:    15
+    readonly property int fsBody:    13
+    readonly property int fsSmall:   11
+    readonly property int fsMicro:   10
+
+    // A 1px separator that reads as a hairline rather than a drawn border.
+    readonly property color hairline: a(white, dark ? 0.07 : 0.10)
+    // The faint tint under a hovered row: visible, never a block of colour.
+    readonly property color hover:    a(white, dark ? 0.05 : 0.06)
+    // Card fill for the minimal look: barely lifted off the background, with
+    // the hairline doing the separating instead of a heavy fill.
+    readonly property color surface:  a(white, dark ? 0.035 : 0.55)
+
     readonly property string mono: "monospace"
 
     // ── Brand typography (Rubik — genesi-ttf-rubik-vf, shipped by default) ──

@@ -1170,7 +1170,39 @@ pkgver=1.0.0
 # names a field no executor reads, or advertises a value no executor publishes.
 # Verified by reintroducing the three fixed bugs and watching it fail. 200
 # checks in ci/automation-engine-test.py, 132 in the generator suite.
-pkgrel=180
+# 2026-08-26 (181): the Monitor UI, rebuilt around the mockup -- and a harness
+# that made it possible to SEE what was being built. devtools/preview.py plus a
+# nine-type Kirigami stub run the app on a machine that is not Genesi, so this
+# pass was rendered and looked at rather than written blind (which is how
+# pkgrel 135 shipped a blank Monitor).
+# THE CHAT IS A DIFFERENT PAGE. The empty state was an icon and two lines
+# saying the chat was empty, which the empty chat had already conveyed. It is
+# now a hero with three suggestion cards that say what the thing can DO and
+# fill the composer when clicked, over a row of pills reaching the rest of the
+# app. The composer holds the message and everything that applies to it --
+# model, Genesi Find, reload -- instead of the model picker sitting in the top
+# bar two thirds of a window from the text it governs. Enter sends,
+# Shift+Enter breaks the line, and the box grows to five lines.
+# GENESI FIND IS IN THE CHAT. Turn the pill on and the next message searches
+# your FILES instead of going to the model, through `genesi-find --json` -- the
+# same single source of truth as genesi-find-ui and the Dolphin action, so the
+# chat cannot drift into a second, weaker search. Results arrive as CARDS:
+# type, name, folder, age, size. Clicking one opens it; "show in folder"
+# reveals it SELECTED via org.freedesktop.FileManager1.ShowItems, which is the
+# thing "open the containing folder" never does.
+# IT IS ACTUALLY RESPONSIVE NOW. Two breakpoints: the right rail leaves below
+# 1180 (everything on it is reachable elsewhere) and the sidebar collapses to
+# an icon rail below 1000 -- collapses rather than disappears, because losing
+# navigation would strand the user on whatever page they were on. The window
+# minimum was 936px, WIDER than the point the layout collapses at, so the
+# collapsed layout could never be reached; the floor is now 684. Two layout
+# bugs fell out of testing at those sizes: the sidebar history was an unbounded
+# Repeater that pushed the Memory Palace card off the bottom of the window (it
+# scrolls now), and the nav items set `height` where a ColumnLayout wants
+# Layout.preferredHeight, so they stretched to fill the rail.
+# The shared Theme.qml gains a radius/spacing/type scale so the apps stop each
+# inventing their own. Additive -- nothing else changes.
+pkgrel=181
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1347,6 +1379,14 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatBubble.qml"
     install -Dm644 "${startdir}/monitor/QuickChat.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/QuickChat.qml"
+    # Chat primitives: the Genesi Find result block, the empty-state
+    # suggestion card and the pill. A QML file that is not installed is a
+    # "Type unavailable" on the user machine and a blank page, which is
+    # exactly how pkgrel 135 went out -- so these ship with the page.
+    for _cq in FileCard SuggestCard GPill; do
+        install -Dm644 "${startdir}/monitor/${_cq}.qml" \
+            "$pkgdir/usr/share/genesi-ai-mode/monitor/${_cq}.qml"
+    done
     # Automations tab: the Forge Canvas adapted for PC-wide automation, plus its
     # self-contained graphite theme + primitives (no dep on the shared Theme.qml).
     for _aq in AutomationsPage AutomationCanvas AutomationConfigPanel CanvasNode \

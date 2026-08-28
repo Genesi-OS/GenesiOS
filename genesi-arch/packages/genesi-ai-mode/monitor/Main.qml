@@ -8,8 +8,12 @@ Kirigami.ApplicationWindow {
     title: "Genesi AI Mode Monitor"
     width: Kirigami.Units.gridUnit * 64
     height: Kirigami.Units.gridUnit * 42
-    minimumWidth: Kirigami.Units.gridUnit * 52
-    minimumHeight: Kirigami.Units.gridUnit * 34
+    // The old floor was 52 grid units (~936px), which is wider than the point
+    // the layout collapses at -- so the collapsed layout could never actually
+    // be reached, and the app simply refused to be made small. It now goes down
+    // to a size a half-screen tile on a 1366 laptop gives you.
+    minimumWidth: Kirigami.Units.gridUnit * 38
+    minimumHeight: Kirigami.Units.gridUnit * 26
     color: theme.bgBottom
 
     Theme { id: theme }
@@ -21,6 +25,16 @@ Kirigami.ApplicationWindow {
     property string profileMode: "auto"
     property string activity: "idle"   // active | warm | idle (smart auto-detect)
     property int currentTab: 0
+
+    // ── Breakpoints ────────────────────────────────────────────────────────
+    // Two numbers, each named for what it protects. Below `wide` the right rail
+    // goes: everything on it is reachable from the top bar or the nav, so it is
+    // the first thing that can afford to leave. Below `roomy` the sidebar
+    // collapses to an icon rail rather than disappearing — losing the labels
+    // costs a little, losing navigation entirely would strand the user on
+    // whatever page they happened to be on.
+    readonly property bool wide:     width >= 1180
+    readonly property bool railMode: width < 1000
 
     // ── chat history (sidebar HISTORY rail) + MemPalace recall ──
     property var sessions: []          // [{id,title,updated,count}] newest-first
@@ -309,7 +323,10 @@ Kirigami.ApplicationWindow {
             }
 
             // ── Profile segmented control (intensity) ──
+            // Hidden on a narrow window: it is the widest group up here and the
+            // same control sits on the Dashboard, so nothing is lost.
             Rectangle {
+                visible: !win.railMode
                 radius: 11
                 color: theme.card
                 border.width: 1; border.color: theme.line
@@ -451,7 +468,8 @@ Kirigami.ApplicationWindow {
         // ──────────────────────── SIDEBAR (nav) ────────────────────────
         Rectangle {
             Layout.fillHeight: true
-            Layout.preferredWidth: 218
+            Layout.preferredWidth: win.railMode ? 62 : 218
+            Behavior on Layout.preferredWidth { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
             radius: 18
             color: theme.card
             border.width: 1
@@ -479,15 +497,17 @@ Kirigami.ApplicationWindow {
                         }
                     }
                     ColumnLayout {
+                        visible: !win.railMode
                         Layout.fillWidth: true
                         spacing: -2
                         QQC2.Label { text: "Genesi"; font.bold: true; font.pixelSize: 14; color: theme.textHi }
                         QQC2.Label { text: win.active ? "AI Mode active" : "AI Mode standby"; font.pixelSize: 10; color: win.active ? theme.greenBright : theme.textLo }
                     }
-                    Kirigami.Icon { source: "configure"; Layout.preferredWidth: 15; Layout.preferredHeight: 15; color: theme.textLo }
+                    Kirigami.Icon { visible: !win.railMode; source: "configure"; Layout.preferredWidth: 15; Layout.preferredHeight: 15; color: theme.textLo }
                 }
 
                 Rectangle {
+                    visible: !win.railMode
                     Layout.fillWidth: true
                     Layout.preferredHeight: 34
                     radius: 9
@@ -505,6 +525,7 @@ Kirigami.ApplicationWindow {
                 }
 
                 QQC2.Label {
+                    visible: !win.railMode
                     text: "GENERAL"
                     color: theme.textLo
                     font.pixelSize: 10
@@ -524,7 +545,13 @@ Kirigami.ApplicationWindow {
                         required property var modelData
                         readonly property bool sel: win.currentTab === index
                         Layout.fillWidth: true
-                        height: 38; radius: 10
+                        // Layout.preferredHeight, not height: a ColumnLayout
+                        // overrides a plain `height`, and once the rail hides
+                        // everything below the nav there was nothing left to
+                        // absorb the slack, so the five items stretched to fill
+                        // the sidebar.
+                        Layout.preferredHeight: 38
+                        radius: 10
                         color: sel ? theme.a(theme.green, 0.16)
                              : (navMa.containsMouse ? theme.a(theme.textHi, 0.06) : "transparent")
                         Behavior on color { ColorAnimation { duration: 150 } }
@@ -541,7 +568,11 @@ Kirigami.ApplicationWindow {
                         // accent, idle = muted text) so it still follows the theme.
                         Kirigami.Icon {
                             anchors.left: parent.left
-                            anchors.leftMargin: 11
+                            // Centred on the rail, where there is no label to sit
+                            // next to. Computed rather than re-anchored: swapping
+                            // anchors at runtime is how items end up at 0,0.
+                            anchors.leftMargin: win.railMode
+                                                ? Math.max(0, (parent.width - 21) / 2) : 11
                             anchors.verticalCenter: parent.verticalCenter
                             source: Qt.resolvedUrl(modelData.icon)
                             isMask: true
@@ -549,6 +580,7 @@ Kirigami.ApplicationWindow {
                             color: sel ? theme.greenBright : theme.textMid
                         }
                         QQC2.Label {
+                            visible: !win.railMode
                             anchors.left: parent.left
                             anchors.leftMargin: 42
                             anchors.right: parent.right
@@ -574,6 +606,7 @@ Kirigami.ApplicationWindow {
                 }
 
                 QQC2.Label {
+                    visible: !win.railMode
                     text: "HISTORY"
                     color: theme.textLo
                     font.pixelSize: 10
@@ -583,6 +616,7 @@ Kirigami.ApplicationWindow {
 
                 // + New chat
                 Rectangle {
+                    visible: !win.railMode
                     Layout.fillWidth: true
                     Layout.preferredHeight: 30
                     radius: 8
@@ -596,62 +630,83 @@ Kirigami.ApplicationWindow {
                     MouseArea { id: newChatMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.newChat() }
                 }
 
-                // saved conversations (newest-first, from ~/.config/genesi-ai-monitor/sessions)
-                Repeater {
-                    model: win.sessions
-                    delegate: Rectangle {
-                        id: histItem
-                        required property var modelData
-                        readonly property bool sel: chatPage.sessionId === modelData.id && win.currentTab === 1
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 30
-                        radius: 8
-                        color: sel ? theme.a(theme.green, 0.14)
-                             : ((histMa.containsMouse || delMa.containsMouse) ? theme.a(theme.textHi, 0.05) : "transparent")
-                        RowLayout {
-                            anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 7
-                            Kirigami.Icon { source: Qt.resolvedUrl("icons/chat.svg"); isMask: true; Layout.preferredWidth: 13; Layout.preferredHeight: 13; color: histItem.sel ? theme.greenBright : theme.textLo }
-                            QQC2.Label { Layout.fillWidth: true; text: histItem.modelData.title; color: histItem.sel ? theme.textHi : theme.textMid; font.pixelSize: 11; elide: Text.ElideRight }
-                            QQC2.Label { text: win.relTime(histItem.modelData.updated); color: theme.textLo; font.pixelSize: 9 }
-                        }
-                        MouseArea { id: histMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.openSession(histItem.modelData.id) }
-                        // delete — revealed on hover; declared after histMa so it wins the click in its area
-                        Rectangle {
-                            visible: histMa.containsMouse || delMa.containsMouse
-                            anchors.right: parent.right; anchors.rightMargin: 5
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 20; height: 20; radius: 6
-                            color: delMa.containsMouse ? theme.a(theme.red, 0.22) : theme.a(theme.textHi, 0.08)
-                            Kirigami.Icon { anchors.centerIn: parent; source: "edit-delete"; width: 12; height: 12; color: delMa.containsMouse ? theme.red : theme.textLo }
-                            MouseArea {
-                                id: delMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (chatPage.sessionId === histItem.modelData.id) chatPage.newChat()
-                                    backend.deleteSession(histItem.modelData.id)
+                // The saved conversations scroll INSIDE the sidebar. As a bare
+                // Repeater in the column they grew without limit, and a handful of
+                // chats was enough to push the Memory Palace card off the bottom of
+                // the window on a short screen -- reported as the card being cut off.
+                // On the rail there is no history list to take the slack, so
+                // something has to, or the nav spreads out again.
+                Item { visible: win.railMode; Layout.fillHeight: true }
+
+                QQC2.ScrollView {
+                    visible: !win.railMode
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    contentWidth: availableWidth
+                    clip: true
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 3
+                    // saved conversations (newest-first, from ~/.config/genesi-ai-monitor/sessions)
+                    Repeater {
+                        model: win.sessions
+                        delegate: Rectangle {
+                            id: histItem
+                            required property var modelData
+                            readonly property bool sel: chatPage.sessionId === modelData.id && win.currentTab === 1
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 30
+                            radius: 8
+                            color: sel ? theme.a(theme.green, 0.14)
+                                 : ((histMa.containsMouse || delMa.containsMouse) ? theme.a(theme.textHi, 0.05) : "transparent")
+                            RowLayout {
+                                anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 7
+                                Kirigami.Icon { source: Qt.resolvedUrl("icons/chat.svg"); isMask: true; Layout.preferredWidth: 13; Layout.preferredHeight: 13; color: histItem.sel ? theme.greenBright : theme.textLo }
+                                QQC2.Label { Layout.fillWidth: true; text: histItem.modelData.title; color: histItem.sel ? theme.textHi : theme.textMid; font.pixelSize: 11; elide: Text.ElideRight }
+                                QQC2.Label { text: win.relTime(histItem.modelData.updated); color: theme.textLo; font.pixelSize: 9 }
+                            }
+                            MouseArea { id: histMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.openSession(histItem.modelData.id) }
+                            // delete — revealed on hover; declared after histMa so it wins the click in its area
+                            Rectangle {
+                                visible: histMa.containsMouse || delMa.containsMouse
+                                anchors.right: parent.right; anchors.rightMargin: 5
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 20; height: 20; radius: 6
+                                color: delMa.containsMouse ? theme.a(theme.red, 0.22) : theme.a(theme.textHi, 0.08)
+                                Kirigami.Icon { anchors.centerIn: parent; source: "edit-delete"; width: 12; height: 12; color: delMa.containsMouse ? theme.red : theme.textLo }
+                                MouseArea {
+                                    id: delMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (chatPage.sessionId === histItem.modelData.id) chatPage.newChat()
+                                        backend.deleteSession(histItem.modelData.id)
+                                    }
+                                    QQC2.ToolTip.text: "Delete chat"
+                                    QQC2.ToolTip.visible: containsMouse
+                                    QQC2.ToolTip.delay: 400
                                 }
-                                QQC2.ToolTip.text: "Delete chat"
-                                QQC2.ToolTip.visible: containsMouse
-                                QQC2.ToolTip.delay: 400
                             }
                         }
                     }
-                }
 
-                QQC2.Label {
-                    visible: win.sessions.length === 0
-                    Layout.fillWidth: true
-                    text: "No chats yet — start one in AI Chat."
-                    color: theme.textLo
-                    font.pixelSize: 10
-                    wrapMode: Text.WordWrap
-                }
+                    QQC2.Label {
+                        visible: win.sessions.length === 0
+                        Layout.fillWidth: true
+                        text: "No chats yet — start one in AI Chat."
+                        color: theme.textLo
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
 
-                Item { Layout.fillHeight: true }
+                    }
+                }
 
                 Rectangle {
+                    // No room for it on the rail, and it is a settings card
+                    // rather than navigation, so it is safe to drop.
+                    visible: !win.railMode
                     Layout.fillWidth: true
                     implicitHeight: mpCol.implicitHeight + 24
                     radius: 14
@@ -1362,7 +1417,10 @@ Kirigami.ApplicationWindow {
         }
 
         // ───────────────────────── 2. CHAT ─────────────────────────
-        ChatPage { id: chatPage; i18n: i18n }
+        // onNavigate: the chat's hero pills reach the rest of the app, but
+        // the page does not own the tab -- the shell does.
+        ChatPage { id: chatPage; i18n: i18n
+            onNavigate: function (tab) { win.currentTab = tab } }
 
         // ───────────────────────── 3. MODELOS ─────────────────────────
         AdvisorPage {
@@ -1392,7 +1450,8 @@ Kirigami.ApplicationWindow {
 
         Rectangle {
             Layout.fillHeight: true
-            Layout.preferredWidth: 250
+            visible: win.wide
+            Layout.preferredWidth: win.wide ? 250 : 0
             radius: 18
             color: theme.card
             border.width: 1

@@ -70,6 +70,41 @@ DEMO_SESSIONS = [
     {"id": "s5", "title": "What's the difference between…", "updated": 0, "count": 2},
 ]
 
+# A canned conversation, including a Genesi Find answer, so the file cards can
+# be looked at without a Linux box and a real index.
+DEMO_FILES = {
+    "query": "the contract pdf I saved last month",
+    "results": [
+        {"path": "/home/g/Documents/contrato-locacao-2026.pdf",
+         "name": "contrato-locacao-2026.pdf", "dir": "~/Documents",
+         "age": "3w", "hsize": "812 KB"},
+        {"path": "/home/g/Downloads/contrato-assinado.pdf",
+         "name": "contrato-assinado.pdf", "dir": "~/Downloads",
+         "age": "1mo", "hsize": "1.4 MB"},
+        {"path": "/home/g/Documents/notas/anexo-contrato.odt",
+         "name": "anexo-contrato.odt", "dir": "~/Documents/notas",
+         "age": "1mo", "hsize": "44 KB"},
+        {"path": "/home/g/Imagens/scan-contrato-p1.png",
+         "name": "scan-contrato-p1.png", "dir": "~/Imagens",
+         "age": "1mo", "hsize": "2.2 MB"},
+    ],
+}
+
+DEMO_CHAT = {
+    "id": "s1", "model": "llama3.2:3b",
+    "messages": [
+        {"role": "user", "stats": "",
+         "body": "Which local model should I use for coding on a 6 GB card?"},
+        {"role": "ai", "stats": "",
+         "body": "For 6 GB of VRAM, qwen2.5-coder:7b at Q4_K_M is the sweet "
+                 "spot: it fits with room for a 8k context and stays well "
+                 "ahead of the 3b models on real code. Turn Turbo on so it is "
+                 "served by llama-server with full GPU offload."},
+        {"role": "user", "stats": "", "body": "the contract pdf I saved last month"},
+        {"role": "files", "stats": "", "body": json.dumps(DEMO_FILES)},
+    ],
+}
+
 DEMO_STATE = {
     "active": True, "mode": "auto", "profile": "auto",
     "cpu": 21.0, "ram": 46.0, "gpu": 12.0, "vram_used": 2100, "vram_total": 6144,
@@ -89,6 +124,7 @@ def _demo(backend):
     cls.backendInfo = Slot(result=str)(
         lambda self: json.dumps({"backend": "cuda", "gpu": "NVIDIA RTX 3050"}))
     cls.quickModel = Slot(result=str)(lambda self: "llama3.2:3b")
+    cls.loadSession = Slot(str, result=str)(lambda self, sid: json.dumps(DEMO_CHAT))
     cls.modelLabel = Slot(str, result=str)(lambda self, m: m or "llama3.2:3b")
 
     def _models(self):
@@ -106,6 +142,8 @@ def main():
                     help="switch to this tab index before the shot")
     ap.add_argument("--demo", action="store_true",
                     help="populate the UI with plausible content")
+    ap.add_argument("--seed-chat", action="store_true",
+                    help="open a canned conversation (implies --demo --tab 1)")
     ap.add_argument("--size", default="1600x1000", help="window size WxH")
     ap.add_argument("--wait", type=float, default=1.6,
                     help="seconds to settle before the shot")
@@ -121,7 +159,7 @@ def main():
     staged = _stage(Path(os.environ.get("TEMP", "/tmp")) / "genesi-preview")
     sys.path.insert(0, str(MONITOR))
 
-    from PySide6.QtCore import QUrl, QTimer
+    from PySide6.QtCore import QUrl, QTimer, QMetaObject, Q_ARG
     from PySide6.QtGui import QGuiApplication, QFont
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuick import QQuickWindow
@@ -172,6 +210,10 @@ def main():
         pass
     if args.tab is not None:
         win.setProperty("currentTab", args.tab)
+    if args.seed_chat:
+        # openSession() is a plain QML function on the window, which Qt exposes
+        # as an invokable method.
+        QMetaObject.invokeMethod(win, "openSession", Q_ARG("QVariant", "s1"))
 
     if not args.shot:
         for line in warnings:

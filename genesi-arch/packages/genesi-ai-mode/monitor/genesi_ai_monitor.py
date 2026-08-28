@@ -112,6 +112,8 @@ class Backend(QObject):
     approvalRequested = Signal(str)  # JSON action awaiting the user's decision
     agentActivity = Signal(str)      # JSON status for the non-blocking UI indicator
     agentModeChanged = Signal(str)
+    findStatus = Signal(str)          # human-readable progress for Genesi Find
+    findResults = Signal(str)         # JSON: {query, results[], error}
     automationStatusChanged = Signal(str)  # JSON run state/logs from the daemon
     hotkeyCaptured = Signal(str)     # captured "ctrl+alt+a" combo ("" on cancel)
     workflowGenerated = Signal(str)   # JSON: {status, note, name, graph}
@@ -2130,6 +2132,99 @@ class Backend(QObject):
             self.noticeToast.emit("Copied " + (text or ""))
         except Exception:
             pass
+
+    # ── Genesi Find, in the chat ───────────────────────────────────────────
+    #
+    # genesi-find is the single source of truth for the search (see its header:
+    # the model only ever turns a sentence into a FILTER, and the filter is
+    # validated and executed locally). The GUI is a front end over its --json,
+    # exactly like genesi-find-ui and the Dolphin action, so the chat cannot
+    # drift into a second, weaker implementation of the same search.
+    @Slot(str)
+    def findFiles(self, query):
+        """Search the user's files by description. Answers on findResults."""
+        text = (query or "").strip()
+        if not text:
+            self.findResults.emit(json.dumps({"query": "", "results": []}))
+            return
+        threading.Thread(target=self._find_worker, args=(text,),
+                         daemon=True).start()
+
+    def _find_worker(self, text):
+        exe = shutil.which("genesi-find")
+        if not exe:
+            self.findResults.emit(json.dumps(
+                {"query": text, "results": [],
+                 "error": "genesi-find is not installed"}))
+            return
+        self.findStatus.emit(text)
+        try:
+            # A walk over a home directory has a ceiling but not a small one,
+            # and the model step can add a few seconds on a cold engine.
+            done = subprocess.run([exe, "--json", "-n", "8", text],
+                                  capture_output=True, text=True, timeout=180)
+            payload = json.loads(done.stdout or "{}")
+        except subprocess.TimeoutExpired:
+            payload = {"query": text, "results": [],
+                       "error": "the search took too long and was stopped"}
+        except (OSError, ValueError) as exc:
+            payload = {"query": text, "results": [],
+                       "error": "search failed: %s" % exc}
+        payload.setdefault("query", text)
+        payload.setdefault("results", [])
+        # The plan is interesting to a developer and noise to everyone else.
+        payload.pop("plan", None)
+        payload.pop("roots", None)
+        self.findResults.emit(json.dumps(payload, ensure_ascii=False))
+
+    @Slot(str)
+    def openPath(self, path):
+        """Open a file with whatever the desktop uses for it."""
+        target = os.path.expanduser(path or "")
+        if not target or not os.path.exists(target):
+            self.noticeToast.emit("That file is no longer there")
+            return
+        try:
+            subprocess.Popen(["xdg-open", target], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError as exc:
+            self.noticeToast.emit("Could not open it: %s" % exc)
+
+    @Slot(str)
+    def revealPath(self, path):
+        """Show a file in the file manager, SELECTED rather than just opening
+        its folder.
+
+        org.freedesktop.FileManager1.ShowItems is the interface every desktop
+        file manager implements for exactly this, and Dolphin, Nautilus and
+        Thunar all honour it. Opening the parent directory is the fallback when
+        no file manager is on the bus -- it is worse (the file is not
+        highlighted) but it is never nothing.
+        """
+        target = os.path.expanduser(path or "")
+        if not target or not os.path.exists(target):
+            self.noticeToast.emit("That file is no longer there")
+            return
+        uri = "file://" + urllib.request.pathname2url(target)
+        if shutil.which("dbus-send"):
+            try:
+                done = subprocess.run(
+                    ["dbus-send", "--session", "--print-reply",
+                     "--dest=org.freedesktop.FileManager1",
+                     "/org/freedesktop/FileManager1",
+                     "org.freedesktop.FileManager1.ShowItems",
+                     "array:string:" + uri, "string:"],
+                    capture_output=True, timeout=8)
+                if done.returncode == 0:
+                    return
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        try:
+            subprocess.Popen(["xdg-open", os.path.dirname(target)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError as exc:
+            self.noticeToast.emit("Could not open the folder: %s" % exc)
 
     @Slot(result=str)
     def nodeOutputCatalogue(self):
