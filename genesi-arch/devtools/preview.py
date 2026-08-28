@@ -116,6 +116,38 @@ DEMO_CHAT = {
     ],
 }
 
+# A small but real automation graph, so the Automations canvas can be looked at
+# with cards on it. Shapes match what the daemon writes to disk.
+DEMO_AUTOMATION = {
+    "id": "a1", "name": "Firefox RAM watch", "enabled": True,
+    "nodes": [
+        {"id": "n1", "kind": "evt_app", "title": "Firefox opens", "icon": "box",
+         "accentKey": "purple", "x": 60, "y": 70,
+         "lines": ["firefox", "varName: opened"],
+         "config": {"app": "firefox", "transition": "opened", "varName": "opened"}},
+        {"id": "n2", "kind": "act_ai", "title": "Measure the RAM", "icon": "bot",
+         "accentKey": "violet", "x": 330, "y": 60,
+         "lines": ["llama3.2:3b", "advisory", "outputs: ram_before"],
+         "config": {"prompt": "how much RAM is firefox using", "exec": "advisory"}},
+        {"id": "n3", "kind": "evt_app", "title": "Firefox closes", "icon": "box",
+         "accentKey": "purple", "x": 600, "y": 70,
+         "lines": ["{{opened.name}}", "waits here"],
+         "config": {"app": "{{opened.name}}", "transition": "closed"}},
+        {"id": "n4", "kind": "act_cond", "title": "Did it grow?", "icon": "git-branch",
+         "accentKey": "blue", "x": 330, "y": 260,
+         "lines": ["{{ram_after}} > {{ram_before}}"], "config": {}},
+        {"id": "n5", "kind": "act_notify", "title": "Tell me", "icon": "alert",
+         "accentKey": "green", "x": 600, "y": 265,
+         "lines": ["Firefox: {{ram_before}} to {{ram_after}}"], "config": {}},
+    ],
+    "links": [
+        {"from": "n1", "to": "n2", "fromPort": ""},
+        {"from": "n2", "to": "n3", "fromPort": "ok"},
+        {"from": "n3", "to": "n4", "fromPort": ""},
+        {"from": "n4", "to": "n5", "fromPort": "true"},
+    ],
+}
+
 DEMO_STATE = {
     "active": True, "mode": "auto", "profile": "auto",
     "cpu": 21.0, "ram": 46.0, "gpu": 12.0, "vram_used": 2100, "vram_total": 6144,
@@ -136,6 +168,10 @@ def _demo(backend):
         lambda self: json.dumps({"backend": "cuda", "gpu": "NVIDIA RTX 3050"}))
     cls.quickModel = Slot(result=str)(lambda self: "llama3.2:3b")
     cls.loadSession = Slot(str, result=str)(lambda self, sid: json.dumps(DEMO_CHAT))
+    cls.listAutomations = Slot(result=str)(lambda self: json.dumps(
+        [{"id": "a1", "name": "Firefox RAM watch", "enabled": True}]))
+    cls.loadAutomation = Slot(str, result=str)(
+        lambda self, aid: json.dumps(DEMO_AUTOMATION))
     cls.modelLabel = Slot(str, result=str)(lambda self, m: m or "llama3.2:3b")
 
     def _models(self):

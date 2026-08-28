@@ -29,8 +29,28 @@ Item {
     // (16px dots, 10px spacing, vertically centered).
     property var outPorts: []
 
+    // The reference canvas labels every card with WHAT KIND of step it is and
+    // WHERE it sits in the graph, in a coloured strip across the top. Reading a
+    // sheet of a dozen cards, that is the difference between scanning and
+    // deciphering: the title tells you what this one does, the strip tells you
+    // whether it is a trigger, a decision or something that touches the machine.
+    property int stepNumber: 0
+    readonly property string kindLabel: {
+        var k = "" + (root.node.kind || "")
+        if (k.indexOf("evt_") === 0) return "TRIGGER"
+        if (k === "act_ai")      return "AI"
+        if (k === "act_cond")    return "CONDITION"
+        if (k === "act_loop")    return "LOOP"
+        if (k === "act_subflow") return "SUB-WORKFLOW"
+        if (k.indexOf("act_") === 0) return "ACTION"
+        return "STEP"
+    }
+    // Dark text on a saturated strip. Mixing toward black rather than picking a
+    // constant keeps it legible whatever accent a node kind carries.
+    readonly property color stripText: root.theme.mix(root.accent, root.theme.black, 0.72)
+
     width: 214
-    implicitHeight: body.implicitHeight + 28
+    implicitHeight: strip.height + body.implicitHeight + 28
     height: implicitHeight
 
     readonly property color accent: node.accent
@@ -68,10 +88,48 @@ Item {
         border.width: 2; border.color: root.theme.a(root.accent, 0.28)
     }
 
+    Rectangle {
+        id: strip
+        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+        height: 22
+        radius: bg.radius
+        color: root.theme.a(root.accent, root.runState === "skipped" ? 0.45 : 0.92)
+        // Square off the bottom two corners so the strip meets the body flush.
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width; height: parent.radius
+            color: parent.color
+        }
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 12; anchors.rightMargin: 10
+            spacing: 6
+            QQC2.Label {
+                text: root.kindLabel
+                color: root.stripText
+                font.pixelSize: 9
+                font.bold: true
+                font.letterSpacing: 1.1
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+            }
+            QQC2.Label {
+                // The delete button takes this corner when the node is
+                // selected; two things in one 24px square is neither.
+                visible: root.stepNumber > 0 && !root.selected
+                text: root.stepNumber < 10 ? "0" + root.stepNumber : "" + root.stepNumber
+                color: root.stripText
+                font.pixelSize: 9
+                font.bold: true
+                font.letterSpacing: 0.6
+            }
+        }
+    }
+
     ColumnLayout {
         id: body
         anchors.left: parent.left; anchors.right: parent.right
-        anchors.top: parent.top
+        anchors.top: strip.bottom
         anchors.margins: 14
         spacing: 9
 

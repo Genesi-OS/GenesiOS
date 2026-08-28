@@ -749,6 +749,7 @@ Item {
                                 selected: root.selectedId === modelData.id
                                 runState: root.nodeRunState(modelData)
                                 outPorts: root.portsFor(modelData.kind)
+                                stepNumber: index + 1
                                 boundW: root.sheetW
                                 boundH: root.sheetH
                                 Component.onCompleted: { x = modelData.x; y = modelData.y; root.updatePos(modelData.id, x, y, width, height) }
@@ -779,8 +780,8 @@ Item {
                     // Hide the mini-map when the canvas itself is small — it
                     // would cover most of the visible sheet.
                     visible: parent.width > 470
-                    x: 16; y: parent.height - height - 16
-                    width: 180; height: 120; radius: 12
+                    x: 16; y: parent.height - height - 62
+                    width: 180; height: 116; radius: root.theme.rMd
                     color: Qt.rgba(0.05, 0.055, 0.065, 0.92)
                     border.width: 1; border.color: root.theme.line
                     ColumnLayout {
@@ -807,18 +808,72 @@ Item {
                     }
                 }
 
-                ColumnLayout {
-                    x: parent.width - 50; y: parent.height - 158
-                    spacing: 7
-                    Repeater {
-                        model: [ { ic: "maximize", act: "fit" }, { ic: "plus", act: "in" }, { ic: "minus", act: "out" } ]
-                        delegate: Rectangle {
-                            Layout.preferredWidth: 34; Layout.preferredHeight: 34; radius: 9
-                            color: zma.containsMouse ? root.theme.cardHi : root.theme.card
-                            border.width: 1; border.color: root.theme.line
-                            FIcon { anchors.centerIn: parent; name: modelData.ic; size: 15; color: root.theme.textMid }
-                            MouseArea { id: zma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                onClicked: root.zoomAction(modelData.act) }
+                // One bar, and it says what the zoom IS. Three separate 34px
+                // squares stacked in a corner read as three unrelated buttons,
+                // and none of them answered the question you actually have when
+                // a graph looks wrong, which is "how far in am I?".
+                Rectangle {
+                    id: zoomBar
+                    x: 16
+                    y: parent.height - height - 16
+                    implicitWidth: zoomRow.implicitWidth + 16
+                    implicitHeight: 34
+                    radius: 17
+                    color: Qt.rgba(0.05, 0.055, 0.065, 0.92)
+                    border.width: 1
+                    border.color: root.theme.line
+
+                    RowLayout {
+                        id: zoomRow
+                        anchors.centerIn: parent
+                        spacing: 2
+                        Repeater {
+                            model: [ { ic: "minus", act: "out" }, { ic: "plus", act: "in" } ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                Layout.preferredWidth: 26; Layout.preferredHeight: 26
+                                radius: 13
+                                color: zma.containsMouse ? root.theme.cardHi : "transparent"
+                                FIcon { anchors.centerIn: parent; name: modelData.ic; size: 13
+                                        color: root.theme.textMid }
+                                MouseArea {
+                                    id: zma
+                                    anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.zoomAction(modelData.act)
+                                }
+                            }
+                        }
+                        QQC2.Label {
+                            Layout.leftMargin: 2; Layout.rightMargin: 2
+                            text: Math.round(root.zoom * 100) + "%"
+                            color: root.theme.textMid
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                        Rectangle {
+                            Layout.preferredWidth: 1; Layout.preferredHeight: 16
+                            color: root.theme.line
+                        }
+                        Rectangle {
+                            Layout.preferredWidth: fitLbl.implicitWidth + 16
+                            Layout.preferredHeight: 26
+                            radius: 13
+                            color: fitMa.containsMouse ? root.theme.cardHi : "transparent"
+                            QQC2.Label {
+                                id: fitLbl
+                                anchors.centerIn: parent
+                                text: "Fit"
+                                color: root.theme.textMid
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                            MouseArea {
+                                id: fitMa
+                                anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.zoomAction("fit")
+                            }
                         }
                     }
                 }

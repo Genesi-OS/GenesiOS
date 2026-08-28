@@ -43,6 +43,12 @@ Item {
     component FieldLabel: QQC2.Label {
         color: root.theme.textMid; font.pixelSize: 12; font.bold: true
         Layout.topMargin: 6
+        // fillWidth + wrap, or ONE long label sets the column's implicit width
+        // and pushes the whole panel past its own right edge -- which is what
+        // "Process name — leave empty for ANY app" was doing to every field
+        // below it.
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
     }
     component Combo: QQC2.ComboBox {
         id: cb

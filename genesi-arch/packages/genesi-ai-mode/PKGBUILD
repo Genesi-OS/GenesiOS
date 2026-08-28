@@ -1264,7 +1264,26 @@ pkgver=1.0.0
 # The Mesh subtitle was hardcoded pt-BR while the rest of the app switches
 # language from the top bar, so an English user read that page in Portuguese.
 # Every tab now renders with ZERO QML warnings.
-pkgrel=184
+# 2026-08-26 (185): the Automations canvas, against the reference sheet.
+# EVERY CARD SAYS WHAT KIND OF STEP IT IS. A coloured strip across the top
+# carries the category (TRIGGER / AI / CONDITION / ACTION / LOOP) and the step
+# number. On a sheet of a dozen cards that is the difference between scanning
+# and deciphering: the title says what THIS one does, the strip says whether it
+# is a trigger, a decision, or something that touches the machine. The link
+# animation is untouched.
+# THE INSPECTOR STOPPED SPILLING OUT OF ITS OWN PANEL. FieldLabel had neither
+# fillWidth nor wrapping, so one long label ("Process name — leave empty for
+# ANY app") set the column's implicit width and pushed every field below it
+# past the panel's right edge, where the window clipped them.
+# ZOOM IS ONE BAR THAT SAYS WHAT THE ZOOM IS. Three 34px squares stacked in a
+# corner read as three unrelated buttons, and none of them answered the
+# question you actually have when a graph looks wrong: how far in am I. Now
+# "− + 100% Fit", with the mini-map sitting above it.
+# CanvasTheme gains the shape/rhythm/type scale, mirroring the shared Theme
+# token for token. The canvas keeps its own PALETTE on purpose; it should not
+# also invent its own geometry. The sanity check caught the first attempt at
+# this within seconds of writing it.
+pkgrel=185
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
