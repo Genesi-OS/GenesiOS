@@ -209,6 +209,32 @@ def _demo_snapshots(backend):
     return backend
 
 
+# The API Inspector proxies real traffic through mitmproxy, which is stubbed
+# here -- so both of its panes come up as empty black rectangles with nothing
+# to design against.
+DEMO_FLOWS = [
+    {"id": "f1", "method": "GET", "scheme": "https", "host": "api.genesios.org",
+     "path": "/v1/packages?channel=stable", "status": 200, "length": 18422,
+     "ctype": "application/json", "ms": 142},
+    {"id": "f2", "method": "POST", "scheme": "https", "host": "api.genesios.org",
+     "path": "/v1/auth/token", "status": 201, "length": 312,
+     "ctype": "application/json", "ms": 268},
+    {"id": "f3", "method": "GET", "scheme": "http", "host": "localhost:8080",
+     "path": "/api/users/42", "status": 404, "length": 88,
+     "ctype": "application/json", "ms": 9},
+    {"id": "f4", "method": "PUT", "scheme": "https", "host": "api.genesios.org",
+     "path": "/v1/profile", "status": 500, "length": 1204,
+     "ctype": "text/html", "ms": 831},
+    {"id": "f5", "method": "GET", "scheme": "https", "host": "cdn.genesios.org",
+     "path": "/assets/logo.svg", "status": 200, "length": 4096,
+     "ctype": "image/svg+xml", "ms": 21},
+]
+
+
+def _demo_netinspect(backend):
+    return backend
+
+
 def _demo_ports(backend):
     from PySide6.QtCore import Slot
     cls = type(backend)
@@ -350,6 +376,10 @@ def main():
     # cannot see an undefined context property at all, so the file fails to load
     # without it.
     engine.rootContext().setContextProperty("initialScope", "")
+    # netinspect's main() sets these two; QML cannot read an undefined context
+    # property at all, so without them the header renders empty.
+    engine.rootContext().setContextProperty("PROXY_HOST", "127.0.0.1")
+    engine.rootContext().setContextProperty("PROXY_PORT", 8085)
     # Relative icon paths ("icons/x.svg") resolve against the file that
     # DECLARES them; inside the stub Icon.qml that is the stub directory,
     # not the app. Hand the stub the app root so it can rebase them.
@@ -391,6 +421,13 @@ def main():
             backend.statusLoaded.emit(json.dumps(DEMO_SNAP_STATUS)),
             backend.snapshotsLoaded.emit(json.dumps(
                 {"configured": True, "snapshots": DEMO_SNAPS}))))
+    if args.demo and args.app == "netinspect":
+        def _flows():
+            backend.proxyReady.emit("127.0.0.1", 8085)
+            backend.certTrusted.emit(True)
+            for f in DEMO_FLOWS:
+                backend.flowAdded.emit(json.dumps(f))
+        QTimer.singleShot(200, _flows)
     if args.demo and args.app == "find":
         QTimer.singleShot(200, lambda: backend.resultsReady.emit(
             json.dumps(DEMO_FILES)))

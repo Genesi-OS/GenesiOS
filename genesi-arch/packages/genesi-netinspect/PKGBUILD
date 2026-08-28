@@ -88,7 +88,19 @@ pkgver=1.0.0
 # pkgrel 19: pick up the pinned dark mockup palette (#040b17 bg / #0d1623 cards)
 # from the shared kit, so the Inspector matches the redesigned AI Mode Monitor.
 # pkgrel 20: shared GButton uses opaque tonal fills for VM-safe contrast.
-pkgrel=22
+# 2026-08-26 (23): three layout cycles, and panes that said nothing.
+# QT ABORTED THE LAYOUT PASS, THREE TIMES PER RELAYOUT. Three children sized
+# themselves from their own parent LAYOUT (Layout.preferredWidth: parent.width
+# * 0.46, and two more like it). That is a cycle -- the layout measures the
+# child, the child asks the layout -- and Qt does not resolve it: it logs
+# "Detected recursive rearrange", stops after two iterations and keeps whatever
+# it had. So the 46/54 and 42/58 splits were never reliably those splits.
+# Stretch factors say the same thing without the cycle.
+# EVERY RAW PANE WAS A BLACK RECTANGLE WHEN EMPTY -- and on a fresh proxy with
+# no traffic yet, that is most of the window. RawView takes a placeholder now,
+# so the request, response, repeater and intruder views each say what would put
+# something in them. Set on the component, not at six call sites.
+pkgrel=23
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
