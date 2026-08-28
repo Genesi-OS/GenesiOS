@@ -3,8 +3,11 @@ singleton Units 1.0 Units.qml
 singleton Theme 1.0 Theme.qml
 MessageType 1.0 MessageType.qml
 Dialog 1.0 Dialog.qml
+Action 1.0 Action.qml
 Icon 1.0 Icon.qml
+IconGroup 1.0 IconGroup.qml
 Page 1.0 Page.qml
+PageStack 1.0 PageStack.qml
 ApplicationWindow 1.0 ApplicationWindow.qml
 InlineMessage 1.0 InlineMessage.qml
 PromptDialog 1.0 PromptDialog.qml

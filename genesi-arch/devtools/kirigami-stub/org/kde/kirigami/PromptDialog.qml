@@ -7,6 +7,13 @@ QQC2.Dialog {
     id: root
     property string subtitle: ""
     property int preferredWidth: 420
+    // Buttons the app supplies itself instead of using standardButtons. The
+    // preview does not render them -- they are Kirigami.Actions, which is a
+    // menu model rather than an Item -- but the property has to EXIST or the
+    // whole file fails to load, which is what a stub is for.
+    // list<QtObject>, not var: an object-list LITERAL in a declaration is
+    // rejected for a singular property ("Cannot assign multiple values").
+    property list<QtObject> customFooterActions
     default property alias content: body.data
     anchors.centerIn: parent
     modal: true

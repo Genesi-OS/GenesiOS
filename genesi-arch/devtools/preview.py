@@ -35,30 +35,41 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-MONITOR = ROOT / "packages" / "genesi-ai-mode" / "monitor"
-UIKIT = ROOT / "packages" / "genesi-ui-kit" / "components"
+PKGS = ROOT / "packages"
+UIKIT = PKGS / "genesi-ui-kit" / "components"
+
+# Every Genesi Qt app is built the same way: a `Backend(QObject)` handed to QML
+# as `backend`, and a Main.qml next to it. That uniformity is what lets one
+# harness drive all of them.
+APPS = {
+    "monitor":    ("genesi-ai-mode/monitor", "genesi_ai_monitor"),
+    "forge":      ("genesi-forge/app",       "genesi_forge"),
+    "netinspect": ("genesi-netinspect/app",  "genesi_netinspect"),
+    "ports":      ("genesi-ports/app",       "genesi_ports"),
+    "sandboxes":  ("genesi-sandboxes/app",   "genesi_sandboxes"),
+    "snapshots":  ("genesi-snapshots/app",   "genesi_snapshots"),
+}
 
 
-def _stage(tmp):
-    """Lay the app out the way the package installs it: the shared UI-kit
-    components sit NEXT TO the app's own QML, because QML resolves plain
+def _stage(appdir, tmp):
+    """Lay an app out the way its package installs it: the shared UI-kit
+    components sit NEXT TO the app's own QML, because QML resolves a plain
     `Theme { }` from the same directory. Symlinks would need admin rights on
-    Windows, so copy."""
+    Windows, so copy.
+
+    The kit goes down FIRST and the app's own files over the top: Forge ships
+    its own FIcon/FCard/GButton, and those must win over the kit's."""
     import shutil
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True, exist_ok=True)
-    for src in MONITOR.glob("*.qml"):
+    for src in UIKIT.glob("*.qml"):
         shutil.copy2(src, tmp / src.name)
-    for name in ("Theme.qml", "I18n.qml", "GlassCard.qml", "GButton.qml",
-                 "StatusBanner.qml"):
-        src = UIKIT / name
-        if src.exists():
-            shutil.copy2(src, tmp / name)
-    icons = MONITOR / "icons"
+    for src in appdir.glob("*.qml"):
+        shutil.copy2(src, tmp / src.name)
+    icons = appdir / "icons"
     if icons.is_dir():
-        dest = tmp / "icons"
-        if dest.exists():
-            shutil.rmtree(dest)
-        shutil.copytree(icons, dest)
+        shutil.copytree(icons, tmp / "icons")
     return tmp
 
 
@@ -136,6 +147,8 @@ def _demo(backend):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--app", default="monitor", choices=sorted(APPS),
+                    help="which Genesi app to run (default: monitor)")
     ap.add_argument("--shot", metavar="PNG",
                     help="render once, save a PNG and exit (no window)")
     ap.add_argument("--tab", type=int, default=None,
@@ -156,15 +169,39 @@ def main():
         os.environ.setdefault("QT_QUICK_BACKEND", os.environ.get("QT_QUICK_BACKEND", ""))
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
-    staged = _stage(Path(os.environ.get("TEMP", "/tmp")) / "genesi-preview")
-    sys.path.insert(0, str(MONITOR))
+    subdir, modname = APPS[args.app]
+    appdir = PKGS / subdir
+    staged = _stage(appdir,
+                    Path(os.environ.get("TEMP", "/tmp")) / ("genesi-preview-" + args.app))
+    sys.path.insert(0, str(appdir))
 
     from PySide6.QtCore import QUrl, QTimer, QMetaObject, Q_ARG
     from PySide6.QtGui import QGuiApplication, QFont
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuick import QQuickWindow
 
-    import genesi_ai_monitor as mon
+    import importlib
+    if args.app == "netinspect":
+        # genesi-netinspect refuses to start without mitmproxy, which is the
+        # right behaviour for the app and useless here: the interception engine
+        # has nothing to do with what the window looks like. A stub module lets
+        # the import succeed; nothing in the preview ever calls into it.
+        import types
+        for _name in ("mitmproxy", "mitmproxy.tools", "mitmproxy.tools.dump"):
+            sys.modules.setdefault(_name, types.ModuleType(_name))
+        _mp = sys.modules["mitmproxy"]
+
+        class _Any:
+            """Answers to any attribute with a class, because the addon uses
+            these names in type ANNOTATIONS (http.HTTPFlow), which are
+            evaluated at import time."""
+            def __getattr__(self, _name):
+                return type(_name, (), {})
+
+        for _attr in ("options", "ctx", "http"):
+            setattr(_mp, _attr, _Any())
+        sys.modules["mitmproxy.tools.dump"].DumpMaster = object
+    mon = importlib.import_module(modname)
 
     app = QGuiApplication(sys.argv)
     # The app asks for Rubik (shipped by genesi-ttf-rubik-vf) and the
@@ -181,7 +218,7 @@ def main():
     engine.addImportPath(str(HERE / "kirigami-stub"))
 
     backend = mon.Backend()
-    if args.demo:
+    if args.demo and args.app == "monitor":
         _demo(backend)
     engine.rootContext().setContextProperty("backend", backend)
     # Relative icon paths ("icons/x.svg") resolve against the file that
@@ -210,7 +247,7 @@ def main():
         pass
     if args.tab is not None:
         win.setProperty("currentTab", args.tab)
-    if args.seed_chat:
+    if args.seed_chat and args.app == "monitor":
         # openSession() is a plain QML function on the window, which Qt exposes
         # as an invokable method.
         QMetaObject.invokeMethod(win, "openSession", Q_ARG("QVariant", "s1"))
