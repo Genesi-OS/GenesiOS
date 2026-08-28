@@ -10,7 +10,21 @@ pkgver=2.3.0
 # in the app missing `contentWidth: availableWidth`, and sized its column with
 # `width: parent.width`, which inside a ScrollView is the Flickable contentItem
 # whose width comes from the content itself.
-pkgrel=9
+# 2026-08-26 (10): the design pass, built against devtools/preview.py.
+# THE HEADER FOLLOWED NOTHING. Templates, Integrations and Settings each
+# announced themselves as "Projects -- All your repositories in one place",
+# with four PROJECT counters underneath counting something the page was not
+# about, and then repeated their own name one line below that in a section
+# heading beside a refresh button that did nothing there. Title and subtitle
+# now come from the section; the counters and the section heading appear only
+# on the project lists, where they say something the title does not.
+# A LONE TILE TOOK THE WHOLE ROW. Project cards are drawn for a 268px grid
+# cell, but a GridLayout column with nothing beside it takes the full width --
+# so on a fresh install the dashed "Import Project" tile stretched to 1300px
+# and its icon and its text ended up marooned at opposite ends of it. Capped at
+# the pitch the column count is computed from, which fixes one and two project
+# cards too.
+pkgrel=10
 pkgdesc='Genesi Forge: the project hub — full git panel, GitHub pipelines, deployments and the Forge Canvas workflow builder'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

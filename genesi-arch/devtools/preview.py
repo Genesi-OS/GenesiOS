@@ -278,6 +278,9 @@ def main():
                     help="which Genesi app to run (default: monitor)")
     ap.add_argument("--shot", metavar="PNG",
                     help="render once, save a PNG and exit (no window)")
+    ap.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
+                    help="set a property on the root object before the shot "
+                         "(repeatable) -- e.g. --set filter=templates")
     ap.add_argument("--tab", type=int, default=None,
                     help="switch to this tab index before the shot")
     ap.add_argument("--demo", action="store_true",
@@ -406,6 +409,42 @@ def main():
         pass
     if args.tab is not None:
         win.setProperty("currentTab", args.tab)
+    def _find_owner(obj, name, depth=0):
+        """The object that actually declares `name`.
+
+        A property like HubView's `filter` is not on the window root, and QML
+        ids are not objectNames, so findChild cannot see it. Walking the tree
+        for whoever has the property is the only way in from outside -- and it
+        is what makes it possible to look at a page the app only reaches
+        through a click.
+        """
+        if obj is None or depth > 12:
+            return None
+        mo = obj.metaObject()
+        if mo is not None and mo.indexOfProperty(name) >= 0:
+            return obj
+        for child in obj.children():
+            found = _find_owner(child, name, depth + 1)
+            if found is not None:
+                return found
+        return None
+
+    for _kv in args.set:
+        _k, _, _v = _kv.partition("=")
+        # Numbers and booleans arrive as strings from argv; QML properties are
+        # typed, so hand them the right thing.
+        if _v.lower() in ("true", "false"):
+            _val = _v.lower() == "true"
+        else:
+            try:
+                _val = int(_v)
+            except ValueError:
+                _val = _v
+        _owner = _find_owner(win, _k)
+        if _owner is None:
+            print("no object declares a property called %r" % _k)
+        else:
+            _owner.setProperty(_k, _val)
     if args.demo and args.app == "snapshots" and args.seed_chat:
         # --seed-chat doubles as "show the recovery branch" here: booted INTO a
         # snapshot, which is the third code path and the one with the
