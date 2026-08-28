@@ -1,0 +1,10 @@
+module org.kde.kirigami
+singleton Units 1.0 Units.qml
+singleton Theme 1.0 Theme.qml
+MessageType 1.0 MessageType.qml
+Dialog 1.0 Dialog.qml
+Icon 1.0 Icon.qml
+Page 1.0 Page.qml
+ApplicationWindow 1.0 ApplicationWindow.qml
+InlineMessage 1.0 InlineMessage.qml
+PromptDialog 1.0 PromptDialog.qml
