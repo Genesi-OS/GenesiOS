@@ -159,6 +159,42 @@ DEMO_STATE = {
 }
 
 
+# PortScope reads listeners from `ss`/`lsof`, which do not exist here, so the
+# window comes up empty and there is nothing to design against.
+DEMO_PORTS = [
+    {"id": "1", "port": 5432, "proto": "tcp", "address": "127.0.0.1",
+     "scope": "local", "pid": 1284, "process": "postgres", "user": "postgres",
+     "stack": "PostgreSQL", "command": "/usr/bin/postgres -D /var/lib/postgres/data"},
+    {"id": "2", "port": 11434, "proto": "tcp", "address": "127.0.0.1",
+     "scope": "local", "pid": 2210, "process": "ollama", "user": "matheus",
+     "stack": "Ollama", "command": "/usr/bin/ollama serve"},
+    {"id": "3", "port": 8080, "proto": "tcp", "address": "0.0.0.0",
+     "scope": "all", "pid": 3391, "process": "node", "user": "matheus",
+     "stack": "Node.js", "command": "node server.js"},
+    {"id": "4", "port": 8737, "proto": "tcp", "address": "127.0.0.1",
+     "scope": "local", "pid": 4102, "process": "python3", "user": "matheus",
+     "stack": "Genesi Automations", "command": "python3 /usr/bin/genesi-automationd"},
+    {"id": "5", "port": 22, "proto": "tcp", "address": "0.0.0.0",
+     "scope": "all", "pid": 812, "process": "sshd", "user": "root",
+     "stack": "OpenSSH", "command": "sshd: /usr/bin/sshd -D"},
+    {"id": "6", "port": 5353, "proto": "udp", "address": "0.0.0.0",
+     "scope": "all", "pid": 940, "process": "avahi-daemon", "user": "avahi",
+     "stack": "Avahi", "command": "avahi-daemon: running"},
+]
+
+
+def _demo_ports(backend):
+    from PySide6.QtCore import Slot
+    cls = type(backend)
+
+    def _refresh(self):
+        # The payload is an OBJECT with a `listeners` key, not a bare array --
+        # same shape the CLI's list-json emits.
+        self.listenersLoaded.emit(json.dumps({"listeners": DEMO_PORTS}))
+    cls.refresh = Slot()(_refresh)
+    return backend
+
+
 def _demo(backend):
     """Overlay plausible content on the real backend, without touching its
     logic: the point is to see a populated UI, not to fake behaviour."""
@@ -279,6 +315,8 @@ def main():
     backend = (_cls or mon.Backend)()
     if args.demo and args.app == "monitor":
         _demo(backend)
+    elif args.demo and args.app == "ports":
+        _demo_ports(backend)
     engine.rootContext().setContextProperty("backend", backend)
     # Relative icon paths ("icons/x.svg") resolve against the file that
     # DECLARES them; inside the stub Icon.qml that is the stub directory,
@@ -306,6 +344,12 @@ def main():
         pass
     if args.tab is not None:
         win.setProperty("currentTab", args.tab)
+    if args.demo and args.app == "ports":
+        # Push the rows in AFTER the tree is up. Overriding refresh() and
+        # relying on the app to call it is a guess about startup order; this is
+        # not.
+        QTimer.singleShot(200, lambda: backend.listenersLoaded.emit(
+            json.dumps({"listeners": DEMO_PORTS})))
     if args.seed_chat and args.app == "monitor":
         # openSession() is a plain QML function on the window, which Qt exposes
         # as an invokable method.

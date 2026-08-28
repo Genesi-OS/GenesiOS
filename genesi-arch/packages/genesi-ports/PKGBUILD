@@ -19,7 +19,19 @@
 # (a backend can expose dozens of endpoints) instead of overflowing it.
 pkgname=genesi-ports
 pkgver=1.0.0
-pkgrel=6
+# 2026-08-26 (7): the design pass, built against devtools/preview.py.
+# THE INSPECTOR HAD NO EMPTY STATE. With nothing selected it was a heading and
+# a paragraph at the top of a full-height card, and eight hundred pixels of
+# nothing underneath. It is a centred state now, and it steps aside entirely
+# below 1150px, where the list needs the room more than it does.
+# THE TWO FILTER LISTS WERE DIFFERENT CONTROLS. PROTOCOL was chips with dots,
+# EXPOSURE was plain text rows -- the same job, "pick one of a set", drawn two
+# ways, so the second read as a list of links rather than a filter. They match.
+# StudioTheme gains the shape/rhythm/type scale, mirroring the shared Theme
+# token for token: three themes in this codebase inventing three sets of radii
+# is the thing those tokens exist to stop. The palettes differ on purpose; the
+# geometry should not.
+pkgrel=7
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

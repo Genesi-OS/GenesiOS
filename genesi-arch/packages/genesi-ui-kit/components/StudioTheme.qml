@@ -50,6 +50,29 @@ Item {
     readonly property color textHi: "#F2F4F7"
     readonly property color textMid: "#A5ADB9"
     readonly property color textLo: "#697380"
+    // ── Shape, rhythm and type ──────────────────────────────────────────
+    // Mirrors genesi-ui-kit/Theme.qml token for token. The palettes differ on
+    // purpose; the geometry must not.
+    readonly property int rSm:   8
+    readonly property int rMd:   12
+    readonly property int rLg:   16
+    readonly property int rXl:   22
+    readonly property int rPill: 999
+
+    readonly property int sp1: 4
+    readonly property int sp2: 8
+    readonly property int sp3: 12
+    readonly property int sp4: 16
+    readonly property int sp5: 24
+    readonly property int sp6: 36
+
+    readonly property int fsDisplay: 30
+    readonly property int fsTitle:   19
+    readonly property int fsHead:    15
+    readonly property int fsBody:    13
+    readonly property int fsSmall:   11
+    readonly property int fsMicro:   10
+
     readonly property string mono: "monospace"
     readonly property string sans: "Rubik"
     readonly property string display: "Rubik"

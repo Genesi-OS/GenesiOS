@@ -252,17 +252,46 @@ QQC2.ApplicationWindow {
                             { key: "network", label: "Network interface" },
                             { key: "all", label: "All interfaces" }
                         ]
+                        // Same shape as the PROTOCOL list above it. These two
+                        // do the same job — pick one of a set — and were drawn
+                        // as two different kinds of control, so the second one
+                        // read as a list of links rather than a filter.
                         delegate: Rectangle {
-                            property string actualKey: modelData.key
-                            Layout.fillWidth: true; height: 34; radius: 6
-                            color: win.scopeFilter === actualKey ? theme.cardHi : "transparent"
-                            MouseArea {
-                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: win.scopeFilter = actualKey
+                            required property var modelData
+                            readonly property bool sel: win.scopeFilter === modelData.key
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 34
+                            radius: theme.rSm
+                            color: sel ? theme.a(theme.green, 0.14)
+                                 : (scopeMa.containsMouse ? theme.cardHi : "transparent")
+                            border.width: 1
+                            border.color: sel ? theme.a(theme.green, 0.32) : "transparent"
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10; anchors.rightMargin: 10
+                                spacing: 9
+                                Rectangle {
+                                    Layout.preferredWidth: 8; Layout.preferredHeight: 8
+                                    radius: 4
+                                    color: parent.parent.sel ? theme.greenBright
+                                                             : theme.a(theme.textLo, 0.5)
+                                }
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.label
+                                    color: parent.parent.sel ? theme.textHi : theme.textMid
+                                    font.bold: parent.parent.sel
+                                    font.pixelSize: theme.fsBody
+                                    elide: Text.ElideRight
+                                }
                             }
-                            QQC2.Label {
-                                anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.label; color: win.scopeFilter === actualKey ? theme.textHi : theme.textMid
+                            MouseArea {
+                                id: scopeMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.scopeFilter = modelData.key
                             }
                         }
                     }
@@ -363,19 +392,61 @@ QQC2.ApplicationWindow {
                     }
 
                     StudioCard {
-                        Layout.preferredWidth: 360; Layout.fillHeight: true
+                        // Below this the list needs the room more than the
+                        // inspector does -- and everything the inspector shows
+                        // is a click away again the moment the window grows.
+                        visible: win.width >= 1150
+                        Layout.preferredWidth: win.width >= 1150 ? 360 : 0
+                        Layout.fillHeight: true
                         accent: win.selected && win.selected.scope === "all" ? theme.turbo : theme.green
                         active: !!win.selected; interactive: false
+
+                        // Nothing selected: a centred state, not a heading with
+                        // a paragraph under it and eight hundred pixels of
+                        // nothing below that.
                         ColumnLayout {
-                            anchors.fill: parent; anchors.margins: 16; spacing: 12
-                            QQC2.Label {
-                                text: win.selected ? ("Port " + win.selected.port) : "Select a listener"
-                                color: theme.textHi; font.pixelSize: 20; font.bold: true
+                            visible: !win.selected
+                            anchors.fill: parent
+                            anchors.margins: theme.sp5
+                            spacing: theme.sp3
+                            Item { Layout.fillHeight: true }
+                            Rectangle {
+                                Layout.alignment: Qt.AlignHCenter
+                                width: 46; height: 46; radius: theme.rMd
+                                color: theme.a(theme.green, 0.12)
+                                border.width: 1; border.color: theme.a(theme.green, 0.28)
+                                Kirigami.Icon {
+                                    anchors.centerIn: parent
+                                    source: "network-connect"
+                                    width: 20; height: 20
+                                    color: theme.greenBright
+                                }
                             }
                             QQC2.Label {
-                                visible: !win.selected
-                                text: "Choose a port to inspect its owner, infer the stack and discover local HTTP endpoints."
-                                color: theme.textMid; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
+                                text: "Select a listener"
+                                color: theme.textHi
+                                font.pixelSize: theme.fsHead
+                                font.bold: true
+                            }
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                                text: "Pick a port to see who owns it, what stack it is, and which HTTP endpoints it exposes."
+                                color: theme.textLo
+                                font.pixelSize: theme.fsSmall
+                            }
+                            Item { Layout.fillHeight: true }
+                        }
+
+                        ColumnLayout {
+                            visible: !!win.selected
+                            anchors.fill: parent; anchors.margins: 16; spacing: 12
+                            QQC2.Label {
+                                text: win.selected ? ("Port " + win.selected.port) : ""
+                                color: theme.textHi; font.pixelSize: 20; font.bold: true
                             }
 
                             ColumnLayout {
