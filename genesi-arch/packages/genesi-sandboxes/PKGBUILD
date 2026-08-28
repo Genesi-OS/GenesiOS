@@ -125,7 +125,23 @@ pkgver=1.0.0
 # scope's ids -- so every GButton/StudioCard/StatusBanner written that way was
 # handed `undefined` and rendered unstyled. Swept here too; the id is
 # `appTheme` now. ci/qml-sanity-test.py fails on the pattern from now on.
-pkgrel=24
+# 2026-08-26 (25): the design pass.
+# THREE BUTTONS OPENED THE SAME DIALOG. "New workspace" was in the sidebar, in
+# the header beside the page title, AND in a floating circle in the bottom
+# right corner that sat on top of the last row of the list. One now, beside the
+# title -- plus one inside the empty state, which is where an empty state that
+# names the next step should offer it. The floating button is a phone pattern
+# and it is gone.
+# AND THE FILTER WAS ON SCREEN TWICE: All / Running / Stopped as tabs above the
+# list, three inches from All workspaces / Running / Stopped in the sidebar --
+# which also carries the counts, so it is the better of the two. The tabs are
+# gone.
+# A 400px GAP THAT BELONGED TO NOTHING sat between the stats row and the search
+# row, and it was the largest single thing on the screen. Qt defaults
+# Layout.fillHeight to TRUE for a nested layout and false for everything else,
+# so the column of four status banners -- all of them hidden on a healthy
+# machine -- was silently swallowing every spare pixel on the page.
+pkgrel=25
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

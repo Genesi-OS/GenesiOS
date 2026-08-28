@@ -149,17 +149,12 @@ Kirigami.ApplicationWindow {
                         }
                     }
 
-                    // primary action
-                    GButton {
-                        theme: appTheme
-                        kind: "filled"
-                        Layout.fillWidth: true
-                        text: i18n.t("sb.newWorkspace")
-                        iconSource: "list-add"
-                        enabled: !win.busy && win.hasDistrobox
-                        onClicked: createDialog.open()
-                    }
-
+                    // The primary action used to be here TOO. Three buttons
+                    // that open the same dialog were on this screen at once:
+                    // this one, the one beside the page title, and a floating
+                    // one in the bottom-right corner. The sidebar's job is
+                    // navigation; the action that creates the thing belongs
+                    // beside the thing.
                     Item { Layout.preferredHeight: Kirigami.Units.smallSpacing }
 
                     // filters (Doquo-style nav)
@@ -340,6 +335,14 @@ Kirigami.ApplicationWindow {
                 // banners
                 ColumnLayout {
                     Layout.fillWidth: true
+                    // fillHeight FALSE, explicitly. Qt defaults it to TRUE for a
+                    // nested layout (and false for everything else), so this
+                    // column -- four banners, all of them hidden on a healthy
+                    // machine -- was silently swallowing every spare pixel and
+                    // pushing the search row four hundred of them down the page.
+                    // That gap was the biggest thing on the screen and belonged
+                    // to nothing at all.
+                    Layout.fillHeight: false
                     Layout.leftMargin: Kirigami.Units.largeSpacing * 2
                     Layout.rightMargin: Kirigami.Units.largeSpacing * 2
                     spacing: Kirigami.Units.smallSpacing
@@ -375,35 +378,10 @@ Kirigami.ApplicationWindow {
                     Layout.topMargin: Kirigami.Units.smallSpacing
                     spacing: Kirigami.Units.largeSpacing
 
-                    Row {
-                        spacing: 4
-                        Repeater {
-                            model: [
-                                { "k": "all",     "label": "All" },
-                                { "k": "running", "label": "Running" },
-                                { "k": "stopped", "label": "Stopped" }
-                            ]
-                            delegate: Rectangle {
-                                required property var modelData
-                                readonly property bool sel: win.filter === modelData.k
-                                height: 32
-                                width: tabLbl.implicitWidth + 26
-                                radius: 8
-                                color: sel ? appTheme.a(appTheme.green, 0.16)
-                                     : (tma.containsMouse ? appTheme.a(appTheme.textHi, 0.05) : "transparent")
-                                Behavior on color { ColorAnimation { duration: 130 } }
-                                QQC2.Label {
-                                    id: tabLbl
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    color: parent.sel ? appTheme.accentText : appTheme.textMid
-                                    font.bold: parent.sel
-                                    font.pixelSize: 13
-                                }
-                                MouseArea { id: tma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.filter = modelData.k }
-                            }
-                        }
-                    }
+// The All / Running / Stopped tabs used to be here, duplicating the
+                    // nav in the sidebar three inches to the left -- which also
+                    // carries the COUNTS, so it is the better of the two.
+
 
                     Item { Layout.fillWidth: true }
 
@@ -541,6 +519,20 @@ Kirigami.ApplicationWindow {
                         Kirigami.Icon { source: "genesi-sandboxes"; Layout.preferredWidth: 44; Layout.preferredHeight: 44; opacity: 0.45; Layout.alignment: Qt.AlignHCenter }
                         QQC2.Label { Layout.alignment: Qt.AlignHCenter; text: win.boxes.length === 0 ? "No workspaces yet" : "Nothing matches"; color: appTheme.textMid; font.bold: true; font.pixelSize: 15 }
                         QQC2.Label { Layout.alignment: Qt.AlignHCenter; text: win.boxes.length === 0 ? "Create your first isolated dev environment." : "Try a different filter or search."; color: appTheme.textLo; font.pixelSize: 12 }
+                        // An empty state that names the next step should offer
+                        // it. This is where the removed floating button's job
+                        // actually belonged.
+                        GButton {
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.topMargin: appTheme.sp2
+                            visible: win.boxes.length === 0 && win.hasDistrobox
+                            theme: appTheme
+                            kind: "filled"
+                            text: i18n.t("sb.newWorkspace")
+                            iconSource: "list-add"
+                            enabled: !win.busy
+                            onClicked: createDialog.open()
+                        }
                     }
                 }
 
@@ -576,32 +568,9 @@ Kirigami.ApplicationWindow {
             }
         }
 
-        // ── floating action button (Doquo-style) ──
-        Rectangle {
-            anchors.right: parent.right; anchors.bottom: parent.bottom
-            anchors.rightMargin: Kirigami.Units.largeSpacing * 2
-            anchors.bottomMargin: Kirigami.Units.largeSpacing * 2
-            width: 52; height: 52; radius: 26
-            visible: win.hasDistrobox
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: appTheme.greenBright }
-                GradientStop { position: 1.0; color: appTheme.greenDeep }
-            }
-            scale: fabMa.pressed ? 0.94 : 1.0
-            Behavior on scale { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
-            Kirigami.Icon { anchors.centerIn: parent; source: "list-add"; width: 24; height: 24; color: "#08130E" }
-            MouseArea {
-                id: fabMa
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                enabled: !win.busy
-                onClicked: createDialog.open()
-                QQC2.ToolTip.text: "New workspace"
-                QQC2.ToolTip.visible: containsMouse
-            }
-        }
-
+        // The floating action button is gone. It was the THIRD control on
+        // this screen opening the create dialog, it is a phone pattern in a
+        // desktop window, and it sat on top of the last row of the list.
         // ════════════ CREATE DIALOG (name + template) ════════════
         Kirigami.PromptDialog {
             id: createDialog
