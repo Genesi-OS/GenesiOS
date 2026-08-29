@@ -54,3 +54,17 @@ genesi-arch/packages/genesi-mesh/genesi-mesh.bash text eol=lf
 # `bad interpreter: ...^M`).
 genesi-arch/packages/genesi-ai-mode/genesi-find     text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-find-ui  text eol=lf
+
+# ── The signing keyring ──────────────────────────────────────────────────────
+# genesi.gpg is BINARY. Git's auto-detection would probably get this right (a
+# keyring is full of NUL bytes), but "probably" is not a property you want on
+# the file that decides what a machine will install as root: any newline
+# translation corrupts it, and a corrupted keyring does not fail loudly — it
+# verifies nothing and every signature check reports an unknown key.
+genesi-arch/packages/genesi-keyring/genesi.gpg binary
+# The trust and revocation lists are the opposite: pacman-key reads them LINE BY
+# LINE and feeds each line to gpg as a key id. A CRLF checkout would hand gpg
+# "<fingerprint>\r", which it rejects — so the key installs and is never
+# trusted, which surfaces only on the first machine moved to SigLevel=Required.
+genesi-arch/packages/genesi-keyring/genesi-trusted text eol=lf
+genesi-arch/packages/genesi-keyring/genesi-revoked text eol=lf

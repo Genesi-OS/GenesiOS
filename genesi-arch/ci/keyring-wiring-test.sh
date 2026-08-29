@@ -56,6 +56,30 @@ if [ -f "${KEYRING_DIR}/genesi-revoked" ]; then
     fi
 fi
 
+# ── Newline handling is not cosmetic here ────────────────────────────────────
+#
+# genesi.gpg is binary: any CRLF translation corrupts it, and a corrupted
+# keyring does not fail loudly -- it simply verifies nothing, and every check
+# reports an unknown key. genesi-trusted/-revoked are the opposite: pacman-key
+# reads them line by line and hands each line to gpg as a key id, so a CRLF
+# checkout gives gpg "<fingerprint>", which it rejects. The key then installs
+# and is never trusted, which surfaces only on the first machine moved to
+# SigLevel = Required. Git's auto-detection would probably get both right;
+# "probably" is the wrong guarantee for the file that decides what a machine
+# installs as root.
+ATTRS="${ROOT}/.gitattributes"
+check_attr() { # <path> <expected substring>
+    if grep -q "genesi-keyring/$1" "${ATTRS}" 2>/dev/null        && grep "genesi-keyring/$1" "${ATTRS}" | grep -q "$2"; then
+        pass ".gitattributes pins $1 ($2)"
+    else
+        fail ".gitattributes does not pin genesi-keyring/$1 as '$2' --
+        a CRLF checkout would silently corrupt it"
+    fi
+}
+check_attr "genesi.gpg"      "binary"
+check_attr "genesi-trusted"  "eol=lf"
+check_attr "genesi-revoked"  "eol=lf"
+
 # ── The workflow must always be able to cope with 'no key yet' ───────────────
 if grep -q 'genesi-keyring has no public key yet' "${WORKFLOW}"; then
     pass "publish-packages.yml skips genesi-keyring when unkeyed"

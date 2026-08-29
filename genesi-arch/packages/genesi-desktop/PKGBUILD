@@ -42,7 +42,12 @@ pkgver=1.0.0
 # from this meta stops NEW installs from getting it; machines that already have
 # it keep it (pacman never removes a package on its own) -- uninstall by hand
 # with `sudo pacman -Rns genesi-sandboxes`.
-pkgrel=11
+# pkgrel 12: add genesi-keyring, the public key that verifies everything
+# else in this list. It is in the meta so it reaches EXISTING systems on a
+# plain `pacman -Syu` -- which has to happen before any machine's SigLevel
+# can be raised to Required, or that machine would be unable to verify the
+# very update that would have given it the key.
+pkgrel=12
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -51,6 +56,10 @@ license=('AGPL-3.0-or-later')
 # packages (genesi-calamares, genesi-calamares-branding) are deliberately NOT
 # here — they belong on the live ISO, not the target.
 depends=(
+    # The trust anchor. First, because nothing below it means anything if
+    # the machine cannot tell a Genesi package from a file someone put at
+    # the repository URL.
+    'genesi-keyring'
     'genesi-settings'
     # genesi-kde-settings is KDE-only and now lives in the KDE-Desktop netinstall
     # group (see pkgrel 4 note) — NOT here, or it lands on every desktop.
