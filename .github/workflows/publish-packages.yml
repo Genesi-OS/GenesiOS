@@ -683,6 +683,30 @@ jobs:
           fi
           ls -lh
 
+          # ── The question the pipeline never asked ────────────────────────
+          #
+          # Everything above verifies the repository from the point of view of
+          # someone HOLDING the key. On 2026-08-29 that was all green while the
+          # publish broke `pacman -Sy` on every installed machine, because the
+          # opposite question went unasked: can a machine WITHOUT the key still
+          # use this? Asked here, against the freshly built repo, before a
+          # single byte is committed.
+          cd "$GITHUB_WORKSPACE"
+          # `rc=0; cmd || rc=$?`, NOT `if ! cmd; then rc=$?`. Inside the branch
+          # of an `if !`, $? is the status of the negation (always 0), so the
+          # untestable case (2) would have been read as 0 and fallen through to
+          # the error — a missing pacman would have BLOCKED the publish. That is
+          # the one thing this pipeline must never do.
+          rc=0
+          bash genesi-arch/ci/repo-consumable-test.sh \
+            "$GITHUB_WORKSPACE/genesi-arch/packages/repo" --db "${DB}" || rc=$?
+          case "${rc}" in
+            0) ;;
+            2) echo "::warning::could not verify the repo is consumable — publishing anyway" ;;
+            *) echo "::error::refusing to publish a repository machines in the field cannot use"
+               exit 1 ;;
+          esac
+
       - name: Commit packages to in-repo registry
         shell: bash
         env:
