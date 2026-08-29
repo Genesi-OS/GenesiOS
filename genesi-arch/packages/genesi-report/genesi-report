@@ -66,7 +66,13 @@ redact() {
         -e "s#/home/${REAL_USER}#/home/<user>#g" \
         -e "s#\b${REAL_USER}\b#<user>#g" \
         -e "s#\b${REAL_HOST}\b#<host>#g" \
-        -e 's#\b([0-9]{1,3}\.){3}[0-9]{1,3}\b#<ip>#g' \
+        `# A four-part version number and an IPv4 address are the same shape,` \
+        `# and the naive \b...\b rule could not tell them apart: a real report` \
+        `# came back reading "installed net-snmp (<ip>-1)", destroying exactly` \
+        `# the detail a maintainer needs most. version-release always carries a` \
+        `# trailing "-N"; addresses in logs are bounded by space : / , or ).` \
+        `# So the boundaries disambiguate, not the digits.` \
+        -e 's#(^|[^0-9A-Za-z.-])([0-9]{1,3}\.){3}[0-9]{1,3}([^0-9A-Za-z.-]|$)#\1<ip>\3#g' \
         -e 's#\b([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b#<mac>#g' \
         -e 's#\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b#<email>#g' \
         -e 's#\b([0-9a-fA-F]{4}:){2,7}[0-9a-fA-F]{0,4}\b#<ipv6>#g' \
@@ -106,7 +112,13 @@ collect_facts() {
     section "Desktop"
     echo "Session:   ${XDG_CURRENT_DESKTOP:-<not set>} (${XDG_SESSION_TYPE:-unknown})"
     dm="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
-    echo "DM:        ${dm:+$(basename "${dm}")}${dm:-<none>}"
+    # `${dm:+x}${dm:-y}` expands BOTH halves when dm is set, and printed
+    # "sddm.service/usr/lib/systemd/system/sddm.service". An `if` cannot.
+    if [ -n "${dm}" ]; then
+        echo "DM:        $(basename "${dm}")"
+    else
+        echo "DM:        <none>"
+    fi
 
     section "Hardware"
     if [ -r /proc/cpuinfo ]; then

@@ -78,6 +78,21 @@ keeps "the loaded driver"       "  nouveau"                              "nouvea
 keeps "an actual error"         "error: unable to satisfy dependency"    "unable to satisfy dependency"
 keeps "a device path"           "Mounting /dev/loop0 on /run/archiso"    "/dev/loop0"
 
+# Found on a real installed machine, 2026-08-29: the report came back reading
+# "installed net-snmp (<ip>-1)". A four-part version number is the same shape
+# as an IPv4 address, and the redactor ate it -- destroying exactly the detail
+# a maintainer needs. The kernel-version case above had been passing the whole
+# time because 7.1.8 has three components, not four.
+keeps "4-part package version" "installed net-snmp (5.9.4.1-1)"         "5.9.4.1-1"
+keeps "4-part version, bare"   "libfoo 1.2.3.4-2 upgraded"              "1.2.3.4-2"
+keeps "version in parentheses" "installed python-pillow (12.3.0-1)"     "12.3.0-1"
+
+# ...while addresses in their ordinary surroundings must still die.
+leaks "IP with a port"         "connected to 192.168.1.47:8080"         "192.168.1.47"
+leaks "IP in parentheses"      "peer (10.0.0.5) timed out"              "10.0.0.5"
+leaks "IP in a URL"            "GET http://172.16.4.9/index"            "172.16.4.9"
+leaks "IP at end of line"      "route via 203.0.113.9"                  "203.0.113.9"
+
 echo
 echo "-- the shape of the tool itself --"
 
