@@ -15,6 +15,23 @@
 # it is the one code path in the distribution where being clever is a mistake.
 
 _populate() {
+    # If there is no keyring at all, MAKE one. The original version only
+    # skipped, and on 2026-08-29 a VM install showed what that costs: the
+    # installer copies the live ISO's keyring to the target
+    # (`cp -a /etc/pacman.d/gnupg ... 2>/dev/null`), the live one was empty
+    # because pacman-init.service was never actually enabled, and the copy's
+    # failure was silenced. The machine came up with genesi-keyring installed,
+    # no keyring, and therefore no Genesi key — and, because this scriptlet
+    # only runs on install or upgrade, no second chance until the package
+    # happened to be bumped.
+    #
+    # Initialising here is safe: `--init` on an existing keyring is a no-op,
+    # and during pacstrap it creates the directory the target needs anyway.
+    if ! usr/bin/pacman-key -l >/dev/null 2>&1; then
+        echo '==> no pacman keyring on this system; initialising one'
+        usr/bin/pacman-key --init >/dev/null 2>&1 || true
+    fi
+
     if usr/bin/pacman-key -l >/dev/null 2>&1; then
         usr/bin/pacman-key --populate genesi
         # --populate imports and locally signs, but the trust database is only
@@ -23,8 +40,12 @@ _populate() {
         # on the first machine moved to SigLevel = Required.
         usr/bin/pacman-key --updatedb
     else
-        echo '==> pacman keyring not initialised yet; the Genesi key will be'
-        echo '    imported on the next update of genesi-keyring.'
+        echo '==> could not initialise a pacman keyring, so the Genesi signing'
+        echo '    key was NOT imported. Nothing is broken today (the repos do'
+        echo '    not require signatures), but this machine cannot verify them.'
+        echo '    Fix with:'
+        echo '      sudo pacman-key --init'
+        echo '      sudo pacman-key --populate archlinux cachyos genesi'
     fi
 }
 

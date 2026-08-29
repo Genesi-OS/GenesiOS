@@ -73,3 +73,4 @@ genesi-arch/packages/genesi-keyring/genesi-revoked text eol=lf
 # gives `bad interpreter: ...^M` on exactly the broken boot it exists to report.
 genesi-arch/packages/genesi-report/genesi-report text eol=lf
 genesi-arch/ci/repo-consumable-test.sh text eol=lf
+genesi-arch/ci/systemd-enable-test.sh text eol=lf

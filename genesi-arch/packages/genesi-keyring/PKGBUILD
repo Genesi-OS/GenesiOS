@@ -29,7 +29,13 @@
 # straight into the GitHub secret without it ever touching the repository.
 pkgname=genesi-keyring
 pkgver=1.0.0
-pkgrel=1
+# pkgrel 2: the scriptlet now CREATES a keyring when there is none instead of
+# skipping. A VM install on 2026-08-29 came up with this package installed and
+# no pacman keyring at all -- so `pacman-key -l` failed, the guard skipped, and
+# the signing key was never imported. Since the scriptlet only runs on install
+# or upgrade, that machine had no second chance. Bumping pkgrel is also what
+# gives every already-installed machine that second chance, on a plain -Syu.
+pkgrel=2
 pkgdesc='Genesi OS PGP keyring — the public keys that sign the [genesi] repositories'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

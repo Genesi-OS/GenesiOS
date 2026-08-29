@@ -12,6 +12,38 @@ main() {
     # Also populate the keys, before starting the Installer, to avoid above issue
     sudo pacman-key --init
     sudo pacman-key --populate archlinux cachyos
+
+    # ── Do not start an install without a keyring ────────────────────────────
+    #
+    # genesi-prepare-pacman.sh does NOT build the target's keyring. It copies
+    # this one:
+    #
+    #     cp -a /etc/pacman.d/gnupg "$ROOT/etc/pacman.d/" 2>/dev/null
+    #
+    # An empty source plus a silenced error is an installed machine with no
+    # keyring at all — which is what a VM install produced on 2026-08-29:
+    # `pacman-key --list-keys` failed even under sudo, and genesi-keyring's
+    # scriptlet (guarded on `pacman-key -l` working) silently skipped, so the
+    # Genesi signing key never got imported. A whole distribution's trust
+    # anchor, lost to a `2>/dev/null`.
+    #
+    # So: check, and if it did not take, say so and try once more. Everything
+    # after this point assumes the keyring is real.
+    if ! sudo pacman-key --list-keys >/dev/null 2>&1; then
+        echo ">>> WARNING: the pacman keyring did not initialise — retrying"
+        sudo rm -rf /etc/pacman.d/gnupg
+        sudo pacman-key --init
+        sudo pacman-key --populate archlinux cachyos
+        if ! sudo pacman-key --list-keys >/dev/null 2>&1; then
+            echo ">>> ERROR: still no usable pacman keyring."
+            echo ">>> The installed system would come out unable to verify any"
+            echo ">>> package, and would never import the Genesi signing key."
+            echo ">>> Fix it on the installed system afterwards with:"
+            echo ">>>   sudo pacman-key --init && sudo pacman-key --populate archlinux cachyos genesi"
+        fi
+    else
+        echo ">>> pacman keyring ready ($(sudo pacman-key --list-keys 2>/dev/null | grep -c '^pub') keys)"
+    fi
     # Also use timedatectl to sync the time with the hardware clock
     # There has been a bunch of reports, that the keyring was created in the future
     # Syncing appears to fix it

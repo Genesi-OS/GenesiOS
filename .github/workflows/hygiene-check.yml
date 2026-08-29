@@ -80,3 +80,7 @@ jobs:
       - name: genesi-report does not leak the reporter
         shell: bash
         run: bash genesi-arch/ci/report-redaction-test.sh
+
+      - name: The ISO's systemd enable symlinks are symlinks
+        shell: bash
+        run: bash genesi-arch/ci/systemd-enable-test.sh
