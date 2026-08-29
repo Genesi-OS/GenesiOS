@@ -76,3 +76,7 @@ jobs:
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh
+
+      - name: genesi-report does not leak the reporter
+        shell: bash
+        run: bash genesi-arch/ci/report-redaction-test.sh

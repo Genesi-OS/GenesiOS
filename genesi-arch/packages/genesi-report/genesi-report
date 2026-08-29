@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+#
+# genesi-report — turn "it broke" into something someone can act on.
+#
+# Genesi ships ~40 packages and a dozen Qt apps, and until now the only way a
+# problem reached the project was the maintainer happening to hit it on their
+# own machine. Everyone else's failures were invisible. That is the real reason
+# bugs here have lifetimes measured in weeks: not that they are hard, but that
+# nobody knew.
+#
+# This collects what a maintainer actually needs to reproduce something —
+# versions, desktop, GPU, failed units, the errors from this boot, the last
+# packages that changed — redacts what nobody needs, shows the user the whole
+# thing, and only then offers to open a pre-filled issue.
+#
+# ── Three rules it does not break ────────────────────────────────────────────
+#
+#  1. It NEVER sends anything on its own. It writes a file and prints a URL.
+#     The user submits, or does not.
+#  2. It redacts before it shows, not after. Hostname, username, home paths,
+#     addresses, MACs, Wi-Fi names, emails, serials.
+#  3. It works on a TTY with no desktop, because the boot that failed is
+#     exactly the boot with no desktop.
+#
+# Usage:
+#   genesi-report                 collect, show, then offer to open an issue
+#   genesi-report --print         print the report and stop (no browser, no file)
+#   genesi-report --file          write the file and stop
+#   genesi-report --no-journal    skip the log sections (fastest, least useful)
+#   genesi-report --yes           skip the confirmation before opening the browser
+set -uo pipefail
+
+REPO_URL="https://github.com/Genesi-OS/GenesiOS"
+FORUM_URL="https://forum.genesios.org"
+
+MODE="interactive"
+WANT_JOURNAL=1
+ASSUME_YES=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --print)      MODE="print" ;;
+        --file)       MODE="file" ;;
+        --no-journal) WANT_JOURNAL=0 ;;
+        --yes|-y)     ASSUME_YES=1 ;;
+        -h|--help)    sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+        *)            echo "unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+# ── Redaction ────────────────────────────────────────────────────────────────
+#
+# Applied to EVERY section, on the way in, so no future section can forget.
+# A bug reporter that leaks the reporter's data is worse than no bug reporter:
+# it teaches people not to use it, and it does the damage before anyone reads
+# the output.
+#
+# Deliberately blunt. Over-redacting costs a round trip asking for detail;
+# under-redacting is permanent and public.
+REAL_USER="${SUDO_USER:-${USER:-$(id -un 2>/dev/null)}}"
+REAL_HOST="$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null || echo localhost)"
+
+redact() {
+    sed -E \
+        -e "s#/home/${REAL_USER}#/home/<user>#g" \
+        -e "s#\b${REAL_USER}\b#<user>#g" \
+        -e "s#\b${REAL_HOST}\b#<host>#g" \
+        -e 's#\b([0-9]{1,3}\.){3}[0-9]{1,3}\b#<ip>#g' \
+        -e 's#\b([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b#<mac>#g' \
+        -e 's#\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b#<email>#g' \
+        -e 's#\b([0-9a-fA-F]{4}:){2,7}[0-9a-fA-F]{0,4}\b#<ipv6>#g' \
+        -e 's#(SSID|ssid|ESSID)[=: ]+"?[^"[:space:]]+"?#\1=<wifi>#g' \
+        -e 's#(Serial Number|serial|SN)[=: ]+[A-Za-z0-9-]+#\1=<serial>#gI' \
+        2>/dev/null
+}
+
+# ── Collection ───────────────────────────────────────────────────────────────
+have() { command -v "$1" >/dev/null 2>&1; }
+
+section() { printf '\n### %s\n\n' "$1"; }
+run()     { printf '%s\n' "$("$@" 2>&1 | redact)"; }
+
+collect_facts() {
+    section "System"
+    if [ -r /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        echo "OS:        ${PRETTY_NAME:-${NAME:-unknown}}"
+        echo "Build:     ${BUILD_ID:-${VERSION_ID:-unknown}}"
+    fi
+    echo "Kernel:    $(uname -r 2>/dev/null)"
+    echo "Arch:      $(uname -m 2>/dev/null)"
+    if have genesi-channel; then
+        echo "Channel:   $(genesi-channel get 2>/dev/null || echo unknown)"
+    fi
+    echo "Root FS:   $(findmnt -no FSTYPE / 2>/dev/null || echo unknown)"
+    # Whether this is a VM changes what "the GPU does not work" means, and it is
+    # the single most common source of confusion in reports.
+    if have systemd-detect-virt; then
+        v="$(systemd-detect-virt 2>/dev/null || true)"
+        [ -n "${v}" ] && [ "${v}" != "none" ] && echo "Virtual:   ${v}"
+    fi
+    echo "Uptime:    $(uptime -p 2>/dev/null || true)"
+
+    section "Desktop"
+    echo "Session:   ${XDG_CURRENT_DESKTOP:-<not set>} (${XDG_SESSION_TYPE:-unknown})"
+    dm="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
+    echo "DM:        ${dm:+$(basename "${dm}")}${dm:-<none>}"
+
+    section "Hardware"
+    if [ -r /proc/cpuinfo ]; then
+        echo "CPU:       $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')"
+        echo "Cores:     $(nproc 2>/dev/null)"
+    fi
+    if [ -r /proc/meminfo ]; then
+        echo "RAM:       $(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) / 1024 )) MB"
+    fi
+    if have lspci; then
+        echo "GPU:"
+        lspci 2>/dev/null | grep -Ei 'vga|3d controller|display' | sed 's/^/  /' | redact
+        # Which driver actually BOUND is the answer to half the GPU reports —
+        # "I installed the nvidia driver" and "nouveau is loaded" are both true
+        # far more often than anyone expects.
+        echo "Loaded graphics modules:"
+        lsmod 2>/dev/null | awk '/^(nvidia|nouveau|amdgpu|radeon|i915|xe|vmwgfx|virtio_gpu)/ {print "  " $1}' \
+            | sort -u
+    fi
+}
+
+collect_genesi() {
+    section "Genesi packages"
+    if have pacman; then
+        pacman -Q 2>/dev/null | grep -E '^(genesi|linux-cachyos|llama)' | sed 's/^/  /'
+    else
+        echo "  pacman not available"
+    fi
+
+    section "AI Mode"
+    if have genesi-ai-mode; then
+        genesi-ai-mode status 2>&1 | sed 's/^/  /' | redact
+    else
+        echo "  genesi-ai-mode is not installed"
+    fi
+}
+
+collect_health() {
+    section "Failed units"
+    if have systemctl; then
+        out="$(systemctl --failed --no-legend --no-pager 2>/dev/null | redact)"
+        if [ -n "${out}" ]; then printf '%s\n' "${out}" | sed 's/^/  /'
+        else echo "  none"; fi
+        # A user unit failing is invisible to `systemctl --failed` run as root,
+        # and the Genesi daemons that fail most (automationd, mempalace, the
+        # tray) are all per-user.
+        if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+            uout="$(systemctl --user --failed --no-legend --no-pager 2>/dev/null | redact)"
+            if [ -n "${uout}" ]; then
+                echo "  (user)"
+                printf '%s\n' "${uout}" | sed 's/^/    /'
+            fi
+        fi
+    else
+        echo "  systemctl not available — unit health not checked"
+    fi
+
+    [ "${WANT_JOURNAL}" -eq 1 ] || return 0
+
+    # Every section below captures into a variable and then says explicitly what
+    # it found. An empty section reads as "checked, nothing wrong", which is the
+    # single most misleading thing a diagnostic report can do — "no errors this
+    # boot" and "I could not read the journal" send a maintainer in opposite
+    # directions.
+    section "Errors this boot"
+    if have journalctl; then
+        # -p err and this boot only. The full journal is enormous, mostly noise,
+        # and much likelier to contain something personal.
+        jout="$(journalctl -b -p err --no-pager -n 60 2>/dev/null | redact)"
+        if [ -n "${jout}" ]; then
+            printf '%s\n' "${jout}" | sed 's/^/  /'
+        else
+            echo "  none — or the journal is not readable as this user (try sudo)"
+        fi
+    else
+        echo "  journalctl not available"
+    fi
+
+    section "Last package changes"
+    if [ -r /var/log/pacman.log ]; then
+        # The last upgrade transaction is the first question a maintainer asks
+        # about anything that "broke yesterday".
+        pout="$(grep -E '\[ALPM\] (installed|upgraded|removed)' /var/log/pacman.log 2>/dev/null \
+                | tail -25 | redact)"
+        if [ -n "${pout}" ]; then
+            printf '%s\n' "${pout}" | sed 's/^/  /'
+        else
+            echo "  no package transactions recorded"
+        fi
+    else
+        echo "  /var/log/pacman.log not readable"
+    fi
+}
+
+# ── Assemble ─────────────────────────────────────────────────────────────────
+STAMP="$(date +%Y%m%d-%H%M%S)"
+OUTFILE="${HOME:-/tmp}/genesi-report-${STAMP}.txt"
+
+FULL="$( {
+    echo "# Genesi OS report — ${STAMP}"
+    echo
+    echo "Generated by genesi-report. Personal details have been replaced with"
+    echo "placeholders (<user>, <host>, <ip>, …). Read it before you post it."
+    collect_facts
+    collect_genesi
+    collect_health
+} 2>&1 )"
+
+if [ "${MODE}" = "print" ]; then
+    printf '%s\n' "${FULL}"
+    exit 0
+fi
+
+( umask 077; printf '%s\n' "${FULL}" > "${OUTFILE}" )
+
+if [ "${MODE}" = "file" ]; then
+    echo "Report written to: ${OUTFILE}"
+    exit 0
+fi
+
+# ── Interactive ──────────────────────────────────────────────────────────────
+printf '%s\n' "${FULL}"
+echo
+echo "────────────────────────────────────────────────────────────────────────"
+echo "Full report saved to: ${OUTFILE}"
+echo
+
+# The issue body carries the short half. GitHub's issue URL is a GET, and a
+# long one is silently truncated by browsers and proxies — so the summary goes
+# in the URL and the file gets attached by the user, rather than producing a
+# link that half-works.
+SUMMARY="$(printf '%s\n' "${FULL}" \
+    | sed -n '/^### System/,/^### Errors this boot/p' \
+    | head -60)"
+
+read -r -d '' BODY <<EOF || true
+**What happened?**
+
+<!-- Replace this line: what were you doing, what did you expect, what happened instead? -->
+
+**Can you reproduce it?**
+
+<!-- Every time / sometimes / it happened once -->
+
+---
+
+<details><summary>System information (collected by genesi-report)</summary>
+
+\`\`\`
+${SUMMARY}
+\`\`\`
+
+</details>
+
+The full report — including this boot's errors and the last package changes —
+is at \`${OUTFILE}\` on the reporting machine. **Please attach it**, after
+reading it: it is redacted, but you know your machine better than the redactor.
+EOF
+
+urlencode() {
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import sys,urllib.parse; sys.stdout.write(urllib.parse.quote(sys.stdin.read(), safe=""))'
+    else
+        # Fallback so the tool still works on a system where python is the
+        # thing that broke.
+        local l c
+        while IFS= read -r -n1 c; do
+            case "${c}" in
+                [-_.~A-Za-z0-9]) printf '%s' "${c}" ;;
+                '')              printf '%%0A' ;;
+                *)               printf '%%%02X' "'${c}" ;;
+            esac
+        done
+    fi
+}
+
+TITLE_ENC="$(printf '%s' "[bug] " | urlencode)"
+BODY_ENC="$(printf '%s' "${BODY}" | urlencode)"
+ISSUE_URL="${REPO_URL}/issues/new?title=${TITLE_ENC}&body=${BODY_ENC}"
+
+echo "Two places this can go:"
+echo
+echo "  1. A bug report:  ${REPO_URL}/issues"
+echo "  2. A question:    ${FORUM_URL}"
+echo
+echo "Nothing has been sent. Opening the issue form only pre-fills it — you"
+echo "still write what happened and press the button."
+echo
+
+if [ "${ASSUME_YES}" -eq 0 ]; then
+    if [ ! -t 0 ]; then
+        echo "(not a terminal — not opening a browser)"
+        echo "Issue form: ${ISSUE_URL}"
+        exit 0
+    fi
+    printf 'Open the pre-filled issue form in a browser? [y/N] '
+    read -r answer
+    case "${answer}" in
+        [yY]|[yY][eE][sS]) ;;
+        *) echo; echo "Nothing sent. The report is at ${OUTFILE}"; exit 0 ;;
+    esac
+fi
+
+if have xdg-open; then
+    xdg-open "${ISSUE_URL}" >/dev/null 2>&1 &
+    echo "Opened in your browser."
+else
+    echo "No xdg-open here. Paste this into a browser:"
+    echo
+    echo "${ISSUE_URL}"
+fi

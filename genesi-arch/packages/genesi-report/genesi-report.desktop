@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Report a Problem
+Name[pt_BR]=Relatar um Problema
+GenericName=Genesi OS bug report
+GenericName[pt_BR]=Relatório de problema do Genesi OS
+Comment=Collect system details and open a pre-filled bug report. Nothing is sent without your confirmation.
+Comment[pt_BR]=Coleta informações do sistema e abre um relatório de bug já preenchido. Nada é enviado sem a sua confirmação.
+Exec=genesi-report
+Icon=tools-report-bug
+Terminal=true
+Categories=System;Monitor;
+Keywords=bug;report;problem;support;log;diagnostics;
+Keywords[pt_BR]=bug;erro;problema;relatar;suporte;log;diagnostico;

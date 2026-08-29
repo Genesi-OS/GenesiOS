@@ -360,6 +360,10 @@ jobs:
             "genesi-mempalace"
             "genesi-update"
             "genesi-channel"
+            # The return path: collect diagnostics, redact them, open a
+            # pre-filled issue. Pure bash, so it costs nothing to build and it
+            # still runs on the boot where the desktop did not come up.
+            "genesi-report"
             "genesi-calamares"
             "genesi-calamares-branding"
             "genesi-welcome"

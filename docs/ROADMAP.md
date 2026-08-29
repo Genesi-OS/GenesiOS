@@ -728,6 +728,29 @@ a stranger installs Genesi.
 
 Full lifecycle, including rotation: `genesi-arch/docs/PACKAGE-SIGNING.md`.
 
+### The return path ✅ shipping
+
+Until `genesi-report` existed, the only way a problem reached the project was
+the maintainer happening to hit it on their own machine. Everyone else's
+failures were invisible — which is the real reason bugs here have had lifetimes
+measured in weeks: not that they were hard, but that nobody knew.
+
+- [x] `genesi-report` — collects OS/kernel/channel, desktop and session, GPU and
+      **which driver actually bound**, Genesi package versions, AI Mode status,
+      failed system **and user** units, this boot's errors, and the last package
+      transactions.
+- [x] **Redacts before it shows**: username, hostname, home paths, IPv4/IPv6,
+      MACs, emails, Wi-Fi names, serials. `ci/report-redaction-test.sh` checks
+      both halves — that the secrets die and that the *useful* detail survives,
+      since a report that redacts the kernel version is just as useless.
+- [x] **Never sends anything.** It writes a file and pre-fills an issue form;
+      the user submits or does not. The test also asserts the script contains no
+      upload path at all.
+- [x] Pure bash, no Qt, no Python required — the boot worth reporting is the one
+      where the desktop did not come up.
+- [ ] Surface it from the Welcome app and the AI Mode Monitor (it currently has
+      a menu entry and a CLI).
+
 ### Desktop polish (in progress)
 - [x] Klassy compiled/configured for rounded window corners (14px)
 - [ ] Custom taskbar icon selection style — rounded pill highlight + hover animation

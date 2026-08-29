@@ -1,0 +1,36 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# The missing return path.
+#
+# Genesi ships ~40 packages and a dozen Qt apps, and until this existed the only
+# way a problem reached the project was the maintainer happening to hit it on
+# their own machine. Everyone else's failures were invisible, which is the real
+# reason bugs here have had lifetimes measured in weeks: not that they were
+# hard, but that nobody knew.
+#
+# Pure bash + a .desktop entry. No Python, no Qt, no toolkit — because the boot
+# this gets used on is the boot where the desktop did not come up.
+pkgname=genesi-report
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Collect Genesi OS diagnostics and open a pre-filled bug report'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL-3.0-or-later')
+depends=('bash' 'systemd')
+optdepends=(
+    'pciutils: identify the GPU and which driver actually bound to it'
+    'xdg-utils: open the pre-filled issue form in a browser'
+    'python3: faster and more correct URL encoding'
+)
+source=(
+    'genesi-report'
+    'genesi-report.desktop'
+)
+sha256sums=('SKIP' 'SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/genesi-report" "${pkgdir}/usr/bin/genesi-report"
+    install -Dm644 "${srcdir}/genesi-report.desktop" \
+        "${pkgdir}/usr/share/applications/genesi-report.desktop"
+}

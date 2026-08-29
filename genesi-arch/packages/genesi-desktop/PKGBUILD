@@ -47,7 +47,12 @@ pkgver=1.0.0
 # plain `pacman -Syu` -- which has to happen before any machine's SigLevel
 # can be raised to Required, or that machine would be unable to verify the
 # very update that would have given it the key.
-pkgrel=12
+# pkgrel 13: add genesi-report. Until it existed the only way a problem reached
+# the project was the maintainer hitting it on their own machine; everyone
+# else's failures were invisible. It has to be in the meta for the same reason
+# everything else here does -- a plain `pacman -Syu` never installs a brand-new
+# package on its own, so a tool nobody has is a tool nobody uses.
+pkgrel=13
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -82,6 +87,10 @@ depends=(
     'genesi-grub-theme'
     'genesi-plymouth'
     'genesi-fastfetch'
+    # Collect diagnostics, redact them, open a pre-filled bug report. Bash only,
+    # so it works on the boot where the desktop did not start -- which is the
+    # boot people most need to report.
+    'genesi-report'
     # Phase 4.3-4.6 developer tools (this OS targets programmers).
     'genesi-containers'    # Plasma widget for Docker/Podman
     'genesi-ports'         # port -> PID dashboard, Plasma widget + SNI tray
