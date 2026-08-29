@@ -44,3 +44,17 @@ jobs:
             exit 1
           fi
           echo "OK: no tooling/editor state under any skel-override/"
+
+  keyring-wiring:
+    # The signing key and the packages that reference it have to move together.
+    # This is a text check with no build, so it runs on every push and PR and
+    # catches the ordering mistake — a dependency on a package CI is still
+    # skipping — before it can reach the ISO pipeline or a real install.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: genesi-keyring wiring is consistent
+        shell: bash
+        run: bash genesi-arch/ci/keyring-wiring-test.sh

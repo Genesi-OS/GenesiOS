@@ -1,0 +1,55 @@
+# Import Genesi's signing key into the target's pacman keyring.
+#
+# Every command here is guarded by `pacman-key -l`, which succeeds only once
+# /etc/pacman.d/gnupg has been initialised. That guard is not paranoia: this
+# package is installed by pacstrap during a Calamares install, and at that
+# point in the sequence the target's keyring may not exist yet. An unguarded
+# `pacman-key --populate` would then fail, and a failing scriptlet during
+# pacstrap is an aborted installation.
+#
+# Skipping is safe. pacman runs post_upgrade on every subsequent update of this
+# package, and `genesi-update`/`pacman -Syu` reaches it soon enough; until then
+# the repos are still SigLevel = Optional TrustAll, so nothing is blocked.
+#
+# This is the same shape archlinux-keyring's own scriptlet uses, deliberately —
+# it is the one code path in the distribution where being clever is a mistake.
+
+_populate() {
+    if usr/bin/pacman-key -l >/dev/null 2>&1; then
+        usr/bin/pacman-key --populate genesi
+        # --populate imports and locally signs, but the trust database is only
+        # rebuilt on demand. Without this, the key is present and STILL not
+        # trusted, which surfaces much later as "signature is unknown trust"
+        # on the first machine moved to SigLevel = Required.
+        usr/bin/pacman-key --updatedb
+    else
+        echo '==> pacman keyring not initialised yet; the Genesi key will be'
+        echo '    imported on the next update of genesi-keyring.'
+    fi
+}
+
+post_install() {
+    _populate
+}
+
+post_upgrade() {
+    _populate
+}
+
+pre_remove() {
+    # Removing the keyring while a repo is set to Required would leave the
+    # machine unable to update. Take the keys back out so the state is at least
+    # consistent, and say plainly what the user has just done.
+    if usr/bin/pacman-key -l >/dev/null 2>&1; then
+        local fingerprint
+        while IFS=: read -r fingerprint _; do
+            [ -n "${fingerprint}" ] || continue
+            case "${fingerprint}" in \#*) continue ;; esac
+            usr/bin/pacman-key --delete "${fingerprint}" 2>/dev/null || true
+        done < usr/share/pacman/keyrings/genesi-trusted
+        usr/bin/pacman-key --updatedb 2>/dev/null || true
+    fi
+    echo '==> The Genesi signing key has been removed from this system.'
+    echo '    If any [genesi*] repo in /etc/pacman.conf uses SigLevel = Required,'
+    echo '    updates from it will now fail until this package is reinstalled.'
+}

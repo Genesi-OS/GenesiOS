@@ -115,6 +115,17 @@ jobs:
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Before the 25-minute build, not after: a key that is configured but does
+      # not match the keyring we ship is a hard error, and there is no reason to
+      # spend half an hour discovering it.
+      - name: Import the repository signing key
+        id: signing
+        uses: ./.github/actions/signing-key
+        with:
+          signing_key:    ${{ secrets.GENESI_SIGNING_KEY }}
+          signing_key_id: ${{ secrets.GENESI_SIGNING_KEY_ID }}
+          passphrase:     ${{ secrets.GENESI_SIGNING_KEY_PASSPHRASE }}
+
       - name: Install build deps
         # Avoid `pacman -Syu`: upgrading pacman itself mid-CI can deadlock or
         # break the running container. We only need DB refresh + missing deps.
@@ -314,7 +325,9 @@ jobs:
       - name: Build packages
         shell: bash
         env:
-          DB: ${{ steps.channel.outputs.db }}
+          DB:           ${{ steps.channel.outputs.db }}
+          SIGN_ENABLED: ${{ steps.signing.outputs.enabled }}
+          SIGN_KEYID:   ${{ steps.signing.outputs.keyid }}
         run: |
           set -euo pipefail
           useradd -m -G wheel builder
@@ -336,6 +349,11 @@ jobs:
           chown builder:builder "$GITHUB_WORKSPACE/.ci-sources"
 
           PACKAGES=(
+            # The trust anchor. First because it is a pure-data leaf with no
+            # build deps, and because everything after it is only meaningful if
+            # machines can eventually verify it. Skipped automatically while no
+            # key exists — see the guard in the loop below.
+            "genesi-keyring"
             "genesi-settings"
             "genesi-kde-settings"
             "genesi-ai-mode"
@@ -441,6 +459,18 @@ jobs:
             echo "::group::Building $pkg"
             if [ ! -d "$pkg" ]; then
               echo "::warning::Package directory not found: $pkg — skipping"
+              echo "::endgroup::"
+              continue
+            fi
+            # genesi-keyring's payload IS the key, and the key is generated once
+            # by hand (devtools/genesi-keygen.sh), not by CI. Until that has
+            # happened the package has nothing to install, so skip it instead of
+            # failing the run — a distribution that cannot publish updates is a
+            # worse outcome than one that is not yet signed. The matching
+            # "key configured but keyring empty" case is a hard error, caught
+            # much earlier by the verify step.
+            if [ "$pkg" = "genesi-keyring" ] && [ ! -f "$pkg/genesi.gpg" ]; then
+              echo "::warning::genesi-keyring has no public key yet — skipping (run devtools/genesi-keygen.sh)"
               echo "::endgroup::"
               continue
             fi
@@ -588,9 +618,62 @@ jobs:
           # would silently publish an unusable database over the STABLE channel.
           : "${DB:?the channel step did not provide a repo db name}"
           # Clear BOTH names, not just ours: a branch that used to publish the
-          # wrong one must not leave it behind for pacman to find.
+          # wrong one must not leave it behind for pacman to find. The db/files
+          # patterns already sweep up their own .sig files; the package
+          # signatures need their own line, or a .sig from a previous run could
+          # outlive the package it covers.
           rm -f genesi.db* genesi.files* genesi-testing.db* genesi-testing.files*
-          repo-add "${DB}.db.tar.gz" *.pkg.tar.zst
+          rm -f ./*.pkg.tar.zst.sig
+
+          # ── Sign every package, THEN index ──────────────────────────────────
+          #
+          # Order is load-bearing: repo-add records a package's signature in the
+          # database only if the .sig is already on disk beside it. Signing after
+          # repo-add produces signatures pacman never learns about, and a repo
+          # that looks signed on the mirror but unsigned to the client.
+          REPO_ADD_SIGN=()
+          if [ "${SIGN_ENABLED:-0}" = "1" ]; then
+            GPG_ARGS=(--batch --yes --no-tty --detach-sign --local-user "${SIGN_KEYID}")
+            # ${GNUPGHOME:-} so `set -u` cannot bite if the env ever arrives
+            # without it; the no-passphrase case is the normal one.
+            if [ -f "${GNUPGHOME:-}/passphrase" ]; then
+              GPG_ARGS+=(--pinentry-mode loopback --passphrase-file "${GNUPGHOME}/passphrase")
+            fi
+
+            echo "::group::Signing $(ls -1 ./*.pkg.tar.zst | wc -l) package(s) with ${SIGN_KEYID}"
+            for p in ./*.pkg.tar.zst; do
+              gpg "${GPG_ARGS[@]}" --output "${p}.sig" "${p}"
+            done
+            echo "::endgroup::"
+
+            # Verify what we just produced. A signature that does not verify is
+            # a package that will be REJECTED on every machine the moment
+            # SigLevel becomes Required, and there is no reason to discover that
+            # anywhere but here.
+            for p in ./*.pkg.tar.zst; do
+              gpg --batch --quiet --verify "${p}.sig" "${p}" 2>/dev/null \
+                || { echo "::error::signature does not verify: ${p}"; exit 1; }
+            done
+            echo "All package signatures verified."
+
+            REPO_ADD_SIGN=(--sign --key "${SIGN_KEYID}")
+            export GPGKEY="${SIGN_KEYID}"
+          else
+            echo "::warning::no signing key — the published repository will be UNSIGNED"
+          fi
+
+          # `${a[@]+"${a[@]}"}` rather than `"${a[@]}"`: under `set -u` an empty
+          # array is an unbound variable on older bash, and the unsigned path is
+          # exactly the one that must never break.
+          repo-add ${REPO_ADD_SIGN[@]+"${REPO_ADD_SIGN[@]}"} "${DB}.db.tar.gz" ./*.pkg.tar.zst
+
+          # The database signature is what stops an attacker swapping the whole
+          # index (and with it every package's recorded checksum), so its
+          # absence is a silent downgrade rather than a cosmetic gap.
+          if [ "${SIGN_ENABLED:-0}" = "1" ] && [ ! -f "${DB}.db.tar.gz.sig" ]; then
+            echo "::error::repo-add did not produce ${DB}.db.tar.gz.sig"
+            exit 1
+          fi
           ls -lh
 
       - name: Commit packages to in-repo registry
@@ -622,19 +705,33 @@ jobs:
           # subscribes to BOTH repos and pacman installs whichever is newer.
           : "${DB:?the channel step did not provide a repo db name}"
           mkdir -p genesi-arch/repo/x86_64
+          # *.pkg.tar.zst.sig is matched by the first pattern's own glob only if
+          # it is spelled out, and a signature left behind from a previous run
+          # would claim to cover a package that is no longer there.
           rm -f genesi-arch/repo/x86_64/*.pkg.tar.zst \
+                genesi-arch/repo/x86_64/*.pkg.tar.zst.sig \
                 genesi-arch/repo/x86_64/genesi.* \
                 genesi-arch/repo/x86_64/genesi-testing.*
           cp genesi-arch/packages/repo/*.pkg.tar.zst genesi-arch/repo/x86_64/ || true
+          cp genesi-arch/packages/repo/*.pkg.tar.zst.sig genesi-arch/repo/x86_64/ 2>/dev/null || true
           cp "genesi-arch/packages/repo/${DB}.db.tar.gz" genesi-arch/repo/x86_64/ || true
           cp "genesi-arch/packages/repo/${DB}.files.tar.gz" genesi-arch/repo/x86_64/ || true
+          cp "genesi-arch/packages/repo/${DB}.db.tar.gz.sig" genesi-arch/repo/x86_64/ 2>/dev/null || true
+          cp "genesi-arch/packages/repo/${DB}.files.tar.gz.sig" genesi-arch/repo/x86_64/ 2>/dev/null || true
           # Pacman expects unsuffixed pointers as well. Use copies (not
           # symlinks) — raw.githubusercontent.com serves git symlinks as
           # plaintext (the link target path), which would break pacman when
           # a client points at the GitHub-raw URL.
+          #
+          # The signatures need the same treatment: pacman fetches
+          # "<repo>.db.sig", not "<repo>.db.tar.gz.sig". Publishing the database
+          # without moving its signature across would make every client see a
+          # signed-then-unsigned repo and silently fall back to trusting it.
           ( cd genesi-arch/repo/x86_64 && \
             cp -f "${DB}.db.tar.gz"    "${DB}.db" && \
-            cp -f "${DB}.files.tar.gz" "${DB}.files" )
+            cp -f "${DB}.files.tar.gz" "${DB}.files" && \
+            { [ -f "${DB}.db.tar.gz.sig" ]    && cp -f "${DB}.db.tar.gz.sig"    "${DB}.db.sig"    || true; } && \
+            { [ -f "${DB}.files.tar.gz.sig" ] && cp -f "${DB}.files.tar.gz.sig" "${DB}.files.sig" || true; } )
 
           git config user.email "actions@github.com"
           git config user.name  "Genesi Bot"
@@ -692,3 +789,8 @@ jobs:
           echo "Channel: ${{ steps.channel.outputs.name }}"
           echo "Branch:  ${{ steps.channel.outputs.branch }}"
           echo "Packages published to genesi-arch/repo/x86_64 on branch ${{ steps.channel.outputs.branch }}"
+          if [ "${{ steps.signing.outputs.enabled }}" = "1" ]; then
+            echo "Signed:  yes (key ${{ steps.signing.outputs.keyid }})"
+          else
+            echo "Signed:  NO — set GENESI_SIGNING_KEY (genesi-arch/devtools/genesi-keygen.sh)"
+          fi

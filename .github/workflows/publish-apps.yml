@@ -84,6 +84,20 @@ jobs:
         with:
           fetch-depth: 1
 
+      # [genesi-apps] is a separate repository but NOT a separate trust domain:
+      # it is signed by the same key genesi-keyring ships, so a machine that
+      # trusts [genesi] trusts this too. Leaving it unsigned while [genesi] was
+      # signed would mean the largest package in the distribution (genesi-code,
+      # 172 MB) is the one nobody verifies.
+      - name: Import the repository signing key
+        id: signing
+        uses: ./.github/actions/signing-key
+        with:
+          signing_key:    ${{ secrets.GENESI_SIGNING_KEY }}
+          signing_key_id: ${{ secrets.GENESI_SIGNING_KEY_ID }}
+          passphrase:     ${{ secrets.GENESI_SIGNING_KEY_PASSPHRASE }}
+          gnupghome:      /root/genesi-signing-gnupg-apps
+
       - name: Resolve latest genesi-code release
         id: resolve
         shell: bash
@@ -132,7 +146,9 @@ jobs:
         if: steps.resolve.outputs.skip != 'true'
         shell: bash
         env:
-          LATEST: ${{ steps.resolve.outputs.latest }}
+          LATEST:       ${{ steps.resolve.outputs.latest }}
+          SIGN_ENABLED: ${{ steps.signing.outputs.enabled }}
+          SIGN_KEYID:   ${{ steps.signing.outputs.keyid }}
         run: |
           set -euo pipefail
           # makepkg refuses to run as root, so build as an unprivileged user.
@@ -168,8 +184,33 @@ jobs:
 
           # Build the pacman database for the release-hosted repo.
           cd "$GITHUB_WORKSPACE/genesi-arch/packages/apps-repo"
-          rm -f "${DB_NAME}".db* "${DB_NAME}".files*
-          repo-add "${DB_NAME}.db.tar.gz" ./*.pkg.tar.zst
+          rm -f "${DB_NAME}".db* "${DB_NAME}".files* ./*.pkg.tar.zst.sig
+
+          # Sign BEFORE indexing: repo-add records a package's signature in the
+          # database only if the .sig is already on disk beside it. Signing
+          # afterwards produces signatures pacman never learns about.
+          REPO_ADD_SIGN=()
+          if [ "${SIGN_ENABLED:-0}" = "1" ]; then
+            GPG_ARGS=(--batch --yes --no-tty --detach-sign --local-user "${SIGN_KEYID}")
+            # `if`, not `[ ... ] && ...`: under `set -e` a failing test as the
+            # last command of an && list exits the script, so the no-passphrase
+            # case (the normal one) would abort the publish.
+            if [ -f "${GNUPGHOME:-}/passphrase" ]; then
+              GPG_ARGS+=(--pinentry-mode loopback --passphrase-file "${GNUPGHOME}/passphrase")
+            fi
+            for p in ./*.pkg.tar.zst; do
+              gpg "${GPG_ARGS[@]}" --output "${p}.sig" "${p}"
+              gpg --batch --quiet --verify "${p}.sig" "${p}" 2>/dev/null \
+                || { echo "::error::signature does not verify: ${p}"; exit 1; }
+            done
+            REPO_ADD_SIGN=(--sign --key "${SIGN_KEYID}")
+            export GPGKEY="${SIGN_KEYID}"
+            echo "Signed $(ls -1 ./*.pkg.tar.zst | wc -l) package(s) with ${SIGN_KEYID}"
+          else
+            echo "::warning::no signing key — [genesi-apps] will be published UNSIGNED"
+          fi
+
+          repo-add ${REPO_ADD_SIGN[@]+"${REPO_ADD_SIGN[@]}"} "${DB_NAME}.db.tar.gz" ./*.pkg.tar.zst
           # pacman fetches `<repo>.db` / `<repo>.files` (not the .tar.gz). repo-add
           # already created those as SYMLINKS to the tarballs; GitHub Release assets
           # must be flat files, so replace the symlinks with real copies of the
@@ -177,6 +218,17 @@ jobs:
           # `cp` would see "same file" since the link resolves to the source).
           cp --remove-destination "${DB_NAME}.db.tar.gz"    "${DB_NAME}.db"
           cp --remove-destination "${DB_NAME}.files.tar.gz" "${DB_NAME}.files"
+          # pacman fetches "<repo>.db.sig", never "<repo>.db.tar.gz.sig", so the
+          # signature needs the same flattening as the database it covers.
+          # Without this the client sees a signed repo advertise an unsigned
+          # index — a silent downgrade, not a visible error.
+          if [ -f "${DB_NAME}.db.tar.gz.sig" ]; then
+            cp --remove-destination "${DB_NAME}.db.tar.gz.sig"    "${DB_NAME}.db.sig"
+            cp --remove-destination "${DB_NAME}.files.tar.gz.sig" "${DB_NAME}.files.sig"
+          elif [ "${SIGN_ENABLED:-0}" = "1" ]; then
+            echo "::error::repo-add did not produce ${DB_NAME}.db.tar.gz.sig"
+            exit 1
+          fi
 
           # Ensure repo-add recorded the exact immutable package filename and
           # compressed byte count before anything is uploaded.
@@ -229,9 +281,14 @@ jobs:
 
           # Upload the unique package before changing the database. The previous
           # database continues to reference a package that still exists.
+          # The .sig rides along with the package it covers and is just as
+          # immutable — a signature uploaded later than the package it signs
+          # leaves a window where the repo advertises an unverifiable download.
+          EXTRA=()
+          if [ -f "${PACKAGE_NAME}.sig" ]; then EXTRA+=("${PACKAGE_NAME}.sig"); fi
           gh release upload "$APPS_TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            "$PACKAGE_PATH" "${PACKAGE_NAME}.sha256"
+            "$PACKAGE_PATH" "${PACKAGE_NAME}.sha256" ${EXTRA[@]+"${EXTRA[@]}"}
 
           mkdir -p remote-package
           gh release download "$APPS_TAG" \
@@ -253,13 +310,18 @@ jobs:
 
           # Stable index names are replaced only after the immutable package was
           # downloaded from GitHub and verified byte-for-byte.
+          INDEX_SIGS=()
+          if [ -f "${DB_NAME}.db.sig" ]; then
+            INDEX_SIGS+=("${DB_NAME}.db.sig" "${DB_NAME}.db.tar.gz.sig"
+                         "${DB_NAME}.files.sig" "${DB_NAME}.files.tar.gz.sig")
+          fi
           gh release upload "$APPS_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber \
             "${DB_NAME}.db.tar.gz" \
             "${DB_NAME}.files.tar.gz" "${DB_NAME}.files" \
             "${DB_NAME}.manifest.json" \
-            "${DB_NAME}.db"
+            "${DB_NAME}.db" ${INDEX_SIGS[@]+"${INDEX_SIGS[@]}"}
 
           mkdir -p remote-index
           gh release download "$APPS_TAG" \
@@ -280,10 +342,16 @@ jobs:
 
           # Retain recent immutable packages for clients with cached databases,
           # while preventing this fixed release from hitting its asset limit.
+          # The retention count is in ASSETS, not publications. Each publication
+          # used to leave 2 assets (package + .sha256), so 40 meant "keep the
+          # last 20 builds". With the detached signature it leaves 3, so the
+          # number has to rise to 60 or retention would silently drop by a third
+          # — and an old client with a cached database would find its package
+          # gone sooner than before.
           gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${APPS_TAG}" \
             --jq '.assets
-              | map(select(.name | test("^genesi-code-.*\\.pkg\\.tar\\.zst(\\.sha256)?$")))
-              | sort_by(.created_at) | reverse | .[40:] | .[].id' \
+              | map(select(.name | test("^genesi-code-.*\\.pkg\\.tar\\.zst(\\.sha256|\\.sig)?$")))
+              | sort_by(.created_at) | reverse | .[60:] | .[].id' \
             | while read -r asset_id; do
                 [ -n "$asset_id" ] || continue
                 gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"

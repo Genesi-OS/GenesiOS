@@ -1,0 +1,63 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# The trust anchor for the whole distribution.
+#
+# Until this package existed, every Genesi repo was configured
+# `SigLevel = Optional TrustAll`: pacman required no signature, and accepted a
+# signature from ANY key. Anything that reached
+# raw.githubusercontent.com/Genesi-OS/GenesiOS/main/genesi-arch/repo/$arch was
+# installed as root, no questions asked. That is fine while the only user is
+# the person who builds it, and completely unacceptable the moment a stranger
+# installs Genesi.
+#
+# This package ships the PUBLIC half of the key that publish-packages.yml signs
+# every package and database with, and its scriptlet imports and locally signs
+# it into the target's pacman keyring. Once it is on a machine, that machine can
+# be moved to `SigLevel = Required` and will refuse anything Genesi did not sign.
+#
+# ORDER MATTERS, and it is the whole reason this is a separate package:
+#   1. CI signs (already true — the signing step is conditional on the secret).
+#   2. This package deploys the key to every machine (pacman.conf still
+#      Optional TrustAll, so nothing can break in the meantime).
+#   3. Only THEN does SigLevel flip to Required.
+# Flipping before step 2 completes leaves a machine unable to update at all,
+# which is worse than the problem being fixed. See docs/PACKAGE-SIGNING.md.
+#
+# The key material itself is NOT generated here or by CI — it is produced once,
+# on the maintainer's machine, by devtools/genesi-keygen.sh, which writes
+# genesi.gpg + genesi-trusted into this directory and pushes the private half
+# straight into the GitHub secret without it ever touching the repository.
+pkgname=genesi-keyring
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Genesi OS PGP keyring — the public keys that sign the [genesi] repositories'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL-3.0-or-later')
+# pacman-key lives in the pacman package; gnupg is what actually does the work.
+depends=('pacman')
+install=genesi-keyring.install
+source=(
+    'genesi.gpg'
+    'genesi-trusted'
+    'genesi-revoked'
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+package() {
+    # These three paths are pacman's own convention: `pacman-key --populate
+    # genesi` reads exactly this triple and nothing else.
+    #   genesi.gpg      — the exported public keyring
+    #   genesi-trusted  — "<fingerprint>:<ownertrust>:" lines; what makes the
+    #                     key trusted rather than merely known
+    #   genesi-revoked  — fingerprints to actively distrust; empty until a key
+    #                     is ever compromised, but the file must exist so a
+    #                     future revocation is a one-line change, not a new
+    #                     package layout.
+    install -Dm644 "${srcdir}/genesi.gpg" \
+        "${pkgdir}/usr/share/pacman/keyrings/genesi.gpg"
+    install -Dm644 "${srcdir}/genesi-trusted" \
+        "${pkgdir}/usr/share/pacman/keyrings/genesi-trusted"
+    install -Dm644 "${srcdir}/genesi-revoked" \
+        "${pkgdir}/usr/share/pacman/keyrings/genesi-revoked"
+}

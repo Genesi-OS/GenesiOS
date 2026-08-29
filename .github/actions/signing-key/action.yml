@@ -1,0 +1,145 @@
+name: 'Genesi signing key'
+description: >
+  Imports the Genesi repository signing key and checks that it is the key
+  genesi-keyring actually ships. Reports whether signing is enabled instead of
+  failing when no key is configured.
+
+# There are three publishing pipelines ([genesi], [genesi-apps], [genesi-cuda])
+# and they must all sign with the SAME key, because one keyring package is what
+# every machine trusts. Three copies of this logic would drift, and the failure
+# mode of drift here is "one repo's packages stop verifying" — discovered by a
+# user, not by CI. Hence one place.
+
+inputs:
+  signing_key:
+    description: 'Armored private key (secrets.GENESI_SIGNING_KEY)'
+    required: false
+    default: ''
+  signing_key_id:
+    description: 'Fingerprint (secrets.GENESI_SIGNING_KEY_ID). Derived from the key when empty.'
+    required: false
+    default: ''
+  passphrase:
+    description: 'Optional key passphrase (secrets.GENESI_SIGNING_KEY_PASSPHRASE)'
+    required: false
+    default: ''
+  gnupghome:
+    description: >
+      Where to build the throwaway keyring. MUST be outside $GITHUB_WORKSPACE:
+      the package build chowns the whole workspace to the `builder` user, which
+      would both break gpg ("unsafe ownership") and drop private key material
+      into the tree that gets `git add -f`ed.
+    required: false
+    default: '/root/genesi-signing-gnupg'
+
+outputs:
+  enabled:
+    description: '1 when signing is configured, 0 when the pipeline should publish unsigned'
+    value: ${{ steps.setup.outputs.enabled }}
+  keyid:
+    description: 'Fingerprint of the signing key (empty when disabled)'
+    value: ${{ steps.setup.outputs.keyid }}
+
+runs:
+  using: composite
+  steps:
+    - id: setup
+      shell: bash
+      env:
+        SIGNING_KEY:        ${{ inputs.signing_key }}
+        SIGNING_KEY_ID:     ${{ inputs.signing_key_id }}
+        SIGNING_PASSPHRASE: ${{ inputs.passphrase }}
+        GNUPGHOME_DIR:      ${{ inputs.gnupghome }}
+      run: |
+        set -euo pipefail
+
+        # Signing is CONDITIONAL, and that is the safety property that makes it
+        # possible to land this before a key exists. These pipelines feed the
+        # in-OS update notifier: if publishing stops, every installed machine
+        # stops getting updates. A missing key is therefore a WARNING and an
+        # unsigned publish — exactly the behaviour that shipped before signing
+        # existed — never a failure. The moment the secret is set (by
+        # genesi-arch/devtools/genesi-keygen.sh) the same workflows start
+        # signing with no further edit.
+        if [ -z "${SIGNING_KEY:-}" ]; then
+          echo "enabled=0" >> "$GITHUB_OUTPUT"
+          echo "keyid=" >> "$GITHUB_OUTPUT"
+          echo "::warning::GENESI_SIGNING_KEY is not set — publishing UNSIGNED packages."
+          echo "::warning::Run genesi-arch/devtools/genesi-keygen.sh to create the key."
+          exit 0
+        fi
+
+        command -v gpg >/dev/null 2>&1 || pacman -S --noconfirm --needed gnupg
+
+        export GNUPGHOME="${GNUPGHOME_DIR}"
+        rm -rf "$GNUPGHOME"
+        mkdir -p "$GNUPGHOME"
+        chmod 700 "$GNUPGHOME"
+        echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+
+        printf '%s\n' "${SIGNING_KEY}" | gpg --batch --quiet --import
+
+        KEYID="${SIGNING_KEY_ID:-}"
+        if [ -z "${KEYID}" ]; then
+          KEYID="$(gpg --batch --with-colons --list-secret-keys \
+                    | awk -F: '/^fpr:/ { print $10; exit }')"
+        fi
+        [ -n "${KEYID}" ] || { echo "::error::imported key has no fingerprint"; exit 1; }
+
+        # Trust our own key in this throwaway keyring, or every --detach-sign
+        # stops to ask whether we really mean it.
+        printf '%s:6:\n' "${KEYID}" | gpg --batch --import-ownertrust
+
+        # An expired key signs nothing, and to a machine already on
+        # SigLevel = Required that is indistinguishable from an attack. Warn
+        # while renewing is still a calm afternoon rather than an outage.
+        EXPIRY="$(gpg --batch --with-colons --list-keys "${KEYID}" \
+                   | awk -F: '/^pub:/ { print $7; exit }')"
+        if [ -n "${EXPIRY:-}" ] && [ "${EXPIRY}" != "0" ]; then
+          DAYS_LEFT=$(( ( EXPIRY - $(date +%s) ) / 86400 ))
+          echo "Signing key expires in ${DAYS_LEFT} day(s)."
+          if [ "${DAYS_LEFT}" -lt 0 ]; then
+            echo "::error::the Genesi signing key EXPIRED $(( -DAYS_LEFT )) day(s) ago — renew it before publishing"
+            exit 1
+          elif [ "${DAYS_LEFT}" -lt 90 ]; then
+            echo "::warning::the Genesi signing key expires in ${DAYS_LEFT} day(s) — renew with: gpg --quick-set-expire ${KEYID} 5y"
+          fi
+        fi
+
+        # A passphrase buys little here (it would live in the same secret store
+        # as the key itself), but support one so a maintainer who wants it is
+        # not blocked. Loopback pinentry, because there is no tty.
+        if [ -n "${SIGNING_PASSPHRASE:-}" ]; then
+          printf '%s' "${SIGNING_PASSPHRASE}" > "$GNUPGHOME/passphrase"
+          chmod 600 "$GNUPGHOME/passphrase"
+        fi
+
+        # ── THE invariant ────────────────────────────────────────────────────
+        #
+        # If genesi-keyring ships key A while CI signs with key B, everything
+        # looks healthy right up until a machine is moved to SigLevel =
+        # Required — and then that machine can never update again, with no
+        # obvious cause. Catch it here, before anything is built.
+        KEYRING_DIR="${GITHUB_WORKSPACE}/genesi-arch/packages/genesi-keyring"
+        if [ ! -f "${KEYRING_DIR}/genesi.gpg" ] || [ ! -f "${KEYRING_DIR}/genesi-trusted" ]; then
+          echo "::error::a signing key is configured but genesi-keyring has no public key."
+          echo "::error::Run genesi-arch/devtools/genesi-keygen.sh and commit packages/genesi-keyring/."
+          exit 1
+        fi
+        if ! grep -qi "^${KEYID}:" "${KEYRING_DIR}/genesi-trusted"; then
+          echo "::error::genesi-trusted does not list the signing key ${KEYID}:"
+          cat "${KEYRING_DIR}/genesi-trusted"
+          exit 1
+        fi
+        probe="$(mktemp -d)"
+        GNUPGHOME="$probe" gpg --batch --quiet --import "${KEYRING_DIR}/genesi.gpg"
+        if ! GNUPGHOME="$probe" gpg --batch --list-keys "${KEYID}" >/dev/null 2>&1; then
+          rm -rf "$probe"
+          echo "::error::genesi.gpg does not contain the signing key ${KEYID}"
+          exit 1
+        fi
+        rm -rf "$probe"
+
+        echo "enabled=1" >> "$GITHUB_OUTPUT"
+        echo "keyid=${KEYID}" >> "$GITHUB_OUTPUT"
+        echo "Signing enabled with key ${KEYID}, and genesi-keyring ships it."

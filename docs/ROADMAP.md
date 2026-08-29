@@ -680,6 +680,37 @@ packages** built and published by CI.
 - [x] Installed systems update via plain `pacman -Syu` or the in-OS notifier
 - [x] Reproducible CI build inside a `cachyos-v3` container with CachyOS repos
 
+### Repository signing 🟦 machinery shipped, key pending
+
+Every Genesi repo was `SigLevel = Optional TrustAll`, which means pacman
+installed whatever was at the repository URL, as root, without checking who
+produced it. Fine while the only user builds it themselves; not fine the moment
+a stranger installs Genesi.
+
+- [x] `genesi-keyring` — ships the public key, imports it with `pacman-key
+      --populate genesi`. Guarded so it cannot break a pacstrap that has not
+      initialised a keyring yet.
+- [x] All three publish pipelines (`[genesi]`, `[genesi-apps]`, `[genesi-cuda]`)
+      sign packages **and** the database with one shared key, via the
+      `.github/actions/signing-key` composite action. Signatures are cut before
+      `repo-add`, or the database never records them.
+- [x] Signing is **conditional on the secret existing**: with no key the
+      pipelines publish exactly as they always did, with a warning. This
+      pipeline feeds the in-OS update notifier — it must never fail closed.
+- [x] `ci/keyring-wiring-test.sh` — the key and the packages referencing it must
+      appear together, checked in **both** directions. A dependency on a package
+      CI is still skipping would break every install and the ISO build.
+- [x] `ci/repo-signature-test.sh` — verifies the **live** repository against the
+      key users actually have. The gate for raising `SigLevel`.
+- [ ] **Generate the key** — one command, on the maintainer's machine:
+      `genesi-arch/devtools/genesi-keygen.sh`. CI never generates it; a key CI
+      could regenerate is a key anyone with push access could replace.
+- [ ] **Raise `SigLevel` to `Required`** — only after the keyring has reached
+      installed machines on a normal `-Syu`. Doing it first leaves a machine
+      rejecting every Genesi package, including the keyring that would fix it.
+
+Full lifecycle, including rotation: `genesi-arch/docs/PACKAGE-SIGNING.md`.
+
 ### Desktop polish (in progress)
 - [x] Klassy compiled/configured for rounded window corners (14px)
 - [ ] Custom taskbar icon selection style — rounded pill highlight + hover animation
