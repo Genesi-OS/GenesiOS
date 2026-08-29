@@ -697,9 +697,19 @@ jobs:
           # untestable case (2) would have been read as 0 and fallen through to
           # the error — a missing pacman would have BLOCKED the publish. That is
           # the one thing this pipeline must never do.
+          #
+          # Which machine to impersonate follows the signing switch. Unsigned:
+          # one with no key, because a stray signature would lock it out.
+          # Signed: one that HAS genesi-keyring -- because once signing is
+          # deliberately on, a keyring-less machine is MEANT to be rejected, and
+          # keeping the old assumption would make this gate block every publish
+          # forever.
+          CONSUMABLE_ARGS=()
+          if [ "${SIGN_ENABLED:-0}" = "1" ]; then
+            CONSUMABLE_ARGS=(--with-key)
+          fi
           rc=0
-          bash genesi-arch/ci/repo-consumable-test.sh \
-            "$GITHUB_WORKSPACE/genesi-arch/packages/repo" --db "${DB}" || rc=$?
+          bash genesi-arch/ci/repo-consumable-test.sh             "$GITHUB_WORKSPACE/genesi-arch/packages/repo" --db "${DB}"             ${CONSUMABLE_ARGS[@]+"${CONSUMABLE_ARGS[@]}"} || rc=$?
           case "${rc}" in
             0) ;;
             2) echo "::warning::could not verify the repo is consumable — publishing anyway" ;;

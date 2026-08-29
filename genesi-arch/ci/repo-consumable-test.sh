@@ -43,9 +43,13 @@ set -uo pipefail
 
 REPODIR=""
 DB="genesi"
+# 0 = pretend to be a machine with no Genesi key (the pre-signing world).
+# 1 = pretend to be a machine that has genesi-keyring (the post-signing world).
+WITH_KEY=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --db) DB="${2:?--db needs a name}"; shift ;;
+        --with-key) WITH_KEY=1 ;;
         -h|--help) sed -n '2,42p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
         *) REPODIR="$1" ;;
     esac
@@ -89,6 +93,36 @@ mkdir -p "${WORK}/root" "${WORK}/dbpath" "${WORK}/gpg"
 pacman-key --gpgdir "${WORK}/gpg" --init >/dev/null 2>&1 \
     || untestable "could not initialise an isolated keyring"
 
+# ── Which machine are we pretending to be? ───────────────────────────────────
+#
+# Before signing, the machine that matters is one with NO Genesi key, because a
+# stray signature would lock it out -- that is the default, and it is the whole
+# reason this file exists.
+#
+# Once signing is deliberately switched on, that same machine is EXPECTED to be
+# rejected: it is precisely why genesi-keyring had to ship first. Keeping the
+# old assumption would turn this gate into a permanent block on every publish,
+# which is the failure this project keeps re-learning. So with --with-key we
+# become the machine we actually support: one that has genesi-keyring.
+if [ "${WITH_KEY}" -eq 1 ]; then
+    PUB="${ROOT}/genesi-arch/packages/genesi-keyring/genesi.gpg"
+    TRUSTED="${ROOT}/genesi-arch/packages/genesi-keyring/genesi-trusted"
+    if [ ! -f "${PUB}" ]; then
+        untestable "--with-key given but packages/genesi-keyring/genesi.gpg is missing"
+    fi
+    if ! pacman-key --gpgdir "${WORK}/gpg" --add "${PUB}" >/dev/null 2>&1; then
+        untestable "could not add the Genesi key to the isolated keyring"
+    fi
+    while IFS=: read -r _fpr _rest; do
+        if [ -n "${_fpr}" ]; then
+            pacman-key --gpgdir "${WORK}/gpg" --lsign-key "${_fpr}" >/dev/null 2>&1 || true
+        fi
+    done < "${TRUSTED}"
+    echo "acting as: a machine WITH genesi-keyring installed"
+else
+    echo "acting as: a machine WITHOUT the Genesi key"
+fi
+
 cat > "${WORK}/pacman.conf" <<EOF
 [options]
 HoldPkg = pacman glibc
@@ -110,7 +144,11 @@ if out="$(pacman --config "${WORK}/pacman.conf" \
                  -Sy --noconfirm 2>&1)"; then
     printf '%s\n' "${out}" | sed 's/^/  /'
     echo
-    echo "  PASS  a machine without the Genesi key can sync this repository"
+    if [ "${WITH_KEY}" -eq 1 ]; then
+        echo "  PASS  a machine WITH genesi-keyring can sync this repository"
+    else
+        echo "  PASS  a machine WITHOUT the Genesi key can sync this repository"
+    fi
 else
     printf '%s\n' "${out}" | sed 's/^/  /'
     echo

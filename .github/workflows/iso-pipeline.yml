@@ -156,6 +156,31 @@ jobs:
           mv /etc/pacman.conf.bak /etc/pacman.conf
           pacman-key --init || true
           pacman-key --populate archlinux cachyos || true
+
+          # ── Trust the Genesi key IN THIS CONTAINER ───────────────────────
+          #
+          # Once [genesi] is signed, mkarchiso and pacstrap install genesi-*
+          # packages from it, and `SigLevel = Optional TrustAll` rejects a
+          # signature whose key the container has never seen -- so the ISO
+          # build would die with `key ... is unknown`, exactly the way every
+          # machine's `pacman -Sy` did on 2026-08-29. Nothing would have caught
+          # it until the first build after signing was switched on.
+          #
+          # No chicken-and-egg: the PUBLIC key is a file in this checkout, not
+          # something fetched from the repository we are about to verify.
+          # Harmless before signing exists -- it just trusts a key nothing is
+          # signed with yet.
+          if [ -f genesi-arch/packages/genesi-keyring/genesi.gpg ]; then
+            pacman-key --add genesi-arch/packages/genesi-keyring/genesi.gpg || true
+            while IFS=: read -r _fpr _rest; do
+              if [ -n "${_fpr}" ]; then
+                pacman-key --lsign-key "${_fpr}" || true
+              fi
+            done < genesi-arch/packages/genesi-keyring/genesi-trusted
+            echo "Trusted the Genesi signing key in this container."
+          else
+            echo "No Genesi signing key in the checkout yet — nothing to trust."
+          fi
           # Validation tools (now verify against the fresh keyring). If a verified
           # sync STILL trips (db caught mid-rotation), retry once with
           # SigLevel=Never — acceptable for CI build/validation tooling.
@@ -242,6 +267,31 @@ jobs:
           mv /etc/pacman.conf.bak /etc/pacman.conf
           pacman-key --init || true
           pacman-key --populate archlinux cachyos || true
+
+          # ── Trust the Genesi key IN THIS CONTAINER ───────────────────────
+          #
+          # Once [genesi] is signed, mkarchiso and pacstrap install genesi-*
+          # packages from it, and `SigLevel = Optional TrustAll` rejects a
+          # signature whose key the container has never seen -- so the ISO
+          # build would die with `key ... is unknown`, exactly the way every
+          # machine's `pacman -Sy` did on 2026-08-29. Nothing would have caught
+          # it until the first build after signing was switched on.
+          #
+          # No chicken-and-egg: the PUBLIC key is a file in this checkout, not
+          # something fetched from the repository we are about to verify.
+          # Harmless before signing exists -- it just trusts a key nothing is
+          # signed with yet.
+          if [ -f genesi-arch/packages/genesi-keyring/genesi.gpg ]; then
+            pacman-key --add genesi-arch/packages/genesi-keyring/genesi.gpg || true
+            while IFS=: read -r _fpr _rest; do
+              if [ -n "${_fpr}" ]; then
+                pacman-key --lsign-key "${_fpr}" || true
+              fi
+            done < genesi-arch/packages/genesi-keyring/genesi-trusted
+            echo "Trusted the Genesi signing key in this container."
+          else
+            echo "No Genesi signing key in the checkout yet — nothing to trust."
+          fi
 
           # mkarchiso roda como root; prepare-and-build.sh espera um usuário
           # NÃO-root + sudo (recusa rodar como root). Criamos esse usuário.
