@@ -58,6 +58,9 @@ jobs:
         id: signing
         uses: ./.github/actions/signing-key
         with:
+          # A repository VARIABLE, not a secret, and separate from the key:
+          # the key existing is not permission to use it.
+          enabled:        ${{ vars.GENESI_SIGNING_ENABLED }}
           signing_key:    ${{ secrets.GENESI_SIGNING_KEY }}
           signing_key_id: ${{ secrets.GENESI_SIGNING_KEY_ID }}
           passphrase:     ${{ secrets.GENESI_SIGNING_KEY_PASSPHRASE }}

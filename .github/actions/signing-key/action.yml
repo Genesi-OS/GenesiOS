@@ -11,6 +11,29 @@ description: >
 # user, not by CI. Hence one place.
 
 inputs:
+  enabled:
+    description: >
+      Must be exactly "1" for signing to happen. This is a SEPARATE switch from
+      the key existing, and the separation was paid for.
+
+      On 2026-08-29 the key was generated and signing began on the very next
+      publish — because "the secret exists" was the only condition. Every
+      installed machine's `pacman -Sy` broke immediately with
+      `error: genesi: key "75C1C187…" is unknown`, and so did the ISO build.
+
+      The cause was a wrong belief about `SigLevel = Optional TrustAll`, written
+      into the rollout plan as a safety guarantee: that it accepts signed and
+      unsigned alike. It does not. `TrustAll` means "accept keys in the keyring
+      whatever their trust level" — the key must still BE in the keyring.
+      `Optional` only forgives an ABSENT signature; a signature present with an
+      unknown key is a hard error.
+
+      So the order in the original plan was backwards. The keyring has to be ON
+      machines before the first signature is published, not after, and nothing
+      but a person can know when that has happened. Hence a switch a person
+      throws, rather than a condition CI infers.
+    required: false
+    default: ''
   signing_key:
     description: 'Armored private key (secrets.GENESI_SIGNING_KEY)'
     required: false
@@ -46,6 +69,7 @@ runs:
     - id: setup
       shell: bash
       env:
+        SIGNING_ENABLED:    ${{ inputs.enabled }}
         SIGNING_KEY:        ${{ inputs.signing_key }}
         SIGNING_KEY_ID:     ${{ inputs.signing_key_id }}
         SIGNING_PASSPHRASE: ${{ inputs.passphrase }}
@@ -53,14 +77,27 @@ runs:
       run: |
         set -euo pipefail
 
+        # THE SWITCH. Checked before the key is even looked at, because the key
+        # existing is not permission to use it — see the `enabled` input above
+        # for the outage that established the difference.
+        if [ "${SIGNING_ENABLED:-}" != "1" ]; then
+          echo "enabled=0" >> "$GITHUB_OUTPUT"
+          echo "keyid=" >> "$GITHUB_OUTPUT"
+          if [ -n "${SIGNING_KEY:-}" ]; then
+            echo "A signing key is configured but signing is OFF (repository"
+            echo "variable GENESI_SIGNING_ENABLED is not \"1\"). Publishing unsigned."
+            echo "Turn it on only once genesi-keyring has REACHED installed"
+            echo "machines — see genesi-arch/docs/PACKAGE-SIGNING.md."
+          fi
+          exit 0
+        fi
+
         # Signing is CONDITIONAL, and that is the safety property that makes it
         # possible to land this before a key exists. These pipelines feed the
         # in-OS update notifier: if publishing stops, every installed machine
         # stops getting updates. A missing key is therefore a WARNING and an
         # unsigned publish — exactly the behaviour that shipped before signing
-        # existed — never a failure. The moment the secret is set (by
-        # genesi-arch/devtools/genesi-keygen.sh) the same workflows start
-        # signing with no further edit.
+        # existed — never a failure.
         if [ -z "${SIGNING_KEY:-}" ]; then
           echo "enabled=0" >> "$GITHUB_OUTPUT"
           echo "keyid=" >> "$GITHUB_OUTPUT"

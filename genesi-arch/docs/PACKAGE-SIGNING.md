@@ -10,10 +10,12 @@ SigLevel = Optional TrustAll
 Server = https://raw.githubusercontent.com/Genesi-OS/GenesiOS/main/genesi-arch/repo/$arch
 ```
 
-`Optional` means pacman does not require a signature. `TrustAll` means that if
-one happens to be there, a signature from a key nobody has ever heard of is
-accepted anyway. Together they say: **install whatever is at that URL, as root,
-without checking who produced it.**
+`Optional` means pacman does not require a signature, and nothing published
+here carried one — so in practice this said: **install whatever is at that URL,
+as root, without checking who produced it.**
+
+(`TrustAll` is a weaker statement than it looks, and the next section is about
+exactly that. It does not mean "accept any key".)
 
 That is defensible while the only user is the person who builds it. It stops
 being defensible the moment a stranger installs Genesi, because they are not
@@ -24,24 +26,52 @@ Signing closes that: packages carry a detached signature, the database carries
 one too, and `genesi-keyring` puts the public key on every machine so it can
 tell a Genesi package from a file that merely arrived from the right place.
 
-## The rollout has three steps and they are not interchangeable
+## What `Optional TrustAll` actually means
 
-The order matters more than any individual piece. Getting it wrong does not
-produce a warning — it produces machines that can no longer update, including
-past the update that would have fixed them.
+Get this wrong and everything below is wrong. It was gotten wrong on
+2026-08-29, and it took the whole fleet's updates down for half an hour.
+
+> **`TrustAll` does NOT mean "accept any key".** It means "accept keys **that are
+> in the keyring**, whatever their trust level". The key must still be present.
+>
+> **`Optional` only forgives an ABSENT signature.** A signature that IS present
+> and cannot be verified is a hard error, not a downgrade to unsigned.
+
+So `Optional TrustAll` on a machine with no Genesi key does **not** tolerate a
+signed repository. It rejects it, at `pacman -Sy`, before any package is even
+considered:
+
+```
+error: genesi: key "75C1C18796E7CB85EC89E557E422F2DA85C6BD0E" is unknown
+error: failed to synchronize all databases (unexpected error)
+```
+
+## The rollout has three steps and the order is the opposite of the obvious one
+
+The obvious order is "sign first, distribute the key second". That is backwards,
+and it is what broke: publishing a signature is what makes the key *required*,
+so the key has to be there **before** the first signature exists, not after.
 
 | # | Step | State of the world |
 |---|---|---|
-| 1 | **CI signs** | Packages gain `.sig` files. Clients are still `Optional TrustAll`, so nothing changes for them. |
-| 2 | **The keyring reaches machines** | `genesi-keyring` is pulled in by `genesi-desktop` on a normal `pacman -Syu`. Still `Optional TrustAll`. |
+| 1 | **`genesi-keyring` ships UNSIGNED** | It is an ordinary package. Machines pick it up on a normal `pacman -Syu` and import the key. Nothing is signed yet, so nothing can reject anything. |
+| 2 | **Signing is switched on** | Repository variable `GENESI_SIGNING_ENABLED=1`. Only now do signatures appear — and every machine that did step 1 can verify them. |
 | 3 | **`SigLevel` becomes `Required`** | Machines now refuse anything Genesi did not sign. |
 
-Step 3 before step 2 is the catastrophic one: a machine set to `Required` with
-no key rejects every Genesi package, including `genesi-keyring` itself. There is
-no way out of that from inside the machine except editing `/etc/pacman.conf` by
-hand.
+Two ways to get this wrong, and both are outages:
 
-## Step 1 — create the key (once)
+- **Step 2 before step 1 finishes** — machines cannot verify a signature whose
+  key they do not have, and `pacman -Sy` fails. They cannot fetch the keyring to
+  fix it, because fetching it needs the repository that is now failing. The only
+  escape is editing `/etc/pacman.conf` by hand. *This is the one that happened.*
+- **Step 3 before step 1 finishes** — same shape, more permanent.
+
+The switch in step 2 is deliberately a **repository variable a person sets**,
+not a condition CI infers from the key existing. CI cannot know whether machines
+have picked up the keyring yet; only a person can. Wiring signing to "the secret
+exists" is precisely what caused the outage.
+
+## Step 1 — create the key (once), and DO NOT switch signing on
 
 ```bash
 ./genesi-arch/devtools/genesi-keygen.sh
@@ -78,11 +108,21 @@ Everything above is already in place and does nothing:
 `genesi-arch/ci/keyring-wiring-test.sh` enforces exactly that, in both
 directions, on every push.
 
-## Step 2 — let the keyring reach machines
+## Step 2 — let the keyring reach machines, THEN switch signing on
 
 Nothing to do but wait for a publish and a normal update cycle. `genesi-keyring`
 is a dependency of the `genesi-desktop` meta-package, which every installed
 system has, so `pacman -Syu` pulls it.
+
+Only when that has actually happened:
+
+```bash
+gh variable set GENESI_SIGNING_ENABLED --body 1
+```
+
+Until that variable is `1`, all three pipelines publish unsigned no matter what
+secrets exist. That is the switch, and it is a person's decision because CI
+cannot see whether anyone's machine has the key yet.
 
 This is the mechanism `genesi-desktop`'s own header warns about, and it has
 failed before: `genesi-mesh` shipped to the repo and reached **no machine at
