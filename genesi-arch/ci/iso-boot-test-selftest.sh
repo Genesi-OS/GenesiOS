@@ -99,6 +99,27 @@ fi
 bash "${SRC}" /definitely/not/an.iso >/dev/null 2>&1
 ck "a missing ISO is 'untestable' (2), not 'does not boot' (1)" "$?" "2"
 
+# ── The markers are the test ─────────────────────────────────────────────────
+#
+# These strings were not guessed; they were read off a real serial console on
+# 2026-08-29, after the first version of this test failed a perfectly good ISO
+# by looking for text neither bootloader ever prints. GRUB 2.14 says
+# "Booting `Genesi OS'", not "Loading Linux"; syslinux says "Automatic boot in
+# N seconds..." and then goes silent without naming the kernel at all.
+#
+# A marker that no longer matches does not make the test fail — it makes the
+# test fail a GOOD image, which is worse, because the reflex is to distrust the
+# ISO rather than the test.
+for marker in "Automatic boot in" "Booting" "Welcome to Genesi OS" \
+              "Mounting '/dev/loop" "Reached target"; do
+    if grep -qF -- "${marker}" "${SRC}"; then
+        printf '  PASS  still looks for %s\n' "\"${marker}\""
+    else
+        printf '  FAIL  lost the marker %s — a real boot would look like a failure\n' "\"${marker}\""
+        fails=$((fails + 1))
+    fi
+done
+
 for code in 0 1 2; do
     if grep -q "^#   ${code} " "${SRC}"; then
         printf '  PASS  exit code %s is documented\n' "${code}"

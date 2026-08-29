@@ -323,6 +323,13 @@ jobs:
             || echo "::warning::could not install QEMU/OVMF — the boot test will report itself untestable"
 
       - name: 🔌 Teste de boot da ISO (QEMU)
+        # `shell: bash` is NOT optional here. Without it this job's steps run
+        # under `sh -e {0}`, where the script's exit status aborts the step
+        # immediately and the `case` below never executes -- making exit 2
+        # ("could not be tested") indistinguishable from exit 1 ("does not
+        # boot") and blocking the publish for a missing qemu. The whole point
+        # of having two failure codes is lost to the default shell.
+        shell: bash
         run: |
           set -uo pipefail
           mkdir -p /tmp/bootlogs

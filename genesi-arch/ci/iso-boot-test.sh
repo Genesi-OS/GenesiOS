@@ -199,15 +199,26 @@ stage_bios() {
         return
     fi
 
-    # DEFAULT cos64 + TIMEOUT 150 (15s) means it should boot itself. Watch for
-    # the handoff rather than trusting the menu alone: a menu that never boots
-    # anything is exactly the shape the old `DEFAULT arch64` bug had.
+    # What syslinux ACTUALLY puts on the serial line, confirmed from a real run
+    # (2026-08-29): the menu, then "Automatic boot in 15 … 1 second...", then it
+    # clears the screen and goes silent. It never announces the kernel it loads.
+    # And it cannot: the entry it boots carries `quiet splash` with no
+    # console=ttyS0, so the moment syslinux hands over, this port goes dead.
+    #
+    # The first version of this looked for "Loading"/"vmlinuz" and failed a
+    # perfectly good ISO because of it. So the countdown is the strongest thing
+    # this stage can honestly assert — it proves the menu resolved a default
+    # entry and is committed to booting it. Whether that entry EXISTS is
+    # answered statically by ci/bootloader-config-test.sh, and whether the
+    # system behind it comes up is answered by the kernel stage below. Between
+    # them the old `DEFAULT arch64` bug is still covered, without this stage
+    # inventing evidence it does not have.
     deadline=$(( $(date +%s) + 90 ))
-    if hit="$(wait_for "${pid}" "${log}" "${deadline}" "Loading" "vmlinuz" "initramfs")"; then
-        pass "syslinux started loading a kernel (matched: ${hit})"
+    if hit="$(wait_for "${pid}" "${log}" "${deadline}"                 "Automatic boot in" "Booting" "Loading" "vmlinuz")"; then
+        pass "syslinux is booting its default entry (matched: ${hit})"
     else
-        bad "syslinux showed its menu but never booted an entry —
-        this is what a DEFAULT naming a nonexistent LABEL looks like"
+        bad "syslinux showed its menu but never started a countdown —
+        nothing is going to boot on BIOS"
         dump_tail "${log}"
         FAILURES=$((FAILURES + 1))
     fi
@@ -288,12 +299,20 @@ stage_uefi() {
         return
     fi
 
-    # timeout=10, default=genesi. GRUB echoes the loads to the serial terminal.
+    # timeout=10, default=genesi. What GRUB 2.14 actually writes to serial when
+    # the countdown expires is:
+    #
+    #     Booting `Genesi OS'
+    #
+    # NOT "Loading Linux" — that was the marker the first version looked for,
+    # and it failed an ISO that had just booted correctly. After this line the
+    # port goes silent, because the entry carries `quiet splash` and no
+    # console=ttyS0; proving what happens next is the kernel stage's job.
     deadline=$(( $(date +%s) + 90 ))
-    if hit="$(wait_for "${pid}" "${log}" "${deadline}" "Loading Linux" "Loading initial ramdisk" "vmlinuz")"; then
+    if hit="$(wait_for "${pid}" "${log}" "${deadline}"                 "Booting" "Loading Linux" "Loading initial ramdisk")"; then
         pass "GRUB handed off to the kernel (matched: ${hit})"
     else
-        bad "GRUB showed its menu but never loaded a kernel"
+        bad "GRUB showed its menu but never booted an entry"
         dump_tail "${log}"
         FAILURES=$((FAILURES + 1))
     fi
