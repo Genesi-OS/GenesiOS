@@ -137,18 +137,50 @@ MSG
     exit 1
 fi
 
-# One more: the packages have to be installable, not just listed. `-Sp` resolves
-# and would surface a package-level signature problem the database sync does not.
+# One more: the trust anchor has to be reachable, not merely listed. `-Sp` makes
+# pacman produce the URL it would download from, which is a package-level
+# operation the database sync does not exercise.
+#
+# `--nodeps --nodeps` (skip dep checks entirely) is not laziness — it is the
+# difference between testing the repository and testing this script's own
+# scaffolding. The config above deliberately contains ONLY [genesi]: the whole
+# point is to look at our repository in isolation. But genesi-keyring depends on
+# `pacman`, which lives in [core], so a full resolution fails with
+#
+#     unable to satisfy dependency 'pacman' required by genesi-keyring
+#
+# — a fact about the test's own pacman.conf, not about the repository. The first
+# version of this check did resolve deps, and blocked every publish for it. Real
+# dependency resolution is validate-install.sh's job, against the full set of
+# repositories, which is where it belongs.
 echo
-echo "--- resolving genesi-desktop the way an install does ---"
+echo "--- can pacman actually reach the trust anchor? ---"
+
+# And only if there IS one. Before the key is generated, genesi-keyring has no
+# payload and publish-packages skips building it — demanding it here would block
+# every publish for the state the pipeline is explicitly designed to tolerate.
+# Whether the package SHOULD exist is ci/keyring-wiring-test.sh's question, and
+# it answers it in both directions; this one is only about reachability.
+if ! pacman --config "${WORK}/pacman.conf" \
+            --root "${WORK}/root" \
+            --dbpath "${WORK}/dbpath" \
+            -Si genesi-keyring >/dev/null 2>&1; then
+    echo "  SKIP  genesi-keyring is not in this repository yet (no signing key)"
+    echo
+    echo "repository is consumable by a machine in the field: OK"
+    exit 0
+fi
+
 if out="$(pacman --config "${WORK}/pacman.conf" \
                  --root "${WORK}/root" \
                  --dbpath "${WORK}/dbpath" \
-                 -Sp --noconfirm genesi-keyring 2>&1)"; then
-    echo "  PASS  genesi-keyring resolves from this repository"
+                 -Sp --nodeps --nodeps --noconfirm genesi-keyring 2>&1)"; then
+    printf '%s\n' "${out}" | sed 's/^/  /'
+    echo "  PASS  genesi-keyring is in the database and pacman can fetch it"
 else
     printf '%s\n' "${out}" | sed 's/^/  /'
-    echo "::error::genesi-keyring does not resolve — the trust anchor is unreachable"
+    echo "::error::genesi-keyring is not reachable from this repository —"
+    echo "::error::the package that carries the signing key cannot be installed."
     exit 1
 fi
 
