@@ -301,6 +301,30 @@ jobs:
           echo "ISO_PATH=$ISO" >> "$GITHUB_ENV"
           echo "✅ ISO produzida: $ISO ($(du -h "$ISO" | cut -f1))"
 
+      # ── Can the binaries inside actually run? ────────────────────────
+      #
+      # Between "the packages resolve" (job 1) and "the image boots" (the QEMU
+      # test below) there was a gap wide enough to publish an ISO that booted
+      # perfectly and could not install anything: calamares was linked against
+      # libboost_python314.so.1.91.0 while the image carried 1.92.0. Package
+      # NAMES resolved, so the dry-run was happy. The image booted, so the boot
+      # test was happy. Nobody asked whether the binaries could start.
+      #
+      # Reads ELF headers straight out of the built airootfs — no chroot, no
+      # emulation, a few seconds. Runs BEFORE the boot test because it is
+      # cheaper and its answer is more specific.
+      - name: 🔗 Bibliotecas dos binários da ISO
+        shell: bash
+        run: |
+          set -uo pipefail
+          rc=0
+          python3 genesi-arch/ci/airootfs-linkage-test.py             genesi-arch/build/x86_64/airootfs || rc=$?
+          case "${rc}" in
+            0) echo "✅ Todo binário achou suas bibliotecas." ;;
+            2) echo "::warning::não deu pra verificar a linkagem (airootfs já limpo) — publicação segue" ;;
+            *) echo "::error::a ISO contém binário que não inicia — publicação bloqueada"; exit 1 ;;
+          esac
+
       - name: 📊 Checksum da ISO
         run: |
           sha256sum "$ISO_PATH" | tee "$ISO_PATH.sha256"

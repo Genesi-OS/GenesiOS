@@ -15,7 +15,28 @@ breeze-gtk
 brltty
 btrfs-progs
 cachy-chroot
-cachyos-calamares-next
+# genesi-calamares, NOT cachyos-calamares-next.
+#
+# 2026-08-29, found by booting the ISO in a VM: the installer would not start.
+#
+#   calamares: error while loading shared libraries:
+#   libboost_python314.so.1.91.0: cannot open shared object file
+#
+# boost went 1.91 -> 1.92, and cachyos-calamares-next 3.4.2-13 is still linked
+# against the old soname while the ISO installs boost-libs 1.92.0-1. Nothing
+# there is under our control, and the ISO boots perfectly while being unable to
+# install anything -- the worst shape a release can take.
+#
+# Our own package IS under our control: it is rebuilt on every publish, so it
+# links against whatever boost is current. Verified by pulling
+# genesi-calamares-3.3.11-5 out of the repo and reading its libcalamares.so:
+#   ours   -> libboost_python314.so.1.92.0   (present on the ISO)
+#   theirs -> libboost_python314.so.1.91.0   (does not exist)
+#
+# It ships every module the Genesi settings.conf schedules (pacstrap,
+# netinstall, packagechooser, shellprocess, zfs) and provides/replaces
+# `calamares`, so the swap is a drop-in.
+genesi-calamares
 cachyos-keyring
 cachyos-mirrorlist
 chwd

@@ -32,7 +32,12 @@ main() {
     local ISO_VERSION="$(cat /etc/version-tag)"
     echo "USING ISO VERSION: ${ISO_VERSION}"
 
-    sudo pacman -Sy --noconfirm cachyos-calamares-next
+    # genesi-calamares, not cachyos-calamares-next. This line runs at the
+    # moment the user clicks "Install Genesi OS", so leaving it would drag the
+    # broken CachyOS build back in and undo the package-list fix silently --
+    # the ISO would ship correct and break on the one click that matters.
+    # See packages_desktop.x86_64 for the boost soname story.
+    sudo pacman -Sy --noconfirm genesi-calamares
 
     # Copy Genesi OS Calamares configuration (overwrite CachyOS defaults)
     echo ">>> Applying Genesi OS Calamares configuration..."
