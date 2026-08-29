@@ -424,6 +424,72 @@ jobs:
 
           echo "✅ Uploaded single-file ISO to R2 (one object, overwritten — \$0 storage)"
 
+          # ── Prove it. ────────────────────────────────────────────────────
+          #
+          # "It overwrites a fixed key" is a property of the line above, and
+          # every line above has been correct right up until the day it wasn't.
+          # The bucket is on a 10 GB free tier and the ISO is ~3.2 GB, so THREE
+          # of them is a bill. Nothing was checking; this checks.
+          #
+          # Reports, never deletes: extra objects are the user's data, and a
+          # pipeline that quietly removes things from a bucket is a worse
+          # problem than the one it is solving. The incomplete-multipart
+          # cleanup above is the only thing here allowed to remove anything,
+          # because an aborted upload is not data — it is debris.
+          echo
+          echo "🔎 Conferindo que o bucket tem UMA ISO só…"
+          if listing="$(rclone lsjson "R2:${R2_BUCKET}" --s3-no-check-bucket 2>/dev/null)"; then
+            # `rclone lsjson` pretty-prints, so there is whitespace around the
+            # colons. A pattern assuming "Name":"..." matched nothing at all and
+            # cheerfully reported zero ISOs -- it would have waved through a
+            # bucket holding ten of them. Caught by running it against a sample
+            # listing before it ever saw the real bucket.
+            isos="$(printf '%s' "${listing}" \
+              | grep -oE '"Name"[[:space:]]*:[[:space:]]*"[^"]*\.iso"' \
+              | sed -E 's/.*"([^"]*\.iso)"$/\1/' || true)"
+            n_isos="$(printf '%s\n' "${isos}" | sed '/^$/d' | wc -l | tr -d ' ')"
+            total_bytes="$(printf '%s' "${listing}" \
+              | grep -oE '"Size"[[:space:]]*:[[:space:]]*[0-9]+' \
+              | grep -oE '[0-9]+$' \
+              | awk '{s+=$1} END {print s+0}')"
+            total_gb="$(awk -v b="${total_bytes}" 'BEGIN{printf "%.2f", b/1073741824}')"
+
+            # A listing with objects in it but zero ISOs parsed is not "the
+            # bucket is clean" — it is "the parser stopped understanding the
+            # output", which is the failure this check was JUST rewritten to
+            # fix. Reading it as clean is how a guard becomes decoration.
+            n_objs="$(printf '%s' "${listing}" | grep -cE '"Name"[[:space:]]*:' || true)"
+            if [ "${n_objs:-0}" -gt 0 ] && [ "${n_isos}" -eq 0 ]; then
+              echo "::error::o bucket tem ${n_objs} objeto(s) mas nenhum foi lido como .iso —"
+              echo "::error::a leitura da listagem quebrou; NÃO trate isso como bucket limpo."
+              printf '%s' "${listing}" | head -20
+              exit 1
+            fi
+
+            echo "   objetos .iso no bucket: ${n_isos}"
+            printf '%s\n' "${isos}" | sed 's/^/     - /'
+            echo "   tamanho total do bucket: ${total_gb} GB (free tier: 10 GB)"
+
+            if [ "${n_isos}" -gt 1 ]; then
+              echo "::error::O bucket tem ${n_isos} ISOs. Só pode existir UMA (genesi-os-latest.iso),"
+              echo "::error::sobrescrita a cada build. Cada extra são ~3.2 GB contra o free tier de 10 GB."
+              echo "::error::Apague as sobrando à mão — este passo não remove dados do bucket de propósito."
+              exit 1
+            fi
+            if [ "${n_isos}" -eq 1 ] && ! printf '%s' "${isos}" | grep -qx 'genesi-os-latest.iso'; then
+              echo "::error::a única ISO não se chama genesi-os-latest.iso — o link de download aponta para esse nome"
+              exit 1
+            fi
+            # 6 GB: bem acima de uma ISO + sidecar (~3.2 GB), bem abaixo do teto.
+            # Se passar disso, algo está acumulando antes de virar cobrança.
+            if awk -v b="${total_bytes}" 'BEGIN{exit !(b > 6442450944)}'; then
+              echo "::warning::o bucket está em ${total_gb} GB — bem acima de uma ISO só. Verifique o que está acumulando."
+            fi
+            echo "   ✅ uma ISO, sobrescrita no lugar"
+          else
+            echo "::warning::não consegui listar o bucket para conferir — o upload em si deu certo"
+          fi
+
       # ── GitHub Release (tags only) ─────────────────────────────────────────
       # The full ISO lives on Cloudflare R2 as ONE file (no 2GB cap, $0 egress).
       # GitHub Release assets are capped at 2GB, so a tagged Release carries just
