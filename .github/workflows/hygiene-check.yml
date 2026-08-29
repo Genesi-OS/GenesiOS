@@ -58,3 +58,21 @@ jobs:
       - name: genesi-keyring wiring is consistent
         shell: bash
         run: bash genesi-arch/ci/keyring-wiring-test.sh
+
+  bootloader-and-boot-test:
+    # Both are static/no-build, so they run on every push and PR. The bootloader
+    # check catches a menu pointing at an entry that does not exist in a second;
+    # the selftest keeps iso-boot-test.sh's polling logic honest, and that logic
+    # decides whether an ISO gets published.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Boot menus point at entries that exist
+        shell: bash
+        run: bash genesi-arch/ci/bootloader-config-test.sh
+
+      - name: The ISO boot test's own logic
+        shell: bash
+        run: bash genesi-arch/ci/iso-boot-test-selftest.sh

@@ -33,12 +33,29 @@ broken package must not be able to hold up an ISO and vice versa.
    from**. Installed systems pull that path over HTTPS, so a plain
    `pacman -Syu` (or the in-OS update notifier) delivers updates minutes after a
    merge. Runs on `main` **and** `develop` — see the channel table below.
-2. **ISO** — `iso-pipeline.yml`. Two stages: it first *validates the install*
-   (dependency dry-run plus a real `pacstrap` into a throwaway root) and only
-   then runs `mkarchiso`. **`main` only.** The finished ISO is uploaded to
+2. **ISO** — `iso-pipeline.yml`. Three stages now: it first *validates the
+   install* (dependency dry-run plus a real `pacstrap` into a throwaway root),
+   then runs `mkarchiso`, then **boots the finished image in QEMU** before
+   anything is published. **`main` only.** The finished ISO is uploaded to
    Cloudflare R2 as a single object that is replaced in place, so the download
    link never changes and only one ISO is ever stored. Older builds stay
    browsable as split GitHub Releases.
+
+   The boot gate (`ci/iso-boot-test.sh`) exists because the R2 object is
+   replaced in place: without it, a build that produces an unbootable image
+   reaches the public download link with nothing in between. It runs three
+   stages — SeaBIOS→syslinux, OVMF→GRUB, and a direct kernel boot using the
+   **real cmdline read out of the built ISO** — and asserts against the serial
+   console, which both bootloaders already mirror. It distinguishes "does not
+   boot" (blocks the publish) from "could not be tested" (warns and publishes),
+   so a QEMU package rename can never stop Genesi from shipping.
+
+   Its static half, `ci/bootloader-config-test.sh`, runs on every push in a
+   second. It was written after finding that `archiso_sys.cfg` had
+   `DEFAULT arch64` while the BIOS labels were `cos64*` — the `arch64_*` labels
+   are PXE-only. DEFAULT named nothing, and BIOS booted on vesamenu's fallback
+   to the first entry: correct by luck, one reordering away from booting the
+   wrong kernel.
 3. **Hygiene** — `hygiene-check.yml`. Repository sanity, on both branches.
 
 ### Update channels

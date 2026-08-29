@@ -305,6 +305,53 @@ jobs:
         run: |
           sha256sum "$ISO_PATH" | tee "$ISO_PATH.sha256"
 
+      # ── Does the image actually turn on? ─────────────────────────────────
+      #
+      # Deliberately placed HERE: after the ISO exists, before ANY publish step.
+      # The R2 upload replaces one fixed object, so without a gate in this exact
+      # position an unbootable build reaches the public download link with
+      # nothing in between. validate-install (job 1) proves the package set
+      # resolves and pacstraps; it cannot see anything downstream of "the image
+      # starts", which is where this project's real failures have all lived.
+      #
+      # Installed non-fatally and in its own step: a package rename in qemu or
+      # edk2 must be able to weaken the test, never to stop Genesi shipping.
+      - name: 🧰 Instalar QEMU para o teste de boot
+        continue-on-error: true
+        run: |
+          pacman -Sy --noconfirm --needed qemu-system-x86 edk2-ovmf libarchive \
+            || echo "::warning::could not install QEMU/OVMF — the boot test will report itself untestable"
+
+      - name: 🔌 Teste de boot da ISO (QEMU)
+        run: |
+          set -uo pipefail
+          mkdir -p /tmp/bootlogs
+          # No KVM on a standard runner means TCG, which is roughly an order of
+          # magnitude slower — hence the generous per-stage budget. It is spent
+          # only when something is wrong; a healthy boot matches its marker and
+          # moves on.
+          if [ -r /dev/kvm ]; then echo "KVM available"; else echo "No /dev/kvm — falling back to TCG"; fi
+          bash genesi-arch/ci/iso-boot-test.sh "$ISO_PATH" \
+            --timeout 600 --logs /tmp/bootlogs
+          rc=$?
+          case "$rc" in
+            0) echo "✅ A ISO bootou." ;;
+            2) echo "::warning::O teste de boot não pôde rodar — a ISO NÃO foi provada bootável, mas a publicação segue." ;;
+            *) echo "::error::A ISO construída NÃO boota — publicação bloqueada."; exit 1 ;;
+          esac
+
+      # The serial consoles are the only record of what the machine actually
+      # did. Keep them even when the test passed: the run where something
+      # starts booting slowly is the one you want to compare against.
+      - name: 📤 Upload dos logs de boot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iso-boot-serial-logs
+          path: /tmp/bootlogs/**
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: 📤 Upload ISO (artifact)
         uses: actions/upload-artifact@v4
         with:
