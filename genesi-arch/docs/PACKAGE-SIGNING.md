@@ -199,8 +199,20 @@ that key signed untrusted immediately.
   Arch and CachyOS and carry their own signatures; `pacman-target.conf` uses
   `SigLevel = Never` for the base system during pacstrap, which is an installer
   concern separate from this one.
-- **`genesi-keyring` is not in the live ISO package list.** The live environment
-  installs to the target via `pacman-target.conf`, which does not require a
-  signature, so the keyring only needs to be on the installed system — where the
-  `genesi-desktop` dependency puts it. One fewer moving part in the ISO build.
+- ~~**`genesi-keyring` is not in the live ISO package list.**~~ **Reversed
+  2026-08-29.** The reasoning was that the live environment installs to the
+  target via `pacman-target.conf`, which requires no signature, so only the
+  installed system needed the key. It missed one line in `calamares-online.sh`:
+
+  ```bash
+  sudo pacman -Sy --noconfirm genesi-calamares
+  ```
+
+  The installer downloads the installer from `[genesi]`, at the moment the user
+  clicks Install. A live medium without the key would fail that download the day
+  signing is switched on — breaking **installation**, not updates, in the one
+  place it hurts most. The ISO now carries `genesi-keyring`, and
+  `calamares-online.sh` names `genesi` in its `--populate` (explicit names
+  populate *only* those, so shipping the key file without naming it would leave
+  it present and untrusted). `ci/keyring-wiring-test.sh` checks both.
 - **No existing machine's `/etc/pacman.conf` is edited.** See step 3.

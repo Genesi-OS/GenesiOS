@@ -38,6 +38,25 @@ cachy-chroot
 # `calamares`, so the swap is a drop-in.
 genesi-calamares
 cachyos-keyring
+# The Genesi signing key, on the LIVE medium too.
+#
+# It was deliberately left out at first, reasoning that the live environment
+# installs to the target through pacman-target.conf, which requires no
+# signature -- so only the installed system needed it. That reasoning missed
+# one line, in calamares-online.sh:
+#
+#     sudo pacman -Sy --noconfirm genesi-calamares
+#
+# The installer downloads the installer from [genesi], at the moment the user
+# clicks "Install Genesi OS". The day signing is switched on, a live medium
+# without this key hits `key ... is unknown` and INSTALLATION breaks -- the
+# same mechanism that took down every machine's `pacman -Sy` on 2026-08-29,
+# lying in wait in the one place it would hurt most.
+#
+# Carrying it here also means the keyring genesi-prepare-pacman.sh copies to
+# the target already contains the Genesi key, instead of the target depending
+# on genesi-keyring's scriptlet having run.
+genesi-keyring
 cachyos-mirrorlist
 chwd
 genesi-update

@@ -11,7 +11,14 @@ main() {
     sudo pacman -Sy --noconfirm archlinux-keyring cachyos-keyring
     # Also populate the keys, before starting the Installer, to avoid above issue
     sudo pacman-key --init
-    sudo pacman-key --populate archlinux cachyos
+    # `genesi` too, and this is not cosmetic. `--populate` with explicit names
+    # populates ONLY those, so shipping genesi.gpg on the ISO while naming just
+    # archlinux and cachyos here would leave the key present and untrusted --
+    # the file sitting right there, doing nothing, which is the most confusing
+    # possible failure. `pacman-init.service` calls --populate with no
+    # arguments (all keyrings) and would have covered it; this script
+    # re-initialises from scratch and would have undone that.
+    sudo pacman-key --populate archlinux cachyos genesi
 
     # ── Do not start an install without a keyring ────────────────────────────
     #
@@ -33,7 +40,7 @@ main() {
         echo ">>> WARNING: the pacman keyring did not initialise — retrying"
         sudo rm -rf /etc/pacman.d/gnupg
         sudo pacman-key --init
-        sudo pacman-key --populate archlinux cachyos
+        sudo pacman-key --populate archlinux cachyos genesi
         if ! sudo pacman-key --list-keys >/dev/null 2>&1; then
             echo ">>> ERROR: still no usable pacman keyring."
             echo ">>> The installed system would come out unable to verify any"

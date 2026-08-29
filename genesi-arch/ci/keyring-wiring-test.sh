@@ -27,6 +27,7 @@ set -uo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 KEYRING_DIR="${ROOT}/genesi-arch/packages/genesi-keyring"
 DESKTOP="${ROOT}/genesi-arch/packages/genesi-desktop/PKGBUILD"
+ISOLIST="${ROOT}/genesi-arch/archiso/packages_desktop.x86_64"
 WORKFLOW="${ROOT}/.github/workflows/publish-packages.yml"
 
 fails=0
@@ -103,8 +104,34 @@ if grep -qE "^[[:space:]]*'genesi-keyring'" "${DESKTOP}"; then
     DESKTOP_DEPENDS=1
 fi
 
+# The live ISO carries it too, and for a reason that is easy to lose: the
+# installer downloads genesi-calamares from [genesi] at the moment the user
+# clicks Install. A live medium without the key would fail that download the
+# day signing is switched on -- breaking INSTALLATION, not updates.
+ISO_LISTS=0
+if grep -qx 'genesi-keyring' "${ISOLIST}" 2>/dev/null; then
+    ISO_LISTS=1
+fi
+
 if [ "${HAS_KEY}" -eq 1 ]; then
     echo "  (a signing key IS committed)"
+    if [ "${ISO_LISTS}" -eq 1 ]; then
+        pass "the live ISO carries genesi-keyring"
+    else
+        fail "a key exists but the live ISO does not carry genesi-keyring.
+        calamares-online.sh pulls genesi-calamares from [genesi] on the Install
+        click; without the key that breaks the moment signing is enabled."
+    fi
+
+    # Shipping the key file without naming it in --populate leaves it present
+    # and untrusted, which is the most confusing possible failure.
+    if grep -q 'pacman-key --populate .*genesi'          "${ROOT}/genesi-arch/archiso/airootfs/usr/local/bin/calamares-online.sh" 2>/dev/null; then
+        pass "the installer populates the genesi keyring, not just archlinux/cachyos"
+    else
+        fail "calamares-online.sh does not --populate genesi: the key would ship
+        on the ISO and never be trusted"
+    fi
+
     if [ "${DESKTOP_DEPENDS}" -eq 1 ]; then
         pass "genesi-desktop depends on genesi-keyring"
     else
@@ -146,8 +173,8 @@ $(cat "${KEYRING_DIR}/genesi-trusted")"
     fi
 else
     echo "  (no signing key committed yet)"
-    if [ "${DESKTOP_DEPENDS}" -eq 0 ]; then
-        pass "nothing depends on the not-yet-built genesi-keyring"
+    if [ "${DESKTOP_DEPENDS}" -eq 0 ] && [ "${ISO_LISTS}" -eq 0 ]; then
+        pass "nothing references the not-yet-built genesi-keyring"
     else
         fail "genesi-desktop depends on genesi-keyring but no key is committed —
         CI skips building the package, so every install and the ISO build will
