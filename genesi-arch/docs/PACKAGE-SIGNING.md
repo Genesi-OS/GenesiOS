@@ -100,6 +100,23 @@ It fetches the live database and every `.sig` over HTTPS and verifies them
 against `genesi-keyring`'s public key — not against your personal `~/.gnupg`,
 which would prove nothing about what a user can check.
 
+### One thing that looks wrong and is not
+
+Our database entries carry no `%PGPSIG%` field. Arch's do. If you open
+`genesi.db` before flipping `SigLevel` and notice this, it looks like the
+packages are unsigned — they are not.
+
+`%PGPSIG%` is an *optimisation*: repo-add can embed each package's signature
+into the database so pacman does not have to fetch it. When the field is absent,
+pacman downloads `<package>.sig` from the same server instead, which is exactly
+what is published — verified end to end on 2026-08-29: 35 of 35 packages had a
+`.sig`, and a real published package verified against the shipped public keyring
+alone (`Good signature ... using RSA key 75C1C187…85C6BD0E`).
+
+The cost is one extra HTTP request per package during an upgrade. Nothing else.
+`ci/repo-signature-test.sh` reports the state either way rather than staying
+silent about it.
+
 ## Step 3 — raise SigLevel
 
 Only when step 2 has verifiably happened. The flip is a one-line change in each

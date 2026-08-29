@@ -138,6 +138,25 @@ else
        $(printf '%s' "${missing}" | tr ' ' '\n' | sed '/^$/d' | head -5 | tr '\n' ' ')…"
     fi
 
+    # ── %PGPSIG% — an optimisation, not a requirement, and worth saying so ────
+    #
+    # repo-add can embed each package's signature into the database as a base64
+    # %PGPSIG% field. Arch's own repos carry it; ours currently do not. That is
+    # NOT a failure: when the field is absent pacman fetches `<package>.sig`
+    # from the same server, which is exactly what is published above. The only
+    # cost is one extra HTTP request per package.
+    #
+    # It is reported rather than ignored because it looks alarming when someone
+    # inspects the database by hand before flipping SigLevel, and "is this why
+    # every machine broke?" is a question best answered here, in advance.
+    pgpsig="$(bsdtar -xOf "${WORK}/${DB}.db" '*/desc' 2>/dev/null | grep -c '^%PGPSIG%$' || true)"
+    if [ "${pgpsig:-0}" -gt 0 ]; then
+        pass "${pgpsig} database entries embed their signature (%PGPSIG%)"
+    else
+        info "no %PGPSIG% in the database — pacman will fetch each .sig separately"
+        info "(fine: every .sig above is published and served from the same path)"
+    fi
+
     # Verifying every package would mean downloading the whole repository. The
     # database records each package's checksum and IS signed, so a spot check of
     # the largest and the smallest is enough to catch a signing key that does
