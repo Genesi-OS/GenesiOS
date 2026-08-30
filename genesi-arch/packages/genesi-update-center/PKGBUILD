@@ -1,0 +1,55 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# The privileged half of Genesi's update UI — and nothing else.
+#
+# The update UI itself lives inside whatever settings app the desktop already
+# has, because that is where a person looks for it: genesi-update-kcm puts it
+# in Plasma's System Settings, and genesi-caelestia-shell fills in the Nexus
+# page upstream registers and leaves empty. Both need the same thing to call,
+# and this package is that thing.
+#
+# ── Why this exists as its own package ──────────────────────────────────────
+#
+# One root-owned script and one polkit action, shared. Duplicating them per
+# front-end would mean two paths to root that have to stay in agreement, which
+# is exactly the kind of agreement that quietly stops holding.
+#
+# The security shape is in genesi-update-center-apply's own header, and it is
+# short: the script takes NO argument that reaches pacman, and the polkit
+# action pins exec.path to it. Whatever a front-end does, the widest privileged
+# action available to it is the fixed transaction the user pressed a button to
+# authorise.
+#
+# A standalone GUI still needs to be written for the seven Genesi desktops
+# whose settings apps have no extension point at all (GNOME, Xfce, Cinnamon,
+# MATE, LXDE, Budgie, Cosmic, Niri). It will live here, next to the helper it
+# calls.
+pkgname=genesi-update-center
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Privileged helper and polkit action behind the Genesi update UI'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL-3.0-or-later')
+depends=(
+    'bash'
+    'pacman'
+    'polkit'
+)
+optdepends=(
+    'pacman-contrib: check for updates without touching the real package database'
+    'snapper: restore points around every update'
+    'genesi-update-kcm: the update page inside Plasma System Settings'
+)
+source=(
+    'genesi-update-center-apply'
+    'org.genesi.updatecenter.policy'
+)
+sha256sums=('SKIP' 'SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/genesi-update-center-apply" \
+        "${pkgdir}/usr/bin/genesi-update-center-apply"
+    install -Dm644 "${srcdir}/org.genesi.updatecenter.policy" \
+        "${pkgdir}/usr/share/polkit-1/actions/org.genesi.updatecenter.policy"
+}

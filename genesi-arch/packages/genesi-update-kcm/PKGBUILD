@@ -1,0 +1,72 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# The Genesi update page inside Plasma's System Settings.
+#
+# Updates belong where a user already looks for settings, not in a program of
+# their own -- the way Windows keeps them in Settings. On caelestia that meant
+# filling in the Nexus page upstream already registered and left pointing at a
+# "Page under construction" screen. On Plasma it means a KCM.
+#
+# This is the one place in the feature that needs C++, and not by choice:
+# Plasma 6 has no pure-QML KCM path. KQuickConfigModule is the base class for
+# every QML KCM, kcmutils_add_qml_kcm() builds it as a plugin, and a KCM's QML
+# has no way to run a command anyway -- unlike Quickshell, which has Process.
+#
+# The privileged half is NOT here. It lives in genesi-update-center, whose
+# helper takes no argument that reaches pacman and whose polkit action pins
+# exec.path to it. This package is a front-end, and depends on that one so the
+# button always has something to call.
+pkgname=genesi-update-kcm
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Genesi update page for Plasma System Settings'
+arch=('x86_64')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL-3.0-or-later')
+depends=(
+    'kcmutils'
+    'ki18n'
+    'kcoreaddons'
+    'kirigami'
+    'qt6-base'
+    'qt6-declarative'
+    # The privileged helper and the polkit action the button relies on.
+    'genesi-update-center'
+)
+makedepends=(
+    'cmake'
+    'ninja'
+    'extra-cmake-modules'
+)
+optdepends=(
+    'pacman-contrib: check for updates without touching the real package database'
+    'snapper: restore points around every update'
+)
+source=(
+    'CMakeLists.txt'
+    'kcmgenesiupdate.h'
+    'kcmgenesiupdate.cpp'
+    'kcm_genesi_update.json'
+    'ui/main.qml'
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+prepare() {
+    # makepkg flattens `source` into $srcdir, so ui/main.qml lands as main.qml.
+    # kcmutils_add_qml_kcm() bundles everything under ui/, so put it back.
+    install -Dm644 "${srcdir}/main.qml" "${srcdir}/ui/main.qml"
+}
+
+build() {
+    cd "${srcdir}"
+    cmake -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DBUILD_TESTING=OFF
+    cmake --build build
+}
+
+package() {
+    cd "${srcdir}"
+    DESTDIR="${pkgdir}" cmake --install build
+}

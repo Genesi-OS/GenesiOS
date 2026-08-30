@@ -1,0 +1,66 @@
+name: Test genesi-update-kcm build
+
+# Standalone, manual-only smoke build for the Plasma KCM, so we can confirm it
+# COMPILES inside the cachyos-v3 CI without risking the load-bearing
+# publish-packages.yml pipeline. Once this passes, the package is added to
+# publish-packages.yml's PACKAGES array — the same path genesi-packageinstaller
+# took.
+#
+# It matters more here than usual: this is the first C++ package written for
+# Genesi that could not be compiled anywhere before being pushed. Qt6 and KF6
+# dev headers do not exist on the authoring machine, so CI is the compiler, and
+# a red run here is the intended way to find out.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: cachyos/cachyos-v3:latest
+    steps:
+      - name: Install git in container
+        run: pacman -Sy --needed --noconfirm git
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          set -euxo pipefail
+          pacman -Sy --noconfirm
+          pacman -S --needed --noconfirm --overwrite='*' \
+            base-devel cmake ninja extra-cmake-modules \
+            qt6-base qt6-declarative \
+            kcmutils ki18n kcoreaddons kirigami
+
+      - name: Build the KCM
+        run: |
+          set -euo pipefail
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/genesi-update-kcm"
+          # -d: genesi-update-center is a sibling package built by the publish
+          # pipeline, not something to install here. It is a RUNTIME dependency
+          # (the helper the button calls); nothing about it is needed to compile.
+          runuser -u builder -- makepkg -f -d --noconfirm --noprogressbar
+
+      - name: Show what the package installs
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/genesi-update-kcm"
+          pkg=$(ls -1 *.pkg.tar.zst | head -1)
+          echo "Built: $pkg"
+          echo "--- contents ---"
+          tar tf "$pkg" | grep -vE '^\.(PKGINFO|BUILDINFO|MTREE)$' | sed 's/^/  /'
+          # The whole point is that System Settings can find it. If the plugin
+          # does not land in the systemsettings namespace, the build "succeeded"
+          # and the feature does not exist.
+          if tar tf "$pkg" | grep -q 'plasma/kcms/systemsettings'; then
+            echo "OK: the KCM installs into the systemsettings namespace."
+          else
+            echo "::error::the plugin did NOT land in plasma/kcms/systemsettings —"
+            echo "::error::it would compile, install, and never appear in System Settings."
+            exit 1
+          fi
