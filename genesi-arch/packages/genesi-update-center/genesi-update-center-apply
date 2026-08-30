@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+#
+# genesi-update-center-apply — the ONLY thing this feature runs as root.
+#
+# ── The security shape, and why it is this shape ─────────────────────────────
+#
+# A graphical updater needs root to run `pacman -Syu`. The naive version passes
+# the user's selection, or worse a command string, through pkexec — and now
+# anything that can influence the GUI can influence a root command line.
+#
+# So this script takes NO arguments that reach pacman. The polkit action pins
+# `exec.path` to this exact file, and this file contains the entire privileged
+# operation as a literal. There is no input to validate, because there is no
+# input: the widest thing the GUI can ask for is "upgrade the system", which is
+# what the user pressed a button to authorise.
+#
+# Consequences worth keeping:
+#   * Adding an option here means adding a literal branch here, deliberately,
+#     not threading a string through from QML.
+#   * `--noconfirm` is safe ONLY because the transaction is fixed. It would not
+#     be safe on a command whose targets came from outside.
+#
+# Exit codes are the GUI's only channel back: 0 done, 2 nothing to do, 1 failed.
+set -uo pipefail
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "genesi-update-center-apply must run as root (it is invoked via pkexec)" >&2
+    exit 1
+fi
+
+echo "==> Genesi Update Center"
+echo "==> $(date '+%Y-%m-%d %H:%M:%S')"
+echo
+
+# Refresh first and report separately from the upgrade: "the mirror is down"
+# and "the upgrade failed" are different problems and the user deserves to know
+# which one they have.
+echo "==> Sincronizando as bases de pacotes…"
+if ! pacman -Sy --noconfirm; then
+    echo
+    echo "!!! Não foi possível sincronizar os repositórios." >&2
+    echo "!!! Isso costuma ser rede ou espelho fora do ar, não o seu sistema." >&2
+    exit 1
+fi
+
+# Nothing to do is NOT a failure, and conflating the two is how an updater
+# starts crying wolf. The GUI shows a different, calm state for exit 2.
+if [ -z "$(pacman -Qu 2>/dev/null)" ]; then
+    echo
+    echo "==> Nada a atualizar. O sistema já está em dia."
+    exit 2
+fi
+
+echo
+echo "==> Atualizando…"
+echo "    (o genesi-snapshots tira um ponto de restauração antes e depois,"
+echo "     então esta operação é reversível)"
+echo
+
+# The whole privileged operation, as a literal. See the header.
+if pacman -Su --noconfirm; then
+    echo
+    echo "==> Atualização concluída."
+    exit 0
+fi
+
+echo
+echo "!!! A atualização falhou." >&2
+echo "!!! O ponto de restauração anterior continua disponível em" >&2
+echo "!!! Genesi Snapshots, e o sistema não ficou pela metade: o pacman" >&2
+echo "!!! aplica a transação inteira ou nenhuma parte dela." >&2
+exit 1
