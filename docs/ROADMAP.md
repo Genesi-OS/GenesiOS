@@ -719,12 +719,25 @@ a stranger installs Genesi.
       CI is still skipping would break every install and the ISO build.
 - [x] `ci/repo-signature-test.sh` — verifies the **live** repository against the
       key users actually have. The gate for raising `SigLevel`.
-- [ ] **Generate the key** — one command, on the maintainer's machine:
-      `genesi-arch/devtools/genesi-keygen.sh`. CI never generates it; a key CI
-      could regenerate is a key anyone with push access could replace.
-- [ ] **Raise `SigLevel` to `Required`** — only after the keyring has reached
-      installed machines on a normal `-Syu`. Doing it first leaves a machine
-      rejecting every Genesi package, including the keyring that would fix it.
+- [x] **The key exists** (`75C1C187…85C6BD0E`), generated on the maintainer's
+      machine. CI never generates it: a key CI could regenerate is a key anyone
+      with push access could replace.
+- [x] **Signing is ON** since 2026-08-30, behind the repository variable
+      `GENESI_SIGNING_ENABLED` — a switch a person throws, deliberately separate
+      from the key existing. Wiring it to "the secret exists" is what took every
+      machine's `pacman -Sy` down once.
+- [x] **Verified on real machines, not just CI**: 36/36 packages and the
+      database carry a `.sig`; the live ISO holds the key at `[ full ]` trust and
+      syncs the signed repo; an installed system upgrades clean AND verifies a
+      package signature on a forced reinstall; and the ISO pipeline builds
+      against the signed repo (both CI containers trust the key from the
+      checkout — without that, the first signed publish would have taken the ISO
+      build down).
+- [ ] **Raise `SigLevel` to `Required`** — the remaining step. Everything still
+      reads `Optional TrustAll`, which means an UNSIGNED package is still
+      accepted; signing is delivered, enforcement is not. Safe to do now that
+      the keyring demonstrably reaches machines, but it is the one change that
+      cannot be undone from inside a machine that gets it wrong.
 
 Full lifecycle, including rotation: `genesi-arch/docs/PACKAGE-SIGNING.md`.
 
