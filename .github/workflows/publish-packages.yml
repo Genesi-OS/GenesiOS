@@ -367,6 +367,15 @@ jobs:
             # pre-filled issue. Pure bash, so it costs nothing to build and it
             # still runs on the boot where the desktop did not come up.
             "genesi-report"
+            # The shared privileged half of the update UI: one root-owned
+            # script, one polkit action. Both front-ends call it, and having
+            # one path to root instead of two is the point.
+            "genesi-update-center"
+            # The update page inside Plasma System Settings. Proven to compile
+            # AND to land in plasma/kcms/systemsettings by test-update-kcm.yml
+            # before being added here -- a KCM that installs somewhere else
+            # builds green and never appears in the settings app.
+            "genesi-update-kcm"
             "genesi-calamares"
             "genesi-calamares-branding"
             "genesi-welcome"
@@ -514,7 +523,7 @@ jobs:
             # install-time resolution from the genesi repo still applies.
             MAKEPKG_NODEPS=""
             case "$pkg" in
-              genesi-desktop|genesi-gaming|genesi-plymouth|genesi-snapshots|genesi-caelestia-cli|genesi-caelestia-shell|genesi-caelestia-settings)
+              genesi-desktop|genesi-gaming|genesi-plymouth|genesi-snapshots|genesi-caelestia-cli|genesi-caelestia-shell|genesi-caelestia-settings|genesi-update-kcm)
                 MAKEPKG_NODEPS="-d" ;;
             esac
 
