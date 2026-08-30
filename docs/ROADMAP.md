@@ -1413,6 +1413,26 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
       It found a second one on its first run: the volume keys run `wpctl`, which
       was present only because the ISO package list happens to carry
       wireplumber — now declared by the package that binds the keys.
+- [x] **The KDE half of the same feature, which was never wired either.**
+      `genesi-update-kcm` — the update page inside Plasma System Settings — had
+      been written, built, published and signed, and no install path named it.
+      KDE users had no update page at all while Hyprland users had one. It
+      cannot go in `genesi-desktop` (shared by every desktop; this is a KCM,
+      a C++ plugin only systemsettings loads), so it joins the other KDE-only
+      Genesi pieces in the `KDE-Desktop` netinstall group. Checked that it was
+      really published first: that group is `critical: true`, so naming a
+      package that does not exist would abort the install.
+- [x] **`ci/package-reachability-test.py`** — the general form of both bugs.
+      Every package we build must be named by some install path
+      (`genesi-desktop`, a netinstall group, an ISO package list, or the
+      depends of something already reachable) or be listed as deliberately not
+      installed *with a reason*. Publishing is not shipping: a package no
+      install path names produces no error, no failed build and no missing
+      file — it just quietly is not there, which is the worst shape a bug can
+      take and a purely mechanical one to detect. Verified by reverting both
+      historical bugs and watching it name them. It refuses to run without the
+      Calamares submodule rather than report ten false orphans, because a check
+      that cries wolf gets switched off.
 - [ ] Shader menu (`hyprshade`). Held back deliberately: `hyprshade` is AUR-only
       and Genesi does not package it, so launcher entries calling it would be
       entries that silently do nothing. Repackage it first, the way the

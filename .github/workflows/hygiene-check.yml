@@ -68,6 +68,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # The Calamares netinstall groups are an install path, and
+          # package-reachability-test.py cannot answer correctly without them:
+          # every package reachable only through netinstall would look like an
+          # orphan. It refuses to run rather than report that, so this is not
+          # optional.
+          submodules: true
 
       - name: Boot menus point at entries that exist
         shell: bash
@@ -93,3 +100,14 @@ jobs:
         # drift check runs in genesi-caelestia-shell's prepare(), where their
         # source is on disk.
         run: python genesi-arch/ci/caelestia-actions-test.py
+
+      - name: Every package we build reaches a machine
+        # Twice a package has been written, built, published and signed, and
+        # then installed on nobody, because the one line that pulls it in was
+        # never added: genesi-display (six launcher actions that did nothing
+        # when clicked) and genesi-update-kcm (KDE had no update page at all
+        # while Hyprland had one). Neither produced an error anywhere.
+        #
+        # Needs the submodules, which this job already checks out: the
+        # Calamares netinstall groups are an install path.
+        run: python genesi-arch/ci/package-reachability-test.py
