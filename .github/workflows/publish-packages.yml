@@ -376,6 +376,11 @@ jobs:
             # before being added here -- a KCM that installs somewhere else
             # builds green and never appears in the settings app.
             "genesi-update-kcm"
+            # Phase 7.2: monitor scale and rotation. Hyprland-level, not
+            # shell-level, so it works on caelestia today and on whatever
+            # shell comes next -- which is the whole reason 7.2 is built as
+            # CLIs with thin front-ends rather than as panels.
+            "genesi-display"
             "genesi-calamares"
             "genesi-calamares-branding"
             "genesi-welcome"

@@ -1,0 +1,32 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# Monitor scale and rotation for Hyprland — as a CLI, on purpose.
+#
+# Genesi offers nine desktops and, on Hyprland, more than one shell. A control
+# built into caelestia would not exist on a future genesi-hyprland; one built
+# as a Quickshell widget would not exist for anyone running waybar. So the
+# logic lives here once and every front-end is a thin caller, the same way
+# genesi-snapshots' GUI delegates to its CLI as the single source of truth.
+#
+# It is also the first piece of Phase 7.2: those utilities are Hyprland-level,
+# not shell-level, which is what settled extend-vs-fork. Six of the seven
+# features wanted work this way.
+pkgname=genesi-display
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Monitor scale and rotation for Hyprland, persisted across reloads'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL-3.0-or-later')
+depends=(
+    'python'
+    # hyprctl. Depending on the concrete package rather than a provide because
+    # this tool speaks Hyprland's IPC specifically and nothing else answers it.
+    'hyprland'
+)
+source=('genesi-display')
+sha256sums=('SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/genesi-display" "${pkgdir}/usr/bin/genesi-display"
+}

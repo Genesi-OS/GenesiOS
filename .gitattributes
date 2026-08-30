@@ -80,3 +80,4 @@ genesi-arch/packages/genesi-update-kcm/*.cpp  text eol=lf
 genesi-arch/packages/genesi-update-kcm/*.h    text eol=lf
 genesi-arch/packages/genesi-update-kcm/*.json text eol=lf
 genesi-arch/packages/genesi-update-kcm/CMakeLists.txt text eol=lf
+genesi-arch/packages/genesi-display/genesi-display text eol=lf

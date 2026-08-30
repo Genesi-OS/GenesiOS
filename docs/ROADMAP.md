@@ -1314,27 +1314,68 @@ branding and app integration already paid for. Revisit when the caelestia
 overrides pile up enough that we are maintaining a fork in denial — two today
 (the launcher wallpaper crash, the logout command) is normal.
 
-### 7.1 Update UI inside the settings that already exist ← FIRST
+### 7.1 Update UI inside the settings that already exist 🟦 shipped, unseen
 Not a separate app. The user should find updates where they already look, the
 way Windows does.
-- [ ] **KDE**: a KCM inside System Settings (Plasma is the default desktop)
-- [ ] **caelestia**: fill the update section that currently sits empty/WIP,
-      via the same QML-override mechanism used for the launcher crash fix
+- [x] **KDE**: a KCM inside System Settings (`genesi-update-kcm`). Plasma 6 has
+      no pure-QML KCM path — KQuickConfigModule is the base class for every QML
+      KCM — so this is the one place the feature needs C++. Proven by
+      `test-update-kcm.yml` to compile AND to install into
+      `plasma/kcms/systemsettings`: a KCM that lands anywhere else builds green
+      and never appears in the settings app.
+- [x] **caelestia**: the Nexus page upstream registers and points at
+      "Page under construction". Written in their components, not Genesi's —
+      the palette there retints from the wallpaper and our fixed emerald would
+      fight it. Verified statically against upstream's real v2.0.3 source,
+      which caught `Tokens.font.headline.large` (it does not exist; upstream
+      only reaches headline through builders).
+- [x] **The shared privileged half** (`genesi-update-center`): one root-owned
+      script taking no argument that reaches pacman, one polkit action pinning
+      exec.path to it. Both front-ends call it — two paths to root would be two
+      things that have to keep agreeing.
+- [x] Overrides now assert their own preconditions and fail the build when they
+      stop holding, including refusing to apply if upstream ever ships its own
+      UpdatesPage. pkgver is pinned so upstream cannot overwrite us; the real
+      risk is the mirror image, erasing something of theirs on our next bump.
+- [ ] **Neither screen has been seen running.** Static verification is not an
+      open window, and "installs where Plasma looks" is not "appears in System
+      Settings". Both first runs happen on a real machine.
 - [ ] **Everything else**: GNOME/Xfce/Cinnamon/MATE/LXDE/Budgie/Cosmic/Niri
       settings apps are **not pluggable** — no extension point exists. A
       standalone app is the only option there, and is the fallback rather than
-      the product.
-- [x] The privileged half is done and is shared by all three front-ends:
-      `genesi-update-center-apply` (takes NO argument reaching pacman; the
-      polkit action pins exec.path to it) plus a backend that uses
-      `checkupdates` (private DB, never a partial-upgrade `pacman -Sy`) and
-      surfaces the snap-pac restore point that already exists around every
-      transaction but was never shown.
+      the product. Still to be written; it lives next to the helper it calls.
+- [ ] Wire `genesi-update-kcm` into the KDE-Desktop netinstall group. It is
+      KDE-only and must NOT go in the `genesi-desktop` meta, which lands on all
+      nine desktops — the mistake pkgrel 4 corrected for genesi-kde-settings,
+      klassy and darkly. The group lives in the genesi-calamares-config
+      submodule.
+- [x] The existing `genesi-update` tray notifier is untouched and stays. The
+      two have different jobs: the notifier pulls you, the settings page
+      receives you. Wiring the icon to open the new page is a deliberate future
+      choice, not a side effect.
 
 ### 7.2 Shell-independent desktop utilities
 Each one talks to Hyprland or a small daemon; none depends on which shell runs.
-- [ ] Monitor scaling (`hyprctl keyword monitor`)
-- [ ] Screen rotation (`hyprctl … transform`)
+- [x] **Monitor scaling and rotation** (`genesi-display`). A CLI, deliberately:
+      a control built into caelestia would not exist on a future
+      genesi-hyprland, and a Quickshell widget would not exist for anyone
+      running waybar. Front-ends stay thin callers, as genesi-snapshots' GUI is
+      to its CLI.
+      The subtle part is that `hyprctl keyword monitor` takes the WHOLE line, so
+      setting a scale means re-stating resolution, refresh, position and
+      transform — anything not read back correctly is silently reset, and the
+      user's second screen jumps. Every value is read from `hyprctl monitors -j`
+      and passed through untouched; verified against a two-monitor payload
+      where one is rotated and one scaled.
+      It also persists, because `hyprctl keyword` is gone on the next reload:
+      overrides go in `~/.config/hypr/genesi-display.conf`, sourced once from
+      the user's config (appended, so it wins over Genesi's catch-all
+      `monitor = , preferred, auto, 1`). That file holds nothing the user wrote,
+      so it can be deleted whole.
+- [ ] A Display page in caelestia's Nexus calling it. Upstream **comments the
+      entry out** of PageRegistry entirely, so this override has to enable a
+      menu item as well as supply the page — a wider change than the Updates
+      one, and worth doing only once the CLI has been used on real hardware.
 - [ ] Shader menu (`hyprshade`)
 - [ ] Keyboard sound
 - [ ] Wallpaper transition animation

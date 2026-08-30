@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""
+genesi-display — monitor scale and rotation for Hyprland, from anywhere.
+
+── Why a CLI and not a panel ────────────────────────────────────────────────
+
+Genesi offers nine desktops and, on Hyprland, more than one shell. A control
+built into caelestia would not exist on a future genesi-hyprland, and one
+built into a Quickshell widget would not exist for anyone using waybar. So the
+logic lives here, once, and every front-end is a thin caller — exactly how
+genesi-snapshots' GUI delegates to its CLI, with the CLI as the single source
+of truth.
+
+── The part that is easy to get wrong ───────────────────────────────────────
+
+`hyprctl keyword monitor` takes the WHOLE monitor line. Setting a scale means
+re-stating resolution, refresh rate, position and transform in the same
+breath, so anything not read back correctly is silently reset — a user changes
+the scale and their second screen jumps to the wrong place. Every value here
+is read from `hyprctl monitors -j` first and passed through untouched.
+
+And `hyprctl keyword` is runtime-only: it is gone on the next reload. Real
+persistence means writing config, which is why this also maintains
+~/.config/hypr/genesi-display.conf and makes sure the user's hyprland.conf
+sources it. That file holds nothing but our overrides, so it can be deleted
+whole without touching anything the user wrote.
+
+Usage:
+  genesi-display list                 what is connected, as JSON
+  genesi-display show                 the same, readable
+  genesi-display scale <name> <n>     1, 1.25, 1.5, 2 …
+  genesi-display rotate <name> <deg>  0, 90, 180, 270
+  genesi-display reset [name]         drop our override (all, or one)
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+CONF_DIR = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "hypr")
+MAIN_CONF = os.path.join(CONF_DIR, "hyprland.conf")
+OUR_CONF = os.path.join(CONF_DIR, "genesi-display.conf")
+
+# The line we add to the user's config, once, marked so it can be recognised
+# and never duplicated.
+SOURCE_MARKER = "# genesi-display: per-monitor overrides"
+SOURCE_LINE = f"{SOURCE_MARKER}\nsource = ~/.config/hypr/genesi-display.conf\n"
+
+# Hyprland's transform values. 4-7 are the flipped variants, which no UI here
+# offers: someone who wants a mirrored display can write it by hand, and
+# offering it in a menu mostly produces confused users.
+DEG_TO_TRANSFORM = {0: 0, 90: 1, 180: 2, 270: 3}
+TRANSFORM_TO_DEG = {v: k for k, v in DEG_TO_TRANSFORM.items()}
+
+
+def die(msg, code=1):
+    sys.stderr.write(f"genesi-display: {msg}\n")
+    sys.exit(code)
+
+
+def hypr(*args, check=True):
+    if not shutil.which("hyprctl"):
+        die("hyprctl not found — is this a Hyprland session?", 2)
+    p = subprocess.run(["hyprctl", *args], capture_output=True, text=True)
+    if check and p.returncode != 0:
+        die((p.stderr or p.stdout).strip() or "hyprctl failed")
+    return p
+
+
+def monitors():
+    """Current state, straight from the compositor."""
+    p = hypr("monitors", "-j")
+    try:
+        raw = json.loads(p.stdout)
+    except json.JSONDecodeError:
+        die("could not read hyprctl monitors -j")
+    out = []
+    for m in raw:
+        out.append({
+            "name": m.get("name", ""),
+            "description": m.get("description", ""),
+            "width": m.get("width", 0),
+            "height": m.get("height", 0),
+            "refresh": round(float(m.get("refreshRate", 0)), 2),
+            "x": m.get("x", 0),
+            "y": m.get("y", 0),
+            "scale": round(float(m.get("scale", 1)), 6),
+            "transform": int(m.get("transform", 0)),
+            "rotation": TRANSFORM_TO_DEG.get(int(m.get("transform", 0))),
+            "focused": bool(m.get("focused", False)),
+            "disabled": bool(m.get("disabled", False)),
+        })
+    return out
+
+
+def find(name):
+    for m in monitors():
+        if m["name"] == name:
+            return m
+    die(f"no monitor named {name!r}. Try: genesi-display show")
+
+
+def monitor_line(m, scale=None, transform=None):
+    """
+    Rebuild the full monitor line, changing only what was asked for.
+
+    Everything else is passed through from what the compositor reports. This
+    is the whole reason the tool reads state first: a line that omits the
+    position moves the display, and a user who changed the scale would find
+    their second screen has jumped.
+    """
+    s = m["scale"] if scale is None else scale
+    t = m["transform"] if transform is None else transform
+    # Trailing zeros in the scale make Hyprland's parser unhappy in some
+    # versions; normalise to the shortest exact form.
+    s_str = f"{s:.6f}".rstrip("0").rstrip(".")
+    return (f"{m['name']},{m['width']}x{m['height']}@{m['refresh']},"
+            f"{m['x']}x{m['y']},{s_str},transform,{t}")
+
+
+def apply_live(line):
+    p = hypr("keyword", "monitor", line, check=False)
+    out = (p.stdout + p.stderr).strip()
+    if p.returncode != 0 or "invalid" in out.lower() or "error" in out.lower():
+        # Hyprland refuses scales that do not divide into whole pixels. That is
+        # a real answer, not a glitch, and the user needs to see it rather than
+        # a silent no-op.
+        die(f"Hyprland rejected the change:\n  {out}\n"
+            f"  A scale must divide the resolution into whole pixels — try 1, 1.25, 1.5 or 2.")
+
+
+def read_overrides():
+    """Our persisted lines, as {monitor: line}."""
+    result = {}
+    if not os.path.exists(OUR_CONF):
+        return result
+    with open(OUR_CONF, "r", encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = re.match(r"monitor\s*=\s*(.+)$", line)
+            if m:
+                value = m.group(1).strip()
+                result[value.split(",")[0].strip()] = value
+    return result
+
+
+def write_overrides(overrides):
+    os.makedirs(CONF_DIR, exist_ok=True)
+    with open(OUR_CONF, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Written by genesi-display. Safe to delete: it holds only\n"
+                 "# per-monitor overrides, and nothing you wrote by hand.\n"
+                 "#\n"
+                 "# Hyprland applies later monitor= lines over earlier ones, so\n"
+                 "# this is sourced at the END of hyprland.conf to win over the\n"
+                 "# catch-all default.\n\n")
+        for name in sorted(overrides):
+            fh.write(f"monitor = {overrides[name]}\n")
+    ensure_sourced()
+
+
+def ensure_sourced():
+    """
+    Make the user's config pull ours in — once, and never twice.
+
+    Appending is deliberate: Hyprland applies later monitor= lines over
+    earlier ones, so our overrides have to come after the catch-all
+    `monitor = , preferred, auto, 1` that Genesi ships.
+    """
+    if not os.path.exists(MAIN_CONF):
+        # No config to edit. The live change already applied; say what will
+        # not survive rather than failing after the fact.
+        sys.stderr.write(
+            f"genesi-display: {MAIN_CONF} does not exist, so the change is not\n"
+            f"                persisted. It will be lost on the next reload.\n")
+        return
+    with open(MAIN_CONF, "r", encoding="utf-8", errors="replace") as fh:
+        content = fh.read()
+    if SOURCE_MARKER in content or "genesi-display.conf" in content:
+        return
+    with open(MAIN_CONF, "a", encoding="utf-8", newline="\n") as fh:
+        fh.write(f"\n{SOURCE_LINE}")
+
+
+def cmd_list():
+    print(json.dumps(monitors(), indent=2))
+
+
+def cmd_show():
+    ov = read_overrides()
+    for m in monitors():
+        mark = " *" if m["focused"] else "  "
+        rot = m["rotation"]
+        rot_s = f"{rot}°" if rot is not None else f"transform {m['transform']}"
+        pinned = " (pinned by genesi-display)" if m["name"] in ov else ""
+        print(f"{mark} {m['name']}  {m['width']}x{m['height']}@{m['refresh']}Hz"
+              f"  scale {m['scale']:g}  {rot_s}{pinned}")
+        if m["description"]:
+            print(f"     {m['description']}")
+
+
+def cmd_scale(name, value):
+    try:
+        scale = float(value)
+    except ValueError:
+        die(f"{value!r} is not a number")
+    if not (0.1 <= scale <= 10):
+        die(f"scale {scale} is out of range (0.1 – 10)")
+    m = find(name)
+    line = monitor_line(m, scale=scale)
+    apply_live(line)
+    ov = read_overrides()
+    ov[name] = line
+    write_overrides(ov)
+    print(f"{name}: scale {scale:g}")
+
+
+def cmd_rotate(name, value):
+    try:
+        deg = int(value) % 360
+    except ValueError:
+        die(f"{value!r} is not a number of degrees")
+    if deg not in DEG_TO_TRANSFORM:
+        die(f"rotation must be 0, 90, 180 or 270 (got {value})")
+    m = find(name)
+    line = monitor_line(m, transform=DEG_TO_TRANSFORM[deg])
+    apply_live(line)
+    ov = read_overrides()
+    ov[name] = line
+    write_overrides(ov)
+    print(f"{name}: rotated {deg}°")
+
+
+def cmd_reset(name=None):
+    ov = read_overrides()
+    if name:
+        if name not in ov:
+            print(f"{name}: no override to remove")
+            return
+        del ov[name]
+    else:
+        ov = {}
+    write_overrides(ov)
+    # Reload so the compositor forgets what we told it and falls back to the
+    # config. Without this the live state keeps the value we just deleted, and
+    # the user sees nothing happen.
+    hypr("reload", check=False)
+    print("reset" + (f" {name}" if name else " all monitors"))
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return 0
+    cmd, rest = args[0], args[1:]
+    if cmd == "list":
+        cmd_list()
+    elif cmd == "show":
+        cmd_show()
+    elif cmd == "scale":
+        if len(rest) != 2:
+            die("usage: genesi-display scale <monitor> <factor>")
+        cmd_scale(*rest)
+    elif cmd == "rotate":
+        if len(rest) != 2:
+            die("usage: genesi-display rotate <monitor> <degrees>")
+        cmd_rotate(*rest)
+    elif cmd == "reset":
+        cmd_reset(rest[0] if rest else None)
+    else:
+        die(f"unknown command {cmd!r}. Try: genesi-display --help", 2)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
