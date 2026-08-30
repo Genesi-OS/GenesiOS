@@ -1372,11 +1372,35 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
       the user's config (appended, so it wins over Genesi's catch-all
       `monitor = , preferred, auto, 1`). That file holds nothing the user wrote,
       so it can be deleted whole.
-- [ ] A Display page in caelestia's Nexus calling it. Upstream **comments the
-      entry out** of PageRegistry entirely, so this override has to enable a
-      menu item as well as supply the page — a wider change than the Updates
-      one, and worth doing only once the CLI has been used on real hardware.
-- [ ] Shader menu (`hyprshade`)
+- [x] **Reachable from the launcher**, which is where these belong. caelestia
+      reads its `>` actions from `GlobalConfig.launcher.actions` — *configuration,
+      not code* — so Genesi adds `Scale 100/125/150/200%`, `Rotate screen` and
+      `Reset display` with **no new app, no new package and no QML override**.
+      That is the shape the rest of 7.2 should follow: we already have ten Qt
+      apps, and the eleventh is not the answer.
+      `genesi-display` takes `-` as a monitor name, meaning "the screen in use",
+      because a launcher action carries a fixed command and cannot know which
+      screen you are looking at. `rotate - cycle` keeps turning, so one entry
+      does the job of four.
+- [x] **The drift guard that makes the above safe.** `launcher.actions` is one
+      property and setting it REPLACES upstream's defaults rather than merging,
+      so our file must carry all thirteen of theirs — and the day they add a
+      fourteenth, Genesi users silently lose it.
+      `ci/caelestia-actions-test.py` fails the build on that, on our own actions
+      going missing, and on the Logout command regressing. Verified by
+      simulating all three.
+- [x] **A real bug found on the way**: caelestia's launcher has its OWN Logout
+      action running `loginctl terminate-user ""` — the infinite black screen
+      fixed for the session drawer in genesi-caelestia-settings pkgrel 17. Two
+      doors to the same room; only one had been fixed. Now both.
+- [ ] Shader menu (`hyprshade`). Held back deliberately: `hyprshade` is AUR-only
+      and Genesi does not package it, so launcher entries calling it would be
+      entries that silently do nothing. Repackage it first, the way the
+      caelestia AUR dependencies were.
+- [ ] A Display page in caelestia's Nexus. Upstream **comments that entry out**
+      of PageRegistry entirely, so the override would have to enable a menu item
+      as well as supply a page — wider than the Updates one, and worth doing
+      only once the CLI has run on real hardware.
 - [ ] Keyboard sound
 - [ ] Wallpaper transition animation
 - [ ] Waybar config switcher — **only meaningful if a waybar-based option is

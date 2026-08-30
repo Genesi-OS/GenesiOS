@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""
+caelestia-actions-test.py — our launcher action list must not fall behind theirs.
+
+── The trap ─────────────────────────────────────────────────────────────────
+
+caelestia's launcher reads its `>` actions from `GlobalConfig.launcher.actions`.
+That is configuration, not code, which is why Genesi can add entries without
+overriding a single QML file — a much better deal than the page overrides.
+
+The catch is that `actions` is ONE property:
+
+    CONFIG_GLOBAL_PROPERTY(QVariantList, actions, { …fourteen defaults… })
+
+Setting it in shell.json REPLACES upstream's list wholesale. It does not merge.
+So our file has to carry every default of theirs plus ours, and the day
+upstream adds a fifteenth, Genesi users silently stop getting it — no error, no
+warning, just an action that exists everywhere except here.
+
+Nobody would notice that for months. This notices immediately.
+
+Run with the upstream source available (the caelestia tarball, extracted):
+
+    caelestia-actions-test.py <path/to/launcherconfig.hpp> [shell.json]
+
+genesi-caelestia-shell's prepare() calls it, because that is where the upstream
+source is on disk. Without an argument it self-checks what it can and says so.
+"""
+import io
+import json
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
+DEFAULT_SHELL_JSON = os.path.join(
+    ROOT, "genesi-arch", "packages", "genesi-caelestia-settings", "shell.json")
+
+
+def our_actions(path):
+    with io.open(path, encoding="utf-8") as fh:
+        cfg = json.load(fh)
+    return [a.get("name", "") for a in cfg.get("launcher", {}).get("actions", [])]
+
+
+def upstream_actions(hpp_path):
+    """
+    The default names, read out of the C++ initialiser list.
+
+    Deliberately name-only. Matching the commands too would fail every time
+    upstream tweaks a flag, and the question here is narrower: did a whole
+    action appear that we do not carry?
+    """
+    with io.open(hpp_path, encoding="utf-8", errors="replace") as fh:
+        src = fh.read()
+    idx = src.find("actions,")
+    if idx < 0:
+        return None
+    return re.findall(r'u"name"_s,\s*u"([^"]+)"_s', src[idx:])
+
+
+def main():
+    args = [a for a in sys.argv[1:]]
+    shell_json = DEFAULT_SHELL_JSON
+    hpp = None
+    if args:
+        hpp = args[0]
+    if len(args) > 1:
+        shell_json = args[1]
+
+    if not os.path.exists(shell_json):
+        print(f"missing {shell_json}")
+        return 1
+    ours = our_actions(shell_json)
+
+    print("== caelestia launcher actions ==")
+    print(f"  ours:     {len(ours)}")
+
+    # Genesi's own entries must survive any edit to this file. If someone
+    # regenerates shell.json from upstream's defaults and forgets these, the
+    # features go away silently — the same failure this file exists to stop,
+    # pointed the other way.
+    required_ours = ["Scale 100%", "Scale 150%", "Rotate screen", "Reset display"]
+    missing_ours = [n for n in required_ours if n not in ours]
+    if missing_ours:
+        print("  FAIL  Genesi's own actions are gone from shell.json:")
+        for n in missing_ours:
+            print(f"          - {n}")
+        return 1
+    print(f"  PASS  Genesi's own actions are present")
+
+    # The Logout action is a correctness fix, not a preference. caelestia's
+    # default is `loginctl terminate-user ""`, which kills every user process
+    # at once (sddm-helper included, mid-teardown) and leaves an infinite black
+    # screen on real hardware -- fixed for the session drawer in
+    # genesi-caelestia-settings pkgrel 17, but the LAUNCHER has its own copy of
+    # that command and was never covered.
+    with io.open(shell_json, encoding="utf-8") as fh:
+        cfg = json.load(fh)
+    for a in cfg.get("launcher", {}).get("actions", []):
+        if a.get("name") == "Logout":
+            if a.get("command") == ["hyprctl", "dispatch", "exit"]:
+                print("  PASS  the launcher's Logout uses the clean session exit")
+            else:
+                print("  FAIL  the launcher's Logout is back to "
+                      f"{a.get('command')!r} -- that is the infinite black "
+                      "screen fixed in settings pkgrel 17, through the other door")
+                return 1
+            break
+
+    if not hpp:
+        print("  SKIP  no upstream launcherconfig.hpp given; drift not checked")
+        print("\ncaelestia launcher actions: OK (partial)")
+        return 0
+
+    up = upstream_actions(hpp)
+    if up is None:
+        print(f"  FAIL  could not find the actions defaults in {hpp} --")
+        print("        upstream restructured the config and this check is blind")
+        return 1
+
+    print(f"  upstream: {len(up)}")
+    missing = [n for n in up if n not in ours]
+    if missing:
+        print("  FAIL  caelestia has launcher actions our shell.json does not:")
+        for n in missing:
+            print(f"          - {n}")
+        print("        launcher.actions REPLACES upstream's list rather than")
+        print("        merging, so Genesi users would silently lose these.")
+        print("        Add them to genesi-caelestia-settings/shell.json, or")
+        print("        decide against one and record why.")
+        return 1
+
+    print(f"  PASS  all {len(up)} upstream defaults are carried")
+    print("\ncaelestia launcher actions: OK")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

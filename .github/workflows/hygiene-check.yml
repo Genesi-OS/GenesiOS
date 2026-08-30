@@ -84,3 +84,12 @@ jobs:
       - name: The ISO's systemd enable symlinks are symlinks
         shell: bash
         run: bash genesi-arch/ci/systemd-enable-test.sh
+
+      - name: The caelestia launcher actions have not drifted
+        shell: bash
+        # Without the upstream tarball it checks the half it can: that Genesi's
+        # own actions are still there and that the launcher's Logout is still
+        # the clean session exit rather than the black-screen command. The full
+        # drift check runs in genesi-caelestia-shell's prepare(), where their
+        # source is on disk.
+        run: python genesi-arch/ci/caelestia-actions-test.py

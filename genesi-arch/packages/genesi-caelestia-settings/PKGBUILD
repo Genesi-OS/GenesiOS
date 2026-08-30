@@ -123,7 +123,25 @@ pkgver=1.0.0
 # tray is its ONLY form here, the KDE plasmoid needing plasmashell — simply
 # never appeared on caelestia. Migrated into existing users' configs like the
 # other trays.
-pkgrel=18
+# pkgrel 19: put display controls in the launcher, and fix a logout that was
+# only half-fixed.
+#
+# caelestia reads its `>` actions from GlobalConfig.launcher.actions -- config,
+# not code -- so Scale 100/125/150/200%, Rotate screen and Reset display are
+# added with no new app, no new package and no QML override. They call
+# genesi-display, which is Hyprland-level and works on any shell.
+#
+# The catch, and why ci/caelestia-actions-test.py now exists: that property is a
+# single QVariantList, so setting it REPLACES upstream's thirteen defaults
+# instead of merging. Our file has to carry all of them, and the day caelestia
+# adds a fourteenth, Genesi users silently lose it. The check fails the build on
+# that, on our own actions vanishing, and on the Logout regressing.
+#
+# And the Logout: pkgrel 17 fixed the SESSION DRAWER's `loginctl terminate-user`
+# -- the infinite black screen -- but the launcher has its own copy of that
+# command and was never covered. Two doors to the same room, one of them still
+# open. Now both use `hyprctl dispatch exit`.
+pkgrel=19
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

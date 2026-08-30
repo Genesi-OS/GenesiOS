@@ -3,5 +3,128 @@
     "commands": {
       "logout": ["hyprctl", "dispatch", "exit"]
     }
+  },
+  "launcher": {
+    "actions": [
+      {
+        "name": "Calculator",
+        "icon": "calculate",
+        "description": "Do simple math equations (powered by Qalc)",
+        "command": ["autocomplete", "calc"]
+      },
+      {
+        "name": "Scheme",
+        "icon": "palette",
+        "description": "Change the current colour scheme",
+        "command": ["autocomplete", "scheme"]
+      },
+      {
+        "name": "Wallpaper",
+        "icon": "image",
+        "description": "Change the current wallpaper",
+        "command": ["autocomplete", "wallpaper"]
+      },
+      {
+        "name": "Variant",
+        "icon": "colors",
+        "description": "Change the current scheme variant",
+        "command": ["autocomplete", "variant"]
+      },
+      {
+        "name": "Random",
+        "icon": "casino",
+        "description": "Switch to a random wallpaper",
+        "command": ["caelestia", "wallpaper", "-r"]
+      },
+      {
+        "name": "Light",
+        "icon": "light_mode",
+        "description": "Change the scheme to light mode",
+        "command": ["setMode", "light"]
+      },
+      {
+        "name": "Dark",
+        "icon": "dark_mode",
+        "description": "Change the scheme to dark mode",
+        "command": ["setMode", "dark"]
+      },
+
+      {
+        "name": "Scale 100%",
+        "icon": "fit_screen",
+        "description": "Set this screen to 1x — no scaling",
+        "command": ["genesi-display", "scale", "-", "1"]
+      },
+      {
+        "name": "Scale 125%",
+        "icon": "zoom_in",
+        "description": "Slightly larger interface on this screen",
+        "command": ["genesi-display", "scale", "-", "1.25"]
+      },
+      {
+        "name": "Scale 150%",
+        "icon": "zoom_in",
+        "description": "Larger interface on this screen",
+        "command": ["genesi-display", "scale", "-", "1.5"]
+      },
+      {
+        "name": "Scale 200%",
+        "icon": "zoom_in",
+        "description": "Double size — for a 4K screen at a normal distance",
+        "command": ["genesi-display", "scale", "-", "2"]
+      },
+      {
+        "name": "Rotate screen",
+        "icon": "screen_rotation",
+        "description": "Turn this screen 90° — press again to keep going",
+        "command": ["genesi-display", "rotate", "-", "cycle"]
+      },
+      {
+        "name": "Reset display",
+        "icon": "settings_backup_restore",
+        "description": "Undo every scale and rotation set from here",
+        "command": ["genesi-display", "reset"]
+      },
+
+      {
+        "name": "Shutdown",
+        "icon": "power_settings_new",
+        "description": "Shutdown the system",
+        "command": ["systemctl", "poweroff"],
+        "dangerous": true
+      },
+      {
+        "name": "Reboot",
+        "icon": "cached",
+        "description": "Reboot the system",
+        "command": ["systemctl", "reboot"],
+        "dangerous": true
+      },
+      {
+        "name": "Logout",
+        "icon": "exit_to_app",
+        "description": "Log out of the current session",
+        "command": ["hyprctl", "dispatch", "exit"],
+        "dangerous": true
+      },
+      {
+        "name": "Lock",
+        "icon": "lock",
+        "description": "Lock the current session",
+        "command": ["loginctl", "lock-session"]
+      },
+      {
+        "name": "Sleep",
+        "icon": "bedtime",
+        "description": "Suspend then hibernate",
+        "command": ["systemctl", "suspend-then-hibernate"]
+      },
+      {
+        "name": "Settings",
+        "icon": "settings",
+        "description": "Configure the shell",
+        "command": ["caelestia", "shell", "nexus", "open"]
+      }
+    ]
   }
 }

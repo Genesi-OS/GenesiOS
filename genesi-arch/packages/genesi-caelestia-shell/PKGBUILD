@@ -108,6 +108,17 @@ prepare() {
     install -Dm644 "${srcdir}/UpdatesPage.qml" \
         "${srcdir}/release/modules/nexus/pages/UpdatesPage.qml"
 
+    # 3. The launcher action list. genesi-caelestia-settings ships a shell.json
+    #    that sets launcher.actions -- and that property REPLACES upstream's
+    #    defaults wholesale instead of merging, because it is a single
+    #    CONFIG_GLOBAL_PROPERTY(QVariantList) in launcherconfig.hpp. So our file
+    #    must carry every default of theirs, and the day upstream adds one,
+    #    Genesi users silently stop getting it. Checked here because this is
+    #    where their source is on disk.
+    if [ -f release/plugin/src/Caelestia/Config/launcherconfig.hpp ]; then
+        python "${startdir}/../../ci/caelestia-actions-test.py"             release/plugin/src/Caelestia/Config/launcherconfig.hpp             "${startdir}/../genesi-caelestia-settings/shell.json" || return 1
+    fi
+
     # Point the first System entry at the real page instead of the placeholder.
     # Anchored on the '// System' comment AND the first PlaceholderComp after
     # it, so a reordering upstream cannot silently retarget a different page.

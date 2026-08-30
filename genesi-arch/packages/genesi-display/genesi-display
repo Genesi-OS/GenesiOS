@@ -29,8 +29,12 @@ Usage:
   genesi-display list                 what is connected, as JSON
   genesi-display show                 the same, readable
   genesi-display scale <name> <n>     1, 1.25, 1.5, 2 …
-  genesi-display rotate <name> <deg>  0, 90, 180, 270
+  genesi-display rotate <name> <deg>  0, 90, 180, 270, or "cycle"
   genesi-display reset [name]         drop our override (all, or one)
+
+A <name> of "-" means the monitor currently in use, which is what a keybind
+or a launcher entry needs: those carry a fixed command and cannot know the
+name of the screen you are looking at.
 """
 import json
 import os
@@ -97,7 +101,23 @@ def monitors():
 
 
 def find(name):
-    for m in monitors():
+    """
+    Resolve a monitor name, where "-" means "the one being used right now".
+
+    That alias exists for the launcher. A `>scale 150%` entry is a FIXED
+    command -- caelestia's launcher actions cannot carry an argument typed by
+    the user -- so there has to be a way to say "this screen" without knowing
+    its name at the time the action was written.
+    """
+    mons = monitors()
+    if name in ("-", "focused", ""):
+        for m in mons:
+            if m["focused"]:
+                return m
+        if mons:
+            return mons[0]
+        die("no monitors reported by Hyprland")
+    for m in mons:
         if m["name"] == name:
             return m
     die(f"no monitor named {name!r}. Try: genesi-display show")
@@ -220,13 +240,20 @@ def cmd_scale(name, value):
 
 
 def cmd_rotate(name, value):
-    try:
-        deg = int(value) % 360
-    except ValueError:
-        die(f"{value!r} is not a number of degrees")
-    if deg not in DEG_TO_TRANSFORM:
-        die(f"rotation must be 0, 90, 180 or 270 (got {value})")
     m = find(name)
+    # "cycle" is what a keybind or a single launcher entry wants: one action
+    # that keeps turning, instead of four entries the user has to choose
+    # between while holding a laptop sideways.
+    if value == "cycle":
+        current = TRANSFORM_TO_DEG.get(m["transform"], 0)
+        deg = (current + 90) % 360
+    else:
+        try:
+            deg = int(value) % 360
+        except ValueError:
+            die(f"{value!r} is not a number of degrees, and not 'cycle'")
+    if deg not in DEG_TO_TRANSFORM:
+        die(f"rotation must be 0, 90, 180, 270 or 'cycle' (got {value})")
     line = monitor_line(m, transform=DEG_TO_TRANSFORM[deg])
     apply_live(line)
     ov = read_overrides()
