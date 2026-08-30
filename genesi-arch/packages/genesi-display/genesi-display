@@ -28,7 +28,7 @@ whole without touching anything the user wrote.
 Usage:
   genesi-display list                 what is connected, as JSON
   genesi-display show                 the same, readable
-  genesi-display scale <name> <n>     1, 1.25, 1.5, 2 …
+  genesi-display scale <name> <n>     1, 1.25, 1.5, 2 …, or "up"/"down"
   genesi-display rotate <name> <deg>  0, 90, 180, 270, or "cycle"
   genesi-display reset [name]         drop our override (all, or one)
 
@@ -58,6 +58,11 @@ SOURCE_LINE = f"{SOURCE_MARKER}\nsource = ~/.config/hypr/genesi-display.conf\n"
 # offering it in a menu mostly produces confused users.
 DEG_TO_TRANSFORM = {0: 0, 90: 1, 180: 2, 270: 3}
 TRANSFORM_TO_DEG = {v: k for k, v in DEG_TO_TRANSFORM.items()}
+
+# The ladder `scale up` / `scale down` walks. Only values that divide common
+# resolutions into whole pixels: Hyprland refuses the rest outright, and a
+# keybind that errors every other press is worse than one that stops at the end.
+SCALE_STEPS = [1.0, 1.25, 1.5, 1.75, 2.0]
 
 
 def die(msg, code=1):
@@ -224,13 +229,32 @@ def cmd_show():
 
 
 def cmd_scale(name, value):
-    try:
-        scale = float(value)
-    except ValueError:
-        die(f"{value!r} is not a number")
+    m = find(name)
+    # A keybind cannot carry a number -- SUPER+= means "a bit bigger", not
+    # "1.25". So up/down walk a ladder from wherever the screen currently is,
+    # which also means the two keys stay correct after someone picks a value
+    # from the launcher.
+    if value in ("up", "down"):
+        cur = m["scale"]
+        nearest = min(range(len(SCALE_STEPS)),
+                      key=lambda i: abs(SCALE_STEPS[i] - cur))
+        idx = nearest + (1 if value == "up" else -1)
+        if idx < 0 or idx >= len(SCALE_STEPS):
+            # Already at an end. Say so instead of failing: a keybind that
+            # prints an error when you press it once too often teaches people
+            # the feature is broken.
+            print(f"{m['name']}: already at {cur:g}x "
+                  f"({'largest' if value == 'up' else 'smallest'})")
+            return
+        scale = SCALE_STEPS[idx]
+        value = str(scale)
+    else:
+        try:
+            scale = float(value)
+        except ValueError:
+            die(f"{value!r} is not a number, and not 'up' or 'down'")
     if not (0.1 <= scale <= 10):
         die(f"scale {scale} is out of range (0.1 – 10)")
-    m = find(name)
     line = monitor_line(m, scale=scale)
     apply_live(line)
     ov = read_overrides()

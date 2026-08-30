@@ -34,8 +34,109 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
-DEFAULT_SHELL_JSON = os.path.join(
-    ROOT, "genesi-arch", "packages", "genesi-caelestia-settings", "shell.json")
+PKG = os.path.join(ROOT, "genesi-arch", "packages", "genesi-caelestia-settings")
+DEFAULT_SHELL_JSON = os.path.join(PKG, "shell.json")
+PKGBUILD = os.path.join(PKG, "PKGBUILD")
+HYPRCONF = os.path.join(PKG, "hyprland.conf")
+
+# Binaries that are on the machine because something else already guarantees
+# them: base, systemd, and the shell this config belongs to. Everything NOT on
+# this list has to be a declared dependency -- see check_commands_resolve.
+ALWAYS_PRESENT = {
+    "sh", "systemctl", "loginctl",   # base / systemd
+    "hyprctl", "caelestia",          # hyprland + the shell itself
+}
+
+# Not commands at all: the launcher interprets these itself.
+PSEUDO = {"autocomplete", "setMode"}
+
+# Binaries whose package is named something else. Kept explicit rather than
+# guessed: a wrong guess here would make the check pass while the key still
+# does nothing, which defeats the entire point of the file.
+BINARY_PACKAGE = {
+    "wpctl": "wireplumber",
+    "wl-copy": "wl-clipboard",
+    "wl-paste": "wl-clipboard",
+}
+
+
+def providers(binary):
+    """Package names that would put `binary` on the machine."""
+    return {binary, BINARY_PACKAGE.get(binary, binary)}
+
+
+def declared_deps(path):
+    """Names in depends=() -- enough for this, no need to parse PKGBUILD fully."""
+    with io.open(path, encoding="utf-8") as fh:
+        src = fh.read()
+    m = re.search(r"^depends=\((.*?)^\)", src, re.M | re.S)
+    if not m:
+        return None
+    body = re.sub(r"#.*", "", m.group(1))
+    return {re.split(r"[<>=]", n.strip("'\""))[0] for n in body.split()}
+
+
+def check_commands_resolve(cfg):
+    """
+    Every command an action runs must be INSTALLED when the action exists.
+
+    This check exists because it already went wrong. genesi-display was built,
+    published, and referenced by six launcher entries -- and nothing depended on
+    it, so it was never installed on anybody's machine. The entries showed up in
+    the launcher and clicking them did nothing whatsoever: Quickshell's
+    execDetached does not report a missing binary anywhere the user can see.
+
+    An action that silently does nothing is worse than no action: it is the
+    feature appearing to be broken rather than absent. Shipping the entry and
+    the dependency is one decision, so make the build enforce it as one.
+    """
+    deps = declared_deps(PKGBUILD)
+    if deps is None:
+        print("  FAIL  could not read depends=() from the PKGBUILD")
+        return False
+
+    needed = {}
+    for a in cfg.get("launcher", {}).get("actions", []):
+        cmd = a.get("command") or []
+        if not cmd or cmd[0] in PSEUDO:
+            continue
+        needed.setdefault(cmd[0], []).append(a.get("name", "?"))
+
+    bad = False
+    for binary, users in sorted(needed.items()):
+        if binary in ALWAYS_PRESENT or providers(binary) & deps:
+            continue
+        bad = True
+        print(f"  FAIL  {len(users)} launcher action(s) run {binary!r}, and "
+              "nothing installs it:")
+        for n in users:
+            print(f"          - {n}")
+        print(f"        Add {binary!r} to depends=() in the PKGBUILD, or drop")
+        print("        the actions. Shipped as-is they appear in the launcher")
+        print("        and do nothing at all when clicked.")
+    if not bad:
+        print(f"  PASS  all {len(needed)} command(s) the actions run are installed")
+
+    # The keybinds are the same actions on the keyboard, and fail the same
+    # silent way -- a bind to a missing binary is a key that does nothing.
+    if os.path.exists(HYPRCONF):
+        with io.open(HYPRCONF, encoding="utf-8") as fh:
+            conf = fh.read()
+        bound = set(re.findall(r"^\s*bind[a-z]*\s*=.*?,\s*exec\s*,\s*(\S+)",
+                               conf, re.M))
+        unmet = sorted(b for b in bound
+                       if b not in ALWAYS_PRESENT and not providers(b) & deps
+                       and not b.startswith("$"))
+        if unmet:
+            print("  FAIL  keybinds run binaries nothing installs: "
+                  + ", ".join(unmet))
+            print("        Add the providing package to depends=(), or map the")
+            print("        binary to its package name in BINARY_PACKAGE here.")
+            bad = True
+        else:
+            print(f"  PASS  all {len(bound)} keybind target(s) are installed")
+
+    return not bad
 
 
 def our_actions(path):
@@ -108,6 +209,9 @@ def main():
                       "screen fixed in settings pkgrel 17, through the other door")
                 return 1
             break
+
+    if not check_commands_resolve(cfg):
+        return 1
 
     if not hpp:
         print("  SKIP  no upstream launcherconfig.hpp given; drift not checked")

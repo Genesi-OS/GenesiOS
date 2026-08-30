@@ -126,6 +126,19 @@ windowrule = pin class:^(org\.genesi\.aiquick)$
 HYPR
     fi
 
+    # 8. Display keybinds (added in pkgrel 21). The launcher entries for scale
+    #    and rotation only reach people who go looking in `>`; these are the
+    #    same actions on the keyboard. Guarded on the binary name so a user who
+    #    rebound them keeps their own.
+    if ! grep -q 'genesi-display' "$cfg"; then
+        cat >> "$cfg" <<'HYPR'
+# Display: scale and rotation from the keyboard. `-` is the screen in use.
+bind = SUPER, equal, exec, genesi-display scale - up
+bind = SUPER, minus, exec, genesi-display scale - down
+bind = SUPER SHIFT, R, exec, genesi-display rotate - cycle
+HYPR
+    fi
+
     # sed -i / >> as root leave the file root-owned — hand it back to the user.
     chown "$owner" "$cfg" "$cfg.genesi-bak" 2>/dev/null || true
 }

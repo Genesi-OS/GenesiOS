@@ -1393,6 +1393,26 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
       action running `loginctl terminate-user ""` — the infinite black screen
       fixed for the session drawer in genesi-caelestia-settings pkgrel 17. Two
       doors to the same room; only one had been fixed. Now both.
+- [x] **Keyboard shortcuts for the same actions.** `SUPER +` / `SUPER -` walk a
+      ladder of scales Hyprland will actually accept (1 / 1.25 / 1.5 / 1.75 / 2)
+      from wherever the screen currently is, and `SUPER SHIFT R` rotates. They
+      stop at the ends with a message instead of erroring, because a key that
+      reports a failure when pressed once too often teaches people the feature
+      is broken. Delivered to existing users through the `.install` migration —
+      /etc/skel only seeds NEW accounts — guarded so a user who rebound them
+      keeps their own.
+- [x] **The launcher actions did nothing when clicked, and the fix is a guard.**
+      `genesi-display` was built, published and referenced by six entries, and
+      *nothing depended on it*, so it was never installed: the actions appeared
+      and clicking them did nothing at all, because `Quickshell.execDetached`
+      reports a missing binary nowhere the user can see. This is precisely the
+      failure named in the `hyprshade` entry below — written before shipping the
+      same thing. So the dependency was fixed AND
+      `ci/caelestia-actions-test.py` now fails the build when any command an
+      action or keybind runs is not installed by a declared dependency.
+      It found a second one on its first run: the volume keys run `wpctl`, which
+      was present only because the ISO package list happens to carry
+      wireplumber — now declared by the package that binds the keys.
 - [ ] Shader menu (`hyprshade`). Held back deliberately: `hyprshade` is AUR-only
       and Genesi does not package it, so launcher entries calling it would be
       entries that silently do nothing. Repackage it first, the way the
