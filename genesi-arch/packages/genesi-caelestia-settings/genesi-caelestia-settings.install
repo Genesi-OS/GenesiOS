@@ -205,9 +205,54 @@ commands = session.get("commands")
 if not isinstance(commands, dict):
     commands = {}
     session["commands"] = commands
-if commands.get("logout"):
-    sys.exit(0)  # user has their own logout command — leave the file alone
-commands["logout"] = ["hyprctl", "dispatch", "exit"]
+changed = False
+
+# 1. The session drawer's logout. Upstream's `loginctl terminate-user ""` kills
+#    every user process at once and leaves an infinite black screen.
+if not commands.get("logout"):
+    commands["logout"] = ["hyprctl", "dispatch", "exit"]
+    changed = True
+
+# 2. The launcher actions.
+#
+# Without this, an EXISTING user gets nothing: shell.json ships through
+# /etc/skel, which only ever seeds a NEW home. That is exactly why `>` showed
+# no display controls after the first install carrying them -- the package was
+# on disk and the file it wanted to deliver was not.
+#
+# caelestia's launcher.actions is a single property that REPLACES upstream's
+# defaults rather than merging, so what gets written here is the whole list
+# from our shipped shell.json -- theirs plus ours -- read from /etc/skel rather
+# than duplicated in this scriptlet, so the two can never drift apart.
+#
+# A user who has customised their own actions keeps them, untouched. The point
+# is to reach people who never had the key, not to overrule anyone.
+launcher = data.get("launcher")
+if not isinstance(launcher, dict):
+    launcher = {}
+    data["launcher"] = launcher
+
+if not launcher.get("actions"):
+    try:
+        with open("/etc/skel/.config/caelestia/shell.json") as f:
+            shipped = json.load(f)
+        actions = shipped.get("launcher", {}).get("actions")
+        if actions:
+            launcher["actions"] = actions
+            changed = True
+    except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError):
+        pass
+
+# 3. The launcher has its OWN Logout action, separate from the session drawer's
+#    command, and it carried the same black-screen `loginctl terminate-user`.
+#    A user who already had an actions list would otherwise keep it forever.
+for a in launcher.get("actions") or []:
+    if isinstance(a, dict) and a.get("name") == "Logout"             and a.get("command") == ["loginctl", "terminate-user", ""]:
+        a["command"] = ["hyprctl", "dispatch", "exit"]
+        changed = True
+
+if not changed:
+    sys.exit(0)
 os.makedirs(os.path.dirname(p), exist_ok=True)
 with open(p, "w") as f:
     json.dump(data, f, indent=2)

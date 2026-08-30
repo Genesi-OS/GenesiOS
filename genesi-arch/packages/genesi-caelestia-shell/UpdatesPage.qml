@@ -174,6 +174,8 @@ PageBase {
                 spacing: Tokens.spacing.small
 
                 MaterialIcon {
+                    id: heroIcon
+
                     Layout.alignment: Qt.AlignHCenter
                     text: {
                         if (root.applying)
@@ -189,12 +191,26 @@ PageBase {
 
                     // Turns only while something is actually happening. A
                     // spinner that never stops stops meaning anything.
-                    RotationAnimator on rotation {
+                    //
+                    // A standalone RotationAnimator with `target:`, NOT
+                    // `RotationAnimator on rotation`. The `on` form takes
+                    // ownership of the property and leaves it wherever the
+                    // animation stopped -- which is why the check-circle sat
+                    // upside down after the first check finished. This form
+                    // can put it back.
+                    RotationAnimator {
+                        id: spin
+
+                        target: heroIcon
                         running: root.applying || root.updateState === "checking"
                         loops: Animation.Infinite
                         from: 0
                         to: 360
                         duration: 1600
+                        onRunningChanged: {
+                            if (!running)
+                                heroIcon.rotation = 0;
+                        }
                     }
                 }
 
@@ -271,22 +287,14 @@ PageBase {
         Repeater {
             model: root.updateState === "available" ? root.packages : []
 
-            ConnectedRect {
+            InfoRow {
                 required property var modelData
                 required property int index
 
-                Layout.fillWidth: true
                 first: index === 0
                 last: index === root.packages.length - 1
-                implicitHeight: row.implicitHeight
-
-                InfoRow {
-                    id: row
-
-                    anchors.fill: parent
-                    label: modelData.name
-                    subtext: modelData.from && modelData.to ? `${modelData.from}  →  ${modelData.to}` : (modelData.from ?? "")
-                }
+                label: modelData.name
+                subtext: modelData.from && modelData.to ? `${modelData.from}  →  ${modelData.to}` : (modelData.from ?? "")
             }
         }
 
@@ -295,49 +303,30 @@ PageBase {
             text: qsTr("System")
         }
 
-        ConnectedRect {
-            Layout.fillWidth: true
+        // InfoRow IS a ConnectedRect -- it draws its own rounded background and
+        // takes first/last itself. Wrapping it in another one stacked two
+        // rectangles: the outer rounded, the inner nearly square, and the inner
+        // one won. That is the squared-off border seen on these cards. Upstream
+        // uses InfoRow bare (see AboutPage's System section); so does this now.
+        InfoRow {
             first: true
-            implicitHeight: channelRow.implicitHeight
-
-            InfoRow {
-                id: channelRow
-
-                anchors.fill: parent
-                label: qsTr("Update channel")
-                subtext: root.channel === "testing" ? qsTr("Pre-release packages, and they can break your system") : qsTr("Tested packages")
-                value: root.channel ? root.channel : "—"
-            }
+            label: qsTr("Update channel")
+            subtext: root.channel === "testing" ? qsTr("Pre-release packages, and they can break your system") : qsTr("Tested packages")
+            value: root.channel ? root.channel : "—"
         }
 
-        ConnectedRect {
-            Layout.fillWidth: true
-            implicitHeight: lastRow.implicitHeight
-
-            InfoRow {
-                id: lastRow
-
-                anchors.fill: parent
-                label: qsTr("Last update")
-                value: root.lastUpdate ? root.lastUpdate : "—"
-            }
+        InfoRow {
+            label: qsTr("Last update")
+            value: root.lastUpdate ? root.lastUpdate : "—"
         }
 
-        ConnectedRect {
-            Layout.fillWidth: true
+        InfoRow {
             last: true
-            implicitHeight: rollbackRow.implicitHeight
-
-            InfoRow {
-                id: rollbackRow
-
-                anchors.fill: parent
-                label: qsTr("Restore point")
-                // The reassuring half of an update is being able to undo it,
-                // and this machine can — it just never said so.
-                subtext: root.canRollback ? qsTr("Taken automatically before and after every update") : qsTr("Not available: the root filesystem is not Btrfs")
-                value: root.canRollback ? qsTr("On") : qsTr("Off")
-            }
+            label: qsTr("Restore point")
+            // The reassuring half of an update is being able to undo it, and
+            // this machine can -- it just never said so.
+            subtext: root.canRollback ? qsTr("Taken automatically before and after every update") : qsTr("Not available: the root filesystem is not Btrfs")
+            value: root.canRollback ? qsTr("On") : qsTr("Off")
         }
     }
 }

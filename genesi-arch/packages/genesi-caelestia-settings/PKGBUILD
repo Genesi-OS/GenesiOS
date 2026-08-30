@@ -141,7 +141,22 @@ pkgver=1.0.0
 # -- the infinite black screen -- but the launcher has its own copy of that
 # command and was never covered. Two doors to the same room, one of them still
 # open. Now both use `hyprctl dispatch exit`.
-pkgrel=19
+# pkgrel 20: the launcher actions never reached anyone who already had a
+# home directory. shell.json ships through /etc/skel, which only ever seeds a
+# NEW user -- so `>` showed no display controls even with the package installed,
+# because the file it wanted to deliver was never delivered. This is the same
+# lesson as the panel widget migration, learned again in a new place.
+#
+# The .install now merges launcher.actions for existing users, reading the list
+# from the shipped /etc/skel copy rather than duplicating it in the scriptlet,
+# so the two cannot drift. A user with their own actions keeps them untouched;
+# the point is to reach people who never had the key.
+#
+# It also repairs the launcher's OWN Logout action if it still carries
+# `loginctl terminate-user ""` -- the black screen fixed for the session drawer
+# in pkgrel 17. Someone who already had an actions list would have kept the
+# broken one forever otherwise.
+pkgrel=20
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

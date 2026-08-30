@@ -38,7 +38,20 @@ pkgver=2.0.3
 # prepare() now asserts each override's precondition and fails the build when it
 # stops holding -- including refusing to apply if upstream ever ships its own
 # UpdatesPage.qml, which we would otherwise erase in silence on the next bump.
-pkgrel=3
+# pkgrel 4: two visual bugs in the Updates page, both found by looking at it
+# on a real screen -- which no amount of static verification was going to do.
+#
+# The hero icon sat upside down. `RotationAnimator on rotation` takes ownership
+# of the property and leaves it wherever the animation stopped, so the spinner
+# from the initial check froze the check-circle mid-turn. A standalone
+# RotationAnimator with target: can put it back, and does.
+#
+# And the System cards had a squared-off border over their rounded corners:
+# InfoRow ALREADY IS a ConnectedRect, drawing its own background and taking
+# first/last itself. Wrapping it in another one stacked two rectangles and the
+# inner, nearly-square one won. Upstream uses InfoRow bare (AboutPage's System
+# section); so does this now.
+pkgrel=4
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
