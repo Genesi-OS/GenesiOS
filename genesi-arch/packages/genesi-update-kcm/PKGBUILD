@@ -42,18 +42,23 @@ optdepends=(
     'pacman-contrib: check for updates without touching the real package database'
     'snapper: restore points around every update'
 )
+# Flat, and it has to be: makepkg resolves a local source by its BASENAME in
+# the PKGBUILD's own directory and does not follow subpaths. These lived under
+# src/ at first and makepkg answered "CMakeLists.txt was not found in the build
+# directory and is not a URL" -- caught by test-update-kcm.yml in ninety
+# seconds, which is the entire reason that workflow exists.
 source=(
     'CMakeLists.txt'
     'kcmgenesiupdate.h'
     'kcmgenesiupdate.cpp'
     'kcm_genesi_update.json'
-    'ui/main.qml'
+    'main.qml'
 )
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 prepare() {
-    # makepkg flattens `source` into $srcdir, so ui/main.qml lands as main.qml.
-    # kcmutils_add_qml_kcm() bundles everything under ui/, so put it back.
+    # kcmutils_add_qml_kcm() bundles whatever is under ui/, so build that
+    # layout in $srcdir from the flat sources.
     install -Dm644 "${srcdir}/main.qml" "${srcdir}/ui/main.qml"
 }
 

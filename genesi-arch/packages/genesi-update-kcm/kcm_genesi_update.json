@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Description": "See what is available, what changes, and update safely",
+        "Description[pt_BR]": "Veja o que há de novo, o que muda, e atualize com segurança",
+        "Icon": "system-software-update",
+        "Name": "Genesi Update",
+        "Name[pt_BR]": "Atualizações do Genesi",
+        "Category": "System Administration"
+    },
+    "X-KDE-Keywords": "update,upgrade,pacman,packages,system,genesi",
+    "X-KDE-Keywords[pt_BR]": "atualizar,atualizacao,pacotes,sistema,genesi",
+    "X-KDE-System-Settings-Parent-Category": "system-administration"
+}
