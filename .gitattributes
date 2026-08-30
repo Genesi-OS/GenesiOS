@@ -75,3 +75,8 @@ genesi-arch/packages/genesi-report/genesi-report text eol=lf
 genesi-arch/ci/repo-consumable-test.sh text eol=lf
 genesi-arch/ci/systemd-enable-test.sh text eol=lf
 genesi-arch/packages/genesi-update-center/genesi-update-center-apply text eol=lf
+# The KCM is compiled on Linux; CRLF in C++/CMake sources is asking for trouble.
+genesi-arch/packages/genesi-update-kcm/*.cpp  text eol=lf
+genesi-arch/packages/genesi-update-kcm/*.h    text eol=lf
+genesi-arch/packages/genesi-update-kcm/*.json text eol=lf
+genesi-arch/packages/genesi-update-kcm/CMakeLists.txt text eol=lf

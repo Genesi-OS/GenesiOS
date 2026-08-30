@@ -28,12 +28,29 @@ jobs:
 
       - name: Install build deps
         run: |
-          set -euxo pipefail
-          pacman -Sy --noconfirm
-          pacman -S --needed --noconfirm --overwrite='*' \
-            base-devel cmake ninja extra-cmake-modules \
-            qt6-base qt6-declarative \
-            kcmutils ki18n kcoreaddons kirigami
+          set -euo pipefail
+          # The CachyOS CDN serves intermittent 404s for individual packages --
+          # libpulse, libcanberra and libasyncns all turned up missing on the
+          # very first run of this workflow. publish-packages.yml already
+          # retries for exactly this. Without the same loop a mirror hiccup
+          # reads as "the KCM does not build", which is the one answer this
+          # workflow must never give by accident.
+          for attempt in 1 2 3 4 5; do
+            pacman -Sy --noconfirm || true
+            if pacman -S --needed --noconfirm --overwrite='*' \
+                 base-devel cmake ninja extra-cmake-modules \
+                 qt6-base qt6-declarative \
+                 kcmutils ki18n kcoreaddons kirigami; then
+              echo "build deps installed (attempt ${attempt})"
+              break
+            fi
+            if [ "${attempt}" = "5" ]; then
+              echo "::error::build deps failed after 5 attempts (CachyOS mirror/CDN inconsistent)"
+              exit 1
+            fi
+            echo "::warning::attempt ${attempt} failed (CDN 404/5xx); refreshing, retry in 20s"
+            sleep 20
+          done
 
       - name: Build the KCM
         run: |
