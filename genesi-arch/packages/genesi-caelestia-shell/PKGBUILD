@@ -24,7 +24,21 @@ pkgver=2.0.3
 # Diagnosed from three identical coredumps on a Genesi RTX 3050 box. We ship the
 # whole fixed ContentList.qml and overwrite the tarball's copy in prepare() (a
 # full file, not a context patch, so the CI build can't fail on patch fuzz).
-pkgrel=2
+# pkgrel 3: fill in the Nexus "Updates" page. Upstream registers it in
+# PageRegistry and points it at PlaceholderComp -- the "Page under construction"
+# screen -- so the entry has always been in the settings menu leading nowhere.
+# The update UI belongs where a user already looks for settings, not in a
+# program of its own, which is the same reason Windows keeps it in Settings.
+#
+# Written entirely in caelestia's own design language (PageBase / ConnectedRect /
+# SectionHeader / InfoRow, Tokens and Colours): the palette here retints live
+# from the wallpaper, and Genesi's fixed emerald would fight it. The page is
+# Genesi by what it does, not by how it looks.
+#
+# prepare() now asserts each override's precondition and fails the build when it
+# stops holding -- including refusing to apply if upstream ever ships its own
+# UpdatesPage.qml, which we would otherwise erase in silence on the next bump.
+pkgrel=3
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -37,16 +51,84 @@ makedepends=('cmake' 'ninja' 'qt6-shadertools')
 provides=('caelestia-shell')
 conflicts=('caelestia-shell' 'caelestia-shell-git')
 source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
-        "ContentList.qml")
+        "ContentList.qml"
+        "UpdatesPage.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
             'SKIP')
 
 prepare() {
-    # Overwrite the launcher ContentList with the wallpaper-crash-fixed copy (see
-    # the pkgrel 2 note). install -D is a no-op-safe replace; the target always
-    # exists in the v2.0.3 tarball.
+    cd "${srcdir}"
+
+    # ── Every override below checks its own precondition first ───────────────
+    #
+    # An override is a bet that upstream still looks the way it did when the
+    # override was written. pkgver is pinned, so upstream releasing a new
+    # version changes nothing until we bump -- but the moment we DO bump, these
+    # files land on top of whatever they have now, silently.
+    #
+    # Silently is the whole problem. If upstream ships their own Updates page,
+    # ours would erase it and nobody would notice for months. If they
+    # restructure the registry, our patch could apply cleanly to something that
+    # no longer means what we assumed.
+    #
+    # So each override asserts its precondition and FAILS THE BUILD when it
+    # stops holding. A version bump then arrives as a red build with a specific
+    # message, and a person decides whether the override is still wanted --
+    # exactly the decision that must never be automatic.
+
+    # 1. Launcher wallpaper-crash fix (pkgrel 2). Drop once upstream carries
+    #    commit 79a387e9.
+    if [ ! -f release/modules/launcher/ContentList.qml ]; then
+        echo "ERROR: upstream no longer has modules/launcher/ContentList.qml --"
+        echo "       the wallpaper-crash override has nothing to replace."
+        return 1
+    fi
     install -Dm644 "${srcdir}/ContentList.qml" \
         "${srcdir}/release/modules/launcher/ContentList.qml"
+
+    # 2. The Nexus "Updates" page. Upstream REGISTERS it in PageRegistry and
+    #    points it at PlaceholderComp -- the "Page under construction" screen.
+    local reg="release/modules/nexus/PageCompRegistry.qml"
+    if [ ! -f "${reg}" ]; then
+        echo "ERROR: ${reg} is gone -- the Nexus page registry moved or was renamed."
+        return 1
+    fi
+    if [ -f release/modules/nexus/pages/UpdatesPage.qml ]; then
+        echo "ERROR: upstream now ships its own UpdatesPage.qml. Our override"
+        echo "       would silently replace it. Decide by hand: keep theirs"
+        echo "       (drop this override), or keep ours and record why."
+        return 1
+    fi
+    if ! grep -q '// System' "${reg}"; then
+        echo "ERROR: the '// System' section is gone from ${reg}."
+        return 1
+    fi
+
+    install -Dm644 "${srcdir}/UpdatesPage.qml" \
+        "${srcdir}/release/modules/nexus/pages/UpdatesPage.qml"
+
+    # Point the first System entry at the real page instead of the placeholder.
+    # Anchored on the '// System' comment AND the first PlaceholderComp after
+    # it, so a reordering upstream cannot silently retarget a different page.
+    python - "${reg}" <<'PYEOF'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read()
+i = s.index("// System")
+old = "Component {\n            PlaceholderComp {}\n        },"
+j = s.index(old, i)
+new = ("Component {\n"
+       "            // Updates (Genesi)\n"
+       "            StackPage {\n"
+       "                Component {\n"
+       "                    UpdatesPage {}\n"
+       "                }\n"
+       "            }\n"
+       "        },")
+io.open(p, "w", encoding="utf-8", newline="\n").write(s[:j] + new + s[j + len(old):])
+print("PageCompRegistry: Updates -> UpdatesPage")
+PYEOF
 }
 
 build() {

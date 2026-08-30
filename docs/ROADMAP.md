@@ -1025,74 +1025,6 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 
 ---
 
-## PHASE 7: Desktop depth (post-launch)
-> Everything below was scoped on 2026-08-30 after studying Dusky and Ryoku Arch.
-> The through-line: most of it is NOT shell-framework work.
-
-**Architecture decision — extend caelestia, do not fork.** Six of the seven
-features wanted are Hyprland-level or standalone apps, so they are built as
-**shell-independent** Genesi packages that talk to Hyprland directly. They then
-work on caelestia today, on a future genesi-hyprland, and on any third shell.
-A second shell would have to be maintained forever and would throw away the
-branding and app integration already paid for. Revisit when the caelestia
-overrides pile up enough that we are maintaining a fork in denial — two today
-(the launcher wallpaper crash, the logout command) is normal.
-
-### 7.1 Update UI inside the settings that already exist ← FIRST
-Not a separate app. The user should find updates where they already look, the
-way Windows does.
-- [ ] **KDE**: a KCM inside System Settings (Plasma is the default desktop)
-- [ ] **caelestia**: fill the update section that currently sits empty/WIP,
-      via the same QML-override mechanism used for the launcher crash fix
-- [ ] **Everything else**: GNOME/Xfce/Cinnamon/MATE/LXDE/Budgie/Cosmic/Niri
-      settings apps are **not pluggable** — no extension point exists. A
-      standalone app is the only option there, and is the fallback rather than
-      the product.
-- [x] The privileged half is done and is shared by all three front-ends:
-      `genesi-update-center-apply` (takes NO argument reaching pacman; the
-      polkit action pins exec.path to it) plus a backend that uses
-      `checkupdates` (private DB, never a partial-upgrade `pacman -Sy`) and
-      surfaces the snap-pac restore point that already exists around every
-      transaction but was never shown.
-
-### 7.2 Shell-independent desktop utilities
-Each one talks to Hyprland or a small daemon; none depends on which shell runs.
-- [ ] Monitor scaling (`hyprctl keyword monitor`)
-- [ ] Screen rotation (`hyprctl … transform`)
-- [ ] Shader menu (`hyprshade`)
-- [ ] Keyboard sound
-- [ ] Wallpaper transition animation
-- [ ] Waybar config switcher — **only meaningful if a waybar-based option is
-      ever added**; it is meaningless on Quickshell. The caelestia equivalent
-      is shell layout presets.
-
-### 7.3 Apps to ship or recommend, not build
-Half of what impressed us in Dusky's screenshots was third-party software the
-author happens to run, installable on Genesi today with no work at all.
-- [ ] Blanket (ambient sounds) — Flathub
-- [ ] Obsidian (the graph view) — third-party, proprietary
-- [ ] A to-do app (Errands or similar)
-- [ ] **Do NOT ship eDex-UI**: the screenshot shows Electron 12, EOL since
-      2021 and unpatched. A Genesi equivalent written in QML is a legitimate
-      idea; redistributing that one is a liability.
-
-### 7.4 A Genesi settings app with real art direction
-Ryoku Arch's settings panel is the bar. Its stack is **Quickshell + QML** —
-exactly what Genesi already uses in the AI Mode Monitor, Forge, Snapshots and
-PortScope, and what caelestia runs. Nothing is missing technically.
-What it has that we do not is a committed point of view: one accent on black,
-a display serif against a monospace, density used as ornament (telemetry,
-section numbering, secondary labels), and one striking image treated as the
-subject. Its own identity is "paper and ink, warm bone on black" — copying it
-would make Genesi look like Ryoku rather than like Genesi.
-- [ ] Decide what Genesi's equivalent conviction is (today: emerald glass)
-- [ ] A second type family with a job — everything factual in monospace
-- [ ] Density as ornament instead of empty space
-- [ ] Wallpaper-derived retinting on the Plasma side too (Hyprland already has
-      it via genesi-materialyoucolor; Plasma's palette is a frozen decision)
-
----
-
 ## PHASE 5: Polish & Distribution 🟦 IN PROGRESS
 > Final polish and public release.
 
@@ -1366,3 +1298,69 @@ system that:
 Why it fits Genesi OS: persistent memory for local AI, automatic project-context
 indexing, zero cloud, and IDE integration via MCP. License: MIT (compatible with
 Genesi OS's AGPL-3.0).
+
+---
+
+## PHASE 7: Desktop depth (post-launch)
+> Everything below was scoped on 2026-08-30 after studying Dusky and Ryoku Arch.
+> The through-line: most of it is NOT shell-framework work.
+
+**Architecture decision — extend caelestia, do not fork.** Six of the seven
+features wanted are Hyprland-level or standalone apps, so they are built as
+**shell-independent** Genesi packages that talk to Hyprland directly. They then
+work on caelestia today, on a future genesi-hyprland, and on any third shell.
+A second shell would have to be maintained forever and would throw away the
+branding and app integration already paid for. Revisit when the caelestia
+overrides pile up enough that we are maintaining a fork in denial — two today
+(the launcher wallpaper crash, the logout command) is normal.
+
+### 7.1 Update UI inside the settings that already exist ← FIRST
+Not a separate app. The user should find updates where they already look, the
+way Windows does.
+- [ ] **KDE**: a KCM inside System Settings (Plasma is the default desktop)
+- [ ] **caelestia**: fill the update section that currently sits empty/WIP,
+      via the same QML-override mechanism used for the launcher crash fix
+- [ ] **Everything else**: GNOME/Xfce/Cinnamon/MATE/LXDE/Budgie/Cosmic/Niri
+      settings apps are **not pluggable** — no extension point exists. A
+      standalone app is the only option there, and is the fallback rather than
+      the product.
+- [x] The privileged half is done and is shared by all three front-ends:
+      `genesi-update-center-apply` (takes NO argument reaching pacman; the
+      polkit action pins exec.path to it) plus a backend that uses
+      `checkupdates` (private DB, never a partial-upgrade `pacman -Sy`) and
+      surfaces the snap-pac restore point that already exists around every
+      transaction but was never shown.
+
+### 7.2 Shell-independent desktop utilities
+Each one talks to Hyprland or a small daemon; none depends on which shell runs.
+- [ ] Monitor scaling (`hyprctl keyword monitor`)
+- [ ] Screen rotation (`hyprctl … transform`)
+- [ ] Shader menu (`hyprshade`)
+- [ ] Keyboard sound
+- [ ] Wallpaper transition animation
+- [ ] Waybar config switcher — **only meaningful if a waybar-based option is
+      ever added**; it is meaningless on Quickshell. The caelestia equivalent
+      is shell layout presets.
+
+### 7.3 What is NOT ours to build
+Worth recording because it changed the scope: half of what impressed us in the
+Dusky screenshots was third-party software the author happens to run, not
+anything that project built. Those install on Genesi today with no work at all,
+and are the user's choice to make — nothing for the roadmap to carry.
+
+### 7.4 A Genesi settings app with real art direction
+Ryoku Arch's settings panel is the bar. Its stack is **Quickshell + QML** —
+exactly what Genesi already uses in the AI Mode Monitor, Forge, Snapshots and
+PortScope, and what caelestia runs. Nothing is missing technically.
+What it has that we do not is a committed point of view: one accent on black,
+a display serif against a monospace, density used as ornament (telemetry,
+section numbering, secondary labels), and one striking image treated as the
+subject. Its own identity is "paper and ink, warm bone on black" — copying it
+would make Genesi look like Ryoku rather than like Genesi.
+- [ ] Decide what Genesi's equivalent conviction is (today: emerald glass)
+- [ ] A second type family with a job — everything factual in monospace
+- [ ] Density as ornament instead of empty space
+- [ ] Wallpaper-derived retinting on the Plasma side too (Hyprland already has
+      it via genesi-materialyoucolor; Plasma's palette is a frozen decision)
+
+---
