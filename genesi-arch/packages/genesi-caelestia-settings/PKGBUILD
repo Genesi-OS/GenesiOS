@@ -156,7 +156,7 @@ pkgver=1.0.0
 # `loginctl terminate-user ""` -- the black screen fixed for the session drawer
 # in pkgrel 17. Someone who already had an actions list would have kept the
 # broken one forever otherwise.
-pkgrel=23
+pkgrel=24
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -168,6 +168,7 @@ depends=(
     # was published and nothing pulled it in, so `Quickshell.execDetached` was
     # launching a binary that was not on the machine and failing silently.
     'genesi-display'
+    'genesi-input'
     # The volume keybinds shipped here run wpctl. It happens to be installed
     # today because the ISO package list carries wireplumber -- but this
     # package is what BINDS the keys, so this package is what should require

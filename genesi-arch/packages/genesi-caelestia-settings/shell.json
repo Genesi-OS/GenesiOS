@@ -80,6 +80,30 @@
         "command": ["genesi-display", "rotate", "-", "cycle"]
       },
       {
+        "name": "Make this screen primary",
+        "icon": "star",
+        "description": "The desktop starts here — workspace 1 lives on this screen",
+        "command": ["genesi-display", "primary", "-"]
+      },
+      {
+        "name": "Mouse faster",
+        "icon": "mouse",
+        "description": "Nudge pointer speed up",
+        "command": ["genesi-input", "speed", "up"]
+      },
+      {
+        "name": "Mouse slower",
+        "icon": "mouse",
+        "description": "Nudge pointer speed down",
+        "command": ["genesi-input", "speed", "down"]
+      },
+      {
+        "name": "Mouse default speed",
+        "icon": "restart_alt",
+        "description": "Back to the hardware's own speed",
+        "command": ["genesi-input", "speed", "0"]
+      },
+      {
         "name": "Reset display",
         "icon": "settings_backup_restore",
         "description": "Undo every scale and rotation set from here",

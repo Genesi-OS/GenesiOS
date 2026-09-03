@@ -30,6 +30,9 @@ Usage:
   genesi-display show                 the same, readable
   genesi-display scale <name> <n>     1, 1.25, 1.5, 2 …, or "up"/"down"
   genesi-display rotate <name> <deg>  0, 90, 180, 270, or "cycle"
+  genesi-display position <a> <where> <b>
+                                      put <a> left-of/right-of/above/below <b>
+  genesi-display primary <name>       the screen the desktop starts on
   genesi-display reset [name]         drop our override (all, or one)
 
 A <name> of "-" means the monitor currently in use, which is what a keybind
@@ -261,6 +264,10 @@ def read_overrides():
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
+            w = re.match(r"workspace\s*=\s*(.+)$", line)
+            if w:
+                result["__workspace__"] = w.group(1).strip()
+                continue
             m = re.match(r"monitor\s*=\s*(.+)$", line)
             if m:
                 value = m.group(1).strip()
@@ -278,7 +285,13 @@ def write_overrides(overrides):
                  "# this is sourced at the END of hyprland.conf to win over the\n"
                  "# catch-all default.\n\n")
         for name in sorted(overrides):
+            if name == "__workspace__":
+                continue
             fh.write(f"monitor = {overrides[name]}\n")
+        # Not a monitor line: which screen the desktop starts on. It lives in
+        # the same file so `reset` clears everything this tool ever set.
+        if "__workspace__" in overrides:
+            fh.write(f"workspace = {overrides['__workspace__']}\n")
     ensure_sourced()
 
 
@@ -381,6 +394,89 @@ def cmd_rotate(name, value):
     print(f"{m['name']}: rotated {deg}°")
 
 
+def cmd_position(name, where, other_name):
+    """
+    Put one screen next to another, in words rather than in pixels.
+
+    Nobody thinks in coordinates -- they think "the DP one is on the left".
+    The position is computed from the neighbour's LOGICAL size, so it stays
+    right when either screen is scaled or rotated, which is exactly where
+    hand-typed coordinates go wrong.
+    """
+    if where not in ("left-of", "right-of", "above", "below"):
+        die(f"position must be left-of, right-of, above or below (got {where!r})")
+    m = find(name)
+    other = find(other_name)
+    if m["name"] == other["name"]:
+        die("a monitor cannot be positioned relative to itself")
+
+    ow, oh = logical_size(other)
+    mw, mh = logical_size(m)
+    if where == "right-of":
+        x, y = other["x"] + ow, other["y"]
+    elif where == "left-of":
+        x, y = other["x"] - mw, other["y"]
+    elif where == "below":
+        x, y = other["x"], other["y"] + oh
+    else:
+        x, y = other["x"], other["y"] - mh
+
+    # Everything is then shifted so the leftmost/topmost edge sits at 0,0.
+    # Hyprland accepts negative coordinates, but a desktop whose origin drifts
+    # further negative every time it is rearranged eventually confuses every
+    # app that asks where a window is.
+    placed = [{"name": m["name"], "x": x, "y": y}]
+    for mm in monitors():
+        if mm["name"] != m["name"]:
+            placed.append({"name": mm["name"], "x": mm["x"], "y": mm["y"]})
+    dx = -min(q["x"] for q in placed)
+    dy = -min(q["y"] for q in placed)
+
+    by_name = {mm["name"]: mm for mm in monitors()}
+    ov = read_overrides()
+    for q in placed:
+        line = monitor_line(by_name[q["name"]], x=q["x"] + dx, y=q["y"] + dy)
+        apply_live(line)
+        ov[q["name"]] = line
+    write_overrides(ov)
+    print(f"{m['name']}: {where.replace('-', ' ')} {other['name']}")
+
+
+def cmd_primary(name):
+    """
+    Which screen is "the main one".
+
+    The two sessions mean genuinely different things by this, so the tool does
+    the right thing for each instead of pretending one concept covers both:
+
+      X11       a real flag. `xrandr --primary` is what panels, full-screen
+                games and Steam read to decide where they belong.
+
+      Hyprland  has no primary flag at all. What people mean by it -- where the
+                desktop starts, where workspace 1 is, where the bar goes -- is
+                the default workspace binding, so that is what gets set, and
+                the tool says so rather than claiming more than it did.
+    """
+    m = find(name)
+    if os.environ.get("DISPLAY") and shutil.which("xrandr"):
+        p = subprocess.run(["xrandr", "--output", m["name"], "--primary"],
+                           capture_output=True, text=True)
+        if p.returncode != 0:
+            die((p.stderr or p.stdout).strip() or "xrandr failed")
+        print(f"{m['name']}: primary")
+        return
+    if not shutil.which("hyprctl"):
+        die("no X11 and no Hyprland here — nothing understands a primary screen", 2)
+    rule = f"1, monitor:{m['name']}, default:true"
+    hypr("keyword", "workspace", rule, check=False)
+    ov = read_overrides()
+    ov["__workspace__"] = rule
+    write_overrides(ov)
+    print(f"{m['name']}: primary (workspace 1 lives here)")
+    print("  Hyprland has no primary flag; this is the setting that decides")
+    print("  where the desktop starts, which is what 'primary' means in use.")
+
+
 def cmd_reset(name=None):
     ov = read_overrides()
     if name:
@@ -416,6 +512,15 @@ def main():
         if len(rest) != 2:
             die("usage: genesi-display rotate <monitor> <degrees>")
         cmd_rotate(*rest)
+    elif cmd == "position":
+        if len(rest) != 3:
+            die("usage: genesi-display position <monitor> "
+                "left-of|right-of|above|below <other monitor>")
+        cmd_position(*rest)
+    elif cmd == "primary":
+        if len(rest) != 1:
+            die("usage: genesi-display primary <monitor>")
+        cmd_primary(*rest)
     elif cmd == "reset":
         cmd_reset(rest[0] if rest else None)
     else:

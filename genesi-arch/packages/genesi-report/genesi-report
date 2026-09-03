@@ -156,6 +156,86 @@ collect_genesi() {
     fi
 }
 
+collect_audio_display() {
+    # ── Audio ────────────────────────────────────────────────────────────────
+    #
+    # Reported from a real desk: "below 54% the sound goes mute." That has two
+    # plausible causes which need OPPOSITE fixes, and only the machine can say
+    # which:
+    #
+    #   * The sink is driven by the ALSA HARDWARE mixer, whose usable dB range
+    #     is squeezed into the top of the scale on many codecs. The bottom of
+    #     the slider then sits below the audible floor. Fix: software mixer.
+    #
+    #   * The default sink is the DisplayPort/HDMI monitor rather than the
+    #     speakers, and the panel handles its own volume. Fix: pick the right
+    #     sink, and change nothing globally.
+    #
+    # Shipping a distro-wide audio change on the wrong one of those would break
+    # audio for everybody to fix it for nobody. So this collects the deciding
+    # facts instead of guessing: which sink is default, whether its volume is
+    # hardware or software, and what dB range the hardware actually offers.
+    section "Audio"
+    if have wpctl; then
+        echo "  default sink:"
+        wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null             | grep -iE 'node.name|node.description|device.api|api.alsa.path|alsa.card_name|node.pause-on-idle'             | sed 's/^/    /' | redact
+        echo "  volume:"
+        wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | sed 's/^/    /'
+    else
+        echo "  wpctl not present"
+    fi
+    if have amixer; then
+        # The decisive number. "Limits" plus the dB range say whether the lower
+        # half of the slider maps to anything a person can hear.
+        echo "  hardware mixer range:"
+        for c in 0 1 2; do
+            out="$(amixer -c "$c" sget Master 2>/dev/null | grep -E 'Limits|dB|Playback channels' | head -4)"
+            [ -n "${out}" ] && printf '    card %s
+%s
+' "$c" "$(printf '%s
+' "${out}" | sed 's/^/      /')"
+        done
+    fi
+    if [ -d /usr/share/wireplumber ] || [ -d /etc/wireplumber ]; then
+        echo "  wireplumber drop-ins:"
+        find /etc/wireplumber ~/.config/wireplumber -type f 2>/dev/null             | head -10 | sed 's/^/    /' | redact
+        find /etc/wireplumber ~/.config/wireplumber -type f 2>/dev/null | grep -q .             || echo "    none (stock configuration — hardware mixer)"
+    fi
+
+    # ── Displays ─────────────────────────────────────────────────────────────
+    #
+    # Reported: a DisplayPort screen that flickers and then blanks until the
+    # cable is replugged. That is link training failing, and the kernel says so
+    # in dmesg long before anything is visible on screen. It is not something a
+    # settings page can fix, but it IS something the log identifies precisely.
+    section "Displays"
+    if have hyprctl && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        hyprctl monitors 2>/dev/null             | grep -E 'Monitor|availableModes|scale|transform|focused|dpmsStatus'             | head -40 | sed 's/^/  /' | redact
+    elif have xrandr; then
+        xrandr --query 2>/dev/null | grep -E ' connected|primary' | sed 's/^/  /' | redact
+    fi
+    echo
+    echo "  link errors in this boot (empty is good):"
+    if have journalctl; then
+        jout="$(journalctl -k -b 2>/dev/null             | grep -iE 'link training|link status|dp_link|drm.*(fail|error)|EDID.*(invalid|fail)|Sink not ready'             | tail -15 | redact)"
+        if [ -n "${jout}" ]; then printf '%s
+' "${jout}" | sed 's/^/    /'
+        else echo "    none"; fi
+    fi
+
+    # ── Pointers ─────────────────────────────────────────────────────────────
+    # Which devices exist, so "the sensitivity slider did nothing" can be told
+    # apart from "the slider moved a device that is not the one in your hand".
+    section "Pointers"
+    if have genesi-input; then
+        genesi-input list 2>/dev/null | sed 's/^/  /' | redact
+    elif have xinput; then
+        xinput list --short 2>/dev/null | grep 'slave  pointer' | sed 's/^/  /' | redact
+    else
+        echo "  no pointer tooling available"
+    fi
+}
+
 collect_health() {
     section "Failed units"
     if have systemctl; then
@@ -224,6 +304,7 @@ FULL="$( {
     echo "placeholders (<user>, <host>, <ip>, …). Read it before you post it."
     collect_facts
     collect_genesi
+    collect_audio_display
     collect_health
 } 2>&1 )"
 

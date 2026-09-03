@@ -1487,6 +1487,19 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
       classify as a mouse never receives it. `genesi-input list` answers what
       the slider cannot — which pointers are attached, and what each one's
       speed really is. A `genesi-desktop` dependency, so both desktops get it.
+- [x] **Which screen is primary, and where each one sits.** `genesi-display
+      position <a> left-of|right-of|above|below <b>` and `genesi-display
+      primary <name>`. Positions are computed from the neighbour's LOGICAL
+      size, so they stay right when a screen is scaled or rotated — which is
+      exactly where hand-typed coordinates go wrong — and the arrangement is
+      shifted so its top-left edge is always 0,0 rather than drifting further
+      negative on every rearrangement. `primary` does the honest thing per
+      session instead of pretending one concept covers both: on X11 it is the
+      real `xrandr --primary` flag that panels and full-screen games read; on
+      Hyprland, which has no such flag, it sets the default workspace binding —
+      where the desktop starts — and says that is what it did.
+- [ ] Surface position/primary in the Nexus and in Plasma's settings. The CLI
+      is there and reachable from the launcher; the pages are not written yet.
 - [ ] Shader menu (`hyprshade`). Held back deliberately: `hyprshade` is AUR-only
       and Genesi does not package it, so launcher entries calling it would be
       entries that silently do nothing. Repackage it first, the way the

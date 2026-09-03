@@ -13,7 +13,7 @@
 # features wanted work this way.
 pkgname=genesi-display
 pkgver=1.0.0
-pkgrel=3
+pkgrel=4
 pkgdesc='Monitor scale and rotation for Hyprland, persisted across reloads'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
