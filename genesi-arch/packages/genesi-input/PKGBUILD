@@ -1,0 +1,34 @@
+# Maintainer: Genesi OS Team
+#
+# genesi-input — pointer speed and acceleration, shell-independent.
+#
+# The companion to genesi-display, and the same deliberate shape: a CLI, not
+# an eleventh Qt app. caelestia's settings had no mouse page at all, and
+# Plasma's had one that did not take on a real mouse; both need the same lever
+# underneath, and a page in each desktop's own settings on top.
+#
+# xinput is a hard dependency, not optional. Genesi's KDE installs default to
+# the X11 session (plasma-x11-session is REQUIRED in the netinstall group, not
+# optional), so the X11 path is the common case here rather than the fallback,
+# and a `genesi-input list` that cannot see any device is worse than useless --
+# it is the tool agreeing with the broken slider.
+pkgname=genesi-input
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Pointer speed and acceleration for Genesi OS, on Hyprland or X11'
+arch=('any')
+groups=('genesi')
+license=('AGPL-3.0-or-later')
+url='https://github.com/Genesi-OS/GenesiOS'
+depends=(
+  'python'
+  # The X11 path is set-prop on libinput properties. Without this the tool
+  # silently sees no devices on the session most Genesi KDE users are in.
+  'xorg-xinput'
+)
+source=('genesi-input')
+sha256sums=('SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/genesi-input" "${pkgdir}/usr/bin/genesi-input"
+}

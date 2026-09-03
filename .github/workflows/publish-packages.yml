@@ -381,6 +381,11 @@ jobs:
             # shell comes next -- which is the whole reason 7.2 is built as
             # CLIs with thin front-ends rather than as panels.
             "genesi-display"
+            # Phase 7.2: pointer speed. Same shape and same reason as
+            # genesi-display -- and it carries the X11 path, which is the
+            # common case on Genesi's KDE installs (they default to the X11
+            # session), not a fallback.
+            "genesi-input"
             "genesi-calamares"
             "genesi-calamares-branding"
             "genesi-welcome"

@@ -62,7 +62,7 @@ pkgver=1.0.0
 # darkly were moved out in pkgrel 4. It belongs in the KDE-Desktop netinstall
 # group, which lives in the genesi-calamares-config submodule; until that lands
 # a Plasma user can install it by name.
-pkgrel=14
+pkgrel=15
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -105,6 +105,10 @@ depends=(
     # polkit action, shared by the caelestia page and the Plasma KCM. Two
     # paths to root would be two things that have to keep agreeing.
     'genesi-update-center'
+    # Pointer speed. Shell-independent on purpose: it drives Hyprland through
+    # hyprctl and X11 through xinput, and Genesi's KDE installs default to the
+    # X11 session, so this is the one 7.2 tool both desktops need.
+    'genesi-input'
     # Phase 4.3-4.6 developer tools (this OS targets programmers).
     'genesi-containers'    # Plasma widget for Docker/Podman
     'genesi-ports'         # port -> PID dashboard, Plasma widget + SNI tray

@@ -1,0 +1,413 @@
+#!/usr/bin/env python3
+"""
+genesi-input — pointer speed and acceleration, on whichever session is running.
+
+── Why this exists ──────────────────────────────────────────────────────────
+
+caelestia's settings have no mouse page at all, and Plasma's has one that did
+not take. Both were reported from the same desk.
+
+The second half is the interesting one, and the reason this is a CLI rather
+than a page. Pointer speed is not one setting; it is a different setting per
+session type, applied through a different mechanism, to a device that has to
+be identified first:
+
+  Hyprland      input:sensitivity (-1 .. 1) and input:accel_profile, live
+                through `hyprctl keyword`, persisted to a sourced config.
+
+  X11           libinput's "Accel Speed" property, set per device with
+                xinput. Genesi's KDE installs DEFAULT to the X11 session
+                (see plasma-x11-session in the netinstall group), which is
+                where Plasma's own slider is least reliable: it writes
+                kcminputrc and leaves kcminit to push the value onto devices,
+                and a device Plasma did not classify as a mouse never gets it.
+
+So `genesi-input list` exists to answer the question a settings page cannot:
+which pointers are actually attached, what each one's speed really is right
+now, and therefore which one the slider was missing.
+
+── Deliberately not a new app ───────────────────────────────────────────────
+
+Same shape as genesi-display, for the same reason: Genesi already has ten Qt
+apps and the eleventh is not the answer. The UI is a page inside the settings
+each desktop already has; this is the thing underneath that both can call, and
+that also works over SSH and in a script.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+CONF_DIR = os.path.expanduser("~/.config/hypr")
+OUR_CONF = os.path.join(CONF_DIR, "genesi-input.conf")
+MAIN_CONF = os.path.join(CONF_DIR, "hyprland.conf")
+SOURCE_MARKER = "# genesi-input"
+SOURCE_LINE = SOURCE_MARKER + "\nsource = " + OUR_CONF + "\n"
+
+# Hyprland takes -1 .. 1, where 0 is untouched hardware speed. libinput's
+# Accel Speed uses the same range with the same meaning, so one number covers
+# both sessions and the user learns one scale.
+MIN_SPEED, MAX_SPEED = -1.0, 1.0
+
+# What `speed up` / `speed down` step by. Small enough that a keybind is a
+# nudge rather than a lurch across the whole range.
+STEP = 0.1
+
+USAGE = """genesi-input — pointer speed and acceleration
+
+  genesi-input list                    every pointer, and its real current speed
+  genesi-input show                    the speed in effect, in plain language
+  genesi-input speed <n>               -1 (slowest) .. 0 (default) .. 1 (fastest)
+  genesi-input speed up|down           nudge by 0.1, for a keybind
+  genesi-input accel flat|adaptive     flat = raw movement, no acceleration
+  genesi-input reset                   undo everything set from here
+
+A device name may follow `speed` and `accel` to target one pointer:
+
+  genesi-input speed 0.4 Logitech
+
+With no name it applies to every pointer, which is what someone adjusting
+"the mouse" means when they have one mouse.
+"""
+
+
+def die(msg, code=1):
+    sys.stderr.write("genesi-input: " + msg + "\n")
+    sys.exit(code)
+
+
+def run(cmd, check=False):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        if check:
+            die(cmd[0] + " not found")
+        return None
+
+
+def session():
+    """
+    Which mechanism applies here.
+
+    Hyprland is detected by its running instance rather than by
+    XDG_SESSION_TYPE: Hyprland IS Wayland, but so is Plasma Wayland, and the
+    two take completely different commands.
+    """
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and shutil.which("hyprctl"):
+        return "hyprland"
+    if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("DISPLAY"):
+        return "wayland-other"
+    if os.environ.get("DISPLAY") and shutil.which("xinput"):
+        return "x11"
+    return "unknown"
+
+
+# ── X11 / libinput ───────────────────────────────────────────────────────────
+
+def xinput_pointers():
+    """
+    Every pointer with a libinput Accel Speed property.
+
+    Filtering on the property rather than on the device name is deliberate.
+    The reason a desktop's slider can miss a device is that the desktop decides
+    what counts as "a mouse"; anything libinput will accelerate is something
+    this tool can set.
+    """
+    p = run(["xinput", "list", "--short"])
+    if not p or p.returncode != 0:
+        return []
+    out = []
+    for line in p.stdout.splitlines():
+        if "slave  pointer" not in line:
+            continue
+        m = re.search(r"^[^\w]*(.+?)\s+id=(\d+)", line)
+        if not m:
+            continue
+        name, dev_id = m.group(1).strip(), m.group(2)
+        props = run(["xinput", "list-props", dev_id])
+        if not props or props.returncode != 0:
+            continue
+        speed = accel = speed_prop = accel_prop = None
+        for pl in props.stdout.splitlines():
+            pm = re.match(r"\s*(.+?)\s+\((\d+)\):\s*(.*)$", pl)
+            if not pm:
+                continue
+            pname, pid, pval = pm.group(1), pm.group(2), pm.group(3).strip()
+            if "Default" in pname:
+                continue
+            if pname.startswith("libinput Accel Speed"):
+                speed_prop = pid
+                try:
+                    speed = float(pval)
+                except ValueError:
+                    pass
+            elif pname.startswith("libinput Accel Profile Enabled"):
+                accel_prop = pid
+                # "0, 1, 0" -> adaptive, flat, custom
+                flags = [v.strip() for v in pval.split(",")]
+                if len(flags) >= 2:
+                    accel = "flat" if flags[1] == "1" else "adaptive"
+        if speed_prop is None:
+            continue
+        out.append({"id": dev_id, "name": name, "speed": speed,
+                    "accel": accel, "speed_prop": speed_prop,
+                    "accel_prop": accel_prop})
+    return out
+
+
+def x11_set_speed(dev, value):
+    run(["xinput", "set-prop", dev["id"], dev["speed_prop"],
+         "%.4f" % value])
+
+
+def x11_set_accel(dev, profile):
+    if not dev["accel_prop"]:
+        return False
+    flat = "1" if profile == "flat" else "0"
+    adaptive = "0" if profile == "flat" else "1"
+    run(["xinput", "set-prop", dev["id"], dev["accel_prop"],
+         adaptive, flat, "0"])
+    return True
+
+
+# ── Hyprland ─────────────────────────────────────────────────────────────────
+
+def hypr_devices():
+    p = run(["hyprctl", "-j", "devices"])
+    if not p or p.returncode != 0:
+        return []
+    try:
+        data = json.loads(p.stdout)
+    except json.JSONDecodeError:
+        return []
+    return [{"id": m.get("name", "?"), "name": m.get("name", "?"),
+             "speed": None, "accel": None}
+            for m in data.get("mice", [])]
+
+
+def hypr_current():
+    """Whatever is in effect now, so up/down step from reality."""
+    p = run(["hyprctl", "getoption", "input:sensitivity", "-j"])
+    if p and p.returncode == 0:
+        try:
+            return float(json.loads(p.stdout).get("float", 0.0))
+        except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+            pass
+    return 0.0
+
+
+def hypr_apply(speed=None, accel=None):
+    if speed is not None:
+        run(["hyprctl", "keyword", "input:sensitivity", "%.4f" % speed])
+    if accel is not None:
+        run(["hyprctl", "keyword", "input:accel_profile", accel])
+
+
+def read_overrides():
+    result = {}
+    if not os.path.exists(OUR_CONF):
+        return result
+    with open(OUR_CONF, "r", encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            m = re.match(r"\s*input\s*:\s*(\w+)\s*=\s*(.+)$", raw.strip())
+            if m:
+                result[m.group(1)] = m.group(2).strip()
+    return result
+
+
+def write_overrides(ov):
+    os.makedirs(CONF_DIR, exist_ok=True)
+    with open(OUR_CONF, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Written by genesi-input. Safe to delete: it holds only\n"
+                 "# pointer settings, and nothing you wrote by hand.\n"
+                 "#\n"
+                 "# Sourced at the END of hyprland.conf so it wins over the\n"
+                 "# defaults Genesi ships earlier in that file.\n\n")
+        for key in sorted(ov):
+            fh.write("input:" + key + " = " + ov[key] + "\n")
+    ensure_sourced()
+
+
+def ensure_sourced():
+    if not os.path.exists(MAIN_CONF):
+        sys.stderr.write(
+            "genesi-input: " + MAIN_CONF + " does not exist, so the change\n"
+            "              is not persisted; it is lost on the next reload.\n")
+        return
+    with open(MAIN_CONF, "r", encoding="utf-8", errors="replace") as fh:
+        content = fh.read()
+    if SOURCE_MARKER in content or "genesi-input.conf" in content:
+        return
+    with open(MAIN_CONF, "a", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n" + SOURCE_LINE)
+
+
+# ── commands ─────────────────────────────────────────────────────────────────
+
+def devices():
+    s = session()
+    if s == "hyprland":
+        return hypr_devices()
+    if s == "x11":
+        return xinput_pointers()
+    return []
+
+
+def cmd_list():
+    s = session()
+    devs = devices()
+    print("session: " + s)
+    if not devs:
+        if s == "wayland-other":
+            print("")
+            print("This is a Wayland session that is not Hyprland (Plasma")
+            print("Wayland, most likely). There is no per-device pointer API")
+            print("outside the compositor there, so the desktop's own mouse")
+            print("settings are the only lever — this tool cannot reach past")
+            print("them, and would be lying if it claimed to.")
+        else:
+            print("")
+            print("no pointer devices found")
+        return
+    print("")
+    for d in devs:
+        speed = "—" if d["speed"] is None else "%+.2f" % d["speed"]
+        print("  " + d["name"])
+        print("      speed " + speed + "   acceleration " + (d["accel"] or "—"))
+    if s == "x11":
+        print("")
+        print("  Every device above accepts a speed. If the desktop's own")
+        print("  slider did nothing for one of them, that is the likely")
+        print("  reason: it is a pointer libinput will accelerate, but not")
+        print("  one the desktop classified as a mouse.")
+
+
+def cmd_show():
+    s = session()
+    if s == "hyprland":
+        cur = hypr_current()
+        state = "default" if abs(cur) < 0.005 else "adjusted"
+        print("pointer speed %+.2f (%s)" % (cur, state))
+        return
+    devs = devices()
+    if not devs:
+        cmd_list()
+        return
+    for d in devs:
+        if d["speed"] is not None:
+            print("%s: speed %+.2f  acceleration %s"
+                  % (d["name"], d["speed"], d["accel"] or "—"))
+
+
+def resolve_speed(value, current):
+    if value in ("up", "down"):
+        new = current + (STEP if value == "up" else -STEP)
+        return max(MIN_SPEED, min(MAX_SPEED, round(new, 4)))
+    try:
+        v = float(value)
+    except ValueError:
+        die(repr(value) + " is not a number, and not 'up' or 'down'")
+    if not (MIN_SPEED <= v <= MAX_SPEED):
+        die("speed must be between %g and %g (got %g)"
+            % (MIN_SPEED, MAX_SPEED, v))
+    return v
+
+
+def cmd_speed(value, name=None):
+    s = session()
+    if s == "hyprland":
+        cur = hypr_current()
+        new = resolve_speed(value, cur)
+        if value in ("up", "down") and abs(new - cur) < 1e-9:
+            # Already at an end. Say so rather than fail: a keybind that
+            # errors when pressed once too often teaches people it is broken.
+            print("already at %+.2f (%s)"
+                  % (cur, "fastest" if value == "up" else "slowest"))
+            return
+        hypr_apply(speed=new)
+        ov = read_overrides()
+        ov["sensitivity"] = ("%.4f" % new).rstrip("0").rstrip(".")
+        write_overrides(ov)
+        print("pointer speed %+.2f" % new)
+        return
+    devs = [d for d in devices()
+            if not name or name.lower() in d["name"].lower()]
+    if not devs:
+        die("no pointer matching " + repr(name) + ". Try: genesi-input list"
+            if name else "no pointer devices found")
+    for d in devs:
+        new = resolve_speed(value, d["speed"] or 0.0)
+        x11_set_speed(d, new)
+        print("%s: speed %+.2f" % (d["name"], new))
+    if s == "x11":
+        # xinput is runtime-only, exactly like hyprctl keyword. Say so rather
+        # than let the setting quietly evaporate at the next login.
+        print("")
+        print("  Applied now. X11 forgets device properties at logout — to")
+        print("  keep it, set the same value in the desktop's mouse settings,")
+        print("  which now knows which device to point at.")
+
+
+def cmd_accel(profile, name=None):
+    if profile not in ("flat", "adaptive"):
+        die("acceleration must be 'flat' or 'adaptive' (got %r)" % profile)
+    s = session()
+    if s == "hyprland":
+        hypr_apply(accel=profile)
+        ov = read_overrides()
+        ov["accel_profile"] = profile
+        write_overrides(ov)
+        print("acceleration " + profile)
+        return
+    devs = [d for d in devices()
+            if not name or name.lower() in d["name"].lower()]
+    if not devs:
+        die("no pointer devices found")
+    for d in devs:
+        if x11_set_accel(d, profile):
+            print(d["name"] + ": acceleration " + profile)
+        else:
+            print(d["name"] + ": does not support an acceleration profile")
+
+
+def cmd_reset():
+    s = session()
+    if s == "hyprland":
+        write_overrides({})
+        run(["hyprctl", "reload"])
+        print("reset — back to the shipped defaults")
+        return
+    for d in devices():
+        x11_set_speed(d, 0.0)
+    print("reset — every pointer back to speed 0")
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help", "help"):
+        print(USAGE)
+        return 0
+    cmd, rest = args[0], args[1:]
+    if cmd == "list":
+        cmd_list()
+    elif cmd == "show":
+        cmd_show()
+    elif cmd == "speed":
+        if not rest:
+            die("speed needs a value: -1 .. 1, or up/down")
+        cmd_speed(rest[0], rest[1] if len(rest) > 1 else None)
+    elif cmd == "accel":
+        if not rest:
+            die("accel needs 'flat' or 'adaptive'")
+        cmd_accel(rest[0], rest[1] if len(rest) > 1 else None)
+    elif cmd == "reset":
+        cmd_reset()
+    else:
+        die("unknown command " + repr(cmd) + "\n\n" + USAGE)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

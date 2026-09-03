@@ -130,7 +130,13 @@ HYPR
     #    and rotation only reach people who go looking in `>`; these are the
     #    same actions on the keyboard. Guarded on the binary name so a user who
     #    rebound them keeps their own.
-    if ! grep -q 'genesi-display' "$cfg"; then
+    #    The marker is the BIND LINE, not the word "genesi-display": that word
+    #    also appears in the `source = ~/.config/hypr/genesi-display.conf` line
+    #    genesi-display itself appends the first time someone changes a display
+    #    setting. Guarding on the tool's name meant anyone who had USED the
+    #    feature was told the section was already applied, so the people who
+    #    tried it were precisely the ones who never got the keys.
+    if ! grep -q 'genesi-display scale - up' "$cfg"; then
         cat >> "$cfg" <<'HYPR'
 # Display: scale and rotation from the keyboard. `-` is the screen in use.
 bind = SUPER, equal, exec, genesi-display scale - up

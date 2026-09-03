@@ -110,7 +110,54 @@ else
 fi
 
 echo
-note "case 4: /etc/skel and the migration must agree"
+note "case 4: no marker may collide with what the Genesi CLIs write"
+# Genesi's CLIs append their own `source = ...` lines to hyprland.conf the
+# first time someone changes a setting. A section marker that is a SUBSTRING of
+# one of those lines makes the migration believe it already ran -- so the
+# people who TRIED a feature are exactly the ones who never get the rest of it.
+#
+# Not hypothetical: the display keybinds guarded on the word "genesi-display",
+# which is inside `source = ~/.config/hypr/genesi-display.conf` -- a line
+# genesi-display itself writes. Reported from hardware as "the keys still do
+# nothing" after the fix that was supposed to deliver them.
+#
+# Checked statically. Running the migration and looking for the marker proves
+# nothing here: the colliding line contains the marker, so the check would
+# pass on exactly the broken case.
+CLI_LINES="$(
+  for cli in "$ROOT"/genesi-arch/packages/genesi-*/genesi-display              "$ROOT"/genesi-arch/packages/genesi-*/genesi-input; do
+    [ -f "$cli" ] || continue
+    grep -hoE '(# )?genesi-[a-z]+(\.conf|: [a-z -]+)' "$cli"
+    grep -hoE 'source = [^"]*genesi-[a-z]+\.conf' "$cli"
+  done | sort -u
+)"
+if [ -z "$CLI_LINES" ]; then
+  note "FAIL  found nothing the CLIs write -- they were renamed or moved,"
+  note "      and this check is now blind."
+  fail=1
+else
+  collided=()
+  for m in "${MARKERS[@]}"; do
+    if printf '%s
+' "$CLI_LINES" | grep -qF -- "$m"; then
+      collided+=("$m")
+    fi
+  done
+  if [ "${#collided[@]}" -gt 0 ]; then
+    note "FAIL  these markers also match a line a Genesi CLI writes into"
+    note "      hyprland.conf, so the section is skipped for anyone who has"
+    note "      used that tool:"
+    for m in "${collided[@]}"; do note "        - $m"; done
+    note "      Guard on a line the section itself appends (the bind, the"
+    note "      exec-once), never on a tool's name."
+    fail=1
+  else
+    note "PASS  all ${#MARKERS[@]} markers are specific to their own section"
+  fi
+fi
+
+echo
+note "case 5: /etc/skel and the migration must agree"
 # A new account gets the skel file; an existing one gets the migration. If they
 # disagree, the two halves of the user base end up on different desktops.
 skel_missing=()
