@@ -1337,18 +1337,27 @@ way Windows does.
       stop holding, including refusing to apply if upstream ever ships its own
       UpdatesPage. pkgver is pinned so upstream cannot overwrite us; the real
       risk is the mirror image, erasing something of theirs on our next bump.
-- [ ] **Neither screen has been seen running.** Static verification is not an
-      open window, and "installs where Plasma looks" is not "appears in System
-      Settings". Both first runs happen on a real machine.
+- [x] **The caelestia page has now been seen running, and static verification
+      was not enough.** Three things only a real screen showed: the hero icon
+      stuck upside down (`RotationAnimator on rotation` owns the property and
+      leaves it where the animation stopped), the System cards drawn square
+      (`InfoRow` already IS a `ConnectedRect`; wrapping it stacked two
+      rectangles and the inner, nearly-square one won), and the launcher
+      entries missing entirely for an existing user (/etc/skel seeds only NEW
+      accounts). All fixed on hardware feedback.
+- [ ] **The KDE page has still not been seen running.** It could not be: until
+      the netinstall wiring above, nothing installed it. First run is on a real
+      machine, after the next ISO or a `genesi update` on a KDE install.
 - [ ] **Everything else**: GNOME/Xfce/Cinnamon/MATE/LXDE/Budgie/Cosmic/Niri
       settings apps are **not pluggable** — no extension point exists. A
       standalone app is the only option there, and is the fallback rather than
       the product. Still to be written; it lives next to the helper it calls.
-- [ ] Wire `genesi-update-kcm` into the KDE-Desktop netinstall group. It is
-      KDE-only and must NOT go in the `genesi-desktop` meta, which lands on all
-      nine desktops — the mistake pkgrel 4 corrected for genesi-kde-settings,
-      klassy and darkly. The group lives in the genesi-calamares-config
-      submodule.
+- [x] Wire `genesi-update-kcm` into the KDE-Desktop netinstall group. Done: it
+      is KDE-only and must NOT go in the `genesi-desktop` meta, which lands on
+      all nine desktops — the mistake pkgrel 4 corrected for genesi-kde-settings,
+      klassy and darkly. Verified it was really published and signed first,
+      because that group is `critical: true` and a package that does not exist
+      aborts the install.
 - [x] The existing `genesi-update` tray notifier is untouched and stays. The
       two have different jobs: the notifier pulls you, the settings page
       receives you. Wiring the icon to open the new page is a deliberate future
@@ -1458,6 +1467,26 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
         monitor's real name, so a second change wrote a SECOND line for the same
         monitor. Hyprland applies the last matching line, which was the stale
         one: the change silently reverted itself on the next reload.
+- [x] **A second bug behind the same symptom: the keys still did nothing.** The
+      package had shipped and the migration gate was gone, so this was separate.
+      Section 8 guarded on the word `genesi-display` — and genesi-display
+      appends `source = ~/.config/hypr/genesi-display.conf` to hyprland.conf
+      the first time someone changes a display setting. The guard matched that
+      line, so anyone who had USED the display actions was exactly who never
+      received the keybinds. The marker is now the bind line the section itself
+      appends. `ci/hypr-migration-test.sh` checks this STATICALLY: the obvious
+      dynamic test (run the migration, look for the marker) reports PASS on the
+      broken case, because the colliding line contains the marker — that
+      version was written first and had to be thrown away.
+- [x] **`genesi-input`** — pointer speed and acceleration. caelestia's settings
+      have no mouse page at all; Plasma's has one that did not take on a real
+      mouse. Same shape as `genesi-display` and for the same reason, but it
+      carries an X11 path as well as a Hyprland one: Genesi's KDE installs
+      default to the X11 session, where Plasma writes kcminputrc and leaves
+      kcminit to push the value onto devices, so a pointer Plasma did not
+      classify as a mouse never receives it. `genesi-input list` answers what
+      the slider cannot — which pointers are attached, and what each one's
+      speed really is. A `genesi-desktop` dependency, so both desktops get it.
 - [ ] Shader menu (`hyprshade`). Held back deliberately: `hyprshade` is AUR-only
       and Genesi does not package it, so launcher entries calling it would be
       entries that silently do nothing. Repackage it first, the way the
