@@ -1,0 +1,25 @@
+# Maintainer: Genesi OS Team
+#
+# genesi-audio — audio quirks that are not any one desktop's business.
+#
+# Config only: no binary, no UI, no daemon. It exists because the fix belongs
+# to the system's audio stack rather than to KDE or to Hyprland, and both need
+# it. A drop-in is the whole payload.
+pkgname=genesi-audio
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Audio quirk configuration for Genesi OS'
+arch=('any')
+groups=('genesi')
+license=('AGPL-3.0-or-later')
+url='https://github.com/Genesi-OS/GenesiOS'
+depends=('wireplumber')
+source=('50-genesi-usb-soft-mixer.conf')
+sha256sums=('SKIP')
+
+package() {
+    # wireplumber.conf.d is the 0.5+ drop-in directory. /usr/share is the
+    # vendor location, which leaves /etc free for the user to override us.
+    install -Dm644 "${srcdir}/50-genesi-usb-soft-mixer.conf" \
+        "${pkgdir}/usr/share/wireplumber/wireplumber.conf.d/50-genesi-usb-soft-mixer.conf"
+}

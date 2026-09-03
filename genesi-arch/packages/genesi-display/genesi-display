@@ -32,6 +32,7 @@ Usage:
   genesi-display rotate <name> <deg>  0, 90, 180, 270, or "cycle"
   genesi-display position <a> <where> <b>
                                       put <a> left-of/right-of/above/below <b>
+  genesi-display place <name> <x> <y> exact position, snapped to neighbours
   genesi-display primary <name>       the screen the desktop starts on
   genesi-display reset [name]         drop our override (all, or one)
 
@@ -66,6 +67,11 @@ TRANSFORM_TO_DEG = {v: k for k, v in DEG_TO_TRANSFORM.items()}
 # resolutions into whole pixels: Hyprland refuses the rest outright, and a
 # keybind that errors every other press is worse than one that stops at the end.
 SCALE_STEPS = [1.0, 1.25, 1.5, 1.75, 2.0]
+
+# How close a dragged edge has to get before it is pulled flush against a
+# neighbour, in logical pixels. Generous on purpose: the alternative is a
+# one-pixel gap between screens that nobody can see and everybody feels.
+SNAP = 120
 
 
 def die(msg, code=1):
@@ -442,6 +448,67 @@ def cmd_position(name, where, other_name):
     print(f"{m['name']}: {where.replace('-', ' ')} {other['name']}")
 
 
+def cmd_place(name, x_str, y_str):
+    """
+    Put a screen at an exact position, then tidy up.
+
+    This is what a drag produces: a drag does not mean "left of the other one",
+    it means a pair of coordinates. Three things happen afterwards, because a
+    raw drop is almost never quite what the person meant:
+
+      * Edges within SNAP logical pixels of a neighbour's edge are pulled flush
+        to it. Nobody wants a four-pixel seam between two screens, and nobody
+        can hit zero by hand.
+      * The whole arrangement is shifted so its top-left corner is 0,0.
+      * Every monitor is re-applied, so the ones that did not move still
+        reconfigure -- the same reason scale changes re-apply everything.
+    """
+    try:
+        x, y = int(round(float(x_str))), int(round(float(y_str)))
+    except ValueError:
+        die(f"place needs two numbers, got {x_str!r} and {y_str!r}")
+
+    m = find(name)
+    others = [mm for mm in monitors() if mm["name"] != m["name"]]
+    w, h = logical_size(m)
+
+    # Snap to whichever neighbour edge is closest, per axis and independently:
+    # a screen dragged below and slightly right of another should snap its left
+    # edge without also being dragged up.
+    for axis, pos, size, key in ((0, x, w, "x"), (1, y, h, "y")):
+        best = None
+        for o in others:
+            ow, oh = logical_size(o)
+            osize = ow if axis == 0 else oh
+            opos = o[key]
+            # Flush against either side, or aligned edge-to-edge.
+            for candidate in (opos - size, opos + osize, opos,
+                              opos + osize - size):
+                d = abs(candidate - pos)
+                if d <= SNAP and (best is None or d < best[0]):
+                    best = (d, candidate)
+        if best is not None:
+            if axis == 0:
+                x = best[1]
+            else:
+                y = best[1]
+
+    placed = [{"name": m["name"], "x": x, "y": y}]
+    for o in others:
+        placed.append({"name": o["name"], "x": o["x"], "y": o["y"]})
+    dx = -min(q["x"] for q in placed)
+    dy = -min(q["y"] for q in placed)
+
+    by_name = {mm["name"]: mm for mm in monitors()}
+    ov = read_overrides()
+    for q in placed:
+        line = monitor_line(by_name[q["name"]], x=q["x"] + dx, y=q["y"] + dy)
+        apply_live(line)
+        ov[q["name"]] = line
+    write_overrides(ov)
+    print(f"{m['name']}: at {x + dx},{y + dy}")
+
+
 def cmd_primary(name):
     """
     Which screen is "the main one".
@@ -517,6 +584,10 @@ def main():
             die("usage: genesi-display position <monitor> "
                 "left-of|right-of|above|below <other monitor>")
         cmd_position(*rest)
+    elif cmd == "place":
+        if len(rest) != 3:
+            die("usage: genesi-display place <monitor> <x> <y>")
+        cmd_place(*rest)
     elif cmd == "primary":
         if len(rest) != 1:
             die("usage: genesi-display primary <monitor>")

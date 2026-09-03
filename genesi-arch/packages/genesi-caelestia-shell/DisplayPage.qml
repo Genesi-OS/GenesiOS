@@ -236,62 +236,157 @@ PageBase {
             text: qsTr("Arrangement")
         }
 
-        // Positioning is stated in words rather than dragged, because a drag
-        // target needs a scaled preview of every screen and this page would
-        // then be a layout editor. The two orders people actually want are
-        // these, and both stay correct when a screen is scaled or rotated
-        // because the CLI computes from logical size.
+        // ── Drag the screens to where they actually are ──────────────────────
+        //
+        // Two named orders ("this one on the left") stop being enough at three
+        // screens, and never covered "a bit higher than the other" at all. A
+        // map you drag is the only honest way to say where a screen sits, which
+        // is why every desktop that has solved this draws one.
+        //
+        // Tiles are sized from LOGICAL size, not resolution: 2560 at 1.25x
+        // occupies 2048, and rotating swaps the axes. Drawing panels instead
+        // would make the map disagree with the desktop it describes.
+        //
+        // The drop goes to `genesi-display place`, which owns the snapping and
+        // the shift back to 0,0. Doing that here as well would put one rule in
+        // two places and let them drift; the CLI already applies it for the
+        // keyboard and the terminal.
         ConnectedRect {
+            id: mapCard
+
+            function logicalW(m: var): real {
+                return (m.transform === 1 || m.transform === 3 ? m.height : m.width) / m.scale;
+            }
+
+            function logicalH(m: var): real {
+                return (m.transform === 1 || m.transform === 3 ? m.width : m.height) / m.scale;
+            }
+
+            readonly property real minX: {
+                let v = 0;
+                for (let i = 0; i < root.monitors.length; i++)
+                    v = i === 0 ? root.monitors[i].x : Math.min(v, root.monitors[i].x);
+                return v;
+            }
+            readonly property real minY: {
+                let v = 0;
+                for (let i = 0; i < root.monitors.length; i++)
+                    v = i === 0 ? root.monitors[i].y : Math.min(v, root.monitors[i].y);
+                return v;
+            }
+            readonly property real spanW: {
+                let v = 1;
+                for (let i = 0; i < root.monitors.length; i++) {
+                    const m = root.monitors[i];
+                    v = Math.max(v, m.x + mapCard.logicalW(m) - mapCard.minX);
+                }
+                return v;
+            }
+            readonly property real spanH: {
+                let v = 1;
+                for (let i = 0; i < root.monitors.length; i++) {
+                    const m = root.monitors[i];
+                    v = Math.max(v, m.y + mapCard.logicalH(m) - mapCard.minY);
+                }
+                return v;
+            }
+
+            readonly property real pad: Tokens.padding.largeIncreased
+            // ONE factor for both axes, so the map keeps real proportions. A map
+            // stretched to fill its box would draw screens the wrong shape, and
+            // shape is most of what you recognise them by.
+            readonly property real factor: Math.min((mapCard.width - mapCard.pad * 2) / mapCard.spanW, (mapCard.height - mapCard.pad * 2) / mapCard.spanH)
+            readonly property real offX: (mapCard.width - mapCard.spanW * mapCard.factor) / 2
+            readonly property real offY: (mapCard.height - mapCard.spanH * mapCard.factor) / 2
+
             Layout.fillWidth: true
-            visible: root.monitors.length === 2
+            visible: root.monitors.length > 1
             first: true
             last: true
-            implicitHeight: arrangeCol.implicitHeight + Tokens.padding.largeIncreased * 2
+            implicitHeight: 260
 
-            ColumnLayout {
-                id: arrangeCol
+            Repeater {
+                model: root.monitors
 
-                anchors.centerIn: parent
-                width: parent.width - Tokens.padding.largeIncreased * 2
-                spacing: Tokens.spacing.small
+                StyledRect {
+                    id: tile
 
-                StyledText {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    text: qsTr("Which screen is on the left")
-                    font: Tokens.font.body.large
-                }
+                    required property var modelData
+                    required property int index
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Tokens.spacing.small
+                    readonly property bool held: dragArea.drag.active
 
-                    Repeater {
-                        model: root.monitors
+                    x: mapCard.offX + (tile.modelData.x - mapCard.minX) * mapCard.factor
+                    y: mapCard.offY + (tile.modelData.y - mapCard.minY) * mapCard.factor
+                    implicitWidth: mapCard.logicalW(tile.modelData) * mapCard.factor
+                    implicitHeight: mapCard.logicalH(tile.modelData) * mapCard.factor
 
-                        IconTextButton {
-                            required property var modelData
-                            required property int index
+                    radius: Tokens.rounding.small
+                    color: tile.held || tile.modelData.focused ? Colours.palette.m3primaryContainer : Colours.tPalette.m3surfaceContainerHigh
+                    border.width: 2
+                    border.color: tile.held ? Colours.palette.m3primary : Colours.palette.m3outlineVariant
+                    z: tile.held ? 1 : 0
 
-                            icon: "swap_horiz"
-                            text: modelData.name
-                            enabled: root.busy === ""
-                            type: TextButton.Filled
-                            onClicked: {
-                                const other = root.monitors[index === 0 ? 1 : 0];
-                                root.run(["genesi-display", "position", modelData.name, "left-of", other.name]);
-                            }
+                    // While a tile is held the mouse drives x/y; the bindings
+                    // above take over again on release, once the compositor has
+                    // said where the screen really ended up. Animating during
+                    // the drag would fight the pointer.
+                    Behavior on x {
+                        enabled: !tile.held
+                        CAnim {}
+                    }
+
+                    Behavior on y {
+                        enabled: !tile.held
+                        CAnim {}
+                    }
+
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        spacing: 0
+
+                        StyledText {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: tile.index + 1
+                            color: tile.held || tile.modelData.focused ? Colours.palette.m3onPrimaryContainer : Colours.palette.m3onSurface
+                            font: Tokens.font.headline.builders.large.width(110).build()
+                        }
+
+                        StyledText {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: tile.modelData.name
+                            color: tile.held || tile.modelData.focused ? Colours.palette.m3onPrimaryContainer : Colours.palette.m3onSurfaceVariant
+                            font: Tokens.font.label.small
+                        }
+                    }
+
+                    MouseArea {
+                        id: dragArea
+
+                        anchors.fill: parent
+                        cursorShape: tile.held ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                        enabled: root.busy === ""
+                        drag.target: tile
+                        drag.smoothed: false
+
+                        onReleased: {
+                            // Back out of map space into the compositor's, and
+                            // hand the raw drop to the CLI to snap and tidy.
+                            const mx = (tile.x - mapCard.offX) / mapCard.factor + mapCard.minX;
+                            const my = (tile.y - mapCard.offY) / mapCard.factor + mapCard.minY;
+                            root.run(["genesi-display", "place", tile.modelData.name, String(Math.round(mx)), String(Math.round(my))]);
                         }
                     }
                 }
+            }
 
-                StyledText {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    text: qsTr("More than two screens, or stacked one above another? `genesi-display position` takes above and below too.")
-                    color: Colours.palette.m3onSurfaceVariant
-                    font: Tokens.font.body.medium
-                }
+            StyledText {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: Tokens.padding.small
+                text: qsTr("Drag a screen to where it sits on your desk")
+                color: Colours.palette.m3onSurfaceVariant
+                font: Tokens.font.label.small
             }
         }
 

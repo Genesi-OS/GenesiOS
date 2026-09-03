@@ -62,7 +62,7 @@ pkgver=1.0.0
 # darkly were moved out in pkgrel 4. It belongs in the KDE-Desktop netinstall
 # group, which lives in the genesi-calamares-config submodule; until that lands
 # a Plasma user can install it by name.
-pkgrel=15
+pkgrel=16
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -109,6 +109,12 @@ depends=(
     # hyprctl and X11 through xinput, and Genesi's KDE installs default to the
     # X11 session, so this is the one 7.2 tool both desktops need.
     'genesi-input'
+    # A WirePlumber drop-in, no binary. USB audio devices get software volume
+    # because a reported headset's hardware mixer does not honour what it is
+    # told -- the kernel logs "sticky mixer values ... disabling" and the lower
+    # half of the slider goes silent. Not KDE's business or Hyprland's, so it
+    # lives in the shared meta.
+    'genesi-audio'
     # Phase 4.3-4.6 developer tools (this OS targets programmers).
     'genesi-containers'    # Plasma widget for Docker/Podman
     'genesi-ports'         # port -> PID dashboard, Plasma widget + SNI tray

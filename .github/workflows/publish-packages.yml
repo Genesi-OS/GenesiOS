@@ -386,6 +386,7 @@ jobs:
             # common case on Genesi's KDE installs (they default to the X11
             # session), not a fallback.
             "genesi-input"
+            "genesi-audio"
             "genesi-calamares"
             "genesi-calamares-branding"
             "genesi-welcome"
