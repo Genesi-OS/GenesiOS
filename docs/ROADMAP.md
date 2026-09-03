@@ -1500,6 +1500,21 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
       where the desktop starts — and says that is what it did.
 - [ ] Surface position/primary in the Nexus and in Plasma's settings. The CLI
       is there and reachable from the launcher; the pages are not written yet.
+- [x] **`>` searched in Portuguese found nothing at all.** The launcher searches
+      the action NAME and nothing else — verified against upstream's `Searcher`
+      (`key: "name"`; `Actions.qml` overrides neither `key` nor `keys`) — and
+      every name was English. Measured by running upstream's own `fzf.js`
+      against our real action list: *escala, girar, tela, principal, restaurar,
+      lento, rápido* all returned **zero** results.
+      Searching the description instead was tried and is worse: fzf matches a
+      subsequence, so long haystacks return noise — "girar" matched
+      "Scale 125%", "parede" matched "Make this screen primary". Genesi's own
+      actions now carry both halves ("Rotate screen · Girar tela"); upstream's
+      stay verbatim, because the drift check requires them exactly and they are
+      not ours to rename. `ci/caelestia-actions-test.py` fails the build on a
+      `genesi-*` action with no Portuguese half, so the next one cannot ship
+      English-only. This is one concrete piece of the i18n inconsistency
+      already listed below.
 - [ ] Shader menu (`hyprshade`). Held back deliberately: `hyprshade` is AUR-only
       and Genesi does not package it, so launcher entries calling it would be
       entries that silently do nothing. Repackage it first, the way the

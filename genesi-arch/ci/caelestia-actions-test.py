@@ -182,8 +182,17 @@ def main():
     # regenerates shell.json from upstream's defaults and forgets these, the
     # features go away silently — the same failure this file exists to stop,
     # pointed the other way.
-    required_ours = ["Scale 100%", "Scale 150%", "Rotate screen", "Reset display"]
-    missing_ours = [n for n in required_ours if n not in ours]
+    required_ours = ["Scale 100%", "Scale 150%", "Rotate screen", "Reset display",
+                     "Make this screen primary", "Mouse faster", "Mouse slower"]
+    # Matched as a PREFIX, not for equality. Genesi's own entries carry a
+    # Portuguese half after a "·" -- the launcher searches the action NAME and
+    # nothing else, so an English-only name is unfindable to someone typing
+    # "escala" or "girar", which is most of this distro's users. Upstream's
+    # entries are checked for equality further down and must stay exact; these
+    # are ours to name. A prefix still catches the thing this guard is for:
+    # an action being deleted or renamed away.
+    missing_ours = [n for n in required_ours
+                    if not any(o == n or o.startswith(n + " ") for o in ours)]
     if missing_ours:
         print("  FAIL  Genesi's own actions are gone from shell.json:")
         for n in missing_ours:
@@ -209,6 +218,40 @@ def main():
                       "screen fixed in settings pkgrel 17, through the other door")
                 return 1
             break
+
+    # ── Findable in the language people type ────────────────────────────────
+    #
+    # The launcher searches the action NAME and nothing else -- not the
+    # description (verified against upstream's Searcher: `key: "name"`, and
+    # Actions.qml overrides neither `key` nor `keys`). So an English-only name
+    # is unreachable to someone typing "escala", "girar" or "principal", which
+    # is most of this distro's users. Measured against upstream's own fzf.js:
+    # every Portuguese term returned ZERO results before this.
+    #
+    # Searching the description instead was tried and is WORSE: fzf matches a
+    # subsequence, so long haystacks return nonsense -- "girar" matched
+    # "Scale 125%" and "parede" matched "Make this screen primary".
+    #
+    # Upstream's entries are not ours to rename, and the drift check below
+    # requires them verbatim. Ours carry both halves, separated by "·".
+    genesi_actions = [a for a in cfg.get("launcher", {}).get("actions", [])
+                      if (a.get("command") or [""])[0].startswith("genesi-")]
+    english_only = [a.get("name", "?") for a in genesi_actions
+                    if "·" not in a.get("name", "")]
+    if english_only:
+        print("  FAIL  these Genesi actions have no Portuguese half, so they "
+              "cannot be found")
+        print("        by anyone searching in Portuguese:")
+        for n in english_only:
+            print(f"          - {n}")
+        print("        Name them \"English · Português\". Do NOT make the search "
+              "cover the")
+        print("        description instead -- fzf is subsequence-based and that "
+              "returns noise.")
+        return 1
+    if genesi_actions:
+        print(f"  PASS  all {len(genesi_actions)} Genesi actions are findable "
+              "in both languages")
 
     if not check_commands_resolve(cfg):
         return 1

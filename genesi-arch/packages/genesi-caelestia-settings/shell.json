@@ -50,61 +50,61 @@
       },
 
       {
-        "name": "Scale 100%",
+        "name": "Scale 100% · Escala 100%",
         "icon": "fit_screen",
         "description": "Set this screen to 1x — no scaling",
         "command": ["genesi-display", "scale", "-", "1"]
       },
       {
-        "name": "Scale 125%",
+        "name": "Scale 125% · Escala 125%",
         "icon": "zoom_in",
         "description": "Slightly larger interface on this screen",
         "command": ["genesi-display", "scale", "-", "1.25"]
       },
       {
-        "name": "Scale 150%",
+        "name": "Scale 150% · Escala 150%",
         "icon": "zoom_in",
         "description": "Larger interface on this screen",
         "command": ["genesi-display", "scale", "-", "1.5"]
       },
       {
-        "name": "Scale 200%",
+        "name": "Scale 200% · Escala 200%",
         "icon": "zoom_in",
         "description": "Double size — for a 4K screen at a normal distance",
         "command": ["genesi-display", "scale", "-", "2"]
       },
       {
-        "name": "Rotate screen",
+        "name": "Rotate screen · Girar tela",
         "icon": "screen_rotation",
         "description": "Turn this screen 90° — press again to keep going",
         "command": ["genesi-display", "rotate", "-", "cycle"]
       },
       {
-        "name": "Make this screen primary",
+        "name": "Make this screen primary · Tela principal",
         "icon": "star",
         "description": "The desktop starts here — workspace 1 lives on this screen",
         "command": ["genesi-display", "primary", "-"]
       },
       {
-        "name": "Mouse faster",
+        "name": "Mouse faster · Mouse mais rápido",
         "icon": "mouse",
         "description": "Nudge pointer speed up",
         "command": ["genesi-input", "speed", "up"]
       },
       {
-        "name": "Mouse slower",
+        "name": "Mouse slower · Mouse mais lento",
         "icon": "mouse",
         "description": "Nudge pointer speed down",
         "command": ["genesi-input", "speed", "down"]
       },
       {
-        "name": "Mouse default speed",
+        "name": "Mouse default speed · Velocidade padrão do mouse",
         "icon": "restart_alt",
         "description": "Back to the hardware's own speed",
         "command": ["genesi-input", "speed", "0"]
       },
       {
-        "name": "Reset display",
+        "name": "Reset display · Restaurar telas",
         "icon": "settings_backup_restore",
         "description": "Undo every scale and rotation set from here",
         "command": ["genesi-display", "reset"]
