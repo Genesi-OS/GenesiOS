@@ -128,7 +128,7 @@ def find(name):
     die(f"no monitor named {name!r}. Try: genesi-display show")
 
 
-def monitor_line(m, scale=None, transform=None):
+def monitor_line(m, scale=None, transform=None, x=None, y=None):
     """
     Rebuild the full monitor line, changing only what was asked for.
 
@@ -139,11 +139,105 @@ def monitor_line(m, scale=None, transform=None):
     """
     s = m["scale"] if scale is None else scale
     t = m["transform"] if transform is None else transform
+    px = m["x"] if x is None else x
+    py = m["y"] if y is None else y
     # Trailing zeros in the scale make Hyprland's parser unhappy in some
     # versions; normalise to the shortest exact form.
     s_str = f"{s:.6f}".rstrip("0").rstrip(".")
     return (f"{m['name']},{m['width']}x{m['height']}@{m['refresh']},"
-            f"{m['x']}x{m['y']},{s_str},transform,{t}")
+            f"{px}x{py},{s_str},transform,{t}")
+
+
+def logical_size(m, scale=None, transform=None):
+    """
+    The size a monitor occupies in the shared coordinate space.
+
+    This is what neighbours are positioned against, and it is NOT the
+    resolution: scaling 2560px by 1.25 makes the monitor 2048 wide as far as
+    every other monitor is concerned. Rotating swaps the two.
+    """
+    s = m["scale"] if scale is None else scale
+    t = m["transform"] if transform is None else transform
+    w, h = m["width"], m["height"]
+    if t in (1, 3, 5, 7):          # 90° / 270°, and their flipped forms
+        w, h = h, w
+    return int(round(w / s)), int(round(h / s))
+
+
+def side_by_side(mons):
+    """
+    Were these monitors laid out in a plain row, touching, before we changed
+    anything?
+
+    Only then is it safe to move them. Someone who stacked a screen above
+    another, or left a deliberate gap, arranged that by hand and would not
+    thank us for straightening it out.
+    """
+    if len(mons) < 2:
+        return False
+    row = sorted(mons, key=lambda m: m["x"])
+    if len({m["y"] for m in row}) != 1:
+        return False
+    x = row[0]["x"]
+    for m in row:
+        if m["x"] != x:
+            return False
+        x += logical_size(m)[0]
+    return True
+
+
+def apply_change(m, scale=None, transform=None):
+    """
+    Apply a change to one monitor, and leave the whole desktop consistent.
+
+    Two things go wrong if only the changed monitor is touched, and both were
+    reported from a real two-monitor desk:
+
+      * The other screen keeps rendering its old contents until something
+        happens on it. Hyprland reconfigures the output it is given a line
+        for; the untouched one is never told anything happened.
+
+      * Changing a scale changes the monitor's LOGICAL width, so a neighbour
+        positioned right after it now overlaps it or floats away from it by
+        the difference.
+
+    So every monitor is re-applied, and when they were sitting in a plain
+    touching row they are re-packed to stay touching. A deliberate arrangement
+    (stacked, or spaced apart) is left exactly where the user put it.
+
+    Returns the lines that need persisting: the changed monitor, plus anything
+    we moved -- and nothing else, so a screen the user never touched does not
+    silently acquire an override.
+    """
+    mons = monitors()
+    repack = side_by_side(mons)
+
+    lines = {}
+    to_persist = {}
+    x = None
+    for mon in sorted(mons, key=lambda mm: mm["x"]):
+        changed = mon["name"] == m["name"]
+        sc = scale if changed else None
+        tr = transform if changed else None
+        new_x = mon["x"]
+        if repack:
+            if x is None:
+                x = mon["x"]          # keep the leftmost where it is
+            new_x = x
+            x += logical_size(mon, sc, tr)[0]
+        moved = new_x != mon["x"]
+        line = monitor_line(mon, scale=sc, transform=tr, x=new_x)
+        lines[mon["name"]] = line
+        if changed or moved:
+            to_persist[mon["name"]] = line
+
+    # The changed monitor first: if Hyprland rejects the scale we want to fail
+    # before having moved anybody.
+    apply_live(lines[m["name"]])
+    for name, line in lines.items():
+        if name != m["name"]:
+            apply_live(line)
+    return to_persist
 
 
 def apply_live(line):
@@ -255,12 +349,15 @@ def cmd_scale(name, value):
             die(f"{value!r} is not a number, and not 'up' or 'down'")
     if not (0.1 <= scale <= 10):
         die(f"scale {scale} is out of range (0.1 – 10)")
-    line = monitor_line(m, scale=scale)
-    apply_live(line)
     ov = read_overrides()
-    ov[name] = line
+    # Keyed on the monitor's REAL name, never on the `-` the caller typed.
+    # `ov["-"]` does not collide with the "DP-1" key a re-read produces, so a
+    # second change wrote a SECOND line for the same monitor -- and Hyprland
+    # applies the last matching line, which was the stale one. The change
+    # reverted itself on the next reload, silently.
+    ov.update(apply_change(m, scale=scale))
     write_overrides(ov)
-    print(f"{name}: scale {scale:g}")
+    print(f"{m['name']}: scale {scale:g}")
 
 
 def cmd_rotate(name, value):
@@ -278,12 +375,10 @@ def cmd_rotate(name, value):
             die(f"{value!r} is not a number of degrees, and not 'cycle'")
     if deg not in DEG_TO_TRANSFORM:
         die(f"rotation must be 0, 90, 180, 270 or 'cycle' (got {value})")
-    line = monitor_line(m, transform=DEG_TO_TRANSFORM[deg])
-    apply_live(line)
     ov = read_overrides()
-    ov[name] = line
+    ov.update(apply_change(m, transform=DEG_TO_TRANSFORM[deg]))
     write_overrides(ov)
-    print(f"{name}: rotated {deg}°")
+    print(f"{m['name']}: rotated {deg}°")
 
 
 def cmd_reset(name=None):

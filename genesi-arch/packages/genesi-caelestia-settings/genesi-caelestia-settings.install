@@ -18,25 +18,25 @@
 _migrate_hypr() {
     local cfg="$1" owner="$2"
     [ -f "$cfg" ] || return 0
-    # Only Genesi's caelestia config (distinctive exec-once marker), and skip if
-    # already migrated (tray present) AND already free of the broken lines.
+    # Only Genesi's caelestia config (distinctive exec-once marker) -- never a
+    # config the user wrote themselves.
     grep -q 'caelestia shell -d' "$cfg" || return 0
-    # Skip only if fully up to date: tray present AND none of the broken forms
-    # left — pre-0.55 pseudotile, direct togglesplit, comma windowrule syntax, or
-    # the noborder/rounding/move windowrules Hyprland 0.55 rejects.
-    if grep -q 'genesi-ai-tray' "$cfg" \
-       && ! grep -qE '^[[:space:]]*pseudotile[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$cfg" \
-       && ! grep -qE ',[[:space:]]*J,[[:space:]]*togglesplit,[[:space:]]*$' "$cfg" \
-       && ! grep -qE '^windowrule = .*,[[:space:]]*class:' "$cfg" \
-       && ! grep -qE '^windowrule = (noborder|rounding|move).*genesi-ai-tray' "$cfg" \
-       && grep -q 'genesi-caelestia-theme-sync' "$cfg" \
-       && grep -q 'genesi-ports-tray' "$cfg" \
-       && grep -q 'genesi-studio-tray' "$cfg" \
-       && grep -q 'genesi-ai-quick --background' "$cfg" \
-       && grep -q 'genesi-scheme-init' "$cfg" \
-       && grep -q 'aiquick)' "$cfg"; then
-        return 0
-    fi
+    # There used to be a "skip if fully up to date" gate here that listed every
+    # previous migration by hand. Adding a section without also adding its
+    # marker to that list meant the function returned BEFORE reaching the new
+    # section, so it silently never ran -- which is exactly what happened to
+    # the display keybinds: written, shipped, installed, and never applied to a
+    # single existing config.
+    #
+    # The gate is gone. Every section below is individually idempotent (each
+    # appends only when its own marker is absent, and each sed matches only the
+    # broken form it repairs), so running the whole function on every upgrade is
+    # correct by construction rather than by remembering. It costs a handful of
+    # greps on one small file, once per upgrade.
+    #
+    # ci/hypr-migration-test.sh reads the markers straight out of this file and
+    # fails the build if any section does not apply, so a forgotten section
+    # cannot ship again.
 
     cp -n "$cfg" "$cfg.genesi-bak" 2>/dev/null || true
 

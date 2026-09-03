@@ -1433,6 +1433,31 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
       historical bugs and watching it name them. It refuses to run without the
       Calamares submodule rather than report ten false orphans, because a check
       that cries wolf gets switched off.
+- [x] **The keybinds never reached a single existing machine.** `_migrate_hypr()`
+      opened with a "skip if already up to date" gate that listed every previous
+      migration by hand; a section added without also adding its marker to that
+      list was unreachable, because the function returned first. Reported from
+      hardware: the launcher actions worked (so the package HAD upgraded) and no
+      key did anything. The gate is gone — every section is individually
+      idempotent, so running them all on each upgrade is correct by construction
+      instead of by remembering — and `ci/hypr-migration-test.sh` reads the
+      section markers out of the scriptlet itself and fails the build if any
+      does not apply, if a second run duplicates lines, if a config that is not
+      Genesi's gets edited, or if /etc/skel and the migration disagree (which
+      would split new and existing accounts onto different desktops).
+- [x] **Three two-monitor bugs in `genesi-display`**, all reported as "one screen
+      bugs until you do something on it":
+      * Only the changed monitor was given a line, so the other output was never
+        reconfigured and kept rendering its old contents.
+      * Scaling changes a monitor's LOGICAL width (2560 at 1.25x occupies 2048),
+        so a neighbour sitting right after it overlapped or drifted away by the
+        difference. Monitors that were in a plain touching row are now re-packed;
+        an arrangement the user built by hand — stacked, or deliberately spaced —
+        is left exactly where they put it, and still gets reconfigured.
+      * The override file was keyed on the `-` the caller typed rather than the
+        monitor's real name, so a second change wrote a SECOND line for the same
+        monitor. Hyprland applies the last matching line, which was the stale
+        one: the change silently reverted itself on the next reload.
 - [ ] Shader menu (`hyprshade`). Held back deliberately: `hyprshade` is AUR-only
       and Genesi does not package it, so launcher entries calling it would be
       entries that silently do nothing. Repackage it first, the way the

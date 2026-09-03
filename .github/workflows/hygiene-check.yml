@@ -111,3 +111,14 @@ jobs:
         # Needs the submodules, which this job already checks out: the
         # Calamares netinstall groups are an install path.
         run: python genesi-arch/ci/package-reachability-test.py
+
+      - name: Every section of the Hyprland migration applies
+        shell: bash
+        # /etc/skel only seeds NEW accounts, so anything added to hyprland.conf
+        # reaches existing users through the .install migration or not at all.
+        # It reached them not at all: a hand-maintained "already up to date"
+        # gate returned before the new section, so the display keybinds were
+        # written, shipped, installed and never applied to a single config.
+        # Nothing errored. This reads the section markers out of the scriptlet
+        # itself, so a new section is covered without anyone remembering.
+        run: bash genesi-arch/ci/hypr-migration-test.sh
