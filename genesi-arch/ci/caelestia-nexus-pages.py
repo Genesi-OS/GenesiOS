@@ -44,6 +44,11 @@ import re
 import shutil
 import sys
 
+# Descriptions carry both languages. The settings search matches on label plus
+# description as a plain SUBSTRING, so a Portuguese term costs nothing here --
+# unlike the launcher, where fzf's subsequence matching turned long haystacks
+# into noise. Upstream's own entries are left alone; they are not ours to name.
+#
 # In the order they are inserted, immediately after the "// Connectivity"
 # marker in both files. Upstream's own Display entry is commented out at
 # exactly that spot, so this is where it was always meant to go.
@@ -52,14 +57,14 @@ PAGES = [
         "name": "Display",
         "label": "Display",
         "icon": "monitor",
-        "description": "Scale, rotation, arrangement",
+        "description": "Scale, rotation, arrangement · Escala, rotação e posição dos monitores (telas)",
         "comp": "DisplayPage",
     },
     {
         "name": "Mouse",
         "label": "Mouse",
         "icon": "mouse",
-        "description": "Pointer speed and acceleration",
+        "description": "Pointer speed and acceleration · Velocidade e aceleração do mouse",
         "comp": "MousePage",
     },
 ]
@@ -152,6 +157,97 @@ def patch_comp_registry(path):
     print("PageCompRegistry: + " + ", ".join(p["comp"] for p in PAGES))
 
 
+def patch_nav_search(nexus_dir):
+    """
+    Make the Nexus settings search actually search.
+
+    Upstream ships the box and nothing behind it: SearchBar binds
+    `nState.searchOpen = searchField.text.length > 0`, and that boolean is read
+    by nobody. NavLocations lists `PageRegistry.pages` unfiltered. So typing in
+    it does exactly nothing, which is what was reported.
+
+    Three small edits rather than three file overrides, so upstream finishing
+    this feature shows up as a failed precondition instead of us quietly
+    replacing their version with ours.
+
+    The list is filtered by VISIBILITY, not by model. `item.index` is compared
+    against `nState.currentPageIdx` and drives navigation, so filtering the
+    model would shift every index and open the wrong page -- the same hazard as
+    the two registries, one level down. QtQuick.Layouts already excludes
+    invisible items from the column, so the effect is identical and the indices
+    stay put.
+
+    Matching is a plain case-insensitive substring, not fzf. These are ten short
+    labels; subsequence matching would return "Wallpaper & style" for "tela" and
+    call it a hit.
+    """
+    state = os.path.join(nexus_dir, "NexusState.qml")
+    bar = os.path.join(nexus_dir, "navpane", "SearchBar.qml")
+    nav = os.path.join(nexus_dir, "navpane", "NavLocations.qml")
+    for p in (state, bar, nav):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the Nexus nav pane was restructured.")
+
+    # 1. Somewhere to keep what was typed.
+    s = io.open(state, encoding="utf-8").read()
+    if "searchText" in s:
+        fail("NexusState already has a searchText -- upstream implemented the "
+             "settings search. Drop this patch and keep theirs.")
+    if "property bool searchOpen" not in s:
+        fail("NexusState no longer declares searchOpen; the search patch is "
+             "anchored on it.")
+    s = s.replace("property bool searchOpen",
+                  "property bool searchOpen\n"
+                  "    // What was typed. Upstream keeps only the boolean, so the\n"
+                  "    // text had nowhere to go and the box did nothing.\n"
+                  "    property string searchText", 1)
+    io.open(state, "w", encoding="utf-8", newline="\n").write(s)
+
+    # 2. Put the text there.
+    s = io.open(bar, encoding="utf-8").read()
+    old = ('            Binding {\n'
+           '                target: root.nState\n'
+           '                property: "searchOpen"\n'
+           '                value: searchField.text.length > 0\n'
+           '            }')
+    if old not in s:
+        fail("SearchBar's searchOpen Binding is not where the patch expects it.")
+    s = s.replace(old, old + '\n\n'
+                  '            Binding {\n'
+                  '                target: root.nState\n'
+                  '                property: "searchText"\n'
+                  '                value: searchField.text\n'
+                  '            }', 1)
+    io.open(bar, "w", encoding="utf-8", newline="\n").write(s)
+
+    # 3. Read it.
+    s = io.open(nav, encoding="utf-8").read()
+    anchor = ("                readonly property bool isCurrentPage: "
+              "index === root.nState.currentPageIdx")
+    if anchor not in s:
+        fail("NavLocations' isCurrentPage line is not where the patch expects "
+             "it; refusing to guess where the filter goes.")
+    s = s.replace(anchor, anchor + '\n'
+                  '                // Hidden rather than filtered out of the model:\n'
+                  '                // `index` drives navigation, so a shorter model\n'
+                  '                // would open the wrong page. Layouts already skip\n'
+                  '                // invisible items.\n'
+                  '                readonly property string haystack: '
+                  '`${modelData.label} ${modelData.description ?? ""}`.toLowerCase()\n'
+                  '                readonly property bool matchesSearch: '
+                  '!root.nState.searchText || '
+                  'haystack.includes(root.nState.searchText.toLowerCase())', 1)
+
+    old_vis = "                Layout.fillWidth: true\n"
+    if old_vis not in s:
+        fail("NavLocations' item layout line moved; the visible binding has no "
+             "anchor.")
+    s = s.replace(old_vis,
+                  "                visible: item.matchesSearch\n" + old_vis, 1)
+    io.open(nav, "w", encoding="utf-8", newline="\n").write(s)
+    print("Nexus settings search: NexusState + SearchBar + NavLocations")
+
+
 def verify_alignment(nexus_dir):
     """
     The two lists must still have the same length after the edit.
@@ -193,6 +289,7 @@ def main():
     patch_page_registry(reg)
     patch_comp_registry(comp)
     verify_alignment(nexus)
+    patch_nav_search(nexus)
 
     # Only now are our pages written in. Doing this before the checks above is
     # what broke the build: the "upstream ships this" test cannot tell a file
