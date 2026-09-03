@@ -51,7 +51,7 @@ pkgver=2.0.3
 # first/last itself. Wrapping it in another one stacked two rectangles and the
 # inner, nearly-square one won. Upstream uses InfoRow bare (AboutPage's System
 # section); so does this now.
-pkgrel=7
+pkgrel=8
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -153,7 +153,7 @@ prepare() {
     #    its "does upstream ship this page?" test found the file prepare() had
     #    just written and refused. One script owning both halves makes that
     #    ordering mistake unrepresentable rather than merely fixed.
-    python "${startdir}/../../ci/caelestia-nexus-pages.py"         release/modules/nexus "${srcdir}" || return 1
+    python "${startdir}/../../ci/caelestia-patches.py"         release "${srcdir}" || return 1
 
     # Point the first System entry at the real page instead of the placeholder.
     # Anchored on the '// System' comment AND the first PlaceholderComp after

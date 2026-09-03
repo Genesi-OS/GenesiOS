@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 """
-caelestia-nexus-pages.py — register Genesi's Nexus pages in caelestia's registries.
+caelestia-patches.py — every edit Genesi makes to caelestia's own QML.
 
 Called from genesi-caelestia-shell's prepare():
 
-    caelestia-nexus-pages.py <path/to/release/modules/nexus> <dir holding our .qml>
+    caelestia-patches.py <path/to/release> <dir holding our .qml>
+
+It owns three things, together, because they share one rule: an override is a
+bet that upstream still looks the way it did when the override was written, and
+the bet has to be checked before it is placed.
+
+  * the Display and Mouse pages, and their entries in the two registries
+  * the Nexus settings search, which upstream ships as a box with nothing
+    behind it
+  * the launcher's action selector, without which typing after ">" narrows
+    nothing
 
 It does the CHECK and the COPY, in that order, because separating them is how
 the first attempt broke the build: prepare() installed our pages and then ran
@@ -269,11 +279,62 @@ def verify_alignment(nexus_dir):
     print(f"registries aligned: {n_pages} entries, {n_comps} components")
 
 
+def patch_actions_selector(launcher_dir):
+    """
+    Give the launcher's action list a selector of its own.
+
+    Reported from hardware: typing after ">" does not narrow the list -- every
+    action stays on screen. Searching for an app filters correctly, so the
+    machinery works; only the action path is broken.
+
+    Comparing the four services that use Searcher shows exactly one difference:
+
+        Apps      overrides selector()  ->  keys.map(k => item[k]).join(" ")
+        Schemes   overrides selector()  ->  `${item.name} ${item.flavour}`
+        Variants  overrides selector()
+        Actions   does NOT              ->  falls back to `item[key]`
+
+    Actions is the only one relying on the base class's dynamic bracket lookup,
+    and it is the only one that does not filter. When the selector yields
+    nothing usable, fzf has no text to score against and every entry survives --
+    which is precisely "the options stay, typing changes nothing".
+
+    So Actions gets the same explicit property read the two working services
+    use. Cheap, and it removes the one thing that made this list different.
+    """
+    actions = os.path.join(launcher_dir, "services", "Actions.qml")
+    if not os.path.exists(actions):
+        fail(f"{actions} is gone -- the launcher services moved or were renamed.")
+
+    s = io.open(actions, encoding="utf-8").read()
+    if "function selector" in s:
+        fail("Actions.qml now defines its own selector -- upstream fixed this. "
+             "Drop the patch and keep theirs.")
+
+    anchor = "    function transformSearch(search: string): string {"
+    if anchor not in s:
+        fail("Actions.qml's transformSearch is not where the patch expects it.")
+
+    s = s.replace(anchor,
+                  "    // Read the property by name instead of by bracket lookup, the way\n"
+                  "    // Apps and Schemes both do. The inherited `item[key]` yielded nothing\n"
+                  "    // to score against, so fzf kept every action and typing narrowed\n"
+                  "    // nothing. (Genesi)\n"
+                  "    function selector(item: var): string {\n"
+                  "        return item.name;\n"
+                  "    }\n"
+                  "\n" + anchor, 1)
+    io.open(actions, "w", encoding="utf-8", newline="\n").write(s)
+    print("Actions.qml: explicit selector")
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__.strip())
         return 1
-    nexus, ours = sys.argv[1], sys.argv[2]
+    release, ours = sys.argv[1], sys.argv[2]
+    nexus = os.path.join(release, "modules", "nexus")
+    launcher = os.path.join(release, "modules", "launcher")
     reg = os.path.join(nexus, "PageRegistry.qml")
     comp = os.path.join(nexus, "PageCompRegistry.qml")
     for p in (reg, comp):
@@ -290,6 +351,7 @@ def main():
     patch_comp_registry(comp)
     verify_alignment(nexus)
     patch_nav_search(nexus)
+    patch_actions_selector(launcher)
 
     # Only now are our pages written in. Doing this before the checks above is
     # what broke the build: the "upstream ships this" test cannot tell a file
