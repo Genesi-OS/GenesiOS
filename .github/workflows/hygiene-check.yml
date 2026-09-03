@@ -122,3 +122,12 @@ jobs:
         # Nothing errored. This reads the section markers out of the scriptlet
         # itself, so a new section is covered without anyone remembering.
         run: bash genesi-arch/ci/hypr-migration-test.sh
+
+      - name: GTK widgets are not built before GTK exists
+        # All four tray applets segfaulted at login with the same stack: the
+        # menu is built in Tray.__init__ and Gtk.main() -- which used to be
+        # what initialised GTK -- only runs afterwards. PyGObject stopped
+        # initialising Gtk implicitly on import. The symptom is three tray
+        # icons that simply are not there, with the reason only in a coredump.
+        # This found a fifth tray with the same bug that nobody had reported.
+        run: python genesi-arch/ci/gtk-init-order-test.py

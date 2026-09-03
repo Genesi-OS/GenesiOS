@@ -1515,6 +1515,20 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
       `genesi-*` action with no Portuguese half, so the next one cannot ship
       English-only. This is one concrete piece of the i18n inconsistency
       already listed below.
+- [x] **Five tray applets were crashing at login, and nobody knew.** Found in a
+      user's own report: four python3 coredumps within a second of each other,
+      every one with the same stack — PyGObject calling `g_object_new`, GTK
+      constructing a sub-widget inside it, and the crash in GTK's own instance
+      init. Nothing wrong with the widgets: every tray builds its menu in
+      `Tray.__init__` and calls `Gtk.main()` — which is what used to initialise
+      GTK — only afterwards. PyGObject initialised Gtk implicitly on import for
+      years and stopped. `ci/gtk-init-order-test.py` requires `Gtk.init_check`
+      before the first widget constructor and **found a fifth tray with the
+      same bug that had never been reported** (genesi-containers). `init_check`
+      rather than `init`: these start from exec-once and can beat the display
+      up, so the right answer is to exit and be restarted, not to abort.
+      The symptom is the worst kind — three icons that simply are not there, on
+      a desktop that otherwise starts fine, with the reason only in a coredump.
 - [ ] Shader menu (`hyprshade`). Held back deliberately: `hyprshade` is AUR-only
       and Genesi does not package it, so launcher entries calling it would be
       entries that silently do nothing. Repackage it first, the way the

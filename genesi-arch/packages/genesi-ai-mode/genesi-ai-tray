@@ -25,6 +25,7 @@ import json
 import signal
 import subprocess
 
+import sys
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -35,6 +36,27 @@ except (ValueError, ImportError):       # fall back to the older libappindicator
     gi.require_version("AppIndicator3", "0.1")
     from gi.repository import AppIndicator3 as AppIndicator
 from gi.repository import GLib, Gtk
+
+# ── GTK has to be initialised before the first widget exists ─────────────────
+#
+# All four Genesi trays segfaulted at login, within a second of each other,
+# with the same stack: PyGObject calling g_object_new, GTK constructing a
+# sub-object inside it, and the crash in GTK's own instance init. The cause is
+# ordering, not the widgets: every tray builds its menu in Tray.__init__ and
+# only then calls Gtk.main(), which is what used to initialise GTK. PyGObject
+# initialised Gtk implicitly on import for years and no longer does, so the
+# menus were being built against uninitialised GTK.
+#
+# init_check rather than init, deliberately. These start from exec-once at
+# session start and can beat the display up; init would abort the process,
+# while this exits and lets the restart bring the tray back once there is
+# something to draw on.
+_init_ok = Gtk.init_check()
+if isinstance(_init_ok, tuple):          # older PyGObject returns (ok, argv)
+    _init_ok = _init_ok[0]
+if not _init_ok:
+    sys.stderr.write("genesi-ai-tray: no display available yet; not starting\n")
+    sys.exit(1)
 
 STATE_PATH = "/run/genesi-ai-mode/state.json"
 MONITOR = "/usr/local/bin/genesi-ai-monitor"

@@ -29,7 +29,7 @@ pkgver=1.0.0
 # (genesi-update 2075a23), the same conclusion genesi-ai-quick reached with its
 # per-user socket. Neither launcher is removed: dropping either one loses a
 # desktop.
-pkgrel=5
+pkgrel=6
 pkgdesc="Interactive update notifier & applier for Genesi OS with systray applet"
 install='genesi-update.install'
 arch=('any')
