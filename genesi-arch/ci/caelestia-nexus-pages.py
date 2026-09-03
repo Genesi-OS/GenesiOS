@@ -2,9 +2,16 @@
 """
 caelestia-nexus-pages.py — register Genesi's Nexus pages in caelestia's registries.
 
-Called from genesi-caelestia-shell's prepare() with the extracted upstream tree:
+Called from genesi-caelestia-shell's prepare():
 
-    caelestia-nexus-pages.py <path/to/release/modules/nexus>
+    caelestia-nexus-pages.py <path/to/release/modules/nexus> <dir holding our .qml>
+
+It does the CHECK and the COPY, in that order, because separating them is how
+the first attempt broke the build: prepare() installed our pages and then ran
+this, and the "does upstream ship this page?" test found the file we had just
+written and refused. The local test had exercised the script against a pristine
+tree, so it never saw the order the build actually used. One script owning both
+halves makes that mistake unrepresentable rather than merely fixed.
 
 ── What this has to do, and why it is more than a file copy ─────────────────
 
@@ -34,6 +41,7 @@ specific message, not a silently wrong settings app.
 import io
 import os
 import re
+import shutil
 import sys
 
 # In the order they are inserted, immediately after the "// Connectivity"
@@ -166,10 +174,10 @@ def verify_alignment(nexus_dir):
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         print(__doc__.strip())
         return 1
-    nexus = sys.argv[1]
+    nexus, ours = sys.argv[1], sys.argv[2]
     reg = os.path.join(nexus, "PageRegistry.qml")
     comp = os.path.join(nexus, "PageCompRegistry.qml")
     for p in (reg, comp):
@@ -185,6 +193,17 @@ def main():
     patch_page_registry(reg)
     patch_comp_registry(comp)
     verify_alignment(nexus)
+
+    # Only now are our pages written in. Doing this before the checks above is
+    # what broke the build: the "upstream ships this" test cannot tell a file
+    # upstream shipped from one we had just installed ourselves.
+    dest = os.path.join(nexus, "pages")
+    for p in PAGES:
+        src = os.path.join(ours, p["comp"] + ".qml")
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- the page this registers has no file.")
+        shutil.copyfile(src, os.path.join(dest, p["comp"] + ".qml"))
+        print(f"installed {p['comp']}.qml")
     return 0
 
 
