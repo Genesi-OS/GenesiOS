@@ -1498,8 +1498,8 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
       real `xrandr --primary` flag that panels and full-screen games read; on
       Hyprland, which has no such flag, it sets the default workspace binding —
       where the desktop starts — and says that is what it did.
-- [ ] Surface position/primary in the Nexus and in Plasma's settings. The CLI
-      is there and reachable from the launcher; the pages are not written yet.
+- [ ] Surface position/primary in **Plasma's** settings. Done for the Nexus
+      (above); the KDE side still has only the CLI and the update KCM.
 - [x] **`>` searched in Portuguese found nothing at all.** The launcher searches
       the action NAME and nothing else — verified against upstream's `Searcher`
       (`key: "name"`; `Actions.qml` overrides neither `key` nor `keys`) — and
@@ -1519,10 +1519,23 @@ Each one talks to Hyprland or a small daemon; none depends on which shell runs.
       and Genesi does not package it, so launcher entries calling it would be
       entries that silently do nothing. Repackage it first, the way the
       caelestia AUR dependencies were.
-- [ ] A Display page in caelestia's Nexus. Upstream **comments that entry out**
-      of PageRegistry entirely, so the override would have to enable a menu item
-      as well as supply a page — wider than the Updates one, and worth doing
-      only once the CLI has run on real hardware.
+- [x] **A Display page and a Mouse page in caelestia's Nexus.** Harder than
+      Updates, as flagged: upstream registers Display only as a COMMENT (a
+      `// TODO` block in PageRegistry) and has no Mouse page in any form, so
+      the menu ENTRY had to be created as well as the page supplied.
+      `PageRegistry.pages` and `PageCompRegistry.pageComps` are two flat lists
+      matched **by index** — nothing but position connects an entry to its
+      component, so editing one and not the other makes every page after that
+      point open the wrong screen, with no error anywhere, because both lists
+      stay valid QML. `ci/caelestia-nexus-pages.py` makes both edits from one
+      ordered list and asserts the alignment afterwards; verified against the
+      real 2.0.3 tree (12 entries, 12 components, each paired with the right
+      one) and composed with the existing Updates patch. It refuses to run —
+      failing the build — if upstream starts shipping either page or
+      uncomments their own Display entry; both refusals were exercised.
+      The Mouse page names the pointers it found, which is the one thing a
+      settings page can add over the CLI: "the slider does nothing" becomes
+      "this device is not the one the desktop was talking to".
 - [ ] Keyboard sound
 - [ ] Wallpaper transition animation
 - [ ] Waybar config switcher — **only meaningful if a waybar-based option is

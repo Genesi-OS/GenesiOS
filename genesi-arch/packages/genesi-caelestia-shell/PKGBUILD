@@ -51,7 +51,7 @@ pkgver=2.0.3
 # first/last itself. Wrapping it in another one stacked two rectangles and the
 # inner, nearly-square one won. Upstream uses InfoRow bare (AboutPage's System
 # section); so does this now.
-pkgrel=4
+pkgrel=5
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -65,8 +65,12 @@ provides=('caelestia-shell')
 conflicts=('caelestia-shell' 'caelestia-shell-git')
 source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "ContentList.qml"
-        "UpdatesPage.qml")
+        "UpdatesPage.qml"
+        "DisplayPage.qml"
+        "MousePage.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP')
 
@@ -131,6 +135,22 @@ prepare() {
     if [ -f release/plugin/src/Caelestia/Config/launcherconfig.hpp ]; then
         python "${startdir}/../../ci/caelestia-actions-test.py"             release/plugin/src/Caelestia/Config/launcherconfig.hpp             "${startdir}/../genesi-caelestia-settings/shell.json" || return 1
     fi
+
+    # 4. The Nexus "Display" and "Mouse" pages. Harder than Updates, because
+    #    upstream registers Display only as a COMMENT (a `// TODO` block in
+    #    PageRegistry) and has no Mouse page in any form -- so the menu ENTRY
+    #    has to be created as well as the page supplied.
+    #
+    #    PageRegistry.pages and PageCompRegistry.pageComps are two flat lists
+    #    matched BY INDEX; nothing but position connects an entry to its
+    #    component. Editing one and not the other, or at a different offset,
+    #    makes every page after that point open the wrong screen with no error
+    #    anywhere, because both lists stay valid QML. So both edits are made by
+    #    one script from one ordered list, and it asserts the alignment
+    #    afterwards.
+    install -Dm644 "${srcdir}/DisplayPage.qml"         "${srcdir}/release/modules/nexus/pages/DisplayPage.qml"
+    install -Dm644 "${srcdir}/MousePage.qml"         "${srcdir}/release/modules/nexus/pages/MousePage.qml"
+    python "${startdir}/../../ci/caelestia-nexus-pages.py"         release/modules/nexus || return 1
 
     # Point the first System entry at the real page instead of the placeholder.
     # Anchored on the '// System' comment AND the first PlaceholderComp after
