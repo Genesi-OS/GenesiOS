@@ -31,12 +31,46 @@ url='https://github.com/Genesi-OS/GenesiOS'
 depends=('genesi-hyprshade')
 # glslangValidator. Build-time only: nothing here runs it at runtime.
 makedepends=('glslang')
-source=('shaders')
-sha256sums=('SKIP')
+# Listed one by one, and flat beside the PKGBUILD. makepkg takes files and
+# URLs in source=(), not directories -- `source=('shaders')` failed with
+# "shaders was not found in the build directory and is not a URL" -- and it
+# does not follow a subpath either. ci/shader-sanity-test.py checks that this
+# list and the files on disk agree, so a shader added to one and not the
+# other fails the build rather than going missing.
+source=(
+    'anaglyph-3d.glsl'
+    'chromatic-aberration.glsl'
+    'crt.glsl'
+    'deuteranopia.glsl'
+    'film-grain.glsl'
+    'grayscale.glsl'
+    'invert.glsl'
+    'pixelate.glsl'
+    'posterize.glsl'
+    'protanopia.glsl'
+    'sepia.glsl'
+    'vignette.glsl'
+    'warm.glsl'
+)
+sha256sums=(
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+)
 
 check() {
     local failed=0
-    for f in "${srcdir}"/shaders/*.glsl; do
+    for f in "${srcdir}"/*.glsl; do
         # -S frag names the stage explicitly; the .glsl extension does not tell
         # the validator which one this is.
         if ! glslangValidator -S frag "${f}" > /tmp/glsl.log 2>&1; then
@@ -55,6 +89,6 @@ check() {
 
 package() {
     install -dm755 "${pkgdir}/usr/share/hyprshade/shaders"
-    install -Dm644 "${srcdir}"/shaders/*.glsl \
+    install -Dm644 "${srcdir}"/*.glsl \
         -t "${pkgdir}/usr/share/hyprshade/shaders"
 }

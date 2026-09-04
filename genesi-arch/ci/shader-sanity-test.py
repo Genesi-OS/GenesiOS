@@ -27,8 +27,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
-SHADERS = os.path.join(ROOT, "genesi-arch", "packages", "genesi-shaders",
-                       "shaders")
+# Flat beside the PKGBUILD: makepkg takes files and URLs in source=(), not a
+# directory, and does not follow a subpath either.
+SHADERS = os.path.join(ROOT, "genesi-arch", "packages", "genesi-shaders")
+PKGBUILD = os.path.join(SHADERS, "PKGBUILD")
 
 # What Hyprland binds, taken from the two shaders hyprshade ships upstream
 # rather than from documentation.
@@ -97,6 +99,34 @@ def main():
 
         if problems:
             bad.append((fn, problems))
+
+    # Listing the files by hand in source=() is what makepkg requires, and
+    # "add it in two places" is how a shader goes missing without a word: the
+    # file is committed, nothing packages it, and the launcher entry turns on
+    # something that is not installed. Make the two agree or fail.
+    listed = set()
+    if os.path.exists(PKGBUILD):
+        with io.open(PKGBUILD, encoding="utf-8") as fh:
+            pkg_src = fh.read()
+        m = re.search(r"^source=\((.*?)^\)", pkg_src, re.M | re.S)
+        if m:
+            listed = set(re.findall(r"'([^']+\.glsl)'", m.group(1)))
+        n_sums = 0
+        ms = re.search(r"^sha256sums=\((.*?)^\)", pkg_src, re.M | re.S)
+        if ms:
+            n_sums = len(re.findall(r"'[^']+'", ms.group(1)))
+        if listed and n_sums != len(listed):
+            bad.append(("PKGBUILD", [
+                f"source=() lists {len(listed)} files but sha256sums=() has "
+                f"{n_sums} entries"]))
+
+    on_disk = set(files)
+    if listed or on_disk:
+        for missing in sorted(on_disk - listed):
+            bad.append((missing, ["is not listed in the PKGBUILD's source=(), "
+                                  "so it is never packaged"]))
+        for ghost in sorted(listed - on_disk):
+            bad.append((ghost, ["is listed in source=() but does not exist"]))
 
     print(f"  shaders: {len(files)}")
     if bad:

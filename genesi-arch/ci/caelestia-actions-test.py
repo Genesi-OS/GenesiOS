@@ -268,8 +268,8 @@ def main():
     # pointing at a file nobody ships is another launcher entry that appears to
     # do nothing -- the same shape as an action calling an uninstalled binary,
     # one level down.
-    ours_dir = os.path.join(ROOT, "genesi-arch", "packages", "genesi-shaders",
-                            "shaders")
+    # Flat beside the PKGBUILD: makepkg takes no directory in source=().
+    ours_dir = os.path.join(ROOT, "genesi-arch", "packages", "genesi-shaders")
     have = set()
     if os.path.isdir(ours_dir):
         have = {f[:-5] for f in os.listdir(ours_dir) if f.endswith(".glsl")}
