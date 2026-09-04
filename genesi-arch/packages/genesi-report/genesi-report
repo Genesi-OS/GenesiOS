@@ -239,15 +239,31 @@ collect_audio_display() {
         find /usr/share/wireplumber/wireplumber.conf.d /etc/wireplumber ~/.config/wireplumber -type f 2>/dev/null             | head -10 | sed 's/^/    /' | redact
         find /usr/share/wireplumber/wireplumber.conf.d /etc/wireplumber ~/.config/wireplumber -type f 2>/dev/null | grep -q .             || echo "    none found in any of /usr/share, /etc, ~/.config"
         if have wpctl; then
-            # Installed is not the same as in effect. A drop-in that never
-            # matched the sink looks identical, on disk, to one that did --
-            # so ask the running node, which is the only thing that knows.
-            echo "  software volume on the default sink:"
-            if wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null | grep -q 'api.alsa.soft-mixer.*true'; then
-                echo "    yes — PipeWire applies volume itself"
-            else
-                echo "    no — volume goes through the device's own mixer"
-            fi
+            # Ask the DEVICE, not the node.
+            #
+            # The first version of this check read the sink node, saw
+            # api.alsa.soft-mixer = "true" there, and reported that PipeWire
+            # was doing volume in software. It was not: the ALSA mixer belongs
+            # to the device and is built before any node property is read, so
+            # the property sat on the node doing nothing while the hardware
+            # control went on tracking the slider. The check agreed with the
+            # broken config and said the fix was working, which is the most
+            # expensive thing a report can do.
+            echo "  software volume:"
+            _dev="$(wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null | sed -n 's/.*device\.id = "\([0-9][0-9]*\)".*/\1/p' | head -1)"
+            for _obj in "@DEFAULT_AUDIO_SINK@" "${_dev}"; do
+                [ -n "${_obj}" ] || continue
+                if [ "${_obj}" = "@DEFAULT_AUDIO_SINK@" ]; then
+                    _what="on the sink node (visible, but not what applies it)"
+                else
+                    _what="on the device (this is the one that decides)"
+                fi
+                if wpctl inspect "${_obj}" 2>/dev/null                    | grep -q 'api\.alsa\.soft-mixer.*true'; then
+                    echo "    set ${_what}"
+                else
+                    echo "    NOT set ${_what}"
+                fi
+            done
         fi
         have wireplumber && wireplumber --version 2>/dev/null | head -1 | sed 's/^/  wireplumber: /'
     fi

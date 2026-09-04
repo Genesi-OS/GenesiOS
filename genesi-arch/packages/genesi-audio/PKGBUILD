@@ -7,7 +7,7 @@
 # it. A drop-in is the whole payload.
 pkgname=genesi-audio
 pkgver=1.0.0
-pkgrel=2
+pkgrel=3
 pkgdesc='Audio quirk configuration for Genesi OS'
 arch=('any')
 groups=('genesi')
