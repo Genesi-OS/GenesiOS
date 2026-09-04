@@ -18,6 +18,11 @@ PKGBUILD   text eol=lf
 # also choke on a trailing \r in their values. Keep them all LF.
 genesi-arch/packages/genesi-audio/genesi-open-usb-mixer    text eol=lf
 genesi-arch/packages/genesi-caelestia-settings/genesi-bar  text eol=lf
+genesi-arch/packages/genesi-center/genesi-center           text eol=lf
+genesi-arch/packages/genesi-center/genesi-center-data      text eol=lf
+# QML's module file: Qt parses it line by line, and a trailing  turns a
+# singleton declaration into one it does not recognise.
+genesi-arch/packages/genesi-center/app/qmldir              text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-aid             text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-mode         text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-kwin-helper  text eol=lf

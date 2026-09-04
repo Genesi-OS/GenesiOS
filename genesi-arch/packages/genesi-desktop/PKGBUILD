@@ -62,7 +62,7 @@ pkgver=1.0.0
 # darkly were moved out in pkgrel 4. It belongs in the KDE-Desktop netinstall
 # group, which lives in the genesi-calamares-config submodule; until that lands
 # a Plasma user can install it by name.
-pkgrel=16
+pkgrel=17
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -115,6 +115,10 @@ depends=(
     # half of the slider goes silent. Not KDE's business or Hyprland's, so it
     # lives in the shared meta.
     'genesi-audio'
+    # The control centre (roadmap 7.4). Desktop-agnostic on purpose: it
+    # reads the machine through genesi-center-data and draws its own
+    # surface, so it is the same app on Plasma and on Hyprland.
+    'genesi-center'
     # Phase 4.3-4.6 developer tools (this OS targets programmers).
     'genesi-containers'    # Plasma widget for Docker/Podman
     'genesi-ports'         # port -> PID dashboard, Plasma widget + SNI tray

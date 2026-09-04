@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""
+genesi-center-data — the data plane behind Genesi Center.
+
+One command, JSON on stdout, nothing else. The UI shells out to it and draws
+what comes back; it never reads /proc itself and never runs a second tool.
+
+That split is deliberate, and it is the one thing worth copying from how Ryoku
+built their settings app: a compiled data plane (`ryoku-hub keybinds`, `hypr
+get`, `config set`) that prints JSON, and a QML front end that only draws. The
+same shape as genesi-display and genesi-bar here -- so a terminal, a keybind and
+the app all see identical numbers, and the numbers can be tested without a
+display.
+
+  genesi-center-data telemetry   cpu, memory, disk, network, temperature,
+                                 uptime, process and user counts
+  genesi-center-data core        kernel, architecture, build, session
+  genesi-center-data storage     the breakdown behind the ring
+  genesi-center-data activity    recent system events, newest first
+  genesi-center-data all         every section above, in one object
+
+Percentages are integers because the UI prints them as integers; rates are
+bytes per second. A section that cannot be read returns nulls rather than
+failing, because half a dashboard is worth more than an error dialog.
+"""
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+STATE = "/var/lib/genesi/center"
+
+
+def _read(path, default=""):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return default
+
+
+def _run(args, timeout=4):
+    try:
+        p = subprocess.run(args, capture_output=True, text=True,
+                           timeout=timeout, encoding="utf-8",
+                           errors="replace")
+        return p.stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+# ── CPU ──────────────────────────────────────────────────────────────────────
+#
+# /proc/stat is cumulative, so a single read says nothing about "now". Two reads
+# a moment apart are the only honest way to get a percentage, and the sample has
+# to be short enough that the UI does not stutter waiting for it.
+def _cpu_times():
+    line = _read("/proc/stat").split("\n", 1)[0]
+    parts = [int(x) for x in line.split()[1:] if x.isdigit()]
+    if len(parts) < 4:
+        return None
+    idle = parts[3] + (parts[4] if len(parts) > 4 else 0)
+    return sum(parts), idle
+
+
+def cpu_percent(interval=0.12):
+    a = _cpu_times()
+    if a is None:
+        return None
+    time.sleep(interval)
+    b = _cpu_times()
+    if b is None:
+        return None
+    dt, di = b[0] - a[0], b[1] - a[1]
+    if dt <= 0:
+        return None
+    return int(round(100.0 * (dt - di) / dt))
+
+
+def memory():
+    info = {}
+    for line in _read("/proc/meminfo").splitlines():
+        k, _, v = line.partition(":")
+        v = v.strip().split(" ")[0]
+        if v.isdigit():
+            info[k] = int(v)
+    total = info.get("MemTotal", 0)
+    avail = info.get("MemAvailable", info.get("MemFree", 0))
+    if not total:
+        return {"used_mb": None, "total_mb": None, "percent": None}
+    used = total - avail
+    return {
+        "used_mb": used // 1024,
+        "total_mb": total // 1024,
+        "percent": int(round(100.0 * used / total)),
+    }
+
+
+def disk(path="/"):
+    try:
+        u = shutil.disk_usage(path)
+    except OSError:
+        return {"used_gb": None, "total_gb": None, "percent": None}
+    return {
+        "used_gb": u.used // (1024 ** 3),
+        "total_gb": u.total // (1024 ** 3),
+        "percent": int(round(100.0 * u.used / u.total)) if u.total else None,
+    }
+
+
+def temperature():
+    """
+    The warmest sensor that is plausibly a CPU package.
+
+    Names differ per platform -- k10temp on AMD, coretemp on Intel, acpitz on a
+    laptop -- so this looks for any of them and takes the highest reading, which
+    is the number a person means by "the temperature".
+    """
+    best = None
+    base = "/sys/class/hwmon"
+    try:
+        hwmons = os.listdir(base)
+    except OSError:
+        return None
+    for h in hwmons:
+        name = _read(os.path.join(base, h, "name")).strip()
+        if name not in ("k10temp", "coretemp", "zenpower", "acpitz",
+                        "cpu_thermal"):
+            continue
+        d = os.path.join(base, h)
+        try:
+            inputs = [f for f in os.listdir(d)
+                      if re.fullmatch(r"temp\d+_input", f)]
+        except OSError:
+            continue
+        for f in inputs:
+            raw = _read(os.path.join(d, f)).strip()
+            if raw.lstrip("-").isdigit():
+                c = int(raw) / 1000.0
+                if 0 < c < 150 and (best is None or c > best):
+                    best = c
+    return int(round(best)) if best is not None else None
+
+
+# ── Network ──────────────────────────────────────────────────────────────────
+#
+# Also cumulative, and also needs two samples. The counters are summed across
+# every interface except loopback: which NIC carries the traffic is not the
+# question a dashboard rate answers.
+def _net_bytes():
+    rx = tx = 0
+    for line in _read("/proc/net/dev").splitlines()[2:]:
+        iface, _, rest = line.partition(":")
+        if iface.strip() == "lo":
+            continue
+        f = rest.split()
+        if len(f) >= 9:
+            rx += int(f[0])
+            tx += int(f[8])
+    return rx, tx
+
+
+def network(interval=0.12):
+    a = _net_bytes()
+    time.sleep(interval)
+    b = _net_bytes()
+    if interval <= 0:
+        return {"rx_bps": 0, "tx_bps": 0}
+    return {
+        "rx_bps": max(0, int((b[0] - a[0]) / interval)),
+        "tx_bps": max(0, int((b[1] - a[1]) / interval)),
+    }
+
+
+def uptime():
+    raw = _read("/proc/uptime").split(" ")[0]
+    try:
+        s = int(float(raw))
+    except ValueError:
+        return {"seconds": None, "text": None}
+    d, rem = divmod(s, 86400)
+    h, rem = divmod(rem, 3600)
+    m = rem // 60
+    text = f"{d}d {h}h {m}m" if d else (f"{h}h {m}m" if h else f"{m}m")
+    return {"seconds": s, "text": text}
+
+
+def processes():
+    try:
+        return sum(1 for e in os.listdir("/proc") if e.isdigit())
+    except OSError:
+        return None
+
+
+def users():
+    out = _run(["who"])
+    names = sorted({l.split()[0] for l in out.splitlines() if l.split()})
+    if not names:
+        me = os.environ.get("USER") or os.environ.get("LOGNAME")
+        names = [me] if me else []
+    return {"count": len(names), "names": names}
+
+
+def telemetry():
+    m = memory()
+    d = disk()
+    return {
+        "cpu_percent": cpu_percent(),
+        "memory": m,
+        "disk": d,
+        "temperature_c": temperature(),
+        "network": network(),
+        "uptime": uptime(),
+        "processes": processes(),
+        "users": users(),
+    }
+
+
+def core():
+    osr = {}
+    for line in _read("/etc/os-release").splitlines():
+        k, _, v = line.partition("=")
+        osr[k] = v.strip().strip('"')
+    session = (os.environ.get("XDG_CURRENT_DESKTOP")
+               or os.environ.get("DESKTOP_SESSION") or "")
+    return {
+        "kernel": platform.release(),
+        "arch": platform.machine(),
+        "build": osr.get("BUILD_ID") or osr.get("VERSION_ID") or "rolling",
+        "session": session or "unknown",
+        "name": osr.get("PRETTY_NAME") or osr.get("NAME") or "Genesi OS",
+        "version": osr.get("VERSION_ID") or "",
+    }
+
+
+def storage():
+    """
+    What fills the disk, in the three slices the ring shows.
+
+    "System" is what the package manager owns, near enough: /usr plus /var.
+    "Data" is home. "Other" is whatever is left of the used space, which is the
+    honest label for it -- naming it something specific would be a guess.
+    """
+    d = disk()
+    total = d["total_gb"]
+    if total is None:
+        return {"total_gb": None, "slices": []}
+
+    def used_of(path):
+        out = _run(["du", "-sx", "--block-size=1G", path], timeout=25)
+        first = out.split("\t", 1)[0].strip()
+        return int(first) if first.isdigit() else None
+
+    home = os.path.expanduser("~")
+    data = used_of(home)
+    system = None
+    for p in ("/usr", "/var"):
+        v = used_of(p)
+        if v is not None:
+            system = (system or 0) + v
+    used = d["used_gb"] or 0
+    known = (data or 0) + (system or 0)
+    other = max(0, used - known)
+    return {
+        "total_gb": total,
+        "used_gb": used,
+        "percent": d["percent"],
+        "slices": [
+            {"label": "system", "gb": system or 0},
+            {"label": "data", "gb": data or 0},
+            {"label": "other", "gb": other},
+        ],
+    }
+
+
+def activity(limit=6):
+    """
+    Recent events, newest first, from sources that already exist.
+
+    Deliberately not a new log: the package log and the journal already record
+    what a person means by "what happened lately", and inventing a third place
+    to write would make this app the only thing that knows.
+    """
+    items = []
+
+    log = _read("/var/log/pacman.log")
+    if log:
+        pat = re.compile(r"^\[(.*?)\] \[ALPM\] (upgraded|installed|removed) (\S+)")
+        seen = 0
+        for line in reversed(log.splitlines()):
+            m = pat.match(line)
+            if not m:
+                continue
+            items.append({"kind": "package", "text": f"{m.group(2)} {m.group(3)}",
+                          "when": m.group(1)})
+            seen += 1
+            if seen >= limit:
+                break
+
+    boot = _run(["uptime", "-s"]).strip()
+    if boot:
+        items.append({"kind": "boot", "text": "system started", "when": boot})
+
+    return {"items": items[:limit]}
+
+
+SECTIONS = {
+    "telemetry": telemetry,
+    "core": core,
+    "storage": storage,
+    "activity": activity,
+}
+
+
+def main():
+    what = sys.argv[1] if len(sys.argv) > 1 else "all"
+    if what == "all":
+        out = {k: f() for k, f in SECTIONS.items()}
+    elif what in SECTIONS:
+        out = SECTIONS[what]()
+    else:
+        sys.stderr.write(
+            "usage: genesi-center-data [all|%s]\n" % "|".join(SECTIONS))
+        return 2
+    json.dump(out, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

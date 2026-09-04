@@ -1434,7 +1434,23 @@ a display serif against a monospace, density used as ornament (telemetry,
 section numbering, secondary labels), and one striking image treated as the
 subject. Its own identity is "paper and ink, warm bone on black" — copying it
 would make Genesi look like Ryoku rather than like Genesi.
-- [ ] Decide what Genesi's equivalent conviction is (today: emerald glass)
+- [x] **Genesi Center** — `genesi-center`, the control surface. First pass:
+      the rail (nine sections, one sliding indicator), the Overview page built
+      to the mockup — hero, eight telemetry readings with live sparklines,
+      quick tools, snapshots, the storage ring, recent activity, the core plate
+      and the terminal mark — and `genesi-center-data`, a CLI printing JSON
+      that every number comes from. The remaining eight pages announce
+      themselves as unbuilt rather than showing an empty panel.
+      What was taken from Ryoku is the ARCHITECTURE, not the look: a data plane
+      that is a CLI, a front end that only draws, one file per page, one rail
+      that owns navigation. `devtools/render-center.py` draws the app to a PNG
+      with no desktop, which is how the layout gets reviewed.
+- [x] Decide what Genesi's equivalent conviction is — emerald on near-black, a
+      terminal that grew into a garden. `app/Tokens.qml` is the single place it
+      is decided, and unlike every other Genesi app it does NOT follow the
+      system scheme: this is the brand surface, so it leads rather than follows.
+- [ ] The artwork: the Overview's centre is a procedural glow until the tree is
+      dropped into `app/art/tree.png`.
 - [ ] A second type family with a job — everything factual in monospace
 - [ ] Density as ornament instead of empty space
 - [ ] Wallpaper-derived retinting on the Plasma side too (Hyprland already has

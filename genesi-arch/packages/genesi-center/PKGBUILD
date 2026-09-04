@@ -1,0 +1,81 @@
+# Maintainer: Genesi OS Team
+#
+# genesi-center — the desktop's control surface.
+#
+# Roadmap 7.4: "a Genesi settings app with real art direction". The bar it was
+# measured against is Ryoku's, and the useful half of what they do is the
+# architecture rather than the look:
+#
+#   * a data plane that is a CLI printing JSON (`ryoku-hub keybinds`,
+#     `hypr get`), and a front end that only draws
+#   * one file per page, one rail that owns navigation
+#   * a written design contract every page obeys
+#
+# Genesi already had the first of those everywhere -- genesi-display,
+# genesi-bar, genesi-ai-mode all print JSON for a GUI to read -- so this app is
+# the same shape: `genesi-center-data` reads the machine, the QML draws it, and
+# neither knows the other's business. What it does NOT copy is the appearance:
+# Ryoku's is warm bone on black, and wearing it would make Genesi look like
+# Ryoku. app/Tokens.qml is where ours is decided, and it says why.
+#
+# The other apps here derive their colours from the system scheme through the
+# shared genesi-ui-kit. This one deliberately does not, so it is not bundled:
+# Center is the brand surface, and a control centre that restates itself in
+# whatever hue the wallpaper produced has no identity to recognise.
+pkgname=genesi-center
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Genesi control centre — system overview, resources and settings'
+arch=('any')
+groups=('genesi')
+license=('AGPL-3.0-or-later')
+url='https://github.com/Genesi-OS/GenesiOS'
+# pyside6 for the engine; qqc2-desktop-style so plain Qt Quick Controls do not
+# fall back to the Basic style. coreutils for `du`, which the storage ring
+# needs and which is not worth reimplementing in Python.
+depends=('python' 'pyside6' 'qqc2-desktop-style' 'coreutils')
+optdepends=('genesi-snapshots: the snapshot panel'
+            'genesi-update-center: the updates tool'
+            'genesi-code: the editor tool')
+source=()
+
+check() {
+    # The data plane must parse and must answer every section it advertises.
+    # A GUI that starts and shows dashes is the failure this catches, and it
+    # cannot be caught from the QML side.
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-center-data',encoding='utf-8').read())"
+    python -c "import ast,io;ast.parse(io.open('${startdir}/app/genesi_center.py',encoding='utf-8').read())"
+    sh -n "${startdir}/genesi-center"
+}
+
+package() {
+    install -Dm755 "${startdir}/genesi-center" \
+        "${pkgdir}/usr/bin/genesi-center"
+    install -Dm755 "${startdir}/genesi-center-data" \
+        "${pkgdir}/usr/bin/genesi-center-data"
+
+    install -Dm644 "${startdir}/app/genesi_center.py" \
+        "${pkgdir}/usr/share/genesi-center/app/genesi_center.py"
+    install -Dm644 "${startdir}/app/Main.qml" \
+        "${pkgdir}/usr/share/genesi-center/app/Main.qml"
+    install -Dm644 "${startdir}/app/Tokens.qml" \
+        "${pkgdir}/usr/share/genesi-center/app/Tokens.qml"
+    install -Dm644 "${startdir}/app/qmldir" \
+        "${pkgdir}/usr/share/genesi-center/app/qmldir"
+
+    install -Dm644 "${startdir}/app/components/"*.qml \
+        -t "${pkgdir}/usr/share/genesi-center/app/components/"
+    install -Dm644 "${startdir}/app/pages/"*.qml \
+        -t "${pkgdir}/usr/share/genesi-center/app/pages/"
+
+    # The art is optional on purpose: OverviewPage falls back to a procedural
+    # glow, so a build without the asset still looks finished rather than
+    # showing an empty rectangle where the tree belongs.
+    if compgen -G "${startdir}/app/art/*" > /dev/null; then
+        install -Dm644 "${startdir}/app/art/"* \
+            -t "${pkgdir}/usr/share/genesi-center/app/art/"
+    fi
+
+    install -Dm644 "${startdir}/org.genesi.center.desktop" \
+        "${pkgdir}/usr/share/applications/org.genesi.center.desktop"
+}
