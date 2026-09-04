@@ -40,6 +40,7 @@ noticed for months.
 import io
 import os
 import re
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -194,6 +195,107 @@ def roots():
     return found, missing
 
 
+def check_unpublished_deps(built):
+    """
+    A dependency on a package that does not exist yet has to be handed over.
+
+    makepkg refuses to start when a runtime dependency cannot be resolved, and
+    a package built earlier in the same CI run is not resolvable: it is not in
+    any repository, because this run is what would publish it. Run #480 failed
+    exactly there -- genesi-shaders depends on genesi-hyprshade, both new, both
+    built minutes apart, neither able to see the other.
+
+    publish-packages.yml already carries the fix as a list of packages to
+    `pacman -U` into the build container after building them. This makes the
+    list keep up: any Genesi package that depends on another Genesi package
+    which is NOT yet published must appear in it.
+
+    Keyed on "not yet published" rather than on every inter-package edge,
+    because once a package is in the repo the dependency resolves from there
+    and the requirement lapses on its own. Checking every edge would demand
+    entries that do nothing.
+    """
+    # Asked of git, not of the filesystem. genesi-arch/repo/ is in .gitignore
+    # while also being tracked -- CI force-adds the built packages -- so a
+    # working tree can know the repository's contents perfectly well while
+    # having none of the files on disk. Reading the directory reported every
+    # published package as missing.
+    published = set()
+    try:
+        out = subprocess.run(
+            ["git", "-C", ROOT, "ls-files", "genesi-arch/repo/x86_64"],
+            capture_output=True, text=True, timeout=60)
+        listing = out.stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        listing = []
+    if not listing:
+        d = os.path.join(ROOT, "genesi-arch", "repo", "x86_64")
+        listing = [os.path.join(d, f) for f in os.listdir(d)]             if os.path.isdir(d) else []
+    for path in listing:
+        fn = os.path.basename(path)
+        if fn.endswith(".pkg.tar.zst"):
+            # name-version-rel-arch.pkg.tar.zst
+            published.add(fn.rsplit("-", 3)[0])
+    if not published:
+        print("  NOTE  no published packages visible; unpublished-dependency "
+              "check skipped")
+        return True
+
+    wf = os.path.join(ROOT, ".github", "workflows", "publish-packages.yml")
+    if not os.path.exists(wf):
+        print("  NOTE  publish-packages.yml missing; container-install list "
+              "not checked")
+        return True
+    with io.open(wf, encoding="utf-8") as fh:
+        wf_src = fh.read()
+    # Anchored on the pacman -U block. The workflow has more than one `case`
+    # over package names, and matching the first one found picked the wrong
+    # list entirely.
+    installed = set()
+    anchor = wf_src.find("pacman -U --noconfirm")
+    if anchor > 0:
+        window = wf_src[max(0, anchor - 2000):anchor]
+        for m in re.finditer(r"^\s*(genesi-[\w-]+(?:\|genesi-[\w-]+)+)\)\s*$",
+                             window, re.M):
+            installed = set(m.group(1).split("|"))   # the last one before it
+
+    # Only packages this pipeline actually builds. genesi-code and
+    # genesi-sandboxes are not in its list -- one is release-hosted, the other
+    # discontinued -- so an edge between them can never fail a build here.
+    pipeline = {p for p in built if f'"{p}"' in wf_src}
+
+    bad = []
+    for pkg, directory in sorted(built.items()):
+        if pkg not in pipeline:
+            continue
+        src = read_pkgbuild(directory)
+        if not src:
+            continue
+        for dep in sorted(pkgbuild_field(src, "depends")):
+            if dep not in pipeline:
+                continue                      # not built by this pipeline
+            if dep in published:
+                continue                      # resolvable from the repo
+            if dep in installed:
+                continue                      # handed over in the container
+            bad.append((pkg, dep))
+
+    if bad:
+        print("  FAIL  dependency on a package that does not exist yet:")
+        for pkg, dep in bad:
+            print(f"          - {pkg} needs {dep}, which is unpublished")
+        print()
+        print("        makepkg will not start on a dependency it cannot")
+        print("        resolve, and a package built earlier in the same run is")
+        print("        in no repository. Add it to the pacman -U list in")
+        print("        publish-packages.yml; the entry can go once it has been")
+        print("        published once.")
+        return False
+
+    print("  PASS  no dependency points at an unpublished package")
+    return True
+
+
 def main():
     built = built_packages()   # pkgname -> directory
     found, missing = roots()
@@ -258,6 +360,10 @@ def main():
 
     print(f"  PASS  every built package reaches a machine "
           f"({len(NOT_INSTALLED)} exempt, by decision)")
+
+    if not check_unpublished_deps(built):
+        return 1
+
     print("\npackage reachability: OK")
     return 0
 
