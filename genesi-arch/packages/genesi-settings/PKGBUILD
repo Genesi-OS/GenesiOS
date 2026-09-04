@@ -162,7 +162,7 @@ pkgver=1.3.4
 # 2026-08-21: license declaration corrected to AGPL-3.0-or-later, matching the
 # repository's LICENSE and the rest of the Genesi packages. GPL-1.0-only was a leftover from a PKGBUILD template -- that is the 1989
 # license, and this is Genesi's own settings app.
-pkgrel=52
+pkgrel=53
 epoch=1
 groups=(genesi)
 arch=('any')
@@ -260,7 +260,23 @@ package() {
   chmod +x "$pkgdir/usr/bin/genesi-apply-theme.sh" 2>/dev/null || true
   chmod +x "$pkgdir/usr/bin/genesi-panel-migrate.sh" 2>/dev/null || true
   
-  # Replace all CachyOS references with Genesi OS
-  find "$pkgdir" -type f -exec sed -i 's/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
-  find "$pkgdir" -type f -exec sed -i 's/cachyos/genesi/g' {} + 2>/dev/null || true
+  # Replace all CachyOS references with Genesi OS.
+  #
+  # systemd units are excluded, and that exclusion is the whole point. A unit
+  # name is an identifier, not branding: the rename rewrote
+  # `Unit=cachyos-iw-set-regdomain.service` inside the .path file while leaving
+  # the .service FILE named cachyos-*, because the sed edits contents and not
+  # filenames. Every boot then logged
+  #
+  #   cachyos-iw-set-regdomain.path: Refusing to start, unit
+  #   genesi-iw-set-regdomain.service to trigger not loaded.
+  #
+  # Renaming the files instead would break the other direction -- other CachyOS
+  # packages reference these by their real names. Leave identifiers alone.
+  find "$pkgdir" -type f -not -path "*/systemd/*"     -exec sed -i 's/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
+  find "$pkgdir" -type f -not -path "*/systemd/*"     -exec sed -i 's/cachyos/genesi/g' {} + 2>/dev/null || true
+
+  # The Description= lines ARE branding, so those are still worth changing --
+  # just not the identifiers around them.
+  find "$pkgdir" -path "*/systemd/*" -type f -exec sed -i '/^Description=/s/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
 }

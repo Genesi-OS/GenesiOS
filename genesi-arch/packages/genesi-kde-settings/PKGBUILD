@@ -15,7 +15,7 @@ pkgver=4.9
 # generic one; now genesi-kde-settings coexists with a CachyOS WM's settings.
 # 2026-08-21: license declaration corrected to AGPL-3.0-or-later, matching the
 # repository's LICENSE and the rest of the Genesi packages. GPL-1.0-only was a leftover from a PKGBUILD template.
-pkgrel=8
+pkgrel=9
 arch=('any')
 url="https://github.com/Genesi-OS/genesi-pkgbuilds"
 license=('AGPL-3.0-or-later')
@@ -46,9 +46,15 @@ package() {
     install -d "$pkgdir/usr"
     cp -rf "${_srcdir}/cachyos-kde-settings-4.9/usr" "$pkgdir" 2>/dev/null || true
 
-    # Replace all CachyOS branding with Genesi OS
-    find "$pkgdir" -type f -exec sed -i 's/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
-    find "$pkgdir" -type f -exec sed -i 's/cachyos/genesi/g' {} + 2>/dev/null || true
+    # Replace all CachyOS branding with Genesi OS.
+    #
+    # systemd is excluded: a unit name is an identifier, not branding, and this
+    # sed edits contents without renaming files. genesi-settings shipped a
+    # .path whose trigger was rewritten to a service that does not exist, and
+    # it failed on every boot. This package ships no units today; the exclusion
+    # is here so it stays true if it ever does.
+    find "$pkgdir" -type f -not -path "*/systemd/*"         -exec sed -i 's/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
+    find "$pkgdir" -type f -not -path "*/systemd/*"         -exec sed -i 's/cachyos/genesi/g' {} + 2>/dev/null || true
 
     # CRITICAL: strip /etc/skel from this package's payload.
     # genesi-settings (1:1.3.4-16 and later) is the canonical source of

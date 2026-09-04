@@ -139,3 +139,11 @@ jobs:
         # right dialect, right uniforms; genesi-shaders' own check() runs the
         # real compiler at build time.
         run: python genesi-arch/ci/shader-sanity-test.py
+
+      - name: systemd units point at units that exist
+        # Genesi rebrands CachyOS material with a blanket
+        # `sed s/cachyos/genesi/g` over the package. That is right for text and
+        # wrong for identifiers: it rewrote a .path unit's trigger to a service
+        # that does not exist while leaving the service file's NAME alone, and
+        # the failure appeared on every boot in the journal and nowhere else.
+        run: python genesi-arch/ci/systemd-unit-refs-test.py

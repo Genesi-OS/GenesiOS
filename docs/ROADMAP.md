@@ -1334,9 +1334,11 @@ desktop.
 
 #### Next
 
-- [ ] Everything else — GNOME, Xfce, Cinnamon, MATE, LXDE, Budgie, Cosmic and
-      Niri have no extension point for this, so a small standalone window is the
-      only option. It is the fallback, not the product.
+- [x] **Everything else — decided: no standalone app.** GNOME, Xfce, Cinnamon,
+      MATE, LXDE, Budgie, Cosmic and Niri have no extension point for a settings
+      page, and the update tray notifier already reaches all of them. An
+      eleventh window for a job the taskbar icon already does is not worth its
+      maintenance.
 - [ ] First run of the KDE module on real hardware.
 
 ### 7.2 Shell-independent desktop utilities
