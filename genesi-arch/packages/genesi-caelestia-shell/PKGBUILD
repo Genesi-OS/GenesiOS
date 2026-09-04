@@ -51,7 +51,7 @@ pkgver=2.0.3
 # first/last itself. Wrapping it in another one stacked two rectangles and the
 # inner, nearly-square one won. Upstream uses InfoRow bare (AboutPage's System
 # section); so does this now.
-pkgrel=10
+pkgrel=11
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

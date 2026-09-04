@@ -13,8 +13,8 @@ the bet has to be checked before it is placed.
   * the Display and Mouse pages, and their entries in the two registries
   * the Nexus settings search, which upstream ships as a box with nothing
     behind it
-  * the launcher's action selector, without which typing after ">" narrows
-    nothing
+  * the launcher's action search, which raced its own index and showed
+    everything whenever it lost
   * a wall clock on the DDC/CI probe, which otherwise hammers a monitor that
     does not implement it until the DisplayPort link drops
 
@@ -281,53 +281,69 @@ def verify_alignment(nexus_dir):
     print(f"registries aligned: {n_pages} entries, {n_comps} components")
 
 
-def patch_actions_selector(launcher_dir):
+def patch_actions_query(launcher_dir):
     """
-    Give the launcher's action list a selector of its own.
+    Filter the launcher's actions directly, instead of through a prebuilt index.
 
-    Reported from hardware: typing after ">" does not narrow the list -- every
-    action stays on screen. Searching for an app filters correctly, so the
-    machinery works; only the action path is broken.
+    Reported, and the detail that solves it: typing ">scheme" showed every
+    action; deleting one character showed only the Scheme action; typing
+    ">scheme" again showed everything. The SAME input filters sometimes and not
+    others. That is not wrong logic, it is a race.
 
-    Comparing the four services that use Searcher shows exactly one difference:
+    Searcher builds its fzf index once, from `list`, and Actions' list is
+    `variants.instances` -- which a Variants block fills in asynchronously.
+    Query the index before it is ready and the evaluation fails; QML then keeps
+    the previous value of the bound property, which is the unfiltered list. So
+    the failure mode is "everything stays", and it depends on timing.
 
-        Apps      overrides selector()  ->  keys.map(k => item[k]).join(" ")
-        Schemes   overrides selector()  ->  `${item.name} ${item.flavour}`
-        Variants  overrides selector()
-        Actions   does NOT              ->  falls back to `item[key]`
+    An explicit selector was tried first and did not help, because the selector
+    is only reached once the index exists.
 
-    Actions is the only one relying on the base class's dynamic bracket lookup,
-    and it is the only one that does not filter. When the selector yields
-    nothing usable, fzf has no text to score against and every entry survives --
-    which is precisely "the options stay, typing changes nothing".
+    So Actions overrides query() and filters the live list itself. No index, no
+    build step, nothing to be too early for -- `list` is read at the moment of
+    the search, and if instances are still arriving the next keystroke simply
+    sees more of them.
 
-    So Actions gets the same explicit property read the two working services
-    use. Cheap, and it removes the one thing that made this list different.
+    Substring, not subsequence, and that is a deliberate downgrade from fzf.
+    These are twenty-odd curated entries with names we choose. fzf's
+    subsequence matching on this list is what returned "Scale 125%" for "girar"
+    and "Make this screen primary" for "parede" -- confident and wrong, which is
+    worse than nothing. Substring also means the Portuguese half of each name
+    behaves exactly like the English half.
     """
     actions = os.path.join(launcher_dir, "services", "Actions.qml")
     if not os.path.exists(actions):
         fail(f"{actions} is gone -- the launcher services moved or were renamed.")
 
     s = io.open(actions, encoding="utf-8").read()
-    if "function selector" in s:
-        fail("Actions.qml now defines its own selector -- upstream fixed this. "
-             "Drop the patch and keep theirs.")
+    if "function query" in s:
+        fail("Actions.qml now defines its own query() -- upstream changed how "
+             "actions are searched. Drop this patch and read theirs.")
 
     anchor = "    function transformSearch(search: string): string {"
     if anchor not in s:
         fail("Actions.qml's transformSearch is not where the patch expects it.")
 
-    s = s.replace(anchor,
-                  "    // Read the property by name instead of by bracket lookup, the way\n"
-                  "    // Apps and Schemes both do. The inherited `item[key]` yielded nothing\n"
-                  "    // to score against, so fzf kept every action and typing narrowed\n"
-                  "    // nothing. (Genesi)\n"
-                  "    function selector(item: var): string {\n"
-                  "        return item.name;\n"
-                  "    }\n"
-                  "\n" + anchor, 1)
+    block = (
+        "    // Filter the live list rather than a prebuilt fzf index. The index\n"
+        "    // is built once from variants.instances, which fills in\n"
+        "    // asynchronously; querying it too early fails, and QML then keeps\n"
+        "    // the previous value -- the unfiltered list. That is why the same\n"
+        "    // text filtered on one keystroke and showed everything on the next.\n"
+        "    //\n"
+        "    // Substring, not fzf: on twenty curated entries, subsequence\n"
+        "    // matching returned \"Scale 125%\" for \"girar\". (Genesi)\n"
+        "    function query(search: string): list<var> {\n"
+        "        const q = transformSearch(search.trim().replace(/\\s+/g, \" \")).toLowerCase();\n"
+        "        const all = [...list];\n"
+        "        if (!q)\n"
+        "            return all;\n"
+        "        return all.filter(a => (a.name ?? \"\").toLowerCase().includes(q));\n"
+        "    }\n"
+        "\n")
+    s = s.replace(anchor, block + anchor, 1)
     io.open(actions, "w", encoding="utf-8", newline="\n").write(s)
-    print("Actions.qml: explicit selector")
+    print("Actions.qml: query() filters the live list")
 
 
 def patch_ddc_timeout(services_dir):
@@ -408,7 +424,7 @@ def main():
     patch_comp_registry(comp)
     verify_alignment(nexus)
     patch_nav_search(nexus)
-    patch_actions_selector(launcher)
+    patch_actions_query(launcher)
     patch_ddc_timeout(os.path.join(release, "services"))
 
     # Only now are our pages written in. Doing this before the checks above is
