@@ -276,7 +276,7 @@ collect_audio_display() {
     # settings page can fix, but it IS something the log identifies precisely.
     section "Displays"
     if have hyprctl && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-        hyprctl monitors 2>/dev/null             | grep -E 'Monitor|availableModes|scale|transform|focused|dpmsStatus'             | head -40 | sed 's/^/  /' | redact
+        hyprctl monitors 2>/dev/null             | grep -E 'Monitor|@[0-9.]+ at |availableModes|scale|transform|focused|dpmsStatus'             | head -40 | sed 's/^/  /' | redact
     elif have xrandr; then
         xrandr --query 2>/dev/null | grep -E ' connected|primary' | sed 's/^/  /' | redact
     fi

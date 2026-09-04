@@ -251,11 +251,25 @@ if not commands.get("logout"):
 # nobody else, in silence. The package was installed, the feature was on disk,
 # and `>` showed a list from whenever that user first upgraded.
 #
-# Merging by NAME, appending what is missing. Entries the user already has are
-# left exactly as they are, including ones they wrote themselves and ones they
-# edited, because the goal is to deliver what is new rather than to overrule
-# anyone. An action removed on purpose does come back; that is the cost of not
-# keeping a per-user record of deletions, and it is the lesser mistake.
+# Merging by NAME, and the second version of that merge was still wrong: it
+# only APPENDED names that were missing and never updated an entry that already
+# existed. So a change to an action we already ship reached nobody. Grouping the
+# shaders was exactly that -- sixteen existing entries gaining "group":
+# "shader" -- and on an upgraded machine the merge added the one new "Shaders"
+# row and left all sixteen ungrouped, so ">" still listed forty rows. Same
+# shape as the freeze it replaced: the first version never wrote twice, this
+# one never rewrote.
+#
+# So the rule is ownership, not novelty. An action whose name we ship is OURS:
+# it is replaced with the shipped version, and changes to it arrive. An action
+# whose name we do not ship is the user's: it is kept, untouched, and follows
+# ours in the list.
+#
+# The cost, stated: someone who EDITED one of our actions in place loses that
+# edit on upgrade. Renaming it keeps it, because a rename makes it theirs. That
+# is worth it -- the alternative is what just happened, where no correction to
+# a shipped action can ever reach anybody. An action deleted on purpose also
+# comes back, which was already true.
 launcher = data.get("launcher")
 if not isinstance(launcher, dict):
     launcher = {}
@@ -277,11 +291,12 @@ if shipped_actions:
         launcher["actions"] = shipped_actions
         changed = True
     else:
-        have = {a.get("name") for a in current if isinstance(a, dict)}
-        added = [a for a in shipped_actions
-                 if isinstance(a, dict) and a.get("name") not in have]
-        if added:
-            launcher["actions"] = current + added
+        ours = {a.get("name") for a in shipped_actions if isinstance(a, dict)}
+        theirs = [a for a in current
+                  if isinstance(a, dict) and a.get("name") not in ours]
+        merged = shipped_actions + theirs
+        if merged != current:
+            launcher["actions"] = merged
             changed = True
 
 # 3. The launcher has its OWN Logout action, separate from the session drawer's

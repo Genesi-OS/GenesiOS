@@ -396,7 +396,30 @@ def main():
             print("  FAIL  the shell.json migration no longer reads the shipped")
             print("        action list; existing users would get nothing.")
             return 1
-        print("  PASS  the migration merges new actions into existing configs")
+
+        # Appending is not enough either, and that took a second release to
+        # learn. A merge that only adds MISSING names never updates an action
+        # we already ship, so a correction to one reaches nobody: grouping the
+        # shaders changed sixteen existing entries, the merge added the one new
+        # row beside them, and ">" went on listing all forty. The first version
+        # never wrote twice; the second never rewrote.
+        #
+        # An action whose name we ship is ours and gets replaced. Anything else
+        # is the user's and is kept. Comments stripped before looking, because
+        # the paragraph above says "current + added" in prose.
+        code = "\n".join(l for l in inst.splitlines()
+                          if not l.lstrip().startswith("#"))
+        if "current + added" in code:
+            print("  FAIL  the shell.json migration only APPENDS actions whose")
+            print("        name is missing, so a change to an action we already")
+            print("        ship never reaches an existing user.")
+            return 1
+        if "shipped_actions + theirs" not in code:
+            print("  FAIL  the shell.json migration no longer rebuilds the list")
+            print("        as ours-then-theirs; changes to shipped actions would")
+            print("        stop being delivered.")
+            return 1
+        print("  PASS  the migration replaces our actions and keeps the user's")
 
     if not check_commands_resolve(cfg):
         return 1

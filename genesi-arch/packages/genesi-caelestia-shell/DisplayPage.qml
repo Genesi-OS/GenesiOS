@@ -346,9 +346,16 @@ PageBase {
                         implicitHeight: canvas.logicalH(tile.modelData) * canvas.factor
 
                         radius: Tokens.rounding.small
-                        color: tile.held || tile.modelData.focused ? Colours.palette.m3primaryContainer : Colours.tPalette.m3surfaceContainerHigh
+                        // Solid, not tPalette. The transparent palette left an
+                        // unfocused screen at the card's own colour with a thin
+                        // outline, which on a dark scheme is very nearly
+                        // nothing: a two-monitor desk read as one monitor
+                        // sitting oddly off to one side. The map has to show
+                        // every screen, and the focused one is already told
+                        // apart by being the accent colour.
+                        color: tile.held || tile.modelData.focused ? Colours.palette.m3primaryContainer : Colours.palette.m3surfaceContainerHighest
                         border.width: 2
-                        border.color: tile.held ? Colours.palette.m3primary : Colours.palette.m3outlineVariant
+                        border.color: tile.held ? Colours.palette.m3primary : Colours.palette.m3outline
                         z: tile.held ? 1 : 0
 
                         // While a tile is held the mouse drives x/y; the
@@ -407,6 +414,23 @@ PageBase {
                             onReleased: {
                                 const mx = (tile.x - canvas.offX) / canvas.factor + canvas.minX;
                                 const my = (tile.y - canvas.offY) / canvas.factor + canvas.minY;
+
+                                // Put the bindings back. `drag.target` moves a
+                                // tile by WRITING x and y, and an imperative
+                                // write onto a bound property destroys the
+                                // binding for good -- checked under Qt 6.11,
+                                // not assumed: after one drag the item ignored
+                                // every later change to what it was bound to.
+                                //
+                                // Without this the tile stops following the
+                                // compositor the moment it is first dragged,
+                                // and it is never dropped where it ends up:
+                                // genesi-display re-packs every monitor so
+                                // they touch, so the true position is almost
+                                // always a little different from the drop.
+                                tile.x = Qt.binding(() => canvas.offX + (tile.modelData.x - canvas.minX) * canvas.factor);
+                                tile.y = Qt.binding(() => canvas.offY + (tile.modelData.y - canvas.minY) * canvas.factor);
+
                                 root.run(["genesi-display", "place", tile.modelData.name, String(Math.round(mx)), String(Math.round(my))]);
                             }
                         }
