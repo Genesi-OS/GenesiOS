@@ -1,6 +1,7 @@
-// Genesi — vignette. Darkens the corners, like a camera lens.
 #version 300 es
 precision highp float;
+
+// Genesi — vignette. Darkens the corners, like a camera lens.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

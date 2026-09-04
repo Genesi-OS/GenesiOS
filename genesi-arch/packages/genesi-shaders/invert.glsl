@@ -1,6 +1,7 @@
-// Genesi — invert. Every colour flipped; readable on a bright page at night.
 #version 300 es
 precision highp float;
+
+// Genesi — invert. Every colour flipped; readable on a bright page at night.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

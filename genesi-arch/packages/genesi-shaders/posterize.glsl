@@ -1,6 +1,7 @@
-// Genesi — posterize. Colour flattened into a few bands, like a screen print.
 #version 300 es
 precision highp float;
+
+// Genesi — posterize. Colour flattened into a few bands, like a screen print.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

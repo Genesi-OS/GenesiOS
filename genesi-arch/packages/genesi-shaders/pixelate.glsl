@@ -1,6 +1,7 @@
-// Genesi — pixelate. Snaps the screen to a coarse grid.
 #version 300 es
 precision highp float;
+
+// Genesi — pixelate. Snaps the screen to a coarse grid.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

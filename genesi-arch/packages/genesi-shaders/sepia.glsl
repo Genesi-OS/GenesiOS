@@ -1,6 +1,7 @@
-// Genesi — sepia. The warm brown of an old photograph.
 #version 300 es
 precision highp float;
+
+// Genesi — sepia. The warm brown of an old photograph.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

@@ -1,6 +1,7 @@
-// Genesi — film grain. A fine static noise over the picture.
 #version 300 es
 precision highp float;
+
+// Genesi — film grain. A fine static noise over the picture.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

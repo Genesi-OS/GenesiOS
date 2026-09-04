@@ -1,6 +1,7 @@
-// Genesi — deuteranopia aid. Shifts red/green apart for green-blind vision.
 #version 300 es
 precision highp float;
+
+// Genesi — deuteranopia aid. Shifts red/green apart for green-blind vision.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

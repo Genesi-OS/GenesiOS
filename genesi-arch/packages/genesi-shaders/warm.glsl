@@ -1,6 +1,7 @@
-// Genesi — warm. A gentler evening tint than the full blue-light filter.
 #version 300 es
 precision highp float;
+
+// Genesi — warm. A gentler evening tint than the full blue-light filter.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

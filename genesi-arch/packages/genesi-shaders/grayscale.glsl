@@ -1,6 +1,7 @@
-// Genesi — grayscale. Colour removed, brightness kept.
 #version 300 es
 precision highp float;
+
+// Genesi — grayscale. Colour removed, brightness kept.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

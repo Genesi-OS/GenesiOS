@@ -1,6 +1,7 @@
-// Genesi — protanopia aid. Shifts red/green apart for red-blind vision.
 #version 300 es
 precision highp float;
+
+// Genesi — protanopia aid. Shifts red/green apart for red-blind vision.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

@@ -1,6 +1,7 @@
-// Genesi — anaglyph 3D. Depth through red/cyan glasses.
 #version 300 es
 precision highp float;
+
+// Genesi — anaglyph 3D. Depth through red/cyan glasses.
 
 in vec2 v_texcoord;
 uniform sampler2D tex;

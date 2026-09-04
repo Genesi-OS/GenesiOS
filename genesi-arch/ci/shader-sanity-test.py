@@ -84,11 +84,18 @@ def main():
         if "void main(" not in code:
             problems.append("has no main()")
 
-        # #version has to come before any code. Comments and blank lines above
-        # it are allowed, and upstream's own shaders use that.
-        before = code.split("#version", 1)[0]
-        if before.strip():
-            problems.append("has code before #version")
+        # In the ES profile #version must be the LITERAL first line -- not
+        # even a comment may precede it. This check used to allow comments,
+        # on the evidence that upstream's shaders have one; they do, and they
+        # only work because the driver is lenient where the compiler is not.
+        # All thirteen shaders here shipped with a comment on line 1 and none
+        # of them compiled.
+        if not src.startswith("#version"):
+            first = src.splitlines()[0].strip() if src.strip() else ""
+            problems.append(
+                "does not begin with #version (line 1 is %r) -- in the ES "
+                "profile nothing may precede it, not even a comment"
+                % (first[:40],))
 
         # A shader that never reads the screen is a solid colour, which is
         # always a mistake rather than an effect.
