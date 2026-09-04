@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""
+genesi-bar — switch the caelestia bar between shipped presets.
+
+caelestia's bar is unusually configurable already: `bar.entries` is an ORDERED
+list of ids, `spacer` is one of them, and the components carry a couple of
+dozen toggles besides. Almost every "can the bar look like X" question is
+therefore a question about shell.json rather than about QML.
+
+What was missing is that nobody edits JSON to try a look. So the arrangements
+are named, shipped, and switchable from the launcher -- `>bar` lists them the
+same way `>shader` lists the shaders.
+
+A preset REPLACES the whole `bar` section, deliberately. A preset is a complete
+arrangement, not a patch: merging would leave whatever the last one set, and
+"minimal" would quietly inherit the dense one's clock. Everything outside `bar`
+in shell.json is untouched.
+
+Written as a CLI for the same reason genesi-display is: the launcher entries,
+a keybind and a terminal all end up wanting the same behaviour, and a settings
+page should call this rather than reimplement it.
+"""
+import argparse
+import json
+import os
+import sys
+import tempfile
+
+PRESET_DIR = "/usr/share/genesi/caelestia-bar-presets"
+CONFIG = os.path.expanduser("~/.config/caelestia/shell.json")
+
+# Exactly the ids Bar.qml's DelegateChooser answers to. An id outside this set
+# is dropped in silence -- no error, no gap, the entry simply is not there --
+# so it is checked here and again at build time.
+VALID_ENTRIES = {"spacer", "logo", "workspaces", "activeWindow", "tray",
+                 "clock", "statusIcons", "power"}
+
+
+def die(msg):
+    print(f"genesi-bar: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def load_presets():
+    """Every shipped preset, by name, in display order."""
+    presets = {}
+    if not os.path.isdir(PRESET_DIR):
+        die(f"{PRESET_DIR} does not exist -- the presets are not installed.")
+    for fn in sorted(os.listdir(PRESET_DIR)):
+        if not fn.endswith(".json"):
+            continue
+        path = os.path.join(PRESET_DIR, fn)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                p = json.load(fh)
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"genesi-bar: skipping {fn}: {e}", file=sys.stderr)
+            continue
+        p["_id"] = os.path.splitext(fn)[0]
+        presets[p["_id"]] = p
+    if not presets:
+        die("no presets found")
+    return presets
+
+
+def read_config():
+    try:
+        with open(CONFIG, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_config(data):
+    """
+    Replace the file atomically.
+
+    caelestia watches shell.json and reloads on change. A plain truncate-then-
+    write is briefly a partial file, and the watcher is entirely capable of
+    reading it in that window and finding invalid JSON -- which on a config
+    file means the shell falls back to defaults in front of the user. Rename
+    is atomic, so the watcher sees the old file or the new one.
+    """
+    d = os.path.dirname(CONFIG)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".shell.json.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(tmp, CONFIG)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def current_name(presets, cfg):
+    bar = cfg.get("bar")
+    if not isinstance(bar, dict):
+        return None
+    for pid, p in presets.items():
+        if p.get("bar") == bar:
+            return pid
+    return None
+
+
+def cmd_list(presets):
+    cfg = read_config()
+    cur = current_name(presets, cfg)
+    for pid, p in presets.items():
+        mark = " *" if pid == cur else "  "
+        print(f"{mark} {pid:<14} {p.get('name', pid)}")
+        desc = p.get("description")
+        if desc:
+            print(f"      {desc}")
+    if cur is None and isinstance(cfg.get("bar"), dict):
+        print("\n   (the current bar matches no preset -- it has been edited by hand)")
+
+
+def cmd_apply(presets, name):
+    p = presets.get(name)
+    if p is None:
+        die(f"no preset called {name!r}. `genesi-bar list` shows them all.")
+
+    bar = p.get("bar")
+    if not isinstance(bar, dict):
+        die(f"preset {name!r} carries no bar section")
+
+    bad = [e.get("id") for e in bar.get("entries", [])
+           if isinstance(e, dict) and e.get("id") not in VALID_ENTRIES]
+    if bad:
+        die(f"preset {name!r} names entries the bar does not know: "
+            + ", ".join(str(b) for b in bad))
+
+    cfg = read_config()
+    cfg["bar"] = bar
+    write_config(cfg)
+    print(f"{p.get('name', name)}")
+
+
+def cmd_current(presets):
+    cur = current_name(presets, read_config())
+    print(presets[cur].get("name", cur) if cur else "custom")
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog="genesi-bar",
+        description="Switch the caelestia bar between shipped presets.")
+    sub = ap.add_subparsers(dest="cmd")
+    sub.add_parser("list", help="show every preset, marking the current one")
+    a = sub.add_parser("apply", help="switch to a preset")
+    a.add_argument("name")
+    sub.add_parser("current", help="print the preset in use, or 'custom'")
+
+    args = ap.parse_args()
+    presets = load_presets()
+
+    if args.cmd == "apply":
+        cmd_apply(presets, args.name)
+    elif args.cmd == "current":
+        cmd_current(presets)
+    else:
+        cmd_list(presets)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

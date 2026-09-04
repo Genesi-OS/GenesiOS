@@ -176,9 +176,20 @@ _migrate_cli_json() {
     local cli="$1" owner="$2"
     python3 - "$cli" <<'PY' || return 0
 import json, os, sys
+# Every open() here names its encoding.
+#
+# shell.json is full of non-ASCII: every Genesi action carries a "·" and the
+# Portuguese half of its name. Python decodes with the locale's encoding when
+# none is given, and a pacman scriptlet does not choose its locale -- under a C
+# or POSIX one this raises UnicodeDecodeError on the first read. The whole block
+# ends in `|| return 0`, so that failure is invisible: the migration simply does
+# not happen, on exactly the file it exists to migrate.
+#
+# Found by running this on a machine whose default encoding is cp1252. The
+# platform was wrong, the bug was not.
 p = sys.argv[1]
 try:
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict):
         data = {}
@@ -192,7 +203,7 @@ if theme.get("enableTerm") is False:
     sys.exit(0)  # already disabled — leave the file untouched
 theme["enableTerm"] = False
 os.makedirs(os.path.dirname(p), exist_ok=True)
-with open(p, "w") as f:
+with open(p, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
 PY
     chown "$owner" "$(dirname "$cli")" "$cli" 2>/dev/null || true
@@ -210,7 +221,7 @@ _migrate_shell_json() {
 import json, os, sys
 p = sys.argv[1]
 try:
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict):
         data = {}
@@ -277,7 +288,8 @@ if not isinstance(launcher, dict):
 
 shipped = {}
 try:
-    with open("/etc/skel/.config/caelestia/shell.json") as f:
+    with open("/etc/skel/.config/caelestia/shell.json",
+              encoding="utf-8") as f:
         shipped = json.load(f)
     if not isinstance(shipped, dict):
         shipped = {}
@@ -343,7 +355,7 @@ if fill_missing(data, shipped):
 if not changed:
     sys.exit(0)
 os.makedirs(os.path.dirname(p), exist_ok=True)
-with open(p, "w") as f:
+with open(p, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
 PY
     chown "$owner" "$(dirname "$shl")" "$shl" 2>/dev/null || true

@@ -156,12 +156,17 @@ pkgver=1.0.0
 # `loginctl terminate-user ""` -- the black screen fixed for the session drawer
 # in pkgrel 17. Someone who already had an actions list would have kept the
 # broken one forever otherwise.
-pkgrel=31
+pkgrel=32
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
 license=('GPL-3.0-or-later')
 depends=(
+    # genesi-caelestia-theme-sync and genesi-bar are both
+    # `#!/usr/bin/env python3`. This was missing: they worked only
+    # because something else on the machine happened to pull python
+    # in, which is not a dependency, it is a coincidence.
+    'python'
     # The launcher actions and the keybinds shipped here CALL this. Without
     # the dependency the package installs, the entries appear, and clicking
     # them does nothing at all -- which is exactly what happened: genesi-display
@@ -199,9 +204,9 @@ depends=(
                                # shipped before -> magenta "missing icon" squares)
 )
 install='genesi-caelestia-settings.install'
-source=('hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini' 'genesi-dark.conf'
+source=('genesi-bar' 'hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini' 'genesi-dark.conf'
         'genesi-caelestia-theme-sync' 'cli.json' 'shell.json')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     # Default Hyprland config for new users. Hyprland reads
@@ -251,4 +256,23 @@ package() {
     # hibernate keep upstream defaults (systemctl — those are fine).
     install -Dm644 "${srcdir}/shell.json" \
         "${pkgdir}/etc/skel/.config/caelestia/shell.json"
+
+    # Bar presets, and the CLI that applies them.
+    #
+    # caelestia's bar is configuration rather than code already: `bar.entries`
+    # is an ORDERED list of ids with `spacer` among them, so most "can the bar
+    # look like X" questions are answered by shell.json. What was missing is
+    # that nobody edits JSON to try a look, so the arrangements are named and
+    # switchable from `>bar`.
+    #
+    # The presets are read from ${startdir} rather than listed in source=().
+    # makepkg's source=() takes files and URLs, never a directory and never a
+    # subpath -- genesi-shaders learned that the hard way and had to go flat --
+    # and ten JSON files flattened beside the PKGBUILD would be worse than a
+    # directory this build can read, the way genesi-caelestia-shell already
+    # reads ../../ci.
+    install -Dm755 "${srcdir}/genesi-bar" "${pkgdir}/usr/bin/genesi-bar"
+    install -dm755 "${pkgdir}/usr/share/genesi/caelestia-bar-presets"
+    install -Dm644 "${startdir}/bar-presets/"*.json \
+        -t "${pkgdir}/usr/share/genesi/caelestia-bar-presets/"
 }

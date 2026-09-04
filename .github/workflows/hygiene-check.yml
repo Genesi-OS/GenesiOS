@@ -92,6 +92,10 @@ jobs:
         shell: bash
         run: python3 genesi-arch/ci/report-sees-our-config-test.py
 
+      - name: Bar presets describe a bar that can exist
+        shell: bash
+        run: python3 genesi-arch/ci/bar-presets-test.py
+
       - name: The ISO's systemd enable symlinks are symlinks
         shell: bash
         run: bash genesi-arch/ci/systemd-enable-test.sh

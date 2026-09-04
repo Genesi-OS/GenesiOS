@@ -17,6 +17,7 @@ PKGBUILD   text eol=lf
 # yield `bad interpreter: ...^M`. systemd units, sysctl and tmpfiles configs
 # also choke on a trailing \r in their values. Keep them all LF.
 genesi-arch/packages/genesi-audio/genesi-open-usb-mixer    text eol=lf
+genesi-arch/packages/genesi-caelestia-settings/genesi-bar  text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-aid             text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-mode         text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-kwin-helper  text eol=lf
@@ -47,6 +48,9 @@ genesi-arch/packages/genesi-mesh/genesi-mesh               text eol=lf
 # Python is run on Linux, QML is parsed by Qt, .desktop by the XDG stack — all
 # happier as LF, and it keeps the extensionless launchers above consistent.
 *.py          text eol=lf
+# Shipped JSON (bar presets, shell.json) -- parses either way, but keeping
+# it LF makes a package byte-identical wherever it was built.
+*.json        text eol=lf
 *.qml         text eol=lf
 *.desktop     text eol=lf
 genesi-arch/packages/genesi-mesh/genesi-mesh.fish text eol=lf

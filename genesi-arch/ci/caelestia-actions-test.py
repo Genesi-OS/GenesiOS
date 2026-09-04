@@ -66,6 +66,23 @@ def providers(binary):
     return {binary, BINARY_PACKAGE.get(binary, binary)}
 
 
+def self_installed(path):
+    """
+    Binaries this package installs itself.
+
+    A package cannot depend on itself, and genesi-caelestia-settings ships
+    genesi-bar next to the actions that call it. Read the install lines rather
+    than keeping a hand-written exception list: the exception list is the thing
+    that goes stale, and a stale one here means the check stops being able to
+    tell "we ship it" from "nobody ships it" -- which is the entire question.
+    """
+    with io.open(path, encoding="utf-8") as fh:
+        src = fh.read()
+    return set(re.findall(
+        r"install -Dm[0-7]+ [^\n]*?/(?:usr/bin|usr/local/bin)/([A-Za-z0-9._-]+)",
+        src))
+
+
 def declared_deps(path):
     """Names in depends=() -- enough for this, no need to parse PKGBUILD fully."""
     with io.open(path, encoding="utf-8") as fh:
@@ -103,9 +120,10 @@ def check_commands_resolve(cfg):
             continue
         needed.setdefault(cmd[0], []).append(a.get("name", "?"))
 
+    ours = self_installed(PKGBUILD)
     bad = False
     for binary, users in sorted(needed.items()):
-        if binary in ALWAYS_PRESENT or providers(binary) & deps:
+        if binary in ALWAYS_PRESENT or binary in ours or providers(binary) & deps:
             continue
         bad = True
         print(f"  FAIL  {len(users)} launcher action(s) run {binary!r}, and "
@@ -126,7 +144,8 @@ def check_commands_resolve(cfg):
         bound = set(re.findall(r"^\s*bind[a-z]*\s*=.*?,\s*exec\s*,\s*(\S+)",
                                conf, re.M))
         unmet = sorted(b for b in bound
-                       if b not in ALWAYS_PRESENT and not providers(b) & deps
+                       if b not in ALWAYS_PRESENT and b not in ours
+                       and not providers(b) & deps
                        and not b.startswith("$"))
         if unmet:
             print("  FAIL  keybinds run binaries nothing installs: "

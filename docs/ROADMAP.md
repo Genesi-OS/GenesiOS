@@ -1410,8 +1410,14 @@ fails the build rather than the desktop.
       `none`, with `background.transitionDuration` in milliseconds. Genesi
       defaults to `zoom` at 900ms. Upstream already crossfaded and offered no
       say in it; the choice is the feature.
+- [x] **Bar presets** — ten named arrangements of the caelestia bar, switched
+      from `>bar` or with `genesi-bar apply <name>`: default, centred, minimal,
+      numbered workspaces, window icons, dense, compact, clean, trail and
+      auto-hide. caelestia's bar is already configuration rather than code —
+      `bar.entries` is an ordered list of ids with `spacer` among them — so a
+      preset is a named shell.json section, not new QML.
 - [ ] Waybar config switcher — only meaningful if a waybar-based desktop is ever
-      offered. The Quickshell equivalent is shell layout presets.
+      offered. Superseded in practice by the bar presets above.
 
 ### 7.3 What is NOT ours to build
 Worth recording because it changed the scope: half of what impressed us in the

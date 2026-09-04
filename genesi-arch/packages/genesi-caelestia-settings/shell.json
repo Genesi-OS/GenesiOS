@@ -60,6 +60,15 @@
         ]
       },
       {
+        "name": "Bar · Barra",
+        "icon": "view_sidebar",
+        "description": "Change the bar's layout · Mudar o layout da barra",
+        "command": [
+          "autocomplete",
+          "bar"
+        ]
+      },
+      {
         "name": "Random",
         "icon": "casino",
         "description": "Switch to a random wallpaper",
@@ -425,6 +434,116 @@
           "nexus",
           "open"
         ]
+      },
+      {
+        "name": "Bar: Default · Padrão",
+        "icon": "view_sidebar",
+        "description": "The bar as caelestia ships it · A barra como o caelestia entrega",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "10-padrao"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Centred · Centralizado",
+        "icon": "vertical_align_center",
+        "description": "Logo at the top, workspaces in the middle, the rest at the bottom · Logo em cima, workspaces no meio, o resto embaixo",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "20-centrado"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Minimal · Mínimo",
+        "icon": "check_box_outline_blank",
+        "description": "Workspaces and the time, nothing else · Workspaces e a hora, mais nada",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "30-minimo"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Numbered · Números",
+        "icon": "format_list_numbered",
+        "description": "Workspaces as numbers instead of dots · Workspaces em números no lugar dos pontos",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "40-numeros"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Windows · Janelas",
+        "icon": "select_window",
+        "description": "Each workspace shows the icons of what is open in it · Cada workspace mostra os ícones do que está aberto",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "50-janelas"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Dense · Informativo",
+        "icon": "dashboard",
+        "description": "Everything on: date, audio, microphone, keyboard layout · Tudo ligado: data, áudio, microfone, layout do teclado",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "60-informativo"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Compact · Compacto",
+        "icon": "compress",
+        "description": "Tighter icons and fewer workspaces · Ícones mais justos e menos workspaces",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "70-compacto"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Clean · Limpo",
+        "icon": "cleaning_services",
+        "description": "No tray and no status icons · Sem bandeja e sem ícones de status",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "80-limpo"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Trail · Trilha",
+        "icon": "animation",
+        "description": "The active workspace leaves a trail · O workspace ativo deixa um rastro",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "90-trilha"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Auto-hide · Oculta",
+        "icon": "visibility_off",
+        "description": "The bar stays out of the way until you reach for it · A barra some até você ir até ela",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "95-oculta"
+        ],
+        "group": "bar"
       }
     ]
   }

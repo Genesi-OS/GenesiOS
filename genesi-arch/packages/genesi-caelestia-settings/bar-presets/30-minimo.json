@@ -1,0 +1,31 @@
+{
+  "name": "Minimal · Mínimo",
+  "description": "Workspaces and the time, nothing else · Workspaces e a hora, mais nada",
+  "bar": {
+    "entries": [
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "workspaces",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "clock",
+        "enabled": true
+      }
+    ],
+    "workspaces": {
+      "showWindows": false,
+      "activeIndicator": true
+    },
+    "clock": {
+      "showIcon": false
+    }
+  }
+}
