@@ -239,142 +239,176 @@ PageBase {
         // ── Drag the screens to where they actually are ──────────────────────
         //
         // Two named orders ("this one on the left") stop being enough at three
-        // screens, and never covered "a bit higher than the other" at all. A
-        // map you drag is the only honest way to say where a screen sits, which
-        // is why every desktop that has solved this draws one.
+        // screens, and never covered "a bit higher than the other" at all.
         //
-        // Tiles are sized from LOGICAL size, not resolution: 2560 at 1.25x
+        // Tiles are sized from LOGICAL extent, not resolution: 2560 at 1.25x
         // occupies 2048, and rotating swaps the axes. Drawing panels instead
         // would make the map disagree with the desktop it describes.
         //
-        // The drop goes to `genesi-display place`, which owns the snapping and
-        // the shift back to 0,0. Doing that here as well would put one rule in
-        // two places and let them drift; the CLI already applies it for the
-        // keyboard and the terminal.
+        // The drop hands raw coordinates to `genesi-display place`, which owns
+        // the snapping and the shift back to a 0,0 origin. Repeating those
+        // rules here would let two copies drift.
+        //
+        // ── Why the geometry is boxed in twice ───────────────────────────────
+        //
+        // The first version drew the tiles enormous and outside the card. The
+        // scale factor divides by the card's size, and a QML item's width and
+        // height are 0 until the layout has run -- so the first evaluation
+        // divided by nothing and produced a factor big enough to throw the
+        // tiles off the page. It recovered on the next pass, but by then the
+        // damage was visible.
+        //
+        // So the factor now refuses to compute until there is real geometry to
+        // compute from, AND the tiles live in a clipped child with the drag
+        // bounded to it. One of those fixes the cause; the other makes the
+        // symptom unreachable whatever else goes wrong later.
         ConnectedRect {
-            id: mapCard
-
-            function logicalW(m: var): real {
-                return (m.transform === 1 || m.transform === 3 ? m.height : m.width) / m.scale;
-            }
-
-            function logicalH(m: var): real {
-                return (m.transform === 1 || m.transform === 3 ? m.width : m.height) / m.scale;
-            }
-
-            readonly property real minX: {
-                let v = 0;
-                for (let i = 0; i < root.monitors.length; i++)
-                    v = i === 0 ? root.monitors[i].x : Math.min(v, root.monitors[i].x);
-                return v;
-            }
-            readonly property real minY: {
-                let v = 0;
-                for (let i = 0; i < root.monitors.length; i++)
-                    v = i === 0 ? root.monitors[i].y : Math.min(v, root.monitors[i].y);
-                return v;
-            }
-            readonly property real spanW: {
-                let v = 1;
-                for (let i = 0; i < root.monitors.length; i++) {
-                    const m = root.monitors[i];
-                    v = Math.max(v, m.x + mapCard.logicalW(m) - mapCard.minX);
-                }
-                return v;
-            }
-            readonly property real spanH: {
-                let v = 1;
-                for (let i = 0; i < root.monitors.length; i++) {
-                    const m = root.monitors[i];
-                    v = Math.max(v, m.y + mapCard.logicalH(m) - mapCard.minY);
-                }
-                return v;
-            }
-
-            readonly property real pad: Tokens.padding.largeIncreased
-            // ONE factor for both axes, so the map keeps real proportions. A map
-            // stretched to fill its box would draw screens the wrong shape, and
-            // shape is most of what you recognise them by.
-            readonly property real factor: Math.min((mapCard.width - mapCard.pad * 2) / mapCard.spanW, (mapCard.height - mapCard.pad * 2) / mapCard.spanH)
-            readonly property real offX: (mapCard.width - mapCard.spanW * mapCard.factor) / 2
-            readonly property real offY: (mapCard.height - mapCard.spanH * mapCard.factor) / 2
-
             Layout.fillWidth: true
             visible: root.monitors.length > 1
             first: true
             last: true
-            implicitHeight: 260
+            implicitHeight: 300
 
-            Repeater {
-                model: root.monitors
+            Item {
+                id: canvas
 
-                StyledRect {
-                    id: tile
+                function logicalW(m: var): real {
+                    return (m.transform === 1 || m.transform === 3 ? m.height : m.width) / m.scale;
+                }
 
-                    required property var modelData
-                    required property int index
+                function logicalH(m: var): real {
+                    return (m.transform === 1 || m.transform === 3 ? m.width : m.height) / m.scale;
+                }
 
-                    readonly property bool held: dragArea.drag.active
-
-                    x: mapCard.offX + (tile.modelData.x - mapCard.minX) * mapCard.factor
-                    y: mapCard.offY + (tile.modelData.y - mapCard.minY) * mapCard.factor
-                    implicitWidth: mapCard.logicalW(tile.modelData) * mapCard.factor
-                    implicitHeight: mapCard.logicalH(tile.modelData) * mapCard.factor
-
-                    radius: Tokens.rounding.small
-                    color: tile.held || tile.modelData.focused ? Colours.palette.m3primaryContainer : Colours.tPalette.m3surfaceContainerHigh
-                    border.width: 2
-                    border.color: tile.held ? Colours.palette.m3primary : Colours.palette.m3outlineVariant
-                    z: tile.held ? 1 : 0
-
-                    // While a tile is held the mouse drives x/y; the bindings
-                    // above take over again on release, once the compositor has
-                    // said where the screen really ended up. Animating during
-                    // the drag would fight the pointer.
-                    Behavior on x {
-                        enabled: !tile.held
-                        CAnim {}
+                readonly property real minX: {
+                    let v = 0;
+                    for (let i = 0; i < root.monitors.length; i++)
+                        v = i === 0 ? root.monitors[i].x : Math.min(v, root.monitors[i].x);
+                    return v;
+                }
+                readonly property real minY: {
+                    let v = 0;
+                    for (let i = 0; i < root.monitors.length; i++)
+                        v = i === 0 ? root.monitors[i].y : Math.min(v, root.monitors[i].y);
+                    return v;
+                }
+                readonly property real spanW: {
+                    let v = 0;
+                    for (let i = 0; i < root.monitors.length; i++) {
+                        const m = root.monitors[i];
+                        v = Math.max(v, m.x + canvas.logicalW(m) - canvas.minX);
                     }
-
-                    Behavior on y {
-                        enabled: !tile.held
-                        CAnim {}
+                    return v;
+                }
+                readonly property real spanH: {
+                    let v = 0;
+                    for (let i = 0; i < root.monitors.length; i++) {
+                        const m = root.monitors[i];
+                        v = Math.max(v, m.y + canvas.logicalH(m) - canvas.minY);
                     }
+                    return v;
+                }
 
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 0
+                // Zero until every input is real. Producing a factor from a
+                // width of 0 is what drew the tiles off the page; a factor of
+                // 0 draws nothing for one frame instead, which nobody sees.
+                //
+                // Capped at 90% so the arrangement never touches the card's
+                // edges -- a map that fills its frame edge to edge reads as
+                // broken even when it is correct, and leaves nowhere to drop a
+                // screen that belongs past the current bounds.
+                readonly property real factor: (width > 0 && height > 0 && spanW > 0 && spanH > 0) ? Math.min(width / spanW, height / spanH) * 0.9 : 0
 
-                        StyledText {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: tile.index + 1
-                            color: tile.held || tile.modelData.focused ? Colours.palette.m3onPrimaryContainer : Colours.palette.m3onSurface
-                            font: Tokens.font.headline.builders.large.width(110).build()
+                // The drawn arrangement, centred in whatever space is left.
+                readonly property real offX: (width - spanW * factor) / 2
+                readonly property real offY: (height - spanH * factor) / 2
+
+                anchors.fill: parent
+                anchors.margins: Tokens.padding.largeIncreased
+                anchors.bottomMargin: Tokens.padding.largeIncreased * 2
+                // Nothing may render outside the card, whatever the numbers do.
+                clip: true
+
+                Repeater {
+                    model: canvas.factor > 0 ? root.monitors : []
+
+                    StyledRect {
+                        id: tile
+
+                        required property var modelData
+                        required property int index
+
+                        readonly property bool held: dragArea.drag.active
+
+                        x: canvas.offX + (tile.modelData.x - canvas.minX) * canvas.factor
+                        y: canvas.offY + (tile.modelData.y - canvas.minY) * canvas.factor
+                        implicitWidth: canvas.logicalW(tile.modelData) * canvas.factor
+                        implicitHeight: canvas.logicalH(tile.modelData) * canvas.factor
+
+                        radius: Tokens.rounding.small
+                        color: tile.held || tile.modelData.focused ? Colours.palette.m3primaryContainer : Colours.tPalette.m3surfaceContainerHigh
+                        border.width: 2
+                        border.color: tile.held ? Colours.palette.m3primary : Colours.palette.m3outlineVariant
+                        z: tile.held ? 1 : 0
+
+                        // While a tile is held the mouse drives x/y; the
+                        // bindings above take over again on release, once the
+                        // compositor has said where the screen really ended up.
+                        Behavior on x {
+                            enabled: !tile.held
+                            CAnim {}
                         }
 
-                        StyledText {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: tile.modelData.name
-                            color: tile.held || tile.modelData.focused ? Colours.palette.m3onPrimaryContainer : Colours.palette.m3onSurfaceVariant
-                            font: Tokens.font.label.small
+                        Behavior on y {
+                            enabled: !tile.held
+                            CAnim {}
                         }
-                    }
 
-                    MouseArea {
-                        id: dragArea
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            spacing: 0
+                            // A tile can be small on a three-screen desk; the
+                            // number goes away before it starts overflowing.
+                            visible: tile.height > 44
 
-                        anchors.fill: parent
-                        cursorShape: tile.held ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                        enabled: root.busy === ""
-                        drag.target: tile
-                        drag.smoothed: false
+                            StyledText {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: tile.index + 1
+                                color: tile.held || tile.modelData.focused ? Colours.palette.m3onPrimaryContainer : Colours.palette.m3onSurface
+                                font: Tokens.font.headline.builders.large.width(110).build()
+                            }
 
-                        onReleased: {
-                            // Back out of map space into the compositor's, and
-                            // hand the raw drop to the CLI to snap and tidy.
-                            const mx = (tile.x - mapCard.offX) / mapCard.factor + mapCard.minX;
-                            const my = (tile.y - mapCard.offY) / mapCard.factor + mapCard.minY;
-                            root.run(["genesi-display", "place", tile.modelData.name, String(Math.round(mx)), String(Math.round(my))]);
+                            StyledText {
+                                Layout.alignment: Qt.AlignHCenter
+                                visible: tile.height > 76 && tile.width > 90
+                                text: tile.modelData.name
+                                color: tile.held || tile.modelData.focused ? Colours.palette.m3onPrimaryContainer : Colours.palette.m3onSurfaceVariant
+                                font: Tokens.font.label.small
+                            }
+                        }
+
+                        MouseArea {
+                            id: dragArea
+
+                            anchors.fill: parent
+                            cursorShape: tile.held ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                            enabled: root.busy === ""
+
+                            drag.target: tile
+                            drag.smoothed: false
+                            // Bounded to the canvas, so a screen cannot be
+                            // dragged out of the card no matter how hard you
+                            // pull. The CLI still decides where it really goes.
+                            drag.minimumX: 0
+                            drag.maximumX: Math.max(0, canvas.width - tile.width)
+                            drag.minimumY: 0
+                            drag.maximumY: Math.max(0, canvas.height - tile.height)
+
+                            onReleased: {
+                                const mx = (tile.x - canvas.offX) / canvas.factor + canvas.minX;
+                                const my = (tile.y - canvas.offY) / canvas.factor + canvas.minY;
+                                root.run(["genesi-display", "place", tile.modelData.name, String(Math.round(mx)), String(Math.round(my))]);
+                            }
                         }
                     }
                 }
