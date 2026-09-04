@@ -16,6 +16,7 @@ PKGBUILD   text eol=lf
 # The AI Mode daemon (Python) and CLI (bash) run on Linux; a CRLF shebang would
 # yield `bad interpreter: ...^M`. systemd units, sysctl and tmpfiles configs
 # also choke on a trailing \r in their values. Keep them all LF.
+genesi-arch/packages/genesi-audio/genesi-open-usb-mixer    text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-aid             text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-mode         text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-kwin-helper  text eol=lf
