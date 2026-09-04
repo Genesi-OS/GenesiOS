@@ -1,0 +1,60 @@
+# Maintainer: Genesi OS Team
+#
+# genesi-shaders — screen shaders for Hyprland.
+#
+# hyprshade ships two: a blue-light filter and a vibrance boost. That is enough
+# to prove the mechanism and not enough to be a feature. These are the rest:
+# pixelate, anaglyph 3D, CRT, vignette, film grain, chromatic aberration,
+# posterize, sepia, grayscale, invert, a gentle warm tint, and two
+# colour-blindness aids.
+#
+# They install alongside hyprshade's own, into the same directory it already
+# searches, so `hyprshade ls` lists all of them and `hyprshade on <name>` works
+# without either side knowing about the other.
+#
+# ── Why the build compiles them ──────────────────────────────────────────────
+#
+# Hyprland compiles decoration:screen_shader at load time and, when it fails,
+# leaves the screen exactly as it was and reports nothing the user will see. A
+# shader with a typo therefore ships as a launcher entry that appears to do
+# nothing -- a failure mode this repository has met more than once. check() runs
+# the real compiler over every file, so that cannot leave the build machine.
+pkgname=genesi-shaders
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Screen shaders for Hyprland: pixelate, 3D, CRT, vignette and more'
+arch=('any')
+groups=('genesi')
+license=('AGPL-3.0-or-later')
+url='https://github.com/Genesi-OS/GenesiOS'
+# hyprshade owns the directory and the command that loads these.
+depends=('genesi-hyprshade')
+# glslangValidator. Build-time only: nothing here runs it at runtime.
+makedepends=('glslang')
+source=('shaders')
+sha256sums=('SKIP')
+
+check() {
+    local failed=0
+    for f in "${srcdir}"/shaders/*.glsl; do
+        # -S frag names the stage explicitly; the .glsl extension does not tell
+        # the validator which one this is.
+        if ! glslangValidator -S frag "${f}" > /tmp/glsl.log 2>&1; then
+            echo "ERROR: $(basename "${f}") does not compile:"
+            sed 's/^/    /' /tmp/glsl.log
+            failed=1
+        fi
+    done
+    if [ "${failed}" -ne 0 ]; then
+        echo "A shader that does not compile leaves the screen untouched and"
+        echo "reports nothing, so it ships as a menu entry that does nothing."
+        return 1
+    fi
+    echo "all shaders compile"
+}
+
+package() {
+    install -dm755 "${pkgdir}/usr/share/hyprshade/shaders"
+    install -Dm644 "${srcdir}"/shaders/*.glsl \
+        -t "${pkgdir}/usr/share/hyprshade/shaders"
+}

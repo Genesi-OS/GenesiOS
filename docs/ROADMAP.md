@@ -1373,8 +1373,11 @@ settings rather than into a new window.
       English, from configuration alone — no new app, no new package.
 - [x] **Keyboard shortcuts** — `SUPER +` / `SUPER -` step through the scales the
       compositor accepts, `SUPER SHIFT R` rotates.
-- [x] **Screen shaders** — a blue-light filter and a vibrance boost, from the
-      launcher. `hyprshade` is AUR-only upstream, so Genesi packages it.
+- [x] **Screen shaders** — fifteen of them from the launcher: pixelate,
+      anaglyph 3D, CRT, vignette, film grain, colour fringing, posterize,
+      sepia, black and white, inverted, warm, night light, vivid, and two
+      colour-blindness aids. `>shader` lists the lot. `hyprshade` is AUR-only
+      upstream, so Genesi packages it and writes the shaders itself.
 - [x] **Audio quirk handling** — `genesi-audio`, a WirePlumber drop-in for USB
       devices whose hardware mixer cannot be trusted.
 

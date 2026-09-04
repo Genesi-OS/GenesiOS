@@ -390,6 +390,7 @@ jobs:
             # Screen shaders. Hyprland-only, so it is a genesi-caelestia-settings
             # dependency rather than a genesi-desktop one.
             "genesi-hyprshade"
+            "genesi-shaders"
             "genesi-calamares"
             "genesi-calamares-branding"
             "genesi-welcome"

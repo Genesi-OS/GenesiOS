@@ -261,6 +261,37 @@ def main():
         print(f"  PASS  all {len(genesi_actions)} Genesi actions are findable "
               "in both languages")
 
+    # ── Every shader an action names must exist ─────────────────────────────
+    #
+    # Hyprland leaves the screen untouched when a shader is missing or fails to
+    # compile, and reports it nowhere the user looks. So `hyprshade on <name>`
+    # pointing at a file nobody ships is another launcher entry that appears to
+    # do nothing -- the same shape as an action calling an uninstalled binary,
+    # one level down.
+    ours_dir = os.path.join(ROOT, "genesi-arch", "packages", "genesi-shaders",
+                            "shaders")
+    have = set()
+    if os.path.isdir(ours_dir):
+        have = {f[:-5] for f in os.listdir(ours_dir) if f.endswith(".glsl")}
+    # The two hyprshade ships itself.
+    have |= {"blue-light-filter", "vibrance"}
+
+    missing_shaders = []
+    for a in cfg.get("launcher", {}).get("actions", []):
+        c = a.get("command") or []
+        if len(c) == 3 and c[0] == "hyprshade" and c[1] == "on"                 and c[2] not in have:
+            missing_shaders.append((a.get("name", "?"), c[2]))
+    if missing_shaders:
+        print("  FAIL  action(s) turn on a shader that nothing ships:")
+        for name, sh in missing_shaders:
+            print(f"          - {name} -> {sh}.glsl")
+        return 1
+    shader_actions = [a for a in cfg.get("launcher", {}).get("actions", [])
+                      if (a.get("command") or [""])[0] == "hyprshade"]
+    if shader_actions:
+        print(f"  PASS  all {len(shader_actions)} shader action(s) name a "
+              "shader that exists")
+
     if not check_commands_resolve(cfg):
         return 1
 

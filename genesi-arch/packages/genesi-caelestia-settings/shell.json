@@ -80,19 +80,97 @@
         "command": ["genesi-display", "rotate", "-", "cycle"]
       },
       {
-        "name": "Blue light filter · Filtro de luz azul",
+        "name": "Shader: Pixelate · Pixelado",
+        "icon": "grid_on",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "pixelate"]
+      },
+      {
+        "name": "Shader: 3D glasses · Oculos 3D",
+        "icon": "3d_rotation",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "anaglyph-3d"]
+      },
+      {
+        "name": "Shader: Old TV · TV antiga",
+        "icon": "tv",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "crt"]
+      },
+      {
+        "name": "Shader: Vignette · Vinheta",
+        "icon": "vignette",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "vignette"]
+      },
+      {
+        "name": "Shader: Film grain · Granulado de filme",
+        "icon": "grain",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "film-grain"]
+      },
+      {
+        "name": "Shader: Colour fringing · Aberracao cromatica",
+        "icon": "blur_on",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "chromatic-aberration"]
+      },
+      {
+        "name": "Shader: Posterize · Poster",
+        "icon": "filter_b_and_w",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "posterize"]
+      },
+      {
+        "name": "Shader: Sepia · Sepia",
+        "icon": "photo_filter",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "sepia"]
+      },
+      {
+        "name": "Shader: Black and white · Preto e branco",
+        "icon": "contrast",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "grayscale"]
+      },
+      {
+        "name": "Shader: Invert colours · Inverter cores",
+        "icon": "invert_colors",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "invert"]
+      },
+      {
+        "name": "Shader: Warm · Tom quente",
+        "icon": "wb_sunny",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "warm"]
+      },
+      {
+        "name": "Shader: Night light · Luz noturna",
         "icon": "bedtime",
-        "description": "Warm the screen for night use",
+        "description": "Screen shader — type >shader for all of them",
         "command": ["hyprshade", "on", "blue-light-filter"]
       },
       {
-        "name": "Vibrance · Cores mais vivas",
+        "name": "Shader: Vivid colours · Cores vivas",
         "icon": "palette",
-        "description": "Boost colour saturation on screen",
+        "description": "Screen shader — type >shader for all of them",
         "command": ["hyprshade", "on", "vibrance"]
       },
       {
-        "name": "No screen filter · Sem filtro de tela",
+        "name": "Shader: Colour blindness: green · Daltonismo: verde",
+        "icon": "visibility",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "deuteranopia"]
+      },
+      {
+        "name": "Shader: Colour blindness: red · Daltonismo: vermelho",
+        "icon": "visibility",
+        "description": "Screen shader — type >shader for all of them",
+        "command": ["hyprshade", "on", "protanopia"]
+      },
+      {
+        "name": "Shader: off · Sem shader",
         "icon": "filter_none",
         "description": "Turn off any screen shader",
         "command": ["hyprshade", "off"]

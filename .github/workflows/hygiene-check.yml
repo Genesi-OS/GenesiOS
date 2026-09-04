@@ -131,3 +131,11 @@ jobs:
         # icons that simply are not there, with the reason only in a coredump.
         # This found a fifth tray with the same bug that nobody had reported.
         run: python genesi-arch/ci/gtk-init-order-test.py
+
+      - name: Screen shaders are in the shape Hyprland accepts
+        # Hyprland leaves the screen untouched when a shader fails to compile
+        # and reports it nowhere the user looks, so a typo ships as a launcher
+        # entry that appears to do nothing. This is the structural half --
+        # right dialect, right uniforms; genesi-shaders' own check() runs the
+        # real compiler at build time.
+        run: python genesi-arch/ci/shader-sanity-test.py
