@@ -1314,247 +1314,95 @@ branding and app integration already paid for. Revisit when the caelestia
 overrides pile up enough that we are maintaining a fork in denial — two today
 (the launcher wallpaper crash, the logout command) is normal.
 
-### 7.1 Update UI inside the settings that already exist 🟦 shipped, unseen
-Not a separate app. The user should find updates where they already look, the
-way Windows does.
-- [x] **KDE**: a KCM inside System Settings (`genesi-update-kcm`). Plasma 6 has
-      no pure-QML KCM path — KQuickConfigModule is the base class for every QML
-      KCM — so this is the one place the feature needs C++. Proven by
-      `test-update-kcm.yml` to compile AND to install into
-      `plasma/kcms/systemsettings`: a KCM that lands anywhere else builds green
-      and never appears in the settings app.
-- [x] **caelestia**: the Nexus page upstream registers and points at
-      "Page under construction". Written in their components, not Genesi's —
-      the palette there retints from the wallpaper and our fixed emerald would
-      fight it. Verified statically against upstream's real v2.0.3 source,
-      which caught `Tokens.font.headline.large` (it does not exist; upstream
-      only reaches headline through builders).
-- [x] **The shared privileged half** (`genesi-update-center`): one root-owned
-      script taking no argument that reaches pacman, one polkit action pinning
-      exec.path to it. Both front-ends call it — two paths to root would be two
-      things that have to keep agreeing.
-- [x] Overrides now assert their own preconditions and fail the build when they
-      stop holding, including refusing to apply if upstream ever ships its own
-      UpdatesPage. pkgver is pinned so upstream cannot overwrite us; the real
-      risk is the mirror image, erasing something of theirs on our next bump.
-- [x] **The caelestia page has now been seen running, and static verification
-      was not enough.** Three things only a real screen showed: the hero icon
-      stuck upside down (`RotationAnimator on rotation` owns the property and
-      leaves it where the animation stopped), the System cards drawn square
-      (`InfoRow` already IS a `ConnectedRect`; wrapping it stacked two
-      rectangles and the inner, nearly-square one won), and the launcher
-      entries missing entirely for an existing user (/etc/skel seeds only NEW
-      accounts). All fixed on hardware feedback.
-- [ ] **The KDE page has still not been seen running.** It could not be: until
-      the netinstall wiring above, nothing installed it. First run is on a real
-      machine, after the next ISO or a `genesi update` on a KDE install.
-- [ ] **Everything else**: GNOME/Xfce/Cinnamon/MATE/LXDE/Budgie/Cosmic/Niri
-      settings apps are **not pluggable** — no extension point exists. A
-      standalone app is the only option there, and is the fallback rather than
-      the product. Still to be written; it lives next to the helper it calls.
-- [x] Wire `genesi-update-kcm` into the KDE-Desktop netinstall group. Done: it
-      is KDE-only and must NOT go in the `genesi-desktop` meta, which lands on
-      all nine desktops — the mistake pkgrel 4 corrected for genesi-kde-settings,
-      klassy and darkly. Verified it was really published and signed first,
-      because that group is `critical: true` and a package that does not exist
-      aborts the install.
-- [x] The existing `genesi-update` tray notifier is untouched and stays. The
-      two have different jobs: the notifier pulls you, the settings page
-      receives you. Wiring the icon to open the new page is a deliberate future
-      choice, not a side effect.
+### 7.1 Updates inside the settings you already use
+
+Not a separate app. Updates belong where people already look for them, the way
+Windows and macOS put them in System Settings. Every front-end calls one shared
+privileged helper, so there is a single path to root rather than one per
+desktop.
+
+#### Shipped
+
+- [x] **KDE** — a module inside System Settings (`genesi-update-kcm`).
+- [x] **caelestia** — the Updates page in Nexus, which upstream registers and
+      leaves as a placeholder. Written in caelestia's own components so it
+      retints with the wallpaper like the rest of the panel.
+- [x] **The privileged helper** (`genesi-update-center`) — one root-owned script
+      and one polkit action, shared by both front-ends.
+- [x] The existing update tray notifier stays as it is. The two have different
+      jobs: the notifier comes to you, the settings page receives you.
+
+#### Next
+
+- [ ] Everything else — GNOME, Xfce, Cinnamon, MATE, LXDE, Budgie, Cosmic and
+      Niri have no extension point for this, so a small standalone window is the
+      only option. It is the fallback, not the product.
+- [ ] First run of the KDE module on real hardware.
 
 ### 7.2 Shell-independent desktop utilities
-Each one talks to Hyprland or a small daemon; none depends on which shell runs.
-- [x] **Monitor scaling and rotation** (`genesi-display`). A CLI, deliberately:
-      a control built into caelestia would not exist on a future
-      genesi-hyprland, and a Quickshell widget would not exist for anyone
-      running waybar. Front-ends stay thin callers, as genesi-snapshots' GUI is
-      to its CLI.
-      The subtle part is that `hyprctl keyword monitor` takes the WHOLE line, so
-      setting a scale means re-stating resolution, refresh, position and
-      transform — anything not read back correctly is silently reset, and the
-      user's second screen jumps. Every value is read from `hyprctl monitors -j`
-      and passed through untouched; verified against a two-monitor payload
-      where one is rotated and one scaled.
-      It also persists, because `hyprctl keyword` is gone on the next reload:
-      overrides go in `~/.config/hypr/genesi-display.conf`, sourced once from
-      the user's config (appended, so it wins over Genesi's catch-all
-      `monitor = , preferred, auto, 1`). That file holds nothing the user wrote,
-      so it can be deleted whole.
-- [x] **Reachable from the launcher**, which is where these belong. caelestia
-      reads its `>` actions from `GlobalConfig.launcher.actions` — *configuration,
-      not code* — so Genesi adds `Scale 100/125/150/200%`, `Rotate screen` and
-      `Reset display` with **no new app, no new package and no QML override**.
-      That is the shape the rest of 7.2 should follow: we already have ten Qt
-      apps, and the eleventh is not the answer.
-      `genesi-display` takes `-` as a monitor name, meaning "the screen in use",
-      because a launcher action carries a fixed command and cannot know which
-      screen you are looking at. `rotate - cycle` keeps turning, so one entry
-      does the job of four.
-- [x] **The drift guard that makes the above safe.** `launcher.actions` is one
-      property and setting it REPLACES upstream's defaults rather than merging,
-      so our file must carry all thirteen of theirs — and the day they add a
-      fourteenth, Genesi users silently lose it.
-      `ci/caelestia-actions-test.py` fails the build on that, on our own actions
-      going missing, and on the Logout command regressing. Verified by
-      simulating all three.
-- [x] **A real bug found on the way**: caelestia's launcher has its OWN Logout
-      action running `loginctl terminate-user ""` — the infinite black screen
-      fixed for the session drawer in genesi-caelestia-settings pkgrel 17. Two
-      doors to the same room; only one had been fixed. Now both.
-- [x] **Keyboard shortcuts for the same actions.** `SUPER +` / `SUPER -` walk a
-      ladder of scales Hyprland will actually accept (1 / 1.25 / 1.5 / 1.75 / 2)
-      from wherever the screen currently is, and `SUPER SHIFT R` rotates. They
-      stop at the ends with a message instead of erroring, because a key that
-      reports a failure when pressed once too often teaches people the feature
-      is broken. Delivered to existing users through the `.install` migration —
-      /etc/skel only seeds NEW accounts — guarded so a user who rebound them
-      keeps their own.
-- [x] **The launcher actions did nothing when clicked, and the fix is a guard.**
-      `genesi-display` was built, published and referenced by six entries, and
-      *nothing depended on it*, so it was never installed: the actions appeared
-      and clicking them did nothing at all, because `Quickshell.execDetached`
-      reports a missing binary nowhere the user can see. This is precisely the
-      failure named in the `hyprshade` entry below — written before shipping the
-      same thing. So the dependency was fixed AND
-      `ci/caelestia-actions-test.py` now fails the build when any command an
-      action or keybind runs is not installed by a declared dependency.
-      It found a second one on its first run: the volume keys run `wpctl`, which
-      was present only because the ISO package list happens to carry
-      wireplumber — now declared by the package that binds the keys.
-- [x] **The KDE half of the same feature, which was never wired either.**
-      `genesi-update-kcm` — the update page inside Plasma System Settings — had
-      been written, built, published and signed, and no install path named it.
-      KDE users had no update page at all while Hyprland users had one. It
-      cannot go in `genesi-desktop` (shared by every desktop; this is a KCM,
-      a C++ plugin only systemsettings loads), so it joins the other KDE-only
-      Genesi pieces in the `KDE-Desktop` netinstall group. Checked that it was
-      really published first: that group is `critical: true`, so naming a
-      package that does not exist would abort the install.
-- [x] **`ci/package-reachability-test.py`** — the general form of both bugs.
-      Every package we build must be named by some install path
-      (`genesi-desktop`, a netinstall group, an ISO package list, or the
-      depends of something already reachable) or be listed as deliberately not
-      installed *with a reason*. Publishing is not shipping: a package no
-      install path names produces no error, no failed build and no missing
-      file — it just quietly is not there, which is the worst shape a bug can
-      take and a purely mechanical one to detect. Verified by reverting both
-      historical bugs and watching it name them. It refuses to run without the
-      Calamares submodule rather than report ten false orphans, because a check
-      that cries wolf gets switched off.
-- [x] **The keybinds never reached a single existing machine.** `_migrate_hypr()`
-      opened with a "skip if already up to date" gate that listed every previous
-      migration by hand; a section added without also adding its marker to that
-      list was unreachable, because the function returned first. Reported from
-      hardware: the launcher actions worked (so the package HAD upgraded) and no
-      key did anything. The gate is gone — every section is individually
-      idempotent, so running them all on each upgrade is correct by construction
-      instead of by remembering — and `ci/hypr-migration-test.sh` reads the
-      section markers out of the scriptlet itself and fails the build if any
-      does not apply, if a second run duplicates lines, if a config that is not
-      Genesi's gets edited, or if /etc/skel and the migration disagree (which
-      would split new and existing accounts onto different desktops).
-- [x] **Three two-monitor bugs in `genesi-display`**, all reported as "one screen
-      bugs until you do something on it":
-      * Only the changed monitor was given a line, so the other output was never
-        reconfigured and kept rendering its old contents.
-      * Scaling changes a monitor's LOGICAL width (2560 at 1.25x occupies 2048),
-        so a neighbour sitting right after it overlapped or drifted away by the
-        difference. Monitors that were in a plain touching row are now re-packed;
-        an arrangement the user built by hand — stacked, or deliberately spaced —
-        is left exactly where they put it, and still gets reconfigured.
-      * The override file was keyed on the `-` the caller typed rather than the
-        monitor's real name, so a second change wrote a SECOND line for the same
-        monitor. Hyprland applies the last matching line, which was the stale
-        one: the change silently reverted itself on the next reload.
-- [x] **A second bug behind the same symptom: the keys still did nothing.** The
-      package had shipped and the migration gate was gone, so this was separate.
-      Section 8 guarded on the word `genesi-display` — and genesi-display
-      appends `source = ~/.config/hypr/genesi-display.conf` to hyprland.conf
-      the first time someone changes a display setting. The guard matched that
-      line, so anyone who had USED the display actions was exactly who never
-      received the keybinds. The marker is now the bind line the section itself
-      appends. `ci/hypr-migration-test.sh` checks this STATICALLY: the obvious
-      dynamic test (run the migration, look for the marker) reports PASS on the
-      broken case, because the colliding line contains the marker — that
-      version was written first and had to be thrown away.
-- [x] **`genesi-input`** — pointer speed and acceleration. caelestia's settings
-      have no mouse page at all; Plasma's has one that did not take on a real
-      mouse. Same shape as `genesi-display` and for the same reason, but it
-      carries an X11 path as well as a Hyprland one: Genesi's KDE installs
-      default to the X11 session, where Plasma writes kcminputrc and leaves
-      kcminit to push the value onto devices, so a pointer Plasma did not
-      classify as a mouse never receives it. `genesi-input list` answers what
-      the slider cannot — which pointers are attached, and what each one's
-      speed really is. A `genesi-desktop` dependency, so both desktops get it.
-- [x] **Which screen is primary, and where each one sits.** `genesi-display
-      position <a> left-of|right-of|above|below <b>` and `genesi-display
-      primary <name>`. Positions are computed from the neighbour's LOGICAL
-      size, so they stay right when a screen is scaled or rotated — which is
-      exactly where hand-typed coordinates go wrong — and the arrangement is
-      shifted so its top-left edge is always 0,0 rather than drifting further
-      negative on every rearrangement. `primary` does the honest thing per
-      session instead of pretending one concept covers both: on X11 it is the
-      real `xrandr --primary` flag that panels and full-screen games read; on
-      Hyprland, which has no such flag, it sets the default workspace binding —
-      where the desktop starts — and says that is what it did.
-- [ ] Surface position/primary in **Plasma's** settings. Done for the Nexus
-      (above); the KDE side still has only the CLI and the update KCM.
-- [x] **`>` searched in Portuguese found nothing at all.** The launcher searches
-      the action NAME and nothing else — verified against upstream's `Searcher`
-      (`key: "name"`; `Actions.qml` overrides neither `key` nor `keys`) — and
-      every name was English. Measured by running upstream's own `fzf.js`
-      against our real action list: *escala, girar, tela, principal, restaurar,
-      lento, rápido* all returned **zero** results.
-      Searching the description instead was tried and is worse: fzf matches a
-      subsequence, so long haystacks return noise — "girar" matched
-      "Scale 125%", "parede" matched "Make this screen primary". Genesi's own
-      actions now carry both halves ("Rotate screen · Girar tela"); upstream's
-      stay verbatim, because the drift check requires them exactly and they are
-      not ours to rename. `ci/caelestia-actions-test.py` fails the build on a
-      `genesi-*` action with no Portuguese half, so the next one cannot ship
-      English-only. This is one concrete piece of the i18n inconsistency
-      already listed below.
-- [x] **Five tray applets were crashing at login, and nobody knew.** Found in a
-      user's own report: four python3 coredumps within a second of each other,
-      every one with the same stack — PyGObject calling `g_object_new`, GTK
-      constructing a sub-widget inside it, and the crash in GTK's own instance
-      init. Nothing wrong with the widgets: every tray builds its menu in
-      `Tray.__init__` and calls `Gtk.main()` — which is what used to initialise
-      GTK — only afterwards. PyGObject initialised Gtk implicitly on import for
-      years and stopped. `ci/gtk-init-order-test.py` requires `Gtk.init_check`
-      before the first widget constructor and **found a fifth tray with the
-      same bug that had never been reported** (genesi-containers). `init_check`
-      rather than `init`: these start from exec-once and can beat the display
-      up, so the right answer is to exit and be restarted, not to abort.
-      The symptom is the worst kind — three icons that simply are not there, on
-      a desktop that otherwise starts fine, with the reason only in a coredump.
-- [ ] Shader menu (`hyprshade`). Held back deliberately: `hyprshade` is AUR-only
-      and Genesi does not package it, so launcher entries calling it would be
-      entries that silently do nothing. Repackage it first, the way the
-      caelestia AUR dependencies were.
-- [x] **A Display page and a Mouse page in caelestia's Nexus.** Harder than
-      Updates, as flagged: upstream registers Display only as a COMMENT (a
-      `// TODO` block in PageRegistry) and has no Mouse page in any form, so
-      the menu ENTRY had to be created as well as the page supplied.
-      `PageRegistry.pages` and `PageCompRegistry.pageComps` are two flat lists
-      matched **by index** — nothing but position connects an entry to its
-      component, so editing one and not the other makes every page after that
-      point open the wrong screen, with no error anywhere, because both lists
-      stay valid QML. `ci/caelestia-nexus-pages.py` makes both edits from one
-      ordered list and asserts the alignment afterwards; verified against the
-      real 2.0.3 tree (12 entries, 12 components, each paired with the right
-      one) and composed with the existing Updates patch. It refuses to run —
-      failing the build — if upstream starts shipping either page or
-      uncomments their own Display entry; both refusals were exercised.
-      The Mouse page names the pointers it found, which is the one thing a
-      settings page can add over the CLI: "the slider does nothing" becomes
-      "this device is not the one the desktop was talking to".
-- [ ] Keyboard sound
-- [ ] Wallpaper transition animation
-- [ ] Waybar config switcher — **only meaningful if a waybar-based option is
-      ever added**; it is meaningless on Quickshell. The caelestia equivalent
-      is shell layout presets.
+
+Desktop settings Genesi was missing, built once and surfaced everywhere.
+
+**The shape.** Each utility is a CLI that talks to the compositor or to libinput
+directly; the graphical side is a thin caller. A control written into caelestia
+would not exist on a future genesi-hyprland, and a Quickshell widget would not
+exist for anyone on waybar — and Genesi already has ten Qt apps, so the eleventh
+is not the answer. Where a desktop can be extended, the UI goes inside *its*
+settings rather than into a new window.
+
+#### Shipped
+
+- [x] **Monitor scale and rotation** — `genesi-display`. Reads the compositor's
+      real state and writes back a complete monitor line, so nothing is reset by
+      omission. Persists to `~/.config/hypr/genesi-display.conf`, which holds
+      nothing hand-written and can be deleted whole.
+- [x] **Monitor arrangement** — a drag-and-drop map of the desk. Screens are
+      drawn at their true relative size, snap flush to their neighbours, and the
+      layout is kept anchored at the origin.
+- [x] **Main screen** — `genesi-display primary`. Uses the real `xrandr`
+      primary flag on X11 and the default workspace binding on Hyprland, which
+      has no such concept.
+- [x] **Pointer speed and acceleration** — `genesi-input`. Drives Hyprland and
+      X11 alike, and lists the pointers it can see, so "the slider does nothing"
+      can be told from "that is not the device the slider was talking to".
+- [x] **Display and Mouse pages in caelestia's settings.** Upstream ships
+      neither: Display is a commented-out placeholder and Mouse does not exist.
+- [x] **A working search in caelestia's settings.** Upstream ships the box
+      without anything behind it.
+- [x] **Launcher actions** for every one of the above, in Portuguese and
+      English, from configuration alone — no new app, no new package.
+- [x] **Keyboard shortcuts** — `SUPER +` / `SUPER -` step through the scales the
+      compositor accepts, `SUPER SHIFT R` rotates.
+- [x] **Audio quirk handling** — `genesi-audio`, a WirePlumber drop-in for USB
+      devices whose hardware mixer cannot be trusted.
+
+#### Build guards
+
+Written after each of these shipped broken in a way nothing reported. Each one
+fails the build rather than the desktop.
+
+- [x] `package-reachability-test.py` — a package that no install path names
+      reaches nobody, silently. Caught two.
+- [x] `caelestia-actions-test.py` — launcher entries must run something that is
+      actually installed, must not drift from upstream's list, and must be
+      findable in both languages.
+- [x] `hypr-migration-test.sh` — `/etc/skel` seeds only new accounts, so every
+      config change must reach existing ones through the migration.
+- [x] `gtk-init-order-test.py` — a tray that builds widgets before GTK is
+      initialised crashes at login and leaves no icon behind. Caught five.
+- [x] `caelestia-patches.py` — every edit to upstream QML asserts its assumptions
+      first, so a version bump arrives as a red build rather than a broken panel.
+
+#### Next
+
+- [ ] The same Display and Mouse settings on the KDE side, which has only the
+      CLI and the update page today.
+- [ ] Shader menu. Blocked on packaging `hyprshade`, which is AUR-only —
+      shipping entries that call a missing binary is a mistake already made once.
+- [ ] Keyboard sound.
+- [ ] Wallpaper transition animation.
+- [ ] Waybar config switcher — only meaningful if a waybar-based desktop is ever
+      offered. The Quickshell equivalent is shell layout presets.
 
 ### 7.3 What is NOT ours to build
 Worth recording because it changed the scope: half of what impressed us in the
