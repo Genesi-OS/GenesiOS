@@ -100,6 +100,27 @@ class Backend(QObject):
             sys.stderr.write(f"genesi-center: cannot start {argv[0]}: {e}\n")
 
 
+def tree_art():
+    """
+    Where the Overview's artwork comes from.
+
+    A user drop-in wins over the packaged file, so the art can be replaced and
+    seen by reopening the window -- no rebuild, no root, no package. That is
+    the whole reason this is resolved here rather than hardcoded in QML: an
+    Image cannot try one path and fall back to another, and deciding it in
+    Python costs four lines.
+
+    Returns "" when neither exists, and the page then draws its procedural glow
+    instead of an empty rectangle.
+    """
+    for p in (os.path.expanduser("~/.config/genesi/center/tree.png"),
+              os.path.expanduser("~/.config/genesi/center/tree.svg"),
+              os.path.join(APPDIR, "art", "tree.png")):
+        if os.path.exists(p):
+            return "file://" + p
+    return ""
+
+
 def main():
     QGuiApplication.setApplicationName("Genesi Center")
     QGuiApplication.setDesktopFileName("org.genesi.center")
@@ -112,7 +133,7 @@ def main():
     backend = Backend()
     engine = QQmlApplicationEngine()
     engine.addImportPath(APPDIR)
-    engine.setInitialProperties({"backend": backend})
+    engine.setInitialProperties({"backend": backend, "treeArt": tree_art()})
     engine.load(QUrl.fromLocalFile(os.path.join(APPDIR, "Main.qml")))
     if not engine.rootObjects():
         sys.stderr.write("genesi-center: the interface failed to load\n")

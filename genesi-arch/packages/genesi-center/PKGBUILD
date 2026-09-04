@@ -33,7 +33,10 @@ url='https://github.com/Genesi-OS/GenesiOS'
 # pyside6 for the engine; qqc2-desktop-style so plain Qt Quick Controls do not
 # fall back to the Basic style. coreutils for `du`, which the storage ring
 # needs and which is not worth reimplementing in Python.
-depends=('python' 'pyside6' 'qqc2-desktop-style' 'coreutils')
+# qt6-svg: the brand mark is drawn from art/genesi-leaf.svg, and without
+# the SVG image plugin an Image with an .svg source silently renders
+# nothing -- the mark would simply be absent, with no error.
+depends=('python' 'pyside6' 'qqc2-desktop-style' 'qt6-svg' 'coreutils')
 optdepends=('genesi-snapshots: the snapshot panel'
             'genesi-update-center: the updates tool'
             'genesi-code: the editor tool')

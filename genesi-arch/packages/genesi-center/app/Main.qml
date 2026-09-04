@@ -31,6 +31,9 @@ Window {
     // Set by the Python side; null when the QML is opened on its own, which is
     // how the design is rendered offscreen for review.
     property var backend: null
+    // Resolved by the Python side: a user drop-in, else the packaged
+    // asset, else empty and the page draws its own glow.
+    property string treeArt: ""
 
     property string section: "overview"
     readonly property var sections: [
@@ -79,10 +82,10 @@ Window {
                 // Brand
                 Row {
                     spacing: 12
-                    Text {
-                        text: "☘"
-                        color: Tokens.accent
-                        font.pixelSize: 26
+                    Image {
+                        source: "art/genesi-leaf.svg"
+                        sourceSize: Qt.size(30, 30)
+                        width: 30; height: 30
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     Column {
@@ -240,10 +243,10 @@ Window {
                     spacing: 4
                     Row {
                         spacing: 8
-                        Text {
-                            text: "☘"
-                            color: Tokens.accent
-                            font.pixelSize: 13
+                        Image {
+                            source: "art/genesi-leaf.svg"
+                            sourceSize: Qt.size(14, 14)
+                            width: 14; height: 14
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
@@ -346,6 +349,7 @@ Window {
                 anchors.fill: parent
                 anchors.topMargin: 8
                 backend: win.backend
+                treeArt: win.treeArt
                 visible: win.section === "overview"
             }
 
@@ -357,11 +361,12 @@ Window {
                 Column {
                     anchors.centerIn: parent
                     spacing: 10
-                    Text {
+                    Image {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "☘"
-                        color: Tokens.accentDeep
-                        font.pixelSize: 44
+                        source: "art/genesi-leaf.svg"
+                        sourceSize: Qt.size(46, 46)
+                        width: 46; height: 46
+                        opacity: 0.35
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
