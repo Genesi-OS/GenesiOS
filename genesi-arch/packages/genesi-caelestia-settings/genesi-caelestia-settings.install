@@ -244,23 +244,42 @@ if not commands.get("logout"):
 # from our shipped shell.json -- theirs plus ours -- read from /etc/skel rather
 # than duplicated in this scriptlet, so the two can never drift apart.
 #
-# A user who has customised their own actions keeps them, untouched. The point
-# is to reach people who never had the key, not to overrule anyone.
+# It MERGES rather than seeding once. The first version only wrote the list
+# when the key was absent, so a user was served exactly once and then frozen:
+# every action added afterwards -- the pointer controls, the main-screen entry,
+# all sixteen shaders -- reached new accounts through /etc/skel and reached
+# nobody else, in silence. The package was installed, the feature was on disk,
+# and `>` showed a list from whenever that user first upgraded.
+#
+# Merging by NAME, appending what is missing. Entries the user already has are
+# left exactly as they are, including ones they wrote themselves and ones they
+# edited, because the goal is to deliver what is new rather than to overrule
+# anyone. An action removed on purpose does come back; that is the cost of not
+# keeping a per-user record of deletions, and it is the lesser mistake.
 launcher = data.get("launcher")
 if not isinstance(launcher, dict):
     launcher = {}
     data["launcher"] = launcher
 
-if not launcher.get("actions"):
-    try:
-        with open("/etc/skel/.config/caelestia/shell.json") as f:
-            shipped = json.load(f)
-        actions = shipped.get("launcher", {}).get("actions")
-        if actions:
-            launcher["actions"] = actions
+try:
+    with open("/etc/skel/.config/caelestia/shell.json") as f:
+        shipped = json.load(f)
+    shipped_actions = shipped.get("launcher", {}).get("actions") or []
+except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError):
+    shipped_actions = []
+
+if shipped_actions:
+    current = launcher.get("actions")
+    if not isinstance(current, list) or not current:
+        launcher["actions"] = shipped_actions
+        changed = True
+    else:
+        have = {a.get("name") for a in current if isinstance(a, dict)}
+        added = [a for a in shipped_actions
+                 if isinstance(a, dict) and a.get("name") not in have]
+        if added:
+            launcher["actions"] = current + added
             changed = True
-    except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError):
-        pass
 
 # 3. The launcher has its OWN Logout action, separate from the session drawer's
 #    command, and it carried the same black-screen `loginctl terminate-user`.

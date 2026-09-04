@@ -292,6 +292,32 @@ def main():
         print(f"  PASS  all {len(shader_actions)} shader action(s) name a "
               "shader that exists")
 
+    # ── The migration must MERGE, not seed once ─────────────────────────────
+    #
+    # shell.json reaches new accounts through /etc/skel and existing ones
+    # through _migrate_shell_json. The first version of that merge wrote the
+    # action list only when the key was absent, so a user was served once and
+    # then frozen: everything added afterwards reached new installs and nobody
+    # else, silently. Sixteen shader entries went missing that way, and the
+    # symptom was "the shaders are not in `>`" with the package installed.
+    #
+    # This is the same shape as the /etc/skel gap one level down, so it gets
+    # the same treatment: checked, not remembered.
+    install = os.path.join(PKG, "genesi-caelestia-settings.install")
+    if os.path.exists(install):
+        with io.open(install, encoding="utf-8") as fh:
+            inst = fh.read()
+        if 'if not launcher.get("actions"):' in inst:
+            print("  FAIL  the shell.json migration only seeds actions when the")
+            print("        key is absent, so an existing user never receives an")
+            print("        action added later. Merge by name instead.")
+            return 1
+        if "shipped_actions" not in inst:
+            print("  FAIL  the shell.json migration no longer reads the shipped")
+            print("        action list; existing users would get nothing.")
+            return 1
+        print("  PASS  the migration merges new actions into existing configs")
+
     if not check_commands_resolve(cfg):
         return 1
 
