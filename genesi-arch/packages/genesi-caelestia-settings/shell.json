@@ -80,6 +80,24 @@
         "command": ["genesi-display", "rotate", "-", "cycle"]
       },
       {
+        "name": "Blue light filter · Filtro de luz azul",
+        "icon": "bedtime",
+        "description": "Warm the screen for night use",
+        "command": ["hyprshade", "on", "blue-light-filter"]
+      },
+      {
+        "name": "Vibrance · Cores mais vivas",
+        "icon": "palette",
+        "description": "Boost colour saturation on screen",
+        "command": ["hyprshade", "on", "vibrance"]
+      },
+      {
+        "name": "No screen filter · Sem filtro de tela",
+        "icon": "filter_none",
+        "description": "Turn off any screen shader",
+        "command": ["hyprshade", "off"]
+      },
+      {
         "name": "Make this screen primary · Tela principal",
         "icon": "star",
         "description": "The desktop starts here — workspace 1 lives on this screen",

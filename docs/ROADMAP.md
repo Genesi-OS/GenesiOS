@@ -1373,6 +1373,8 @@ settings rather than into a new window.
       English, from configuration alone — no new app, no new package.
 - [x] **Keyboard shortcuts** — `SUPER +` / `SUPER -` step through the scales the
       compositor accepts, `SUPER SHIFT R` rotates.
+- [x] **Screen shaders** — a blue-light filter and a vibrance boost, from the
+      launcher. `hyprshade` is AUR-only upstream, so Genesi packages it.
 - [x] **Audio quirk handling** — `genesi-audio`, a WirePlumber drop-in for USB
       devices whose hardware mixer cannot be trusted.
 
@@ -1397,8 +1399,6 @@ fails the build rather than the desktop.
 
 - [ ] The same Display and Mouse settings on the KDE side, which has only the
       CLI and the update page today.
-- [ ] Shader menu. Blocked on packaging `hyprshade`, which is AUR-only —
-      shipping entries that call a missing binary is a mistake already made once.
 - [ ] Keyboard sound.
 - [ ] Wallpaper transition animation.
 - [ ] Waybar config switcher — only meaningful if a waybar-based desktop is ever

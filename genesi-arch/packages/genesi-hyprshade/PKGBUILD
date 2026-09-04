@@ -1,0 +1,46 @@
+# Maintainer: Genesi OS Team
+#
+# hyprshade (loqusion/hyprshade) repackaged for the [genesi] repo.
+#
+# Screen shaders for Hyprland: a blue-light filter, a vibrance boost, and
+# whatever .glsl a user drops in. AUR-only upstream, and the Calamares
+# netinstall speaks pacman, not AUR -- the same reason genesi-materialyoucolor
+# and the caelestia dependencies are mirrored here.
+#
+# Packaged before the launcher entries that call it, deliberately. An action
+# that runs a binary nobody installs appears in the launcher and does nothing
+# when clicked, with no error anywhere; that has happened once already and
+# ci/caelestia-actions-test.py now fails the build on it.
+#
+# provides=hyprshade so a user who already has the AUR build resolves to one or
+# the other rather than both.
+pkgname=genesi-hyprshade
+_name=hyprshade
+pkgver=5.0.0
+pkgrel=1
+pkgdesc='Screen shaders for Hyprland (Genesi repackage of hyprshade)'
+arch=('any')
+groups=('genesi')
+url='https://github.com/loqusion/hyprshade'
+license=('MIT')
+provides=('hyprshade')
+conflicts=('hyprshade')
+depends=('python' 'python-click' 'python-more-itertools')
+# Version comes from src/hyprshade/__init__.py, not from git describe, so the
+# release tarball builds without a repository present.
+makedepends=('python-build' 'python-installer' 'python-hatchling' 'python-wheel')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/$pkgver.tar.gz")
+sha256sums=('9a5e489bd17990635b003013d25128b6e83c7f97407fe916de7860ec81f9cbce')
+
+build() {
+    cd "$_name-$pkgver"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "$_name-$pkgver"
+    # The wheel carries the shaders as shared-data, so they land in
+    # /usr/share/hyprshade/shaders without a second install step.
+    python -m installer --destdir="$pkgdir" dist/*.whl
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

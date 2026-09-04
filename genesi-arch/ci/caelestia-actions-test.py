@@ -55,6 +55,7 @@ PSEUDO = {"autocomplete", "setMode"}
 # does nothing, which defeats the entire point of the file.
 BINARY_PACKAGE = {
     "wpctl": "wireplumber",
+    "hyprshade": "genesi-hyprshade",
     "wl-copy": "wl-clipboard",
     "wl-paste": "wl-clipboard",
 }
@@ -234,8 +235,15 @@ def main():
     #
     # Upstream's entries are not ours to rename, and the drift check below
     # requires them verbatim. Ours carry both halves, separated by "·".
-    genesi_actions = [a for a in cfg.get("launcher", {}).get("actions", [])
-                      if (a.get("command") or [""])[0].startswith("genesi-")]
+    # An action is ours when it runs something upstream does not: not one of
+    # the launcher's pseudo-commands, and not a binary the base system
+    # guarantees. Checking for a "genesi-" prefix instead let the hyprshade
+    # entries slip past this untranslated.
+    genesi_actions = [
+        a for a in cfg.get("launcher", {}).get("actions", [])
+        if (a.get("command") or [""])[0] not in PSEUDO
+        and (a.get("command") or [""])[0] not in ALWAYS_PRESENT
+    ]
     english_only = [a.get("name", "?") for a in genesi_actions
                     if "·" not in a.get("name", "")]
     if english_only:
