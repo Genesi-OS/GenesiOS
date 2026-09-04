@@ -210,21 +210,80 @@ jobs:
           # us.cachyos.org was 523 (origin down), and the single -Sy kept
           # re-requesting the gone r96. Forcing the DB re-download lets pacman
           # pick up the current version once any mirror is consistent again.
+          # Two different failures land here, and waiting cures only one of
+          # them.
+          #
+          # The CDN one is above: 404/5xx, "failed to retrieve some files",
+          # and a later attempt against a caught-up mirror succeeds.
+          #
+          # The other is repo SKEW, where waiting does nothing at all. Run #485
+          # (2026-09-04) met cachyos-extra-v3 carrying hyprland 0.56.2, which
+          # needs libaquamarine.so=14-64, beside an aquamarine still providing
+          # the previous soname. pacman answered
+          #   error: failed to prepare transaction (could not satisfy dependencies)
+          #   :: unable to satisfy dependency 'libaquamarine.so=14-64' required by hyprland
+          # and threw away the ENTIRE transaction over that one package. The
+          # loop then retried the identical command seven times at 30s
+          # intervals -- an upstream repo becomes consistent again in hours,
+          # never in seconds -- and reported it as a CDN fault, which is the
+          # part that actually costs time: the log named a cause that was not
+          # the cause.
+          #
+          # So read the reason back instead of guessing it. When a package
+          # cannot be satisfied, --ignore that package and retry at once.
+          # Nothing built in this pipeline LINKS against hyprland: genesi-
+          # display is a Python script and genesi-caelestia-settings installs
+          # config files, and both merely declare it so the INSTALLED machine
+          # pulls it in. A package we only name in depends=() has no business
+          # stopping every other package from building. If an ignored package
+          # really was needed to compile something, makepkg fails on it later
+          # and says which -- a better failure than this one, under its own
+          # name rather than the CDN's.
+          SKIP=""
           install_deps() {
+            # shellcheck disable=SC2086
             pacman -Syy --noconfirm && \
-            pacman -S --needed --noconfirm --overwrite='*' \
+            pacman -S --needed --noconfirm --overwrite='*' $SKIP \
               base-devel git sudo rust \
               systemd systemd-sysvcompat \
               python-requests python-packaging \
               $DEPS
           }
           for attempt in 1 2 3 4 5 6 7; do
-            if install_deps; then
+            if install_deps 2>&1 | tee /tmp/build-deps.log; then
               echo "build deps installed (attempt $attempt)"
               break
             fi
+
+            # Every package pacman named as unsatisfiable, from its own words.
+            UNSAT=$(sed -n "s/.*unable to satisfy dependency '[^']*' required by \([^[:space:]]*\).*/\1/p" \
+                      /tmp/build-deps.log | sort -u | tr '\n' ' ')
+            NEW=""
+            for p in $UNSAT; do
+              case " $SKIP " in
+                *" --ignore $p "*) ;;
+                *) NEW="$NEW --ignore $p" ;;
+              esac
+            done
+
+            if [ -n "$NEW" ]; then
+              SKIP="$SKIP$NEW"
+              echo "::warning::build-deps attempt $attempt hit an inconsistent repo:" \
+                   "$(echo "$UNSAT" | tr -s ' ') cannot be satisfied right now." \
+                   "Retrying without it — these are runtime dependencies of the" \
+                   "packages we ship, not build dependencies."
+              continue
+            fi
+
             if [ "$attempt" = 7 ]; then
-              echo "::error::build deps failed after 7 attempts (CachyOS mirror/CDN inconsistent)"
+              if grep -q "could not satisfy dependencies" /tmp/build-deps.log; then
+                echo "::error::build deps failed: the repos are internally" \
+                     "inconsistent and pacman did not name a package we could" \
+                     "skip. See the transaction error above — this is upstream," \
+                     "not a PKGBUILD."
+              else
+                echo "::error::build deps failed after 7 attempts (CachyOS mirror/CDN inconsistent)"
+              fi
               exit 1
             fi
             echo "::warning::build-deps attempt $attempt failed (CachyOS CDN 404/5xx); refreshing DBs, retry in 30s"
