@@ -178,7 +178,7 @@ collect_audio_display() {
     section "Audio"
     if have wpctl; then
         echo "  default sink:"
-        wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null             | grep -iE 'node.name|node.description|device.api|api.alsa.path|alsa.card_name|node.pause-on-idle'             | sed 's/^/    /' | redact
+        wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null             | grep -iE 'node.name|node.description|device.api|api.alsa.path|alsa.card_name|alsa.card |api.alsa.soft-mixer|node.pause-on-idle'             | sed 's/^/    /' | redact
         echo "  volume:"
         wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | sed 's/^/    /'
     else
@@ -222,10 +222,34 @@ collect_audio_display() {
             fi
         done
     fi
+    # Look where the fix actually installs.
+    #
+    # This block used to test /usr/share/wireplumber and then search only
+    # /etc and ~/.config. genesi-audio installs into
+    # /usr/share/wireplumber/wireplumber.conf.d/, so the one drop-in Genesi
+    # ships was the one file the report could not see -- and it did not say
+    # "nothing found here", it concluded "stock configuration — hardware
+    # mixer". A blind instrument that reports a conclusion is worse than no
+    # instrument: it was read as proof the fix was absent, twice.
+    #
+    # /usr is the vendor path (ours), /etc is the admin's, ~/.config is the
+    # user's, and all three are read by wireplumber. Print all three.
     if [ -d /usr/share/wireplumber ] || [ -d /etc/wireplumber ]; then
         echo "  wireplumber drop-ins:"
-        find /etc/wireplumber ~/.config/wireplumber -type f 2>/dev/null             | head -10 | sed 's/^/    /' | redact
-        find /etc/wireplumber ~/.config/wireplumber -type f 2>/dev/null | grep -q .             || echo "    none (stock configuration — hardware mixer)"
+        find /usr/share/wireplumber/wireplumber.conf.d /etc/wireplumber ~/.config/wireplumber -type f 2>/dev/null             | head -10 | sed 's/^/    /' | redact
+        find /usr/share/wireplumber/wireplumber.conf.d /etc/wireplumber ~/.config/wireplumber -type f 2>/dev/null | grep -q .             || echo "    none found in any of /usr/share, /etc, ~/.config"
+        if have wpctl; then
+            # Installed is not the same as in effect. A drop-in that never
+            # matched the sink looks identical, on disk, to one that did --
+            # so ask the running node, which is the only thing that knows.
+            echo "  software volume on the default sink:"
+            if wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null | grep -q 'api.alsa.soft-mixer.*true'; then
+                echo "    yes — PipeWire applies volume itself"
+            else
+                echo "    no — volume goes through the device's own mixer"
+            fi
+        fi
+        have wireplumber && wireplumber --version 2>/dev/null | head -1 | sed 's/^/  wireplumber: /'
     fi
 
     # ── Displays ─────────────────────────────────────────────────────────────

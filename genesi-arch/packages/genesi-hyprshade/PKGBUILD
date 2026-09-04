@@ -17,7 +17,7 @@
 pkgname=genesi-hyprshade
 _name=hyprshade
 pkgver=5.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Screen shaders for Hyprland (Genesi repackage of hyprshade)'
 arch=('any')
 groups=('genesi')
@@ -32,9 +32,96 @@ makedepends=('python-build' 'python-installer' 'python-hatchling' 'python-wheel'
 source=("$pkgname-$pkgver.tar.gz::$url/archive/$pkgver.tar.gz")
 sha256sums=('9a5e489bd17990635b003013d25128b6e83c7f97407fe916de7860ec81f9cbce')
 
+prepare() {
+    cd "$_name-$pkgver"
+
+    # Speak to the Hyprland we actually ship.
+    #
+    # Reported: `hyprshade on pixelate` runs, prints nothing, and the screen is
+    # unchanged; `hyprshade ls` dies with "hyprctl returned invalid JSON ...
+    # stdout: no such option". Measured on the machine, Hyprland 0.56.2:
+    #
+    #   $ hyprctl getoption decoration:screen_shader
+    #   str: [[EMPTY]]
+    #   set: false
+    #
+    # The option is there, under that name, and nothing had written it.
+    #
+    # 5.0.0 talks to a different Hyprland than the one in the repos. It SETS
+    # the shader through the Lua config API,
+    #
+    #   hyprctl eval "hl.config({ decoration = { screen_shader = '...' } })"
+    #
+    # which this Hyprland answers on stdout and ignores -- hyprctl exits 0
+    # either way, so hyprshade sees success and the value is never written.
+    # That is the whole of "it runs and does nothing". And it READS the option
+    # as `decoration.screen_shader` with a dot, which this Hyprland does not
+    # know: "no such option", not JSON, hence the crash in `ls`. Upstream's own
+    # README still documents the colon form.
+    #
+    # So: set with `hyprctl keyword`, which is how hyprlang options have always
+    # been written, and read with the colon the compositor answers to. Both
+    # replacements assert on the exact upstream text, so the day hyprshade is
+    # built against a Hyprland with a Lua config this fails the build instead of
+    # quietly shipping a shader command that does nothing again.
+    python - <<'PATCH'
+import io
+import sys
+
+P = "src/hyprshade/shader/hyprctl.py"
+s = io.open(P, encoding="utf-8").read()
+
+OLD_SET = """            [
+                "hyprctl",
+                "eval",
+                f"hl.config({{ decoration = {{ screen_shader = '{lua_escape_str(shader_path)}' }} }})",
+            ],
+"""
+NEW_SET = """            ["hyprctl", "keyword", "decoration:screen_shader", shader_path],
+"""
+
+OLD_GET = '["hyprctl", "-j", "getoption", "decoration.screen_shader"],'
+NEW_GET = '["hyprctl", "-j", "getoption", "decoration:screen_shader"],'
+
+if OLD_SET not in s:
+    sys.exit("hyprctl.py no longer sets the shader through hl.config -- read "
+             "what it does now before keeping this patch.")
+if OLD_GET not in s:
+    sys.exit("hyprctl.py no longer reads decoration.screen_shader -- read what "
+             "it does now before keeping this patch.")
+
+s = s.replace(OLD_SET, NEW_SET, 1).replace(OLD_GET, NEW_GET, 1)
+
+# lua_escape_str is now unused. Left in place rather than deleted: it is
+# upstream's, the patch above is a compatibility shim, and the smaller the
+# diff the easier it is to drop when Hyprland moves.
+io.open(P, "w", encoding="utf-8", newline="\n").write(s)
+print("hyprctl.py: screen_shader is set with keyword and read with a colon")
+PATCH
+}
+
 build() {
     cd "$_name-$pkgver"
     python -m build --wheel --no-isolation
+}
+
+check() {
+    cd "$_name-$pkgver"
+    # The shim is the whole reason this package is not just the AUR build, so
+    # confirm it survived into the wheel rather than trusting prepare().
+    local f="src/hyprshade/shader/hyprctl.py"
+    grep -q 'decoration:screen_shader' "$f" || {
+        echo "the colon form is missing from $f" >&2
+        return 1
+    }
+    ! grep -q 'hl.config' "$f" || {
+        echo "the Lua config call is still in $f" >&2
+        return 1
+    }
+    ! grep -q 'decoration\.screen_shader' "$f" || {
+        echo "the dot form is still in $f" >&2
+        return 1
+    }
 }
 
 package() {

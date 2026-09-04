@@ -285,24 +285,17 @@ def patch_actions_query(launcher_dir):
     """
     Filter the launcher's actions directly, instead of through a prebuilt index.
 
-    Reported, and the detail that solves it: typing ">scheme" showed every
-    action; deleting one character showed only the Scheme action; typing
-    ">scheme" again showed everything. The SAME input filters sometimes and not
-    others. That is not wrong logic, it is a race.
+    This is NOT what made ">" stop filtering -- patch_applist_live_model is,
+    and the note there has the evidence. Three diagnoses were written here
+    before that one, each plausible and each wrong, because query() was never
+    reached a second time and so could not be observed. It is kept for the one
+    thing it does earn on its own merits, below.
 
-    Searcher builds its fzf index once, from `list`, and Actions' list is
-    `variants.instances` -- which a Variants block fills in asynchronously.
-    Query the index before it is ready and the evaluation fails; QML then keeps
-    the previous value of the bound property, which is the unfiltered list. So
-    the failure mode is "everything stays", and it depends on timing.
-
-    An explicit selector was tried first and did not help, because the selector
-    is only reached once the index exists.
-
-    So Actions overrides query() and filters the live list itself. No index, no
-    build step, nothing to be too early for -- `list` is read at the moment of
-    the search, and if instances are still arriving the next keystroke simply
-    sees more of them.
+    Filtering the live `list` also costs nothing: Searcher builds its fzf index
+    once from `list`, and Actions' list is `variants.instances`, which a
+    Variants block fills in asynchronously. Reading `list` at the moment of the
+    search means there is no index to be too early for -- if instances are
+    still arriving, the next keystroke simply sees more of them.
 
     Substring, not subsequence, and that is a deliberate downgrade from fzf.
     These are twenty-odd curated entries with names we choose. fzf's
@@ -344,6 +337,174 @@ def patch_actions_query(launcher_dir):
     s = s.replace(anchor, block + anchor, 1)
     io.open(actions, "w", encoding="utf-8", newline="\n").write(s)
     print("Actions.qml: query() filters the live list")
+
+
+def patch_applist_live_model(launcher_dir):
+    """
+    Let the launcher's result list follow what is typed.
+
+    Reported four times, in the same words each time: type ">", every action
+    appears, and typing more changes nothing at all.
+
+    AppList picks its results through a state machine. The state comes from the
+    search text -- "apps", or "actions" for a ">" prefix, or "calc"/"scheme"/
+    "variant" -- and each State carries the results with it:
+
+        State {
+            name: "actions"
+            PropertyChanges {
+                model.values: Actions.query(search.text)
+                root.delegate: actionItem
+            }
+        }
+
+    while the Transition that fades one mode into the next writes those same
+    two properties at its midpoint:
+
+        PropertyAction {
+            targets: [model, root]
+            properties: "values,delegate"
+        }
+
+    That imperative write lands ON the bound property and destroys the binding.
+    So `values` is computed once, on the keystroke that ENTERS the state -- the
+    ">" itself -- and then never again, because typing after ">" does not change
+    the state. Everything you type is searched against a list that stopped
+    listening.
+
+    Reproduced under Qt 6.11 with this file's own structure reduced to its
+    bones: query() logged one call, at the ">", and none for any of the five
+    keystrokes after it, while the displayed list stayed whole. The same
+    reduction with the fix below filters on every keystroke.
+
+    The fix is to stop expressing data as a state change. `values` and
+    `delegate` become ordinary bindings on `state` and `search.text`, the
+    States keep only their names so the fade still runs, and the PropertyAction
+    that clobbered them is gone. Both are bound to the same `state`, so they
+    change together and a delegate never meets a row of the wrong kind.
+
+    This is why ">scheme" and ">variant" did not filter either: same States,
+    same PropertyAction, same frozen binding. Only "calc" was unaffected, and
+    only because its value is the constant [0].
+
+    One deliberate cosmetic change: the results used to swap invisibly at the
+    midpoint of the crossfade, and now they swap as it starts. A mode switch
+    fades out the new list rather than the old one for about 100ms. Correctness
+    is worth more than that, and the alternative -- leaving `delegate` in the
+    PropertyAction -- would hand an AppItem a row of actions for that same
+    100ms.
+    """
+    path = os.path.join(launcher_dir, "AppList.qml")
+    if not os.path.exists(path):
+        fail(f"{path} is gone -- the launcher list moved or was renamed.")
+
+    s = io.open(path, encoding="utf-8").read()
+
+    old_model = (
+        "    model: ScriptModel {\n"
+        "        id: model\n"
+        "\n"
+        "        onValuesChanged: root.currentIndex = 0\n"
+        "    }\n")
+    if old_model not in s:
+        fail("AppList.qml's ScriptModel is not where the patch expects it -- "
+             "upstream changed how the launcher feeds its list.")
+
+    new_model = (
+        "    // Genesi: the results are a binding, not a state change. Carrying\n"
+        "    // them in PropertyChanges meant the Transition's PropertyAction\n"
+        "    // wrote over the bound property and killed the binding, so the\n"
+        "    // list was computed once -- on the keystroke that entered the\n"
+        "    // state -- and never followed anything typed after it.\n"
+        "    model: ScriptModel {\n"
+        "        id: model\n"
+        "\n"
+        "        values: {\n"
+        "            switch (root.state) {\n"
+        "            case \"actions\":\n"
+        "                return Actions.query(root.search.text);\n"
+        "            case \"calc\":\n"
+        "                return [0];\n"
+        "            case \"scheme\":\n"
+        "                return Schemes.query(root.search.text);\n"
+        "            case \"variant\":\n"
+        "                return M3Variants.query(root.search.text);\n"
+        "            default:\n"
+        "                return Apps.search(root.search.text);\n"
+        "            }\n"
+        "        }\n"
+        "\n"
+        "        onValuesChanged: root.currentIndex = 0\n"
+        "    }\n"
+        "\n"
+        "    // Bound to the same state as the rows above, so the two always\n"
+        "    // change in the same turn and a delegate never meets a row of a\n"
+        "    // kind it cannot read.\n"
+        "    delegate: {\n"
+        "        switch (root.state) {\n"
+        "        case \"actions\":\n"
+        "            return actionItem;\n"
+        "        case \"calc\":\n"
+        "            return calcItem;\n"
+        "        case \"scheme\":\n"
+        "            return schemeItem;\n"
+        "        case \"variant\":\n"
+        "            return variantItem;\n"
+        "        default:\n"
+        "            return appItem;\n"
+        "        }\n"
+        "    }\n")
+    s = s.replace(old_model, new_model, 1)
+
+    start = s.find("    states: [")
+    end = s.find("    transitions: Transition {")
+    if start < 0 or end < 0 or end < start:
+        fail("AppList.qml's states/transitions block is not where the patch "
+             "expects it.")
+    new_states = (
+        "    // Names only. What each mode SHOWS is bound above; these exist so\n"
+        "    // the crossfade below still has two states to move between.\n"
+        "    states: [\n"
+        "        State {\n"
+        "            name: \"apps\"\n"
+        "        },\n"
+        "        State {\n"
+        "            name: \"actions\"\n"
+        "        },\n"
+        "        State {\n"
+        "            name: \"calc\"\n"
+        "        },\n"
+        "        State {\n"
+        "            name: \"scheme\"\n"
+        "        },\n"
+        "        State {\n"
+        "            name: \"variant\"\n"
+        "        }\n"
+        "    ]\n"
+        "\n")
+    s = s[:start] + new_states + s[end:]
+
+    clobber = (
+        "            PropertyAction {\n"
+        "                targets: [model, root]\n"
+        "                properties: \"values,delegate\"\n"
+        "            }\n")
+    if clobber not in s:
+        fail("AppList.qml no longer has the PropertyAction that overwrote "
+             "values/delegate -- check whether upstream fixed this itself.")
+    s = s.replace(clobber, "", 1)
+
+    # Comments stripped first. The explanation written in just above names
+    # PropertyChanges, and a guard that reads its own note reports a problem it
+    # created -- the same shape as the hyprland.conf marker that matched the
+    # line the tool itself wrote.
+    code = re.sub(r"//.*", "", s)
+    if "PropertyChanges" in code:
+        fail("AppList.qml still has a PropertyChanges block -- upstream added "
+             "one this patch does not know about.")
+
+    io.open(path, "w", encoding="utf-8", newline="\n").write(s)
+    print("AppList.qml: results follow the search text")
 
 
 def patch_ddc_timeout(services_dir):
@@ -425,6 +586,7 @@ def main():
     verify_alignment(nexus)
     patch_nav_search(nexus)
     patch_actions_query(launcher)
+    patch_applist_live_model(launcher)
     patch_ddc_timeout(os.path.join(release, "services"))
 
     # Only now are our pages written in. Doing this before the checks above is

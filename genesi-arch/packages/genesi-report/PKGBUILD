@@ -16,7 +16,7 @@ pkgver=1.0.0
 # The IPv4 redaction ate four-part package versions ("net-snmp (<ip>-1)"),
 # destroying the detail a maintainer needs most; and the DM line expanded both
 # halves of ${dm:+x}${dm:-y}, printing the basename and the full path joined.
-pkgrel=4
+pkgrel=5
 pkgdesc='Collect Genesi OS diagnostics and open a pre-filled bug report'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

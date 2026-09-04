@@ -88,6 +88,10 @@ jobs:
         shell: bash
         run: bash genesi-arch/ci/report-redaction-test.sh
 
+      - name: genesi-report looks where Genesi installs its config
+        shell: bash
+        run: python3 genesi-arch/ci/report-sees-our-config-test.py
+
       - name: The ISO's systemd enable symlinks are symlinks
         shell: bash
         run: bash genesi-arch/ci/systemd-enable-test.sh
