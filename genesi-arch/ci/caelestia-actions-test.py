@@ -292,6 +292,41 @@ def main():
         print(f"  PASS  all {len(shader_actions)} shader action(s) name a "
               "shader that exists")
 
+    # ── A group must have a way in ──────────────────────────────────────────
+    #
+    # An action carrying "group" is hidden from the top level of ">" and
+    # reached by typing the group's name, the way ">scheme" reaches the colour
+    # schemes. That is what stopped sixteen shader rows from drowning the other
+    # twenty-four.
+    #
+    # It also means a group whose name nothing autocompletes is UNREACHABLE:
+    # the rows are installed, correct, and invisible, with no error anywhere --
+    # the exact failure mode of the launcher entry that ran a binary nobody
+    # installed. So every group must be named by some action's
+    # ["autocomplete", <group>], which is the row a person clicks to get there.
+    grouped = {}
+    for a in cfg.get("launcher", {}).get("actions", []):
+        g = a.get("group")
+        if g:
+            grouped.setdefault(g, []).append(a.get("name", "?"))
+
+    entries = {(a.get("command") or ["", ""])[1]
+               for a in cfg.get("launcher", {}).get("actions", [])
+               if (a.get("command") or [""])[0] == "autocomplete"}
+
+    orphans = sorted(g for g in grouped if g not in entries)
+    if orphans:
+        print("  FAIL  action group(s) with nothing to open them:")
+        for g in orphans:
+            print(f"          \"{g}\" holds {len(grouped[g])} action(s), and no "
+                  f"action autocompletes to it")
+        print("        Grouped actions are hidden from the top level, so a")
+        print("        group with no entry row cannot be reached at all.")
+        return 1
+    elif grouped:
+        print(f"  PASS  all {len(grouped)} action group(s) have an entry row "
+              f"({', '.join(sorted(grouped))})")
+
     # ── The migration must MERGE, not seed once ─────────────────────────────
     #
     # shell.json reaches new accounts through /etc/skel and existing ones

@@ -1,7 +1,11 @@
 {
   "session": {
     "commands": {
-      "logout": ["hyprctl", "dispatch", "exit"]
+      "logout": [
+        "hyprctl",
+        "dispatch",
+        "exit"
+      ]
     }
   },
   "launcher": {
@@ -10,240 +14,413 @@
         "name": "Calculator",
         "icon": "calculate",
         "description": "Do simple math equations (powered by Qalc)",
-        "command": ["autocomplete", "calc"]
+        "command": [
+          "autocomplete",
+          "calc"
+        ]
       },
       {
         "name": "Scheme",
         "icon": "palette",
         "description": "Change the current colour scheme",
-        "command": ["autocomplete", "scheme"]
+        "command": [
+          "autocomplete",
+          "scheme"
+        ]
       },
       {
         "name": "Wallpaper",
         "icon": "image",
         "description": "Change the current wallpaper",
-        "command": ["autocomplete", "wallpaper"]
+        "command": [
+          "autocomplete",
+          "wallpaper"
+        ]
       },
       {
         "name": "Variant",
         "icon": "colors",
         "description": "Change the current scheme variant",
-        "command": ["autocomplete", "variant"]
+        "command": [
+          "autocomplete",
+          "variant"
+        ]
+      },
+      {
+        "name": "Shaders · Efeitos de tela",
+        "icon": "auto_awesome",
+        "description": "Every screen shader · Todos os efeitos de tela",
+        "command": [
+          "autocomplete",
+          "shader"
+        ]
       },
       {
         "name": "Random",
         "icon": "casino",
         "description": "Switch to a random wallpaper",
-        "command": ["caelestia", "wallpaper", "-r"]
+        "command": [
+          "caelestia",
+          "wallpaper",
+          "-r"
+        ]
       },
       {
         "name": "Light",
         "icon": "light_mode",
         "description": "Change the scheme to light mode",
-        "command": ["setMode", "light"]
+        "command": [
+          "setMode",
+          "light"
+        ]
       },
       {
         "name": "Dark",
         "icon": "dark_mode",
         "description": "Change the scheme to dark mode",
-        "command": ["setMode", "dark"]
+        "command": [
+          "setMode",
+          "dark"
+        ]
       },
-
       {
         "name": "Scale 100% · Escala 100%",
         "icon": "fit_screen",
         "description": "Set this screen to 1x — no scaling",
-        "command": ["genesi-display", "scale", "-", "1"]
+        "command": [
+          "genesi-display",
+          "scale",
+          "-",
+          "1"
+        ]
       },
       {
         "name": "Scale 125% · Escala 125%",
         "icon": "zoom_in",
         "description": "Slightly larger interface on this screen",
-        "command": ["genesi-display", "scale", "-", "1.25"]
+        "command": [
+          "genesi-display",
+          "scale",
+          "-",
+          "1.25"
+        ]
       },
       {
         "name": "Scale 150% · Escala 150%",
         "icon": "zoom_in",
         "description": "Larger interface on this screen",
-        "command": ["genesi-display", "scale", "-", "1.5"]
+        "command": [
+          "genesi-display",
+          "scale",
+          "-",
+          "1.5"
+        ]
       },
       {
         "name": "Scale 200% · Escala 200%",
         "icon": "zoom_in",
         "description": "Double size — for a 4K screen at a normal distance",
-        "command": ["genesi-display", "scale", "-", "2"]
+        "command": [
+          "genesi-display",
+          "scale",
+          "-",
+          "2"
+        ]
       },
       {
         "name": "Rotate screen · Girar tela",
         "icon": "screen_rotation",
         "description": "Turn this screen 90° — press again to keep going",
-        "command": ["genesi-display", "rotate", "-", "cycle"]
+        "command": [
+          "genesi-display",
+          "rotate",
+          "-",
+          "cycle"
+        ]
       },
       {
         "name": "Shader: Pixelate · Pixelado",
         "icon": "grid_on",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "pixelate"]
+        "command": [
+          "hyprshade",
+          "on",
+          "pixelate"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: 3D glasses · Oculos 3D",
         "icon": "3d_rotation",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "anaglyph-3d"]
+        "command": [
+          "hyprshade",
+          "on",
+          "anaglyph-3d"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Old TV · TV antiga",
         "icon": "tv",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "crt"]
+        "command": [
+          "hyprshade",
+          "on",
+          "crt"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Vignette · Vinheta",
         "icon": "vignette",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "vignette"]
+        "command": [
+          "hyprshade",
+          "on",
+          "vignette"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Film grain · Granulado de filme",
         "icon": "grain",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "film-grain"]
+        "command": [
+          "hyprshade",
+          "on",
+          "film-grain"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Colour fringing · Aberracao cromatica",
         "icon": "blur_on",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "chromatic-aberration"]
+        "command": [
+          "hyprshade",
+          "on",
+          "chromatic-aberration"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Posterize · Poster",
         "icon": "filter_b_and_w",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "posterize"]
+        "command": [
+          "hyprshade",
+          "on",
+          "posterize"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Sepia · Sepia",
         "icon": "photo_filter",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "sepia"]
+        "command": [
+          "hyprshade",
+          "on",
+          "sepia"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Black and white · Preto e branco",
         "icon": "contrast",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "grayscale"]
+        "command": [
+          "hyprshade",
+          "on",
+          "grayscale"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Invert colours · Inverter cores",
         "icon": "invert_colors",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "invert"]
+        "command": [
+          "hyprshade",
+          "on",
+          "invert"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Warm · Tom quente",
         "icon": "wb_sunny",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "warm"]
+        "command": [
+          "hyprshade",
+          "on",
+          "warm"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Night light · Luz noturna",
         "icon": "bedtime",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "blue-light-filter"]
+        "command": [
+          "hyprshade",
+          "on",
+          "blue-light-filter"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Vivid colours · Cores vivas",
         "icon": "palette",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "vibrance"]
+        "command": [
+          "hyprshade",
+          "on",
+          "vibrance"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Colour blindness: green · Daltonismo: verde",
         "icon": "visibility",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "deuteranopia"]
+        "command": [
+          "hyprshade",
+          "on",
+          "deuteranopia"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: Colour blindness: red · Daltonismo: vermelho",
         "icon": "visibility",
         "description": "Screen shader — type >shader for all of them",
-        "command": ["hyprshade", "on", "protanopia"]
+        "command": [
+          "hyprshade",
+          "on",
+          "protanopia"
+        ],
+        "group": "shader"
       },
       {
         "name": "Shader: off · Sem shader",
         "icon": "filter_none",
         "description": "Turn off any screen shader",
-        "command": ["hyprshade", "off"]
+        "command": [
+          "hyprshade",
+          "off"
+        ],
+        "group": "shader"
       },
       {
         "name": "Make this screen primary · Tela principal",
         "icon": "star",
         "description": "The desktop starts here — workspace 1 lives on this screen",
-        "command": ["genesi-display", "primary", "-"]
+        "command": [
+          "genesi-display",
+          "primary",
+          "-"
+        ]
       },
       {
         "name": "Mouse faster · Mouse mais rápido",
         "icon": "mouse",
         "description": "Nudge pointer speed up",
-        "command": ["genesi-input", "speed", "up"]
+        "command": [
+          "genesi-input",
+          "speed",
+          "up"
+        ]
       },
       {
         "name": "Mouse slower · Mouse mais lento",
         "icon": "mouse",
         "description": "Nudge pointer speed down",
-        "command": ["genesi-input", "speed", "down"]
+        "command": [
+          "genesi-input",
+          "speed",
+          "down"
+        ]
       },
       {
         "name": "Mouse default speed · Velocidade padrão do mouse",
         "icon": "restart_alt",
         "description": "Back to the hardware's own speed",
-        "command": ["genesi-input", "speed", "0"]
+        "command": [
+          "genesi-input",
+          "speed",
+          "0"
+        ]
       },
       {
         "name": "Reset display · Restaurar telas",
         "icon": "settings_backup_restore",
         "description": "Undo every scale and rotation set from here",
-        "command": ["genesi-display", "reset"]
+        "command": [
+          "genesi-display",
+          "reset"
+        ]
       },
-
       {
         "name": "Shutdown",
         "icon": "power_settings_new",
         "description": "Shutdown the system",
-        "command": ["systemctl", "poweroff"],
+        "command": [
+          "systemctl",
+          "poweroff"
+        ],
         "dangerous": true
       },
       {
         "name": "Reboot",
         "icon": "cached",
         "description": "Reboot the system",
-        "command": ["systemctl", "reboot"],
+        "command": [
+          "systemctl",
+          "reboot"
+        ],
         "dangerous": true
       },
       {
         "name": "Logout",
         "icon": "exit_to_app",
         "description": "Log out of the current session",
-        "command": ["hyprctl", "dispatch", "exit"],
+        "command": [
+          "hyprctl",
+          "dispatch",
+          "exit"
+        ],
         "dangerous": true
       },
       {
         "name": "Lock",
         "icon": "lock",
         "description": "Lock the current session",
-        "command": ["loginctl", "lock-session"]
+        "command": [
+          "loginctl",
+          "lock-session"
+        ]
       },
       {
         "name": "Sleep",
         "icon": "bedtime",
         "description": "Suspend then hibernate",
-        "command": ["systemctl", "suspend-then-hibernate"]
+        "command": [
+          "systemctl",
+          "suspend-then-hibernate"
+        ]
       },
       {
         "name": "Settings",
         "icon": "settings",
         "description": "Configure the shell",
-        "command": ["caelestia", "shell", "nexus", "open"]
+        "command": [
+          "caelestia",
+          "shell",
+          "nexus",
+          "open"
+        ]
       }
     ]
   }

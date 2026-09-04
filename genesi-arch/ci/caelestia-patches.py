@@ -303,6 +303,20 @@ def patch_actions_query(launcher_dir):
     and "Make this screen primary" for "parede" -- confident and wrong, which is
     worse than nothing. Substring also means the Portuguese half of each name
     behaves exactly like the English half.
+
+    It also gives actions GROUPS, because sixteen shaders in a list of forty
+    drowned everything else: opening ">" was mostly shader rows. An action
+    carrying `"group": "shader"` is hidden from the top level and reached by
+    typing ">shader", exactly as ">scheme" reaches the colour schemes, and text
+    after the group name filters inside it. Everything ungrouped behaves as it
+    did.
+
+    Doing this in query() rather than as a new AppList state is the small
+    version on purpose: ">shader" leaves the state as "actions", so there is no
+    new state, no new service and no new delegate -- the rows are the same
+    actions they always were, merely addressed. The cost is that the group name
+    is matched from the search text rather than declared to the state machine,
+    which is fine while groups are ours and few.
     """
     actions = os.path.join(launcher_dir, "services", "Actions.qml")
     if not os.path.exists(actions):
@@ -318,25 +332,56 @@ def patch_actions_query(launcher_dir):
         fail("Actions.qml's transformSearch is not where the patch expects it.")
 
     block = (
-        "    // Filter the live list rather than a prebuilt fzf index. The index\n"
-        "    // is built once from variants.instances, which fills in\n"
-        "    // asynchronously; querying it too early fails, and QML then keeps\n"
-        "    // the previous value -- the unfiltered list. That is why the same\n"
-        "    // text filtered on one keystroke and showed everything on the next.\n"
-        "    //\n"
-        "    // Substring, not fzf: on twenty curated entries, subsequence\n"
-        "    // matching returned \"Scale 125%\" for \"girar\". (Genesi)\n"
+        "    // Filter the live list rather than a prebuilt fzf index, and keep\n"
+        "    // grouped entries out of the top level. Substring, not fzf: on\n"
+        "    // twenty curated entries, subsequence matching returned\n"
+        "    // \"Scale 125%\" for \"girar\". (Genesi)\n"
         "    function query(search: string): list<var> {\n"
-        "        const q = transformSearch(search.trim().replace(/\\s+/g, \" \")).toLowerCase();\n"
+        "        const raw = transformSearch(search.trim().replace(/\\s+/g, \" \"));\n"
         "        const all = [...list];\n"
+        "\n"
+        "        // A group name typed first opens that group, the way\n"
+        "        // \">scheme\" opens the schemes; whatever follows filters\n"
+        "        // inside it.\n"
+        "        const space = raw.indexOf(\" \");\n"
+        "        const head = (space < 0 ? raw : raw.slice(0, space)).toLowerCase();\n"
+        "        const groups = all.map(a => a.group ?? \"\").filter(g => g);\n"
+        "        if (groups.indexOf(head) >= 0) {\n"
+        "            const rest = (space < 0 ? \"\" : raw.slice(space + 1)).toLowerCase();\n"
+        "            const inGroup = all.filter(a => (a.group ?? \"\") === head);\n"
+        "            if (!rest)\n"
+        "                return inGroup;\n"
+        "            return inGroup.filter(a => (a.name ?? \"\").toLowerCase().includes(rest));\n"
+        "        }\n"
+        "\n"
+        "        // Otherwise a group shows only through its own entry, instead\n"
+        "        // of spilling every row it holds into the top level.\n"
+        "        const top = all.filter(a => !(a.group ?? \"\"));\n"
+        "        const q = raw.toLowerCase();\n"
         "        if (!q)\n"
-        "            return all;\n"
-        "        return all.filter(a => (a.name ?? \"\").toLowerCase().includes(q));\n"
+        "            return top;\n"
+        "        return top.filter(a => (a.name ?? \"\").toLowerCase().includes(q));\n"
         "    }\n"
         "\n")
     s = s.replace(anchor, block + anchor, 1)
+
+    # The group has to survive the trip from shell.json to the row. Action
+    # exposes a fixed set of fields and drops everything else, so without this
+    # every entry reads back as ungrouped and the grouping silently does
+    # nothing -- the failure would look exactly like forgetting to edit
+    # shell.json.
+    name_prop = ('        readonly property string name: modelData.name ?? '
+                 'qsTr("Unnamed")\n')
+    if name_prop not in s:
+        fail("Actions.qml's Action component does not expose `name` where the "
+             "patch expects it.")
+    s = s.replace(
+        name_prop,
+        name_prop + '        readonly property string group: modelData.group ?? ""\n',
+        1)
+
     io.open(actions, "w", encoding="utf-8", newline="\n").write(s)
-    print("Actions.qml: query() filters the live list")
+    print("Actions.qml: query() filters the live list, and groups fold away")
 
 
 def patch_applist_live_model(launcher_dir):
