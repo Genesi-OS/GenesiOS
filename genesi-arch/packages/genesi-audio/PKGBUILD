@@ -2,24 +2,86 @@
 #
 # genesi-audio — audio quirks that are not any one desktop's business.
 #
-# Config only: no binary, no UI, no daemon. It exists because the fix belongs
-# to the system's audio stack rather than to KDE or to Hyprland, and both need
-# it. A drop-in is the whole payload.
+# It lives here rather than in the KDE or the Hyprland package because the
+# fix belongs to the system's audio stack and both desktops need it.
+#
+# Two halves, and they only work together:
+#
+#   * a WirePlumber drop-in that takes volume off the hardware mixer for USB
+#     outputs, and
+#   * a one-shot that opens that hardware mixer, because PipeWire then does
+#     the whole volume in software ON THE ASSUMPTION that the hardware sits at
+#     unity -- and nothing was making that true.
+#
+# Shipping only the first is what silenced a headset completely: the setting
+# worked, the mixer stopped following the slider exactly as asked, and it
+# stopped at zero. See the comments in each file.
 pkgname=genesi-audio
 pkgver=1.0.0
-pkgrel=3
+pkgrel=4
 pkgdesc='Audio quirk configuration for Genesi OS'
 arch=('any')
 groups=('genesi')
 license=('AGPL-3.0-or-later')
 url='https://github.com/Genesi-OS/GenesiOS'
-depends=('wireplumber')
-source=('50-genesi-usb-soft-mixer.conf')
-sha256sums=('SKIP')
+# alsa-utils for amixer: the one-shot reads and sets ALSA controls directly,
+# below PipeWire, because that is the layer the problem is on.
+depends=('wireplumber' 'alsa-utils')
+source=('50-genesi-usb-soft-mixer.conf'
+        'genesi-open-usb-mixer'
+        'genesi-open-usb-mixer.service')
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP')
+
+check() {
+    # POSIX sh, run by a systemd oneshot with no terminal -- a syntax error
+    # would show up only as a failed unit in someone's journal.
+    sh -n "${srcdir}/genesi-open-usb-mixer"
+
+    # The two halves may not be separated.
+    #
+    # api.alsa.soft-mixer alone does not centre the hardware mixer, it stops
+    # driving it -- while PipeWire goes on computing the whole volume in
+    # software as though the hardware were at unity. Ship the drop-in without
+    # the opener and any device whose mixer happens to sit low is quiet, and
+    # one sitting at zero is silent at every volume including maximum. That is
+    # not a hypothetical: it is what this package did to the machine it was
+    # written for, and it was worse than shipping nothing.
+    #
+    # Comments stripped first: the paragraph above names the setting, and a
+    # check that reads its own explanation proves nothing.
+    if grep -v '^[[:space:]]*#' "${srcdir}/50-genesi-usb-soft-mixer.conf" \
+        | grep -q 'api.alsa.soft-mixer'; then
+        [ -f "${srcdir}/genesi-open-usb-mixer" ] || {
+            echo "soft-mixer is configured but nothing opens the hardware mixer" >&2
+            return 1
+        }
+        grep -q 'ExecStart=/usr/bin/genesi-open-usb-mixer' \
+            "${srcdir}/genesi-open-usb-mixer.service" || {
+            echo "the opener exists but no unit runs it" >&2
+            return 1
+        }
+    fi
+}
 
 package() {
     # wireplumber.conf.d is the 0.5+ drop-in directory. /usr/share is the
     # vendor location, which leaves /etc free for the user to override us.
     install -Dm644 "${srcdir}/50-genesi-usb-soft-mixer.conf" \
         "${pkgdir}/usr/share/wireplumber/wireplumber.conf.d/50-genesi-usb-soft-mixer.conf"
+
+    install -Dm755 "${srcdir}/genesi-open-usb-mixer" \
+        "${pkgdir}/usr/bin/genesi-open-usb-mixer"
+
+    # A user unit, because the mixer follows the session's audio stack rather
+    # than the machine, and because WirePlumber is a user service.
+    install -Dm644 "${srcdir}/genesi-open-usb-mixer.service" \
+        "${pkgdir}/usr/lib/systemd/user/genesi-open-usb-mixer.service"
+    # Enabled by shipping the symlink rather than by asking the user to run
+    # `systemctl --user enable`: this is a quirk fix, and a quirk fix nobody
+    # turns on is a quirk that is not fixed.
+    install -dm755 "${pkgdir}/usr/lib/systemd/user/default.target.wants"
+    ln -s ../genesi-open-usb-mixer.service \
+        "${pkgdir}/usr/lib/systemd/user/default.target.wants/genesi-open-usb-mixer.service"
 }

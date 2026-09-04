@@ -1,0 +1,94 @@
+#!/bin/sh
+#
+# genesi-open-usb-mixer — open the hardware mixer on USB audio outputs.
+#
+# The other half of api.alsa.soft-mixer, and without it that setting makes
+# things WORSE rather than better.
+#
+# soft-mixer tells PipeWire to apply volume itself and leave the device's own
+# mixer alone. What it does NOT do is put that mixer anywhere in particular
+# first -- it stops driving it and leaves it wherever it happened to be. And
+# PipeWire then computes the whole volume in software on the assumption that
+# the hardware is sitting at unity.
+#
+# On the headset this was written for, the hardware was sitting at zero. So the
+# fix landed, the control stopped tracking the slider exactly as intended, and
+# the audio went silent at every volume including maximum. Measured:
+#
+#   volume 0.70  ->  Playback 0 [0%] [0.00dB] [on]   silent
+#   volume 0.40  ->  Playback 0 [0%] [0.00dB] [on]   silent
+#
+# The assumption is the thing to fix: if PipeWire is going to treat the
+# hardware as unity, something has to make that true.
+#
+# ── Why maximum ──────────────────────────────────────────────────────────────
+#
+# On an ordinary attenuator -- the usual shape, roughly -65 dB to 0 dB --
+# maximum IS unity, so this is exactly right and changes nothing audible: the
+# same total volume simply gets applied in software instead of in the codec.
+#
+# On this headset the only control runs 0 dB to +16 dB. It is a gain, not an
+# attenuator, and its own dB scale is not to be believed: the kernel tested it
+# at boot, read back values that did not match what it wrote, and said so --
+#
+#   usb 3-3.3: 8:0: sticky mixer values (0/4096/128 => 0), disabling
+#
+# -- so the step it calls "0.00 dB" is silence in fact. No dB-based rule can
+# survive a device that lies about dB. Maximum is the one position known to
+# produce sound, and software volume takes it down from there with far more
+# resolution than the device's 33 steps ever had.
+#
+# Playback only. A USB microphone's capture gain is real analogue gain doing
+# useful work, and nothing here touches it.
+set -u
+
+verbose=0
+[ "${1:-}" = "-v" ] && verbose=1
+log() { [ "$verbose" = 1 ] && echo "$@"; return 0; }
+
+command -v amixer >/dev/null 2>&1 || {
+    echo "genesi-open-usb-mixer: amixer not found (alsa-utils)" >&2
+    exit 1
+}
+
+opened=0
+for dir in /proc/asound/card*; do
+    [ -d "$dir" ] || continue
+    # usbid exists only for USB cards. Built-in codecs are left alone: their
+    # mixers are honest and wide, and hardware volume is worth keeping there.
+    [ -r "$dir/usbid" ] || continue
+
+    card="${dir##*/card}"
+    name="$(cat "$dir/id" 2>/dev/null || echo "$card")"
+
+    # amixer prints: Simple mixer control 'Headphone',0
+    amixer -c "$card" scontrols 2>/dev/null \
+        | sed -n "s/^Simple mixer control '\(.*\)',[0-9]*$/\1/p" \
+        | while IFS= read -r ctl; do
+            [ -n "$ctl" ] || continue
+            info="$(amixer -c "$card" sget "$ctl" 2>/dev/null)"
+            # Only controls that actually have a playback volume. Asking for
+            # one that does not is an error, and a control that is capture-only
+            # must not be touched at all.
+            printf '%s' "$info" | grep -q 'Playback [0-9]' || continue
+            # An element carrying BOTH directions belongs to an input path --
+            # a microphone with monitoring. Its playback side is sidetone, and
+            # opening that to maximum means the wearer's own voice at full
+            # volume in their ears. The fifine microphone in the report has
+            # exactly this shape: "Playback 0 - 496 Capture 0 - 496". The
+            # output path is the playback-ONLY element.
+            printf '%s' "$info" | grep -q 'Capture' && continue
+            # `playback` restricts this to the playback direction on controls
+            # that carry both, so a combined element cannot take the mic with
+            # it.
+            if amixer -c "$card" sset "$ctl" playback 100% unmute >/dev/null 2>&1; then
+                log "card $card ($name): opened '$ctl'"
+            else
+                log "card $card ($name): could not set '$ctl'"
+            fi
+        done
+    opened=$((opened + 1))
+done
+
+log "USB audio cards seen: $opened"
+exit 0

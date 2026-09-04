@@ -1,0 +1,24 @@
+[Unit]
+Description=Open the hardware mixer on USB audio outputs
+Documentation=https://github.com/Genesi-OS/GenesiOS
+# After WirePlumber, because WirePlumber sets up the device's mixer path when
+# it creates the device and would otherwise undo this immediately. It does not
+# touch the mixer again afterwards -- that is what api.alsa.soft-mixer means --
+# so running once, late, is enough.
+After=wireplumber.service
+Wants=wireplumber.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# WirePlumber finishes its own start-up a moment after the unit is considered
+# started, and the device's mixer path is set in that window. Two seconds is
+# not a proof, it is a margin: the cost of losing the race is that the mixer
+# stays where WirePlumber left it, which `genesi-open-usb-mixer` run by hand
+# then fixes. Ordering that cannot be raced would need a WirePlumber hook, and
+# that is a bigger change than this problem has earned.
+ExecStartPre=/usr/bin/sleep 2
+ExecStart=/usr/bin/genesi-open-usb-mixer
+
+[Install]
+WantedBy=default.target
