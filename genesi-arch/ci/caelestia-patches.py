@@ -552,6 +552,164 @@ def patch_applist_live_model(launcher_dir):
     print("AppList.qml: results follow the search text")
 
 
+def patch_wallpaper_transition(release):
+    """
+    Let the wallpaper change be an animation you can choose.
+
+    Upstream is not missing a transition -- it crossfades already: a new
+    CachingImage is created at opacity 0 and animated to 1 when it loads, and
+    the old one is destroyed a duration later. What it is missing is any say in
+    the matter. One curve, one length, no movement, nothing to set.
+
+    So this adds two config properties next to the ones that are already there,
+
+        background.transition          "fade" | "zoom" | "grow" | "none"
+        background.transitionDuration  ms, 0 = the theme's own slow duration
+
+    and teaches Wallpaper.qml to honour them. "zoom" settles in from slightly
+    too large, "grow" opens out from slightly too small, both alongside the
+    fade; "fade" is upstream's behaviour exactly, and "none" is instant for
+    people who find any of it a distraction.
+
+    Every option is a plain item property -- opacity and scale. No effects
+    module, nothing that can be missing at runtime, and `scale` is a transform
+    so it does not fight `anchors.fill`. A name nobody recognises falls back to
+    the plain fade, which means a typo in shell.json costs the animation and
+    never the wallpaper.
+
+    The C++ edit is one macro line per property in the same style as its
+    neighbours, and both edits assert their anchor first: a config property
+    added without the QML to read it is a setting that silently does nothing,
+    which is the failure this repository keeps meeting from the other side.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "backgroundconfig.hpp")
+    qml = os.path.join(release, "modules", "background", "Wallpaper.qml")
+    for p in (hpp, qml):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the background module moved or was renamed.")
+
+    # ── the config properties ────────────────────────────────────────────────
+    s = io.open(hpp, encoding="utf-8").read()
+    if "transition" in s:
+        fail("backgroundconfig.hpp already mentions a transition -- upstream "
+             "added one. Read theirs and drop this patch.")
+
+    anchor = (
+        "    CONFIG_PROPERTY(bool, enabled, true)\n"
+        "    CONFIG_PROPERTY(bool, wallpaperEnabled, true)\n")
+    if anchor not in s:
+        fail("BackgroundConfig's own properties are not where the patch "
+             "expects them.")
+    s = s.replace(
+        anchor,
+        anchor +
+        "    // Genesi: how the wallpaper arrives. See patch_wallpaper_transition.\n"
+        '    CONFIG_PROPERTY(QString, transition, QStringLiteral("fade"))\n'
+        "    CONFIG_PROPERTY(int, transitionDuration, 0)\n",
+        1)
+    io.open(hpp, "w", encoding="utf-8", newline="\n").write(s)
+
+    # ── the animation ────────────────────────────────────────────────────────
+    s = io.open(qml, encoding="utf-8").read()
+    old = """        CachingImage {
+            id: img
+
+            anchors.fill: parent
+
+            opacity: 0
+
+            onStatusChanged: {
+                if (status === Image.Ready)
+                    anim.start();
+            }
+
+            Anim on opacity {
+                id: anim
+
+                type: Anim.SlowEffects
+                running: false
+                from: 0
+                to: 1
+            }
+
+            Timer {
+                running: root.current !== img && root.current?.status === Image.Ready
+                interval: anim.duration
+                onTriggered: img.destroy()
+            }
+        }
+"""
+    if old not in s:
+        fail("Wallpaper.qml's crossfade is not where the patch expects it -- "
+             "upstream changed how the wallpaper appears.")
+
+    new = """        CachingImage {
+            id: img
+
+            anchors.fill: parent
+
+            // Genesi: the transition is chosen rather than fixed. Upstream
+            // animates opacity alone; "zoom" and "grow" add the movement half.
+            // Both are `scale`, which is a transform and so does not fight
+            // anchors.fill, and an unrecognised name falls back to the plain
+            // fade -- a typo in shell.json costs the animation, never the
+            // wallpaper.
+            readonly property string transition: Config.background.transition
+            readonly property int dur: Config.background.transitionDuration > 0 ? Config.background.transitionDuration : Tokens.anim.durations.expressiveSlowEffects
+            readonly property real fromScale: transition === "zoom" ? 1.06 : transition === "grow" ? 0.94 : 1
+
+            opacity: 0
+            transformOrigin: Item.Center
+
+            onStatusChanged: {
+                if (status !== Image.Ready)
+                    return;
+                if (transition === "none") {
+                    opacity = 1;
+                    return;
+                }
+                fadeIn.start();
+                if (fromScale !== 1)
+                    scaleIn.start();
+            }
+
+            NumberAnimation {
+                id: fadeIn
+
+                target: img
+                property: "opacity"
+                running: false
+                from: 0
+                to: 1
+                duration: img.dur
+                easing.type: Easing.OutCubic
+            }
+
+            NumberAnimation {
+                id: scaleIn
+
+                target: img
+                property: "scale"
+                running: false
+                from: img.fromScale
+                to: 1
+                duration: img.dur
+                easing.type: Easing.OutCubic
+            }
+
+            Timer {
+                running: root.current !== img && root.current?.status === Image.Ready
+                interval: img.dur
+                onTriggered: img.destroy()
+            }
+        }
+"""
+    s = s.replace(old, new, 1)
+    io.open(qml, "w", encoding="utf-8", newline="\n").write(s)
+    print("Wallpaper.qml: the transition is configurable (fade/zoom/grow/none)")
+
+
 def patch_ddc_timeout(services_dir):
     """
     Bound the DDC/CI probe so it cannot hammer a monitor that never answers.
@@ -632,6 +790,7 @@ def main():
     patch_nav_search(nexus)
     patch_actions_query(launcher)
     patch_applist_live_model(launcher)
+    patch_wallpaper_transition(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 
     # Only now are our pages written in. Doing this before the checks above is

@@ -8,6 +8,10 @@
       ]
     }
   },
+  "background": {
+    "transition": "zoom",
+    "transitionDuration": 900
+  },
   "launcher": {
     "actions": [
       {

@@ -261,9 +261,12 @@ if not isinstance(launcher, dict):
     launcher = {}
     data["launcher"] = launcher
 
+shipped = {}
 try:
     with open("/etc/skel/.config/caelestia/shell.json") as f:
         shipped = json.load(f)
+    if not isinstance(shipped, dict):
+        shipped = {}
     shipped_actions = shipped.get("launcher", {}).get("actions") or []
 except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError):
     shipped_actions = []
@@ -288,6 +291,39 @@ for a in launcher.get("actions") or []:
     if isinstance(a, dict) and a.get("name") == "Logout"             and a.get("command") == ["loginctl", "terminate-user", ""]:
         a["command"] = ["hyprctl", "dispatch", "exit"]
         changed = True
+
+# 4. Every OTHER setting Genesi ships that this user does not have yet.
+#
+# Steps 1-3 each name one key, and each was written the day that key first
+# went missing on somebody's machine. The wallpaper transition would have been
+# the fourth: shell.json gained a "background" section, /etc/skel delivered it
+# to new accounts, and nobody else would ever have seen it -- the same failure
+# as the frozen action list, one section over. Naming keys one at a time only
+# ever fixes the instance.
+#
+# So: add what the shipped file has and this file does not, recursively, and
+# never touch a key the user already has. A value they changed stays changed;
+# a value they never had arrives. `launcher.actions` is excluded because it is
+# a list with its own merge rule above, and a whole-list copy would undo it.
+SKIP = {("launcher", "actions")}
+
+
+def fill_missing(dst, src, path=()):
+    added = False
+    for k, v in src.items():
+        here = path + (k,)
+        if here in SKIP:
+            continue
+        if k not in dst:
+            dst[k] = v
+            added = True
+        elif isinstance(dst[k], dict) and isinstance(v, dict):
+            added = fill_missing(dst[k], v, here) or added
+    return added
+
+
+if fill_missing(data, shipped):
+    changed = True
 
 if not changed:
     sys.exit(0)

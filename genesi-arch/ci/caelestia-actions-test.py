@@ -327,6 +327,51 @@ def main():
         print(f"  PASS  all {len(grouped)} action group(s) have an entry row "
               f"({', '.join(sorted(grouped))})")
 
+    # ── The wallpaper transition we ship must be one that exists ────────────
+    #
+    # background.transition is a string, and Wallpaper.qml falls back to the
+    # plain fade for anything it does not recognise. That fallback is right at
+    # runtime -- a typo should cost the animation, not the wallpaper -- and it
+    # is exactly why a typo HERE would never be noticed: shipping "zoon" would
+    # look like a fade forever and report no error anywhere.
+    #
+    # The names are checked against the QML that reads them, not against a list
+    # written here, and against code-shaped anchors rather than the prose that
+    # explains them -- the patch script's own docstring spells all four out,
+    # and a check that reads it would pass on its own writing.
+    TRANSITIONS = {"fade", "zoom", "grow", "none"}
+    want = (cfg.get("background") or {}).get("transition")
+    if want is not None:
+        patches = os.path.join(ROOT, "genesi-arch", "ci",
+                               "caelestia-patches.py")
+        anchors = {
+            "zoom": 'transition === "zoom"',
+            "grow": 'transition === "grow"',
+            "none": 'transition === "none"',
+            "fade": 'QStringLiteral("fade")',
+        }
+        src = ""
+        if os.path.exists(patches):
+            with io.open(patches, encoding="utf-8") as fh:
+                src = fh.read()
+        implemented = {n for n, a in anchors.items() if a in src}
+
+        if want not in TRANSITIONS:
+            print(f"  FAIL  shell.json asks for the {want!r} wallpaper "
+                  "transition, which is not one of: "
+                  + ", ".join(sorted(TRANSITIONS)))
+            print("        Wallpaper.qml falls back to a plain fade for an")
+            print("        unknown name, so this ships as a setting that")
+            print("        silently does nothing.")
+            return 1
+        if src and want not in implemented:
+            print(f"  FAIL  shell.json asks for the {want!r} wallpaper "
+                  "transition and caelestia-patches.py does not implement it")
+            print("        (looked for the code, not the comments)")
+            return 1
+        print(f"  PASS  the {want!r} wallpaper transition is implemented "
+              f"({len(implemented)} of {len(TRANSITIONS)} available)")
+
     # ── The migration must MERGE, not seed once ─────────────────────────────
     #
     # shell.json reaches new accounts through /etc/skel and existing ones

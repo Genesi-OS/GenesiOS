@@ -156,7 +156,7 @@ pkgver=1.0.0
 # `loginctl terminate-user ""` -- the black screen fixed for the session drawer
 # in pkgrel 17. Someone who already had an actions list would have kept the
 # broken one forever otherwise.
-pkgrel=29
+pkgrel=30
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

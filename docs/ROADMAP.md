@@ -1405,7 +1405,11 @@ fails the build rather than the desktop.
 - [ ] The same Display and Mouse settings on the KDE side, which has only the
       CLI and the update page today.
 - [ ] Keyboard sound.
-- [ ] Wallpaper transition animation.
+- [x] **Wallpaper transition** — `background.transition` picks how a new
+      wallpaper arrives: `fade` (upstream's own crossfade), `zoom`, `grow` or
+      `none`, with `background.transitionDuration` in milliseconds. Genesi
+      defaults to `zoom` at 900ms. Upstream already crossfaded and offered no
+      say in it; the choice is the feature.
 - [ ] Waybar config switcher — only meaningful if a waybar-based desktop is ever
       offered. The Quickshell equivalent is shell layout presets.
 
