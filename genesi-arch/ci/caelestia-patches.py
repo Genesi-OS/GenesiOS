@@ -15,6 +15,8 @@ the bet has to be checked before it is placed.
     behind it
   * the launcher's action selector, without which typing after ">" narrows
     nothing
+  * a wall clock on the DDC/CI probe, which otherwise hammers a monitor that
+    does not implement it until the DisplayPort link drops
 
 It does the CHECK and the COPY, in that order, because separating them is how
 the first attempt broke the build: prepare() installed our pages and then ran
@@ -328,6 +330,61 @@ def patch_actions_selector(launcher_dir):
     print("Actions.qml: explicit selector")
 
 
+def patch_ddc_timeout(services_dir):
+    """
+    Bound the DDC/CI probe so it cannot hammer a monitor that never answers.
+
+    Reported from hardware: a DisplayPort screen that flickers and then blanks
+    until the cable is replugged. The journal says why, at length:
+
+        ddcutil[1625]: busno=1 ... DDCRC_RETRIES ... DDCRC_DDC_DATA(10)
+        ddcutil[1625]: Turning off dynamic sleep and retrying
+        ...
+
+    One ddcutil process logged from 13:07:43 to 15:30:44 -- two and a half
+    hours of I2C traffic on a monitor that does not implement DDC/CI. Sustained
+    I2C on a DisplayPort link is a known way to upset the link, and NVIDIA is
+    where it shows up most. The flickering is not the cable; it is us.
+
+    caelestia runs `ddcutil detect --brief` unconditionally at startup to find
+    external monitors it can set brightness on. On hardware that answers, that
+    takes a second or two. On hardware that does not, ddcutil escalates its
+    sleep multiplier and retries essentially forever.
+
+    So the probe gets a wall clock. Ten seconds is generous for a monitor that
+    works and decisive for one that does not: a display that has not identified
+    itself in ten seconds is not going to, and the only thing further retries
+    buy is the flicker.
+
+    A monitor that genuinely supports DDC/CI is unaffected -- detect finishes
+    long before the limit, and every getvcp/setvcp after it is per-monitor and
+    only runs for displays detect actually found.
+    """
+    brightness = os.path.join(services_dir, "Brightness.qml")
+    if not os.path.exists(brightness):
+        fail(f"{brightness} is gone -- the brightness service moved or was renamed.")
+
+    s = io.open(brightness, encoding="utf-8").read()
+    old = 'command: ["ddcutil", "detect", "--brief"]'
+    if old not in s:
+        if '"timeout"' in s and "ddcutil" in s:
+            fail("Brightness.qml already bounds the ddcutil probe -- upstream "
+                 "fixed this. Drop the patch and keep theirs.")
+        fail("Brightness.qml's `ddcutil detect` command is not where the patch "
+             "expects it; refusing to guess.")
+
+    new = ('// Wall-clocked (Genesi). On a monitor without DDC/CI, ddcutil\n'
+           '        // escalates its sleep multiplier and retries for hours --\n'
+           '        // one process was measured logging I2C failures for 2h22m --\n'
+           '        // and sustained I2C traffic is what makes a DisplayPort link\n'
+           '        // flicker and drop. A display that has not answered in ten\n'
+           '        // seconds is not going to.\n'
+           '        command: ["timeout", "10", "ddcutil", "detect", "--brief"]')
+    s = s.replace(old, new, 1)
+    io.open(brightness, "w", encoding="utf-8", newline="\n").write(s)
+    print("Brightness.qml: ddcutil detect is wall-clocked")
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__.strip())
@@ -352,6 +409,7 @@ def main():
     verify_alignment(nexus)
     patch_nav_search(nexus)
     patch_actions_selector(launcher)
+    patch_ddc_timeout(os.path.join(release, "services"))
 
     # Only now are our pages written in. Doing this before the checks above is
     # what broke the build: the "upstream ships this" test cannot tell a file
