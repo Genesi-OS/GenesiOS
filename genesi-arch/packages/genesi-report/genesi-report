@@ -187,13 +187,39 @@ collect_audio_display() {
     if have amixer; then
         # The decisive number. "Limits" plus the dB range say whether the lower
         # half of the slider maps to anything a person can hear.
-        echo "  hardware mixer range:"
-        for c in 0 1 2; do
-            out="$(amixer -c "$c" sget Master 2>/dev/null | grep -E 'Limits|dB|Playback channels' | head -4)"
-            [ -n "${out}" ] && printf '    card %s
-%s
-' "$c" "$(printf '%s
-' "${out}" | sed 's/^/      /')"
+        # Every card and every control it really has.
+        #
+        # This block used to run `amixer -c $c sget Master` over cards 0, 1 and
+        # 2. Both halves of that were wrong, and together they sent a diagnosis
+        # down the wrong path for two days:
+        #
+        #   * Card numbers are not stable. USB devices enumerate in whatever
+        #     order they appear, so "card 2" in one boot is a different device
+        #     in the next.
+        #   * "Master" is not a control every card has. The reported headset has
+        #     none, so the only output ever printed came from a DIFFERENT card --
+        #     the built-in codec -- and was read as if it described the headset.
+        #
+        # A report that confidently describes the wrong device is worse than one
+        # that says nothing. So: name each card, say which one the default sink
+        # actually uses, and print the controls that exist rather than the one
+        # we hoped for.
+        echo "  cards:"
+        sed 's/^/    /' /proc/asound/cards 2>/dev/null | redact
+        for _d in /proc/asound/card[0-9]*; do
+            [ -d "${_d}" ] || continue
+            _n="${_d##*card}"
+            echo "  card ${_n} (${_n:+$(cat "${_d}/id" 2>/dev/null)}) controls:"
+            _sc="$(amixer -c "${_n}" scontrols 2>/dev/null | sed "s/^/      /")"
+            if [ -n "${_sc}" ]; then
+                printf '%s\n' "${_sc}" | redact
+                # The playback values, so a floor or a mute is visible.
+                amixer -c "${_n}" scontents 2>/dev/null \
+                    | grep -E "Simple mixer control|Limits:|Mono:|Front Left:" \
+                    | sed "s/^/        /" | head -30 | redact
+            else
+                echo "      (no mixer controls at all -- volume is software only)"
+            fi
         done
     fi
     if [ -d /usr/share/wireplumber ] || [ -d /etc/wireplumber ]; then
