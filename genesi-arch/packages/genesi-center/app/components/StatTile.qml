@@ -32,10 +32,36 @@ Item {
     property bool showGraph: true
     property alias graph: spark
 
+    // Position in the grid. The tiles arrive one after another rather than
+    // together: eight things appearing at once is a flash, eight arriving in
+    // sequence is the panel assembling itself.
+    property int order: 0
+
     implicitHeight: 58
 
+    opacity: 0
+    Component.onCompleted: arrive.start()
+    SequentialAnimation {
+        id: arrive
+        PauseAnimation { duration: root.order * 70 }
+        ParallelAnimation {
+            NumberAnimation {
+                target: root; property: "opacity"
+                from: 0; to: 1
+                duration: Tokens.normal; easing.type: Easing.OutCubic
+            }
+            NumberAnimation {
+                target: shift; property: "x"
+                from: -14; to: 0
+                duration: Tokens.normal; easing.type: Easing.OutCubic
+            }
+        }
+    }
+
     Row {
-        anchors.fill: parent
+        id: shift
+        anchors.verticalCenter: parent.verticalCenter
+        width: parent.width
         spacing: 12
 
         Rectangle {
@@ -65,12 +91,18 @@ Item {
                 font.pixelSize: Tokens.fsMicro
                 font.letterSpacing: 1.2
             }
+            // A number counts to its value; a string cannot, so it rolls.
             Text {
-                text: root.numeric ? Math.round(root.shown) + root.unit
-                                   : root.value
+                visible: root.numeric
+                text: Math.round(root.shown) + root.unit
                 color: Tokens.textHi
                 font.family: Tokens.mono
                 font.pixelSize: Tokens.fsValue
+            }
+            RollingValue {
+                visible: !root.numeric
+                value: root.value
+                pixelSize: Tokens.fsValue
             }
             Text {
                 text: root.sub

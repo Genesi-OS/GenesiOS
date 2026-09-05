@@ -234,6 +234,23 @@ Item {
                 GradientStop { position: 0.52; color: Qt.rgba(Tokens.bg.r, Tokens.bg.g, Tokens.bg.b, 0.30) }
                 GradientStop { position: 1.00; color: Qt.rgba(Tokens.bg.r, Tokens.bg.g, Tokens.bg.b, 0.88) }
             }
+
+        // Hairlines from the readings to the tree. Anchored to the art so they
+        // scale with it, and drawn after the image so they sit on top of the
+        // canopy rather than under it.
+        Connectors {
+            id: links
+            anchors.fill: parent
+            stroke: Tokens.accent
+            links: [
+                { x1: 0.10, y1: 0.30, x2: 0.46, y2: 0.20 },
+                { x1: 0.10, y1: 0.42, x2: 0.55, y2: 0.34 },
+                { x1: 0.10, y1: 0.54, x2: 0.41, y2: 0.52 },
+                { x1: 0.10, y1: 0.66, x2: 0.60, y2: 0.63 },
+                { x1: 0.10, y1: 0.78, x2: 0.50, y2: 0.79 }
+            ]
+        }
+
         }
 
         Canvas {
@@ -352,18 +369,21 @@ Item {
                 StatTile {
                     id: cpuTile
                     width: (parent.width - 18) / 2
+                    order: 0
                     glyph: "▣"; label: qsTr("CPU")
                     n: page.tele.cpu_percent; unit: "%"
                 }
                 StatTile {
                     id: tempTile
                     width: (parent.width - 18) / 2
+                    order: 1
                     glyph: "▲"; label: qsTr("Temperature")
                     n: page.tele.temperature_c; unit: "°C"
                 }
                 StatTile {
                     id: ramTile
                     width: (parent.width - 18) / 2
+                    order: 2
                     glyph: "▤"; label: qsTr("RAM")
                     n: page.tele.memory ? page.tele.memory.percent : undefined; unit: "%"
                     sub: page.tele.memory
@@ -372,6 +392,7 @@ Item {
                 }
                 StatTile {
                     width: (parent.width - 18) / 2
+                    order: 3
                     glyph: "◷"; label: qsTr("Uptime")
                     showGraph: false
                     value: page.tele.uptime ? page.num(page.tele.uptime.text) : "—"
@@ -379,6 +400,7 @@ Item {
                 StatTile {
                     id: diskTile
                     width: (parent.width - 18) / 2
+                    order: 4
                     glyph: "▥"; label: qsTr("Disk")
                     n: page.tele.disk ? page.tele.disk.percent : undefined; unit: "%"
                     sub: page.tele.disk && page.tele.disk.total_gb
@@ -386,6 +408,7 @@ Item {
                 }
                 StatTile {
                     width: (parent.width - 18) / 2
+                    order: 5
                     glyph: "∿"; label: qsTr("Processes")
                     showGraph: false
                     n: page.tele.processes
@@ -393,12 +416,14 @@ Item {
                 StatTile {
                     id: netTile
                     width: (parent.width - 18) / 2
+                    order: 6
                     glyph: "~"; label: qsTr("Network")
                     value: page.tele.network ? page.rate(page.tele.network.tx_bps) : "—"
                     sub: page.tele.network ? "v " + page.rate(page.tele.network.rx_bps) : ""
                 }
                 StatTile {
                     width: (parent.width - 18) / 2
+                    order: 7
                     glyph: "o"; label: qsTr("Users")
                     showGraph: false
                     value: page.tele.users ? page.num(page.tele.users.count) : "—"
@@ -423,8 +448,22 @@ Item {
                 delegate: Panel {
                     id: tool
                     required property var modelData
+                    required property int index
                     width: 88
                     height: 78
+
+                    opacity: 0
+                    Component.onCompleted: toolIn.start()
+                    SequentialAnimation {
+                        id: toolIn
+                        // After the eight readings above have finished.
+                        PauseAnimation { duration: 560 + tool.index * 60 }
+                        NumberAnimation {
+                            target: tool; property: "opacity"
+                            from: 0; to: 1
+                            duration: Tokens.normal; easing.type: Easing.OutCubic
+                        }
+                    }
                     interactive: true
                     hovered: toolMouse.containsMouse
                     scale: toolMouse.containsMouse ? 1.03 : 1.0
@@ -643,11 +682,28 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 14
                 spacing: 8
+                // The prompt types itself. It is the one element on the page
+                // that is pretending to be a terminal, and a terminal that is
+                // already finished when you look at it is a screenshot.
                 Text {
-                    text: "> genesi@os:~ $"
+                    id: prompt
+                    readonly property string full: "> genesi@os:~ $"
+                    property int chars: 0
+                    text: full.substring(0, chars)
                     color: Tokens.accent
                     font.family: Tokens.mono
                     font.pixelSize: Tokens.fsLabel
+
+                    Component.onCompleted: typing.start()
+                    SequentialAnimation {
+                        id: typing
+                        PauseAnimation { duration: 420 }
+                        NumberAnimation {
+                            target: prompt; property: "chars"
+                            from: 0; to: prompt.full.length
+                            duration: 700
+                        }
+                    }
                 }
                 // The mark, rasterised from art/genesi-leaf.svg rather than
                 // typed, by devtools/leaf-matrix.py -- so the terminal plate
@@ -688,7 +744,10 @@ Item {
     }
 
     // Entrance: the page assembles rather than appearing. One sweep, once.
-    Component.onCompleted: entrance.start()
+    Component.onCompleted: {
+        entrance.start();
+        links.draw();
+    }
     ParallelAnimation {
         id: entrance
         NumberAnimation {

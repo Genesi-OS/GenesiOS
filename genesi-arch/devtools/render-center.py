@@ -105,10 +105,16 @@ def settle(ms):
     loop.exec()
 
 
+# A second argument is a capture time in ms, measured from the moment the data
+# arrives. The default waits for everything to finish; a smaller number catches
+# the page mid-assembly, which is the only way to see whether the motion is
+# actually there rather than trusting that a NumberAnimation ran.
+AT = int(sys.argv[2]) if len(sys.argv) > 2 else 1800
+
 settle(300)
 backend.dataReady.emit(json.dumps(SAMPLE))
-# Long enough for the entrance sweep and the ring to finish.
-settle(1600)
+settle(AT)
+print(f"captured {AT}ms after the first reading")
 
 img = win.grabWindow()
 img.save(OUT)
