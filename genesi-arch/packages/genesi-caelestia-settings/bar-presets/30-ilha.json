@@ -1,10 +1,10 @@
 {
-  "name": "Clock first · Relógio",
-  "description": "The time at the top with its date, everything else below it",
+  "name": "Island · Ilha",
+  "description": "A floating desktop with heavily rounded corners, the bar on its edge",
   "bar": {
     "entries": [
       {
-        "id": "clock",
+        "id": "logo",
         "enabled": true
       },
       {
@@ -24,7 +24,7 @@
         "enabled": true
       },
       {
-        "id": "statusIcons",
+        "id": "clock",
         "enabled": true
       },
       {
@@ -32,14 +32,17 @@
         "enabled": true
       }
     ],
-    "width": 58,
-    "clock": {
-      "showDate": true,
-      "background": true,
-      "showIcon": false
-    },
+    "width": 52,
+    "spacing": 18,
     "workspaces": {
-      "showWindows": false
+      "showWindows": false,
+      "shown": 5
+    },
+    "clock": {
+      "background": true
+    },
+    "tray": {
+      "background": true
     }
   },
   "border": {

@@ -46,5 +46,10 @@
       "activeLabel": "",
       "showWindows": false
     }
+  },
+  "border": {
+    "thickness": 6,
+    "rounding": 12,
+    "smoothing": 10
   }
 }

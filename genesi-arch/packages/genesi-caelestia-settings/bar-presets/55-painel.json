@@ -1,6 +1,6 @@
 {
   "name": "Dock · Painel",
-  "description": "A wide panel: every reading on screen at once",
+  "description": "A wide panel: every reading and every open window at once",
   "bar": {
     "entries": [
       {
@@ -52,6 +52,7 @@
     "workspaces": {
       "showWindows": true,
       "maxWindowIcons": 6,
+      "realWindowIcons": true,
       "occupiedBg": true
     },
     "status": {
@@ -59,5 +60,10 @@
       "showMicrophone": true,
       "showKbLayout": true
     }
+  },
+  "border": {
+    "thickness": 12,
+    "rounding": 28,
+    "smoothing": 20
   }
 }

@@ -447,6 +447,17 @@
         "group": "bar"
       },
       {
+        "name": "Bar: Flush · Rente",
+        "icon": "border_outer",
+        "description": "No frame at all: the bar sits hard against the screen edge",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "15-borda"
+        ],
+        "group": "bar"
+      },
+      {
         "name": "Bar: Centred · Centralizado",
         "icon": "vertical_align_center",
         "description": "Logo at the top, workspaces in the middle, the rest at the bottom",
@@ -469,13 +480,13 @@
         "group": "bar"
       },
       {
-        "name": "Bar: Minimal · Mínimo",
-        "icon": "check_box_outline_blank",
-        "description": "Workspaces and the time, nothing else",
+        "name": "Bar: Island · Ilha",
+        "icon": "rounded_corner",
+        "description": "A floating desktop with heavily rounded corners, the bar on its edge",
         "command": [
           "genesi-bar",
           "apply",
-          "30-minimo"
+          "30-ilha"
         ],
         "group": "bar"
       },
@@ -492,7 +503,7 @@
       },
       {
         "name": "Bar: Airy · Arejado",
-        "icon": "expand",
+        "icon": "open_in_full",
         "description": "Wide and loosely spaced, with room around every icon",
         "command": [
           "genesi-bar",
@@ -502,9 +513,9 @@
         "group": "bar"
       },
       {
-        "name": "Bar: Windows · Janelas",
+        "name": "Bar: App icons · Ícones dos apps",
         "icon": "select_window",
-        "description": "Each workspace shows the icons of what is open in it",
+        "description": "Every open window drawn as its own icon under its workspace",
         "command": [
           "genesi-bar",
           "apply",
@@ -514,8 +525,8 @@
       },
       {
         "name": "Bar: Dock · Painel",
-        "icon": "dashboard",
-        "description": "A wide panel: every reading on screen at once",
+        "icon": "space_dashboard",
+        "description": "A wide panel: every reading and every open window at once",
         "command": [
           "genesi-bar",
           "apply",
@@ -525,7 +536,7 @@
       },
       {
         "name": "Bar: Dense · Informativo",
-        "icon": "data_usage",
+        "icon": "dashboard",
         "description": "Everything on: date, audio, microphone, keyboard layout",
         "command": [
           "genesi-bar",

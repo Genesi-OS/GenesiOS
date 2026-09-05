@@ -36,5 +36,10 @@
         "enabled": true
       }
     ]
+  },
+  "border": {
+    "thickness": 12,
+    "rounding": 28,
+    "smoothing": 20
   }
 }

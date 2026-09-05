@@ -1,6 +1,6 @@
 {
-  "name": "Windows · Janelas",
-  "description": "Each workspace shows the icons of what is open in it",
+  "name": "App icons · Ícones dos apps",
+  "description": "Every open window drawn as its own icon under its workspace",
   "bar": {
     "entries": [
       {
@@ -9,14 +9,6 @@
       },
       {
         "id": "workspaces",
-        "enabled": true
-      },
-      {
-        "id": "spacer",
-        "enabled": true
-      },
-      {
-        "id": "activeWindow",
         "enabled": true
       },
       {
@@ -40,12 +32,20 @@
         "enabled": true
       }
     ],
-    "width": 52,
+    "width": 56,
+    "spacing": 12,
     "workspaces": {
       "showWindows": true,
       "maxWindowIcons": 8,
+      "realWindowIcons": true,
       "occupiedBg": true,
-      "shown": 6
+      "shown": 6,
+      "activeIndicator": true
     }
+  },
+  "border": {
+    "thickness": 6,
+    "rounding": 12,
+    "smoothing": 10
   }
 }

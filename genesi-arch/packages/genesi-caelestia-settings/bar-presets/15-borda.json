@@ -1,14 +1,10 @@
 {
-  "name": "Clock first · Relógio",
-  "description": "The time at the top with its date, everything else below it",
+  "name": "Flush · Rente",
+  "description": "No frame at all: the bar sits hard against the screen edge",
   "bar": {
     "entries": [
       {
-        "id": "clock",
-        "enabled": true
-      },
-      {
-        "id": "spacer",
+        "id": "logo",
         "enabled": true
       },
       {
@@ -20,7 +16,19 @@
         "enabled": true
       },
       {
+        "id": "activeWindow",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
         "id": "tray",
+        "enabled": true
+      },
+      {
+        "id": "clock",
         "enabled": true
       },
       {
@@ -32,19 +40,11 @@
         "enabled": true
       }
     ],
-    "width": 58,
-    "clock": {
-      "showDate": true,
-      "background": true,
-      "showIcon": false
-    },
-    "workspaces": {
-      "showWindows": false
-    }
+    "spacing": 10
   },
   "border": {
-    "thickness": 22,
-    "rounding": 44,
-    "smoothing": 24
+    "thickness": 0,
+    "rounding": 0,
+    "smoothing": 0
   }
 }

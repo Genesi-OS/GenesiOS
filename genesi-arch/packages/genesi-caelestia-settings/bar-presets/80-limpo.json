@@ -41,5 +41,10 @@
       }
     ],
     "spacing": 16
+  },
+  "border": {
+    "thickness": 12,
+    "rounding": 28,
+    "smoothing": 20
   }
 }

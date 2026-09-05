@@ -29,5 +29,10 @@
     "clock": {
       "showIcon": false
     }
+  },
+  "border": {
+    "thickness": 0,
+    "rounding": 0,
+    "smoothing": 0
   }
 }

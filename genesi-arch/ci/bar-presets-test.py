@@ -22,6 +22,7 @@ repository:
     and a preset with no action is invisible
   * the ids genesi-bar accepts match the ids listed here
 """
+import ast
 import io
 import json
 import os
@@ -59,6 +60,66 @@ GENESI_BAR_KEYS = {
     "spacing": 'CONFIG_PROPERTY(int, spacing, -1)',
 }
 
+# The sub-objects, also from barconfig.hpp. Checking only the top level would
+# have missed every interesting mistake: a preset is a look, and a look is made
+# almost entirely of these -- `showWindows`, `occupiedBg`, `activeTrail`,
+# `showDate`. A typo in one of them is dropped by the config parser in exactly
+# the same silence as an entry id the bar does not know, except that here the
+# bar still redraws and looks nearly right.
+SUB_KEYS = {
+    "scrollActions": {"workspaces", "volume", "brightness"},
+    "popouts": {"activeWindow", "tray", "statusIcons"},
+    "workspaces": {"shown", "activeIndicator", "occupiedBg", "showWindows",
+                   "showWindowsOnSpecialWorkspaces", "maxWindowIcons",
+                   "activeTrail", "perMonitorWorkspaces", "label",
+                   "occupiedLabel", "activeLabel", "capitalisation",
+                   "specialWorkspaceIcons", "windowIcons"},
+    "activeWindow": {"compact", "inverted", "showOnHover"},
+    "tray": {"background", "recolour", "compact", "iconSubs", "hiddenIcons"},
+    "status": {"showAudio", "showMicrophone", "showKbLayout", "showNetwork",
+               "showWifi", "showBluetooth", "showBattery", "showLockStatus"},
+    "clock": {"background", "showDate", "showIcon"},
+}
+
+GENESI_SUB_KEYS = {
+    ("workspaces", "realWindowIcons"):
+        'CONFIG_PROPERTY(bool, realWindowIcons, false)',
+}
+
+# A preset is a LOOK: the bar, plus the frame the whole desktop sits inside.
+# Nothing else -- a preset that could rewrite the launcher or the session
+# commands is one nobody should try. genesi-bar refuses those at apply time;
+# this refuses them at build time, when there is someone to tell.
+LOOK_SECTIONS = ("bar", "border")
+BORDER_KEYS = {"thickness", "rounding", "smoothing"}  # borderconfig.hpp
+
+
+def without_prose(src):
+    """
+    caelestia-patches.py with its comments and docstrings removed.
+
+    This check asks "does a patch actually add this property", and it asks by
+    looking for the declaration in the patch's source. Three guards in this
+    repository have already passed on the exact bug they existed to catch,
+    because the fix's own comment contained the string being searched for --
+    the docstring above a patch is precisely where someone would write
+    CONFIG_PROPERTY(bool, realWindowIcons, false) while explaining it.
+
+    String LITERALS stay: the declaration this looks for is inside one, since
+    that is how the patch injects it. Only prose goes.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        # Better to check the raw file than to check nothing. A syntax error in
+        # the patcher is a build failure of its own, one file over.
+        return src
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)) and ast.get_docstring(node):
+            node.body = node.body[1:]
+    return ast.unparse(tree)
+
 
 def main():
     print("== caelestia bar presets ==")
@@ -92,8 +153,32 @@ def main():
         if not isinstance(bar, dict):
             continue
 
+        for k in sorted(set(p) - {"name", "description"} - set(LOOK_SECTIONS)):
+            bad.append((pid, f"sets {k!r}, which is not part of a bar look"))
+
+        border = p.get("border")
+        if border is not None:
+            if not isinstance(border, dict):
+                bad.append((pid, "has a border that is not an object"))
+            else:
+                for k in sorted(set(border) - BORDER_KEYS):
+                    bad.append((pid, f"sets border.{k}, which the frame does "
+                                     "not have"))
+
         for k in sorted(set(bar) - BAR_KEYS - set(GENESI_BAR_KEYS)):
             bad.append((pid, f"sets bar.{k}, which the bar does not have"))
+
+        for sub, keys in SUB_KEYS.items():
+            got = bar.get(sub)
+            if got is None:
+                continue
+            if not isinstance(got, dict):
+                bad.append((pid, f"has a bar.{sub} that is not an object"))
+                continue
+            ours = {k for (s, k) in GENESI_SUB_KEYS if s == sub}
+            for k in sorted(set(got) - keys - ours):
+                bad.append((pid, f"sets bar.{sub}.{k}, which the bar does not "
+                                 "have -- it is dropped in silence"))
 
         entries = bar.get("entries")
         if not isinstance(entries, list) or not entries:
@@ -118,6 +203,7 @@ def main():
     if os.path.exists(patches):
         with io.open(patches, encoding="utf-8") as fh:
             psrc = fh.read()
+        psrc = without_prose(psrc)
     used = set()
     for fn in files:
         try:
@@ -125,10 +211,40 @@ def main():
                 used |= set((json.load(fh).get("bar") or {}))
         except (OSError, json.JSONDecodeError):
             pass
+    used_sub = set()
+    for fn in files:
+        try:
+            with io.open(os.path.join(PRESETS, fn), encoding="utf-8") as fh:
+                b = json.load(fh).get("bar") or {}
+        except (OSError, json.JSONDecodeError):
+            continue
+        for sub, got in b.items():
+            if isinstance(got, dict):
+                used_sub |= {(sub, k) for k in got}
+
     for k in sorted(used & set(GENESI_BAR_KEYS)):
         if psrc and GENESI_BAR_KEYS[k] not in psrc:
             bad.append(("caelestia-patches.py",
                         f"no patch adds bar.{k}, but a preset sets it"))
+    for key in sorted(used_sub & set(GENESI_SUB_KEYS)):
+        if psrc and GENESI_SUB_KEYS[key] not in psrc:
+            bad.append(("caelestia-patches.py",
+                        f"no patch adds bar.{key[0]}.{key[1]}, but a preset "
+                        "sets it"))
+
+    # genesi-bar decides which sections it will write. If it stops writing
+    # `border`, every preset here that leans on the frame becomes a preset that
+    # changes the bar and leaves the desktop looking like the last one.
+    if os.path.exists(CLI):
+        with io.open(CLI, encoding="utf-8") as fh:
+            cli = fh.read()
+        m = re.search(r"LOOK_SECTIONS = \((.*?)\)", cli, re.S)
+        if not m:
+            bad.append(("genesi-bar", "no longer declares LOOK_SECTIONS"))
+        elif set(re.findall(r'"([^"]+)"', m.group(1))) != set(LOOK_SECTIONS):
+            bad.append(("genesi-bar",
+                        f"applies {m.group(1).strip()}, this checks "
+                        f"{list(LOOK_SECTIONS)}"))
 
     # The CLI's own list of valid ids must agree with this one, or it will
     # accept a preset the bar then drops.

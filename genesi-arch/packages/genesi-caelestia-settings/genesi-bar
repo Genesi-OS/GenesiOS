@@ -100,12 +100,22 @@ def write_config(data):
 
 
 def current_name(presets, cfg):
+    """
+    Which preset is applied, comparing the whole look.
+
+    Comparing only `bar` would call two presets identical when they differ
+    solely in the frame around the desktop -- which is the most visible thing
+    about them.
+    """
     bar = cfg.get("bar")
     if not isinstance(bar, dict):
         return None
     for pid, p in presets.items():
-        if p.get("bar") == bar:
-            return pid
+        if p.get("bar") != bar:
+            continue
+        if p.get("border", None) != cfg.get("border", None):
+            continue
+        return pid
     return None
 
 
@@ -120,6 +130,17 @@ def cmd_list(presets):
             print(f"      {desc}")
     if cur is None and isinstance(cfg.get("bar"), dict):
         print("\n   (the current bar matches no preset -- it has been edited by hand)")
+
+
+# Sections a preset may own. `bar` is the bar itself; `border` is the frame the
+# whole desktop sits inside -- its thickness and rounding are what make a bar
+# read as flush to the screen edge or as a floating panel, and that is a bigger
+# visual difference than anything inside the bar.
+#
+# Deliberately a list rather than "whatever the preset contains": a preset is a
+# LOOK, and a look that could quietly rewrite the launcher or the session
+# commands is a preset nobody should trust enough to try.
+LOOK_SECTIONS = ("bar", "border")
 
 
 def cmd_apply(presets, name):
@@ -137,8 +158,21 @@ def cmd_apply(presets, name):
         die(f"preset {name!r} names entries the bar does not know: "
             + ", ".join(str(b) for b in bad))
 
+    stray = [k for k in p if k in ("session", "launcher", "background")]
+    if stray:
+        die(f"preset {name!r} tries to set {', '.join(stray)}, which is not "
+            "part of a bar look")
+
     cfg = read_config()
-    cfg["bar"] = bar
+    for section in LOOK_SECTIONS:
+        if section in p:
+            cfg[section] = p[section]
+        elif section != "bar":
+            # A preset that does not mention the frame RESTORES the default
+            # rather than inheriting the last one. Otherwise switching from a
+            # floating look to a flush one would leave the frame behind, and
+            # the second preset would be blamed for it.
+            cfg.pop(section, None)
     write_config(cfg)
     print(f"{p.get('name', name)}")
 
@@ -242,6 +276,8 @@ def cmd_json(presets):
                 "name": p.get("name", pid),
                 "description": p.get("description", ""),
                 "entries": (p.get("bar") or {}).get("entries", []),
+                "width": (p.get("bar") or {}).get("width", 0),
+                "border": p.get("border", {}),
             }
             for pid, p in presets.items()
         ],

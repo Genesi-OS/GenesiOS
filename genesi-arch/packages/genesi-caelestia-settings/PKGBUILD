@@ -163,7 +163,7 @@ pkgver=1.0.0
 # 35: `genesi-bar shell` switches between caelestia's rail and Genesi's own
 # top bar, hyprland.conf starts whichever is remembered, and the migration
 # rewrites existing configs to ask rather than to name one.
-pkgrel=35
+pkgrel=36
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

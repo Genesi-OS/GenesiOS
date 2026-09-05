@@ -789,6 +789,173 @@ def patch_bar_proportions(release):
     print("bar: width and spacing are configurable")
 
 
+def patch_window_icons(release):
+    """
+    Draw the real application icon for each open window, when a preset asks.
+
+    caelestia already puts a mark per open window inside its workspace, but
+    the mark is `Icons.getAppCategoryIcon(class, "terminal")` -- a Material
+    Symbols glyph for the app's CATEGORY. Every browser is the same globe and
+    every editor the same page, so a workspace holding Firefox, Chromium and a
+    terminal shows two identical circles and a third. That is not what "the
+    bar shows the icons of the open apps" means to anyone looking at one.
+
+    The machinery for the real thing is already in the tree and already used
+    one module over: `Icons.getAppIcon` resolves a window class through
+    DesktopEntries, and the active-window popout draws the result. This puts
+    the same lookup in the bar, behind a property, because it is a real trade:
+    the glyphs are one colour and follow the scheme, while real icons are
+    full-colour and will not.
+
+        bar.workspaces.realWindowIcons   false = the category glyph
+
+    Three things are patched, and skipping any one of them ships something
+    worse than not doing it at all:
+
+      * Icons.qml gains a lookup that CHECKS the icon exists. getAppIcon does
+        not: handed a class no desktop entry matches, it returns a path to
+        nothing, and the bar would draw a column of broken-image icons instead
+        of falling back.
+      * both files that draw window marks. Patching only Workspace.qml gives a
+        bar whose ordinary workspaces show app icons and whose special
+        workspaces show glyphs -- which reads as a bug, not a look.
+      * the glyph stays loaded and keeps sizing the row, so a workspace does
+        not change height depending on how many of its windows were found in
+        the desktop database.
+    """
+    icons = os.path.join(release, "utils", "Icons.qml")
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "barconfig.hpp")
+    marks = [
+        os.path.join(release, "modules", "bar", "components", "workspaces",
+                     "Workspace.qml"),
+        os.path.join(release, "modules", "bar", "components", "workspaces",
+                     "SpecialWorkspaces.qml"),
+    ]
+    for p in [icons, hpp] + marks:
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the bar's workspaces moved or were renamed.")
+
+    # Everything is checked before anything is written. A patch that writes as
+    # it goes and refuses halfway leaves the tree half-patched, and the second
+    # run then refuses on the half it already did -- which is how a rerun of
+    # this function ended up with the lookup declared twice in Icons.qml.
+    src = {p: io.open(p, encoding="utf-8").read() for p in [icons, hpp] + marks}
+
+    if "realWindowIcons" in src[hpp]:
+        fail("barconfig.hpp already knows realWindowIcons -- upstream added "
+             "one, or this ran twice. Read theirs and drop this patch.")
+
+    # ── the lookup ───────────────────────────────────────────────────────────
+    s = src[icons]
+    anchor = '    function getAppCategoryIcon(name: string, fallback: string): string {\n'
+    if anchor not in s:
+        fail("Icons.qml no longer has getAppCategoryIcon where the patch "
+             "expects it.")
+    s = s.replace(anchor, (
+        '    // Genesi: the real icon for a window class, or "" when there is\n'
+        '    // none. iconPath(name, true) CHECKS that the icon resolves --\n'
+        '    // getAppIcon does not, and a path to a missing icon draws as the\n'
+        '    // broken-image glyph rather than falling back to the category one.\n'
+        '    function getRealAppIcon(name: string): string {\n'
+        '        const icon = DesktopEntries.heuristicLookup(name)?.icon;\n'
+        '        return icon ? Quickshell.iconPath(icon, true) : "";\n'
+        '    }\n'
+        '\n'
+    ) + anchor, 1)
+    out = {icons: s}
+
+    # ── the property ─────────────────────────────────────────────────────────
+    s = src[hpp]
+    ws_anchor = "    CONFIG_PROPERTY(int, maxWindowIcons, 5)\n"
+    if ws_anchor not in s:
+        fail("BarWorkspaces' window-icon properties are not where the patch "
+             "expects them.")
+    s = s.replace(ws_anchor, ws_anchor + (
+        "    // Genesi: draw each open window as its own app icon instead of a\n"
+        "    // glyph for its category. Off by default: the glyphs recolour\n"
+        "    // with the scheme and real icons do not.\n"
+        "    CONFIG_PROPERTY(bool, realWindowIcons, false)\n"
+    ), 1)
+    out[hpp] = s
+
+    # ── the marks ────────────────────────────────────────────────────────────
+    for path in marks:
+        s = src[path]
+
+        m = re.search(r"^([ \t]+)MaterialIcon \{\n"
+                      r"[ \t]+required property var modelData\n"
+                      r"\n"
+                      r"[ \t]+grade: 0\n"
+                      r"[ \t]+text: Icons\.getAppCategoryIcon\(modelData\."
+                      r"lastIpcObject\.class, \"terminal\"\)\n"
+                      r"[ \t]+color: Colours\.palette\.m3onSurfaceVariant\n"
+                      r"[ \t]+\}\n", s, re.M)
+        if not m:
+            fail(f"{os.path.basename(path)} no longer draws its window marks "
+                 "the way the patch expects.")
+        i = m.group(1)
+        if "import Quickshell\n" not in s:
+            fail(f"{os.path.basename(path)} does not import Quickshell.")
+
+        new = (
+            f'{i}// Genesi: the real app icon when the preset asks for it, the\n'
+            f'{i}// category glyph otherwise. The glyph stays loaded either way\n'
+            f'{i}// -- it is what gives the column its height, so a workspace\n'
+            f'{i}// does not resize depending on which of its windows resolved.\n'
+            f'{i}Item {{\n'
+            f'{i}    id: winMark\n'
+            f'{i}\n'
+            f'{i}    required property var modelData\n'
+            f'{i}\n'
+            f'{i}    implicitWidth: glyph.implicitWidth\n'
+            f'{i}    implicitHeight: glyph.implicitHeight\n'
+            f'{i}\n'
+            f'{i}    MaterialIcon {{\n'
+            f'{i}        id: glyph\n'
+            f'{i}\n'
+            f'{i}        anchors.centerIn: parent\n'
+            f'{i}        grade: 0\n'
+            f'{i}        opacity: appIcon.visible ? 0 : 1\n'
+            f'{i}        text: Icons.getAppCategoryIcon(winMark.modelData.'
+            f'lastIpcObject.class, "terminal")\n'
+            f'{i}        color: Colours.palette.m3onSurfaceVariant\n'
+            f'{i}    }}\n'
+            f'{i}\n'
+            f'{i}    IconImage {{\n'
+            f'{i}        id: appIcon\n'
+            f'{i}\n'
+            f'{i}        anchors.centerIn: parent\n'
+            f'{i}        asynchronous: true\n'
+            f'{i}        implicitSize: glyph.implicitHeight\n'
+            f'{i}        source: root.Config.bar.workspaces.realWindowIcons '
+            f'? Icons.getRealAppIcon(winMark.modelData.lastIpcObject.class) '
+            f': ""\n'
+            f'{i}        visible: source != ""\n'
+            f'{i}    }}\n'
+            f'{i}}}\n'
+        )
+        # The splice FIRST: m's offsets are into the string as it was searched,
+        # and adding the import above would shift everything after it by the
+        # length of that line -- which is exactly how an earlier version of
+        # this cut the replacement into the middle of the line above.
+        # A blank line built as indent + newline is a line of trailing spaces.
+        # Harmless to Qt, but this is generated code that ships in a package.
+        new = "".join(l.rstrip() + "\n" for l in new.splitlines())
+
+        s = s[:m.start()] + new + s[m.end():]
+
+        # IconImage lives in Quickshell.Widgets, which neither file imports.
+        if "import Quickshell.Widgets\n" not in s:
+            s = s.replace("import Quickshell\n",
+                          "import Quickshell\nimport Quickshell.Widgets\n", 1)
+        out[path] = s
+
+    for path, s in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(s)
+    print("bar: open windows can be drawn as real app icons")
+
+
 def patch_ddc_timeout(services_dir):
     """
     Bound the DDC/CI probe so it cannot hammer a monitor that never answers.
@@ -871,6 +1038,7 @@ def main():
     patch_applist_live_model(launcher)
     patch_wallpaper_transition(release)
     patch_bar_proportions(release)
+    patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 
     # Only now are our pages written in. Doing this before the checks above is
