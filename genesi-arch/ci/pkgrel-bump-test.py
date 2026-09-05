@@ -83,6 +83,45 @@ def pkg_meta(d):
     return name, ver, rel
 
 
+def build_inputs(d):
+    """
+    Every path a package's PKGBUILD reads from OUTSIDE its own directory.
+
+    Several Genesi packages are built partly from files that live elsewhere in
+    the tree: the shared genesi-ui-kit components are copied in at build time
+    rather than depended on, and genesi-caelestia-shell applies
+    ci/caelestia-patches.py to the upstream tarball. Editing one of those
+    changes what those packages CONTAIN while leaving their directories
+    untouched -- so this check, which looked only at the package directory,
+    said nothing had changed and the fix would have been published under a
+    version every machine already had.
+
+    That is not hypothetical: a contrast colour in genesi-ui-kit's GButton was
+    fixed and five packages bundle it.
+
+    Read out of the PKGBUILD rather than kept as a list here, so a package that
+    starts bundling something new is covered the day it does.
+    """
+    p = os.path.join(PKGDIR, d, "PKGBUILD")
+    if not os.path.exists(p):
+        return []
+    with io.open(p, encoding="utf-8", errors="replace") as fh:
+        src = fh.read()
+
+    out = set()
+    # ${startdir}/../genesi-ui-kit/components/Theme.qml
+    # ${startdir}/../../ci/caelestia-patches.py
+    for m in re.finditer(r"\$\{?startdir\}?/((?:\.\./)+[^\"'\s$}]+)", src):
+        rel = os.path.normpath(os.path.join("genesi-arch", "packages", d,
+                                            m.group(1))).replace("\\", "/")
+        # Only inside the repo, and never the package's own directory (already
+        # checked) or the whole tree.
+        if rel.startswith("genesi-arch/") and rel.count("/") >= 2:
+            # A file reference is enough; git diff takes either.
+            out.add(rel)
+    return sorted(out)
+
+
 def published():
     """pkgname -> "pkgver-pkgrel" currently in the repo directory."""
     out = {}
@@ -125,7 +164,8 @@ def main():
         # this before committing reported nothing changed -- which is exactly
         # when a person wants to be told. Diffing base against the tree covers
         # both: in CI the tree is HEAD.
-        changed = git("diff", "--name-only", base, "--", rel_path)
+        changed = git("diff", "--name-only", base, "--", rel_path,
+                      *build_inputs(d))
         if not changed.strip():
             continue
         checked += 1

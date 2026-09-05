@@ -141,7 +141,7 @@ pkgver=1.0.0
 # Layout.fillHeight to TRUE for a nested layout and false for everything else,
 # so the column of four status banners -- all of them hidden on a healthy
 # machine -- was silently swallowing every spare pixel on the page.
-pkgrel=25
+pkgrel=26
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -222,6 +222,33 @@ for path in sorted(PACKAGES.rglob("*.qml")):
                         f"{rel}:{line}: `{m.group(1)}.{typ}....` is qualified but "
                         f"{module} is imported plainly -> write `{typ}....`")
 
+    # ── A property named like a signal handler ──────────────────────────────
+    # `property color onAccent: ...` does not reliably declare a property. QML
+    # reads a name that is `on` followed by a capital as a signal handler, and
+    # what happens next depends on the value -- both outcomes verified under
+    # Qt 6.11:
+    #
+    #   a literal     -> LOAD ERROR, "Cannot assign a value to a signal
+    #                    (expecting a script to be run)", which takes the whole
+    #                    file down. In a singleton of design tokens that is
+    #                    every component importing it.
+    #   an expression -> loads, the property exists, and the binding is
+    #                    SILENTLY DROPPED. The property keeps its default: an
+    #                    invalid colour, which paints black.
+    #
+    # The second is why this check exists. genesi-ui-kit's GButton carried
+    # `readonly property color onAccent` computing a contrast colour, and every
+    # filled button had been drawing its label in flat black instead -- nobody
+    # noticed, because black is what that expression returns on a light accent.
+    for m in re.finditer(r"^[ \t]*(?:readonly\s+)?property\s+\w+\s+"
+                         r"(on[A-Z]\w*)\s*:", code, re.M):
+        line = code[:m.start()].count("\n") + 1
+        failures.append(
+            f"{rel}:{line}: `{m.group(1)}` is parsed as a handler for a signal "
+            f"called `{m.group(1)[2].lower() + m.group(1)[3:]}`, not as a "
+            f"property -> rename it (would fail at load with 'Cannot assign a "
+            f"value to a signal')")
+
     # ── Unknown property assigned to a LOCAL component ──────────────────────
     # QML resolves properties at LOAD time, so `FIcon { theme: ... }` on a
     # component that has no `theme` is not a warning — it aborts the whole

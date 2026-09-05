@@ -30,7 +30,14 @@ Item {
     // Contrast colour for text/icons painted ON a filled accent: black on a light
     // accent, white on a dark one. Works for any scheme accent (no fixed brand
     // green assumption) and any custom accent the caller passes in.
-    readonly property color onAccent: root.theme && root.theme.dark ? "#FFFFFF"
+    //
+    // NOT `onAccent`, which is what this was called and why filled buttons drew
+    // their label in plain black. QML reads a name that is `on` followed by a
+    // capital as a signal handler: with a literal value it is a load error, and
+    // with an expression -- like this one -- it LOADS, the property exists, and
+    // the binding is silently dropped, leaving an invalid colour. It went
+    // unnoticed because black happens to be right on a light accent.
+    readonly property color accentText: root.theme && root.theme.dark ? "#FFFFFF"
         : ((0.299 * effAccent.r + 0.587 * effAccent.g + 0.114 * effAccent.b) >= 0.6 ? "#0A0E12" : "#FFFFFF")
 
     // SELF-SUFFICIENT colours — never dereference `theme` in a colour binding.
@@ -87,14 +94,14 @@ Item {
                 source: root.iconSource
                 Layout.preferredWidth: 16
                 Layout.preferredHeight: 16
-                color: kind === "filled" ? root.onAccent : root.effAccent
+                color: kind === "filled" ? root.accentText : root.effAccent
             }
             QQC2.Label {
                 visible: root.text.length > 0
                 text: root.text
                 font.pixelSize: 13
                 font.bold: kind === "filled"
-                color: kind === "filled" ? root.onAccent
+                color: kind === "filled" ? root.accentText
                      : (danger ? root._red : root._textHi)
             }
         }

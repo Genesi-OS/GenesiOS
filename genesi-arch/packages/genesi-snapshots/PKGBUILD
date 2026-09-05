@@ -73,7 +73,7 @@ pkgver=1.0.0
 # sat directly above a red banner saying root is not Btrfs. Two red boxes are
 # not twice as clear; the remedy that lived in the second has moved into the
 # first, where the diagnosis already was, and the banner is gone.
-pkgrel=16
+pkgrel=17
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

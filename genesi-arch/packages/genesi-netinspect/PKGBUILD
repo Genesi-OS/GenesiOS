@@ -100,7 +100,7 @@ pkgver=1.0.0
 # no traffic yet, that is most of the window. RawView takes a placeholder now,
 # so the request, response, repeater and intruder views each say what would put
 # something in them. Set on the component, not at six call sites.
-pkgrel=23
+pkgrel=24
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
