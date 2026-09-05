@@ -29,6 +29,10 @@ Item {
 
     readonly property int railW: 300
 
+    // Short window: the same layout, tighter. Measured against the window's
+    // own minimum (720) plus the room the bottom band and the hero need.
+    readonly property bool dense: height < 840
+
     function num(v, dash) {
         return (v === null || v === undefined) ? (dash || "—") : v;
     }
@@ -296,7 +300,7 @@ Item {
         anchors.topMargin: 20
         anchors.bottomMargin: Tokens.gap
         width: Math.max(430, parent.width * 0.42)
-        spacing: 16
+        spacing: page.dense ? 9 : 16
 
         SectionHead { index: "01"; text: qsTr("Overview") }
 
@@ -307,7 +311,7 @@ Item {
                 text: "GENESI"
                 color: Tokens.textHi
                 font.family: Tokens.sans
-                font.pixelSize: Tokens.fsHero
+                font.pixelSize: page.dense ? 40 : Tokens.fsHero
                 font.letterSpacing: 13
                 font.weight: Font.Light
             }
@@ -357,7 +361,7 @@ Item {
             // Four rows of tiles plus the margins. Sized from the contents
             // rather than guessed: the previous 210 fitted three rows, and the
             // fourth drew over the section heading underneath.
-            height: 14 * 2 + 4 * 58 + 3 * 8
+            height: 14 * 2 + 4 * (page.dense ? 46 : 58) + 3 * 8
 
             Grid {
                 anchors.fill: parent
@@ -366,9 +370,11 @@ Item {
                 columnSpacing: 18
                 rowSpacing: 8
 
+
                 StatTile {
                     id: cpuTile
                     width: (parent.width - 18) / 2
+                    implicitHeight: page.dense ? 46 : 58
                     order: 0
                     glyph: "▣"; label: qsTr("CPU")
                     n: page.tele.cpu_percent; unit: "%"
@@ -376,6 +382,7 @@ Item {
                 StatTile {
                     id: tempTile
                     width: (parent.width - 18) / 2
+                    implicitHeight: page.dense ? 46 : 58
                     order: 1
                     glyph: "▲"; label: qsTr("Temperature")
                     n: page.tele.temperature_c; unit: "°C"
@@ -383,6 +390,7 @@ Item {
                 StatTile {
                     id: ramTile
                     width: (parent.width - 18) / 2
+                    implicitHeight: page.dense ? 46 : 58
                     order: 2
                     glyph: "▤"; label: qsTr("RAM")
                     n: page.tele.memory ? page.tele.memory.percent : undefined; unit: "%"
@@ -392,6 +400,7 @@ Item {
                 }
                 StatTile {
                     width: (parent.width - 18) / 2
+                    implicitHeight: page.dense ? 46 : 58
                     order: 3
                     glyph: "◷"; label: qsTr("Uptime")
                     showGraph: false
@@ -400,6 +409,7 @@ Item {
                 StatTile {
                     id: diskTile
                     width: (parent.width - 18) / 2
+                    implicitHeight: page.dense ? 46 : 58
                     order: 4
                     glyph: "▥"; label: qsTr("Disk")
                     n: page.tele.disk ? page.tele.disk.percent : undefined; unit: "%"
@@ -408,6 +418,7 @@ Item {
                 }
                 StatTile {
                     width: (parent.width - 18) / 2
+                    implicitHeight: page.dense ? 46 : 58
                     order: 5
                     glyph: "∿"; label: qsTr("Processes")
                     showGraph: false
@@ -416,6 +427,7 @@ Item {
                 StatTile {
                     id: netTile
                     width: (parent.width - 18) / 2
+                    implicitHeight: page.dense ? 46 : 58
                     order: 6
                     glyph: "~"; label: qsTr("Network")
                     value: page.tele.network ? page.rate(page.tele.network.tx_bps) : "—"
@@ -423,6 +435,7 @@ Item {
                 }
                 StatTile {
                     width: (parent.width - 18) / 2
+                    implicitHeight: page.dense ? 46 : 58
                     order: 7
                     glyph: "o"; label: qsTr("Users")
                     showGraph: false
@@ -450,7 +463,7 @@ Item {
                     required property var modelData
                     required property int index
                     width: 88
-                    height: 78
+                    height: page.dense ? 64 : 78
 
                     opacity: 0
                     Component.onCompleted: toolIn.start()
@@ -508,7 +521,7 @@ Item {
         id: bottomBand
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         anchors.margins: 20
-        height: 178
+        height: page.dense ? 148 : 178
 
         Row {
             id: bandRow
@@ -524,7 +537,7 @@ Item {
                 SectionHead { index: "04"; text: qsTr("Snapshots") }
                 Panel {
                     width: parent.width
-                    height: 140
+                    height: page.dense ? 112 : 140
                     Column {
                         anchors.fill: parent
                         anchors.margins: 14
@@ -557,7 +570,7 @@ Item {
                 SectionHead { index: "05"; text: qsTr("Storage") }
                 Panel {
                     width: parent.width
-                    height: 140
+                    height: page.dense ? 112 : 140
                     Row {
                         anchors.fill: parent
                         anchors.margins: 14
@@ -639,7 +652,7 @@ Item {
                 SectionHead { index: "06"; text: qsTr("Recent activity") }
                 Panel {
                     width: parent.width
-                    height: 140
+                    height: page.dense ? 112 : 140
                     Column {
                         anchors.fill: parent
                         anchors.margins: 14
@@ -674,70 +687,94 @@ Item {
         // The terminal plate: the app's own voice, and the only place the
         // brand mark is drawn rather than set.
         Panel {
+            id: termPlate
             anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
             width: page.railW
             color: Tokens.panel
+            // Nothing in here may leave the card. The mark did.
+            clip: true
 
-            Column {
-                anchors.fill: parent
-                anchors.margins: 14
-                spacing: 8
-                // The prompt types itself. It is the one element on the page
-                // that is pretending to be a terminal, and a terminal that is
-                // already finished when you look at it is a screenshot.
-                Text {
-                    id: prompt
-                    readonly property string full: "> genesi@os:~ $"
-                    property int chars: 0
-                    text: full.substring(0, chars)
-                    color: Tokens.accent
-                    font.family: Tokens.mono
-                    font.pixelSize: Tokens.fsLabel
+            // The prompt types itself. It is the one element on the page that
+            // is pretending to be a terminal, and a terminal that is already
+            // finished when you look at it is a screenshot.
+            Text {
+                id: prompt
+                anchors { left: parent.left; top: parent.top; margins: 14 }
+                readonly property string full: "> genesi@os:~ $"
+                property int chars: 0
+                text: full.substring(0, chars)
+                color: Tokens.accent
+                font.family: Tokens.mono
+                font.pixelSize: Tokens.fsLabel
 
-                    Component.onCompleted: typing.start()
-                    SequentialAnimation {
-                        id: typing
-                        PauseAnimation { duration: 420 }
-                        NumberAnimation {
-                            target: prompt; property: "chars"
-                            from: 0; to: prompt.full.length
-                            duration: 700
-                        }
+                Component.onCompleted: typing.start()
+                SequentialAnimation {
+                    id: typing
+                    PauseAnimation { duration: 420 }
+                    NumberAnimation {
+                        target: prompt; property: "chars"
+                        from: 0; to: prompt.full.length
+                        duration: 700
                     }
                 }
-                // The mark, rasterised from art/genesi-leaf.svg rather than
-                // typed, by devtools/leaf-matrix.py -- so the terminal plate
-                // and the logo can never drift apart.
-                //
-                // Braille, not block characters. A braille cell carries a 2x4
-                // dot grid, so the same area holds EIGHT times the samples: the
-                // block version read as a pixelated blob at any size that fit.
-                Text {
-                    text: "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣦⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⠟⠁⠈⠻⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⢠⣿⡿⠃⠀⠀⠀⠀⠘⢿⣿⡄⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⢠⣿⡿⠁⠀⠀⠀⠀⠀⠀⠈⢿⣿⡄⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⣼⣿⠇⠀⢀⣾⣿⡄⠀⠀⠀⠸⣿⣧⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⣿⣿⣀⣀⣼⣿⣿⣧⢀⣀⣀⣀⣿⣿⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⣿⣿⠿⠿⠿⠟⢻⣿⣿⡿⠿⠿⣿⣿⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⢻⣿⡆⠀⠀⠀⠈⠿⠟⠁⠀⢰⣿⡟⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠘⣿⣷⡀⠀⠀⠀⠀⠀⠀⢀⣾⣿⠃⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠘⢿⣿⣄⠀⠀⠀⠀⣠⣿⡿⠃⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⠀⠻⢿⣷⣦⣴⣾⡿⠟⠀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⠟⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
-                    color: Tokens.accentDim
-                    font.family: Tokens.mono
-                    font.pixelSize: 11
-                    lineHeight: 0.92
-                }
+            }
+
+            Column {
+                id: termFoot
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 14 }
+                spacing: 4
+
                 Text {
                     text: "# where creations begin"
                     color: Tokens.textDim
                     font.family: Tokens.mono
                     font.pixelSize: Tokens.fsMicro
                 }
-                Row {
-                    spacing: 0
-                    Text {
-                        text: "_"
-                        color: Tokens.accent
-                        font.family: Tokens.mono
-                        font.pixelSize: Tokens.fsBody
-                        SequentialAnimation on opacity {
-                            loops: Animation.Infinite
-                            NumberAnimation { to: 0; duration: 620 }
-                            NumberAnimation { to: 1; duration: 620 }
-                        }
+                Text {
+                    text: "_"
+                    color: Tokens.accent
+                    font.family: Tokens.mono
+                    font.pixelSize: Tokens.fsBody
+                    SequentialAnimation on opacity {
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0; duration: 620 }
+                        NumberAnimation { to: 1; duration: 620 }
                     }
+                }
+            }
+
+            // The mark, rasterised from art/genesi-leaf.svg rather than typed,
+            // by devtools/leaf-matrix.py -- so the plate and the logo can never
+            // drift apart.
+            //
+            // Braille, not block characters: a braille cell carries a 2x4 dot
+            // grid, so the same area holds eight times the samples.
+            //
+            // Its SIZE is measured, not chosen. Thirteen rows at a hand-picked
+            // 11px overflowed this card and spilled onto the page, because a
+            // Column will happily grow past its parent and nothing was
+            // clipping. The type size now comes from the space actually left
+            // between the prompt and the footer, so it fits at any window size.
+            Item {
+                id: markBox
+                anchors {
+                    left: parent.left; right: parent.right
+                    top: prompt.bottom; bottom: termFoot.top
+                    leftMargin: 14; rightMargin: 14
+                    topMargin: 8; bottomMargin: 8
+                }
+
+                readonly property int rows: 13
+                readonly property real lineH: 0.92
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣦⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⠟⠁⠈⠻⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⢠⣿⡿⠃⠀⠀⠀⠀⠘⢿⣿⡄⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⢠⣿⡿⠁⠀⠀⠀⠀⠀⠀⠈⢿⣿⡄⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⣼⣿⠇⠀⢀⣾⣿⡄⠀⠀⠀⠸⣿⣧⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⣿⣿⣀⣀⣼⣿⣿⣧⢀⣀⣀⣀⣿⣿⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⣿⣿⠿⠿⠿⠟⢻⣿⣿⡿⠿⠿⣿⣿⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⢻⣿⡆⠀⠀⠀⠈⠿⠟⠁⠀⢰⣿⡟⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠘⣿⣷⡀⠀⠀⠀⠀⠀⠀⢀⣾⣿⠃⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠘⢿⣿⣄⠀⠀⠀⠀⣠⣿⡿⠃⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⠀⠻⢿⣷⣦⣴⣾⡿⠟⠀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⠟⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
+                    color: Tokens.accentDim
+                    font.family: Tokens.mono
+                    font.pixelSize: Math.max(4, Math.floor(
+                        markBox.height / (markBox.rows * markBox.lineH)))
+                    lineHeight: markBox.lineH
                 }
             }
         }

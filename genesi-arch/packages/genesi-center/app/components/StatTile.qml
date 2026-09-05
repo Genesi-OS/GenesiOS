@@ -38,6 +38,7 @@ Item {
     property int order: 0
 
     implicitHeight: 58
+    readonly property bool dense: implicitHeight < 52
 
     opacity: 0
     Component.onCompleted: arrive.start()
@@ -97,12 +98,12 @@ Item {
                 text: Math.round(root.shown) + root.unit
                 color: Tokens.textHi
                 font.family: Tokens.mono
-                font.pixelSize: Tokens.fsValue
+                font.pixelSize: root.dense ? 17 : Tokens.fsValue
             }
             RollingValue {
                 visible: !root.numeric
                 value: root.value
-                pixelSize: Tokens.fsValue
+                pixelSize: root.dense ? 17 : Tokens.fsValue
             }
             Text {
                 text: root.sub
@@ -115,7 +116,7 @@ Item {
 
         Sparkline {
             id: spark
-            visible: root.showGraph
+            visible: root.showGraph && !root.dense
             width: Math.max(0, parent.width - 34 - 96 - 24)
             height: 30
             anchors.verticalCenter: parent.verticalCenter

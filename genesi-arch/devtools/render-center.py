@@ -111,6 +111,15 @@ def settle(ms):
 # actually there rather than trusting that a NumberAnimation ran.
 AT = int(sys.argv[2]) if len(sys.argv) > 2 else 1800
 
+# A third argument resizes the window ("1100x720"). Layouts that were fitted by
+# eye at one size come apart at another, and the smallest size the window
+# allows is where that shows first.
+if len(sys.argv) > 3:
+    w, _, h = sys.argv[3].partition("x")
+    win.setWidth(int(w))
+    win.setHeight(int(h))
+    settle(120)
+
 settle(300)
 backend.dataReady.emit(json.dumps(SAMPLE))
 settle(AT)
