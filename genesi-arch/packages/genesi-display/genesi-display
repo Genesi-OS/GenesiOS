@@ -88,6 +88,29 @@ def hypr(*args, check=True):
     return p
 
 
+MODE_RE = re.compile(r"^(\d+)x(\d+)@([\d.]+)")
+
+
+def modes_of(raw):
+    """
+    The modes a monitor advertises, newest-first by area then refresh.
+
+    Deduplicated on the rounded refresh rate: a panel commonly lists
+    59.94 and 59.95 as separate modes, and two entries a person cannot tell
+    apart in a dropdown are worse than one.
+    """
+    seen = {}
+    for entry in raw.get("availableModes", []) or []:
+        m = MODE_RE.match(str(entry))
+        if not m:
+            continue
+        w, h, r = int(m.group(1)), int(m.group(2)), round(float(m.group(3)), 2)
+        seen[(w, h, r)] = {"width": w, "height": h, "refresh": r,
+                           "id": f"{w}x{h}@{r}"}
+    return [v for _, v in sorted(seen.items(),
+                                 key=lambda kv: (-kv[0][0] * kv[0][1], -kv[0][2]))]
+
+
 def monitors():
     """Current state, straight from the compositor."""
     p = hypr("monitors", "-j")
@@ -110,6 +133,15 @@ def monitors():
             "rotation": TRANSFORM_TO_DEG.get(int(m.get("transform", 0))),
             "focused": bool(m.get("focused", False)),
             "disabled": bool(m.get("disabled", False)),
+            # Every mode the panel will accept, so a settings page can offer a
+            # list instead of a free-text box. hyprctl reports them as
+            # "2560x1440@74.97Hz"; they are normalised here because the string
+            # a page shows and the string this tool accepts must be the same
+            # one, or a resolution picked from the list would be rejected when
+            # it was applied back.
+            "modes": modes_of(m),
+            "mode": f'{m.get("width", 0)}x{m.get("height", 0)}'
+                    f'@{round(float(m.get("refreshRate", 0)), 2)}',
         })
     return out
 
@@ -137,7 +169,7 @@ def find(name):
     die(f"no monitor named {name!r}. Try: genesi-display show")
 
 
-def monitor_line(m, scale=None, transform=None, x=None, y=None):
+def monitor_line(m, scale=None, transform=None, x=None, y=None, mode=None):
     """
     Rebuild the full monitor line, changing only what was asked for.
 
@@ -153,11 +185,12 @@ def monitor_line(m, scale=None, transform=None, x=None, y=None):
     # Trailing zeros in the scale make Hyprland's parser unhappy in some
     # versions; normalise to the shortest exact form.
     s_str = f"{s:.6f}".rstrip("0").rstrip(".")
-    return (f"{m['name']},{m['width']}x{m['height']}@{m['refresh']},"
+    res = mode if mode else f"{m['width']}x{m['height']}@{m['refresh']}"
+    return (f"{m['name']},{res},"
             f"{px}x{py},{s_str},transform,{t}")
 
 
-def logical_size(m, scale=None, transform=None):
+def logical_size(m, scale=None, transform=None, mode=None):
     """
     The size a monitor occupies in the shared coordinate space.
 
@@ -168,6 +201,13 @@ def logical_size(m, scale=None, transform=None):
     s = m["scale"] if scale is None else scale
     t = m["transform"] if transform is None else transform
     w, h = m["width"], m["height"]
+    if mode:
+        mm = MODE_RE.match(mode)
+        if mm:
+            # A mode change moves the neighbour by the difference in width,
+            # exactly as a scale change does. Missing this would leave the
+            # second screen overlapping after every resolution change.
+            w, h = int(mm.group(1)), int(mm.group(2))
     if t in (1, 3, 5, 7):          # 90° / 270°, and their flipped forms
         w, h = h, w
     return int(round(w / s)), int(round(h / s))
@@ -195,7 +235,7 @@ def side_by_side(mons):
     return True
 
 
-def apply_change(m, scale=None, transform=None):
+def apply_change(m, scale=None, transform=None, mode=None):
     """
     Apply a change to one monitor, and leave the whole desktop consistent.
 
@@ -228,14 +268,15 @@ def apply_change(m, scale=None, transform=None):
         changed = mon["name"] == m["name"]
         sc = scale if changed else None
         tr = transform if changed else None
+        md = mode if changed else None
         new_x = mon["x"]
         if repack:
             if x is None:
                 x = mon["x"]          # keep the leftmost where it is
             new_x = x
-            x += logical_size(mon, sc, tr)[0]
+            x += logical_size(mon, sc, tr, md)[0]
         moved = new_x != mon["x"]
-        line = monitor_line(mon, scale=sc, transform=tr, x=new_x)
+        line = monitor_line(mon, scale=sc, transform=tr, x=new_x, mode=md)
         lines[mon["name"]] = line
         if changed or moved:
             to_persist[mon["name"]] = line
@@ -509,6 +550,40 @@ def cmd_place(name, x_str, y_str):
     print(f"{m['name']}: at {x + dx},{y + dy}")
 
 
+def cmd_mode(name, wanted):
+    """
+    Set a monitor's resolution and refresh rate.
+
+    Only a mode the panel actually advertises is accepted. Hyprland will take
+    an arbitrary string and then fail to light the output, which on a
+    single-screen desk means a black display and no way to read the error --
+    so the check happens here, against what the compositor itself reported,
+    before anything is applied.
+    """
+    m = find(name)
+    ids = [x["id"] for x in m["modes"]]
+    if wanted not in ids:
+        # Accept a bare resolution too: "1920x1080" means its highest refresh,
+        # which is what a person means when they say it.
+        matches = [i for i in ids if i.split("@")[0] == wanted]
+        if matches:
+            wanted = matches[0]
+        else:
+            die(f"{m['name']} does not offer {wanted}.\n"
+                "  It offers: " + ", ".join(ids[:8])
+                + (" …" if len(ids) > 8 else ""))
+    if wanted == m["mode"]:
+        print(f"{m['name']} is already at {wanted}")
+        return
+    persist(apply_change(m, mode=wanted))
+    print(f"{m['name']} -> {wanted}")
+
+
+def cmd_modes(name):
+    """Every mode a monitor advertises, as JSON, for a settings page."""
+    print(json.dumps(find(name)["modes"], indent=2))
+
+
 def cmd_primary(name):
     """
     Which screen is "the main one".
@@ -588,6 +663,14 @@ def main():
         if len(rest) != 3:
             die("usage: genesi-display place <monitor> <x> <y>")
         cmd_place(*rest)
+    elif cmd == "mode":
+        if len(args) != 2:
+            die("usage: genesi-display mode <monitor> <WxH@Hz | WxH>")
+        cmd_mode(args[0], args[1])
+    elif cmd == "modes":
+        if len(args) != 1:
+            die("usage: genesi-display modes <monitor>")
+        cmd_modes(args[0])
     elif cmd == "primary":
         if len(rest) != 1:
             die("usage: genesi-display primary <monitor>")

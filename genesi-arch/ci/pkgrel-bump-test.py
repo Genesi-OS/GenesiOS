@@ -121,7 +121,11 @@ def main():
         if name not in have:
             continue          # never published; nothing to be stale against
         rel_path = f"genesi-arch/packages/{d}"
-        changed = git("diff", "--name-only", f"{base}..HEAD", "--", rel_path)
+        # base..HEAD compares COMMITS and ignores the working tree, so running
+        # this before committing reported nothing changed -- which is exactly
+        # when a person wants to be told. Diffing base against the tree covers
+        # both: in CI the tree is HEAD.
+        changed = git("diff", "--name-only", base, "--", rel_path)
         if not changed.strip():
             continue
         checked += 1

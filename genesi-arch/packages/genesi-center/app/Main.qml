@@ -47,23 +47,32 @@ Window {
     readonly property var groups: [
         {
             index: "01", title: qsTr("Overview"), items: [
-                { id: "overview",  label: qsTr("Overview"),    tag: "概観" },
-                { id: "system",    label: qsTr("System"),      tag: "系統" },
-                { id: "resources", label: qsTr("Resources"),   tag: "資源" }
+                { id: "overview",  label: qsTr("Overview"),  tag: "概観" },
+                { id: "system",    label: qsTr("System"),    tag: "系統" },
+                { id: "resources", label: qsTr("Resources"), tag: "資源" }
             ]
         },
         {
-            index: "02", title: qsTr("Workspace"), items: [
-                { id: "apps",  label: qsTr("Applications"), tag: "応用" },
-                { id: "tools", label: qsTr("Tools"),        tag: "道具" },
-                { id: "code",  label: qsTr("Genesi Code"),  tag: "符号" }
+            index: "02", title: qsTr("Devices"), items: [
+                { id: "displays", label: qsTr("Displays"), tag: "画面" },
+                { id: "input",    label: qsTr("Input"),    tag: "入力" },
+                { id: "audio",    label: qsTr("Audio"),    tag: "音響" }
             ]
         },
         {
-            index: "03", title: qsTr("System"), items: [
-                { id: "snapshots",    label: qsTr("Snapshots"),    tag: "保存" },
-                { id: "integrations", label: qsTr("Integrations"), tag: "連携" },
-                { id: "settings",     label: qsTr("Settings"),     tag: "設定" }
+            index: "03", title: qsTr("Desktop"), items: [
+                { id: "appearance", label: qsTr("Appearance"), tag: "外観" },
+                { id: "bar",        label: qsTr("Bar"),        tag: "帯" },
+                { id: "launcher",   label: qsTr("Launcher"),   tag: "起動" },
+                { id: "windows",    label: qsTr("Windows"),    tag: "窓" },
+                { id: "shortcuts",  label: qsTr("Shortcuts"),  tag: "操作" }
+            ]
+        },
+        {
+            index: "04", title: qsTr("System"), items: [
+                { id: "ai",        label: qsTr("Local AI"),  tag: "知能" },
+                { id: "snapshots", label: qsTr("Snapshots"), tag: "保存" },
+                { id: "settings",  label: qsTr("Settings"),  tag: "設定" }
             ]
         }
     ]
@@ -184,13 +193,21 @@ Window {
             // single sliding plate cannot cross a group heading without
             // passing THROUGH it, and watching a highlight slide over a
             // divider is worse than not sliding at all.
-            Column {
+            Flickable {
                 id: navArea
-                anchors { left: parent.left; right: parent.right; top: parent.top }
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: railFoot.top }
                 anchors.topMargin: 158
                 anchors.leftMargin: 10
                 anchors.rightMargin: 10
-                spacing: 2
+                anchors.bottomMargin: 12
+                clip: true
+                contentHeight: navCol.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                    id: navCol
+                    width: navArea.width
+                    spacing: 2
 
                 Repeater {
                     model: win.groups
@@ -199,7 +216,7 @@ Window {
                         required property var modelData
                         required property int index
 
-                        width: navArea.width
+                        width: navCol.width
                         spacing: 2
 
                         // Each group arrives a beat after the one above it.
@@ -233,11 +250,13 @@ Window {
                             }
                         }
                     }
+                    }
                 }
             }
 
             // Footer plate
             Panel {
+                id: railFoot
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                 anchors.margins: 22
                 height: 96
@@ -359,11 +378,18 @@ Window {
                 visible: win.section === "overview"
             }
 
+            DisplaysPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "displays"
+            }
+
             // Every other section, until it has a page. Saying so is better
             // than a blank panel that reads as a bug.
             Item {
                 anchors.fill: parent
-                visible: win.section !== "overview"
+                visible: win.section !== "overview" && win.section !== "displays"
                 Column {
                     anchors.centerIn: parent
                     spacing: 10

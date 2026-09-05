@@ -62,8 +62,34 @@ SAMPLE = {
 }
 
 
+MONITORS = [
+    {"name": "HDMI-A-1", "description": "Samsung", "width": 1920, "height": 1080,
+     "refresh": 60.0, "x": 0, "y": 0, "scale": 1.0, "transform": 0, "rotation": 0,
+     "focused": False, "disabled": False, "mode": "1920x1080@60.0",
+     "modes": [{"width": 1920, "height": 1080, "refresh": 60.0, "id": "1920x1080@60.0"},
+               {"width": 1920, "height": 1080, "refresh": 100.0, "id": "1920x1080@100.0"},
+               {"width": 1600, "height": 900, "refresh": 60.0, "id": "1600x900@60.0"}]},
+    {"name": "DP-1", "description": "AOC", "width": 1920, "height": 1080,
+     "refresh": 143.98, "x": 1920, "y": 0, "scale": 1.0, "transform": 0, "rotation": 0,
+     "focused": True, "disabled": False, "mode": "1920x1080@143.98",
+     "modes": [{"width": 2560, "height": 1440, "refresh": 74.97, "id": "2560x1440@74.97"},
+               {"width": 1920, "height": 1080, "refresh": 143.98, "id": "1920x1080@143.98"},
+               {"width": 1920, "height": 1080, "refresh": 119.98, "id": "1920x1080@119.98"},
+               {"width": 1920, "height": 1080, "refresh": 60.0, "id": "1920x1080@60.0"}]},
+]
+
+
 class Backend(QObject):
     dataReady = Signal(str)
+    displaysReady = Signal(str)
+
+    @Slot()
+    def displays(self):
+        self.displaysReady.emit(json.dumps(MONITORS))
+
+    @Slot(list)
+    def displayCmd(self, args):
+        pass
 
     @Slot(list)
     def launch(self, argv):
@@ -119,6 +145,9 @@ if len(sys.argv) > 3:
     win.setWidth(int(w))
     win.setHeight(int(h))
     settle(120)
+
+if len(sys.argv) > 4:
+    win.setProperty("section", sys.argv[4])
 
 settle(300)
 backend.dataReady.emit(json.dumps(SAMPLE))

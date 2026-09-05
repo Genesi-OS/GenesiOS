@@ -35,6 +35,7 @@ TICK_MS = 5000
 
 class Backend(QObject):
     dataReady = Signal(str)
+    displaysReady = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -79,6 +80,40 @@ class Backend(QObject):
     @Slot()
     def poll(self):
         self._tick(["telemetry"])
+
+    @Slot()
+    def displays(self):
+        """The monitors, as genesi-display reports them."""
+        def body():
+            try:
+                p = subprocess.run(["genesi-display", "list"],
+                                   capture_output=True, text=True, timeout=15,
+                                   encoding="utf-8", errors="replace")
+                self.displaysReady.emit(p.stdout.strip() or "[]")
+            except (OSError, subprocess.SubprocessError):
+                self.displaysReady.emit("[]")
+        threading.Thread(target=body, daemon=True).start()
+
+    @Slot(list)
+    def displayCmd(self, args):
+        """
+        Run one genesi-display subcommand and re-read afterwards.
+
+        Every argument is a fixed word or a monitor name the compositor
+        reported, never a string a user typed, and it is never handed to a
+        shell. The re-read is the point: the tool re-packs the other screens
+        when one changes, so the page must be told what the desk looks like
+        NOW rather than assuming its own edit was the only effect.
+        """
+        def body():
+            try:
+                subprocess.run(["genesi-display"] + [str(a) for a in args],
+                               capture_output=True, text=True, timeout=25,
+                               encoding="utf-8", errors="replace")
+            except (OSError, subprocess.SubprocessError):
+                pass
+            self.displays()
+        threading.Thread(target=body, daemon=True).start()
 
     @Slot(list)
     def launch(self, argv):

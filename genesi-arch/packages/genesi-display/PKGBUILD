@@ -13,7 +13,11 @@
 # features wanted work this way.
 pkgname=genesi-display
 pkgver=1.0.0
-pkgrel=5
+# 6: resolution and refresh rate. `mode` sets them, `modes` lists what the
+# panel advertises, and the repacking that keeps neighbours touching now
+# accounts for the new width -- a mode change moves a neighbour exactly as
+# a scale change does.
+pkgrel=6
 pkgdesc='Monitor scale and rotation for Hyprland, persisted across reloads'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
