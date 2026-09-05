@@ -60,8 +60,14 @@ Item {
 
     Rectangle {
         visible: !root.last
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        anchors.margins: 14
+        // leftMargin/rightMargin, NOT `margins`. `margins` sets the bottom one
+        // too, which lifted the separator 14px into the row -- so on any row
+        // tall enough to carry a description, the line was drawn straight
+        // through the middle of the sentence like a strikethrough.
+        anchors {
+            left: parent.left; right: parent.right; bottom: parent.bottom
+            leftMargin: 14; rightMargin: 14
+        }
         height: 1
         color: Tokens.lineSoft
     }

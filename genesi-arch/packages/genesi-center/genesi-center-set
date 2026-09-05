@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""
+genesi-center-set — the write half of Genesi Center.
+
+genesi-center-data reads and prints JSON; this writes, and nothing else does.
+Same split as genesi-display and genesi-bar, and for the same reason: a setting
+you can change from the app and from a terminal, that lands in one place, and
+that can be tested without a display.
+
+  genesi-center-set hypr <option> <value>    a Hyprland option
+  genesi-center-set caelestia <path> <json>  a value in caelestia's shell.json
+  genesi-center-set options                  every option this will write
+
+Two things happen for a Hyprland option, and BOTH are needed:
+
+  * `hyprctl keyword` so the change is visible immediately
+  * a line in ~/.config/hypr/genesi-center.conf so it survives a reload
+
+Doing only the first gives a setting that forgets itself at the next
+`hyprctl reload`, which reads as a bug in the setting rather than as a missing
+feature. Doing only the second means clicking a control appears to do nothing
+until the session restarts.
+
+The drop-in is OURS. Genesi Center never edits hyprland.conf, because that file
+is the user's -- a tool that rewrites someone's config to change a runtime
+choice is a tool they stop trusting. hyprland.conf sources this file at its end,
+which is what makes the drop-in win over the shipped defaults.
+
+Only the options listed in HYPR are accepted. Not a security boundary -- the
+person running this owns the machine -- but a boundary against this program:
+the app passes an option name through from a page, and an unrestricted writer
+is one typo away from putting a garbage keyword in a config that Hyprland then
+refuses to load, on a desktop with no terminal open.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+CONF_DIR = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "hypr")
+MAIN_CONF = os.path.join(CONF_DIR, "hyprland.conf")
+DROPIN = os.path.join(CONF_DIR, "genesi-center.conf")
+CAELESTIA = os.path.expanduser("~/.config/caelestia/shell.json")
+
+MARK = "# Written by genesi-center-set. Edit the app, not this file."
+
+# Added to the user's hyprland.conf once, the first time a setting is changed,
+# exactly as genesi-display does for its own drop-in. Lazily rather than in a
+# package migration: nothing has to reach an existing config, and someone who
+# never opens these pages never has their config touched at all.
+SOURCE_MARKER = "# genesi-center: settings written by the app"
+SOURCE_LINE = f"{SOURCE_MARKER}\nsource = ~/.config/hypr/genesi-center.conf\n"
+
+
+def ensure_sourced():
+    """
+    Make the user's config pull ours in -- once, and never twice.
+
+    Appended, so it lands at the END and wins over the defaults Genesi ships
+    above it. Hyprland applies the last assignment of an option.
+    """
+    if not os.path.exists(MAIN_CONF):
+        # The live change already applied. Say what will not survive rather
+        # than discovering it at the next reload.
+        sys.stderr.write(
+            f"genesi-center-set: {MAIN_CONF} does not exist, so this is not\n"
+            f"                   persisted; it will be lost on the next reload.\n")
+        return
+    with open(MAIN_CONF, "r", encoding="utf-8", errors="replace") as fh:
+        content = fh.read()
+    if SOURCE_MARKER in content or "genesi-center.conf" in content:
+        return
+    with open(MAIN_CONF, "a", encoding="utf-8", newline="\n") as fh:
+        fh.write(f"\n{SOURCE_LINE}")
+
+# option -> (kind, low, high) for numbers; (kind, choices) for words.
+# `bool` is written as 0/1 because that is what Hyprland reads back, and the
+# pages send true/false.
+HYPR = {
+    "input:kb_layout":                   ("str",),
+    "input:kb_variant":                  ("str",),
+    "input:kb_options":                  ("str",),
+    "input:repeat_rate":                 ("int", 1, 100),
+    "input:repeat_delay":                ("int", 100, 2000),
+    "input:sensitivity":                 ("float", -1.0, 1.0),
+    "input:accel_profile":               ("enum", ("adaptive", "flat")),
+    "input:natural_scroll":              ("bool",),
+    "input:follow_mouse":                ("int", 0, 3),
+    "input:touchpad:natural_scroll":     ("bool",),
+    "input:touchpad:tap-to-click":       ("bool",),
+    "input:touchpad:disable_while_typing": ("bool",),
+    "input:touchpad:scroll_factor":      ("float", 0.1, 3.0),
+
+    "general:gaps_in":                   ("int", 0, 40),
+    "general:gaps_out":                  ("int", 0, 80),
+    "general:border_size":               ("int", 0, 12),
+    "decoration:rounding":               ("int", 0, 30),
+    "decoration:active_opacity":         ("float", 0.5, 1.0),
+    "decoration:inactive_opacity":       ("float", 0.3, 1.0),
+    "decoration:blur:enabled":           ("bool",),
+    "decoration:blur:size":              ("int", 1, 20),
+    "decoration:blur:passes":            ("int", 1, 6),
+    "animations:enabled":                ("bool",),
+    "misc:vfr":                          ("bool",),
+}
+
+# Where a page may write inside shell.json. A dotted path, so "border.rounding"
+# means cfg["border"]["rounding"]. Same reasoning as HYPR: the app should not
+# be able to rewrite the session commands because a page passed the wrong
+# string.
+CAELESTIA_PATHS = {
+    "border.thickness": ("int", 0, 40),
+    "border.rounding": ("int", 0, 60),
+    "border.smoothing": ("int", 0, 40),
+    "launcher.maxShown": ("int", 3, 20),
+    "launcher.maxWallpapers": ("int", 3, 30),
+    "launcher.vimKeybinds": ("bool",),
+    "launcher.showOnHover": ("bool",),
+    "launcher.enableDangerousActions": ("bool",),
+    "bar.persistent": ("bool",),
+    "bar.showOnHover": ("bool",),
+    "bar.workspaces.realWindowIcons": ("bool",),
+    "bar.workspaces.showWindows": ("bool",),
+    "bar.workspaces.shown": ("int", 1, 10),
+    "bar.workspaces.maxWindowIcons": ("int", 0, 12),
+}
+
+
+def die(msg):
+    sys.stderr.write("genesi-center-set: " + msg + "\n")
+    sys.exit(1)
+
+
+def coerce(spec, raw, what):
+    kind = spec[0]
+    if kind == "bool":
+        low = str(raw).strip().lower()
+        if low in ("1", "true", "yes", "on"):
+            return True
+        if low in ("0", "false", "no", "off"):
+            return False
+        die(f"{what} is a switch; got {raw!r}")
+    if kind == "int":
+        try:
+            v = int(float(raw))
+        except (TypeError, ValueError):
+            die(f"{what} is a whole number; got {raw!r}")
+        lo, hi = spec[1], spec[2]
+        # Clamped rather than refused. The value comes from a slider whose
+        # range the page already limits, so out of range means the page and
+        # this list disagree -- and the useful thing then is the nearest legal
+        # value, not a dialog.
+        return max(lo, min(hi, v))
+    if kind == "float":
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            die(f"{what} is a number; got {raw!r}")
+        return max(spec[1], min(spec[2], round(v, 3)))
+    if kind == "enum":
+        if str(raw) not in spec[1]:
+            die(f"{what} must be one of: " + ", ".join(spec[1]))
+        return str(raw)
+    # str
+    if not re.fullmatch(r"[A-Za-z0-9_,:+.\- ]*", str(raw)):
+        die(f"{what} may only hold letters, digits and , : + . - _")
+    return str(raw)
+
+
+def hypr_write(option, value):
+    """Put one option in the drop-in, replacing any line already setting it."""
+    os.makedirs(os.path.dirname(DROPIN), exist_ok=True)
+    try:
+        with open(DROPIN, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        lines = []
+
+    if not lines:
+        lines = [MARK, ""]
+
+    # Hyprland nests: `input:touchpad:tap-to-click` is written flat here on
+    # purpose. A flat keyword line is legal, it is what `hyprctl keyword`
+    # takes, and it means this never has to parse or rebuild someone's braces.
+    out = [l for l in lines if not re.match(r"^\s*%s\s*=" % re.escape(option), l)]
+    out.append(f"{option} = {value}")
+
+    with open(DROPIN, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(out).rstrip() + "\n")
+
+    ensure_sourced()
+
+
+def cmd_hypr(option, raw):
+    spec = HYPR.get(option)
+    if spec is None:
+        die(f"{option!r} is not an option this writes. "
+            "`genesi-center-set options` lists them.")
+    value = coerce(spec, raw, option)
+    if isinstance(value, bool):
+        value = 1 if value else 0
+
+    hypr_write(option, value)
+
+    # Applied second: if the write failed we already stopped, and a keyword
+    # that lands without the drop-in behind it is the setting that forgets
+    # itself.
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        try:
+            subprocess.run(["hyprctl", "keyword", option, str(value)],
+                           capture_output=True, timeout=8)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    print(f"{option} = {value}")
+
+
+def cmd_caelestia(path, raw):
+    spec = CAELESTIA_PATHS.get(path)
+    if spec is None:
+        die(f"{path!r} is not a value this writes. "
+            "`genesi-center-set options` lists them.")
+    value = coerce(spec, raw, path)
+
+    try:
+        with open(CAELESTIA, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    except FileNotFoundError:
+        cfg = {}
+    except (OSError, json.JSONDecodeError) as e:
+        die(f"cannot read {CAELESTIA}: {e}")
+
+    parts = path.split(".")
+    node = cfg
+    for p in parts[:-1]:
+        if not isinstance(node.get(p), dict):
+            node[p] = {}
+        node = node[p]
+    node[parts[-1]] = value
+
+    os.makedirs(os.path.dirname(CAELESTIA), exist_ok=True)
+    # Written whole, through a temporary file in the same directory: a crash
+    # halfway through leaves the old config rather than a truncated one, and a
+    # truncated shell.json is a desktop that comes up with no bar.
+    tmp = CAELESTIA + ".genesi-tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(cfg, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.replace(tmp, CAELESTIA)
+    print(f"{path} = {json.dumps(value)}")
+
+
+def cmd_options():
+    out = {
+        "hypr": {k: list(v) for k, v in HYPR.items()},
+        "caelestia": {k: list(v) for k, v in CAELESTIA_PATHS.items()},
+        "dropin": DROPIN,
+    }
+    json.dump(out, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__.strip())
+        return 2
+    what = sys.argv[1]
+    if what == "options":
+        cmd_options()
+    elif what == "hypr" and len(sys.argv) == 4:
+        cmd_hypr(sys.argv[2], sys.argv[3])
+    elif what == "caelestia" and len(sys.argv) == 4:
+        cmd_caelestia(sys.argv[2], sys.argv[3])
+    else:
+        sys.stderr.write(
+            "usage: genesi-center-set {hypr <option> <value>"
+            " | caelestia <path> <value> | options}\n")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

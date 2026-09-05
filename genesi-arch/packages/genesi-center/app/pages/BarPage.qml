@@ -1,15 +1,21 @@
 /*
- * BarPage — the caelestia bar, as ten named arrangements.
+ * BarPage — which bar runs, and how it looks.
  *
- * The bar is already configuration rather than code: `bar.entries` is an
- * ordered list of ids with `spacer` among them, and the components carry two
- * dozen toggles besides. So a preset is a named section of shell.json, and this
- * page is a picker over `genesi-bar` — the same CLI the `>bar` launcher entries
+ * Two decisions, in that order, because the second only makes sense after the
+ * first. Genesi ships two bars: caelestia's side rail down the left edge, and
+ * Genesi's own across the top. They are different bars rather than one
+ * rotated -- caelestia's Bar.qml is a ColumnLayout anchored to the screen edge,
+ * and every module inside it stacks vertically -- so the choice is which one to
+ * run, and the looks below belong to the side rail alone.
+ *
+ * Saying that plainly is the whole reason the looks are behind a heading that
+ * dims when the top bar is running. A grid of fifteen cards that quietly do
+ * nothing is the failure this project keeps meeting.
+ *
+ * Everything goes through `genesi-bar`, the same CLI the `>bar` launcher rows
  * call, so the app and the launcher can never disagree about what is applied.
  *
- * Caelestia only. The rail hides this section entirely on Plasma, because a
- * page that writes a shell.json nothing reads is a control that appears to work
- * and changes nothing.
+ * Caelestia only. The rail hides this section entirely on Plasma.
  */
 import QtQuick
 import "../components"
@@ -20,7 +26,11 @@ Item {
 
     property var backend: null
     property var presets: []
+    property var shells: []
     property string currentId: ""
+    property string shell: "caelestia"
+
+    readonly property bool sideRail: page.shell === "caelestia"
 
     function refresh() {
         if (backend)
@@ -31,12 +41,14 @@ Item {
         target: page.backend
         ignoreUnknownSignals: true
         function onBarPresetsReady(payload) {
-            let d = { presets: [], current: "" };
+            let d = { presets: [], current: "", shells: [], shell: "caelestia" };
             try {
                 d = JSON.parse(payload);
             } catch (e) {}
             page.presets = d.presets || [];
             page.currentId = d.current || "";
+            page.shells = d.shells || [];
+            page.shell = d.shell || "caelestia";
         }
     }
 
@@ -61,23 +73,16 @@ Item {
         }
         Text {
             width: parent.width - 320
-            text: qsTr("Ten arrangements of the bar. Picking one rewrites its whole "
-                       + "section of shell.json, so a preset is a complete look rather "
-                       + "than a patch, and the shell reloads as soon as it lands.")
+            text: qsTr("Two bars ship with Genesi: caelestia's rail down the left "
+                       + "edge, and Genesi's own across the top. Pick one, then give "
+                       + "the rail a look — each is a complete arrangement plus the "
+                       + "frame the desktop sits in, so switching never leaves a "
+                       + "piece of the last one behind.")
             color: Tokens.text
             font.family: Tokens.sans
             font.pixelSize: 12
             lineHeight: 1.4
             wrapMode: Text.WordWrap
-        }
-        Text {
-            text: page.currentId === ""
-                  ? qsTr("edited by hand — matches no preset")
-                  : qsTr("in use: %1").arg(page.currentId)
-            color: page.currentId === "" ? Tokens.textDim : Tokens.accentDim
-            font.family: Tokens.mono
-            font.pixelSize: Tokens.fsMicro
-            font.letterSpacing: 1.2
         }
     }
 
@@ -88,116 +93,358 @@ Item {
         anchors.topMargin: 18
         anchors.bottomMargin: 24
         clip: true
-        contentHeight: grid.implicitHeight
+        contentHeight: body.implicitHeight
         boundsBehavior: Flickable.StopAtBounds
 
-        Grid {
-            id: grid
+        Column {
+            id: body
             width: parent.width
-            columns: Math.max(1, Math.floor(width / 290))
-            columnSpacing: Tokens.gap
-            rowSpacing: Tokens.gap
+            spacing: 18
 
-            Repeater {
-                model: page.presets
-                delegate: Panel {
-                    id: card
-                    required property var modelData
-                    required property int index
+            // ── Which bar ────────────────────────────────────────────────────
+            Column {
+                width: parent.width
+                spacing: 10
 
-                    readonly property bool on: modelData.id === page.currentId
+                SectionHead { index: "—"; text: qsTr("Which bar") }
 
-                    width: (grid.width - (grid.columns - 1) * Tokens.gap) / grid.columns
-                    height: 118
-                    interactive: true
-                    hovered: hov.hovered
-                    color: on ? Tokens.cardHi : Tokens.card
-                    border.color: on ? Tokens.accentDim
-                                     : (hov.hovered ? Tokens.accentDeep : Tokens.line)
+                Row {
+                    width: parent.width
+                    spacing: Tokens.gap
 
-                    opacity: 0
-                    Component.onCompleted: arrive.start()
-                    SequentialAnimation {
-                        id: arrive
-                        PauseAnimation { duration: card.index * 45 }
-                        NumberAnimation {
-                            target: card; property: "opacity"
-                            from: 0; to: 1
-                            duration: Tokens.normal; easing.type: Easing.OutCubic
-                        }
-                    }
+                    Repeater {
+                        model: page.shells
 
-                    Column {
-                        anchors { left: parent.left; right: parent.right; top: parent.top }
-                        anchors.margins: 14
-                        spacing: 6
+                        delegate: Panel {
+                            id: shellCard
+                            required property var modelData
+                            required property int index
 
-                        Row {
-                            width: parent.width
-                            spacing: 8
-                            Text {
-                                text: card.modelData.name
-                                color: card.on ? Tokens.textHi : Tokens.text
-                                font.family: Tokens.sans
-                                font.pixelSize: 13
-                                width: parent.width - 52
-                                elide: Text.ElideRight
+                            readonly property bool on: modelData.id === page.shell
+
+                            width: (parent.width - Tokens.gap) / 2
+                            height: 108
+                            interactive: true
+                            hovered: shov.hovered
+                            color: on ? Tokens.cardHi : Tokens.card
+                            border.color: on ? Tokens.accentDim
+                                             : (shov.hovered ? Tokens.accentDeep : Tokens.line)
+
+                            // A drawing of where the bar actually sits. It is
+                            // the one thing a name cannot say, and the whole
+                            // difference between the two.
+                            Rectangle {
+                                id: screenSketch
+                                anchors { left: parent.left; top: parent.top }
+                                anchors.margins: 16
+                                width: 58
+                                height: 38
+                                radius: 3
+                                color: "transparent"
+                                border.width: 1
+                                border.color: shellCard.on ? Tokens.accentDim : Tokens.line
+
+                                // Two rectangles rather than one with switched
+                                // anchors: flipping an anchor between a value
+                                // and `undefined` is how a QML item ends up
+                                // anchored to nothing and vanishes, and this
+                                // sketch is the only thing on the card that
+                                // says where the bar goes.
+                                Rectangle {
+                                    visible: shellCard.modelData.id === "genesi"
+                                    anchors {
+                                        left: parent.left; right: parent.right
+                                        top: parent.top; margins: 3
+                                    }
+                                    height: 7
+                                    radius: 2
+                                    color: shellCard.on ? Tokens.accent : Tokens.textFaint
+                                    Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                                }
+                                Rectangle {
+                                    visible: shellCard.modelData.id !== "genesi"
+                                    anchors {
+                                        left: parent.left; top: parent.top
+                                        bottom: parent.bottom; margins: 3
+                                    }
+                                    width: 7
+                                    radius: 2
+                                    color: shellCard.on ? Tokens.accent : Tokens.textFaint
+                                    Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                                }
                             }
+
+                            Column {
+                                anchors {
+                                    left: screenSketch.right
+                                    right: parent.right
+                                    top: parent.top
+                                }
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 16
+                                anchors.topMargin: 16
+                                spacing: 5
+
+                                Row {
+                                    width: parent.width
+                                    spacing: 8
+                                    Text {
+                                        text: shellCard.modelData.name
+                                        color: shellCard.on ? Tokens.textHi : Tokens.text
+                                        font.family: Tokens.sans
+                                        font.pixelSize: 13
+                                        width: parent.width - 54
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        visible: shellCard.on
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: qsTr("RUNNING")
+                                        color: Tokens.accent
+                                        font.family: Tokens.mono
+                                        font.pixelSize: 8
+                                        font.letterSpacing: 1
+                                    }
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: shellCard.modelData.description
+                                    color: Tokens.textDim
+                                    font.family: Tokens.sans
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+
                             Text {
-                                visible: card.on
-                                text: qsTr("IN USE")
-                                color: Tokens.accent
+                                anchors { left: parent.left; bottom: parent.bottom }
+                                anchors.margins: 16
+                                text: shellCard.modelData.id === "genesi"
+                                      ? qsTr("open windows as app icons")
+                                      : qsTr("fifteen looks, below")
+                                color: Tokens.textFaint
                                 font.family: Tokens.mono
-                                font.pixelSize: 8
-                                font.letterSpacing: 1
-                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: Tokens.fsMicro
                             }
-                        }
-                        Text {
-                            width: parent.width
-                            text: card.modelData.description
-                            color: Tokens.textDim
-                            font.family: Tokens.sans
-                            font.pixelSize: 11
-                            wrapMode: Text.WordWrap
-                            maximumLineCount: 2
-                            elide: Text.ElideRight
-                        }
-                    }
 
-                    // A sketch of the arrangement: the bar is vertical, so this
-                    // is its order laid flat, one block per entry. Worth more
-                    // than a screenshot would be, because it is drawn from the
-                    // same list the shell reads and so cannot go stale.
-                    Row {
-                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                        anchors.margins: 14
-                        height: 16
-                        spacing: 3
+                            opacity: 0
+                            Component.onCompleted: shellArrive.start()
+                            SequentialAnimation {
+                                id: shellArrive
+                                PauseAnimation { duration: shellCard.index * 70 }
+                                NumberAnimation {
+                                    target: shellCard; property: "opacity"
+                                    from: 0; to: 1
+                                    duration: Tokens.normal; easing.type: Easing.OutCubic
+                                }
+                            }
 
-                        Repeater {
-                            model: card.modelData.entries || []
-                            delegate: Rectangle {
-                                required property var modelData
-                                width: modelData.id === "spacer"
-                                       ? 22 : (modelData.id === "workspaces" ? 26 : 12)
-                                height: 8
-                                anchors.verticalCenter: parent.verticalCenter
-                                radius: 2
-                                opacity: modelData.enabled ? 1 : 0.22
-                                color: modelData.id === "spacer" ? "transparent"
-                                     : (card.on ? Tokens.accent : Tokens.textFaint)
-                                border.width: modelData.id === "spacer" ? 1 : 0
-                                border.color: Tokens.lineSoft
+                            HoverHandler { id: shov; cursorShape: Qt.PointingHandCursor }
+                            TapHandler {
+                                onTapped: {
+                                    if (page.backend && !shellCard.on)
+                                        page.backend.barShell(shellCard.modelData.id);
+                                }
                             }
                         }
                     }
+                }
+            }
 
-                    HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
-                    TapHandler {
-                        onTapped: {
-                            if (page.backend)
-                                page.backend.barApply(card.modelData.id);
+            // ── The looks ────────────────────────────────────────────────────
+            Column {
+                width: parent.width
+                spacing: 10
+
+                // Dimmed rather than hidden when the top bar is running. The
+                // looks still EXIST; they just do not apply to the bar on
+                // screen, and taking them away would read as the app losing a
+                // feature rather than as a consequence of the choice above.
+                opacity: page.sideRail ? 1 : 0.4
+                Behavior on opacity { NumberAnimation { duration: Tokens.normal } }
+
+                Row {
+                    width: parent.width
+                    spacing: 12
+
+                    SectionHead {
+                        index: "—"
+                        text: qsTr("Looks for the side rail")
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.sideRail
+                              ? (page.currentId === ""
+                                 ? qsTr("edited by hand — matches no look")
+                                 : qsTr("in use: %1").arg(page.currentId))
+                              : qsTr("the top bar is running — these apply to the rail")
+                        color: page.sideRail && page.currentId !== ""
+                               ? Tokens.accentDim : Tokens.textDim
+                        font.family: Tokens.mono
+                        font.pixelSize: Tokens.fsMicro
+                        font.letterSpacing: 1.2
+                    }
+                }
+
+                Grid {
+                    id: grid
+                    width: parent.width
+                    columns: Math.max(1, Math.floor(width / 290))
+                    columnSpacing: Tokens.gap
+                    rowSpacing: Tokens.gap
+
+                    Repeater {
+                        model: page.presets
+                        delegate: Panel {
+                            id: card
+                            required property var modelData
+                            required property int index
+
+                            readonly property bool on: page.sideRail
+                                                       && modelData.id === page.currentId
+
+                            width: (grid.width - (grid.columns - 1) * Tokens.gap) / grid.columns
+                            height: 126
+                            interactive: page.sideRail
+                            hovered: hov.hovered && page.sideRail
+                            color: on ? Tokens.cardHi : Tokens.card
+                            border.color: on ? Tokens.accentDim
+                                             : (hov.hovered && page.sideRail
+                                                ? Tokens.accentDeep : Tokens.line)
+
+                            opacity: 0
+                            Component.onCompleted: arrive.start()
+                            SequentialAnimation {
+                                id: arrive
+                                PauseAnimation { duration: 140 + card.index * 40 }
+                                NumberAnimation {
+                                    target: card; property: "opacity"
+                                    from: 0; to: 1
+                                    duration: Tokens.normal; easing.type: Easing.OutCubic
+                                }
+                            }
+
+                            Column {
+                                anchors { left: parent.left; right: parent.right; top: parent.top }
+                                anchors.margins: 14
+                                spacing: 6
+
+                                Row {
+                                    width: parent.width
+                                    spacing: 8
+                                    Text {
+                                        text: card.modelData.name
+                                        color: card.on ? Tokens.textHi : Tokens.text
+                                        font.family: Tokens.sans
+                                        font.pixelSize: 13
+                                        width: parent.width - 52
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        visible: card.on
+                                        text: qsTr("IN USE")
+                                        color: Tokens.accent
+                                        font.family: Tokens.mono
+                                        font.pixelSize: 8
+                                        font.letterSpacing: 1
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: card.modelData.description
+                                    color: Tokens.textDim
+                                    font.family: Tokens.sans
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            // The look, drawn rather than described: the rail's
+                            // order laid flat, at the width the look sets,
+                            // inside the frame it puts round the desktop. Drawn
+                            // from the same JSON the shell reads, so it cannot
+                            // go stale.
+                            Item {
+                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                anchors.margins: 14
+                                height: 30
+
+                                id: sketch
+
+                                readonly property var frameCfg: card.modelData.border || ({})
+                                // To scale: caelestia's default frame is 10px
+                                // against a ~1080px screen, so a couple of
+                                // pixels here is the honest size of it. A look
+                                // that does not carry a frame gets the default,
+                                // which is what applying it would do.
+                                readonly property int framePx:
+                                    Math.round(Math.min(8, (frameCfg.thickness === undefined
+                                                            ? 10 : frameCfg.thickness) / 3.2))
+                                readonly property int frameRound:
+                                    Math.round(Math.min(10, (frameCfg.rounding === undefined
+                                                             ? 25 : frameCfg.rounding) / 3.2))
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 3
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Tokens.lineSoft
+                                }
+
+                                Rectangle {
+                                    id: desk
+                                    anchors.fill: parent
+                                    anchors.margins: sketch.framePx
+                                    radius: sketch.frameRound
+                                    color: Tokens.bg
+                                    border.width: 1
+                                    border.color: card.on ? Tokens.accentDeep : Tokens.lineSoft
+                                }
+
+                                Row {
+                                    anchors.verticalCenter: desk.verticalCenter
+                                    anchors.left: desk.left
+                                    anchors.leftMargin: 4
+                                    spacing: 2
+
+                                    Repeater {
+                                        model: card.modelData.entries || []
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            // A look's own width, scaled: the
+                                            // rail's default inner width is 40,
+                                            // so 0 ("the theme's") draws as that.
+                                            readonly property int w:
+                                                Math.max(3, Math.round(
+                                                    (card.modelData.width > 0
+                                                     ? card.modelData.width : 40) / 9))
+                                            width: modelData.id === "spacer"
+                                                   ? 14 : (modelData.id === "workspaces"
+                                                           ? w * 2 : w)
+                                            height: 7
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            radius: 2
+                                            opacity: modelData.enabled ? 1 : 0.22
+                                            color: modelData.id === "spacer" ? "transparent"
+                                                 : (card.on ? Tokens.accent : Tokens.textFaint)
+                                            border.width: modelData.id === "spacer" ? 1 : 0
+                                            border.color: Tokens.lineSoft
+                                        }
+                                    }
+                                }
+                            }
+
+                            HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
+                            TapHandler {
+                                onTapped: {
+                                    if (page.backend && page.sideRail)
+                                        page.backend.barApply(card.modelData.id);
+                                }
+                            }
                         }
                     }
                 }

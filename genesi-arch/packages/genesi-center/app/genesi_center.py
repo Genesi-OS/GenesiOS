@@ -33,10 +33,31 @@ APPDIR = os.path.dirname(os.path.abspath(__file__))
 TICK_MS = 5000
 
 
+# Tools a page is allowed to run.
+#
+# Not a security boundary against the user -- they own the machine and can run
+# anything. It is a boundary against THIS code: `act` takes a list from QML,
+# and a page that is one typo away from running an arbitrary name is a page
+# that will one day be handed one from a config file or a translated string.
+# Naming the eleven binaries that exist keeps the blast radius at zero, and a
+# refusal is printed rather than swallowed so a new page fails loudly on the
+# desk of whoever wrote it.
+ALLOWED = {
+    "genesi-center-set", "genesi-display", "genesi-bar", "genesi-snapshots",
+    "genesi-ai-mode", "genesi-ai-turbo", "genesi-ai-monitor",
+    "genesi-open-usb-mixer", "genesi-update-center", "genesi-snapshots-gui",
+    "caelestia", "hyprctl", "hyprshade", "wpctl",
+}
+
+
 class Backend(QObject):
     dataReady = Signal(str)
     displaysReady = Signal(str)
     barPresetsReady = Signal(str)
+    # (section, json). One signal for every page added from here on, rather
+    # than a signal each: a page filters by name, and the alternative is this
+    # class growing a pair of members per page forever.
+    sectionReady = Signal(str, str)
 
     def __init__(self):
         super().__init__()
@@ -142,6 +163,72 @@ class Backend(QObject):
             try:
                 subprocess.run(["genesi-bar", "apply", str(preset)],
                                capture_output=True, text=True, timeout=15,
+                               encoding="utf-8", errors="replace")
+            except (OSError, subprocess.SubprocessError):
+                pass
+            self.barPresets()
+        threading.Thread(target=body, daemon=True).start()
+
+    @Slot(str)
+    def ask(self, what):
+        """
+        Read one data section and hand it to whoever asked.
+
+        These are the expensive sections -- system() runs pacman -Q,
+        resources() sleeps to sample every core, snapshots() walks btrfs -- so
+        they are deliberately NOT on the tick. A page asks when it opens and
+        after it changes something, and nothing else pays for it.
+        """
+        def body():
+            self.sectionReady.emit(str(what), self._read(str(what)) or "{}")
+        threading.Thread(target=body, daemon=True).start()
+
+    @Slot(list, str)
+    def act(self, argv, then):
+        """
+        Run one tool, then re-read a section.
+
+        The re-read is the whole contract, and the reason no page is allowed
+        to assume its own edit worked: `hyprctl keyword` silently ignores an
+        option it does not know, `wpctl` can be overruled by a hardware mixer,
+        and genesi-bar refuses a preset it does not have. The page shows what
+        IS, never what was clicked -- which is the difference between this and
+        the settings pages this project has had to apologise for.
+        """
+        if not argv:
+            return
+        cmd = [str(a) for a in argv]
+        if cmd[0] not in ALLOWED:
+            sys.stderr.write(
+                f"genesi-center: refusing to run {cmd[0]!r}; add it to ALLOWED "
+                "if a page really needs it\n")
+            return
+
+        def body():
+            try:
+                subprocess.run(cmd, capture_output=True, text=True, timeout=40,
+                               encoding="utf-8", errors="replace")
+            except (OSError, subprocess.SubprocessError):
+                pass
+            if then:
+                self.sectionReady.emit(str(then), self._read(str(then)) or "{}")
+        threading.Thread(target=body, daemon=True).start()
+
+    @Slot(str)
+    def barShell(self, which):
+        """
+        Switch which bar runs: caelestia's side rail or Genesi's top bar.
+
+        Two different bars, not one rotated -- caelestia's is a vertical layout
+        all the way down to how each module stacks inside itself -- so the CLI
+        stops one and starts the other, and remembers the choice for the next
+        login. Re-read afterwards for the same reason as barApply: the page
+        must show what IS running, not what was clicked.
+        """
+        def body():
+            try:
+                subprocess.run(["genesi-bar", "shell", str(which)],
+                               capture_output=True, text=True, timeout=20,
                                encoding="utf-8", errors="replace")
             except (OSError, subprocess.SubprocessError):
                 pass

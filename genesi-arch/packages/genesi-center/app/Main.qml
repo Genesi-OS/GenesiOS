@@ -412,12 +412,20 @@ Window {
                 }
             }
 
+            // Every section has a page. They are all instantiated and only
+            // one is visible, rather than a Loader per section: a page holds
+            // its last reading, so switching away and back shows what was
+            // there instead of an empty panel that fills in a moment later.
+            //
+            // The cost is that fourteen pages exist at once. They are cheap --
+            // no page polls unless it is visible, which each one enforces with
+            // `running: page.visible` on its own timer.
             OverviewPage {
                 id: overview
+                treeArt: win.treeArt
                 anchors.fill: parent
                 anchors.topMargin: 8
                 backend: win.backend
-                treeArt: win.treeArt
                 visible: win.section === "overview"
             }
 
@@ -435,38 +443,81 @@ Window {
                 visible: win.section === "bar"
             }
 
-            // Every other section, until it has a page. Saying so is better
-            // than a blank panel that reads as a bug.
-            Item {
+            SystemPage {
                 anchors.fill: parent
-                // Every section that has no page yet.
-                visible: ["overview", "displays", "bar"].indexOf(win.section) < 0
-                Column {
-                    anchors.centerIn: parent
-                    spacing: 10
-                    Image {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        source: "art/genesi-leaf.svg"
-                        sourceSize: Qt.size(46, 46)
-                        width: 46; height: 46
-                        opacity: 0.35
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: win.labelFor(win.section).toUpperCase()
-                        color: Tokens.textDim
-                        font.family: Tokens.mono
-                        font.pixelSize: Tokens.fsLabel
-                        font.letterSpacing: 2
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: qsTr("not built yet")
-                        color: Tokens.textFaint
-                        font.family: Tokens.mono
-                        font.pixelSize: Tokens.fsMicro
-                    }
-                }
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "system"
+            }
+
+            ResourcesPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "resources"
+            }
+
+            InputPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "input"
+            }
+
+            AudioPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "audio"
+            }
+
+            AppearancePage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "appearance"
+            }
+
+            LauncherPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "launcher"
+            }
+
+            WindowsPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "windows"
+            }
+
+            ShortcutsPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "shortcuts"
+            }
+
+            AiPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "ai"
+            }
+
+            SnapshotsPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "snapshots"
+            }
+
+            SettingsPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "settings"
             }
         }
     }

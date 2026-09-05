@@ -79,48 +79,198 @@ MONITORS = [
 ]
 
 
-BAR = {
-    "current": "20-centrado",
-    "presets": [
-        {"id": p, "name": n, "description": d,
-         "entries": [{"id": e, "enabled": True} for e in ents]}
-        for p, n, d, ents in [
-            ("10-padrao", "Default · Padrão", "The bar as caelestia ships it",
-             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
-              "clock", "statusIcons", "power"]),
-            ("20-centrado", "Centred · Centralizado",
-             "Logo at the top, workspaces in the middle, the rest at the bottom",
-             ["logo", "spacer", "workspaces", "spacer", "tray", "clock",
-              "statusIcons", "power"]),
-            ("30-minimo", "Minimal · Mínimo", "Workspaces and the time, nothing else",
-             ["spacer", "workspaces", "spacer", "clock"]),
-            ("40-numeros", "Numbered · Números",
-             "Workspaces as numbers instead of dots",
-             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
-              "clock", "statusIcons", "power"]),
-            ("50-janelas", "Windows · Janelas",
-             "Each workspace shows the icons of what is open in it",
-             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
-              "clock", "statusIcons", "power"]),
-            ("60-informativo", "Dense · Informativo",
-             "Everything on: date, audio, microphone, keyboard layout",
-             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
-              "clock", "statusIcons", "power"]),
-            ("70-compacto", "Compact · Compacto",
-             "Tighter icons and fewer workspaces",
-             ["logo", "workspaces", "spacer", "tray", "clock", "power"]),
-            ("80-limpo", "Clean · Limpo", "No tray and no status icons",
-             ["logo", "workspaces", "spacer", "activeWindow", "spacer",
-              "clock", "power"]),
-            ("90-trilha", "Trail · Trilha", "The active workspace leaves a trail",
-             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
-              "clock", "statusIcons", "power"]),
-            ("95-oculta", "Auto-hide · Oculta",
-             "The bar stays out of the way until you reach for it",
-             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
-              "clock", "statusIcons", "power"]),
-        ]
-    ],
+def bar_fixture():
+    """
+    The bar payload, read from the REAL presets and the REAL shell list.
+
+    Not hand-written. The previous fixture was, and it went stale the moment
+    the presets became looks: this harness kept drawing ten arrangements that
+    no longer existed, so the page could have been reviewed against a shape it
+    would never be given. Reading the shipped files is the same trick the page
+    itself uses -- it draws each look from the JSON the shell reads, so the
+    sketch cannot drift from what applying it does.
+
+    This is what `genesi-bar json` prints, assembled here because that command
+    needs a config file this machine does not have.
+    """
+    import importlib.machinery
+    import importlib.util
+
+    pkg = os.path.join(HERE, "..", "packages", "genesi-caelestia-settings")
+    cli = os.path.join(pkg, "genesi-bar")
+    loader = importlib.machinery.SourceFileLoader("genesi_bar", cli)
+    spec = importlib.util.spec_from_loader("genesi_bar", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)          # guarded by __main__; nothing runs
+
+    presets = []
+    d = os.path.join(pkg, "bar-presets")
+    for fn in sorted(f for f in os.listdir(d) if f.endswith(".json")):
+        with io.open(os.path.join(d, fn), encoding="utf-8") as fh:
+            p = json.load(fh)
+        presets.append({
+            "id": fn[:-5],
+            "name": p.get("name", fn[:-5]),
+            "description": p.get("description", ""),
+            "entries": (p.get("bar") or {}).get("entries", []),
+            "width": (p.get("bar") or {}).get("width", 0),
+            "border": p.get("border", {}),
+        })
+    return {
+        "shell": "caelestia",
+        "shells": [{"id": k, "name": v["name"], "description": v["desc"]}
+                   for k, v in mod.SHELLS.items()],
+        "current": presets[1]["id"] if len(presets) > 1 else "",
+        "presets": presets,
+    }
+
+
+BAR = bar_fixture()
+
+
+# One realistic payload per page, the shape genesi-center-data prints. A page
+# reviewed against an empty object tells you nothing: every layout bug this
+# harness has caught was a layout that held the sample and not the real thing.
+SECTIONS = {
+    "system": {
+        "name": "Genesi OS", "version": "0.8.3", "build": "rolling",
+        "kernel": "6.16.4-2-cachyos", "arch": "x86_64",
+        "host": "MS-7C95", "vendor": "Micro-Star International Co., Ltd.",
+        "cpu": "AMD Ryzen 5 5600G with Radeon Graphics", "cores": 12,
+        "gpus": ["NVIDIA Corporation GA107 [GeForce RTX 3050]",
+                 "Advanced Micro Devices, Inc. [AMD/ATI] Cezanne"],
+        "memory_total_mb": 16384, "packages": 1487,
+        "last_update": "2026-09-04T22:11:03+0300",
+        "boot": "2026-09-05 08:42:11",
+        "uptime": {"seconds": 20361, "text": "5h 39m"},
+        "shell": "fish", "session": "Hyprland", "session_type": "wayland",
+    },
+    "audio": {
+        "available": True, "mixer": True,
+        "sinks": [
+            {"id": 49, "name": "Family 17h/19h HD Audio Controller Analog Stereo",
+             "default": True, "volume": 54, "muted": False},
+            {"id": 61, "name": "GA107 High Definition Audio Controller HDMI",
+             "default": False, "volume": 100, "muted": True},
+        ],
+        "sources": [
+            {"id": 50, "name": "Blue Snowball Mono", "default": True,
+             "volume": 72, "muted": False},
+            {"id": 52, "name": "Family 17h/19h HD Audio Controller Analog Stereo",
+             "default": False, "volume": 40, "muted": False},
+        ],
+    },
+    "appearance": {
+        "available": True,
+        "border": {"thickness": 10, "rounding": 25, "smoothing": 20},
+        "wallpaper": "/home/mk/Pictures/wallpapers/emerald-drift.png",
+        "schemes": ["dynamic", "genesi", "catppuccin", "gruvbox", "nord",
+                    "rosepine", "everforest", "tokyonight"],
+        "shaders": ["blue-light-filter", "color-blindness", "grayscale",
+                    "invert-colors", "pixelate", "vibrance"],
+        "shader_on": "blue-light-filter",
+    },
+    "launcher": {
+        "available": True, "actions_top": 25,
+        "options": {"maxShown": 8, "maxWallpapers": 9, "actionPrefix": ">",
+                    "enableDangerousActions": False, "showOnHover": False,
+                    "vimKeybinds": True},
+        "groups": [{"name": "bar", "count": 15}, {"name": "shader", "count": 16}],
+    },
+    "shortcuts": {
+        "available": True,
+        "binds": [
+            {"mods": ["SUPER"], "key": "Return", "dispatcher": "exec",
+             "arg": "kitty", "description": ""},
+            {"mods": ["SUPER"], "key": "Q", "dispatcher": "killactive",
+             "arg": "", "description": ""},
+            {"mods": ["SUPER"], "key": "V", "dispatcher": "togglefloating",
+             "arg": "", "description": ""},
+            {"mods": ["SUPER"], "key": "F", "dispatcher": "fullscreen",
+             "arg": "0", "description": ""},
+            {"mods": ["SUPER", "SHIFT"], "key": "R", "dispatcher": "exec",
+             "arg": "genesi-display rotate - cycle", "description": ""},
+            {"mods": ["SUPER"], "key": "equal", "dispatcher": "exec",
+             "arg": "genesi-display scale - up", "description": ""},
+            {"mods": ["SUPER"], "key": "1", "dispatcher": "workspace",
+             "arg": "1", "description": ""},
+            {"mods": ["SUPER", "SHIFT"], "key": "1",
+             "dispatcher": "movetoworkspace", "arg": "1", "description": ""},
+            {"mods": ["SUPER"], "key": "left", "dispatcher": "movefocus",
+             "arg": "l", "description": ""},
+            {"mods": ["SUPER", "CTRL"], "key": "S", "dispatcher": "exec",
+             "arg": "genesi-snapshots create", "description": "take a snapshot"},
+        ],
+    },
+    "ai": {
+        "available": True, "kokoro": False, "api_key": False, "turbo": True,
+        "state": {"active": True, "profile": "max", "force": "auto"},
+        "models": [{"name": "qwen2.5-coder-7b-instruct-q4_k_m", "size_gb": 4.4},
+                   {"name": "llama-3.2-3b-instruct-q5_k_m", "size_gb": 2.3},
+                   {"name": "nomic-embed-text-v1.5", "size_gb": 0.3}],
+    },
+    "snapshots": {
+        "available": True, "configured": True,
+        "status": {"configured": True},
+        "snapshots": [
+            {"number": 412, "description": "pacman -Syu", "date": "2026-09-05 09:14:02",
+             "type": "pre"},
+            {"number": 411, "description": "Genesi Center", "date": "2026-09-04 22:40:11",
+             "type": "single"},
+            {"number": 410, "description": "pacman -S genesi-topbar",
+             "date": "2026-09-04 19:02:55", "type": "pre"},
+            {"number": 409, "description": "timeline", "date": "2026-09-04 12:00:00",
+             "type": "timeline"},
+        ],
+    },
+    "input": {
+        "available": True,
+        "keyboards": [{"name": "at-translated-set-2-keyboard", "layout": "us",
+                       "main": True},
+                      {"name": "keychron-k2-pro", "layout": "us,br",
+                       "main": False}],
+        "mice": [{"name": "logitech-g403-hero"},
+                 {"name": "synps/2-synaptics-touchpad"}],
+        "has_touchpad": True,
+        "options": {"kb_layout": "us,br", "repeat_rate": 32, "repeat_delay": 380,
+                    "sensitivity": 0.15, "accel_profile": "flat",
+                    "natural_scroll": 0, "follow_mouse": 1,
+                    "tp_natural_scroll": 1, "tp_tap": 1, "tp_dwt": 1,
+                    "tp_scroll_factor": 1.2},
+    },
+    "windows": {
+        "available": True, "open_windows": 7, "workspaces": 4,
+        "options": {"gaps_in": 5, "gaps_out": 20, "border_size": 2,
+                    "layout": "dwindle", "rounding": 12,
+                    "active_opacity": 1.0, "inactive_opacity": 0.92,
+                    "blur": 1, "blur_size": 8, "blur_passes": 2,
+                    "animations": 1, "vfr": 1},
+    },
+    "resources": {
+        "per_core": [7, 92, 3, 11, 4, 2, 38, 5, 1, 0, 14, 6],
+        "memory": {"used_mb": 6246, "total_mb": 16384, "percent": 38},
+        "swap_total_mb": 8192, "swap_used_mb": 412,
+        "load": [1.42, 0.98, 0.71],
+        "processes": [
+            {"pid": 2211, "name": "llama-server", "cpu": 91.4, "mem": 18.2,
+             "rss_mb": 3050},
+            {"pid": 1877, "name": "firefox", "cpu": 22.7, "mem": 9.8, "rss_mb": 1640},
+            {"pid": 1204, "name": "Hyprland", "cpu": 8.1, "mem": 2.4, "rss_mb": 402},
+            {"pid": 2440, "name": "quickshell", "cpu": 4.6, "mem": 1.9, "rss_mb": 318},
+            {"pid": 3019, "name": "genesi-code", "cpu": 3.2, "mem": 6.1, "rss_mb": 1020},
+            {"pid": 1990, "name": "kitty", "cpu": 1.1, "mem": 0.9, "rss_mb": 152},
+            {"pid": 1102, "name": "systemd", "cpu": 0.4, "mem": 0.2, "rss_mb": 38},
+            {"pid": 2601, "name": "genesi-aid", "cpu": 0.3, "mem": 0.4, "rss_mb": 66},
+            {"pid": 1444, "name": "pipewire", "cpu": 0.2, "mem": 0.2, "rss_mb": 30},
+            {"pid": 1450, "name": "wireplumber", "cpu": 0.2, "mem": 0.2, "rss_mb": 34},
+        ],
+        "mounts": [
+            {"path": "/", "total_gb": 465.8, "used_gb": 212.4, "percent": 46},
+            {"path": "/home", "total_gb": 465.8, "used_gb": 212.4, "percent": 46},
+            {"path": "/boot", "total_gb": 1.0, "used_gb": 0.3, "percent": 31},
+        ],
+        "network": {"rx_bps": 918000, "tx_bps": 122000},
+    },
 }
 
 
@@ -128,6 +278,21 @@ class Backend(QObject):
     dataReady = Signal(str)
     displaysReady = Signal(str)
     barPresetsReady = Signal(str)
+    sectionReady = Signal(str, str)
+
+    @Slot(str)
+    def ask(self, what):
+        self.sectionReady.emit(what, json.dumps(SECTIONS.get(what, {})))
+
+    @Slot(list, str)
+    def act(self, argv, then):
+        if then:
+            self.sectionReady.emit(then, json.dumps(SECTIONS.get(then, {})))
+
+    @Slot(str)
+    def barShell(self, which):
+        BAR["shell"] = which
+        self.barPresetsReady.emit(json.dumps(BAR))
 
     @Slot()
     def displays(self):

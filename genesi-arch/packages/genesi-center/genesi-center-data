@@ -18,7 +18,17 @@ display.
   genesi-center-data storage     the breakdown behind the ring
   genesi-center-data activity    recent system events, newest first
   genesi-center-data session     what this session can be asked to configure
-  genesi-center-data all         every section above, in one object
+  genesi-center-data system      what the machine IS: cpu, gpu, host, packages
+  genesi-center-data resources   per-core cpu, processes, mounts, swap
+  genesi-center-data input       keyboard and pointer, as Hyprland has them
+  genesi-center-data audio       sinks and sources, from wireplumber
+  genesi-center-data appearance  the frame, the corners, the wallpaper
+  genesi-center-data launcher    the launcher's options and Genesi's rows
+  genesi-center-data windows     gaps, borders, rounding, blur
+  genesi-center-data shortcuts   every keybind the compositor holds
+  genesi-center-data ai          AI Mode, its models, Kokoro, the API key
+  genesi-center-data snapshots   what genesi-snapshots reports
+  genesi-center-data all         the five CHEAP sections, in one object
 
 Percentages are integers because the UI prints them as integers; rates are
 bytes per second. A section that cannot be read returns nulls rather than
@@ -339,19 +349,507 @@ def activity(limit=6):
     return {"items": items[:limit]}
 
 
+
+# ── Hyprland ─────────────────────────────────────────────────────────────────
+#
+# `hyprctl -j getoption` answers one option at a time, and the pages here want
+# a dozen. Batching them through `hyprctl -j --batch` would be faster but the
+# reply is not valid JSON as a whole, so this asks one at a time and skips what
+# it cannot read -- an option Hyprland does not know is left OUT of the result
+# rather than defaulted, so a page draws nothing instead of drawing a lie about
+# the value in effect.
+def _hypr_opt(name):
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return None
+    out = _run(["hyprctl", "-j", "getoption", name], timeout=3)
+    try:
+        d = json.loads(out)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    for key in ("int", "float", "str", "custom"):
+        if key in d and d[key] is not None:
+            v = d[key]
+            # Hyprland reports a bool as an int; the caller knows which is
+            # which from the option name, so this does not guess.
+            return v
+    return None
+
+
+def _hypr_json(*args):
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return None
+    out = _run(["hyprctl", "-j"] + list(args), timeout=4)
+    try:
+        return json.loads(out)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def _caelestia_config():
+    """The user's shell.json, or {} when there is none."""
+    try:
+        with open(os.path.expanduser("~/.config/caelestia/shell.json"),
+                  encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def system():
+    """
+    What this machine is, as opposed to what it is doing.
+
+    Everything here changes at most once per boot, which is why it is its own
+    section: the Overview's fast tick has no business re-reading the CPU model
+    every five seconds.
+    """
+    osr = {}
+    for line in _read("/etc/os-release").splitlines():
+        k, _, v = line.partition("=")
+        osr[k] = v.strip().strip('"')
+
+    cpu_model, cores = None, None
+    for line in _read("/proc/cpuinfo").splitlines():
+        if line.startswith("model name") and cpu_model is None:
+            cpu_model = line.split(":", 1)[1].strip()
+        if line.startswith("processor"):
+            cores = (cores or 0) + 1
+
+    # DMI is root-only on some machines; unreadable is left as None rather
+    # than filled with "To Be Filled By O.E.M.", which is what the field
+    # usually holds anyway.
+    def dmi(name):
+        v = _read("/sys/devices/virtual/dmi/id/" + name).strip()
+        bad = ("", "To Be Filled By O.E.M.", "System Product Name",
+               "Default string", "Unknown")
+        return None if v in bad else v
+
+    gpus = []
+    for line in _run(["lspci", "-mm"], timeout=6).splitlines():
+        if '"VGA compatible controller"' in line or '"3D controller"' in line:
+            parts = re.findall(r'"([^"]*)"', line)
+            if len(parts) >= 4:
+                gpus.append((parts[2] + " " + parts[3]).strip())
+
+    pkgs = _run(["pacman", "-Qq"], timeout=15).split()
+    last_update = None
+    log = _read("/var/log/pacman.log")
+    for line in reversed(log.splitlines()):
+        m = re.match(r"\[([0-9T:+\-]+)\].*starting full system upgrade", line)
+        if m:
+            last_update = m.group(1)
+            break
+
+    return {
+        "name": osr.get("PRETTY_NAME") or osr.get("NAME") or "Genesi OS",
+        "version": osr.get("VERSION_ID") or "",
+        "build": osr.get("BUILD_ID") or "rolling",
+        "kernel": platform.release(),
+        "arch": platform.machine(),
+        "host": dmi("product_name"),
+        "vendor": dmi("sys_vendor"),
+        "cpu": cpu_model,
+        "cores": cores,
+        "gpus": gpus,
+        "memory_total_mb": memory()["total_mb"],
+        "packages": len(pkgs) or None,
+        "last_update": last_update,
+        "boot": _run(["uptime", "-s"], timeout=3).strip() or None,
+        "uptime": uptime(),
+        "shell": os.path.basename(os.environ.get("SHELL", "")) or None,
+        "session": os.environ.get("XDG_CURRENT_DESKTOP") or "unknown",
+        "session_type": os.environ.get("XDG_SESSION_TYPE") or "unknown",
+    }
+
+
+def resources():
+    """
+    Where the machine's time and memory are actually going.
+
+    Per-core rather than one average, because one number cannot tell a busy
+    machine from a single pinned core -- and a pinned core is the shape of the
+    problem people open a monitor to find.
+    """
+    a = _cpu_times_per_core()
+    time.sleep(0.12)
+    b = _cpu_times_per_core()
+    per_core = []
+    for name in sorted(b, key=lambda n: int(n[3:] or 0)):
+        if name not in a:
+            continue
+        idle = b[name][0] - a[name][0]
+        total = b[name][1] - a[name][1]
+        per_core.append(round(100.0 * (total - idle) / total) if total > 0 else 0)
+
+    procs = []
+    out = _run(["ps", "-eo", "pid,comm,pcpu,pmem,rss", "--sort=-pcpu"],
+               timeout=6)
+    for line in out.splitlines()[1:26]:
+        f = line.split(None, 4)
+        if len(f) < 5:
+            continue
+        try:
+            procs.append({"pid": int(f[0]), "name": f[1],
+                          "cpu": float(f[2]), "mem": float(f[3]),
+                          "rss_mb": round(int(f[4]) / 1024)})
+        except ValueError:
+            continue
+
+    mounts = []
+    for line in _run(["df", "-B1", "-x", "tmpfs", "-x", "devtmpfs",
+                      "--output=target,size,used,pcent"], timeout=6
+                     ).splitlines()[1:]:
+        f = line.split()
+        if len(f) < 4:
+            continue
+        try:
+            mounts.append({
+                "path": f[0],
+                "total_gb": round(int(f[1]) / (1024 ** 3), 1),
+                "used_gb": round(int(f[2]) / (1024 ** 3), 1),
+                "percent": int(f[3].rstrip("%")),
+            })
+        except ValueError:
+            continue
+
+    m = memory()
+    swap_total, swap_used = None, None
+    for line in _read("/proc/meminfo").splitlines():
+        if line.startswith("SwapTotal:"):
+            swap_total = round(int(line.split()[1]) / 1024)
+        elif line.startswith("SwapFree:"):
+            free = round(int(line.split()[1]) / 1024)
+            if swap_total is not None:
+                swap_used = swap_total - free
+
+    return {
+        "per_core": per_core,
+        "memory": m,
+        "swap_total_mb": swap_total,
+        "swap_used_mb": swap_used,
+        "processes": procs,
+        "mounts": mounts,
+        "network": network(),
+        "load": list(os.getloadavg()) if hasattr(os, "getloadavg") else None,
+    }
+
+
+def _cpu_times_per_core():
+    """{"cpu0": (idle, total)} — the same arithmetic as _cpu_times, per line."""
+    out = {}
+    for line in _read("/proc/stat").splitlines():
+        if not line.startswith("cpu") or line.startswith("cpu "):
+            continue
+        f = line.split()
+        try:
+            v = [int(x) for x in f[1:8]]
+        except ValueError:
+            continue
+        out[f[0]] = (v[3], sum(v))
+    return out
+
+
+def input_devices():
+    """
+    Keyboard and pointer, as Hyprland has them.
+
+    Hyprland only: these are `input:*` options in its config, and on Plasma the
+    same settings live somewhere else entirely. The page is hidden there rather
+    than shown with controls that write to a config nothing reads.
+    """
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return {"available": False}
+
+    devices = _hypr_json("devices") or {}
+    keyboards = [{"name": k.get("name"), "layout": k.get("layout"),
+                  "main": bool(k.get("main"))}
+                 for k in devices.get("keyboards", [])]
+    mice = [{"name": m.get("name")} for m in devices.get("mice", [])]
+
+    opts = {}
+    for name, key in (("input:kb_layout", "kb_layout"),
+                      ("input:kb_variant", "kb_variant"),
+                      ("input:kb_options", "kb_options"),
+                      ("input:repeat_rate", "repeat_rate"),
+                      ("input:repeat_delay", "repeat_delay"),
+                      ("input:sensitivity", "sensitivity"),
+                      ("input:accel_profile", "accel_profile"),
+                      ("input:natural_scroll", "natural_scroll"),
+                      ("input:follow_mouse", "follow_mouse"),
+                      ("input:touchpad:natural_scroll", "tp_natural_scroll"),
+                      ("input:touchpad:tap-to-click", "tp_tap"),
+                      ("input:touchpad:disable_while_typing", "tp_dwt"),
+                      ("input:touchpad:scroll_factor", "tp_scroll_factor")):
+        v = _hypr_opt(name)
+        if v is not None:
+            opts[key] = v
+
+    return {"available": True, "keyboards": keyboards, "mice": mice,
+            "options": opts,
+            "has_touchpad": any("touchpad" in (m.get("name") or "").lower()
+                                for m in devices.get("mice", []))}
+
+
+def audio():
+    """
+    Sinks and sources, from wireplumber.
+
+    `wpctl status` is parsed rather than `pactl` because wireplumber is what
+    Genesi ships and what genesi-audio drives; two tools reading one server
+    would eventually disagree about which device is default, and the default
+    is the only thing this page is really for.
+    """
+    out = _run(["wpctl", "status"], timeout=6)
+    if not out.strip():
+        return {"available": False}
+
+    sinks, sources = [], []
+    section = None
+    for line in out.splitlines():
+        low = line.strip().lower()
+        if low.startswith("sinks:"):
+            section = sinks
+            continue
+        if low.startswith("sources:"):
+            section = sources
+            continue
+        if low.startswith(("filters:", "streams:", "audio", "video",
+                           "settings", "clients:")):
+            section = None
+            continue
+        if section is None:
+            continue
+        # " │  *   49. Family 17h HD Audio      [vol: 0.54]"
+        m = re.search(r"(\*?)\s*(\d+)\.\s+(.*?)\s*\[vol:\s*([0-9.]+)"
+                      r"(\s+MUTED)?\]", line)
+        if not m:
+            continue
+        section.append({
+            "id": int(m.group(2)),
+            "name": m.group(3).strip(),
+            "default": m.group(1) == "*",
+            "volume": round(float(m.group(4)) * 100),
+            "muted": bool(m.group(5)),
+        })
+
+    return {"available": True, "sinks": sinks, "sources": sources,
+            "mixer": bool(shutil.which("genesi-open-usb-mixer"))}
+
+
+def appearance():
+    """The desktop's own look: the frame, the corners, the wallpaper."""
+    cfg = _caelestia_config()
+    border = cfg.get("border") or {}
+    bg = cfg.get("background") or {}
+    schemes = []
+    out = _run(["caelestia", "scheme", "list"], timeout=6)
+    for line in out.splitlines():
+        name = line.strip().split()[0] if line.strip() else ""
+        if name and not name.startswith("-"):
+            schemes.append(name)
+    return {
+        "available": bool(cfg),
+        "border": {
+            "thickness": border.get("thickness", 10),
+            "rounding": border.get("rounding", 25),
+            "smoothing": border.get("smoothing", 20),
+        },
+        "wallpaper": bg.get("wallpaper") or _read(
+            os.path.expanduser("~/.local/state/caelestia/wallpaper/path.txt")
+        ).strip() or None,
+        "schemes": schemes,
+        # hyprshade's own directory, which is where genesi-shaders installs
+        # too -- it deliberately does not create a second one, so there is a
+        # single list and `hyprshade on <name>` always matches what is shown.
+        "shaders": sorted(
+            f.rsplit(".", 1)[0]
+            for f in os.listdir("/usr/share/hyprshade/shaders")
+            if f.endswith((".glsl", ".frag"))
+        ) if os.path.isdir("/usr/share/hyprshade/shaders") else [],
+        # Which one is on, so the page can mark it and offer to turn it off.
+        # `hyprshade current` prints the name or nothing.
+        "shader_on": _run(["hyprshade", "current"], timeout=4).strip() or None,
+    }
+
+
+def launcher():
+    """
+    The launcher, and the rows Genesi puts in it.
+
+    The actions are counted by GROUP because that is how they are shown: `>bar`
+    and `>shader` each collapse a dozen rows into one, and a flat total would
+    say the launcher has fifty entries when it opens with twenty-five.
+    """
+    cfg = _caelestia_config()
+    l = cfg.get("launcher") or {}
+    actions = l.get("actions") or []
+    groups = {}
+    top = 0
+    for a in actions:
+        g = a.get("group")
+        if g:
+            groups[g] = groups.get(g, 0) + 1
+        else:
+            top += 1
+    return {
+        "available": bool(cfg),
+        "options": {
+            "maxShown": l.get("maxShown", 8),
+            "maxWallpapers": l.get("maxWallpapers", 9),
+            "actionPrefix": l.get("actionPrefix", ">"),
+            "enableDangerousActions": bool(l.get("enableDangerousActions")),
+            "showOnHover": bool(l.get("showOnHover")),
+            "vimKeybinds": bool(l.get("vimKeybinds")),
+        },
+        "actions_top": top,
+        "groups": [{"name": k, "count": v} for k, v in sorted(groups.items())],
+    }
+
+
+def windows():
+    """Gaps, borders, rounding, blur -- how a window is drawn and moved."""
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return {"available": False}
+    opts = {}
+    for name, key in (("general:gaps_in", "gaps_in"),
+                      ("general:gaps_out", "gaps_out"),
+                      ("general:border_size", "border_size"),
+                      ("general:layout", "layout"),
+                      ("decoration:rounding", "rounding"),
+                      ("decoration:active_opacity", "active_opacity"),
+                      ("decoration:inactive_opacity", "inactive_opacity"),
+                      ("decoration:blur:enabled", "blur"),
+                      ("decoration:blur:size", "blur_size"),
+                      ("decoration:blur:passes", "blur_passes"),
+                      ("animations:enabled", "animations"),
+                      ("misc:vfr", "vfr")):
+        v = _hypr_opt(name)
+        if v is not None:
+            opts[key] = v
+    clients = _hypr_json("clients") or []
+    return {"available": True, "options": opts, "open_windows": len(clients),
+            "workspaces": len(_hypr_json("workspaces") or [])}
+
+
+def shortcuts():
+    """
+    Every keybind Hyprland currently holds, read from the compositor.
+
+    From `hyprctl binds`, not from parsing hyprland.conf: the conf is one of
+    several sources (ours, the user's, anything sourced) and what is BOUND is
+    the only answer that is true. It also means a bind added by hand shows up
+    here without this having to know where it was written.
+    """
+    binds = _hypr_json("binds")
+    if binds is None:
+        return {"available": False}
+
+    MODS = [(64, "SUPER"), (8, "ALT"), (4, "CTRL"), (1, "SHIFT")]
+
+    def mods_of(mask):
+        return [n for bit, n in MODS if mask & bit]
+
+    out = []
+    for b in binds:
+        key = b.get("key") or ""
+        if not key and b.get("keycode"):
+            key = "code:%s" % b["keycode"]
+        out.append({
+            "mods": mods_of(b.get("modmask") or 0),
+            "key": key,
+            "dispatcher": b.get("dispatcher") or "",
+            "arg": b.get("arg") or "",
+            "description": b.get("description") or "",
+        })
+    return {"available": True, "binds": out}
+
+
+def ai():
+    """AI Mode, as its own daemon reports it."""
+    if not shutil.which("genesi-ai-mode"):
+        return {"available": False}
+    try:
+        state = json.loads(_run(["genesi-ai-mode", "status"], timeout=6) or "{}")
+    except (json.JSONDecodeError, ValueError):
+        state = {}
+    models = []
+    for root in (os.path.expanduser("~/.local/share/genesi-ai/models"),
+                 os.path.expanduser("~/.ollama/models")):
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _, files in os.walk(root):
+            for f in files:
+                if f.endswith(".gguf"):
+                    p = os.path.join(dirpath, f)
+                    try:
+                        gb = round(os.path.getsize(p) / (1024 ** 3), 1)
+                    except OSError:
+                        gb = None
+                    models.append({"name": f[:-5], "size_gb": gb})
+    return {
+        "available": True,
+        "state": state,
+        "models": sorted(models, key=lambda m: m["name"])[:40],
+        # The two things the page can offer to change, each reported as
+        # installed-or-not rather than assumed.
+        "kokoro": os.path.isdir(
+            os.path.expanduser("~/.local/share/genesi-ai/kokoro")),
+        "api_key": bool(_read(
+            os.path.expanduser("~/.config/genesi/ai-api-key")).strip()),
+        "turbo": bool(shutil.which("genesi-ai-turbo")),
+    }
+
+
+def snapshots():
+    """The snapshots, as genesi-snapshots reports them."""
+    if not shutil.which("genesi-snapshots"):
+        return {"available": False}
+
+    def js(cmd):
+        try:
+            return json.loads(_run(["genesi-snapshots", cmd], timeout=20) or "{}")
+        except (json.JSONDecodeError, ValueError):
+            return {}
+
+    st = js("status-json")
+    lst = js("list-json")
+    return {
+        "available": True,
+        "status": st,
+        "configured": bool(lst.get("configured")),
+        "snapshots": lst.get("snapshots") or [],
+    }
+
+
 SECTIONS = {
     "session": session,
     "telemetry": telemetry,
     "core": core,
     "storage": storage,
     "activity": activity,
+    "system": system,
+    "resources": resources,
+    "input": input_devices,
+    "audio": audio,
+    "appearance": appearance,
+    "launcher": launcher,
+    "windows": windows,
+    "shortcuts": shortcuts,
+    "ai": ai,
+    "snapshots": snapshots,
 }
+
+# `all` is what the Overview asks for, and it must stay CHEAP. system() runs
+# pacman -Q, resources() sleeps to sample per-core, snapshots() walks btrfs --
+# none of that belongs on a five-second tick, so the pages that need them ask
+# for them by name.
+FAST = ("session", "telemetry", "core", "storage", "activity")
 
 
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
     if what == "all":
-        out = {k: f() for k, f in SECTIONS.items()}
+        out = {k: SECTIONS[k]() for k in FAST}
     elif what in SECTIONS:
         out = SECTIONS[what]()
     else:
