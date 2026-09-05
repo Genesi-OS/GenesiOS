@@ -91,6 +91,58 @@ def hypr(*args, check=True):
 MODE_RE = re.compile(r"^(\d+)x(\d+)@([\d.]+)")
 
 
+def on_x11():
+    """
+    Whether xrandr is the right tool here, rather than whether it exists.
+
+    This used to be `DISPLAY is set and xrandr is installed`, and that is true
+    inside a Hyprland session: Hyprland runs XWayland, so DISPLAY points at it
+    and xrandr talks to XWayland's virtual outputs -- which Hyprland itself
+    ignores completely. `genesi-display primary` therefore ran, exited 0,
+    printed success, and changed nothing at all. Reported as "setting the main
+    screen does not work", which is exactly what it looked like.
+
+    A Wayland compositor is the answer to "what am I on", not the presence of
+    a compatibility layer for X clients.
+    """
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return False
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return False
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+        return False
+    return bool(os.environ.get("DISPLAY")) and bool(shutil.which("xrandr"))
+
+
+def primary_name():
+    """
+    Which screen is the main one, or None.
+
+    Hyprland has no primary flag, so what we set is the default workspace
+    binding -- and what we set is therefore what we can read back. The rule
+    lives in our own override file, so this reports the state THIS TOOL
+    established and never guesses.
+
+    Without it a settings page has nothing to draw: the button could be
+    pressed and the page could not show that anything had happened, which on
+    its own reads as "it did not work".
+    """
+    if on_x11():
+        out = ""
+        try:
+            out = subprocess.run(["xrandr", "--query"], capture_output=True,
+                                 text=True, timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            return None
+        for line in out.splitlines():
+            if " connected primary" in line:
+                return line.split()[0]
+        return None
+    rule = read_overrides().get("__workspace__", "")
+    m = re.search(r"monitor:([^,\s]+)", rule)
+    return m.group(1) if m else None
+
+
 def modes_of(raw):
     """
     The modes a monitor advertises, newest-first by area then refresh.
@@ -119,6 +171,8 @@ def monitors():
     except json.JSONDecodeError:
         die("could not read hyprctl monitors -j")
     out = []
+    # Resolved once, not per monitor: on X11 it shells out to xrandr.
+    prim = primary_name()
     for m in raw:
         out.append({
             "name": m.get("name", ""),
@@ -133,6 +187,11 @@ def monitors():
             "rotation": TRANSFORM_TO_DEG.get(int(m.get("transform", 0))),
             "focused": bool(m.get("focused", False)),
             "disabled": bool(m.get("disabled", False)),
+            # `focused` is where the pointer is RIGHT NOW and changes as the
+            # mouse moves; `primary` is where the desktop starts. Drawing a
+            # main-screen control from `focused` would light up whichever
+            # screen the mouse happened to be on, which is a confident lie.
+            "primary": m.get("name") == prim,
             # Every mode the panel will accept, so a settings page can offer a
             # list instead of a free-text box. hyprctl reports them as
             # "2560x1440@74.97Hz"; they are normalised here because the string
@@ -376,8 +435,9 @@ def cmd_show():
         rot = m["rotation"]
         rot_s = f"{rot}°" if rot is not None else f"transform {m['transform']}"
         pinned = " (pinned by genesi-display)" if m["name"] in ov else ""
+        main = "  [main]" if m.get("primary") else ""
         print(f"{mark} {m['name']}  {m['width']}x{m['height']}@{m['refresh']}Hz"
-              f"  scale {m['scale']:g}  {rot_s}{pinned}")
+              f"  scale {m['scale']:g}  {rot_s}{main}{pinned}")
         if m["description"]:
             print(f"     {m['description']}")
 
@@ -600,7 +660,7 @@ def cmd_primary(name):
                 the tool says so rather than claiming more than it did.
     """
     m = find(name)
-    if os.environ.get("DISPLAY") and shutil.which("xrandr"):
+    if on_x11():
         p = subprocess.run(["xrandr", "--output", m["name"], "--primary"],
                            capture_output=True, text=True)
         if p.returncode != 0:

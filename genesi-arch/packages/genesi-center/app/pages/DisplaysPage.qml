@@ -189,7 +189,10 @@ Item {
             Row_MainScreen {
                 width: parent.width
                 enabled: page.current !== null
-                isPrimary: page.current ? page.current.x === 0 && page.current.y === 0 : false
+                // Reported by genesi-display, not inferred. Position 0,0 is
+                // where the leftmost screen happens to sit and has nothing to
+                // do with which one the desktop starts on.
+                isPrimary: page.current ? page.current.primary === true : false
                 onMakePrimary: page.run(["primary", page.current.name])
             }
 

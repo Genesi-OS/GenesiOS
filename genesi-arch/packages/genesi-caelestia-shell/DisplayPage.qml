@@ -180,12 +180,17 @@ PageBase {
                 // does the right one for each: on X11 the real xrandr flag, on
                 // Hyprland the default workspace binding. The page does not
                 // need to know which — it just asks.
-                // An action, not a toggle. hyprctl reports `focused` -- where
-                // the pointer is right now -- and nothing at all about which
-                // screen is primary, because Hyprland has no such flag. A
-                // switch drawn from `focused` would light up whichever screen
-                // the mouse happened to be on, which is a confident lie. A
-                // button says what it does and claims nothing about state.
+                // It shows state now, and the state is real. hyprctl reports
+                // `focused` -- where the pointer is RIGHT NOW -- and nothing
+                // about which screen is primary, so this used to be a button
+                // with nothing to say; drawing it from `focused` would have
+                // lit up whichever screen the mouse was on, a confident lie.
+                //
+                // genesi-display reads back the workspace rule it wrote
+                // itself, so `primary` is a fact rather than a guess. That
+                // matters here: a button whose appearance never changes after
+                // being pressed is indistinguishable from one that did
+                // nothing, which is exactly how this was reported.
                 ConnectedRect {
                     Layout.fillWidth: true
                     last: true
@@ -219,7 +224,21 @@ PageBase {
                             }
                         }
 
+                        // It reports state now. genesi-display reads back the
+                        // workspace rule it wrote, so `primary` is a real fact
+                        // rather than the guess `focused` would have been --
+                        // and a button that never changes after being pressed
+                        // is indistinguishable from one that did nothing,
+                        // which is how this was reported.
+                        StyledText {
+                            visible: monBlock.mon.primary === true
+                            text: qsTr("MAIN")
+                            color: Colours.palette.m3primary
+                            font: Tokens.font.label.small
+                        }
+
                         IconTextButton {
+                            visible: monBlock.mon.primary !== true
                             icon: "star"
                             text: qsTr("Set")
                             enabled: root.busy === ""

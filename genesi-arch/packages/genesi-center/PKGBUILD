@@ -28,7 +28,9 @@ pkgver=0.1.0
 # at 1, so the repository held the newest code under a version every machine
 # already had and `genesi update` correctly did nothing. ci/pkgrel-bump-test.py
 # now fails the build on it.
-pkgrel=2
+# 3: the Displays page, and primary read from genesi-display rather than
+# inferred from a monitor sitting at 0,0.
+pkgrel=3
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
