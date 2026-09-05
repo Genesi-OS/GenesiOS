@@ -1,0 +1,65 @@
+# Maintainer: Genesi OS Team
+#
+# genesi-topbar — Genesi's own bar, horizontal by design.
+#
+# Not a caelestia preset, and it could not be one. caelestia's Bar.qml is a
+# ColumnLayout anchored to the screen edge with exclusiveZone = contentWidth,
+# and Clock, Tray, StatusIcons and Workspaces each stack vertically inside
+# themselves. Making that horizontal is six upstream files rewritten and then
+# owned forever, patched against every caelestia release.
+#
+# So: a second bar rather than one bar rotated, which is also what the desktop
+# this was measured against does — two bars you switch between. This one is
+# ours end to end, so it can be as elaborate as we like and a caelestia update
+# cannot break it.
+#
+# ── Why the visual layer is plain QtQuick ────────────────────────────────────
+#
+# BarContent.qml and everything under components/ take their data as properties
+# and touch nothing. Only shell.qml knows about Quickshell, the layer shell,
+# Hyprland's IPC and the tray.
+#
+# That is not tidiness. Quickshell does not run on the machine this is
+# developed on, so a bar written as one file would be the only thing in this
+# repository shipped without anyone having seen it. Split like this,
+# devtools/render-topbar.py draws the whole bar to a PNG with stub data and it
+# gets reviewed like every other surface here.
+pkgname=genesi-topbar
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Genesi's horizontal bar for Hyprland"
+arch=('any')
+groups=('genesi')
+license=('AGPL-3.0-or-later')
+url='https://github.com/Genesi-OS/GenesiOS'
+# quickshell runs it; hyprland is what it reads. wireplumber for wpctl, which
+# the data plane uses for the volume reading.
+depends=('quickshell' 'hyprland' 'python' 'wireplumber' 'qt6-svg')
+source=()
+
+check() {
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-topbar-data',encoding='utf-8').read())"
+    # Every QML file the package ships must at least be syntactically whole.
+    # A bar that fails to load leaves the desktop with no bar at all and the
+    # reason only in a log nobody is watching.
+    for f in "${startdir}"/quickshell/*.qml "${startdir}"/quickshell/components/*.qml; do
+        grep -q "^import " "$f" || { echo "no imports in $f" >&2; return 1; }
+    done
+}
+
+package() {
+    install -Dm755 "${startdir}/genesi-topbar-data" \
+        "${pkgdir}/usr/bin/genesi-topbar-data"
+
+    # A Quickshell config, launched with `qs -c genesi-topbar`. It lives in
+    # /etc/xdg so it is system-wide and read-only, the same place
+    # genesi-caelestia-shell puts its own.
+    local qs="${pkgdir}/etc/xdg/quickshell/genesi-topbar"
+    install -Dm644 "${startdir}/quickshell/shell.qml"     "${qs}/shell.qml"
+    install -Dm644 "${startdir}/quickshell/BarContent.qml" "${qs}/BarContent.qml"
+    install -Dm644 "${startdir}/quickshell/BarTokens.qml"  "${qs}/BarTokens.qml"
+    install -Dm644 "${startdir}/quickshell/qmldir"         "${qs}/qmldir"
+    install -Dm644 "${startdir}/quickshell/components/"*.qml \
+        -t "${qs}/components/"
+    install -Dm644 "${startdir}/quickshell/art/"* -t "${qs}/art/"
+}

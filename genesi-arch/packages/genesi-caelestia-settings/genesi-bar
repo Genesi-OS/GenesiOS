@@ -23,6 +23,7 @@ page should call this rather than reimplement it.
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tempfile
 
@@ -142,6 +143,83 @@ def cmd_apply(presets, name):
     print(f"{p.get('name', name)}")
 
 
+SHELLS = {
+    "caelestia": {
+        "name": "Side rail · Barra lateral",
+        "desc": "caelestia's own bar, down the left edge",
+        "start": ["caelestia", "shell", "-d"],
+        "stop": ["pkill", "-f", "qs -c genesi-topbar"],
+    },
+    "genesi": {
+        "name": "Genesi bar · Barra Genesi",
+        "desc": "Genesi's own bar, across the top",
+        "start": ["qs", "-c", "genesi-topbar", "-d"],
+        "stop": ["pkill", "-f", "caelestia"],
+    },
+}
+SHELL_STATE = os.path.expanduser("~/.config/genesi/bar-shell")
+
+
+def current_shell():
+    try:
+        with open(SHELL_STATE, encoding="utf-8") as fh:
+            v = fh.read().strip()
+        return v if v in SHELLS else "caelestia"
+    except OSError:
+        return "caelestia"
+
+
+def cmd_shell_start():
+    """
+    Start whichever bar is remembered. Run once, at login.
+
+    Without this the switch lasts until the session ends and then quietly
+    reverts, which is worse than not offering it: a setting that forgets itself
+    reads as a bug in the setting rather than a missing feature.
+
+    hyprland.conf calls this instead of naming a bar, so the choice lives in
+    one state file rather than in a config line the user also edits.
+    """
+    sh = SHELLS[current_shell()]
+    subprocess.Popen(sh["start"], stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def cmd_shell(which=None):
+    """
+    Which bar runs: caelestia's side rail, or Genesi's top bar.
+
+    They are two different bars, not one bar rotated -- caelestia's is a
+    vertical layout anchored to the screen edge, all the way down to how each
+    module stacks inside itself. So switching is starting one and stopping the
+    other, and the choice is remembered for the next login.
+
+    Deliberately does NOT edit hyprland.conf. The autostart line there is the
+    user's, and a tool that rewrites someone's config to change a runtime
+    choice is a tool they stop trusting. The state file is read at login by the
+    line genesi-caelestia-settings ships.
+    """
+    if which is None:
+        cur = current_shell()
+        for sid, sh in SHELLS.items():
+            print(f"{' *' if sid == cur else '  '} {sid:<11} {sh['name']}")
+            print(f"      {sh['desc']}")
+        return
+
+    if which not in SHELLS:
+        die(f"no bar called {which!r}. Choose: " + ", ".join(SHELLS))
+
+    os.makedirs(os.path.dirname(SHELL_STATE), exist_ok=True)
+    with open(SHELL_STATE, "w", encoding="utf-8") as fh:
+        fh.write(which + "\n")
+
+    sh = SHELLS[which]
+    subprocess.run(sh["stop"], capture_output=True)
+    subprocess.Popen(sh["start"], stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+    print(sh["name"])
+
+
 def cmd_json(presets):
     """
     Everything a settings page needs, in one read.
@@ -154,6 +232,9 @@ def cmd_json(presets):
     cfg = read_config()
     cur = current_name(presets, cfg)
     out = {
+        "shell": current_shell(),
+        "shells": [{"id": k, "name": v["name"], "description": v["desc"]}
+                   for k, v in SHELLS.items()],
         "current": cur or "",
         "presets": [
             {
@@ -184,6 +265,10 @@ def main():
     a.add_argument("name")
     sub.add_parser("current", help="print the preset in use, or 'custom'")
     sub.add_parser("json", help="every preset and the current one, as JSON")
+    sh = sub.add_parser("shell", help="which bar runs: caelestia or genesi")
+    sh.add_argument("which", nargs="?")
+    sh.add_argument("--start", action="store_true",
+                    help="start the remembered bar (for autostart)")
 
     args = ap.parse_args()
     presets = load_presets()
@@ -194,6 +279,11 @@ def main():
         cmd_current(presets)
     elif args.cmd == "json":
         cmd_json(presets)
+    elif args.cmd == "shell":
+        if args.start:
+            cmd_shell_start()
+        else:
+            cmd_shell(args.which)
     else:
         cmd_list(presets)
     return 0

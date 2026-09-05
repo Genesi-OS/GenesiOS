@@ -18,9 +18,14 @@
 _migrate_hypr() {
     local cfg="$1" owner="$2"
     [ -f "$cfg" ] || return 0
-    # Only Genesi's caelestia config (distinctive exec-once marker) -- never a
-    # config the user wrote themselves.
-    grep -q 'caelestia shell -d' "$cfg" || return 0
+    # Only Genesi's caelestia config -- never a config the user wrote
+    # themselves. EITHER marker counts, and that is not belt and braces: this
+    # scriptlet REWRITES `exec caelestia shell -d` into `genesi-bar shell
+    # --start` further down, so gating on the old string alone would mean the
+    # first upgrade to run that rewrite was also the last upgrade this function
+    # ever ran. A gate that the function itself invalidates is the same trap as
+    # the section-8 marker that matched a line genesi-display writes.
+    grep -qE 'caelestia shell -d|genesi-bar shell --start' "$cfg" || return 0
     # There used to be a "skip if fully up to date" gate here that listed every
     # previous migration by hand. Adding a section without also adding its
     # marker to that list meant the function returned BEFORE reaching the new
@@ -124,6 +129,16 @@ windowrule = float class:^(org\.genesi\.aiquick)$
 windowrule = center class:^(org\.genesi\.aiquick)$
 windowrule = pin class:^(org\.genesi\.aiquick)$
 HYPR
+    fi
+
+    # 7b. The bar is a remembered choice, not a hardcoded line.
+    #     Existing configs still say `exec caelestia shell -d`, so the switch
+    #     between caelestia's rail and Genesi's top bar would work until the
+    #     session ended and then revert -- a setting that forgets itself reads
+    #     as a broken setting. Rewritten in place so the VM software-rendering
+    #     wrapper around it survives.
+    if grep -q 'exec caelestia shell -d' "$cfg"; then
+        sed -i "s|exec caelestia shell -d|genesi-bar shell --start|" "$cfg"
     fi
 
     # 8. Display keybinds (added in pkgrel 21). The launcher entries for scale

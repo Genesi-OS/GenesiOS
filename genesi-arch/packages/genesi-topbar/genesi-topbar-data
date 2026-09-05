@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""
+genesi-topbar-data — volume, network and battery, as JSON.
+
+The same shape as every other Genesi data plane: one command, JSON on stdout,
+nothing else. The bar draws what comes back and reads nothing itself, so the
+number in the bar and the number in a terminal cannot disagree -- and these
+readings can be tested with no compositor running, which is most of why they
+are here rather than in the QML.
+
+A reading that cannot be taken is omitted rather than reported as zero. The bar
+hides a key it does not receive, so a laptop battery on a desktop shows nothing
+instead of "0%".
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+
+def run(args, timeout=4):
+    try:
+        p = subprocess.run(args, capture_output=True, text=True,
+                           timeout=timeout, encoding="utf-8", errors="replace")
+        return p.stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def volume():
+    """The default sink, as a percentage."""
+    out = run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"])
+    m = re.search(r"Volume:\s*([0-9.]+)", out)
+    if not m:
+        return None
+    if "MUTED" in out.upper():
+        return 0
+    return int(round(float(m.group(1)) * 100))
+
+
+def network():
+    """
+    What kind of link is up, not which one.
+
+    A bar has room for a word. Whether it is wifi or ethernet is the question a
+    glance asks; the SSID is a question for a popout.
+    """
+    base = "/sys/class/net"
+    try:
+        ifaces = os.listdir(base)
+    except OSError:
+        return None
+    best = None
+    for i in ifaces:
+        if i == "lo":
+            continue
+        try:
+            with open(os.path.join(base, i, "operstate")) as fh:
+                if fh.read().strip() != "up":
+                    continue
+        except OSError:
+            continue
+        wireless = os.path.exists(os.path.join(base, i, "wireless"))
+        # Ethernet wins when both are up: it is the one carrying the traffic.
+        if wireless:
+            best = best or "wifi"
+        else:
+            return "eth"
+    return best
+
+
+def battery():
+    base = "/sys/class/power_supply"
+    try:
+        entries = sorted(os.listdir(base))
+    except OSError:
+        return None
+    for e in entries:
+        d = os.path.join(base, e)
+        try:
+            with open(os.path.join(d, "type")) as fh:
+                if fh.read().strip() != "Battery":
+                    continue
+            with open(os.path.join(d, "capacity")) as fh:
+                return int(fh.read().strip())
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def main():
+    out = {}
+    for key, fn in (("volume", volume), ("network", network),
+                    ("battery", battery)):
+        v = fn()
+        if v is not None:
+            out[key] = v
+    json.dump(out, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

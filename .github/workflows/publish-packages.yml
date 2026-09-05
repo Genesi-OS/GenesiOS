@@ -526,6 +526,9 @@ jobs:
             "genesi-ttf-rubik-vf"
             "genesi-caelestia-cli"
             "genesi-caelestia-shell"
+            # Genesi's own bar. Before the settings package, which now
+            # depends on it.
+            "genesi-topbar"
             "genesi-caelestia-settings"
             # Genesi Mesh — pools GPU memory across machines on the LAN. Pure
             # Python + a systemd unit, so it is cheap to build; it needs a
@@ -683,7 +686,7 @@ jobs:
             # genesi-center is the same case again: genesi-desktop lists it and
             # it is new in this run, so nothing can resolve it yet.
             case "$pkg" in
-              genesi-app2unit|genesi-libcava|genesi-materialyoucolor|genesi-ttf-rubik-vf|genesi-hyprshade|genesi-shaders|genesi-center)
+              genesi-app2unit|genesi-libcava|genesi-materialyoucolor|genesi-ttf-rubik-vf|genesi-hyprshade|genesi-shaders|genesi-center|genesi-topbar)
                 builtpkg=$(ls -1t "repo/$pkg"-*.pkg.tar.zst 2>/dev/null | grep -v -- '-debug-' | head -1)
                 if [ -n "$builtpkg" ]; then
                   echo "Installing $builtpkg into the build container (build-time dep for caelestia)"
