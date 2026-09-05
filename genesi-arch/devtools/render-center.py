@@ -79,9 +79,55 @@ MONITORS = [
 ]
 
 
+BAR = {
+    "current": "20-centrado",
+    "presets": [
+        {"id": p, "name": n, "description": d,
+         "entries": [{"id": e, "enabled": True} for e in ents]}
+        for p, n, d, ents in [
+            ("10-padrao", "Default · Padrão", "The bar as caelestia ships it",
+             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
+              "clock", "statusIcons", "power"]),
+            ("20-centrado", "Centred · Centralizado",
+             "Logo at the top, workspaces in the middle, the rest at the bottom",
+             ["logo", "spacer", "workspaces", "spacer", "tray", "clock",
+              "statusIcons", "power"]),
+            ("30-minimo", "Minimal · Mínimo", "Workspaces and the time, nothing else",
+             ["spacer", "workspaces", "spacer", "clock"]),
+            ("40-numeros", "Numbered · Números",
+             "Workspaces as numbers instead of dots",
+             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
+              "clock", "statusIcons", "power"]),
+            ("50-janelas", "Windows · Janelas",
+             "Each workspace shows the icons of what is open in it",
+             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
+              "clock", "statusIcons", "power"]),
+            ("60-informativo", "Dense · Informativo",
+             "Everything on: date, audio, microphone, keyboard layout",
+             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
+              "clock", "statusIcons", "power"]),
+            ("70-compacto", "Compact · Compacto",
+             "Tighter icons and fewer workspaces",
+             ["logo", "workspaces", "spacer", "tray", "clock", "power"]),
+            ("80-limpo", "Clean · Limpo", "No tray and no status icons",
+             ["logo", "workspaces", "spacer", "activeWindow", "spacer",
+              "clock", "power"]),
+            ("90-trilha", "Trail · Trilha", "The active workspace leaves a trail",
+             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
+              "clock", "statusIcons", "power"]),
+            ("95-oculta", "Auto-hide · Oculta",
+             "The bar stays out of the way until you reach for it",
+             ["logo", "workspaces", "spacer", "activeWindow", "spacer", "tray",
+              "clock", "statusIcons", "power"]),
+        ]
+    ],
+}
+
+
 class Backend(QObject):
     dataReady = Signal(str)
     displaysReady = Signal(str)
+    barPresetsReady = Signal(str)
 
     @Slot()
     def displays(self):
@@ -89,6 +135,14 @@ class Backend(QObject):
 
     @Slot(list)
     def displayCmd(self, args):
+        pass
+
+    @Slot()
+    def barPresets(self):
+        self.barPresetsReady.emit(json.dumps(BAR))
+
+    @Slot(str)
+    def barApply(self, preset):
         pass
 
     @Slot(list)
@@ -108,7 +162,14 @@ for cand in (os.path.expanduser("~/.config/genesi/center/tree.png"),
     if os.path.exists(cand):
         tree = "file:///" + os.path.abspath(cand).replace("\\", "/")
         break
-engine.setInitialProperties({"backend": backend, "treeArt": tree})
+# A fifth argument names the session to pretend to be ("plasma" or
+# "hyprland"), so the rail can be reviewed as each desktop actually sees it.
+CAPS = {"hyprland": True, "caelestia": True, "plasma": False}
+if len(sys.argv) > 5 and sys.argv[5] == "plasma":
+    CAPS = {"hyprland": False, "caelestia": False, "plasma": True}
+
+engine.setInitialProperties({"backend": backend, "treeArt": tree, "caps": CAPS})
+print("session:", "plasma" if not CAPS["hyprland"] else "hyprland")
 print("artwork:", tree or "(none -- the page draws its own glow)")
 
 warnings = []

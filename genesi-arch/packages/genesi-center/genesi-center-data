@@ -17,6 +17,7 @@ display.
   genesi-center-data core        kernel, architecture, build, session
   genesi-center-data storage     the breakdown behind the ring
   genesi-center-data activity    recent system events, newest first
+  genesi-center-data session     what this session can be asked to configure
   genesi-center-data all         every section above, in one object
 
 Percentages are integers because the UI prints them as integers; rates are
@@ -277,6 +278,36 @@ def storage():
     }
 
 
+def session():
+    """
+    What this machine can actually be asked to do.
+
+    Genesi Center runs on Plasma and on Hyprland, and half of what it
+    configures does not exist on both: genesi-display speaks Hyprland's IPC,
+    the bar presets are caelestia's, the launcher is caelestia's. A settings
+    page for something the session cannot do is worse than a missing page --
+    it offers a control that silently changes nothing, which is the failure
+    this project keeps meeting.
+
+    So capability is REPORTED, and the rail hides what does not apply. Detected
+    from the running session rather than from what is installed: a machine can
+    have caelestia on disk and be logged into Plasma right now.
+    """
+    desktop = (os.environ.get("XDG_CURRENT_DESKTOP") or "").lower()
+    hypr = bool(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")) or "hyprland" in desktop
+    return {
+        "hyprland": hypr,
+        # caelestia only means anything inside Hyprland: its config is read by
+        # a shell that only runs there.
+        "caelestia": hypr and (
+            os.path.exists(os.path.expanduser("~/.config/caelestia/shell.json"))
+            or bool(shutil.which("caelestia"))),
+        "plasma": "kde" in desktop or "plasma" in desktop,
+        "x11": (os.environ.get("XDG_SESSION_TYPE") or "").lower() == "x11",
+        "desktop": os.environ.get("XDG_CURRENT_DESKTOP") or "unknown",
+    }
+
+
 def activity(limit=6):
     """
     Recent events, newest first, from sources that already exist.
@@ -309,6 +340,7 @@ def activity(limit=6):
 
 
 SECTIONS = {
+    "session": session,
     "telemetry": telemetry,
     "core": core,
     "storage": storage,

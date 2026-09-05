@@ -35,7 +35,27 @@ Window {
     // asset, else empty and the page draws its own glow.
     property string treeArt: ""
 
+    // What the running session can be asked to do, from genesi-center-data.
+    // Empty means "not told", which shows everything -- see capabilities().
+    property var caps: ({})
+
+    function can(need) {
+        if (!need)
+            return true;
+        return win.caps[need] !== false;
+    }
+
     property string section: "overview"
+    onCapsChanged: {
+        // A section can be hidden after being chosen -- a remembered one, or a
+        // deep link. Falling back beats showing a page whose controls do
+        // nothing.
+        for (const g of visibleGroups)
+            for (const it of g.items)
+                if (it.id === section)
+                    return;
+        section = "overview";
+    }
 
     // Grouped, not a flat list of nine. Nine rows in one column is a menu;
     // three groups of three, each announced by a number, is a contents page --
@@ -54,18 +74,18 @@ Window {
         },
         {
             index: "02", title: qsTr("Devices"), items: [
-                { id: "displays", label: qsTr("Displays"), tag: "画面" },
+                { id: "displays", label: qsTr("Displays"), tag: "画面", needs: "hyprland" },
                 { id: "input",    label: qsTr("Input"),    tag: "入力" },
                 { id: "audio",    label: qsTr("Audio"),    tag: "音響" }
             ]
         },
         {
             index: "03", title: qsTr("Desktop"), items: [
-                { id: "appearance", label: qsTr("Appearance"), tag: "外観" },
-                { id: "bar",        label: qsTr("Bar"),        tag: "帯" },
-                { id: "launcher",   label: qsTr("Launcher"),   tag: "起動" },
-                { id: "windows",    label: qsTr("Windows"),    tag: "窓" },
-                { id: "shortcuts",  label: qsTr("Shortcuts"),  tag: "操作" }
+                { id: "appearance", label: qsTr("Appearance"), tag: "外観", needs: "caelestia" },
+                { id: "bar",        label: qsTr("Bar"),        tag: "帯", needs: "caelestia" },
+                { id: "launcher",   label: qsTr("Launcher"),   tag: "起動", needs: "caelestia" },
+                { id: "windows",    label: qsTr("Windows"),    tag: "窓", needs: "hyprland" },
+                { id: "shortcuts",  label: qsTr("Shortcuts"),  tag: "操作", needs: "hyprland" }
             ]
         },
         {
@@ -76,6 +96,29 @@ Window {
             ]
         }
     ]
+
+    // The groups this session can actually use. Filtering here rather than in
+    // the delegates means a group whose every item is unavailable disappears
+    // with them: a numbered heading over an empty space reads as a bug.
+    readonly property var visibleGroups: {
+        const out = [];
+        for (const g of groups) {
+            const items = g.items.filter(it => win.can(it.needs));
+            if (items.length === 0)
+                continue;
+            // Renumbered over what is SHOWN. The declared numbers are 01..04,
+            // and hiding a whole group on Plasma left the rail reading
+            // #01 #02 #04 -- a gap that says a section is missing rather than
+            // inapplicable.
+            const n = out.length + 1;
+            out.push({
+                index: (n < 10 ? "0" : "") + n,
+                title: g.title,
+                items: items
+            });
+        }
+        return out;
+    }
 
     function labelFor(id) {
         for (const g of groups)
@@ -210,7 +253,7 @@ Window {
                     spacing: 2
 
                 Repeater {
-                    model: win.groups
+                    model: win.visibleGroups
                     delegate: Column {
                         id: groupCol
                         required property var modelData
@@ -385,11 +428,19 @@ Window {
                 visible: win.section === "displays"
             }
 
+            BarPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "bar"
+            }
+
             // Every other section, until it has a page. Saying so is better
             // than a blank panel that reads as a bug.
             Item {
                 anchors.fill: parent
-                visible: win.section !== "overview" && win.section !== "displays"
+                // Every section that has no page yet.
+                visible: ["overview", "displays", "bar"].indexOf(win.section) < 0
                 Column {
                     anchors.centerIn: parent
                     spacing: 10

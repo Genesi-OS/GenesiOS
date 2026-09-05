@@ -36,6 +36,7 @@ TICK_MS = 5000
 class Backend(QObject):
     dataReady = Signal(str)
     displaysReady = Signal(str)
+    barPresetsReady = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -115,6 +116,38 @@ class Backend(QObject):
             self.displays()
         threading.Thread(target=body, daemon=True).start()
 
+    @Slot()
+    def barPresets(self):
+        """Every bar preset and the one in use, from genesi-bar."""
+        def body():
+            try:
+                p = subprocess.run(["genesi-bar", "json"], capture_output=True,
+                                   text=True, timeout=15, encoding="utf-8",
+                                   errors="replace")
+                self.barPresetsReady.emit(p.stdout.strip() or "{}")
+            except (OSError, subprocess.SubprocessError):
+                self.barPresetsReady.emit("{}")
+        threading.Thread(target=body, daemon=True).start()
+
+    @Slot(str)
+    def barApply(self, preset):
+        """
+        Switch the bar, then re-read.
+
+        The re-read is not decoration: `genesi-bar` refuses a preset it does
+        not have, and the page must show what IS applied rather than what was
+        clicked.
+        """
+        def body():
+            try:
+                subprocess.run(["genesi-bar", "apply", str(preset)],
+                               capture_output=True, text=True, timeout=15,
+                               encoding="utf-8", errors="replace")
+            except (OSError, subprocess.SubprocessError):
+                pass
+            self.barPresets()
+        threading.Thread(target=body, daemon=True).start()
+
     @Slot(list)
     def launch(self, argv):
         """
@@ -133,6 +166,31 @@ class Backend(QObject):
                              start_new_session=True)
         except OSError as e:
             sys.stderr.write(f"genesi-center: cannot start {argv[0]}: {e}\n")
+
+
+def capabilities():
+    """
+    What this session can be asked to configure.
+
+    Read once at start-up, not per tick: a person does not change desktop while
+    the window is open, and the rail is built from it.
+
+    It matters because Genesi Center runs on Plasma AND on Hyprland, and half
+    of what it configures exists on only one of them. A page offering a control
+    the session cannot honour is worse than a missing page: the control appears
+    to work and changes nothing, which is the exact failure this project has
+    met over and over.
+    """
+    try:
+        p = subprocess.run([DATA, "session"], capture_output=True, text=True,
+                           timeout=10, encoding="utf-8", errors="replace")
+        return json.loads(p.stdout.strip() or "{}")
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        # Unknown is not the same as absent. Assuming nothing is available
+        # would leave a person on Hyprland with an app that hides the pages
+        # they need, so an unreadable session shows everything and lets the
+        # individual pages fail honestly instead.
+        return {"hyprland": True, "caelestia": True, "plasma": True}
 
 
 def tree_art():
@@ -168,7 +226,8 @@ def main():
     backend = Backend()
     engine = QQmlApplicationEngine()
     engine.addImportPath(APPDIR)
-    engine.setInitialProperties({"backend": backend, "treeArt": tree_art()})
+    engine.setInitialProperties({"backend": backend, "treeArt": tree_art(),
+                                 "caps": capabilities()})
     engine.load(QUrl.fromLocalFile(os.path.join(APPDIR, "Main.qml")))
     if not engine.rootObjects():
         sys.stderr.write("genesi-center: the interface failed to load\n")

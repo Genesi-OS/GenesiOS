@@ -142,6 +142,33 @@ def cmd_apply(presets, name):
     print(f"{p.get('name', name)}")
 
 
+def cmd_json(presets):
+    """
+    Everything a settings page needs, in one read.
+
+    The human `list` is for a terminal; a GUI wants the entry order too, so it
+    can draw what each preset actually does instead of describing it. Both come
+    from the same files, so the sketch a page draws cannot drift from the
+    arrangement the shell applies.
+    """
+    cfg = read_config()
+    cur = current_name(presets, cfg)
+    out = {
+        "current": cur or "",
+        "presets": [
+            {
+                "id": pid,
+                "name": p.get("name", pid),
+                "description": p.get("description", ""),
+                "entries": (p.get("bar") or {}).get("entries", []),
+            }
+            for pid, p in presets.items()
+        ],
+    }
+    json.dump(out, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+
+
 def cmd_current(presets):
     cur = current_name(presets, read_config())
     print(presets[cur].get("name", cur) if cur else "custom")
@@ -156,6 +183,7 @@ def main():
     a = sub.add_parser("apply", help="switch to a preset")
     a.add_argument("name")
     sub.add_parser("current", help="print the preset in use, or 'custom'")
+    sub.add_parser("json", help="every preset and the current one, as JSON")
 
     args = ap.parse_args()
     presets = load_presets()
@@ -164,6 +192,8 @@ def main():
         cmd_apply(presets, args.name)
     elif args.cmd == "current":
         cmd_current(presets)
+    elif args.cmd == "json":
+        cmd_json(presets)
     else:
         cmd_list(presets)
     return 0
