@@ -15,6 +15,7 @@ shell.qml's, and they get checked on hardware.
     QT_QPA_FONTDIR=/usr/share/fonts python genesi-arch/devtools/render-topbar.py out.png
 """
 import os
+import tempfile
 import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -28,15 +29,57 @@ QS = os.path.join(HERE, "..", "packages", "genesi-topbar", "quickshell")
 OUT = sys.argv[1] if len(sys.argv) > 1 else "topbar.png"
 WIDTH = int(sys.argv[2]) if len(sys.argv) > 2 else 1600
 
-# A desk in use, not an empty one: four workspaces with two occupied, a long
-# window title, a tray with a missing icon among the real ones. An empty bar
-# says nothing about whether the layout holds.
+def stand_in_icons():
+    """
+    Stand-ins for the icons the desktop database would resolve.
+
+    On a running system shell.qml hands over real paths from the icon theme.
+    There is no icon theme on the machine this renders on, so these are drawn
+    here: three flat colours, at the size an app icon would be. They prove the
+    LAYOUT -- how many fit in a pill, how the row breathes when one appears --
+    which is the half this tool exists to check.
+    """
+    from PySide6.QtGui import QImage, QPainter, QColor
+    d = os.path.join(tempfile.gettempdir(), "genesi-topbar-fixture")
+    os.makedirs(d, exist_ok=True)
+    out = []
+    for name, rgb in (("firefox", "#e86a33"), ("code", "#3b82f6"),
+                      ("terminal", "#8b5cf6"), ("files", "#eab308")):
+        p = os.path.join(d, name + ".png")
+        img = QImage(64, 64, QImage.Format_ARGB32)
+        img.fill(QColor(0, 0, 0, 0))
+        pt = QPainter(img)
+        pt.setRenderHint(QPainter.Antialiasing)
+        pt.setBrush(QColor(rgb))
+        pt.setPen(QColor(0, 0, 0, 0))
+        pt.drawRoundedRect(4, 4, 56, 56, 14, 14)
+        pt.end()
+        img.save(p)
+        out.append((name, QUrl.fromLocalFile(p).toString()))
+    return dict(out)
+
+
+ICON = stand_in_icons()
+
+# A desk in use, not an empty one: workspaces holding real windows, one window
+# whose class resolves to nothing (it must fall back to a letter, not to a
+# broken-image glyph), and one workspace over the icon cap so the "+2" shows.
 WORKSPACES = [
-    {"id": 1, "occupied": True, "active": False, "windows": 3},
-    {"id": 2, "occupied": True, "active": True, "windows": 1},
-    {"id": 3, "occupied": False, "active": False, "windows": 0},
-    {"id": 4, "occupied": False, "active": False, "windows": 0},
-    {"id": 5, "occupied": True, "active": False, "windows": 2},
+    {"id": 1, "occupied": True, "active": False, "windows": 3,
+     "icons": [{"name": "firefox", "source": ICON["firefox"]},
+               {"name": "code", "source": ICON["code"]},
+               {"name": "some-appimage", "source": ""}]},
+    {"id": 2, "occupied": True, "active": True, "windows": 1,
+     "icons": [{"name": "terminal", "source": ICON["terminal"]}]},
+    {"id": 3, "occupied": False, "active": False, "windows": 0, "icons": []},
+    {"id": 4, "occupied": False, "active": False, "windows": 0, "icons": []},
+    {"id": 5, "occupied": True, "active": False, "windows": 6,
+     "icons": [{"name": "files", "source": ICON["files"]},
+               {"name": "code", "source": ICON["code"]},
+               {"name": "firefox", "source": ICON["firefox"]},
+               {"name": "terminal", "source": ICON["terminal"]},
+               {"name": "code", "source": ICON["code"]},
+               {"name": "files", "source": ICON["files"]}]},
 ]
 TRAY = [
     {"id": "genesi-update", "icon": "", "tooltip": "Genesi Update"},

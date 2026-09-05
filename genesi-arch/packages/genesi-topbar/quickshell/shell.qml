@@ -30,6 +30,21 @@ ShellRoot {
 
     property var readings: ({})
 
+    // The icon a window class actually draws with, or "" when the desktop
+    // database has nothing for it.
+    //
+    // `iconPath(name, true)` CHECKS that the icon resolves. The two-argument
+    // fallback form does not -- handed a name no theme provides it returns a
+    // path to nothing, and the bar draws a row of broken-image glyphs instead
+    // of falling back to the letter mark. Returning "" is what lets the
+    // drawing half decide, without knowing anything about icon themes.
+    function iconFor(cls: string): string {
+        if (!cls)
+            return "";
+        const entry = DesktopEntries.heuristicLookup(cls);
+        return entry && entry.icon ? Quickshell.iconPath(entry.icon, true) : "";
+    }
+
     Variants {
         model: Quickshell.screens
 
@@ -77,17 +92,40 @@ ShellRoot {
                     const live = {};
                     for (const w of Hyprland.workspaces.values)
                         live[w.id] = w;
+
+                    // Windows grouped by workspace, resolved to real icons
+                    // here rather than in the drawing half. BarContent gets
+                    // paths and names and nothing else, which is what keeps
+                    // the whole visual layer renderable without a compositor.
+                    const byWs = {};
+                    for (const t of Hyprland.toplevels.values) {
+                        const id = t.workspace ? t.workspace.id : -1;
+                        if (id < 0)
+                            continue;
+                        const cls = t.lastIpcObject
+                                    ? (t.lastIpcObject.class || "") : "";
+                        (byWs[id] = byWs[id] || []).push({
+                            name: cls,
+                            source: root.iconFor(cls)
+                        });
+                    }
+
                     // A fixed row of five, not "however many exist right now":
                     // a bar whose workspace block changes width as workspaces
                     // come and go drags everything beside it around.
                     for (let i = 1; i <= 5; i++) {
                         const w = live[i];
+                        const icons = byWs[i] || [];
                         out.push({
                             id: i,
                             occupied: w !== undefined,
                             active: i === active,
+                            // The IPC count, not icons.length: a workspace on
+                            // another monitor can report windows this has no
+                            // toplevels for, and the pill should still say so.
                             windows: w ? (w.lastIpcObject
-                                          ? w.lastIpcObject.windows : 0) : 0
+                                          ? w.lastIpcObject.windows : 0) : 0,
+                            icons: icons
                         });
                     }
                     return out;

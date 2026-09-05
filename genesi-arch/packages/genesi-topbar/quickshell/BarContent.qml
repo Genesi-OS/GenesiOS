@@ -23,7 +23,7 @@ Item {
     id: root
 
     // Everything is fed in. The bar never reads the system itself.
-    property var workspaces: []        // [{ id, occupied, active, windows }]
+    property var workspaces: []        // [{ id, occupied, active, windows, icons }]
     property string activeWindow: ""
     property string clockText: "--:--"
     property string dateText: ""

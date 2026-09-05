@@ -18,6 +18,16 @@ QtObject {
     readonly property color textHi:   "#dcffe9"
     readonly property color text:     "#9ec9ad"
     readonly property color textDim:  "#5b8a6b"
+    // Text and marks drawn on top of the accent fill. The dark ground
+    // rather than a new colour: #35e07f is bright enough that the page
+    // background is the readable choice against it, and it is one fewer
+    // colour to keep in step with the rest.
+    //
+    // NOT `onAccent`. Any QML property whose name is `on` followed by a
+    // capital is parsed as a signal handler, so declaring it gives
+    // "Cannot assign a value to a signal" and takes the whole singleton
+    // -- and therefore every component that imports it -- down with it.
+    readonly property color accentText: "#06200f"
 
     function pick(prefs, fallback) {
         const have = Qt.fontFamilies();
