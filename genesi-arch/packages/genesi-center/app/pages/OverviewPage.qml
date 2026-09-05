@@ -96,9 +96,9 @@ Item {
                 Repeater {
                     model: [
                         { k: qsTr("Kernel"),      v: page.num(page.core.kernel) },
-                        { k: qsTr("Arquitetura"), v: page.num(page.core.arch) },
+                        { k: qsTr("Architecture"), v: page.num(page.core.arch) },
                         { k: qsTr("Build"),       v: page.num(page.core.build) },
-                        { k: qsTr("Ambiente"),    v: page.num(page.core.session) }
+                        { k: qsTr("Session"),    v: page.num(page.core.session) }
                     ]
                     delegate: Item {
                         required property var modelData
@@ -132,7 +132,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
-                        text: "// " + qsTr("pronto")
+                        text: "// " + qsTr("ready")
                         color: Tokens.accentDim
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsMicro
@@ -155,7 +155,7 @@ Item {
             }
             Text {
                 width: parent.width
-                text: qsTr("Grandes criações nascem de um ambiente que as nutre.")
+                text: qsTr("Great creations grow from an environment that feeds them.")
                 color: Tokens.textHi
                 font.family: Tokens.sans
                 font.pixelSize: 14
@@ -177,6 +177,16 @@ Item {
     // The fallback is deliberate: an empty rectangle where the art belongs
     // makes a finished layout look broken, and this app is judged on whether it
     // looks finished.
+    // The mesh under the middle of the page. Behind the art and behind the
+    // telemetry panel, not behind the rail: it is the ground the instruments
+    // sit on, and running it under the whole window would flatten the
+    // separation between the rail and the content.
+    GridTexture {
+        anchors { left: leftCol.left; right: rightCol.right; top: parent.top; bottom: bottomBand.top }
+        anchors.leftMargin: -8
+        z: -1
+    }
+
     Item {
         id: art
         anchors { left: leftCol.right; right: rightCol.left; top: parent.top; bottom: bottomBand.top }
@@ -238,7 +248,7 @@ Item {
         width: Math.max(430, parent.width * 0.42)
         spacing: 16
 
-        SectionHead { index: "01"; text: qsTr("Visão Geral") }
+        SectionHead { index: "01"; text: qsTr("Overview") }
 
         Column {
             spacing: 4
@@ -252,7 +262,7 @@ Item {
                 font.weight: Font.Light
             }
             Text {
-                text: qsTr("Sistema vivo. Criado para evoluir.")
+                text: qsTr("A living system. Built to evolve.")
                 color: Tokens.text
                 font.family: Tokens.sans
                 font.pixelSize: 15
@@ -267,7 +277,7 @@ Item {
                     font.pixelSize: Tokens.fsBody
                 }
                 Text {
-                    text: qsTr("estável")
+                    text: qsTr("stable")
                     color: Tokens.text
                     font.family: Tokens.mono
                     font.pixelSize: Tokens.fsBody
@@ -287,10 +297,13 @@ Item {
             }
         }
 
-        SectionHead { index: "02"; text: qsTr("Telemetria do sistema") }
+        SectionHead { index: "02"; text: qsTr("System telemetry") }
 
         Panel {
             width: parent.width
+            // Slightly translucent so the mesh behind it stays visible. A
+            // solid card here cut a rectangular hole in the ground.
+            color: Qt.rgba(Tokens.card.r, Tokens.card.g, Tokens.card.b, 0.82)
             // Four rows of tiles plus the margins. Sized from the contents
             // rather than guessed: the previous 210 fitted three rows, and the
             // fourth drew over the section heading underneath.
@@ -312,7 +325,7 @@ Item {
                 StatTile {
                     id: tempTile
                     width: (parent.width - 18) / 2
-                    glyph: "▲"; label: qsTr("Temperatura")
+                    glyph: "▲"; label: qsTr("Temperature")
                     value: page.num(page.tele.temperature_c) + (page.tele.temperature_c === undefined ? "" : "°C")
                 }
                 StatTile {
@@ -333,27 +346,27 @@ Item {
                 StatTile {
                     id: diskTile
                     width: (parent.width - 18) / 2
-                    glyph: "▥"; label: qsTr("Disco")
+                    glyph: "▥"; label: qsTr("Disk")
                     value: page.num(page.tele.disk ? page.tele.disk.percent : null) + "%"
                     sub: page.tele.disk && page.tele.disk.total_gb
                          ? page.tele.disk.used_gb + " / " + page.tele.disk.total_gb + " GB" : ""
                 }
                 StatTile {
                     width: (parent.width - 18) / 2
-                    glyph: "∿"; label: qsTr("Processos")
+                    glyph: "∿"; label: qsTr("Processes")
                     showGraph: false
                     value: page.num(page.tele.processes)
                 }
                 StatTile {
                     id: netTile
                     width: (parent.width - 18) / 2
-                    glyph: "~"; label: qsTr("Rede")
+                    glyph: "~"; label: qsTr("Network")
                     value: page.tele.network ? page.rate(page.tele.network.tx_bps) : "—"
                     sub: page.tele.network ? "v " + page.rate(page.tele.network.rx_bps) : ""
                 }
                 StatTile {
                     width: (parent.width - 18) / 2
-                    glyph: "o"; label: qsTr("Usuários")
+                    glyph: "o"; label: qsTr("Users")
                     showGraph: false
                     value: page.tele.users ? page.num(page.tele.users.count) : "—"
                     sub: page.tele.users ? (page.tele.users.names || []).join(", ") : ""
@@ -361,18 +374,18 @@ Item {
             }
         }
 
-        SectionHead { index: "03"; text: qsTr("Ferramentas rápidas") }
+        SectionHead { index: "03"; text: qsTr("Quick tools") }
 
         Row {
             spacing: Tokens.gap
             Repeater {
                 model: [
-                    { g: "▭", l: qsTr("Gerenciador\nde Arquivos"), c: ["xdg-open", "."] },
+                    { g: "▭", l: qsTr("File\nManager"), c: ["xdg-open", "."] },
                     { g: "▶_", l: qsTr("Terminal"),                c: ["foot"] },
                     { g: "‹›", l: qsTr("Genesi Code"),             c: ["genesi-code"] },
-                    { g: "◱",  l: qsTr("Monitor de\nSistema"),     c: ["genesi-ai-monitor"] },
-                    { g: "✦",  l: qsTr("Limpeza\nInteligente"),    c: ["genesi-cleanup"] },
-                    { g: "◎",  l: qsTr("Central de\nAtualizações"), c: ["genesi-update-center"] }
+                    { g: "◱",  l: qsTr("System\nMonitor"),     c: ["genesi-ai-monitor"] },
+                    { g: "✦",  l: qsTr("Smart\nCleanup"),    c: ["genesi-cleanup"] },
+                    { g: "◎",  l: qsTr("Update\nCentre"), c: ["genesi-update-center"] }
                 ]
                 delegate: Panel {
                     id: tool
@@ -450,7 +463,7 @@ Item {
                             font.pixelSize: 22
                         }
                         Text {
-                            text: qsTr("Último snapshot")
+                            text: qsTr("Last snapshot")
                             color: Tokens.textHi
                             font.family: Tokens.mono
                             font.pixelSize: Tokens.fsBody
@@ -469,7 +482,7 @@ Item {
             Column {
                 width: (bandRow.width - Tokens.gap * 2) / 3
                 spacing: 8
-                SectionHead { index: "05"; text: qsTr("Armazenamento") }
+                SectionHead { index: "05"; text: qsTr("Storage") }
                 Panel {
                     width: parent.width
                     height: 140
@@ -515,7 +528,7 @@ Item {
                             spacing: 7
                             Repeater {
                                 model: (page.store.slices || []).map((s, i) => ({
-                                    label: [qsTr("Sistema"), qsTr("Dados"), qsTr("Outros")][i] || s.label,
+                                    label: [qsTr("System"), qsTr("Data"), qsTr("Other")][i] || s.label,
                                     gb: s.gb,
                                     color: [Tokens.accent, Tokens.accentDim, Tokens.accentDeep][i % 3]
                                 }))
@@ -551,7 +564,7 @@ Item {
             Column {
                 width: (bandRow.width - Tokens.gap * 2) / 3
                 spacing: 8
-                SectionHead { index: "06"; text: qsTr("Atividade recente") }
+                SectionHead { index: "06"; text: qsTr("Recent activity") }
                 Panel {
                     width: parent.width
                     height: 140

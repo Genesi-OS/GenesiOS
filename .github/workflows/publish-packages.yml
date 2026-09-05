@@ -537,6 +537,10 @@ jobs:
             # release-hosted [genesi-apps] repo by publish-apps.yml instead.
             # llama.cpp (Vulkan) — backs Genesi Turbo's `llama-server`. Verified
             # green via test-llama-cpp.yml (~10min, well under the 25-min budget).
+            # Roadmap 7.4: the control centre. Config and QML only, so it is
+            # cheap, but it must be built BEFORE genesi-desktop, which now
+            # depends on it.
+            "genesi-center"
             # Kept LAST so if its build ever flakes it can't block the others.
             "genesi-llama-cpp"
             # Meta-package (depends on all the above). Built with `makepkg -d`
@@ -675,8 +679,11 @@ jobs:
             # run #480 failed exactly there. Once a package is published the
             # requirement lapses on its own, which is what
             # ci/package-reachability-test.py checks.
+            #
+            # genesi-center is the same case again: genesi-desktop lists it and
+            # it is new in this run, so nothing can resolve it yet.
             case "$pkg" in
-              genesi-app2unit|genesi-libcava|genesi-materialyoucolor|genesi-ttf-rubik-vf|genesi-hyprshade|genesi-shaders)
+              genesi-app2unit|genesi-libcava|genesi-materialyoucolor|genesi-ttf-rubik-vf|genesi-hyprshade|genesi-shaders|genesi-center)
                 builtpkg=$(ls -1t "repo/$pkg"-*.pkg.tar.zst 2>/dev/null | grep -v -- '-debug-' | head -1)
                 if [ -n "$builtpkg" ]; then
                   echo "Installing $builtpkg into the build container (build-time dep for caelestia)"

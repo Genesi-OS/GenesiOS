@@ -37,15 +37,15 @@ Window {
 
     property string section: "overview"
     readonly property var sections: [
-        { id: "overview",     label: qsTr("Visão Geral"),   glyph: "⌂" },
-        { id: "system",       label: qsTr("Sistema"),       glyph: "▤" },
-        { id: "resources",    label: qsTr("Recursos"),      glyph: "▦" },
-        { id: "apps",         label: qsTr("Aplicativos"),   glyph: "⌸" },
+        { id: "overview",     label: qsTr("Overview"),   glyph: "⌂" },
+        { id: "system",       label: qsTr("System"),       glyph: "▤" },
+        { id: "resources",    label: qsTr("Resources"),      glyph: "▦" },
+        { id: "apps",         label: qsTr("Applications"),   glyph: "⌸" },
         { id: "snapshots",    label: qsTr("Snapshots"),     glyph: "↺" },
-        { id: "tools",        label: qsTr("Ferramentas"),   glyph: "⚙" },
+        { id: "tools",        label: qsTr("Tools"),   glyph: "⚙" },
         { id: "code",         label: qsTr("Genesi Code"),   glyph: "‹›" },
-        { id: "integrations", label: qsTr("Integrações"),   glyph: "☷" },
-        { id: "settings",     label: qsTr("Configurações"), glyph: "✲" }
+        { id: "integrations", label: qsTr("Integrations"),   glyph: "☷" },
+        { id: "settings",     label: qsTr("Settings"), glyph: "✲" }
     ]
 
     Rectangle {
@@ -135,7 +135,7 @@ Window {
                             anchors.fill: parent
                             verticalAlignment: Text.AlignVCenter
                             visible: search.text === "" && !search.activeFocus
-                            text: qsTr("Pesquisar no Genesi…")
+                            text: qsTr("Search Genesi…")
                             color: Tokens.textFaint
                             font: search.font
                         }
@@ -149,7 +149,7 @@ Window {
                     }
                 }
 
-                SectionHead { index: "//"; text: qsTr("Navegação") }
+                SectionHead { index: "//"; text: qsTr("Navigation") }
             }
 
             // Sections, with ONE indicator that slides. Drawing a highlight per
@@ -265,7 +265,7 @@ Window {
                         font.pixelSize: Tokens.fsMicro
                     }
                     Text {
-                        text: qsTr("Sistema vivo.\nCom você, para o futuro.")
+                        text: qsTr("A living system.\nWith you, for what comes next.")
                         color: Tokens.textDim
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsMicro
@@ -312,7 +312,7 @@ Window {
                         border.color: Tokens.line
                         Text {
                             anchors.centerIn: parent
-                            text: qsTr("EDITAR WIDGETS")
+                            text: qsTr("EDIT WIDGETS")
                             color: Tokens.text
                             font.family: Tokens.mono
                             font.pixelSize: Tokens.fsMicro
@@ -383,7 +383,7 @@ Window {
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: qsTr("em construção")
+                        text: qsTr("not built yet")
                         color: Tokens.textFaint
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsMicro

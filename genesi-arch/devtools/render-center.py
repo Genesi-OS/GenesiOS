@@ -51,11 +51,13 @@ SAMPLE = {
                 "slices": [{"label": "system", "gb": 68},
                            {"label": "data", "gb": 118},
                            {"label": "other", "gb": 70}]},
+    # The same wording genesi-center-data actually prints, so the render is not
+    # kinder to the layout than reality is.
     "activity": {"items": [
-        {"kind": "boot", "text": "Sistema inicializado", "when": "há 2m"},
-        {"kind": "snap", "text": "Snapshot criado", "when": "há 15m"},
-        {"kind": "pkg", "text": "Atualizações verificadas", "when": "há 1h"},
-        {"kind": "pkg", "text": "Pacotes atualizados", "when": "há 3h"},
+        {"kind": "package", "text": "upgraded genesi-caelestia-shell", "when": "2026-09-05 00:41"},
+        {"kind": "package", "text": "upgraded genesi-center", "when": "2026-09-05 00:41"},
+        {"kind": "package", "text": "installed genesi-audio", "when": "2026-09-04 20:58"},
+        {"kind": "boot", "text": "system started", "when": "2026-09-04 19:12:14"},
     ]},
 }
 
@@ -72,7 +74,16 @@ app = QGuiApplication(sys.argv)
 engine = QQmlApplicationEngine()
 engine.addImportPath(APP)
 backend = Backend()
-engine.setInitialProperties({"backend": backend})
+# Resolve the artwork exactly as genesi_center.py does, so this renders the
+# page a user gets rather than one without its art.
+tree = ""
+for cand in (os.path.expanduser("~/.config/genesi/center/tree.png"),
+             os.path.join(APP, "art", "tree.png")):
+    if os.path.exists(cand):
+        tree = "file:///" + os.path.abspath(cand).replace("\\", "/")
+        break
+engine.setInitialProperties({"backend": backend, "treeArt": tree})
+print("artwork:", tree or "(none -- the page draws its own glow)")
 
 warnings = []
 engine.warnings.connect(lambda ws: warnings.extend(w.toString() for w in ws))

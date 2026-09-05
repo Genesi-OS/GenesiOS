@@ -296,8 +296,79 @@ def check_unpublished_deps(built):
     return True
 
 
+# Package directories CI deliberately does NOT build. Same rule as
+# NOT_INSTALLED: a decision somebody wrote down, not an oversight nobody
+# noticed. Both of these were checked against the tree rather than assumed.
+NOT_BUILT = {
+    "genesi-sandboxes":
+        "dropped from genesi-desktop at pkgrel 11 -- its UI was broken and the "
+        "feature was withdrawn. The PKGBUILD is kept for whoever picks it up.",
+    "libpamac-dummy":
+        "a stub that only satisfies libpamac-aur's provides during an ISO "
+        "install; it carries no code and nothing in [genesi] needs it.",
+}
+
+
+def check_is_built():
+    """
+    A package directory that CI never builds.
+
+    The other half of this file asks whether a BUILT package reaches a machine.
+    This asks the question pointed the other way: does a package that exists,
+    and that something depends on, actually get built?
+
+    It did not. genesi-center was written, committed, added to genesi-desktop's
+    depends and covered by the reachability check above -- and the list of
+    packages CI builds is maintained BY HAND, so it was never in it. The build
+    got as far as genesi-desktop and stopped with "dependency was not built:
+    genesi-center", forty-five minutes in, having produced nothing.
+
+    That is the same shape as a package nobody installs, which this file already
+    catches, so it belongs here rather than in a file of its own.
+    """
+    wf = os.path.join(ROOT, ".github", "workflows", "publish-packages.yml")
+    if not os.path.exists(wf):
+        return None
+    with io.open(wf, encoding="utf-8", errors="replace") as fh:
+        src = fh.read()
+    m = re.search(r"^\s*PACKAGES=\((.*?)^\s*\)", src, re.M | re.S)
+    if not m:
+        return None
+    # Comments stripped: the block is heavily commented and several package
+    # names appear in the prose explaining why a neighbour is where it is.
+    body = "\n".join(l for l in m.group(1).splitlines()
+                     if not l.lstrip().startswith("#"))
+    return set(re.findall(r'"([^"]+)"', body))
+
+
 def main():
     built = built_packages()   # pkgname -> directory
+
+    # Every package directory must be in the list CI actually builds.
+    ci = check_is_built()
+    if ci is not None:
+        unbuilt = sorted(d for name, d in built.items()
+                         if d not in ci and name not in ci
+                         and d not in NOT_BUILT and name not in NOT_BUILT
+                         # A package whose ABSENCE from every install path is
+                         # already a written decision does not need the reason
+                         # written twice: genesi-code and genesi-llama-cpp-cuda
+                         # are built by publish-apps.yml because of their size,
+                         # and genesi-hello was superseded. Not shipped from
+                         # here and not built here is coherent.
+                         and d not in NOT_INSTALLED and name not in NOT_INSTALLED)
+        if unbuilt:
+            print("== package reachability ==")
+            print("  FAIL  package(s) with a PKGBUILD that CI never builds:")
+            for d in unbuilt:
+                print(f"          - {d}")
+            print("        PACKAGES in .github/workflows/publish-packages.yml is")
+            print("        maintained by hand. A package missing from it is not")
+            print("        skipped quietly -- anything depending on it fails the")
+            print("        whole run, after every other package has been built.")
+            print("        If a package is not meant to be built, say so in")
+            print("        NOT_BUILT here with the reason.")
+            return 1
     found, missing = roots()
     if missing:
         print("== package reachability ==")
