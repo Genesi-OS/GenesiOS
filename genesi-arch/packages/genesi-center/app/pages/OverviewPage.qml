@@ -79,7 +79,8 @@ Item {
             id: corePlate
             anchors { left: parent.left; right: parent.right; top: parent.top }
             height: 152
-            color: "transparent"
+            // Was transparent, from when there was nothing behind it.
+            color: Qt.rgba(Tokens.panel.r, Tokens.panel.g, Tokens.panel.b, 0.82)
 
             Column {
                 anchors.fill: parent
@@ -184,23 +185,55 @@ Item {
     GridTexture {
         anchors { left: leftCol.left; right: rightCol.right; top: parent.top; bottom: bottomBand.top }
         anchors.leftMargin: -8
-        z: -1
+        z: -2
     }
 
     Item {
         id: art
-        anchors { left: leftCol.right; right: rightCol.left; top: parent.top; bottom: bottomBand.top }
-        anchors.margins: 8
+        // To the window edge, under the right column rather than beside it.
+        // Boxed into the gap between the two columns the artwork came out
+        // small and polite; it is meant to be the largest thing on the page.
+        anchors { left: leftCol.right; right: parent.right; top: parent.top; bottom: bottomBand.top }
+        anchors.leftMargin: -40
+        z: -1
         clip: true
 
         Image {
             id: tree
-            anchors.fill: parent
+            // Crop, not fit: fitting sized the tree to the SHORTER side and
+            // left it floating in the middle of a lot of nothing.
+            width: parent.width * 1.18
+            height: parent.height * 1.24
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: -10
             source: page.treeArt
             fillMode: Image.PreserveAspectFit
             asynchronous: true
-            opacity: status === Image.Ready ? 0.95 : 0
+            opacity: status === Image.Ready ? 0.92 : 0
             Behavior on opacity { NumberAnimation { duration: Tokens.slow } }
+
+            // It breathes. Very slowly, and never far enough to notice as
+            // motion -- only far enough that the page is never quite still.
+            SequentialAnimation on scale {
+                running: tree.status === Image.Ready
+                loops: Animation.Infinite
+                NumberAnimation { to: 1.025; duration: 7000; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 1.0;   duration: 7000; easing.type: Easing.InOutSine }
+            }
+        }
+
+        // The scrim. Strongest under the right column, gone by the middle of
+        // the art, so the tree stays the biggest thing on the page and the
+        // words on top of it stay readable.
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.00; color: "transparent" }
+                GradientStop { position: 0.52; color: Qt.rgba(Tokens.bg.r, Tokens.bg.g, Tokens.bg.b, 0.30) }
+                GradientStop { position: 1.00; color: Qt.rgba(Tokens.bg.r, Tokens.bg.g, Tokens.bg.b, 0.88) }
+            }
         }
 
         Canvas {
@@ -320,19 +353,19 @@ Item {
                     id: cpuTile
                     width: (parent.width - 18) / 2
                     glyph: "▣"; label: qsTr("CPU")
-                    value: page.num(page.tele.cpu_percent) + (page.tele.cpu_percent === undefined ? "" : "%")
+                    n: page.tele.cpu_percent; unit: "%"
                 }
                 StatTile {
                     id: tempTile
                     width: (parent.width - 18) / 2
                     glyph: "▲"; label: qsTr("Temperature")
-                    value: page.num(page.tele.temperature_c) + (page.tele.temperature_c === undefined ? "" : "°C")
+                    n: page.tele.temperature_c; unit: "°C"
                 }
                 StatTile {
                     id: ramTile
                     width: (parent.width - 18) / 2
                     glyph: "▤"; label: qsTr("RAM")
-                    value: page.num(page.tele.memory ? page.tele.memory.percent : null) + "%"
+                    n: page.tele.memory ? page.tele.memory.percent : undefined; unit: "%"
                     sub: page.tele.memory
                          ? (page.tele.memory.used_mb / 1024).toFixed(1) + " / "
                            + (page.tele.memory.total_mb / 1024).toFixed(0) + " GB" : ""
@@ -347,7 +380,7 @@ Item {
                     id: diskTile
                     width: (parent.width - 18) / 2
                     glyph: "▥"; label: qsTr("Disk")
-                    value: page.num(page.tele.disk ? page.tele.disk.percent : null) + "%"
+                    n: page.tele.disk ? page.tele.disk.percent : undefined; unit: "%"
                     sub: page.tele.disk && page.tele.disk.total_gb
                          ? page.tele.disk.used_gb + " / " + page.tele.disk.total_gb + " GB" : ""
                 }
@@ -355,7 +388,7 @@ Item {
                     width: (parent.width - 18) / 2
                     glyph: "∿"; label: qsTr("Processes")
                     showGraph: false
-                    value: page.num(page.tele.processes)
+                    n: page.tele.processes
                 }
                 StatTile {
                     id: netTile
@@ -617,14 +650,18 @@ Item {
                     font.pixelSize: Tokens.fsLabel
                 }
                 // The mark, rasterised from art/genesi-leaf.svg rather than
-                // typed. Generated by devtools/leaf-matrix.py, so the terminal
-                // plate and the logo can never drift apart.
+                // typed, by devtools/leaf-matrix.py -- so the terminal plate
+                // and the logo can never drift apart.
+                //
+                // Braille, not block characters. A braille cell carries a 2x4
+                // dot grid, so the same area holds EIGHT times the samples: the
+                // block version read as a pixelated blob at any size that fit.
                 Text {
-                    text: "           ░░\n         ░▓▓▓▓░\n       ░▓▓░  ░▓▓░\n      ░▓░      ░▓░\n      ▓▓  ░▓    ▓▓\n     ░▓░░▓▓▓▓░░░░▓░\n     ░▓▓░░░░▓▓▓░▓▓░\n      ▓▓    ░░  ▓▓\n      ░▓▓      ▓▓░\n        ░▓▓░░▓▓░\n          ░▓▓░"
+                    text: "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣦⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⠟⠁⠈⠻⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⢠⣿⡿⠃⠀⠀⠀⠀⠘⢿⣿⡄⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⢠⣿⡿⠁⠀⠀⠀⠀⠀⠀⠈⢿⣿⡄⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⣼⣿⠇⠀⢀⣾⣿⡄⠀⠀⠀⠸⣿⣧⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⣿⣿⣀⣀⣼⣿⣿⣧⢀⣀⣀⣀⣿⣿⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⣿⣿⠿⠿⠿⠟⢻⣿⣿⡿⠿⠿⣿⣿⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⢻⣿⡆⠀⠀⠀⠈⠿⠟⠁⠀⢰⣿⡟⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠘⣿⣷⡀⠀⠀⠀⠀⠀⠀⢀⣾⣿⠃⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠘⢿⣿⣄⠀⠀⠀⠀⣠⣿⡿⠃⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⠀⠻⢿⣷⣦⣴⣾⡿⠟⠀⠀⠀⠀⠀⠀⠀⠀⠀\n⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⠟⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
                     color: Tokens.accentDim
                     font.family: Tokens.mono
-                    font.pixelSize: 7
-                    lineHeight: 1.0
+                    font.pixelSize: 11
+                    lineHeight: 0.92
                 }
                 Text {
                     text: "# where creations begin"

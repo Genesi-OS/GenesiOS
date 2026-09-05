@@ -81,4 +81,11 @@ package() {
 
     install -Dm644 "${startdir}/org.genesi.center.desktop" \
         "${pkgdir}/usr/share/applications/org.genesi.center.desktop"
+
+    # The .desktop says Icon=genesi-center and nothing installed a file by that
+    # name, so the launcher had nothing to draw: a blank tile in the menu and in
+    # the taskbar, with no error anywhere. The same silent shape as a launcher
+    # action whose binary was never installed.
+    install -Dm644 "${startdir}/app/art/genesi-leaf.svg" \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/genesi-center.svg"
 }

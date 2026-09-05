@@ -13,6 +13,20 @@ Item {
 
     property string label: ""
     property string value: "—"
+
+    // A numeric reading counts TO its value instead of snapping to it. Five
+    // seconds between ticks means a dashboard that snaps looks like a table
+    // being rewritten; a dashboard that moves looks like it is measuring.
+    // `n` undefined leaves `value` in charge, for readings that are not a
+    // number -- uptime, a rate, a user list.
+    property var n: undefined
+    property string unit: ""
+
+    readonly property bool numeric: n !== undefined && n !== null && !isNaN(n)
+    property real shown: root.numeric ? Number(n) : 0
+    Behavior on shown {
+        NumberAnimation { duration: Tokens.slow; easing.type: Easing.OutCubic }
+    }
     property string sub: ""
     property string glyph: ""
     property bool showGraph: true
@@ -52,7 +66,8 @@ Item {
                 font.letterSpacing: 1.2
             }
             Text {
-                text: root.value
+                text: root.numeric ? Math.round(root.shown) + root.unit
+                                   : root.value
                 color: Tokens.textHi
                 font.family: Tokens.mono
                 font.pixelSize: Tokens.fsValue

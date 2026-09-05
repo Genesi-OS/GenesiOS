@@ -36,17 +36,45 @@ Window {
     property string treeArt: ""
 
     property string section: "overview"
-    readonly property var sections: [
-        { id: "overview",     label: qsTr("Overview"),   glyph: "⌂" },
-        { id: "system",       label: qsTr("System"),       glyph: "▤" },
-        { id: "resources",    label: qsTr("Resources"),      glyph: "▦" },
-        { id: "apps",         label: qsTr("Applications"),   glyph: "⌸" },
-        { id: "snapshots",    label: qsTr("Snapshots"),     glyph: "↺" },
-        { id: "tools",        label: qsTr("Tools"),   glyph: "⚙" },
-        { id: "code",         label: qsTr("Genesi Code"),   glyph: "‹›" },
-        { id: "integrations", label: qsTr("Integrations"),   glyph: "☷" },
-        { id: "settings",     label: qsTr("Settings"), glyph: "✲" }
+
+    // Grouped, not a flat list of nine. Nine rows in one column is a menu;
+    // three groups of three, each announced by a number, is a contents page --
+    // and it is what the rail this is measured against does.
+    //
+    // The tag on each row is a second, fixed-width column. It is ornament, and
+    // it is the ornament that gives the rail a rhythm a single column of words
+    // cannot have.
+    readonly property var groups: [
+        {
+            index: "01", title: qsTr("Overview"), items: [
+                { id: "overview",  label: qsTr("Overview"),    tag: "概観" },
+                { id: "system",    label: qsTr("System"),      tag: "系統" },
+                { id: "resources", label: qsTr("Resources"),   tag: "資源" }
+            ]
+        },
+        {
+            index: "02", title: qsTr("Workspace"), items: [
+                { id: "apps",  label: qsTr("Applications"), tag: "応用" },
+                { id: "tools", label: qsTr("Tools"),        tag: "道具" },
+                { id: "code",  label: qsTr("Genesi Code"),  tag: "符号" }
+            ]
+        },
+        {
+            index: "03", title: qsTr("System"), items: [
+                { id: "snapshots",    label: qsTr("Snapshots"),    tag: "保存" },
+                { id: "integrations", label: qsTr("Integrations"), tag: "連携" },
+                { id: "settings",     label: qsTr("Settings"),     tag: "設定" }
+            ]
+        }
     ]
+
+    function labelFor(id) {
+        for (const g of groups)
+            for (const it of g.items)
+                if (it.id === id)
+                    return it.label;
+        return "";
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -152,79 +180,57 @@ Window {
                 SectionHead { index: "//"; text: qsTr("Navigation") }
             }
 
-            // Sections, with ONE indicator that slides. Drawing a highlight per
-            // row and toggling opacity looks the same standing still and reads
-            // as unrelated boxes in motion; a single moving plate is what makes
-            // the rail feel like one instrument.
-            Item {
+            // The sections. Each row owns its own selected state now: a
+            // single sliding plate cannot cross a group heading without
+            // passing THROUGH it, and watching a highlight slide over a
+            // divider is worse than not sliding at all.
+            Column {
                 id: navArea
                 anchors { left: parent.left; right: parent.right; top: parent.top }
-                anchors.topMargin: 168
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                height: win.sections.length * 43
-
-                Rectangle {
-                    id: indicator
-                    width: parent.width
-                    height: 39
-                    radius: Tokens.radiusSm
-                    color: Tokens.accentDeep
-                    opacity: 0.55
-                    y: {
-                        for (let i = 0; i < win.sections.length; i++)
-                            if (win.sections[i].id === win.section)
-                                return i * 43;
-                        return 0;
-                    }
-                    Behavior on y {
-                        NumberAnimation { duration: Tokens.normal; easing.type: Easing.OutCubic }
-                    }
-                    Rectangle {
-                        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-                        width: 2
-                        radius: 1
-                        color: Tokens.accent
-                    }
-                }
+                anchors.topMargin: 158
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 2
 
                 Repeater {
-                    model: win.sections
-                    delegate: Item {
+                    model: win.groups
+                    delegate: Column {
+                        id: groupCol
                         required property var modelData
                         required property int index
 
                         width: navArea.width
-                        height: 43
-                        y: index * 43
+                        spacing: 2
 
-                        readonly property bool current: modelData.id === win.section
-
-                        Row {
-                            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
-                            spacing: 12
-                            Text {
-                                text: modelData.glyph
-                                color: current ? Tokens.accent : Tokens.textDim
-                                font.family: Tokens.mono
-                                font.pixelSize: 13
-                                anchors.verticalCenter: parent.verticalCenter
-                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
-                            }
-                            Text {
-                                text: modelData.label
-                                color: current ? Tokens.textHi : Tokens.text
-                                font.family: Tokens.sans
-                                font.pixelSize: 13
-                                anchors.verticalCenter: parent.verticalCenter
-                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
-                            }
+                        // Each group arrives a beat after the one above it.
+                        opacity: 0
+                        Component.onCompleted: groupIn.start()
+                        NumberAnimation {
+                            id: groupIn
+                            target: groupCol
+                            property: "opacity"
+                            from: 0
+                            to: 1
+                            duration: Tokens.normal
+                            easing.type: Easing.OutCubic
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: win.section = modelData.id
+                        GroupHead {
+                            width: parent.width
+                            index: groupCol.modelData.index
+                            text: groupCol.modelData.title
+                        }
+
+                        Repeater {
+                            model: groupCol.modelData.items
+                            delegate: NavRow {
+                                required property var modelData
+                                width: groupCol.width
+                                label: modelData.label
+                                tag: modelData.tag
+                                current: win.section === modelData.id
+                                onActivated: win.section = modelData.id
+                            }
                         }
                     }
                 }
@@ -370,12 +376,7 @@ Window {
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: {
-                            for (const s of win.sections)
-                                if (s.id === win.section)
-                                    return s.label.toUpperCase();
-                            return "";
-                        }
+                        text: win.labelFor(win.section).toUpperCase()
                         color: Tokens.textDim
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsLabel
