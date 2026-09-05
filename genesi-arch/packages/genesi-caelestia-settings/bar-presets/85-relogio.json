@@ -1,10 +1,14 @@
 {
-  "name": "Default · Padrão",
-  "description": "The bar as caelestia ships it",
+  "name": "Clock first · Relógio",
+  "description": "The time at the top with its date, everything else below it",
   "bar": {
     "entries": [
       {
-        "id": "logo",
+        "id": "clock",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
         "enabled": true
       },
       {
@@ -16,19 +20,7 @@
         "enabled": true
       },
       {
-        "id": "activeWindow",
-        "enabled": true
-      },
-      {
-        "id": "spacer",
-        "enabled": true
-      },
-      {
         "id": "tray",
-        "enabled": true
-      },
-      {
-        "id": "clock",
         "enabled": true
       },
       {
@@ -39,6 +31,15 @@
         "id": "power",
         "enabled": true
       }
-    ]
+    ],
+    "width": 58,
+    "clock": {
+      "showDate": true,
+      "background": true,
+      "showIcon": false
+    },
+    "workspaces": {
+      "showWindows": false
+    }
   }
 }

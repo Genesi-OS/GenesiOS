@@ -48,6 +48,17 @@ BAR_KEYS = {
     "clock",
 }
 
+# Ours, not upstream's: caelestia exposes what the bar CONTAINS and nothing
+# about how it is drawn, so ten presets could only ever differ by module order.
+# patch_bar_proportions adds these two, and they are checked against the code
+# that adds them -- a preset setting a property no patch implements is silently
+# ignored by the config parser, which is the same shape as an entry id the bar
+# does not know.
+GENESI_BAR_KEYS = {
+    "width": 'CONFIG_PROPERTY(int, width, 0)',
+    "spacing": 'CONFIG_PROPERTY(int, spacing, -1)',
+}
+
 
 def main():
     print("== caelestia bar presets ==")
@@ -81,7 +92,7 @@ def main():
         if not isinstance(bar, dict):
             continue
 
-        for k in sorted(set(bar) - BAR_KEYS):
+        for k in sorted(set(bar) - BAR_KEYS - set(GENESI_BAR_KEYS)):
             bad.append((pid, f"sets bar.{k}, which the bar does not have"))
 
         entries = bar.get("entries")
@@ -99,6 +110,25 @@ def main():
             bad.append((pid, "enables nothing, so the bar would be blank"))
 
     print(f"  presets: {len(files)}")
+
+    # A Genesi-only property must be implemented by the patch that claims to
+    # add it. Read from the code, not from the comments explaining it.
+    patches = os.path.join(ROOT, "genesi-arch", "ci", "caelestia-patches.py")
+    psrc = ""
+    if os.path.exists(patches):
+        with io.open(patches, encoding="utf-8") as fh:
+            psrc = fh.read()
+    used = set()
+    for fn in files:
+        try:
+            with io.open(os.path.join(PRESETS, fn), encoding="utf-8") as fh:
+                used |= set((json.load(fh).get("bar") or {}))
+        except (OSError, json.JSONDecodeError):
+            pass
+    for k in sorted(used & set(GENESI_BAR_KEYS)):
+        if psrc and GENESI_BAR_KEYS[k] not in psrc:
+            bad.append(("caelestia-patches.py",
+                        f"no patch adds bar.{k}, but a preset sets it"))
 
     # The CLI's own list of valid ids must agree with this one, or it will
     # accept a preset the bar then drops.

@@ -710,6 +710,85 @@ def patch_wallpaper_transition(release):
     print("Wallpaper.qml: the transition is configurable (fade/zoom/grow/none)")
 
 
+def patch_bar_proportions(release):
+    """
+    Let a bar preset change the bar's PROPORTIONS, not just its contents.
+
+    caelestia exposes what the bar contains and almost nothing about how it is
+    drawn: the width comes from `Tokens.sizes.bar.innerWidth` and the gap
+    between entries from `Tokens.spacing.medium`, both constants. So ten
+    presets could only ever differ by which modules were in them and in what
+    order -- reported, fairly, as "the customisation is very simple".
+
+    Two properties change that, and they are the two that actually alter the
+    silhouette:
+
+        bar.width     px, 0 = the theme's own
+        bar.spacing   px, -1 = the theme's own
+
+    Zero and minus one mean "unset" rather than "zero", because a preset that
+    does not mention a property must inherit the theme rather than collapse the
+    bar to nothing. Both are clamped in the QML: a width of 4px is not a look,
+    it is a bar nobody can hit with a pointer.
+
+    This does NOT make the bar horizontal. Bar.qml is a ColumnLayout anchored
+    to the screen edge with exclusiveZone = contentWidth, and Clock, Tray,
+    StatusIcons and Workspaces each stack vertically inside themselves -- a top
+    bar is six upstream files rewritten, not a property.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "barconfig.hpp")
+    wrapper = os.path.join(release, "modules", "bar", "BarWrapper.qml")
+    bar = os.path.join(release, "modules", "bar", "Bar.qml")
+    for p in (hpp, wrapper, bar):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the bar module moved or was renamed.")
+
+    s = io.open(hpp, encoding="utf-8").read()
+    if "CONFIG_PROPERTY(int, width" in s:
+        fail("barconfig.hpp already declares a width -- upstream added one. "
+             "Read theirs and drop this patch.")
+    anchor = "    CONFIG_PROPERTY(bool, persistent, true)\n"
+    if anchor not in s:
+        fail("BarConfig's own properties are not where the patch expects them.")
+    s = s.replace(
+        anchor,
+        anchor +
+        "    // Genesi: the bar's proportions. 0 / -1 mean \"use the theme's\".\n"
+        "    CONFIG_PROPERTY(int, width, 0)\n"
+        "    CONFIG_PROPERTY(int, spacing, -1)\n",
+        1)
+    io.open(hpp, "w", encoding="utf-8", newline="\n").write(s)
+
+    s = io.open(wrapper, encoding="utf-8").read()
+    old = ("    readonly property int contentWidth: Tokens.sizes.bar.innerWidth "
+           "+ padding * 2\n")
+    if old not in s:
+        fail("BarWrapper's contentWidth is not where the patch expects it.")
+    new = ('    // Genesi: a preset may set the width. Clamped, because a bar\n'
+           '    // narrow enough to be a line is one a pointer cannot hit, and\n'
+           '    // one wider than a third of the screen is a panel.\n'
+           '    readonly property int innerWidth: Config.bar.width > 0\n'
+           '        ? Math.max(24, Math.min(Config.bar.width, screen.width / 3))\n'
+           '        : Tokens.sizes.bar.innerWidth\n'
+           '    readonly property int contentWidth: innerWidth + padding * 2\n')
+    s = s.replace(old, new, 1)
+    io.open(wrapper, "w", encoding="utf-8", newline="\n").write(s)
+
+    s = io.open(bar, encoding="utf-8").read()
+    old_sp = "    spacing: Tokens.spacing.medium\n"
+    if old_sp not in s:
+        fail("Bar.qml's spacing is not where the patch expects it.")
+    s = s.replace(
+        old_sp,
+        "    // Genesi: a preset may set the gap between entries. -1 inherits.\n"
+        "    spacing: Config.bar.spacing >= 0 ? Math.min(Config.bar.spacing, 40)\n"
+        "                                     : Tokens.spacing.medium\n",
+        1)
+    io.open(bar, "w", encoding="utf-8", newline="\n").write(s)
+    print("bar: width and spacing are configurable")
+
+
 def patch_ddc_timeout(services_dir):
     """
     Bound the DDC/CI probe so it cannot hammer a monitor that never answers.
@@ -791,6 +870,7 @@ def main():
     patch_actions_query(launcher)
     patch_applist_live_model(launcher)
     patch_wallpaper_transition(release)
+    patch_bar_proportions(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 
     # Only now are our pages written in. Doing this before the checks above is

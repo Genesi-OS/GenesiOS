@@ -1,6 +1,6 @@
 {
   "name": "Dense · Informativo",
-  "description": "Everything on: date, audio, microphone, keyboard layout · Tudo ligado: data, áudio, microfone, layout do teclado",
+  "description": "Everything on: date, audio, microphone, keyboard layout",
   "bar": {
     "entries": [
       {
@@ -40,6 +40,7 @@
         "enabled": true
       }
     ],
+    "spacing": 8,
     "clock": {
       "showDate": true,
       "background": true

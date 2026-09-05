@@ -158,7 +158,9 @@ pkgver=1.0.0
 # broken one forever otherwise.
 # 33: genesi-bar speaks JSON, so a settings page can draw each preset's
 # entry order rather than describing it.
-pkgrel=33
+# 34: fourteen bar presets that differ in SHAPE, not only in contents --
+# bar.width and bar.spacing are new, so a preset can change the silhouette.
+pkgrel=34
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

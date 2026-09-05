@@ -1,6 +1,6 @@
 {
   "name": "Compact · Compacto",
-  "description": "Tighter icons and fewer workspaces · Ícones mais justos e menos workspaces",
+  "description": "Tighter icons and fewer workspaces",
   "bar": {
     "entries": [
       {
@@ -40,6 +40,8 @@
         "enabled": true
       }
     ],
+    "width": 34,
+    "spacing": 6,
     "workspaces": {
       "shown": 3,
       "showWindows": false

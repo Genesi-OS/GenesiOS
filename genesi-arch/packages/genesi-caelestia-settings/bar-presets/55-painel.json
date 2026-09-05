@@ -1,6 +1,6 @@
 {
-  "name": "Default · Padrão",
-  "description": "The bar as caelestia ships it",
+  "name": "Dock · Painel",
+  "description": "A wide panel: every reading on screen at once",
   "bar": {
     "entries": [
       {
@@ -39,6 +39,25 @@
         "id": "power",
         "enabled": true
       }
-    ]
+    ],
+    "width": 76,
+    "spacing": 14,
+    "clock": {
+      "showDate": true,
+      "background": true
+    },
+    "tray": {
+      "background": true
+    },
+    "workspaces": {
+      "showWindows": true,
+      "maxWindowIcons": 6,
+      "occupiedBg": true
+    },
+    "status": {
+      "showAudio": true,
+      "showMicrophone": true,
+      "showKbLayout": true
+    }
   }
 }

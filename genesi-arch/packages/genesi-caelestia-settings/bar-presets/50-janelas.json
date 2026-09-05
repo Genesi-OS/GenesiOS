@@ -1,6 +1,6 @@
 {
   "name": "Windows · Janelas",
-  "description": "Each workspace shows the icons of what is open in it · Cada workspace mostra os ícones do que está aberto",
+  "description": "Each workspace shows the icons of what is open in it",
   "bar": {
     "entries": [
       {
@@ -40,6 +40,7 @@
         "enabled": true
       }
     ],
+    "width": 52,
     "workspaces": {
       "showWindows": true,
       "maxWindowIcons": 8,

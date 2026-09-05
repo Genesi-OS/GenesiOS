@@ -438,7 +438,7 @@
       {
         "name": "Bar: Default · Padrão",
         "icon": "view_sidebar",
-        "description": "The bar as caelestia ships it · A barra como o caelestia entrega",
+        "description": "The bar as caelestia ships it",
         "command": [
           "genesi-bar",
           "apply",
@@ -449,7 +449,7 @@
       {
         "name": "Bar: Centred · Centralizado",
         "icon": "vertical_align_center",
-        "description": "Logo at the top, workspaces in the middle, the rest at the bottom · Logo em cima, workspaces no meio, o resto embaixo",
+        "description": "Logo at the top, workspaces in the middle, the rest at the bottom",
         "command": [
           "genesi-bar",
           "apply",
@@ -458,9 +458,20 @@
         "group": "bar"
       },
       {
+        "name": "Bar: Hairline · Fio",
+        "icon": "remove",
+        "description": "As narrow as it can be and still be hit: dots and the time",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "25-fio"
+        ],
+        "group": "bar"
+      },
+      {
         "name": "Bar: Minimal · Mínimo",
         "icon": "check_box_outline_blank",
-        "description": "Workspaces and the time, nothing else · Workspaces e a hora, mais nada",
+        "description": "Workspaces and the time, nothing else",
         "command": [
           "genesi-bar",
           "apply",
@@ -471,7 +482,7 @@
       {
         "name": "Bar: Numbered · Números",
         "icon": "format_list_numbered",
-        "description": "Workspaces as numbers instead of dots · Workspaces em números no lugar dos pontos",
+        "description": "Workspaces as numbers instead of dots",
         "command": [
           "genesi-bar",
           "apply",
@@ -480,9 +491,20 @@
         "group": "bar"
       },
       {
+        "name": "Bar: Airy · Arejado",
+        "icon": "expand",
+        "description": "Wide and loosely spaced, with room around every icon",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "45-arejado"
+        ],
+        "group": "bar"
+      },
+      {
         "name": "Bar: Windows · Janelas",
         "icon": "select_window",
-        "description": "Each workspace shows the icons of what is open in it · Cada workspace mostra os ícones do que está aberto",
+        "description": "Each workspace shows the icons of what is open in it",
         "command": [
           "genesi-bar",
           "apply",
@@ -491,9 +513,20 @@
         "group": "bar"
       },
       {
-        "name": "Bar: Dense · Informativo",
+        "name": "Bar: Dock · Painel",
         "icon": "dashboard",
-        "description": "Everything on: date, audio, microphone, keyboard layout · Tudo ligado: data, áudio, microfone, layout do teclado",
+        "description": "A wide panel: every reading on screen at once",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "55-painel"
+        ],
+        "group": "bar"
+      },
+      {
+        "name": "Bar: Dense · Informativo",
+        "icon": "data_usage",
+        "description": "Everything on: date, audio, microphone, keyboard layout",
         "command": [
           "genesi-bar",
           "apply",
@@ -504,7 +537,7 @@
       {
         "name": "Bar: Compact · Compacto",
         "icon": "compress",
-        "description": "Tighter icons and fewer workspaces · Ícones mais justos e menos workspaces",
+        "description": "Tighter icons and fewer workspaces",
         "command": [
           "genesi-bar",
           "apply",
@@ -515,7 +548,7 @@
       {
         "name": "Bar: Clean · Limpo",
         "icon": "cleaning_services",
-        "description": "No tray and no status icons · Sem bandeja e sem ícones de status",
+        "description": "No tray and no status icons",
         "command": [
           "genesi-bar",
           "apply",
@@ -524,9 +557,20 @@
         "group": "bar"
       },
       {
+        "name": "Bar: Clock first · Relógio",
+        "icon": "schedule",
+        "description": "The time at the top with its date, everything else below it",
+        "command": [
+          "genesi-bar",
+          "apply",
+          "85-relogio"
+        ],
+        "group": "bar"
+      },
+      {
         "name": "Bar: Trail · Trilha",
         "icon": "animation",
-        "description": "The active workspace leaves a trail · O workspace ativo deixa um rastro",
+        "description": "The active workspace leaves a trail",
         "command": [
           "genesi-bar",
           "apply",
@@ -537,7 +581,7 @@
       {
         "name": "Bar: Auto-hide · Oculta",
         "icon": "visibility_off",
-        "description": "The bar stays out of the way until you reach for it · A barra some até você ir até ela",
+        "description": "The bar stays out of the way until you reach for it",
         "command": [
           "genesi-bar",
           "apply",

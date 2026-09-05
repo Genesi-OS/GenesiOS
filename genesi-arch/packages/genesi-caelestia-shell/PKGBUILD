@@ -53,7 +53,9 @@ pkgver=2.0.3
 # section); so does this now.
 # 16: the Display page shows WHICH screen is the main one. It was a button
 # with no state, so pressing it looked identical to it not working.
-pkgrel=16
+# 17: bar.width and bar.spacing. caelestia exposed what the bar contains
+# and nothing about how it is drawn, so presets could only reorder modules.
+pkgrel=17
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

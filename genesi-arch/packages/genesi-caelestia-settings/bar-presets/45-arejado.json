@@ -1,6 +1,6 @@
 {
-  "name": "Default · Padrão",
-  "description": "The bar as caelestia ships it",
+  "name": "Airy · Arejado",
+  "description": "Wide and loosely spaced, with room around every icon",
   "bar": {
     "entries": [
       {
@@ -8,15 +8,11 @@
         "enabled": true
       },
       {
-        "id": "workspaces",
-        "enabled": true
-      },
-      {
         "id": "spacer",
         "enabled": true
       },
       {
-        "id": "activeWindow",
+        "id": "workspaces",
         "enabled": true
       },
       {
@@ -32,13 +28,21 @@
         "enabled": true
       },
       {
-        "id": "statusIcons",
-        "enabled": true
-      },
-      {
         "id": "power",
         "enabled": true
       }
-    ]
+    ],
+    "width": 62,
+    "spacing": 22,
+    "workspaces": {
+      "shown": 5,
+      "showWindows": false
+    },
+    "clock": {
+      "background": true
+    },
+    "tray": {
+      "background": true
+    }
   }
 }

@@ -1,6 +1,6 @@
 {
-  "name": "Minimal · Mínimo",
-  "description": "Workspaces and the time, nothing else",
+  "name": "Hairline · Fio",
+  "description": "As narrow as it can be and still be hit: dots and the time",
   "bar": {
     "entries": [
       {
@@ -20,7 +20,8 @@
         "enabled": true
       }
     ],
-    "width": 38,
+    "width": 26,
+    "spacing": 6,
     "workspaces": {
       "showWindows": false,
       "activeIndicator": true

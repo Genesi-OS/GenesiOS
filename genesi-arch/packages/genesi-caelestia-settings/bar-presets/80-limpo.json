@@ -1,6 +1,6 @@
 {
   "name": "Clean · Limpo",
-  "description": "No tray and no status icons · Sem bandeja e sem ícones de status",
+  "description": "No tray and no status icons",
   "bar": {
     "entries": [
       {
@@ -39,6 +39,7 @@
         "id": "power",
         "enabled": true
       }
-    ]
+    ],
+    "spacing": 16
   }
 }

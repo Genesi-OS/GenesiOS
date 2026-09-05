@@ -1,6 +1,6 @@
 {
   "name": "Trail · Trilha",
-  "description": "The active workspace leaves a trail · O workspace ativo deixa um rastro",
+  "description": "The active workspace leaves a trail",
   "bar": {
     "entries": [
       {
@@ -40,6 +40,7 @@
         "enabled": true
       }
     ],
+    "width": 46,
     "workspaces": {
       "activeTrail": true,
       "occupiedBg": true,
