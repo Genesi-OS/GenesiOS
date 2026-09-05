@@ -75,6 +75,11 @@ jobs:
           # orphan. It refuses to run rather than report that, so this is not
           # optional.
           submodules: true
+          # pkgrel-bump-test.py reads `git log` to find the commit the current
+          # repo/x86_64 was built from. A shallow checkout has no such log and
+          # the guard would skip itself in silence, which is the one outcome a
+          # guard must never have.
+          fetch-depth: 0
 
       - name: Boot menus point at entries that exist
         shell: bash
@@ -95,6 +100,12 @@ jobs:
       - name: Bar presets describe a bar that can exist
         shell: bash
         run: python3 genesi-arch/ci/bar-presets-test.py
+
+      - name: A changed package carries a new version
+        shell: bash
+        # Needs history: it compares the tree against the commit the current
+        # repo/x86_64 was built from, which the publish commit records.
+        run: python3 genesi-arch/ci/pkgrel-bump-test.py
 
       - name: The ISO's systemd enable symlinks are symlinks
         shell: bash

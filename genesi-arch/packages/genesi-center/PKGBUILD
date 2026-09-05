@@ -24,7 +24,11 @@
 # whatever hue the wallpaper produced has no identity to recognise.
 pkgname=genesi-center
 pkgver=0.1.0
-pkgrel=1
+# 2: the rail, the animations and the artwork all landed while this stayed
+# at 1, so the repository held the newest code under a version every machine
+# already had and `genesi update` correctly did nothing. ci/pkgrel-bump-test.py
+# now fails the build on it.
+pkgrel=2
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
@@ -36,7 +40,12 @@ url='https://github.com/Genesi-OS/GenesiOS'
 # qt6-svg: the brand mark is drawn from art/genesi-leaf.svg, and without
 # the SVG image plugin an Image with an .svg source silently renders
 # nothing -- the mark would simply be absent, with no error.
-depends=('python' 'pyside6' 'qqc2-desktop-style' 'qt6-svg' 'coreutils')
+# noto-fonts-cjk: the rail's tag column is Japanese. Nothing else on a
+# Genesi install guarantees a font that can draw it, and Qt answers a
+# missing glyph with a box rather than an error -- which is what the
+# reporter saw. A design that uses a script has to ship the script.
+depends=('python' 'pyside6' 'qqc2-desktop-style' 'qt6-svg' 'coreutils'
+         'noto-fonts-cjk')
 optdepends=('genesi-snapshots: the snapshot panel'
             'genesi-update-center: the updates tool'
             'genesi-code: the editor tool')

@@ -63,6 +63,16 @@ QtObject {
                                          "Liberation Sans", "Segoe UI"],
                                         "sans-serif")
 
+    // The rail's tag column. Resolved separately because no Latin monospace
+    // carries CJK, and Qt draws a missing glyph as a box with no complaint.
+    readonly property string cjk: pick(["Noto Sans CJK JP", "Noto Sans JP",
+                                        "Source Han Sans JP", "Noto Serif CJK JP",
+                                        "Yu Gothic", "MS Gothic"], "")
+    // Whether the tags can be drawn at all. When they cannot, the rail shows
+    // nothing there rather than a column of boxes -- an empty column is a
+    // design choice, a column of boxes is a bug.
+    readonly property bool hasCjk: cjk !== ""
+
     readonly property int  fsMicro:  9
     readonly property int  fsLabel:  10
     readonly property int  fsBody:   12
