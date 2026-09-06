@@ -925,14 +925,27 @@ def patch_launcher_position(release):
     if old_r not in s:
         fail("the launcher's region in Regions.qml is not what the patch "
              "expects -- it is the piece that has to follow the panel.")
+    # TWO regions, because upstream's one was doing two jobs: the panel's
+    # input area when open, and the strip at the bottom edge that notices the
+    # drag or hover that opens it when closed. Following the panel fixes the
+    # first and silently removes the second -- with the panel off screen there
+    # would be nothing at the edge left to open it with.
     new_r = ("    R {\n"
-             "        // Genesi: no `y` override. `component R` already takes x\n"
-             "        // and y from the panel; the launcher was the only region\n"
-             "        // pinned to the bottom edge, which is why moving the\n"
-             "        // panel left its mask behind as a strip down there.\n"
+             "        // The panel itself, wherever it is. `component R` already\n"
+             "        // takes x and y from the panel; upstream pinned this one\n"
+             "        // to the bottom because that is where it knew it was.\n"
              "        panel: root.panels.launcher\n"
              "        height: panel.height * (1 - root.panels.launcher.offsetScale)"
              " + root.borderThickness\n"
+             "    }\n"
+             "\n"
+             "    R {\n"
+             "        // The gesture strip, which stays at the screen edge even\n"
+             "        // when the panel is in the middle. This is what a drag up\n"
+             "        // or a hover at the bottom lands on.\n"
+             "        panel: root.panels.launcher\n"
+             "        y: root.win.height - height\n"
+             "        height: root.borderThickness\n"
              "    }\n")
     out[regions] = s.replace(old_r, new_r, 1)
 
@@ -951,8 +964,34 @@ def patch_launcher_position(release):
         '        return Math.max(0, (h - implicitHeight) / 2);\n'
         '    }\n'
         '\n'
-        '    anchors.bottomMargin: restingOffset '
-        '+ (-implicitHeight - 5) * offsetScale\n'), 1)
+        '    // The offset applies at the OPEN end only. Added to both,\n'
+        '    // the closed position stops restingOffset short of the\n'
+        '    // screen edge and leaves a band of the panel showing --\n'
+        '    // half the leftover screen, for a centred launcher.\n'
+        '    anchors.bottomMargin: restingOffset\n'
+        '        - (restingOffset + implicitHeight + 5) * offsetScale\n'), 1)
+
+    # The slide has to reach the screen edge. This is arithmetic, and it is the
+    # bug that shipped: adding the resting offset to BOTH ends left the panel
+    # `restingOffset` pixels short of gone, which for a centred launcher is
+    # half the leftover screen still showing. Evaluated here rather than
+    # trusted, because the expression is one sign away from wrong and nothing
+    # downstream can tell.
+    m = re.search(r"anchors\.bottomMargin:\s*(.+?)\n\s*implicitHeight:", s, re.S)
+    if not m:
+        fail("cannot find the slide expression to check it reaches the edge.")
+    expr = " ".join(m.group(1).split())
+    for resting in (0.0, 230.0):
+        env = {"restingOffset": resting, "implicitHeight": 600.0}
+        opened = eval(expr, {"__builtins__": {}}, dict(env, offsetScale=0.0))
+        closed = eval(expr, {"__builtins__": {}}, dict(env, offsetScale=1.0))
+        if abs(opened - resting) > 0.001:
+            fail(f"the launcher does not rest where it should: open margin "
+                 f"{opened} with a resting offset of {resting}.")
+        if abs(closed - (-605.0)) > 0.001:
+            fail(f"the launcher does not close off the screen: closed margin "
+                 f"{closed}, upstream's is -605. With a resting offset of "
+                 f"{resting} that leaves {605.0 + closed:.0f}px of it showing.")
 
     old_w = ("    implicitWidth: content.implicitWidth || 630 "
              "// Hard coded fallback for first open\n")

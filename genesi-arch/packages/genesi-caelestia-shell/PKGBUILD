@@ -55,7 +55,7 @@ pkgver=2.0.3
 # with no state, so pressing it looked identical to it not working.
 # 17: bar.width and bar.spacing. caelestia exposed what the bar contains
 # and nothing about how it is drawn, so presets could only reorder modules.
-pkgrel=20
+pkgrel=21
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
