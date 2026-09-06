@@ -226,6 +226,55 @@ def cache_put(key, text):
         pass
 
 
+CLOUD_CONF = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    "genesi", "ai", "cloud.json")
+
+
+def cloud_config():
+    """
+    The hosted model, if one is configured. None otherwise.
+
+    Written by `genesi-ai-key`, which is also the only thing that should ever
+    create this file: it is 0600 and holds a secret. Read here rather than
+    passed in, because `ask()` is called from half a dozen helpers and none of
+    them should have to know a cloud exists.
+    """
+    try:
+        with open(CLOUD_CONF, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(d, dict) or not d.get("key") or not d.get("base_url"):
+        return None
+    return d
+
+
+def _ask_cloud(cloud, payload, timeout):
+    """
+    One completion from the hosted model, or None.
+
+    None on ANY failure, so `ask()` falls back to the local model. That
+    fallback is the point: a settings app can turn the cloud on, but a network
+    that is down or a key that expired must not stop the ghost-text fix in
+    somebody's terminal from working. The local model is always there.
+    """
+    payload["model"] = cloud["model"]
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        cloud["base_url"].rstrip("/") + "/chat/completions", data=body,
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + cloud["key"]})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.load(resp)
+        text = (data["choices"][0]["message"]["content"] or "").strip()
+    except (urllib.error.URLError, OSError, ValueError, KeyError,
+            IndexError, TimeoutError):
+        return None
+    return text or None
+
+
 def ask(system, user, feature="", cache_key=None, conf=None,
         passive=True, max_tokens=None, timeout=None):
     """One small completion against the already-warm model, or None.
@@ -249,25 +298,38 @@ def ask(system, user, feature="", cache_key=None, conf=None,
     if not ok:
         return None
 
-    body = json.dumps({
+    payload = {
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
         "max_tokens": max_tokens or _int(conf, "max_tokens", 160),
         "temperature": 0.1,
         "stream": False,
-    }).encode("utf-8")
+    }
 
-    req = urllib.request.Request(
-        turbo_url() + "/v1/chat/completions", data=body,
-        headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(
-                req, timeout=timeout or _int(conf, "timeout", 6)) as resp:
-            data = json.load(resp)
-        text = data["choices"][0]["message"]["content"].strip()
-    except (urllib.error.URLError, OSError, ValueError, KeyError,
-            IndexError, TimeoutError):
-        return None
+    # A hosted model, when one is configured AND this call is allowed to use
+    # it. `passive` is the gate: the helpers that fire on their own -- the
+    # ghost-text fix after a failed command -- run several times a minute in a
+    # busy terminal, and a hosted model bills per token. They stay local unless
+    # the key was set with `--for all`.
+    text = None
+    cloud = cloud_config()
+    if cloud and (not passive or cloud.get("use_for") == "all"):
+        text = _ask_cloud(cloud, dict(payload),
+                          timeout or _int(conf, "timeout", 6) * 3)
+
+    if text is None:
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            turbo_url() + "/v1/chat/completions", data=body,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(
+                    req, timeout=timeout or _int(conf, "timeout", 6)) as resp:
+                data = json.load(resp)
+            text = data["choices"][0]["message"]["content"].strip()
+        except (urllib.error.URLError, OSError, ValueError, KeyError,
+                IndexError, TimeoutError):
+            return None
 
     if not text:
         return None

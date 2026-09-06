@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""
+genesi-ai-key — use a hosted model instead of (or alongside) the local one.
+
+Genesi runs AI on your machine, and that stays the default. This is for the
+times the local model is not enough: a key here lets `ask()` send a prompt to
+an OpenAI-compatible endpoint instead.
+
+  genesi-ai-key status                  what is configured (never the key)
+  genesi-ai-key set [--provider P] [--model M] [--base-url U] [--for WHEN]
+                                        reads the key from STDIN
+  genesi-ai-key test                    one real request, to prove it works
+  genesi-ai-key clear                   forget it
+
+── The key never goes in argv ───────────────────────────────────────────────
+
+`genesi-ai-key set sk-...` would put the secret in your shell history, in
+`ps` output for every user on the machine, and in any terminal recording. It
+is read from stdin instead:
+
+    genesi-ai-key set --provider openai < key.txt
+    pass show openai/key | genesi-ai-key set --provider openai
+
+The file is written 0600 in a 0700 directory, and nothing ever prints it back
+-- `status` shows the last four characters so you can tell WHICH key it is
+without the key being on screen.
+
+── When it is used ──────────────────────────────────────────────────────────
+
+`--for manual` (the default) means only the things you invoke yourself: the
+chat, the explainer you asked for. The passive helpers -- the ghost-text fix
+that fires on a failed command, the ones that run on their own -- stay local.
+
+That is not caution for its own sake. Those helpers fire without you asking,
+several times a minute in a busy terminal, and a hosted model bills per token.
+`--for all` opts into that deliberately; nothing else turns it on.
+"""
+import argparse
+import json
+import os
+import stat
+import sys
+import urllib.error
+import urllib.request
+
+CONF_DIR = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    "genesi", "ai")
+CLOUD = os.path.join(CONF_DIR, "cloud.json")
+
+# Endpoints known to speak the OpenAI chat-completions shape, which is the only
+# thing this needs. A provider not listed here still works with --base-url.
+PROVIDERS = {
+    "openai": ("https://api.openai.com/v1", "gpt-4o-mini"),
+    "anthropic": ("https://api.anthropic.com/v1", "claude-sonnet-5"),
+    "groq": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+    "openrouter": ("https://openrouter.ai/api/v1", "openai/gpt-4o-mini"),
+    "together": ("https://api.together.xyz/v1", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+    "custom": ("", ""),
+}
+
+WHEN = ("manual", "all")
+
+
+def die(msg):
+    sys.stderr.write("genesi-ai-key: " + msg + "\n")
+    sys.exit(1)
+
+
+def load():
+    try:
+        with open(CLOUD, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save(d):
+    os.makedirs(CONF_DIR, exist_ok=True)
+    os.chmod(CONF_DIR, stat.S_IRWXU)
+    tmp = CLOUD + ".tmp"
+    # Created 0600 BEFORE anything is written to it. Writing first and
+    # chmod-ing after leaves a window where the key is world-readable, which is
+    # the whole thing this is trying not to do.
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(d, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.replace(tmp, CLOUD)
+
+
+def cmd_status(as_json=False):
+    d = load()
+    key = d.get("key") or ""
+    out = {
+        "configured": bool(key),
+        "provider": d.get("provider") or None,
+        "model": d.get("model") or None,
+        "base_url": d.get("base_url") or None,
+        "use_for": d.get("use_for") or "manual",
+        # Enough to tell two keys apart, not enough to be one.
+        "key_tail": ("…" + key[-4:]) if len(key) >= 4 else None,
+        "path": CLOUD,
+        "providers": sorted(PROVIDERS),
+    }
+    if as_json:
+        json.dump(out, sys.stdout, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return
+    if not out["configured"]:
+        print("no cloud model configured — everything runs locally")
+        print(f"  set one with:  genesi-ai-key set --provider openai < key.txt")
+        return
+    print(f"provider  {out['provider']}")
+    print(f"model     {out['model']}")
+    print(f"endpoint  {out['base_url']}")
+    print(f"key       {out['key_tail']}")
+    print(f"used for  {out['use_for']}"
+          + ("  (only what you invoke yourself)" if out["use_for"] == "manual"
+             else "  (including the helpers that fire on their own)"))
+
+
+def cmd_set(args):
+    if sys.stdin.isatty():
+        die("the key is read from stdin, so it never lands in your shell "
+            "history or in `ps`.\n"
+            "                 genesi-ai-key set --provider openai < key.txt")
+    key = sys.stdin.read().strip()
+    if not key:
+        die("nothing arrived on stdin")
+    if "\n" in key or len(key) > 400:
+        die("that does not look like an API key")
+
+    prov = args.provider or "custom"
+    if prov not in PROVIDERS:
+        die(f"unknown provider {prov!r}. Choose: " + ", ".join(sorted(PROVIDERS))
+            + ", or use --base-url")
+    base, model = PROVIDERS[prov]
+    base = (args.base_url or base).rstrip("/")
+    model = args.model or model
+    if not base:
+        die("a custom provider needs --base-url")
+    if not model:
+        die("a custom provider needs --model")
+    if args.use_for not in WHEN:
+        die("--for must be " + " or ".join(WHEN))
+
+    save({"provider": prov, "base_url": base, "model": model,
+          "use_for": args.use_for, "key": key})
+    print(f"{prov} · {model}")
+    print(f"stored 0600 in {CLOUD}")
+    print("check it reaches anything with:  genesi-ai-key test")
+
+
+def cmd_clear():
+    if not os.path.exists(CLOUD):
+        print("nothing to clear")
+        return
+    os.remove(CLOUD)
+    print("cleared — everything runs locally again")
+
+
+def cmd_test():
+    d = load()
+    if not d.get("key"):
+        die("no key configured")
+    body = json.dumps({
+        "model": d["model"],
+        "messages": [{"role": "user", "content": "Reply with the word: ok"}],
+        "max_tokens": 5,
+        "stream": False,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        d["base_url"] + "/chat/completions", data=body,
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + d["key"]})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.load(resp)
+        text = data["choices"][0]["message"]["content"].strip()
+    except urllib.error.HTTPError as e:
+        # The status is the useful part: 401 is a wrong key, 404 a wrong model,
+        # 429 a rate limit. "it failed" would send someone to the wrong place.
+        die(f"{d['provider']} answered {e.code} {e.reason}. "
+            + {401: "The key is wrong or expired.",
+               403: "The key is not allowed to use this model.",
+               404: f"There is no model called {d['model']!r} at that endpoint.",
+               429: "Rate limited — the key works, the account is busy."}
+              .get(e.code, "Check the endpoint and the model name."))
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        die(f"could not reach {d['base_url']}: {e}")
+    except (ValueError, KeyError, IndexError):
+        die("the endpoint answered, but not in the OpenAI chat shape")
+    print(f"{d['provider']} · {d['model']} answered: {text}")
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    sub = ap.add_subparsers(dest="cmd")
+
+    p = sub.add_parser("set", add_help=False)
+    p.add_argument("--provider")
+    p.add_argument("--model")
+    p.add_argument("--base-url", dest="base_url")
+    p.add_argument("--for", dest="use_for", default="manual")
+
+    s = sub.add_parser("status", add_help=False)
+    s.add_argument("--json", action="store_true")
+
+    sub.add_parser("clear", add_help=False)
+    sub.add_parser("test", add_help=False)
+
+    try:
+        args = ap.parse_args()
+    except SystemExit:
+        print(__doc__.strip())
+        return 2
+
+    if args.cmd == "set":
+        cmd_set(args)
+    elif args.cmd == "clear":
+        cmd_clear()
+    elif args.cmd == "test":
+        cmd_test()
+    elif args.cmd == "status":
+        cmd_status(args.json)
+    else:
+        print(__doc__.strip())
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

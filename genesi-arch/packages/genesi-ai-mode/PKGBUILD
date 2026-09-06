@@ -1346,7 +1346,7 @@ pkgver=1.0.0
 # on the page -- beside the calm cards under it, the one element shouting was
 # the one already saying it was on three other ways. Same surface as its
 # neighbours; the orange stays in the icon, the badge and the switch.
-pkgrel=191
+pkgrel=192
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1393,6 +1393,12 @@ package() {
     install -Dm755 "${startdir}/genesi-aid"      "$pkgdir/usr/local/bin/genesi-aid"
     install -Dm755 "${startdir}/genesi-ai-mode"  "$pkgdir/usr/local/bin/genesi-ai-mode"
     install -Dm755 "${startdir}/genesi-ai-turbo"  "$pkgdir/usr/local/bin/genesi-ai-turbo"
+    # Spoken answers (Kokoro) and the hosted-model key. Separate tools
+    # rather than flags on genesi-ai-mode: each owns a file, each can be
+    # run and tested from a terminal, and Genesi Center reads both
+    # through their --json rather than looking for the files itself.
+    install -Dm755 "${startdir}/genesi-ai-voice"  "$pkgdir/usr/local/bin/genesi-ai-voice"
+    install -Dm755 "${startdir}/genesi-ai-key"  "$pkgdir/usr/local/bin/genesi-ai-key"
     # Nightly autotuner: sweeps ubatch/flash-attn/KV/threads with llama-bench on
     # THIS hardware and writes the winning knobs to tune.json, which
     # genesi-ai-turbo reads as its defaults (env vars still override).

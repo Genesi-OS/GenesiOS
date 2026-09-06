@@ -44,9 +44,15 @@ TICK_MS = 5000
 # desk of whoever wrote it.
 ALLOWED = {
     "genesi-center-set", "genesi-console", "genesi-display", "genesi-bar",
-    "genesi-snapshots", "genesi-ai-mode", "genesi-ai-turbo", "genesi-ai-monitor",
-    "genesi-open-usb-mixer", "genesi-update-center", "genesi-snapshots-gui",
+    "genesi-snapshots", "genesi-snapshots-gui", "genesi-channel-gui",
+    "genesi-ai-mode", "genesi-ai-turbo", "genesi-ai-monitor",
+    "genesi-ai-voice", "genesi-ai-key",
+    "genesi-open-usb-mixer",
     "caelestia", "hyprctl", "hyprshade", "wpctl",
+    # A terminal, for the two things that must not happen invisibly behind a
+    # settings window: a 340 MB download, and an API test whose useful answer
+    # is which HTTP status came back.
+    "foot",
 }
 
 

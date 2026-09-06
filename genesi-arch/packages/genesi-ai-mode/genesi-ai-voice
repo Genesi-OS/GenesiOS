@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""
+genesi-ai-voice — spoken answers, on this machine.
+
+Kokoro is a small text-to-speech model that runs locally, like everything else
+Genesi's AI does. Nothing is sent anywhere.
+
+  genesi-ai-voice status [--json]   what is present and what is missing
+  genesi-ai-voice install           fetch the model (about 340 MB)
+  genesi-ai-voice say "text"        speak it
+  genesi-ai-voice voices            the voices the model carries
+  genesi-ai-voice remove            delete the model files
+
+── Why install checks BEFORE it downloads ───────────────────────────────────
+
+Synthesis needs three things: the model files, the `kokoro-onnx` Python
+package, and espeak-ng for turning letters into phonemes. Downloading 340 MB
+and only then discovering onnxruntime is missing wastes somebody's evening and
+their bandwidth, so the dependency check runs first and says exactly what to
+install.
+
+── Why the audio goes through a pipe ────────────────────────────────────────
+
+The samples are written to a WAV on stdin of `pw-play` (or `aplay`), rather
+than to a temporary file. A settings app that leaves 40 MB of speech in /tmp
+after every sentence is a bug reported six months later as "the disk filled up".
+"""
+import argparse
+import io
+import json
+import os
+import shutil
+import struct
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+DATA = os.path.join(
+    os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")),
+    "genesi-ai", "kokoro")
+
+# The upstream release these are published in. Pinned to a version rather than
+# "latest": a model that changes under a machine is a machine whose voice
+# changes for no reason anyone can trace.
+RELEASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-v1.0"
+FILES = (
+    # name, url, roughly how big -- used to reject a truncated download and to
+    # tell someone what they are about to spend before they spend it.
+    ("kokoro-v1.0.onnx", RELEASE + "/kokoro-v1.0.onnx", 310_000_000),
+    ("voices-v1.0.bin", RELEASE + "/voices-v1.0.bin", 26_000_000),
+)
+
+DEFAULT_VOICE = "af_heart"
+SAMPLE_RATE = 24000
+
+
+def die(msg):
+    sys.stderr.write("genesi-ai-voice: " + msg + "\n")
+    sys.exit(1)
+
+
+def path_of(name):
+    return os.path.join(DATA, name)
+
+
+def have_files():
+    for name, _url, size in FILES:
+        p = path_of(name)
+        if not os.path.exists(p):
+            return False
+        # A download killed halfway leaves a plausible-looking file. Anything
+        # under 80% of the expected size is a fragment, not a model.
+        if os.path.getsize(p) < size * 0.8:
+            return False
+    return True
+
+
+def have_module():
+    try:
+        import kokoro_onnx  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def have_espeak():
+    return shutil.which("espeak-ng") is not None or shutil.which("espeak") is not None
+
+
+def player():
+    for cmd in (["pw-play", "--format", "s16", "--rate", str(SAMPLE_RATE),
+                 "--channels", "1", "-"],
+                ["aplay", "-q", "-f", "S16_LE", "-r", str(SAMPLE_RATE),
+                 "-c", "1", "-"]):
+        if shutil.which(cmd[0]):
+            return cmd
+    return None
+
+
+def missing():
+    out = []
+    if not have_module():
+        out.append(("kokoro-onnx", "pip install --user kokoro-onnx",
+                    "the synthesiser itself"))
+    if not have_espeak():
+        out.append(("espeak-ng", "sudo pacman -S espeak-ng",
+                    "turns letters into phonemes"))
+    if player() is None:
+        out.append(("pipewire / alsa-utils", "sudo pacman -S pipewire-audio",
+                    "plays the samples"))
+    return out
+
+
+def cmd_status(as_json):
+    need = missing()
+    out = {
+        "installed": have_files(),
+        "ready": have_files() and not need,
+        "path": DATA,
+        "download_mb": round(sum(s for _n, _u, s in FILES) / 1_000_000),
+        "missing": [{"name": n, "how": h, "why": w} for n, h, w in need],
+        "voice": DEFAULT_VOICE,
+    }
+    if as_json:
+        json.dump(out, sys.stdout, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return
+    if out["ready"]:
+        print(f"ready — {DATA}")
+        return
+    if not out["installed"]:
+        print(f"not installed. `genesi-ai-voice install` fetches about "
+              f"{out['download_mb']} MB into {DATA}")
+    else:
+        print(f"model present at {DATA}")
+    for n, h, w in need:
+        print(f"  missing {n:<22} {w}")
+        print(f"          {h}")
+
+
+def fetch(name, url, expected):
+    dest = path_of(name)
+    tmp = dest + ".part"
+    os.makedirs(DATA, exist_ok=True)
+    # Downloaded to .part and renamed only when complete, so an interrupted
+    # run never leaves something that looks installed.
+    done = 0
+    try:
+        with urllib.request.urlopen(url, timeout=60) as resp:
+            total = int(resp.headers.get("Content-Length") or expected)
+            with open(tmp, "wb") as fh:
+                while True:
+                    chunk = resp.read(1 << 20)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    done += len(chunk)
+                    pct = min(100, int(100 * done / max(1, total)))
+                    sys.stdout.write(
+                        f"\r  {name}  {pct:3d}%  "
+                        f"{done // 1_000_000}/{total // 1_000_000} MB")
+                    sys.stdout.flush()
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        die(f"\ncould not download {name}: {e}")
+    sys.stdout.write("\n")
+    if done < expected * 0.8:
+        os.remove(tmp)
+        die(f"{name} came back short ({done} bytes) — the download was cut off")
+    os.replace(tmp, dest)
+
+
+def cmd_install():
+    need = missing()
+    if need:
+        # Refuse BEFORE spending the bandwidth.
+        print("Kokoro needs a few things this machine does not have yet:")
+        for n, h, w in need:
+            print(f"  {n:<22} {w}")
+            print(f"  {'':<22} {h}")
+        print()
+        die("install those first, then run this again")
+
+    if have_files():
+        print(f"already installed — {DATA}")
+        return
+
+    mb = round(sum(s for _n, _u, s in FILES) / 1_000_000)
+    print(f"Fetching Kokoro (~{mb} MB) into {DATA}")
+    for name, url, size in FILES:
+        if os.path.exists(path_of(name)) and os.path.getsize(path_of(name)) >= size * 0.8:
+            print(f"  {name}  already here")
+            continue
+        fetch(name, url, size)
+    print("done — try it with:  genesi-ai-voice say \"hello\"")
+
+
+def wav_header(n_samples):
+    """A 16-bit mono WAV header, so the player knows what it is being fed."""
+    data_bytes = n_samples * 2
+    return (b"RIFF" + struct.pack("<I", 36 + data_bytes) + b"WAVEfmt "
+            + struct.pack("<IHHIIHH", 16, 1, 1, SAMPLE_RATE,
+                          SAMPLE_RATE * 2, 2, 16)
+            + b"data" + struct.pack("<I", data_bytes))
+
+
+def cmd_say(text, voice):
+    if not text.strip():
+        return
+    if not have_files():
+        die("Kokoro is not installed. Run: genesi-ai-voice install")
+    need = missing()
+    if need:
+        die("missing " + ", ".join(n for n, _h, _w in need)
+            + " — run `genesi-ai-voice status` for how to get them")
+    play = player()
+    if play is None:
+        die("nothing on this machine can play audio")
+
+    try:
+        import numpy as np
+        from kokoro_onnx import Kokoro
+    except Exception as e:
+        die(f"could not load the synthesiser: {e}")
+
+    try:
+        k = Kokoro(path_of("kokoro-v1.0.onnx"), path_of("voices-v1.0.bin"))
+        samples, rate = k.create(text, voice=voice or DEFAULT_VOICE,
+                                 speed=1.0, lang="en-us")
+    except Exception as e:
+        die(f"synthesis failed: {e}")
+
+    pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+    try:
+        p = subprocess.Popen(play, stdin=subprocess.PIPE)
+        p.communicate(wav_header(len(pcm) // 2) + pcm)
+    except (OSError, subprocess.SubprocessError) as e:
+        die(f"could not play the audio: {e}")
+
+
+def cmd_voices():
+    if not have_files():
+        die("Kokoro is not installed. Run: genesi-ai-voice install")
+    try:
+        from kokoro_onnx import Kokoro
+        k = Kokoro(path_of("kokoro-v1.0.onnx"), path_of("voices-v1.0.bin"))
+        for v in sorted(k.get_voices()):
+            print(v)
+    except Exception as e:
+        die(f"could not read the voices: {e}")
+
+
+def cmd_remove():
+    if not os.path.isdir(DATA):
+        print("nothing to remove")
+        return
+    shutil.rmtree(DATA, ignore_errors=True)
+    print(f"removed {DATA}")
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    sub = ap.add_subparsers(dest="cmd")
+    s = sub.add_parser("status", add_help=False)
+    s.add_argument("--json", action="store_true")
+    sub.add_parser("install", add_help=False)
+    sub.add_parser("voices", add_help=False)
+    sub.add_parser("remove", add_help=False)
+    y = sub.add_parser("say", add_help=False)
+    y.add_argument("text", nargs="*")
+    y.add_argument("--voice", default="")
+
+    try:
+        args = ap.parse_args()
+    except SystemExit:
+        print(__doc__.strip())
+        return 2
+
+    if args.cmd == "status":
+        cmd_status(args.json)
+    elif args.cmd == "install":
+        cmd_install()
+    elif args.cmd == "voices":
+        cmd_voices()
+    elif args.cmd == "remove":
+        cmd_remove()
+    elif args.cmd == "say":
+        cmd_say(" ".join(args.text), args.voice)
+    else:
+        print(__doc__.strip())
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

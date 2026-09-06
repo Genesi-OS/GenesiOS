@@ -783,6 +783,24 @@ def shortcuts():
     return {"available": True, "binds": out, "overrides": overrides}
 
 
+def _tool_json(argv):
+    """
+    One Genesi tool's JSON, or {"available": false}.
+
+    The tool not being installed is a normal answer here, not an error: AI Mode
+    is optional, and a page that cannot tell "not installed" from "broken"
+    tells the reader neither.
+    """
+    if not shutil.which(argv[0]):
+        return {"available": False}
+    try:
+        d = json.loads(_run(argv, timeout=10) or "{}")
+    except (json.JSONDecodeError, ValueError):
+        return {"available": False}
+    d["available"] = True
+    return d
+
+
 def ai():
     """AI Mode, as its own daemon reports it."""
     if not shutil.which("genesi-ai-mode"):
@@ -809,15 +827,13 @@ def ai():
         "available": True,
         "state": state,
         "models": sorted(models, key=lambda m: m["name"])[:40],
-        # Speech and a cloud key are both asked for and NEITHER exists yet:
-        # nothing in Genesi installs Kokoro, and nothing reads an API key.
-        # Reported as false with a reason rather than as a path that happens
-        # to be empty -- a page that says "not installed" about a feature that
-        # was never built is telling a different lie from "not built yet".
-        "kokoro": False,
-        "api_key": False,
-        "voice_supported": False,
-        "cloud_supported": False,
+        # Speech and the cloud key, each read from the tool that owns it
+        # rather than by looking for files here. genesi-ai-voice knows what a
+        # half-finished download looks like and genesi-ai-key knows what
+        # counts as configured; a second opinion about either would eventually
+        # be the wrong one.
+        "voice": _tool_json(["genesi-ai-voice", "status", "--json"]),
+        "cloud": _tool_json(["genesi-ai-key", "status", "--json"]),
         "turbo": bool(shutil.which("genesi-ai-turbo")),
     }
 
