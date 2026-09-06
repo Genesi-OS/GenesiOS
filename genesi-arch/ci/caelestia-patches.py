@@ -851,41 +851,54 @@ def patch_frame_opacity(release):
 
 def patch_launcher_position(release):
     """
-    Let a preset set the launcher's WIDTH.
+    Let the launcher sit in the middle of the screen, and set its width.
 
-        launcher.width   px, 0 = whatever the content wants
+        launcher.position   "bottom" (upstream) or "centre"
+        launcher.width      px, 0 = whatever the content wants
 
-    ── The centred launcher, and why it is not here ─────────────────────────
+    ── Two files, because the first attempt only did one ────────────────────
 
-    This used to add `launcher.position: "centre"` as well, moving the panel to
-    the middle of the screen. It shipped, and it left a large slab at the
-    BOTTOM of the screen whenever the launcher closed.
+    The first version moved the panel and nothing else, and left a slab at the
+    BOTTOM of the screen. The cause was a single override in Regions.qml:
 
-    The cause, found afterwards: being at the bottom is baked into three
-    places, not one.
+        R { panel: root.panels.launcher
+            y: root.win.height - height }
 
-      * Panels.qml anchors the wrapper to parent.bottom -- the only one the
-        patch touched.
-      * Regions.qml carves the drawer window's mask at `y: win.height - height`,
-        hardcoded to the bottom edge and sized from the panel. That slab is
-        what was left behind.
-      * Interactions.qml hit-tests the launcher with `inBottomPanel`, so the
-        drag-to-open gesture would still live at the bottom even once the
-        panel moved.
+    `component R` already derives x and y from `panel.x` / `panel.y`. The
+    launcher is the only one of the seven regions that overrides `y`, because
+    upstream knew where it was. That region is the drawer window's input mask,
+    so the leftover was a strip at the bottom that swallowed clicks while the
+    real launcher sat outside the mask. Deleting the override makes it follow
+    the panel, which is what the component was written to do.
 
-    Moving the launcher means patching all three together, and none of them can
-    be checked here: Quickshell does not run on the machine this is written on,
-    so the only test available is somebody's desktop. It had already been that
-    test once. The width knob stays because it moves nothing.
+    The VISIBLE half needed nothing: the launcher's PanelBg blob takes
+    `panel: panels.launcher` with no position of its own, and follows it
+    already.
+
+    Interactions.qml is deliberately untouched. Its `inBottomPanel` is the
+    drag-up-from-the-edge gesture, and swiping up from the bottom to raise a
+    panel in the middle is still the right gesture -- moving it would take the
+    gesture away from the edge people already use.
+
+    ── The position is a MARGIN, not a second anchor ────────────────────────
+
+    Flipping `anchors.bottom` between `parent.bottom` and `undefined` is the
+    documented way to do this and also exactly how a QML item ends up anchored
+    to nothing and invisible. This is somebody's launcher, on a desktop where
+    the launcher is how you open a terminal to fix it, so it stays one anchor
+    that never changes plus an offset that moves it up the screen. The open
+    animation survives because Wrapper.qml slides by driving that same margin.
     """
     hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
                        "launcherconfig.hpp")
     wrapper = os.path.join(release, "modules", "launcher", "Wrapper.qml")
-    for p in (hpp, wrapper):
+    regions = os.path.join(release, "modules", "drawers", "Regions.qml")
+    for p in (hpp, wrapper, regions):
         if not os.path.exists(p):
             fail(f"{p} is gone -- the launcher moved or was renamed.")
 
-    src = {p: io.open(p, encoding="utf-8").read() for p in (hpp, wrapper)}
+    src = {p: io.open(p, encoding="utf-8").read()
+           for p in (hpp, wrapper, regions)}
 
     if "CONFIG_PROPERTY(int, width" in src[hpp]:
         fail("launcherconfig.hpp already has a width -- upstream added one, "
@@ -895,10 +908,52 @@ def patch_launcher_position(release):
     if anchor not in src[hpp]:
         fail("LauncherConfig's properties are not where the patch expects them.")
     out = {hpp: src[hpp].replace(anchor, anchor + (
-        "    // Genesi: how wide the launcher is. 0 = size to the content.\n"
+        "    // Genesi: where the launcher sits, and how wide it is.\n"
+        "    // \"bottom\" is upstream's; \"centre\" floats it mid-screen.\n"
+        "    CONFIG_PROPERTY(QString, position, u\"bottom\"_s)\n"
         "    CONFIG_PROPERTY(int, width, 0)\n"), 1)}
 
+    # The input mask has to follow the panel, or a centred launcher leaves a
+    # click-swallowing strip at the bottom and sits outside its own mask.
+    s = src[regions]
+    old_r = ("    R {\n"
+             "        panel: root.panels.launcher\n"
+             "        y: root.win.height - height\n"
+             "        height: panel.height * (1 - root.panels.launcher.offsetScale)"
+             " + root.borderThickness\n"
+             "    }\n")
+    if old_r not in s:
+        fail("the launcher's region in Regions.qml is not what the patch "
+             "expects -- it is the piece that has to follow the panel.")
+    new_r = ("    R {\n"
+             "        // Genesi: no `y` override. `component R` already takes x\n"
+             "        // and y from the panel; the launcher was the only region\n"
+             "        // pinned to the bottom edge, which is why moving the\n"
+             "        // panel left its mask behind as a strip down there.\n"
+             "        panel: root.panels.launcher\n"
+             "        height: panel.height * (1 - root.panels.launcher.offsetScale)"
+             " + root.borderThickness\n"
+             "    }\n")
+    out[regions] = s.replace(old_r, new_r, 1)
+
     s = src[wrapper]
+    old_slide = "    anchors.bottomMargin: (-implicitHeight - 5) * offsetScale\n"
+    if old_slide not in s:
+        fail("Wrapper.qml's slide is not where the patch expects it.")
+    s = s.replace(old_slide, (
+        '    // Genesi: how far up the screen the launcher rests. ADDED to the\n'
+        '    // slide rather than replacing an anchor, so there is no state in\n'
+        '    // which this item is anchored to nothing.\n'
+        '    readonly property real restingOffset: {\n'
+        '        if (Config.launcher.position !== "centre")\n'
+        '            return 0;\n'
+        '        const h = parent ? parent.height : 0;\n'
+        '        return Math.max(0, (h - implicitHeight) / 2);\n'
+        '    }\n'
+        '\n'
+        '    anchors.bottomMargin: restingOffset '
+        '+ (-implicitHeight - 5) * offsetScale\n'), 1)
+
     old_w = ("    implicitWidth: content.implicitWidth || 630 "
              "// Hard coded fallback for first open\n")
     if old_w not in s:
@@ -915,7 +970,7 @@ def patch_launcher_position(release):
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
-    print("launcher: width is configurable")
+    print("launcher: position and width are configurable")
 
 
 def patch_window_icons(release):

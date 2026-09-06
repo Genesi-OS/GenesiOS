@@ -797,8 +797,9 @@ def launcher():
     return {
         "available": bool(cfg),
         "options": {
-            # Genesi-only; the default here is what the patch declares, so
+            # Genesi-only; the defaults here are what the patch declares, so
             # an unset value reads as what is in effect.
+            "position": l.get("position", "bottom"),
             "width": l.get("width", 0),
             "maxShown": l.get("maxShown", 8),
             "maxWallpapers": l.get("maxWallpapers", 9),
