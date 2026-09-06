@@ -104,6 +104,13 @@ Item {
                             color: Tokens.card
                             border.width: 1
                             border.color: Tokens.accentDeep
+                            // The preview fades too. A see-through slider whose
+                            // picture stays solid is a slider you have to apply
+                            // to find out about.
+                            opacity: Math.max(0.15, page.num("opacity", 100) / 100)
+                            Behavior on opacity {
+                                NumberAnimation { duration: Tokens.quick }
+                            }
 
                             Behavior on anchors.margins {
                                 NumberAnimation { duration: Tokens.quick }
@@ -158,6 +165,21 @@ Item {
                                 from: 0; to: 50; step: 1; unit: "px"
                                 value: page.num("rounding", 25)
                                 onReleased: v => page.set("border.rounding", v)
+                            }
+                        }
+                        SettingRow {
+                            width: parent.width
+                            label: qsTr("See-through")
+                            description: qsTr("caelestia paints the frame and the "
+                                              + "bar's ground as one surface, so "
+                                              + "this fades both — which is the "
+                                              + "glass look, and worth knowing "
+                                              + "before you reach for it.")
+                            Slider {
+                                width: 220
+                                from: 15; to: 100; step: 1; unit: "%"
+                                value: page.num("opacity", 100)
+                                onReleased: v => page.set("border.opacity", v)
                             }
                         }
                         SettingRow {

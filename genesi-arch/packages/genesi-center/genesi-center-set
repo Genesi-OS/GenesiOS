@@ -9,6 +9,9 @@ that can be tested without a display.
 
   genesi-center-set hypr <option> <value>    a Hyprland option
   genesi-center-set caelestia <path> <json>  a value in caelestia's shell.json
+  genesi-center-set bind <old> <new> <disp> [arg]   move a shortcut
+  genesi-center-set unbind <MODS,KEY>        drop our override
+  genesi-center-set binds                    every override written
   genesi-center-set options                  every option this will write
 
 Two things happen for a Hyprland option, and BOTH are needed:
@@ -115,6 +118,9 @@ CAELESTIA_PATHS = {
     "border.thickness": ("int", 0, 40),
     "border.rounding": ("int", 0, 60),
     "border.smoothing": ("int", 0, 40),
+    # Genesi-only: patch_frame_opacity. The frame and the bar are
+    # ONE painted surface in caelestia, so this fades both.
+    "border.opacity": ("int", 15, 100),
     # Genesi-only, added by ci/caelestia-patches.py:
     # patch_launcher_position. "centre" floats the launcher mid-screen
     # instead of sliding it up from the bottom edge.
@@ -144,6 +150,7 @@ CAELESTIA_PATHS = {
 GENESI_ONLY = {
     "launcher.position": 'CONFIG_PROPERTY(QString, position, u"bottom"_s)',
     "launcher.width": "CONFIG_PROPERTY(int, width, 0)",
+    "border.opacity": "CONFIG_PROPERTY(int, opacity, 100)",
     "bar.workspaces.realWindowIcons":
         "CONFIG_PROPERTY(bool, realWindowIcons, false)",
 }
@@ -272,10 +279,173 @@ def cmd_caelestia(path, raw):
     print(f"{path} = {json.dumps(value)}")
 
 
+# ── Keybinds ─────────────────────────────────────────────────────────────────
+#
+# Rebinding is `unbind` the old combination, then `bind` the new one, both in
+# our drop-in. hyprland.conf sources it LAST, so an unbind there removes a bind
+# the shipped config made above it -- which is what lets this change a shortcut
+# without editing a file that is not ours.
+#
+# Each override is a three-line block marked with the ORIGINAL combination, so
+# rebinding the same shortcut twice replaces its block rather than stacking a
+# second unbind on top of the first.
+BIND_MARK = "# genesi-bind"
+
+MODS = ("SUPER", "ALT", "CTRL", "SHIFT")
+
+# Key names, loosely: what Hyprland accepts is xkb's list, which is long. This
+# refuses anything with a space, a comma or a quote -- the three things that
+# would break the config LINE rather than merely name a key that does not
+# exist. A key that does not exist is a bind that never fires; a broken line is
+# a config Hyprland refuses to load.
+KEY_RE = re.compile(r"^[A-Za-z0-9_+\-]{1,32}$")
+
+# Dispatchers a page may bind. `exec` is the interesting one and also the one
+# that runs arbitrary commands -- which is fine, it is the user's machine and
+# their keyboard, but it means the ARGUMENT has to survive being written to a
+# config file, so newlines and braces are refused below.
+DISPATCHERS = {
+    "exec", "killactive", "togglefloating", "fullscreen", "fakefullscreen",
+    "workspace", "movetoworkspace", "movetoworkspacesilent", "movefocus",
+    "movewindow", "resizeactive", "togglesplit", "layoutmsg", "pseudo",
+    "togglespecialworkspace", "exit", "pin", "centerwindow",
+}
+
+
+def check_combo(mods, key, what):
+    parts = [m.strip().upper() for m in mods.split() if m.strip()]
+    for m in parts:
+        if m not in MODS:
+            die(f"{what}: {m!r} is not a modifier. Use " + ", ".join(MODS))
+    if not KEY_RE.match(key.strip()):
+        die(f"{what}: {key!r} is not a usable key name")
+    return " ".join(parts), key.strip()
+
+
+def read_dropin():
+    try:
+        with open(DROPIN, encoding="utf-8") as fh:
+            return fh.read().splitlines()
+    except OSError:
+        return []
+
+
+def write_dropin(lines):
+    os.makedirs(os.path.dirname(DROPIN), exist_ok=True)
+    if not lines or lines[0] != MARK:
+        lines = [MARK, ""] + [l for l in lines if l != MARK]
+    with open(DROPIN, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(lines).rstrip() + "\n")
+    ensure_sourced()
+
+
+def drop_bind_block(lines, tag):
+    """Remove the block for one original combination, if it is there."""
+    out, skip = [], 0
+    for line in lines:
+        if skip > 0:
+            skip -= 1
+            continue
+        if line.strip() == f"{BIND_MARK} {tag}":
+            skip = 2          # the unbind and the bind under it
+            continue
+        out.append(line)
+    return out
+
+
+def cmd_bind(old_combo, new_combo, dispatcher, arg):
+    """
+    Move a shortcut. `old_combo` and `new_combo` are "MODS,KEY".
+
+    The old one is unbound whether or not it is the same as the new one: a
+    person changing only the command behind a key still needs the shipped bind
+    for that key taken out of the way, or both fire.
+    """
+    if dispatcher not in DISPATCHERS:
+        die(f"{dispatcher!r} is not a dispatcher this writes. "
+            "`genesi-center-set options` lists them.")
+    if re.search(r"[\r\n{}]", arg):
+        die("a shortcut's argument may not contain newlines or braces")
+
+    om, ok = check_combo(*old_combo.split(",", 1), what="the old shortcut")
+    nm, nk = check_combo(*new_combo.split(",", 1), what="the new shortcut")
+
+    tag = f"{om},{ok}"
+    lines = drop_bind_block(read_dropin(), tag)
+    lines += [
+        f"{BIND_MARK} {tag}",
+        f"unbind = {om}, {ok}",
+        f"bind = {nm}, {nk}, {dispatcher}" + (f", {arg}" if arg else ""),
+    ]
+    write_dropin(lines)
+
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        try:
+            subprocess.run(["hyprctl", "keyword", "unbind", f"{om}, {ok}"],
+                           capture_output=True, timeout=8)
+            subprocess.run(
+                ["hyprctl", "keyword", "bind",
+                 f"{nm}, {nk}, {dispatcher}" + (f", {arg}" if arg else "")],
+                capture_output=True, timeout=8)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    print(f"{om}, {ok}  ->  {nm}, {nk}, {dispatcher}"
+          + (f", {arg}" if arg else ""))
+
+
+def cmd_unbind(combo):
+    """Drop our override for one shortcut, putting the shipped bind back."""
+    m, k = check_combo(*combo.split(",", 1), what="the shortcut")
+    tag = f"{m},{k}"
+    lines = read_dropin()
+    kept = drop_bind_block(lines, tag)
+    if len(kept) == len(lines):
+        die(f"no override for {m}, {k}")
+    write_dropin(kept)
+    # The shipped bind comes back on the next reload; say so rather than
+    # letting a live session look like the reset did nothing.
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        try:
+            subprocess.run(["hyprctl", "reload"], capture_output=True,
+                           timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    print(f"reset {m}, {k}")
+
+
+def cmd_binds():
+    """Every override this has written, so a page can mark them."""
+    out = []
+    lines = read_dropin()
+    for i, line in enumerate(lines):
+        if not line.strip().startswith(BIND_MARK):
+            continue
+        tag = line.strip()[len(BIND_MARK):].strip()
+        new = lines[i + 2] if i + 2 < len(lines) else ""
+        m = re.match(r"\s*bind\s*=\s*([^,]*),\s*([^,]+),\s*([^,]+)(?:,\s*(.*))?",
+                     new)
+        om, _, ok = tag.partition(",")
+        out.append({
+            "original": {"mods": om.split(), "key": ok},
+            "bound": {
+                "mods": m.group(1).split() if m else [],
+                "key": m.group(2).strip() if m else "",
+                "dispatcher": m.group(3).strip() if m else "",
+                "arg": (m.group(4) or "").strip() if m else "",
+            } if m else None,
+        })
+    json.dump({"overrides": out, "dropin": DROPIN}, sys.stdout,
+              ensure_ascii=False)
+    sys.stdout.write("\n")
+
+
 def cmd_options():
     out = {
         "hypr": {k: list(v) for k, v in HYPR.items()},
         "caelestia": {k: list(v) for k, v in CAELESTIA_PATHS.items()},
+        "genesi_only": dict(GENESI_ONLY),
+        "mods": list(MODS),
+        "dispatchers": sorted(DISPATCHERS),
         "dropin": DROPIN,
     }
     json.dump(out, sys.stdout, ensure_ascii=False)
@@ -293,10 +463,20 @@ def main():
         cmd_hypr(sys.argv[2], sys.argv[3])
     elif what == "caelestia" and len(sys.argv) == 4:
         cmd_caelestia(sys.argv[2], sys.argv[3])
+    elif what == "binds":
+        cmd_binds()
+    elif what == "bind" and len(sys.argv) in (6, 7):
+        # old "MODS,KEY", new "MODS,KEY", dispatcher, [arg]
+        cmd_bind(sys.argv[2], sys.argv[3], sys.argv[4],
+                 sys.argv[5] if len(sys.argv) > 5 else "")
+    elif what == "unbind" and len(sys.argv) == 3:
+        cmd_unbind(sys.argv[2])
     else:
         sys.stderr.write(
             "usage: genesi-center-set {hypr <option> <value>"
-            " | caelestia <path> <value> | options}\n")
+            " | caelestia <path> <value>"
+            " | bind <old MODS,KEY> <new MODS,KEY> <dispatcher> [arg]"
+            " | unbind <MODS,KEY> | binds | options}\n")
         return 2
     return 0
 

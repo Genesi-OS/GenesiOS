@@ -789,6 +789,66 @@ def patch_bar_proportions(release):
     print("bar: width and spacing are configurable")
 
 
+def patch_frame_opacity(release):
+    """
+    Let the desktop frame -- and with it the bar -- be see-through.
+
+    This was asked for as "bar opacity", and looking for it is what settled
+    what it actually is: caelestia's rail has NO background of its own. One
+    Item in ContentWindow.qml carries `opacity: surfaceColour.a` and wraps the
+    BlobGroup that paints the frame around the desktop AND the ground the bar
+    sits on. They are one surface.
+
+    So this is `border.opacity`, on the Appearance page beside the frame's
+    thickness and rounding, rather than a bar setting that quietly also fades
+    the frame. Naming a control for what it really does is the difference
+    between a feature and a surprise.
+
+        border.opacity   0-100, 100 = solid (upstream)
+
+    An integer rather than a fraction: it is a percentage on a slider, and
+    0.85 in a config file is a number people mistype as 85.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "borderconfig.hpp")
+    win = os.path.join(release, "modules", "drawers", "ContentWindow.qml")
+    for p in (hpp, win):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the drawer surface moved or was renamed.")
+
+    src = {p: io.open(p, encoding="utf-8").read() for p in (hpp, win)}
+
+    if "opacity" in src[hpp]:
+        fail("borderconfig.hpp already has an opacity -- upstream added one, "
+             "or this ran twice. Read theirs and drop this patch.")
+
+    anchor = "    CONFIG_PROPERTY(int, smoothing, 20)\n"
+    if anchor not in src[hpp]:
+        fail("BorderConfig's properties are not where the patch expects them.")
+    out = {hpp: src[hpp].replace(anchor, anchor + (
+        "    // Genesi: how see-through the frame -- and the bar riding on it --\n"
+        "    // is. 0-100; 100 is upstream's solid surface.\n"
+        "    CONFIG_PROPERTY(int, opacity, 100)\n"), 1)}
+
+    s = src[win]
+    old = "        opacity: root.surfaceColour.a\n"
+    if s.count(old) != 1:
+        fail("ContentWindow.qml's surface opacity is not where the patch "
+             f"expects it (found {s.count(old)}).")
+    s = s.replace(old, (
+        "        // Genesi: the scheme's own alpha, scaled by border.opacity.\n"
+        "        // Clamped so a config holding 0 does not make the whole shell\n"
+        "        // invisible with no way to reach the settings that did it.\n"
+        "        opacity: root.surfaceColour.a\n"
+        "                 * Math.max(0.15, Math.min(1,\n"
+        "                     root.contentItem.Config.border.opacity / 100))\n"), 1)
+    out[win] = s
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("frame: opacity is configurable")
+
+
 def patch_launcher_position(release):
     """
     Let the launcher sit in the middle of the screen instead of at the bottom.
@@ -1122,6 +1182,7 @@ def main():
     patch_applist_live_model(launcher)
     patch_wallpaper_transition(release)
     patch_bar_proportions(release)
+    patch_frame_opacity(release)
     patch_launcher_position(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))

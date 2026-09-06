@@ -178,7 +178,8 @@ SECTIONS = {
     },
     "appearance": {
         "available": True,
-        "border": {"thickness": 10, "rounding": 25, "smoothing": 20},
+        "border": {"thickness": 10, "rounding": 25, "smoothing": 20,
+                   "opacity": 82},
         "wallpaper": "/home/mk/Pictures/wallpapers/emerald-drift.png",
         "schemes": ["dynamic", "genesi", "catppuccin", "gruvbox", "nord",
                     "rosepine", "everforest", "tokyonight"],
@@ -217,6 +218,11 @@ SECTIONS = {
              "arg": "l", "description": ""},
             {"mods": ["SUPER", "CTRL"], "key": "S", "dispatcher": "exec",
              "arg": "genesi-snapshots create", "description": "take a snapshot"},
+        ],
+        "overrides": [
+            {"original": {"mods": ["SUPER"], "key": "V"},
+             "bound": {"mods": ["SUPER", "SHIFT"], "key": "F",
+                       "dispatcher": "togglefloating", "arg": ""}},
         ],
     },
     "ai": {

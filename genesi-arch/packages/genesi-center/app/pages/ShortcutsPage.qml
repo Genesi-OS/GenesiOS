@@ -7,12 +7,21 @@
  * added by hand shows up here without this page having to know where it was
  * written.
  *
- * Read-only, and that is a decision rather than a gap. Writing a bind means
- * editing a config file whose shape this app does not own, and a shortcuts
- * editor that silently drops the comment structure of someone's hyprland.conf
- * is worse than a list they can read. The search box is what makes a list of a
- * hundred binds usable, which is the actual problem people have here: not
- * changing a key, but finding the one they forgot.
+ * Editable, WITHOUT touching hyprland.conf. Rebinding writes an `unbind` for
+ * the old combination and a `bind` for the new one into the Genesi drop-in
+ * that the config sources last -- so the shipped shortcut is taken out of the
+ * way and ours replaces it, and the user's own file keeps its shape, its
+ * comments and its order. A shortcuts editor that rewrites somebody's
+ * hyprland.conf is one they stop trusting after the first time it reformats a
+ * section they care about.
+ *
+ * A row we moved says so and offers to put it back. That matters more here
+ * than anywhere else in the app: a shortcut you changed and cannot restore is
+ * a keyboard you have to repair by hand.
+ *
+ * The search box is still the thing that makes a hundred binds usable, which
+ * is the other problem people have here: not changing a key, but finding the
+ * one they forgot.
  */
 import QtQuick
 import "../components"
@@ -26,6 +35,39 @@ Item {
     property string filter: ""
 
     readonly property bool ready: page.d.available === true
+
+    // The bind being rebound, while the capture is up.
+    property var editing: null
+
+    // "SUPER SHIFT,Q" for a bind, which is how genesi-center-set names one.
+    function comboOf(b) {
+        return b.mods.join(" ") + "," + b.key;
+    }
+
+    // Overrides, keyed by the ORIGINAL combination -- which is what the
+    // drop-in records, because that is the one that has to be unbound.
+    readonly property var overridden: {
+        const out = {};
+        for (const o of (page.d.overrides || [])) {
+            const k = o.original.mods.join(" ") + "," + o.original.key;
+            out[k] = o;
+        }
+        return out;
+    }
+
+    function rebind(bind, mods, key) {
+        if (!page.backend)
+            return;
+        page.backend.act(["genesi-center-set", "bind", page.comboOf(bind),
+                          mods.join(" ") + "," + key,
+                          bind.dispatcher, bind.arg], "shortcuts");
+    }
+
+    function reset(bind) {
+        if (page.backend)
+            page.backend.act(["genesi-center-set", "unbind",
+                              page.comboOf(bind)], "shortcuts");
+    }
 
     // What a bind DOES, in words, for the dispatchers Genesi actually ships.
     // An unknown dispatcher falls through to its own name -- honest, and it
@@ -152,13 +194,19 @@ Item {
                         required property var modelData
                         required property int index
 
+                        readonly property bool moved:
+                            page.overridden[page.comboOf(modelData)] !== undefined
+
                         width: bindCol.width
                         height: 30
 
                         Rectangle {
                             anchors.fill: parent
-                            color: bindRow.index % 2 === 0 ? "transparent" : Tokens.cardHi
-                            opacity: 0.5
+                            color: bindRow.moved
+                                   ? Tokens.accentDeep
+                                   : (bindRow.index % 2 === 0 ? "transparent"
+                                                              : Tokens.cardHi)
+                            opacity: bindRow.moved ? 0.35 : 0.5
                         }
 
                         Row {
@@ -194,8 +242,9 @@ Item {
                         }
 
                         Text {
+                            id: what
                             anchors {
-                                left: keys.right; right: parent.right
+                                left: keys.right; right: actions.left
                                 verticalCenter: parent.verticalCenter
                                 leftMargin: 16; rightMargin: 10
                             }
@@ -212,6 +261,77 @@ Item {
                             font.pixelSize: 11
                             elide: Text.ElideRight
                         }
+
+                        Row {
+                            id: actions
+                            anchors {
+                                right: parent.right
+                                verticalCenter: parent.verticalCenter
+                                rightMargin: 8
+                            }
+                            spacing: 6
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: bindRow.moved
+                                text: qsTr("MOVED")
+                                color: Tokens.accent
+                                font.family: Tokens.mono
+                                font.pixelSize: 8
+                                font.letterSpacing: 1
+                            }
+
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: bindRow.moved
+                                width: 56; height: 20; radius: 4
+                                color: resetHov.hovered ? Tokens.cardHi : "transparent"
+                                border.width: 1
+                                border.color: resetHov.hovered ? Tokens.accentDim
+                                                               : Tokens.line
+                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: qsTr("RESET")
+                                    color: Tokens.textDim
+                                    font.family: Tokens.mono
+                                    font.pixelSize: 8
+                                    font.letterSpacing: 1
+                                }
+                                HoverHandler { id: resetHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: page.reset(bindRow.modelData) }
+                            }
+
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                // Shown on hover only: a REBIND button on every
+                                // one of a hundred rows is a wall of buttons.
+                                opacity: rowHov.hovered ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: Tokens.quick } }
+                                width: 66; height: 20; radius: 4
+                                color: rebindHov.hovered ? Tokens.cardHi : "transparent"
+                                border.width: 1
+                                border.color: rebindHov.hovered ? Tokens.accentDim
+                                                                : Tokens.line
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: qsTr("REBIND")
+                                    color: rebindHov.hovered ? Tokens.textHi : Tokens.textDim
+                                    font.family: Tokens.mono
+                                    font.pixelSize: 8
+                                    font.letterSpacing: 1
+                                }
+                                HoverHandler { id: rebindHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler {
+                                    onTapped: {
+                                        page.editing = bindRow.modelData;
+                                        capture.start();
+                                    }
+                                }
+                            }
+                        }
+
+                        HoverHandler { id: rowHov }
                     }
                 }
 
@@ -235,14 +355,30 @@ Item {
             width: parent.width
             visible: page.ready
             text: qsTr("Read from the compositor, so this is what is bound right "
-                       + "now. Changing a shortcut means editing your Hyprland "
-                       + "config — this page will not rewrite it, because it does "
-                       + "not own the shape of that file.")
+                       + "now. Rebinding writes to a Genesi file your config "
+                       + "pulls in — your hyprland.conf is never rewritten, and "
+                       + "RESET puts the shipped shortcut back.")
             color: Tokens.textDim
             font.family: Tokens.sans
             font.pixelSize: 11
             lineHeight: 1.4
             wrapMode: Text.WordWrap
         }
+    }
+
+    KeyCapture {
+        id: capture
+        prompt: page.editing
+                ? qsTr("new shortcut for “%1”")
+                  .arg(page.says[page.editing.dispatcher]
+                       || page.editing.dispatcher)
+                : qsTr("press a combination")
+
+        onCaptured: (mods, key) => {
+            if (page.editing)
+                page.rebind(page.editing, mods, key);
+            page.editing = null;
+        }
+        onCancelled: page.editing = null
     }
 }

@@ -655,6 +655,8 @@ def appearance():
             "thickness": border.get("thickness", 10),
             "rounding": border.get("rounding", 25),
             "smoothing": border.get("smoothing", 20),
+            # Genesi-only; 100 is upstream's solid surface.
+            "opacity": border.get("opacity", 100),
         },
         "wallpaper": bg.get("wallpaper") or _read(
             os.path.expanduser("~/.local/state/caelestia/wallpaper/path.txt")
@@ -767,7 +769,19 @@ def shortcuts():
             "arg": b.get("arg") or "",
             "description": b.get("description") or "",
         })
-    return {"available": True, "binds": out}
+    # Which of these WE moved, so the page can mark them and offer to put
+    # them back. Read from genesi-center-set rather than by parsing the
+    # drop-in a second way -- it is the thing that writes them.
+    overrides = []
+    if shutil.which("genesi-center-set"):
+        try:
+            overrides = json.loads(
+                _run(["genesi-center-set", "binds"], timeout=6) or "{}"
+            ).get("overrides", [])
+        except (json.JSONDecodeError, ValueError):
+            overrides = []
+
+    return {"available": True, "binds": out, "overrides": overrides}
 
 
 def ai():
