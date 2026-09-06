@@ -249,11 +249,13 @@ Item {
                     spacing: 8
 
                     Text {
-                        width: parent.width - 150
+                        width: parent.width - 190
                         text: qsTr("Some sound cards keep a second, physical mixer "
-                                   + "underneath this one. It can sit at zero while "
-                                   + "everything here reads 100%, and then nothing "
-                                   + "plays — no error, no clue. This opens it.")
+                                   + "underneath this one. It can sit at zero "
+                                   + "while everything here reads 100%, and then "
+                                   + "nothing plays — no error, no clue. This "
+                                   + "opens every playback control on every USB "
+                                   + "card to full, and prints what it touched.")
                         color: Tokens.text
                         font.family: Tokens.sans
                         font.pixelSize: 11
@@ -265,7 +267,7 @@ Item {
                 Rectangle {
                     anchors { right: parent.right; bottom: parent.bottom }
                     anchors.margins: 16
-                    width: 132
+                    width: 172
                     height: 28
                     radius: Tokens.radiusSm
                     color: mixHov.hovered ? Tokens.cardHi : "transparent"
@@ -275,7 +277,12 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: qsTr("OPEN THE MIXER")
+                        // NOT "open the mixer". Nothing opens: the tool walks
+                        // the USB cards and turns their playback controls up.
+                        // A button named for a window that never appears is a
+                        // button that did nothing, which is how this was
+                        // reported.
+                        text: qsTr("TURN THE HARDWARE UP")
                         color: Tokens.text
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsMicro
@@ -283,8 +290,13 @@ Item {
                     }
                     HoverHandler { id: mixHov; cursorShape: Qt.PointingHandCursor }
                     TapHandler {
+                        // In a terminal, because the output is the point. It
+                        // prints a line per control it opened, and on a machine
+                        // with silent audio that list is the diagnosis.
                         onTapped: if (page.backend)
-                            page.backend.launch(["genesi-open-usb-mixer"])
+                            page.backend.launch(["foot", "sh", "-c",
+                                "genesi-open-usb-mixer; "
+                                + "echo; echo 'Press enter to close'; read _"])
                     }
                 }
             }

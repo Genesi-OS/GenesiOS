@@ -424,14 +424,20 @@ def cmd_bind(old_combo, new_combo, dispatcher, arg):
     ]
     write_dropin(lines)
 
+    # `hyprctl reload`, not two `hyprctl keyword` calls.
+    #
+    # A keyword is a config ASSIGNMENT, and `unbind` is not one -- so
+    # `hyprctl keyword unbind "SUPER, V"` removed nothing while the paired
+    # `keyword bind` happily added the new combination. Both fired, which is
+    # what "it duplicates the shortcut" was.
+    #
+    # A reload re-reads hyprland.conf and the drop-in it sources, in that
+    # order, so the unbind above the bind does what it does in a file. It costs
+    # a moment and it is the only form that is actually correct.
     if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
         try:
-            subprocess.run(["hyprctl", "keyword", "unbind", f"{om}, {ok}"],
-                           capture_output=True, timeout=8)
-            subprocess.run(
-                ["hyprctl", "keyword", "bind",
-                 f"{nm}, {nk}, {dispatcher}" + (f", {arg}" if arg else "")],
-                capture_output=True, timeout=8)
+            subprocess.run(["hyprctl", "reload"], capture_output=True,
+                           timeout=15)
         except (OSError, subprocess.SubprocessError):
             pass
     print(f"{om}, {ok}  ->  {nm}, {nk}, {dispatcher}"

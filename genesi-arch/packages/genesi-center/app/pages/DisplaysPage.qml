@@ -179,8 +179,13 @@ Item {
                     horizontalAlignment: Text.AlignRight
                 }
                 Rectangle {
-                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                    anchors.margins: 14
+                    // leftMargin/rightMargin, NOT `margins`: that sets the bottom
+                    // one too and lifts the rule into the row, through the text.
+                    anchors {
+                        left: parent.left; right: parent.right
+                        bottom: parent.bottom
+                        leftMargin: 14; rightMargin: 14
+                    }
                     height: 1
                     color: Tokens.lineSoft
                 }
@@ -237,8 +242,15 @@ Item {
                         onPicked: id => page.run(["mode", page.current.name, id])
                     }
                     Rectangle {
-                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                        anchors.margins: 14
+                        // leftMargin/rightMargin, NOT `margins`: that sets the
+                        // bottom one too and lifts the rule 14px into the row,
+                        // where it is drawn straight through the sentence under
+                        // the heading. Same mistake SettingRow had.
+                        anchors {
+                            left: parent.left; right: parent.right
+                            bottom: parent.bottom
+                            leftMargin: 14; rightMargin: 14
+                        }
                         height: 1
                         color: Tokens.lineSoft
                     }
@@ -284,8 +296,15 @@ Item {
                         onPicked: id => page.run(["scale", page.current.name, id])
                     }
                     Rectangle {
-                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                        anchors.margins: 14
+                        // leftMargin/rightMargin, NOT `margins`: that sets the
+                        // bottom one too and lifts the rule 14px into the row,
+                        // where it is drawn straight through the sentence under
+                        // the heading. Same mistake SettingRow had.
+                        anchors {
+                            left: parent.left; right: parent.right
+                            bottom: parent.bottom
+                            leftMargin: 14; rightMargin: 14
+                        }
                         height: 1
                         color: Tokens.lineSoft
                     }
@@ -332,8 +351,15 @@ Item {
                         onPicked: id => page.run(["rotate", page.current.name, id])
                     }
                     Rectangle {
-                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                        anchors.margins: 14
+                        // leftMargin/rightMargin, NOT `margins`: that sets the
+                        // bottom one too and lifts the rule 14px into the row,
+                        // where it is drawn straight through the sentence under
+                        // the heading. Same mistake SettingRow had.
+                        anchors {
+                            left: parent.left; right: parent.right
+                            bottom: parent.bottom
+                            leftMargin: 14; rightMargin: 14
+                        }
                         height: 1
                         color: Tokens.lineSoft
                     }
@@ -431,8 +457,13 @@ Item {
             font.letterSpacing: 1.2
         }
         Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            anchors.margins: 14
+            // leftMargin/rightMargin, NOT `margins`: that sets the bottom
+            // one too and lifts the rule into the row, through the text.
+            anchors {
+                left: parent.left; right: parent.right
+                bottom: parent.bottom
+                leftMargin: 14; rightMargin: 14
+            }
             height: 1
             color: Tokens.lineSoft
         }
