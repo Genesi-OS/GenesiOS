@@ -184,21 +184,43 @@ SHELLS = {
         "start": ["caelestia", "shell", "-d"],
         "stop": ["pkill", "-f", "qs -c genesi-topbar"],
     },
+    # WITHDRAWN, not deleted. Switching to it broke caelestia badly on
+    # hardware -- reported, and not reproducible here because Quickshell does
+    # not run on the machine this is written on.
+    #
+    # What is left to do before it comes back: find out what the two shells
+    # fight over. Both are layer-shell clients that reserve an exclusive zone,
+    # and stopping caelestia with `pkill -f caelestia` also kills the theme
+    # bridge and the CLI, which is a likely part of it.
     "genesi": {
         "name": "Genesi bar · Barra Genesi",
         "desc": "Genesi's own bar, across the top",
         "start": ["qs", "-c", "genesi-topbar", "-d"],
         "stop": ["pkill", "-f", "caelestia"],
+        "available": False,
     },
 }
+
+
+def available_shells():
+    return {k: v for k, v in SHELLS.items() if v.get("available", True)}
 SHELL_STATE = os.path.expanduser("~/.config/genesi/bar-shell")
 
 
 def current_shell():
+    """
+    The bar to run, which is never one that has been withdrawn.
+
+    A machine that switched to the top bar has "genesi" in this file and a
+    broken desktop at every login. Checking AVAILABILITY rather than mere
+    existence is what makes that heal on its own: the next login starts
+    caelestia, and nobody has to know a state file exists to get their
+    desktop back.
+    """
     try:
         with open(SHELL_STATE, encoding="utf-8") as fh:
             v = fh.read().strip()
-        return v if v in SHELLS else "caelestia"
+        return v if v in available_shells() else "caelestia"
     except OSError:
         return "caelestia"
 
@@ -235,13 +257,17 @@ def cmd_shell(which=None):
     """
     if which is None:
         cur = current_shell()
-        for sid, sh in SHELLS.items():
+        for sid, sh in available_shells().items():
             print(f"{' *' if sid == cur else '  '} {sid:<11} {sh['name']}")
             print(f"      {sh['desc']}")
         return
 
-    if which not in SHELLS:
-        die(f"no bar called {which!r}. Choose: " + ", ".join(SHELLS))
+    if which not in available_shells():
+        if which in SHELLS:
+            die(f"the {which!r} bar is withdrawn: it breaks caelestia. "
+                "Choose: " + ", ".join(available_shells()))
+        die(f"no bar called {which!r}. Choose: "
+            + ", ".join(available_shells()))
 
     os.makedirs(os.path.dirname(SHELL_STATE), exist_ok=True)
     with open(SHELL_STATE, "w", encoding="utf-8") as fh:
@@ -268,7 +294,7 @@ def cmd_json(presets):
     out = {
         "shell": current_shell(),
         "shells": [{"id": k, "name": v["name"], "description": v["desc"]}
-                   for k, v in SHELLS.items()],
+                   for k, v in available_shells().items()],
         "current": cur or "",
         "presets": [
             {

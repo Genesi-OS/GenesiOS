@@ -1,16 +1,19 @@
 /*
  * BarPage — which bar runs, and how it looks.
  *
- * Two decisions, in that order, because the second only makes sense after the
- * first. Genesi ships two bars: caelestia's side rail down the left edge, and
- * Genesi's own across the top. They are different bars rather than one
- * rotated -- caelestia's Bar.qml is a ColumnLayout anchored to the screen edge,
- * and every module inside it stacks vertically -- so the choice is which one to
- * run, and the looks below belong to the side rail alone.
+ * Fifteen looks for caelestia's rail. A look is the bar's whole arrangement
+ * PLUS the frame the desktop sits inside, because the frame is where the bar
+ * takes its padding from -- they move together whether or not anyone says so,
+ * and a preset that changed one and inherited the other would be blamed for
+ * whatever the previous one left behind.
  *
- * Saying that plainly is the whole reason the looks are behind a heading that
- * dims when the top bar is running. A grid of fifteen cards that quietly do
- * nothing is the failure this project keeps meeting.
+ * ── The second bar ──────────────────────────────────────────────────────────
+ *
+ * Genesi has its own bar, across the top, and this page used to let you switch
+ * to it. Doing so broke caelestia badly on hardware, so genesi-bar no longer
+ * offers it and the chooser hides itself when there is only one bar to choose.
+ * The switcher below is still here and still correct; it simply has nothing to
+ * choose between until the top bar is fixed.
  *
  * Everything goes through `genesi-bar`, the same CLI the `>bar` launcher rows
  * call, so the app and the launcher can never disagree about what is applied.
@@ -73,11 +76,11 @@ Item {
         }
         Text {
             width: parent.width - 320
-            text: qsTr("Two bars ship with Genesi: caelestia's rail down the left "
-                       + "edge, and Genesi's own across the top. Pick one, then give "
-                       + "the rail a look — each is a complete arrangement plus the "
-                       + "frame the desktop sits in, so switching never leaves a "
-                       + "piece of the last one behind.")
+            text: qsTr("Fifteen looks for the bar. Each is a complete "
+                       + "arrangement plus the frame the desktop sits inside, so "
+                       + "switching never leaves a piece of the last one behind — "
+                       + "and the frame is where the bar takes its padding from, "
+                       + "which is why the two travel together.")
             color: Tokens.text
             font.family: Tokens.sans
             font.pixelSize: 12
@@ -102,9 +105,15 @@ Item {
             spacing: 18
 
             // ── Which bar ────────────────────────────────────────────────────
+            //
+            // Hidden while there is only one to choose. The Genesi top bar is
+            // withdrawn -- it broke caelestia on hardware -- and genesi-bar
+            // stops listing a withdrawn shell, so this section disappears with
+            // it rather than showing a chooser with one card in it.
             Column {
                 width: parent.width
                 spacing: 10
+                visible: page.shells.length > 1
 
                 SectionHead { index: "—"; text: qsTr("Which bar") }
 
@@ -269,7 +278,8 @@ Item {
 
                     SectionHead {
                         index: "—"
-                        text: qsTr("Looks for the side rail")
+                        text: page.shells.length > 1 ? qsTr("Looks for the side rail")
+                                                     : qsTr("Looks")
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter

@@ -121,10 +121,11 @@ CAELESTIA_PATHS = {
     # Genesi-only: patch_frame_opacity. The frame and the bar are
     # ONE painted surface in caelestia, so this fades both.
     "border.opacity": ("int", 15, 100),
-    # Genesi-only, added by ci/caelestia-patches.py:
-    # patch_launcher_position. "centre" floats the launcher mid-screen
-    # instead of sliding it up from the bottom edge.
-    "launcher.position": ("enum", ("bottom", "centre")),
+    # Genesi-only, added by ci/caelestia-patches.py.
+    # launcher.position is NOT here: the centred launcher was withdrawn after
+    # it left a slab at the bottom of the screen. A leftover "position" in
+    # someone's shell.json is inert now that no patch declares it, which is
+    # how an affected machine heals without a migration.
     "launcher.width": ("int", 0, 1400),
     "launcher.maxShown": ("int", 3, 20),
     "launcher.maxWallpapers": ("int", 3, 30),
@@ -148,7 +149,6 @@ CAELESTIA_PATHS = {
 # that nothing reads -- silently, for ever. ci/center-wiring-test.py checks
 # each of these against the patcher's source.
 GENESI_ONLY = {
-    "launcher.position": 'CONFIG_PROPERTY(QString, position, u"bottom"_s)',
     "launcher.width": "CONFIG_PROPERTY(int, width, 0)",
     "border.opacity": "CONFIG_PROPERTY(int, opacity, 100)",
     "bar.workspaces.realWindowIcons":

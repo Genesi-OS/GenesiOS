@@ -33,7 +33,7 @@ pkgver=0.1.0
 # 4: the Bar page, and the rail hides what the running session cannot do --
 # a control that appears to work and changes nothing is worse than a
 # missing page.
-pkgrel=10
+pkgrel=11
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
