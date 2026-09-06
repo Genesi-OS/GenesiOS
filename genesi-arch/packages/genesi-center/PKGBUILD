@@ -33,7 +33,7 @@ pkgver=0.1.0
 # 4: the Bar page, and the rail hides what the running session cannot do --
 # a control that appears to work and changes nothing is worse than a
 # missing page.
-pkgrel=9
+pkgrel=10
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
@@ -51,9 +51,13 @@ url='https://github.com/Genesi-OS/GenesiOS'
 # reporter saw. A design that uses a script has to ship the script.
 depends=('python' 'pyside6' 'qqc2-desktop-style' 'qt6-svg' 'coreutils'
          'noto-fonts-cjk')
-optdepends=('genesi-snapshots: the snapshot panel'
-            'genesi-update-center: the updates tool'
-            'genesi-code: the editor tool')
+# What the pages OPEN. genesi-update-center is not here any more: the app used
+# to offer a card that ran a command by that name, and no such command exists --
+# the package is a polkit helper and a Plasma applet.
+optdepends=('genesi-snapshots: the Snapshots page and its quick tool'
+            'genesi-channel: the update-channel tool the Settings page opens'
+            'genesi-ai-mode: the Local AI page and the System Monitor tool'
+            'genesi-code: the editor quick tool')
 source=()
 
 check() {
@@ -73,8 +77,20 @@ check() {
     # rather than a traceback on stderr and {} in the window. Sections
     # whose tools are absent in the build container return
     # {"available": false}, which is a valid answer and the point.
-    for _s in session telemetry core storage activity system resources \n              input audio appearance launcher windows shortcuts ai snapshots console; do
-        python "${startdir}/genesi-center-data" "$_s" \n            | python -c "import json,sys;json.load(sys.stdin)" \n            || { echo "genesi-center-data $_s did not answer with JSON" >&2; return 1; }
+    # Written without line continuations on purpose. The first version of this
+    # loop was generated through a heredoc that turned every "backslash +
+    # newline" into a literal \n, so the shell read `\n` as the word `n` and
+    # asked the data plane for a section by that name. It failed the build --
+    # loudly, which is the good outcome -- but it is a trap worth not laying
+    # again in a file that is only ever run in CI.
+    _sections="session telemetry core storage activity system resources input"
+    _sections="$_sections audio appearance launcher windows shortcuts ai"
+    _sections="$_sections snapshots console"
+    for _s in $_sections; do
+        if ! python "${startdir}/genesi-center-data" "$_s" | python -c "import json,sys;json.load(sys.stdin)"; then
+            echo "genesi-center-data $_s did not answer with JSON" >&2
+            return 1
+        fi
     done
 }
 
