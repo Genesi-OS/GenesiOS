@@ -75,6 +75,7 @@ def ensure_sourced():
     with open(MAIN_CONF, "a", encoding="utf-8", newline="\n") as fh:
         fh.write(f"\n{SOURCE_LINE}")
 
+
 # option -> (kind, low, high) for numbers; (kind, choices) for words.
 # `bool` is written as 0/1 because that is what Hyprland reads back, and the
 # pages send true/false.
@@ -114,6 +115,11 @@ CAELESTIA_PATHS = {
     "border.thickness": ("int", 0, 40),
     "border.rounding": ("int", 0, 60),
     "border.smoothing": ("int", 0, 40),
+    # Genesi-only, added by ci/caelestia-patches.py:
+    # patch_launcher_position. "centre" floats the launcher mid-screen
+    # instead of sliding it up from the bottom edge.
+    "launcher.position": ("enum", ("bottom", "centre")),
+    "launcher.width": ("int", 0, 1400),
     "launcher.maxShown": ("int", 3, 20),
     "launcher.maxWallpapers": ("int", 3, 30),
     "launcher.vimKeybinds": ("bool",),
@@ -125,6 +131,21 @@ CAELESTIA_PATHS = {
     "bar.workspaces.showWindows": ("bool",),
     "bar.workspaces.shown": ("int", 1, 10),
     "bar.workspaces.maxWindowIcons": ("int", 0, 12),
+}
+
+
+# Settings that exist ONLY because ci/caelestia-patches.py adds them to
+# caelestia. The value is the declaration to look for in that file.
+#
+# caelestia's own options are upstream's to keep; these are ours, and if a
+# patch is ever dropped the writer would go on putting a key into shell.json
+# that nothing reads -- silently, for ever. ci/center-wiring-test.py checks
+# each of these against the patcher's source.
+GENESI_ONLY = {
+    "launcher.position": 'CONFIG_PROPERTY(QString, position, u"bottom"_s)',
+    "launcher.width": "CONFIG_PROPERTY(int, width, 0)",
+    "bar.workspaces.realWindowIcons":
+        "CONFIG_PROPERTY(bool, realWindowIcons, false)",
 }
 
 

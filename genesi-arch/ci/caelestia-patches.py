@@ -789,6 +789,90 @@ def patch_bar_proportions(release):
     print("bar: width and spacing are configurable")
 
 
+def patch_launcher_position(release):
+    """
+    Let the launcher sit in the middle of the screen instead of at the bottom.
+
+    caelestia's launcher slides up from the bottom edge; the other shape people
+    ask for is the one macOS and every Ryoku screenshot has -- a panel floating
+    in the middle of the screen. Upstream has no setting for it: Panels.qml
+    anchors the wrapper to `parent.bottom` and that is that.
+
+        launcher.position   "bottom" (upstream) or "centre"
+        launcher.width      px, 0 = whatever the content wants
+
+    The position is a MARGIN, not a different anchor. Flipping `anchors.bottom`
+    between `parent.bottom` and `undefined` is the documented way to do this
+    and also the way a QML item ends up anchored to nothing and invisible --
+    and this is somebody's launcher, on a desktop where the launcher is how
+    you open a terminal to fix it. One anchor that never changes, and a resting
+    offset that moves it up the screen, cannot fail that way.
+
+    It also keeps the open animation: Wrapper.qml slides by driving
+    bottomMargin, so the resting offset is simply added to it and the panel
+    still rises into place wherever it rests.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "launcherconfig.hpp")
+    wrapper = os.path.join(release, "modules", "launcher", "Wrapper.qml")
+    for p in (hpp, wrapper):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the launcher moved or was renamed.")
+
+    src = {p: io.open(p, encoding="utf-8").read() for p in (hpp, wrapper)}
+
+    if "position" in src[hpp]:
+        fail("launcherconfig.hpp already has a position -- upstream added one, "
+             "or this ran twice. Read theirs and drop this patch.")
+
+    anchor = "    CONFIG_PROPERTY(int, maxShown, 7)\n"
+    if anchor not in src[hpp]:
+        fail("LauncherConfig's properties are not where the patch expects them.")
+    s = src[hpp].replace(anchor, anchor + (
+        "    // Genesi: where the launcher sits, and how wide it is.\n"
+        "    // \"bottom\" is upstream's; \"centre\" floats it mid-screen.\n"
+        "    CONFIG_PROPERTY(QString, position, u\"bottom\"_s)\n"
+        "    CONFIG_PROPERTY(int, width, 0)\n"), 1)
+    out = {hpp: s}
+
+    s = src[wrapper]
+    old = "    anchors.bottomMargin: (-implicitHeight - 5) * offsetScale\n"
+    if old not in s:
+        fail("Wrapper.qml's slide is not where the patch expects it.")
+    new = (
+        '    // Genesi: how far up the screen the launcher rests. Added to the\n'
+        '    // slide rather than replacing an anchor, so there is no state in\n'
+        '    // which this item is anchored to nothing.\n'
+        '    readonly property real restingOffset: {\n'
+        '        if (Config.launcher.position !== "centre")\n'
+        '            return 0;\n'
+        '        const h = parent ? parent.height : 0;\n'
+        '        return Math.max(0, (h - implicitHeight) / 2);\n'
+        '    }\n'
+        '\n'
+        '    anchors.bottomMargin: restingOffset '
+        '+ (-implicitHeight - 5) * offsetScale\n')
+    s = s.replace(old, new, 1)
+
+    old_w = ("    implicitWidth: content.implicitWidth || 630 "
+             "// Hard coded fallback for first open\n")
+    if old_w not in s:
+        fail("Wrapper.qml's width is not where the patch expects it.")
+    new_w = (
+        '    // Genesi: a preset width, clamped. 630 is upstream\'s fallback for\n'
+        '    // the first open, before the content has measured itself.\n'
+        '    implicitWidth: Config.launcher.width > 0\n'
+        '        ? Math.max(320, Math.min(Config.launcher.width,\n'
+        '                                 screen.width - 80))\n'
+        '        : (content.implicitWidth || 630)\n')
+    s = s.replace(old_w, new_w, 1)
+    out[wrapper] = s
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("launcher: position and width are configurable")
+
+
 def patch_window_icons(release):
     """
     Draw the real application icon for each open window, when a preset asks.
@@ -1038,6 +1122,7 @@ def main():
     patch_applist_live_model(launcher)
     patch_wallpaper_transition(release)
     patch_bar_proportions(release)
+    patch_launcher_position(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 

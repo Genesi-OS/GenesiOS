@@ -70,6 +70,146 @@ Item {
             spacing: 10
             visible: page.ready
 
+            SectionHead { index: "—"; text: qsTr("Where it opens") }
+
+            Row {
+                width: parent.width
+                spacing: Tokens.gap
+
+                Repeater {
+                    model: [
+                        { id: "bottom", name: qsTr("From the bottom"),
+                          desc: qsTr("Slides up from the screen edge. What "
+                                     + "caelestia does.") },
+                        { id: "centre", name: qsTr("In the middle"),
+                          desc: qsTr("Floats mid-screen, over whatever is "
+                                     + "behind it.") }
+                    ]
+                    delegate: Panel {
+                        id: posCard
+                        required property var modelData
+
+                        readonly property bool on:
+                            (page.o.position || "bottom") === modelData.id
+
+                        width: (parent.width - Tokens.gap) / 2
+                        height: 104
+                        interactive: true
+                        hovered: posHov.hovered
+                        color: on ? Tokens.cardHi : Tokens.card
+                        border.color: on ? Tokens.accentDim
+                                         : (posHov.hovered ? Tokens.accentDeep
+                                                           : Tokens.line)
+
+                        // A drawing of where it lands, because that is the
+                        // whole difference and no sentence says it faster.
+                        Rectangle {
+                            id: posSketch
+                            anchors { left: parent.left; top: parent.top }
+                            anchors.margins: 16
+                            width: 58
+                            height: 38
+                            radius: 3
+                            color: "transparent"
+                            border.width: 1
+                            border.color: posCard.on ? Tokens.accentDim : Tokens.line
+
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                // One anchor, moved -- never swapped for
+                                // undefined. Same rule as the real launcher.
+                                y: posCard.modelData.id === "centre"
+                                   ? (parent.height - height) / 2
+                                   : parent.height - height - 4
+                                width: parent.width - 14
+                                height: 9
+                                radius: 2
+                                color: posCard.on ? Tokens.accent : Tokens.textFaint
+                                Behavior on y { NumberAnimation { duration: Tokens.quick } }
+                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                            }
+                        }
+
+                        Column {
+                            anchors {
+                                left: posSketch.right; right: parent.right
+                                top: parent.top
+                            }
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 16
+                            anchors.topMargin: 16
+                            spacing: 5
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Text {
+                                    text: posCard.modelData.name
+                                    color: posCard.on ? Tokens.textHi : Tokens.text
+                                    font.family: Tokens.sans
+                                    font.pixelSize: 13
+                                    width: parent.width - 46
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    visible: posCard.on
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: qsTr("IN USE")
+                                    color: Tokens.accent
+                                    font.family: Tokens.mono
+                                    font.pixelSize: 8
+                                    font.letterSpacing: 1
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: posCard.modelData.desc
+                                color: Tokens.textDim
+                                font.family: Tokens.sans
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        HoverHandler { id: posHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: {
+                                if (!posCard.on)
+                                    page.set("launcher.position",
+                                             posCard.modelData.id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            Panel {
+                width: parent.width
+                height: widthCol.implicitHeight + 8
+
+                Column {
+                    id: widthCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    anchors.margins: 4
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Width")
+                        description: qsTr("0 lets it size itself to the results. "
+                                          + "A fixed width stops it resizing as "
+                                          + "you type, which is the thing people "
+                                          + "notice.")
+                        last: true
+                        Slider {
+                            width: 240
+                            from: 0; to: 1200; step: 20; unit: "px"
+                            value: page.num("width", 0)
+                            onReleased: v => page.set("launcher.width", v)
+                        }
+                    }
+                }
+            }
+
             SectionHead { index: "—"; text: qsTr("Behaviour") }
 
             Panel {

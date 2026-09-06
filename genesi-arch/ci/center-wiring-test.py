@@ -22,6 +22,7 @@ they agree, and each way they can disagree fails in silence:
 All four are the shape this project keeps meeting: something that appears to
 work and changes nothing. They are cheap to check statically, so they are.
 """
+import ast
 import io
 import os
 import re
@@ -52,6 +53,24 @@ def strip_qml_comments(src):
     """
     src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
     return re.sub(r"^\s*//.*$", "", src, flags=re.M)
+
+
+def strip_prose(src):
+    """
+    Python with its comments AND docstrings gone.
+
+    String literals stay: the declaration this looks for is inside one, since
+    that is how a patch injects it into a C++ header.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return src
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)) and ast.get_docstring(node):
+            node.body = node.body[1:]
+    return ast.unparse(tree)
 
 
 def strip_py_comments(src):
@@ -91,6 +110,14 @@ def main():
     cael_opts = set(re.findall(r'^\s*"([^"]+)":\s*\(',
                                re.search(r"CAELESTIA_PATHS = \{(.*?)\n\}",
                                          setter_src, re.S).group(1), re.M))
+
+    # Settings the writer accepts that exist only because a Genesi patch adds
+    # them. Each names the declaration to look for.
+    m = re.search(r"GENESI_ONLY = \{(.*?)\n\}", setter_src, re.S)
+    genesi_only = {}
+    if m:
+        genesi_only = dict(re.findall(
+            r'"([^"]+)":\s*\n?\s*[\'"](.+?)[\'"],', m.group(1)))
 
     bad = []
     files = sorted(f for f in os.listdir(PAGES) if f.endswith(".qml"))
@@ -163,7 +190,23 @@ def main():
             if call not in slots:
                 bad.append((fn, f"calls backend.{call}(), which is not a Slot"))
 
+    # A Genesi-only setting must still be created by the patch that claims to
+    # create it. Read from the patcher with its prose stripped: three guards in
+    # this repository have passed on the bug they existed to catch because the
+    # fix's own comment held the string being searched for, and the docstring
+    # above a patch is exactly where someone explains the property it adds.
+    patcher = os.path.join(ROOT, "genesi-arch", "ci", "caelestia-patches.py")
+    if genesi_only and os.path.exists(patcher):
+        psrc = strip_prose(read(patcher))
+        for path, decl in sorted(genesi_only.items()):
+            if decl not in psrc:
+                bad.append(("caelestia-patches.py",
+                            f"no patch declares {path!r}, but genesi-center-set "
+                            "writes it -- the value would land in shell.json "
+                            "and nothing would read it"))
+
     print(f"  pages: {len(files)}   sections asked: {len(asked)}/{len(sections)}")
+    print(f"  genesi-only settings: {len(genesi_only)}")
     print(f"  tools run: {len(ran)}   options written: {len(wrote)}")
 
     # A section nobody asks for is dead weight, not a failure -- `all` and the

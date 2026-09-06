@@ -460,18 +460,63 @@ Window {
                     anchors { right: parent.right; rightMargin: 20; verticalCenter: parent.verticalCenter }
                     spacing: 8
 
+                    // This was "EDIT WIDGETS", copied from the mock, with no
+                    // handler behind it at all -- a button that did nothing, in
+                    // the app whose whole argument is that it has none. Made
+                    // into the thing the header is actually useful for: every
+                    // page reads once when it opens, so after changing
+                    // something outside this window there has to be a way to
+                    // say "read it again" that is not closing the app.
                     Rectangle {
-                        width: 118; height: 26; radius: Tokens.radiusSm
-                        color: "transparent"
+                        id: rescan
+                        width: 96; height: 26; radius: Tokens.radiusSm
+                        color: rescanHov.hovered ? Tokens.cardHi : "transparent"
                         border.width: 1
-                        border.color: Tokens.line
+                        border.color: rescanHov.hovered ? Tokens.accentDim : Tokens.line
+                        Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                        Behavior on border.color { ColorAnimation { duration: Tokens.quick } }
+
                         Text {
+                            id: rescanLabel
                             anchors.centerIn: parent
-                            text: qsTr("EDIT WIDGETS")
-                            color: Tokens.text
+                            text: qsTr("REFRESH")
+                            color: rescanHov.hovered ? Tokens.textHi : Tokens.text
                             font.family: Tokens.mono
                             font.pixelSize: Tokens.fsMicro
                             font.letterSpacing: 0.8
+                        }
+
+                        // A flash rather than a spinner: the read is usually
+                        // faster than a spinner would be visible for, and a
+                        // spinner that appears and vanishes reads as a glitch.
+                        SequentialAnimation {
+                            id: rescanFlash
+                            NumberAnimation {
+                                target: rescanLabel; property: "opacity"
+                                to: 0.25; duration: Tokens.quick
+                            }
+                            NumberAnimation {
+                                target: rescanLabel; property: "opacity"
+                                to: 1; duration: Tokens.normal
+                            }
+                        }
+
+                        HoverHandler { id: rescanHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: {
+                                if (!win.backend)
+                                    return;
+                                rescanFlash.start();
+                                // The Overview's own sections, plus whatever
+                                // the open page reads. Asking for a name that
+                                // is not a section is harmless -- it comes
+                                // back "{}" and the page ignores it -- but
+                                // ci/center-wiring-test.py checks the pages,
+                                // so this stays honest by asking for the
+                                // section the rail is showing.
+                                win.backend.refresh();
+                                win.backend.ask(win.section);
+                            }
                         }
                     }
                     Repeater {

@@ -188,7 +188,8 @@ SECTIONS = {
     },
     "launcher": {
         "available": True, "actions_top": 25,
-        "options": {"maxShown": 8, "maxWallpapers": 9, "actionPrefix": ">",
+        "options": {"position": "centre", "width": 720,
+                    "maxShown": 8, "maxWallpapers": 9, "actionPrefix": ">",
                     "enableDangerousActions": False, "showOnHover": False,
                     "vimKeybinds": True},
         "groups": [{"name": "bar", "count": 15}, {"name": "shader", "count": 16}],
