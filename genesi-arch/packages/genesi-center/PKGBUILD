@@ -33,7 +33,7 @@ pkgver=0.1.0
 # 4: the Bar page, and the rail hides what the running session cannot do --
 # a control that appears to work and changes nothing is worse than a
 # missing page.
-pkgrel=12
+pkgrel=13
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
@@ -85,7 +85,7 @@ check() {
     # again in a file that is only ever run in CI.
     _sections="session telemetry core storage activity system resources input"
     _sections="$_sections audio appearance launcher windows shortcuts ai"
-    _sections="$_sections snapshots console"
+    _sections="$_sections snapshots console desktop"
     for _s in $_sections; do
         if ! python "${startdir}/genesi-center-data" "$_s" | python -c "import json,sys;json.load(sys.stdin)"; then
             echo "genesi-center-data $_s did not answer with JSON" >&2

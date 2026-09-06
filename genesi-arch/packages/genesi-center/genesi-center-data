@@ -29,6 +29,8 @@ display.
   genesi-center-data ai          AI Mode, its models, Kokoro, the API key
   genesi-center-data snapshots   what genesi-snapshots reports
   genesi-center-data console     custom shell commands, and which shells
+  genesi-center-data desktop     the clock and visualiser drawn on the
+                                 wallpaper
                                  have them
   genesi-center-data all         the five CHEAP sections, in one object
 
@@ -643,6 +645,22 @@ def appearance():
     cfg = _caelestia_config()
     border = cfg.get("border") or {}
     bg = cfg.get("background") or {}
+    app = cfg.get("appearance") or {}
+
+    def sub(node, *path):
+        """One nested value, or {} -- shell.json only carries what was set."""
+        for key in path:
+            node = (node or {}).get(key) if isinstance(node, dict) else None
+        return node if isinstance(node, dict) else {}
+
+    def val(node, path, default):
+        """A leaf, with the default caelestia itself would use when unset."""
+        cur = node
+        parts = path.split(".")
+        for key in parts[:-1]:
+            cur = (cur or {}).get(key) if isinstance(cur, dict) else None
+        v = (cur or {}).get(parts[-1]) if isinstance(cur, dict) else None
+        return default if v is None else v
     schemes = []
     out = _run(["caelestia", "scheme", "list"], timeout=6)
     for line in out.splitlines():
@@ -665,6 +683,28 @@ def appearance():
         # hyprshade's own directory, which is where genesi-shaders installs
         # too -- it deliberately does not create a second one, so there is a
         # single list and `hyprshade on <name>` always matches what is shown.
+        # The four scales, plus the shell's own transparency. Defaults here are
+        # what caelestia uses when the key is absent, so an untouched config
+        # reads as what is in effect rather than as zero.
+        "scales": {
+            "rounding": val(app, "rounding.scale", 1.0),
+            "spacing": val(app, "spacing.scale", 1.0),
+            "padding": val(app, "padding.scale", 1.0),
+            "font": val(app, "font.scale", 1.0),
+            "anim": val(app, "anim.durations.scale", 1.0),
+        },
+        "transparency": {
+            "enabled": bool(val(app, "transparency.enabled", False)),
+            "base": val(app, "transparency.base", 0.85),
+            "layers": val(app, "transparency.layers", 0.4),
+        },
+        "fonts": {
+            "body": val(app, "font.body.family", ""),
+            "mono": val(app, "font.mono.family", ""),
+            # What this machine can actually offer. A picker listing a font
+            # that is not installed is a click that changes nothing.
+            "available": _families(),
+        },
         "shaders": sorted(
             f.rsplit(".", 1)[0]
             for f in os.listdir("/usr/share/hyprshade/shaders")
@@ -673,6 +713,65 @@ def appearance():
         # Which one is on, so the page can mark it and offer to turn it off.
         # `hyprshade current` prints the name or nothing.
         "shader_on": _run(["hyprshade", "current"], timeout=4).strip() or None,
+    }
+
+
+def _families():
+    """
+    Font families installed on this machine, deduplicated and sorted.
+
+    From fc-list, because that is what Qt and the shell resolve against. A
+    picker offering a family fontconfig has never heard of is a setting that
+    lands in shell.json and changes nothing.
+    """
+    out = set()
+    for line in _run(["fc-list", ":", "family"], timeout=10).splitlines():
+        for name in line.split(","):
+            name = name.strip()
+            # Skip the styled aliases fontconfig also prints ("Foo:style=Bold")
+            # and anything with a comma-joined localisation.
+            if name and ":" not in name and len(name) < 48:
+                out.add(name)
+    return sorted(out)
+
+
+def desktop():
+    """
+    What is drawn ON the wallpaper: the clock and the audio visualiser.
+
+    Both are caelestia's, both ship OFF, and until now nothing could turn
+    either on -- so in practice they did not exist. This is the whole of the
+    Widgets page's data.
+    """
+    cfg = _caelestia_config()
+    if not cfg and not os.path.exists(
+            os.path.expanduser("~/.config/caelestia/shell.json")):
+        return {"available": False}
+    bg = cfg.get("background") or {}
+    clock = bg.get("desktopClock") or {}
+    vis = bg.get("visualiser") or {}
+    return {
+        "available": True,
+        "clock": {
+            "enabled": bool(clock.get("enabled", False)),
+            "scale": clock.get("scale", 1.0),
+            "position": clock.get("position", "bottom-right"),
+            "invertColors": bool(clock.get("invertColors", False)),
+            "background": bool((clock.get("background") or {})
+                               .get("enabled", False)),
+            "backgroundOpacity": (clock.get("background") or {})
+                                 .get("opacity", 0.7),
+            "shadow": bool((clock.get("shadow") or {}).get("enabled", True)),
+        },
+        "visualiser": {
+            "enabled": bool(vis.get("enabled", False)),
+            "autoHide": bool(vis.get("autoHide", True)),
+            "blur": bool(vis.get("blur", False)),
+            "rounding": vis.get("rounding", 1),
+            "spacing": vis.get("spacing", 1),
+        },
+        "wallpaper": bool(bg.get("wallpaperEnabled", True)),
+        "transitionDuration": bg.get("transitionDuration", 0),
     }
 
 
@@ -896,6 +995,7 @@ SECTIONS = {
     "ai": ai,
     "snapshots": snapshots,
     "console": console,
+    "desktop": desktop,
 }
 
 # `all` is what the Overview asks for, and it must stay CHEAP. system() runs

@@ -23,7 +23,17 @@ Item {
     property var d: ({})
 
     readonly property var border_: page.d.border || ({})
+    readonly property var scales: page.d.scales || ({})
+    readonly property var glass: page.d.transparency || ({})
+    readonly property var fonts: page.d.fonts || ({})
     readonly property bool ready: page.d.available === true
+
+    // A scale is stored as a multiplier and shown as a percentage: 1.15 means
+    // nothing to anyone, "115%" is a size.
+    function pct(key, fallback) {
+        const v = page.scales[key];
+        return Math.round(((v === undefined || v === null) ? fallback : v) * 100);
+    }
 
     function num(key, fallback) {
         const v = page.border_[key];
@@ -195,6 +205,278 @@ Item {
                                 value: page.num("smoothing", 20)
                                 onReleased: v => page.set("border.smoothing", v)
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Shape and scale ──────────────────────────────────────────────────
+        //
+        // Four sliders that each multiply a whole family of values inside the
+        // shell rather than setting one number. They are the difference
+        // between a settings page and a personality: rounding takes every
+        // corner at once, spacing and padding every gap, type every size.
+        Column {
+            width: parent.width
+            spacing: 10
+            visible: page.ready
+
+            SectionHead { index: "—"; text: qsTr("Shape and scale") }
+
+            Row {
+                width: parent.width
+                spacing: Tokens.gap
+
+                // A card drawn at the settings below it, so the numbers have
+                // something to be about.
+                Panel {
+                    id: shapePreview
+                    width: 232
+                    height: shapeCol.implicitHeight + 8
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        radius: Math.round(14 * page.pct("rounding", 1) / 100)
+                        color: Tokens.card
+                        border.width: 1
+                        border.color: Tokens.accentDeep
+                        opacity: page.glass.enabled
+                                 ? Math.max(0.35, page.glass.base || 0.85) : 1
+                        Behavior on radius { NumberAnimation { duration: Tokens.quick } }
+                        Behavior on opacity { NumberAnimation { duration: Tokens.quick } }
+
+                        Column {
+                            anchors {
+                                left: parent.left; right: parent.right
+                                top: parent.top
+                            }
+                            anchors.margins: Math.round(
+                                14 * page.pct("padding", 1) / 100)
+                            spacing: Math.round(10 * page.pct("spacing", 1) / 100)
+
+                            Text {
+                                text: qsTr("Sample")
+                                color: Tokens.textHi
+                                font.family: Tokens.sans
+                                font.pixelSize: Math.round(
+                                    15 * page.pct("font", 1) / 100)
+                            }
+                            Repeater {
+                                model: 3
+                                delegate: Rectangle {
+                                    required property int index
+                                    width: 120 - index * 22
+                                    height: Math.round(
+                                        8 * page.pct("font", 1) / 100)
+                                    radius: Math.round(
+                                        4 * page.pct("rounding", 1) / 100)
+                                    color: index === 0 ? Tokens.accentDim
+                                                       : Tokens.lineSoft
+                                    Behavior on radius {
+                                        NumberAnimation { duration: Tokens.quick }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Panel {
+                    width: parent.width - shapePreview.width - Tokens.gap
+                    height: shapeCol.implicitHeight + 8
+
+                    Column {
+                        id: shapeCol
+                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                        anchors.margins: 4
+
+                        SettingRow {
+                            width: parent.width
+                            label: qsTr("Corners")
+                            description: qsTr("Every rounded corner in the shell "
+                                              + "at once — the bar, the launcher, "
+                                              + "every panel. 0 is square.")
+                            Slider {
+                                width: 220
+                                from: 0; to: 200; step: 5; unit: "%"
+                                value: page.pct("rounding", 1)
+                                onReleased: v => page.set(
+                                    "appearance.rounding.scale", v / 100)
+                            }
+                        }
+                        SettingRow {
+                            width: parent.width
+                            label: qsTr("Breathing room")
+                            description: qsTr("The gaps between things.")
+                            Slider {
+                                width: 220
+                                from: 50; to: 200; step: 5; unit: "%"
+                                value: page.pct("spacing", 1)
+                                onReleased: v => page.set(
+                                    "appearance.spacing.scale", v / 100)
+                            }
+                        }
+                        SettingRow {
+                            width: parent.width
+                            label: qsTr("Inner padding")
+                            description: qsTr("The space inside a panel, before "
+                                              + "its contents start.")
+                            Slider {
+                                width: 220
+                                from: 50; to: 200; step: 5; unit: "%"
+                                value: page.pct("padding", 1)
+                                onReleased: v => page.set(
+                                    "appearance.padding.scale", v / 100)
+                            }
+                        }
+                        SettingRow {
+                            width: parent.width
+                            label: qsTr("Type size")
+                            description: qsTr("Deliberately a narrow range: the "
+                                              + "bar is sized around its own text, "
+                                              + "and type that outgrows it is hard "
+                                              + "to undo from inside a window that "
+                                              + "grew with it.")
+                            Slider {
+                                width: 220
+                                from: 80; to: 140; step: 5; unit: "%"
+                                value: page.pct("font", 1)
+                                onReleased: v => page.set(
+                                    "appearance.font.scale", v / 100)
+                            }
+                        }
+                        SettingRow {
+                            width: parent.width
+                            label: qsTr("Animation speed")
+                            description: qsTr("Higher is slower. 0 turns the "
+                                              + "shell's own animations off, which "
+                                              + "is the first thing to try on a "
+                                              + "machine that feels heavy.")
+                            last: true
+                            Slider {
+                                width: 220
+                                from: 0; to: 250; step: 10; unit: "%"
+                                value: page.pct("anim", 1)
+                                onReleased: v => page.set(
+                                    "appearance.anim.durations.scale", v / 100)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Glass ────────────────────────────────────────────────────────────
+        Column {
+            width: parent.width
+            spacing: 10
+            visible: page.ready
+
+            SectionHead { index: "—"; text: qsTr("Glass") }
+
+            Panel {
+                width: parent.width
+                height: glassCol.implicitHeight + 8
+
+                Column {
+                    id: glassCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    anchors.margins: 4
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Translucent surfaces")
+                        description: qsTr("caelestia's own, and different from the "
+                                          + "frame's see-through above: this fades "
+                                          + "the panels — the launcher, the "
+                                          + "dashboard, the popouts — rather than "
+                                          + "the desktop's edge.")
+                        Toggle {
+                            checked: page.glass.enabled === true
+                            onToggled: v => page.set(
+                                "appearance.transparency.enabled", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Panels")
+                        opacity: page.glass.enabled ? 1 : 0.4
+                        Slider {
+                            width: 220
+                            enabled: page.glass.enabled === true
+                            from: 30; to: 100; step: 1; unit: "%"
+                            value: Math.round((page.glass.base === undefined
+                                               ? 0.85 : page.glass.base) * 100)
+                            onReleased: v => page.set(
+                                "appearance.transparency.base", v / 100)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Cards inside them")
+                        description: qsTr("The layer above a panel — a card, a "
+                                          + "row. Lower makes the depth obvious.")
+                        opacity: page.glass.enabled ? 1 : 0.4
+                        last: true
+                        Slider {
+                            width: 220
+                            enabled: page.glass.enabled === true
+                            from: 0; to: 100; step: 1; unit: "%"
+                            value: Math.round((page.glass.layers === undefined
+                                               ? 0.4 : page.glass.layers) * 100)
+                            onReleased: v => page.set(
+                                "appearance.transparency.layers", v / 100)
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Type ─────────────────────────────────────────────────────────────
+        Column {
+            width: parent.width
+            spacing: 10
+            visible: page.ready && (page.fonts.available || []).length > 0
+
+            SectionHead { index: "—"; text: qsTr("Type") }
+
+            Panel {
+                width: parent.width
+                height: fontCol.implicitHeight + 8
+
+                Column {
+                    id: fontCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    anchors.margins: 4
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Interface")
+                        description: qsTr("Everything that is not code. Listed from "
+                                          + "fc-list, so every name here is a font "
+                                          + "this machine can actually draw.")
+                        Select {
+                            width: 240
+                            options: (page.fonts.available || [])
+                                     .map(f => ({ id: f, label: f }))
+                            current: page.fonts.body || ""
+                            onPicked: id => page.set("appearance.font.body.family", id)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Monospace")
+                        description: qsTr("The clock, the terminal readouts, "
+                                          + "anything in columns.")
+                        last: true
+                        Select {
+                            width: 240
+                            options: (page.fonts.available || [])
+                                     .map(f => ({ id: f, label: f }))
+                            current: page.fonts.mono || ""
+                            onPicked: id => page.set("appearance.font.mono.family", id)
                         }
                     }
                 }

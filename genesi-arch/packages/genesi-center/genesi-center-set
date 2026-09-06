@@ -115,6 +115,53 @@ HYPR = {
 # be able to rewrite the session commands because a page passed the wrong
 # string.
 CAELESTIA_PATHS = {
+    # ── Shape and scale ──────────────────────────────────────────────────
+    #
+    # Upstream's own, all of them. Each multiplies a whole family of values
+    # inside the shell rather than setting one: rounding.scale touches every
+    # corner radius, spacing and padding every gap, font every size. They are
+    # the reason this page can change the character of the desktop with four
+    # sliders instead of thirty.
+    #
+    # Ranges are deliberately not "whatever the number allows". 0 rounding is
+    # a legitimate square look; 3x font is a shell whose bar no longer fits its
+    # own text, and there is no way back from inside a settings window whose
+    # own buttons have grown off the screen.
+    "appearance.rounding.scale": ("float", 0.0, 2.0),
+    "appearance.spacing.scale": ("float", 0.5, 2.0),
+    "appearance.padding.scale": ("float", 0.5, 2.0),
+    "appearance.font.scale": ("float", 0.8, 1.4),
+    "appearance.anim.durations.scale": ("float", 0.0, 2.5),
+    "appearance.transparency.enabled": ("bool",),
+    "appearance.transparency.base": ("float", 0.3, 1.0),
+    "appearance.transparency.layers": ("float", 0.0, 1.0),
+    "appearance.font.body.family": ("str",),
+    "appearance.font.mono.family": ("str",),
+
+    # ── The desktop itself ───────────────────────────────────────────────
+    #
+    # caelestia already draws a clock and an audio visualiser on the
+    # wallpaper. Both were off by default and neither had a way to reach them,
+    # which is why nobody knew: a widget nothing can enable is a widget that
+    # does not exist.
+    "background.desktopClock.enabled": ("bool",),
+    "background.desktopClock.scale": ("float", 0.4, 2.5),
+    "background.desktopClock.position": ("enum", (
+        "top-left", "top-center", "top-right",
+        "middle-left", "middle-center", "middle-right",
+        "bottom-left", "bottom-center", "bottom-right")),
+    "background.desktopClock.invertColors": ("bool",),
+    "background.desktopClock.background.enabled": ("bool",),
+    "background.desktopClock.background.opacity": ("float", 0.0, 1.0),
+    "background.desktopClock.shadow.enabled": ("bool",),
+    "background.visualiser.enabled": ("bool",),
+    "background.visualiser.autoHide": ("bool",),
+    "background.visualiser.blur": ("bool",),
+    "background.visualiser.rounding": ("float", 0.0, 3.0),
+    "background.visualiser.spacing": ("float", 0.0, 3.0),
+    "background.wallpaperEnabled": ("bool",),
+    "background.transitionDuration": ("int", 0, 3000),
+
     "border.thickness": ("int", 0, 40),
     "border.rounding": ("int", 0, 60),
     "border.smoothing": ("int", 0, 40),

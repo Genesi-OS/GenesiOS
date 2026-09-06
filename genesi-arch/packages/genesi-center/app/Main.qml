@@ -85,6 +85,7 @@ Window {
                 { id: "bar", keywords: "panel taskbar topbar workspaces tray clock",        label: qsTr("Bar"),        tag: "帯", needs: "caelestia" },
                 { id: "launcher", keywords: "menu run search spotlight",   label: qsTr("Launcher"),   tag: "起動", needs: "caelestia" },
                 { id: "windows", keywords: "gaps rounding border blur opacity animations tiling",    label: qsTr("Windows"),    tag: "窓", needs: "hyprland" },
+                { id: "widgets", keywords: "desktop clock visualiser wallpaper background", label: qsTr("Widgets"), tag: "部品", needs: "caelestia" },
                 { id: "shortcuts", keywords: "keybinds keys hotkeys bindings",  label: qsTr("Shortcuts"),  tag: "操作", needs: "hyprland" }
             ]
         },
@@ -622,6 +623,13 @@ Window {
                 anchors.topMargin: 8
                 backend: win.backend
                 visible: win.section === "windows"
+            }
+
+            WidgetsPage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "widgets"
             }
 
             ShortcutsPage {
