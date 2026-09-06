@@ -37,6 +37,42 @@ SETTER = os.path.join(PKG, "genesi-center-set")
 BACKEND = os.path.join(PKG, "app", "genesi_center.py")
 
 
+# Commands that come from OUTSIDE this repository, with the package that
+# provides each. A page may launch one of these; anything else has to be a
+# binary some PKGBUILD here installs.
+#
+# This list is the point of the check. `genesi-update-center` was on the
+# Settings page as a card you could click, and no PKGBUILD installs a binary by
+# that name -- only a polkit helper called genesi-update-center-apply. The card
+# opened nothing, silently, which is the failure this whole app argues against
+# and which shipped inside it.
+EXTERNAL = {
+    "hyprctl": "hyprland",
+    "hyprshade": "genesi-hyprshade",
+    "caelestia": "caelestia-cli",
+    "wpctl": "wireplumber",
+    "foot": "foot",
+    "xdg-open": "xdg-utils",
+}
+
+
+def installed_binaries(root):
+    """Every command name a PKGBUILD in this repo installs into a bin dir."""
+    out = set()
+    pkgdir = os.path.join(root, "genesi-arch", "packages")
+    if not os.path.isdir(pkgdir):
+        return out
+    for d in os.listdir(pkgdir):
+        p = os.path.join(pkgdir, d, "PKGBUILD")
+        if not os.path.exists(p):
+            continue
+        with io.open(p, encoding="utf-8", errors="replace") as fh:
+            src = fh.read()
+        # usr/bin/x, usr/local/bin/x -- both are on PATH, and Genesi uses both.
+        out |= set(re.findall(r"usr/(?:local/)?bin/([A-Za-z0-9_.-]+)", src))
+    return out
+
+
 def read(path):
     with io.open(path, encoding="utf-8", errors="replace") as fh:
         return fh.read()
@@ -140,6 +176,15 @@ def main():
         # pattern matched almost nothing. The first version of this check
         # passed on a page calling `pactl` instead of `wpctl`, which is
         # precisely the bug it was written for.
+        # Any Genesi command NAMED anywhere in the page, not only at a call
+        # site. SettingsPage builds its cards from a model and launches
+        # `modelData.run`, so a call-site pattern saw nothing at all -- and the
+        # card for `genesi-update-center`, a binary that does not exist,
+        # shipped. Second time a pattern anchored on the call has missed the
+        # bug it was written for; the name is the honest thing to look for.
+        for named in re.findall(r"\"(genesi-[a-z0-9][a-z0-9-]*)\"", src):
+            ran.add(named)
+
         for first in re.findall(r"\b(?:act|launch)\(\s*\[\s*\"([^\"]+)\"",
                                 src):
             ran.add(first)
@@ -204,6 +249,18 @@ def main():
                             f"no patch declares {path!r}, but genesi-center-set "
                             "writes it -- the value would land in shell.json "
                             "and nothing would read it"))
+
+    # ...and every command a page names has to EXIST. Being on the backend's
+    # allow-list only means the backend will run it; it says nothing about
+    # whether anything installs it.
+    have = installed_binaries(ROOT)
+    for cmd in sorted(ran):
+        if cmd in EXTERNAL or cmd in have:
+            continue
+        bad.append(("app/pages",
+                    f"launches {cmd!r}, which no PKGBUILD in this repository "
+                    "installs and which is not a known external tool -- the "
+                    "control opens nothing"))
 
     print(f"  pages: {len(files)}   sections asked: {len(asked)}/{len(sections)}")
     print(f"  genesi-only settings: {len(genesi_only)}")

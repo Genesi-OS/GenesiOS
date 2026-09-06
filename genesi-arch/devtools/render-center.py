@@ -227,6 +227,7 @@ SECTIONS = {
     },
     "ai": {
         "available": True, "kokoro": False, "api_key": False, "turbo": True,
+        "voice_supported": False, "cloud_supported": False,
         "state": {"active": True, "profile": "max", "force": "auto"},
         "models": [{"name": "qwen2.5-coder-7b-instruct-q4_k_m", "size_gb": 4.4},
                    {"name": "llama-3.2-3b-instruct-q5_k_m", "size_gb": 2.3},

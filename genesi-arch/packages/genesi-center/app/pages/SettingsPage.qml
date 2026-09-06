@@ -113,10 +113,14 @@ Item {
 
                 Repeater {
                     model: [
-                        { name: qsTr("Updates"),
-                          desc: qsTr("What is out of date, and the channel this "
-                                     + "machine follows."),
-                          run: ["genesi-update-center"] },
+                        // NOT "genesi-update-center": that name is a polkit
+                        // helper (genesi-update-center-apply) and a Plasma
+                        // applet, never a command. The card opened nothing.
+                        // The channel switcher is the real program.
+                        { name: qsTr("Update channel"),
+                          desc: qsTr("Whether this machine follows stable or "
+                                     + "testing, and what is waiting."),
+                          run: ["genesi-channel-gui"] },
                         { name: qsTr("AI Monitor"),
                           desc: qsTr("What the model is doing, and what AI Mode "
                                      + "changed to help it."),

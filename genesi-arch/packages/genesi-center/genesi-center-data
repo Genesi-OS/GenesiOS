@@ -810,12 +810,15 @@ def ai():
         "available": True,
         "state": state,
         "models": sorted(models, key=lambda m: m["name"])[:40],
-        # The two things the page can offer to change, each reported as
-        # installed-or-not rather than assumed.
-        "kokoro": os.path.isdir(
-            os.path.expanduser("~/.local/share/genesi-ai/kokoro")),
-        "api_key": bool(_read(
-            os.path.expanduser("~/.config/genesi/ai-api-key")).strip()),
+        # Speech and a cloud key are both asked for and NEITHER exists yet:
+        # nothing in Genesi installs Kokoro, and nothing reads an API key.
+        # Reported as false with a reason rather than as a path that happens
+        # to be empty -- a page that says "not installed" about a feature that
+        # was never built is telling a different lie from "not built yet".
+        "kokoro": False,
+        "api_key": False,
+        "voice_supported": False,
+        "cloud_supported": False,
         "turbo": bool(shutil.which("genesi-ai-turbo")),
     }
 

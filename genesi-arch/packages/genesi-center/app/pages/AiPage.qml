@@ -6,15 +6,17 @@
  * real state, models that take gigabytes, and a GPU that either helps or does
  * not. So this reports first and offers second.
  *
- * Two requests it answers directly:
+ * Two things were asked for here and NEITHER is built yet: Kokoro speech, so
+ * the assistant can talk, and an API key for a cloud model instead of the
+ * local one. Nothing in Genesi installs Kokoro and nothing reads a key.
  *
- *   Kokoro    speech, so the assistant can actually talk. It is a download,
- *             so this offers to fetch it and says how big -- it never starts
- *             one behind someone's back.
- *   API key   a cloud model instead of the local one. Whether a key is SET is
- *             shown; the key itself is never displayed, and this app never
- *             takes one as input -- a text field for a secret in a settings
- *             page is a secret in a screenshot.
+ * They are listed, marked as not built, and NOT clickable. The first version
+ * of this page had them as buttons: one opened the AI Monitor with a flag the
+ * Monitor ignores, the other pointed at a config path nothing consults. Both
+ * responded and did nothing -- the exact failure this app exists to argue
+ * against, shipped inside it. A row that says "not built yet" is worth more
+ * than a button that lies, and it is what someone reading this page needs in
+ * order to plan around it.
  */
 import QtQuick
 import "../components"
@@ -198,45 +200,29 @@ Item {
 
                     SettingRow {
                         width: parent.width
-                        label: qsTr("Kokoro speech")
-                        description: page.d.kokoro
-                                     ? qsTr("Installed. The assistant can speak its "
-                                            + "answers.")
-                                     : qsTr("Not installed. Around 350 MB, and it "
-                                            + "runs on this machine like everything "
-                                            + "else — nothing is sent anywhere.")
+                        label: qsTr("Spoken answers")
+                        description: qsTr("Kokoro would let the assistant read "
+                                          + "its answers aloud, on this machine "
+                                          + "like everything else. It is not "
+                                          + "built yet — nothing here installs "
+                                          + "it, so there is nothing to switch "
+                                          + "on.")
 
                         Rectangle {
-                            width: 138
-                            height: 28
+                            width: 110
+                            height: 24
                             radius: Tokens.radiusSm
-                            color: kokoroHov.hovered ? Tokens.cardHi : "transparent"
+                            color: "transparent"
                             border.width: 1
-                            border.color: page.d.kokoro ? Tokens.accentDim
-                                                        : (kokoroHov.hovered ? Tokens.accentDim
-                                                                             : Tokens.line)
-                            Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                            border.color: Tokens.lineSoft
 
                             Text {
                                 anchors.centerIn: parent
-                                text: page.d.kokoro ? qsTr("INSTALLED")
-                                                    : qsTr("INSTALL KOKORO")
-                                color: page.d.kokoro ? Tokens.accent : Tokens.text
+                                text: qsTr("NOT BUILT YET")
+                                color: Tokens.textFaint
                                 font.family: Tokens.mono
                                 font.pixelSize: Tokens.fsMicro
                                 font.letterSpacing: 1
-                            }
-                            HoverHandler { id: kokoroHov; cursorShape: Qt.PointingHandCursor }
-                            TapHandler {
-                                // A download is not something a settings page
-                                // starts silently. It opens in the Monitor,
-                                // which has somewhere to show progress and
-                                // somewhere to fail.
-                                onTapped: {
-                                    if (!page.d.kokoro && page.backend)
-                                        page.backend.launch(["genesi-ai-monitor",
-                                                             "--install", "kokoro"]);
-                                }
                             }
                         }
                     }
@@ -244,60 +230,29 @@ Item {
                     SettingRow {
                         width: parent.width
                         label: qsTr("Cloud model")
-                        description: page.d.api_key
-                                     ? qsTr("A key is set, so cloud answers are "
-                                            + "available alongside the local model.")
-                                     : qsTr("No key. Everything runs on this machine. "
-                                            + "A key is added in the Monitor — this "
-                                            + "page never asks you to type a secret "
-                                            + "into a window that can be screenshotted.")
+                        description: qsTr("An API key would let answers come from "
+                                          + "a hosted model instead of the local "
+                                          + "one. Also not built: nothing in "
+                                          + "Genesi reads a key today, so a field "
+                                          + "to type one into would be a field "
+                                          + "that swallows it.")
                         last: true
 
-                        Row {
-                            spacing: 10
+                        Rectangle {
+                            width: 110
+                            height: 24
+                            radius: Tokens.radiusSm
+                            color: "transparent"
+                            border.width: 1
+                            border.color: Tokens.lineSoft
 
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 78
-                                height: 24
-                                radius: Tokens.radiusSm
-                                color: "transparent"
-                                border.width: 1
-                                border.color: page.d.api_key ? Tokens.accentDim : Tokens.line
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: page.d.api_key ? qsTr("SET") : qsTr("NOT SET")
-                                    color: page.d.api_key ? Tokens.accent : Tokens.textDim
-                                    font.family: Tokens.mono
-                                    font.pixelSize: Tokens.fsMicro
-                                    font.letterSpacing: 1
-                                }
-                            }
-
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 138
-                                height: 28
-                                radius: Tokens.radiusSm
-                                color: keyHov.hovered ? Tokens.cardHi : "transparent"
-                                border.width: 1
-                                border.color: keyHov.hovered ? Tokens.accentDim : Tokens.line
-                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: qsTr("OPEN THE MONITOR")
-                                    color: Tokens.text
-                                    font.family: Tokens.mono
-                                    font.pixelSize: Tokens.fsMicro
-                                    font.letterSpacing: 1
-                                }
-                                HoverHandler { id: keyHov; cursorShape: Qt.PointingHandCursor }
-                                TapHandler {
-                                    onTapped: if (page.backend)
-                                        page.backend.launch(["genesi-ai-monitor"])
-                                }
+                            Text {
+                                anchors.centerIn: parent
+                                text: qsTr("NOT BUILT YET")
+                                color: Tokens.textFaint
+                                font.family: Tokens.mono
+                                font.pixelSize: Tokens.fsMicro
+                                font.letterSpacing: 1
                             }
                         }
                     }

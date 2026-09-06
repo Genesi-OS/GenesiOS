@@ -455,8 +455,8 @@ Item {
                     { g: "▶_", l: qsTr("Terminal"),                c: ["foot"] },
                     { g: "‹›", l: qsTr("Genesi Code"),             c: ["genesi-code"] },
                     { g: "◱",  l: qsTr("System\nMonitor"),     c: ["genesi-ai-monitor"] },
-                    { g: "✦",  l: qsTr("Smart\nCleanup"),    c: ["genesi-cleanup"] },
-                    { g: "◎",  l: qsTr("Update\nCentre"), c: ["genesi-update-center"] }
+                    { g: "✦",  l: qsTr("Snapshots"),  c: ["genesi-snapshots-gui"] },
+                    { g: "◎",  l: qsTr("Update\nChannel"), c: ["genesi-channel-gui"] }
                 ]
                 delegate: Panel {
                     id: tool
