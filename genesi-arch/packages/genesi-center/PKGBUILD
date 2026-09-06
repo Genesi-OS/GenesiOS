@@ -33,7 +33,7 @@ pkgver=0.1.0
 # 4: the Bar page, and the rail hides what the running session cannot do --
 # a control that appears to work and changes nothing is worse than a
 # missing page.
-pkgrel=5
+pkgrel=6
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
@@ -65,6 +65,7 @@ check() {
     # is a settings page whose every control fails, so it is parsed here
     # too rather than discovered on a desk.
     python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-center-set',encoding='utf-8').read())"
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-console',encoding='utf-8').read())"
     python -c "import ast,io;ast.parse(io.open('${startdir}/app/genesi_center.py',encoding='utf-8').read())"
     sh -n "${startdir}/genesi-center"
     # ...and every section must actually ANSWER. Parsing proves the file
@@ -72,7 +73,7 @@ check() {
     # rather than a traceback on stderr and {} in the window. Sections
     # whose tools are absent in the build container return
     # {"available": false}, which is a valid answer and the point.
-    for _s in session telemetry core storage activity system resources \n              input audio appearance launcher windows shortcuts ai snapshots; do
+    for _s in session telemetry core storage activity system resources \n              input audio appearance launcher windows shortcuts ai snapshots console; do
         python "${startdir}/genesi-center-data" "$_s" \n            | python -c "import json,sys;json.load(sys.stdin)" \n            || { echo "genesi-center-data $_s did not answer with JSON" >&2; return 1; }
     done
 }
@@ -80,6 +81,8 @@ check() {
 package() {
     install -Dm755 "${startdir}/genesi-center" \
         "${pkgdir}/usr/bin/genesi-center"
+    install -Dm755 "${startdir}/genesi-console" \
+        "${pkgdir}/usr/bin/genesi-console"
     install -Dm755 "${startdir}/genesi-center-set" \
         "${pkgdir}/usr/bin/genesi-center-set"
     install -Dm755 "${startdir}/genesi-center-data" \

@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""
+genesi-console — custom commands for the terminal.
+
+Define a name and what it should run; it becomes a real command in every shell
+on this machine. `genesi-console list` prints JSON for Genesi Center, and the
+same commands work from a terminal, which is the point -- a shortcut that only
+exists inside a settings app is not a shell command.
+
+  genesi-console list                    every command, as JSON
+  genesi-console add <name> <command>    define one (replaces by name)
+  genesi-console remove <name>           delete one
+  genesi-console apply                   rewrite the shell files and wire them
+  genesi-console shells                  which shells are wired up
+
+Definitions live in ~/.config/genesi/console.json. The shell files are
+GENERATED from it and are never edited by hand -- one source, three outputs,
+so bash, zsh and fish cannot drift apart.
+
+── Why fish gets its own file ───────────────────────────────────────────────
+
+fish is not POSIX and cannot source a POSIX file: `foo() { ...; }` is a syntax
+error there, and fish does not read /etc/profile.d at all. A single sourced
+snippet would work in bash and zsh and quietly break the shell of anyone using
+fish -- which, on this machine, is the person who asked for the feature. So
+this writes ~/.config/genesi/console.sh for bash and zsh, and
+~/.config/fish/conf.d/genesi-console.fish for fish, from the same list.
+
+── Functions, not aliases ───────────────────────────────────────────────────
+
+`alias gs='git status'` cannot take arguments in the middle, and quoting inside
+one is its own small nightmare. A function can, and "$@" is appended when the
+command does not place the arguments itself -- so `up` defined as
+`sudo pacman -Syu` still accepts `up --noconfirm`.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+HOME = os.path.expanduser("~")
+CONF_DIR = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "genesi")
+STORE = os.path.join(CONF_DIR, "console.json")
+POSIX_FILE = os.path.join(CONF_DIR, "console.sh")
+FISH_FILE = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")),
+    "fish", "conf.d", "genesi-console.fish")
+
+MARK = "# genesi-console: generated, edit with `genesi-console` or Genesi Center"
+SOURCE_MARK = "# genesi-console"
+SOURCE_LINE = (SOURCE_MARK + "\n"
+               "[ -f ~/.config/genesi/console.sh ] && "
+               ". ~/.config/genesi/console.sh\n")
+
+# A name has to be a legal function name in BOTH shells, and it must not be a
+# path. Refusing early is the difference between "that name is not allowed" and
+# a shell that prints a syntax error on every new terminal for ever.
+NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]{0,31}$")
+
+# Names that already mean something. Redefining `cd` or `rm` from a settings
+# app is not a feature, it is a trap someone sets for themselves at 2am.
+RESERVED = {
+    "cd", "rm", "mv", "cp", "ls", "if", "fi", "for", "while", "do", "done",
+    "then", "else", "elif", "case", "esac", "function", "return", "exit",
+    "export", "source", "set", "test", "sudo", "su", "shutdown", "reboot",
+    "eval", "exec", "trap", "read", "echo", "printf", "alias", "unalias",
+    "end", "begin", "switch", "and", "or", "not", "in",
+}
+
+
+def die(msg):
+    sys.stderr.write("genesi-console: " + msg + "\n")
+    sys.exit(1)
+
+
+def load():
+    try:
+        with open(STORE, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return []
+    out = []
+    for c in d.get("commands", []):
+        if isinstance(c, dict) and c.get("name") and c.get("command"):
+            out.append({"name": str(c["name"]),
+                        "command": str(c["command"]),
+                        "description": str(c.get("description", ""))})
+    return sorted(out, key=lambda c: c["name"])
+
+
+def save(commands):
+    os.makedirs(CONF_DIR, exist_ok=True)
+    tmp = STORE + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump({"commands": commands}, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.replace(tmp, STORE)
+
+
+def check_name(name):
+    if not NAME_RE.match(name):
+        die(f"{name!r} is not a usable command name. Letters, digits, "
+            "- and _, starting with a letter, up to 32 characters.")
+    if name in RESERVED:
+        die(f"{name!r} already means something in a shell. Pick another name.")
+
+
+def body_of(cmd):
+    """
+    The command, with "$@" appended unless it places the arguments itself.
+
+    Without this, a command defined as `sudo pacman -Syu` would silently drop
+    anything typed after it -- the arguments would go nowhere and the command
+    would look like it ignored them.
+    """
+    if re.search(r'\$[@*1-9]|\$\{[@*1-9]', cmd):
+        return cmd
+    return cmd + ' "$@"'
+
+
+def write_posix(commands):
+    lines = [
+        "#!/bin/sh",
+        MARK,
+        "# Sourced by bash and zsh. fish reads its own file; see"
+        " ~/.config/fish/conf.d/genesi-console.fish",
+        "",
+    ]
+    for c in commands:
+        if c["description"]:
+            lines.append("# " + c["description"].replace("\n", " "))
+        lines.append("%s() { %s; }" % (c["name"], body_of(c["command"])))
+        lines.append("")
+    os.makedirs(CONF_DIR, exist_ok=True)
+    with open(POSIX_FILE, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(lines).rstrip() + "\n")
+
+
+def write_fish(commands):
+    lines = [MARK, ""]
+    for c in commands:
+        # fish spells the argument list $argv, and `--wraps` is deliberately
+        # not used: it would need the wrapped command parsed out of a string
+        # that may be a pipeline.
+        body = c["command"]
+        if "$argv" not in body:
+            body = body + " $argv"
+        # A POSIX "$@" in a command someone typed would be literal in fish.
+        body = body.replace('"$@"', "$argv").replace("$@", "$argv")
+        if c["description"]:
+            lines.append("# " + c["description"].replace("\n", " "))
+        lines.append("function %s" % c["name"])
+        lines.append("    %s" % body)
+        lines.append("end")
+        lines.append("")
+    os.makedirs(os.path.dirname(FISH_FILE), exist_ok=True)
+    with open(FISH_FILE, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(lines).rstrip() + "\n")
+
+
+def ensure_sourced():
+    """
+    Make bash and zsh pull the generated file in -- once each.
+
+    fish needs nothing: conf.d is read automatically, which is the whole
+    reason its file goes there instead of being sourced.
+    """
+    wired = []
+    for rc in (".bashrc", ".zshrc"):
+        path = os.path.join(HOME, rc)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            content = fh.read()
+        if SOURCE_MARK in content or "genesi/console.sh" in content:
+            wired.append(rc)
+            continue
+        with open(path, "a", encoding="utf-8", newline="\n") as fh:
+            fh.write("\n" + SOURCE_LINE)
+        wired.append(rc)
+    return wired
+
+
+def cmd_apply():
+    commands = load()
+    write_posix(commands)
+    write_fish(commands)
+    wired = ensure_sourced()
+    print(f"{len(commands)} command(s) written")
+    print("  bash/zsh: " + (", ".join(wired) if wired else "no rc file found"))
+    print("  fish:     " + FISH_FILE)
+    print("Open a new terminal, or re-source your shell, to use them.")
+
+
+def cmd_add(name, command, description=""):
+    check_name(name)
+    if not command.strip():
+        die("a command cannot be empty")
+    commands = [c for c in load() if c["name"] != name]
+    commands.append({"name": name, "command": command.strip(),
+                     "description": description.strip()})
+    save(sorted(commands, key=lambda c: c["name"]))
+    write_posix(load())
+    write_fish(load())
+    ensure_sourced()
+    print(f"{name} -> {command.strip()}")
+
+
+def cmd_remove(name):
+    commands = load()
+    kept = [c for c in commands if c["name"] != name]
+    if len(kept) == len(commands):
+        die(f"no command called {name!r}")
+    save(kept)
+    write_posix(kept)
+    write_fish(kept)
+    print(f"removed {name}")
+
+
+def cmd_list():
+    commands = load()
+    shells = []
+    for name, path in (("bash", os.path.join(HOME, ".bashrc")),
+                       ("zsh", os.path.join(HOME, ".zshrc"))):
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                content = fh.read()
+        except OSError:
+            continue
+        shells.append({"name": name,
+                       "wired": SOURCE_MARK in content
+                                or "genesi/console.sh" in content})
+    if shutil.which("fish"):
+        shells.append({"name": "fish", "wired": os.path.exists(FISH_FILE)})
+
+    json.dump({
+        "commands": commands,
+        "shells": shells,
+        # The shell the person is actually in, so the page can say whether
+        # their own shell is wired rather than reporting on all three.
+        "current": os.path.basename(os.environ.get("SHELL", "")) or None,
+        "store": STORE,
+    }, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv:
+        print(__doc__.strip())
+        return 2
+    what = argv[0]
+    if what == "list":
+        cmd_list()
+    elif what == "apply":
+        cmd_apply()
+    elif what == "shells":
+        cmd_list()
+    elif what == "add" and len(argv) >= 3:
+        cmd_add(argv[1], argv[2], argv[3] if len(argv) > 3 else "")
+    elif what == "remove" and len(argv) == 2:
+        cmd_remove(argv[1])
+    else:
+        sys.stderr.write(
+            "usage: genesi-console {list | add <name> <command> [description]"
+            " | remove <name> | apply}\n")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -28,6 +28,8 @@ display.
   genesi-center-data shortcuts   every keybind the compositor holds
   genesi-center-data ai          AI Mode, its models, Kokoro, the API key
   genesi-center-data snapshots   what genesi-snapshots reports
+  genesi-center-data console     custom shell commands, and which shells
+                                 have them
   genesi-center-data all         the five CHEAP sections, in one object
 
 Percentages are integers because the UI prints them as integers; rates are
@@ -800,6 +802,26 @@ def ai():
     }
 
 
+def console():
+    """
+    The custom shell commands, from genesi-console.
+
+    Shelled out to rather than read here, even though it is one JSON file:
+    genesi-console is what knows which shells are wired and what the generated
+    files look like, and a second reader of that would eventually disagree with
+    it about whether fish is set up.
+    """
+    if not shutil.which("genesi-console"):
+        # Not installed is different from none defined, and the page says so.
+        return {"available": False}
+    try:
+        d = json.loads(_run(["genesi-console", "list"], timeout=8) or "{}")
+    except (json.JSONDecodeError, ValueError):
+        return {"available": False}
+    d["available"] = True
+    return d
+
+
 def snapshots():
     """The snapshots, as genesi-snapshots reports them."""
     if not shutil.which("genesi-snapshots"):
@@ -837,6 +859,7 @@ SECTIONS = {
     "shortcuts": shortcuts,
     "ai": ai,
     "snapshots": snapshots,
+    "console": console,
 }
 
 # `all` is what the Overview asks for, and it must stay CHEAP. system() runs

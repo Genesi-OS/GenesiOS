@@ -39,12 +39,12 @@ TICK_MS = 5000
 # anything. It is a boundary against THIS code: `act` takes a list from QML,
 # and a page that is one typo away from running an arbitrary name is a page
 # that will one day be handed one from a config file or a translated string.
-# Naming the eleven binaries that exist keeps the blast radius at zero, and a
+# Naming the binaries that exist keeps the blast radius at zero, and a
 # refusal is printed rather than swallowed so a new page fails loudly on the
 # desk of whoever wrote it.
 ALLOWED = {
-    "genesi-center-set", "genesi-display", "genesi-bar", "genesi-snapshots",
-    "genesi-ai-mode", "genesi-ai-turbo", "genesi-ai-monitor",
+    "genesi-center-set", "genesi-console", "genesi-display", "genesi-bar",
+    "genesi-snapshots", "genesi-ai-mode", "genesi-ai-turbo", "genesi-ai-monitor",
     "genesi-open-usb-mixer", "genesi-update-center", "genesi-snapshots-gui",
     "caelestia", "hyprctl", "hyprshade", "wpctl",
 }

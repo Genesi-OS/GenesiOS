@@ -145,6 +145,22 @@ SECTIONS = {
         "uptime": {"seconds": 20361, "text": "5h 39m"},
         "shell": "fish", "session": "Hyprland", "session_type": "wayland",
     },
+    "console": {
+        "available": True, "current": "fish",
+        "store": "/home/mk/.config/genesi/console.json",
+        "commands": [
+            {"name": "up", "command": "sudo pacman -Syu",
+             "description": "update everything"},
+            {"name": "gs", "command": "git status --short", "description": ""},
+            {"name": "mkcd", "command": "mkdir -p \"$1\" && cd \"$1\"",
+             "description": "make a directory and enter it"},
+            {"name": "serve", "command": "python -m http.server 8000",
+             "description": ""},
+        ],
+        "shells": [{"name": "bash", "wired": True},
+                   {"name": "zsh", "wired": False},
+                   {"name": "fish", "wired": True}],
+    },
     "audio": {
         "available": True, "mixer": True,
         "sinks": [

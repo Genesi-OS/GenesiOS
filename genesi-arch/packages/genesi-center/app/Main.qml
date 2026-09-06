@@ -67,32 +67,33 @@ Window {
     readonly property var groups: [
         {
             index: "01", title: qsTr("Overview"), items: [
-                { id: "overview",  label: qsTr("Overview"),  tag: "概観" },
-                { id: "system",    label: qsTr("System"),    tag: "系統" },
-                { id: "resources", label: qsTr("Resources"), tag: "資源" }
+                { id: "overview", keywords: "dashboard home summary",  label: qsTr("Overview"),  tag: "概観" },
+                { id: "system", keywords: "about specs kernel cpu gpu version packages",    label: qsTr("System"),    tag: "系統" },
+                { id: "resources", keywords: "cpu ram memory processes disk monitor performance top", label: qsTr("Resources"), tag: "資源" }
             ]
         },
         {
             index: "02", title: qsTr("Devices"), items: [
-                { id: "displays", label: qsTr("Displays"), tag: "画面", needs: "hyprland" },
-                { id: "input",    label: qsTr("Input"),    tag: "入力" },
-                { id: "audio",    label: qsTr("Audio"),    tag: "音響" }
+                { id: "displays", keywords: "monitor screen resolution hz refresh scale rotate", label: qsTr("Displays"), tag: "画面", needs: "hyprland" },
+                { id: "input", keywords: "keyboard mouse pointer touchpad layout repeat sensitivity",    label: qsTr("Input"),    tag: "入力" },
+                { id: "audio", keywords: "sound volume speaker microphone mic output input mute",    label: qsTr("Audio"),    tag: "音響" }
             ]
         },
         {
             index: "03", title: qsTr("Desktop"), items: [
-                { id: "appearance", label: qsTr("Appearance"), tag: "外観", needs: "caelestia" },
-                { id: "bar",        label: qsTr("Bar"),        tag: "帯", needs: "caelestia" },
-                { id: "launcher",   label: qsTr("Launcher"),   tag: "起動", needs: "caelestia" },
-                { id: "windows",    label: qsTr("Windows"),    tag: "窓", needs: "hyprland" },
-                { id: "shortcuts",  label: qsTr("Shortcuts"),  tag: "操作", needs: "hyprland" }
+                { id: "appearance", keywords: "theme colour color scheme wallpaper shader frame border", label: qsTr("Appearance"), tag: "外観", needs: "caelestia" },
+                { id: "bar", keywords: "panel taskbar topbar workspaces tray clock",        label: qsTr("Bar"),        tag: "帯", needs: "caelestia" },
+                { id: "launcher", keywords: "menu run search spotlight",   label: qsTr("Launcher"),   tag: "起動", needs: "caelestia" },
+                { id: "windows", keywords: "gaps rounding border blur opacity animations tiling",    label: qsTr("Windows"),    tag: "窓", needs: "hyprland" },
+                { id: "shortcuts", keywords: "keybinds keys hotkeys bindings",  label: qsTr("Shortcuts"),  tag: "操作", needs: "hyprland" }
             ]
         },
         {
             index: "04", title: qsTr("System"), items: [
-                { id: "ai",        label: qsTr("Local AI"),  tag: "知能" },
-                { id: "snapshots", label: qsTr("Snapshots"), tag: "保存" },
-                { id: "settings",  label: qsTr("Settings"),  tag: "設定" }
+                { id: "ai", keywords: "llm model kokoro voice tts api key gpu",        label: qsTr("Local AI"),  tag: "知能" },
+                { id: "snapshots", keywords: "backup restore rollback btrfs snapper undo", label: qsTr("Snapshots"), tag: "保存" },
+                { id: "console", keywords: "terminal shell alias command function fish bash zsh", label: qsTr("Console"), tag: "端末" },
+                { id: "settings", keywords: "about preferences",  label: qsTr("Settings"),  tag: "設定" }
             ]
         }
     ]
@@ -118,6 +119,48 @@ Window {
             });
         }
         return out;
+    }
+
+    // What is typed in the rail's search box.
+    property string query: ""
+
+    // The rail as DRAWN: visibleGroups, minus anything that does not match the
+    // query. Kept separate from visibleGroups on purpose -- that one answers
+    // "what can this session do", and the fallback in onCapsChanged reads it.
+    // If searching narrowed that list, typing a letter that hides the open
+    // page would throw you back to the Overview mid-keystroke.
+    readonly property var navGroups: {
+        const q = win.query.trim().toLowerCase();
+        if (q === "")
+            return win.visibleGroups;
+        const out = [];
+        for (const g of win.visibleGroups) {
+            // The group's own name counts: typing "devices" should give you
+            // the three things under Devices, which is how a person who does
+            // not know our labels will look for a screen setting.
+            const whole = g.title.toLowerCase().indexOf(q) >= 0;
+            const items = g.items.filter(it => whole
+                || it.label.toLowerCase().indexOf(q) >= 0
+                || it.id.indexOf(q) >= 0
+                || (it.keywords || "").indexOf(q) >= 0);
+            if (items.length === 0)
+                continue;
+            const n = out.length + 1;
+            out.push({
+                index: (n < 10 ? "0" : "") + n,
+                title: g.title,
+                items: items
+            });
+        }
+        return out;
+    }
+
+    // The first row a search matched, for Enter.
+    readonly property string firstMatch: {
+        for (const g of win.navGroups)
+            for (const it of g.items)
+                return it.id;
+        return "";
     }
 
     function labelFor(id) {
@@ -210,7 +253,20 @@ Window {
                         color: Tokens.textHi
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsBody
+                        selectionColor: Tokens.accentDeep
+                        selectedTextColor: Tokens.textHi
                         clip: true
+                        focus: true
+
+                        onTextChanged: win.query = text
+                        // Enter opens the first match, so a search can be
+                        // finished without reaching for the pointer.
+                        onAccepted: {
+                            if (win.firstMatch !== "")
+                                win.section = win.firstMatch;
+                        }
+                        Keys.onEscapePressed: text = ""
+
                         Text {
                             anchors.fill: parent
                             verticalAlignment: Text.AlignVCenter
@@ -222,7 +278,9 @@ Window {
                     }
                     Text {
                         anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                        text: "⌘K"
+                        // Not the Command glyph. This is a Linux desktop, and
+                        // the shipped hint was a key nobody here has.
+                        text: search.text === "" ? "/" : "↵"
                         color: Tokens.textFaint
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsMicro
@@ -253,7 +311,7 @@ Window {
                     spacing: 2
 
                 Repeater {
-                    model: win.visibleGroups
+                    model: win.navGroups
                     delegate: Column {
                         id: groupCol
                         required property var modelData
@@ -293,6 +351,35 @@ Window {
                             }
                         }
                     }
+                    }
+
+                    // A search that matches nothing has to SAY so. An empty
+                    // rail reads as the app having lost its navigation.
+                    Item {
+                        width: navCol.width
+                        height: win.navGroups.length === 0 ? 70 : 0
+                        visible: win.navGroups.length === 0
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: qsTr("no section matches")
+                                color: Tokens.textDim
+                                font.family: Tokens.mono
+                                font.pixelSize: Tokens.fsMicro
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "“" + win.query + "\u201d"
+                                color: Tokens.textFaint
+                                font.family: Tokens.mono
+                                font.pixelSize: Tokens.fsMicro
+                                elide: Text.ElideRight
+                                width: Math.min(implicitWidth, navCol.width - 20)
+                            }
+                        }
                     }
                 }
             }
@@ -511,6 +598,13 @@ Window {
                 anchors.topMargin: 8
                 backend: win.backend
                 visible: win.section === "snapshots"
+            }
+
+            ConsolePage {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                backend: win.backend
+                visible: win.section === "console"
             }
 
             SettingsPage {

@@ -21,6 +21,7 @@ genesi-arch/packages/genesi-caelestia-settings/genesi-bar  text eol=lf
 genesi-arch/packages/genesi-center/genesi-center           text eol=lf
 genesi-arch/packages/genesi-center/genesi-center-data      text eol=lf
 genesi-arch/packages/genesi-center/genesi-center-set       text eol=lf
+genesi-arch/packages/genesi-center/genesi-console          text eol=lf
 # QML's module file: Qt parses it line by line, and a trailing CR turns a
 # singleton declaration into one it does not recognise.
 genesi-arch/packages/genesi-center/app/qmldir              text eol=lf
