@@ -55,7 +55,28 @@ pkgver=2.0.3
 # with no state, so pressing it looked identical to it not working.
 # 17: bar.width and bar.spacing. caelestia exposed what the bar contains
 # and nothing about how it is drawn, so presets could only reorder modules.
-pkgrel=21
+# 22: a second body for the launcher, and the shape it takes.
+# caelestia's launcher is a prompt with a list stacked over it, sized to its
+# content. The Genesi one is a wide slab: the wallpaper behind the prompt, the
+# clock and the weather in the corners, the selection named in a card of its
+# own, and the results in numbered columns. `launcher.layout` picks.
+#
+# Ships as two WHOLE FILES Genesi owns (GenesiContent.qml, GenesiAppGrid.qml)
+# rather than as a patch against upstream's Content.qml. A layout this different
+# expressed as a diff would rewrite nearly every line of a file we do not own,
+# and a fuzzy match on a version bump would give us a launcher that loads and is
+# subtly wrong instead of a build that stops. Upstream's Content.qml is not
+# touched at all; the only edit is the line in Wrapper.qml that chooses between
+# the two, which the patcher asserts.
+#
+# Nothing compiles this QML -- CMake installs modules/ as plain files -- so a
+# green build says nothing about whether the launcher loads. It was verified by
+# standing up the Quickshell and caelestia types it needs as stubs and having Qt
+# itself parse, instantiate and lay out the real file offscreen, failing on any
+# warning. That is also how the band bug was found: the children said
+# `parent.band`, a clipping container reparented them, the binding went
+# undefined, and the wallpaper covered the whole panel.
+pkgrel=22
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -71,8 +92,12 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "ContentList.qml"
         "UpdatesPage.qml"
         "DisplayPage.qml"
-        "MousePage.qml")
+        "MousePage.qml"
+        "GenesiContent.qml"
+        "GenesiAppGrid.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

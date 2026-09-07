@@ -41,7 +41,13 @@ pkgver=0.1.0
 # once. Then the flat tiles individually: the launcher's groups set their
 # count as a reading, Settings' tool cards name the command they run, and
 # the colour schemes are marked and set as the identifiers they are.
-pkgrel=16
+# 17: the Launcher page grows a "look" section, because the launcher grew a
+# second body. Two cards pick between caelestia's and Genesi's, and everything
+# under them -- the picture behind it, how far that picture reaches, its dim,
+# the number of columns, and the clock, weather, selection card and mode
+# buttons -- applies to the Genesi one and is hidden next to the other, since a
+# page of controls that quietly do nothing is worse than a page with a shape.
+pkgrel=17
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

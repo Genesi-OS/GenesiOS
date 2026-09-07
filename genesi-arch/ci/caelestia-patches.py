@@ -1234,6 +1234,139 @@ def patch_ddc_timeout(services_dir):
     print("Brightness.qml: ddcutil detect is wall-clocked")
 
 
+# The two files Genesi adds to the launcher. Copied in like the Nexus pages --
+# after every "does upstream already ship this?" test has run, never before.
+LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml")
+
+
+def patch_launcher_layout(release):
+    """
+    A second body for the launcher panel, chosen by `launcher.layout`.
+
+        launcher.layout        "caelestia" (upstream) or "genesi"
+        launcher.background    "" | "wallpaper" | an absolute path
+        launcher.backgroundExtent
+                               "header" puts that picture behind the prompt
+                               only, which is where it belongs; "panel" puts
+                               it behind the results as well
+        launcher.backgroundDim 0-100, how much of the panel's own surface
+                               colour is laid over that picture
+        launcher.showClock     the time, top left
+        launcher.showWeather   the conditions and the date, top right
+        launcher.showHero      the card naming what Enter will open
+        launcher.showChips     the row of mode buttons
+        launcher.columns       1-3 columns of results
+
+    ── Why a whole file and not a patch ─────────────────────────────────────
+
+    The Genesi layout is not a variation on upstream's Content.qml, it is a
+    different shape: a wide slab carrying the wallpaper, the clock and the
+    weather in its corners, the selection in a card of its own, and the results
+    in numbered columns. Expressed as a patch that would be a diff touching
+    nearly every line of a file we do not own -- fragile against any upstream
+    edit, and the failure mode of a fuzzy match here is a launcher that loads
+    and is subtly wrong rather than a build that stops.
+
+    So upstream's Content.qml is not touched at all. Genesi ships two files of
+    its own next to it, and the ONLY edit to upstream is the line in Wrapper.qml
+    that decides which of the two the Loader builds. That line is asserted here,
+    and it is small enough to re-read by eye on a version bump.
+
+    ── The Components are siblings of the Loader, not children of it ────────
+
+    `sourceComponent: cond ? a : b` needs `a` and `b` to be Components with ids,
+    and the obvious place to put them is inside the Loader. They go outside it
+    instead. A Loader's children are its `data`, which is not where a loaded
+    item lives, and mixing declared children with a loaded item inside one
+    Loader is the sort of thing that works until a Qt release decides otherwise.
+    As siblings they are ordinary objects in the same scope, which is all the
+    ids need.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "launcherconfig.hpp")
+    wrapper = os.path.join(release, "modules", "launcher", "Wrapper.qml")
+    for p in (hpp, wrapper):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the launcher moved or was renamed.")
+
+    for name in LAUNCHER_FILES:
+        shipped = os.path.join(release, "modules", "launcher", name)
+        if os.path.exists(shipped):
+            fail(f"upstream now ships its own {name}. Ours would silently "
+                 "replace it. Decide by hand.")
+
+    src = {p: io.open(p, encoding="utf-8").read() for p in (hpp, wrapper)}
+
+    if "CONFIG_PROPERTY(QString, layout" in src[hpp]:
+        fail("launcherconfig.hpp already has a layout -- upstream added one, "
+             "or this ran twice.")
+
+    # Anchored on the width property patch_launcher_position adds, which is why
+    # that one has to have run first: if it has not, this fails here rather than
+    # writing a config the shell would read and half understand.
+    anchor = '    CONFIG_PROPERTY(int, width, 0)\n'
+    if anchor not in src[hpp]:
+        fail("launcherconfig.hpp has no Genesi width property -- "
+             "patch_launcher_position did not run, or its anchor moved.")
+    out = {hpp: src[hpp].replace(anchor, anchor + (
+        '    // Genesi: the second body for this panel, and what it shows.\n'
+        '    // "caelestia" is upstream\'s; "genesi" is the wide slab.\n'
+        '    CONFIG_PROPERTY(QString, layout, u"caelestia"_s)\n'
+        '    CONFIG_PROPERTY(QString, background, u""_s)\n'
+        '    CONFIG_PROPERTY(QString, backgroundExtent, u"header"_s)\n'
+        '    CONFIG_PROPERTY(int, backgroundDim, 78)\n'
+        '    CONFIG_PROPERTY(bool, showClock, true)\n'
+        '    CONFIG_PROPERTY(bool, showWeather, true)\n'
+        '    CONFIG_PROPERTY(bool, showHero, true)\n'
+        '    CONFIG_PROPERTY(bool, showChips, true)\n'
+        '    CONFIG_PROPERTY(int, columns, 2)\n'), 1)}
+
+    old_loader = (
+        '        sourceComponent: Content {\n'
+        '            visibilities: root.visibilities\n'
+        '            panels: root.panels\n'
+        '            maxHeight: root.maxHeight\n'
+        '        }\n'
+        '    }\n')
+    if old_loader not in src[wrapper]:
+        fail("Wrapper.qml's Loader is not what the patch expects -- it is the "
+             "one line that chooses which body the launcher builds.")
+    new_loader = (
+        '        // Genesi: two bodies for one panel.\n'
+        '        sourceComponent: Config.launcher.layout === "genesi"\n'
+        '            ? genesiBody\n'
+        '            : caelestiaBody\n'
+        '    }\n'
+        '\n'
+        '    Component {\n'
+        '        id: caelestiaBody\n'
+        '\n'
+        '        Content {\n'
+        '            visibilities: root.visibilities\n'
+        '            panels: root.panels\n'
+        '            maxHeight: root.maxHeight\n'
+        '        }\n'
+        '    }\n'
+        '\n'
+        '    Component {\n'
+        '        id: genesiBody\n'
+        '\n'
+        '        GenesiContent {\n'
+        '            visibilities: root.visibilities\n'
+        '            panels: root.panels\n'
+        '            maxHeight: root.maxHeight\n'
+        '            // The screen, not the parent: the parent is the Loader\n'
+        '            // that sizes itself from this item.\n'
+        '            maxWidth: root.screen.width\n'
+        '        }\n'
+        '    }\n')
+    out[wrapper] = src[wrapper].replace(old_loader, new_loader, 1)
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("launcher: the Genesi layout is selectable")
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__.strip())
@@ -1263,6 +1396,7 @@ def main():
     patch_bar_proportions(release)
     patch_frame_opacity(release)
     patch_launcher_position(release)
+    patch_launcher_layout(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 
@@ -1276,6 +1410,15 @@ def main():
             fail(f"{src} is missing -- the page this registers has no file.")
         shutil.copyfile(src, os.path.join(dest, p["comp"] + ".qml"))
         print(f"installed {p['comp']}.qml")
+
+    launcher_dest = os.path.join(release, "modules", "launcher")
+    for name in LAUNCHER_FILES:
+        src = os.path.join(ours, name)
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- the Genesi launcher layout has no file, "
+                 "and Wrapper.qml has already been told to build it.")
+        shutil.copyfile(src, os.path.join(launcher_dest, name))
+        print(f"installed {name}")
     return 0
 
 

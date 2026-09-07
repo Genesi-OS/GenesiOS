@@ -171,6 +171,20 @@ CAELESTIA_PATHS = {
     # Genesi-only, added by ci/caelestia-patches.py.
     "launcher.position": ("enum", ("bottom", "centre")),
     "launcher.width": ("int", 0, 1400),
+    "launcher.layout": ("enum", ("caelestia", "genesi")),
+    # An enum, not free text, even though the shell will take any path. The
+    # three answers people actually want are "none", "whatever the desktop is
+    # showing" and "the Genesi one" -- and a text field for the rest would be a
+    # box where a typo is a launcher with no background and no explanation.
+    "launcher.background": ("enum", ("", "wallpaper",
+                                     "/usr/share/wallpapers/genesi/wallpaper.png")),
+    "launcher.backgroundExtent": ("enum", ("header", "panel")),
+    "launcher.backgroundDim": ("int", 0, 100),
+    "launcher.columns": ("int", 1, 3),
+    "launcher.showClock": ("bool",),
+    "launcher.showWeather": ("bool",),
+    "launcher.showHero": ("bool",),
+    "launcher.showChips": ("bool",),
     "launcher.maxShown": ("int", 3, 20),
     "launcher.maxWallpapers": ("int", 3, 30),
     "launcher.vimKeybinds": ("bool",),
@@ -195,6 +209,16 @@ CAELESTIA_PATHS = {
 GENESI_ONLY = {
     "launcher.position": 'CONFIG_PROPERTY(QString, position, u"bottom"_s)',
     "launcher.width": "CONFIG_PROPERTY(int, width, 0)",
+    "launcher.layout": 'CONFIG_PROPERTY(QString, layout, u"caelestia"_s)',
+    "launcher.background": 'CONFIG_PROPERTY(QString, background, u""_s)',
+    "launcher.backgroundExtent":
+        'CONFIG_PROPERTY(QString, backgroundExtent, u"header"_s)',
+    "launcher.backgroundDim": "CONFIG_PROPERTY(int, backgroundDim, 78)",
+    "launcher.columns": "CONFIG_PROPERTY(int, columns, 2)",
+    "launcher.showClock": "CONFIG_PROPERTY(bool, showClock, true)",
+    "launcher.showWeather": "CONFIG_PROPERTY(bool, showWeather, true)",
+    "launcher.showHero": "CONFIG_PROPERTY(bool, showHero, true)",
+    "launcher.showChips": "CONFIG_PROPERTY(bool, showChips, true)",
     "border.opacity": "CONFIG_PROPERTY(int, opacity, 100)",
     "bar.workspaces.realWindowIcons":
         "CONFIG_PROPERTY(bool, realWindowIcons, false)",

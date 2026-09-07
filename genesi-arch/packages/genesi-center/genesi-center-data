@@ -807,6 +807,18 @@ def launcher():
             "enableDangerousActions": bool(l.get("enableDangerousActions")),
             "showOnHover": bool(l.get("showOnHover")),
             "vimKeybinds": bool(l.get("vimKeybinds")),
+            # The Genesi layout. Defaults here are the ones the patch
+            # declares, so an unset key reads as what is actually in effect
+            # rather than as blank.
+            "layout": l.get("layout", "caelestia"),
+            "background": l.get("background", ""),
+            "backgroundExtent": l.get("backgroundExtent", "header"),
+            "backgroundDim": l.get("backgroundDim", 78),
+            "columns": l.get("columns", 2),
+            "showClock": bool(l.get("showClock", True)),
+            "showWeather": bool(l.get("showWeather", True)),
+            "showHero": bool(l.get("showHero", True)),
+            "showChips": bool(l.get("showChips", True)),
         },
         "actions_top": top,
         "groups": [{"name": k, "count": v} for k, v in sorted(groups.items())],

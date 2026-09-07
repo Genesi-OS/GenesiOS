@@ -183,6 +183,262 @@ Item {
                 }
             }
 
+            SectionHead { index: "—"; text: qsTr("The look") }
+
+            // Two bodies for one panel. The sketches are the whole difference
+            // and no sentence says it faster -- one is a strip at the bottom,
+            // the other is a slab with a band across the top.
+            Row {
+                width: parent.width
+                spacing: Tokens.gap
+
+                Repeater {
+                    model: [
+                        { id: "caelestia", name: qsTr("caelestia"),
+                          desc: qsTr("A prompt with the results stacked over it. "
+                                     + "Upstream's, and the smaller one.") },
+                        { id: "genesi", name: qsTr("Genesi"),
+                          desc: qsTr("A wide slab: clock and weather, the "
+                                     + "wallpaper behind the prompt, and the "
+                                     + "results in columns.") }
+                    ]
+                    delegate: Panel {
+                        id: layCard
+                        required property var modelData
+
+                        readonly property bool on:
+                            (page.o.layout || "caelestia") === modelData.id
+
+                        width: (parent.width - Tokens.gap) / 2
+                        height: 116
+                        ticks: false
+                        interactive: true
+                        hovered: layHov.hovered
+                        color: on ? Tokens.cardHi : Tokens.card
+                        border.color: on ? Tokens.accentDim
+                                         : (layHov.hovered ? Tokens.accentDeep
+                                                           : Tokens.line)
+
+                        Rectangle {
+                            id: laySketch
+                            anchors { left: parent.left; top: parent.top }
+                            anchors.margins: 16
+                            width: 58
+                            height: 38
+                            radius: 3
+                            color: "transparent"
+                            border.width: 1
+                            border.color: layCard.on ? Tokens.accentDim : Tokens.line
+
+                            // caelestia: a narrow strip near the bottom.
+                            Rectangle {
+                                visible: layCard.modelData.id === "caelestia"
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                y: parent.height - height - 4
+                                width: parent.width - 22
+                                height: 11
+                                radius: 2
+                                color: layCard.on ? Tokens.accent : Tokens.textFaint
+                            }
+
+                            // Genesi: a wide slab with a band across the top.
+                            Rectangle {
+                                visible: layCard.modelData.id === "genesi"
+                                anchors.centerIn: parent
+                                width: parent.width - 8
+                                height: 22
+                                radius: 2
+                                color: "transparent"
+                                border.width: 1
+                                border.color: layCard.on ? Tokens.accent
+                                                         : Tokens.textFaint
+
+                                Rectangle {
+                                    anchors {
+                                        left: parent.left; right: parent.right
+                                        top: parent.top
+                                    }
+                                    anchors.margins: 1
+                                    height: 8
+                                    color: layCard.on ? Tokens.accent : Tokens.textFaint
+                                    opacity: 0.55
+                                }
+                            }
+                        }
+
+                        Column {
+                            anchors {
+                                left: laySketch.right; right: parent.right
+                                top: parent.top
+                            }
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 16
+                            anchors.topMargin: 16
+                            spacing: 5
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Text {
+                                    text: layCard.modelData.name
+                                    color: layCard.on ? Tokens.textHi : Tokens.text
+                                    font.family: Tokens.sans
+                                    font.pixelSize: 13
+                                    width: parent.width - 46
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    visible: layCard.on
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: qsTr("IN USE")
+                                    color: Tokens.accent
+                                    font.family: Tokens.mono
+                                    font.pixelSize: 8
+                                    font.letterSpacing: 1
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: layCard.modelData.desc
+                                color: Tokens.textDim
+                                font.family: Tokens.sans
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        HoverHandler { id: layHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: {
+                                if (!layCard.on)
+                                    page.set("launcher.layout", layCard.modelData.id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Everything below applies to the Genesi body only, so it is not
+            // shown next to the other one. A page full of controls that quietly
+            // do nothing is worse than a page that is honest about its shape.
+            Panel {
+                width: parent.width
+                height: lookCol.implicitHeight + 8
+                visible: (page.o.layout || "caelestia") === "genesi"
+
+                Column {
+                    id: lookCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    anchors.margins: 4
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Picture behind it")
+                        description: qsTr("The desktop's own wallpaper follows "
+                                          + "whatever you set it to. The Genesi "
+                                          + "one stays put.")
+                        Segmented {
+                            options: [
+                                { id: "", label: qsTr("NONE") },
+                                { id: "wallpaper", label: qsTr("WALLPAPER") },
+                                { id: "/usr/share/wallpapers/genesi/wallpaper.png",
+                                  label: qsTr("GENESI") }
+                            ]
+                            current: page.o.background || ""
+                            onPicked: id => page.set("launcher.background", id)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("How much it covers")
+                        description: qsTr("Behind the prompt only, or behind the "
+                                          + "results as well. Behind everything, "
+                                          + "twenty app names have to stay "
+                                          + "readable over a photograph.")
+                        visible: (page.o.background || "") !== ""
+                        Segmented {
+                            options: [
+                                { id: "header", label: qsTr("THE PROMPT") },
+                                { id: "panel", label: qsTr("ALL OF IT") }
+                            ]
+                            current: page.o.backgroundExtent || "header"
+                            onPicked: id => page.set("launcher.backgroundExtent", id)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Dim")
+                        description: qsTr("How much of the panel's own colour is "
+                                          + "laid over that picture. This is what "
+                                          + "keeps the text readable.")
+                        visible: (page.o.background || "") !== ""
+                        Slider {
+                            width: 220
+                            from: 0; to: 100; step: 2; unit: "%"
+                            value: page.num("backgroundDim", 78)
+                            onReleased: v => page.set("launcher.backgroundDim", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Columns")
+                        description: qsTr("How many columns the results fold into. "
+                                          + "Results shown, below, still counts "
+                                          + "ROWS — so two columns is twice the "
+                                          + "list, not half of it.")
+                        Slider {
+                            width: 160
+                            from: 1; to: 3; step: 1
+                            value: page.num("columns", 2)
+                            onReleased: v => page.set("launcher.columns", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Clock")
+                        description: qsTr("The time, in the top left corner.")
+                        Toggle {
+                            checked: page.o.showClock !== false
+                            onToggled: v => page.set("launcher.showClock", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Weather")
+                        description: qsTr("The temperature and the date, top right. "
+                                          + "Needs caelestia's weather service to "
+                                          + "have a location.")
+                        Toggle {
+                            checked: page.o.showWeather !== false
+                            onToggled: v => page.set("launcher.showWeather", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Card for what is selected")
+                        description: qsTr("Names the thing Enter will open, with "
+                                          + "its icon at a size you can actually "
+                                          + "recognise.")
+                        Toggle {
+                            checked: page.o.showHero !== false
+                            onToggled: v => page.set("launcher.showHero", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Mode buttons")
+                        description: qsTr("Apps, actions, schemes and wallpapers as "
+                                          + "buttons — the modes you otherwise "
+                                          + "reach only by knowing what to type.")
+                        last: true
+                        Toggle {
+                            checked: page.o.showChips !== false
+                            onToggled: v => page.set("launcher.showChips", v)
+                        }
+                    }
+                }
+            }
+
             Panel {
                 width: parent.width
                 height: widthCol.implicitHeight + 8
