@@ -232,6 +232,9 @@ Item {
                 // something to be about.
                 Panel {
                     id: shapePreview
+                    // Already a drawing of a frame. Corner ticks here would be
+                    // the second frame inside 232px.
+                    ticks: false
                     width: 232
                     height: shapeCol.implicitHeight + 8
 
@@ -509,19 +512,65 @@ Item {
                         required property int index
 
                         width: schemeGrid.cell
-                        height: 52
+                        height: 54
+                        // No corner ticks: the lozenge already marks this card,
+                        // and on 54px the two land within 20px of each other and
+                        // read as one smudge.
+                        ticks: false
                         interactive: true
                         hovered: schemeHov.hovered
+                        color: schemeHov.hovered ? Tokens.cardHi : Tokens.card
 
+                        // A scheme name is an identifier -- "catppuccin",
+                        // "rosepine" -- not prose, so it is set as one. The
+                        // lozenge in front is what turns a wall of twenty
+                        // identical name-cards into a list you can aim at, and
+                        // the arrow says the card DOES something, which a name
+                        // sitting in a box does not.
                         Text {
+                            id: schemeMark
                             anchors { left: parent.left; verticalCenter: parent.verticalCenter }
                             anchors.leftMargin: 14
-                            width: parent.width - 28
+                            text: "◈"
+                            color: schemeHov.hovered ? Tokens.accent : Tokens.accentDeep
+                            font.family: Tokens.mono
+                            font.pixelSize: 11
+                            Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                        }
+
+                        Text {
+                            anchors {
+                                left: schemeMark.right; right: schemeArrow.left
+                                verticalCenter: parent.verticalCenter
+                            }
+                            anchors.leftMargin: 9
+                            anchors.rightMargin: 8
                             text: schemeCard.modelData
                             color: schemeHov.hovered ? Tokens.textHi : Tokens.text
-                            font.family: Tokens.sans
+                            font.family: Tokens.mono
                             font.pixelSize: 12
                             elide: Text.ElideRight
+                        }
+
+                        Text {
+                            id: schemeArrow
+                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                            anchors.rightMargin: 14
+                            text: "→"
+                            color: Tokens.accent
+                            font.family: Tokens.mono
+                            font.pixelSize: 11
+                            opacity: schemeHov.hovered ? 1 : 0
+                            transform: Translate {
+                                x: schemeHov.hovered ? 0 : -5
+                                Behavior on x {
+                                    NumberAnimation {
+                                        duration: Tokens.quick
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
+                            }
+                            Behavior on opacity { NumberAnimation { duration: Tokens.quick } }
                         }
 
                         HoverHandler { id: schemeHov; cursorShape: Qt.PointingHandCursor }

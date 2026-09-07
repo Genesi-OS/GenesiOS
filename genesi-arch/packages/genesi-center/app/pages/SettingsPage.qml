@@ -134,7 +134,7 @@ Item {
                         required property var modelData
 
                         width: toolGrid.cell
-                        height: 92
+                        height: 104
                         interactive: true
                         hovered: toolHov.hovered
 
@@ -156,6 +156,49 @@ Item {
                                 font.family: Tokens.sans
                                 font.pixelSize: 11
                                 wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        // These cards LAUNCH a program, and nothing about them
+                        // said so: a name, a sentence, and a pointer cursor you
+                        // only find by hovering. The command it runs is the
+                        // honest label for a launcher, so the card carries it,
+                        // and the arrow steps out on hover.
+                        Row {
+                            anchors {
+                                left: parent.left; bottom: parent.bottom
+                            }
+                            anchors.leftMargin: 16
+                            anchors.bottomMargin: 13
+                            spacing: 6
+
+                            Text {
+                                text: "▸"
+                                color: toolHov.hovered ? Tokens.accent : Tokens.textFaint
+                                font.family: Tokens.mono
+                                font.pixelSize: Tokens.fsMicro
+                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                            }
+                            Text {
+                                text: toolCard.modelData.run[0]
+                                color: toolHov.hovered ? Tokens.accentDim : Tokens.textFaint
+                                font.family: Tokens.mono
+                                font.pixelSize: Tokens.fsMicro
+                                font.letterSpacing: 0.8
+                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                            }
+
+                            // The whole row shifts right by 4px on hover. Small
+                            // enough not to be an animation you watch, large
+                            // enough that the card answers the pointer.
+                            transform: Translate {
+                                x: toolHov.hovered ? 4 : 0
+                                Behavior on x {
+                                    NumberAnimation {
+                                        duration: Tokens.quick
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
                             }
                         }
 

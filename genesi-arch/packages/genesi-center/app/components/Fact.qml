@@ -22,6 +22,17 @@ Column {
 
     spacing: 4
 
+    // A short rule over each reading. Thirteen label/value pairs in a grid with
+    // nothing between them read as a table of contents; the tick is what makes
+    // each one read as a separate measurement, and it costs 4px of height.
+    // Half-length and left-aligned, so the eye follows the column rather than
+    // the row -- a full-width rule here would draw thirteen boxes instead.
+    Rectangle {
+        width: 14
+        height: 1
+        color: Tokens.accentDeep
+    }
+
     Text {
         text: root.label.toUpperCase()
         color: Tokens.textFaint

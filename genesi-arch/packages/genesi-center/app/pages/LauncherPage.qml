@@ -301,30 +301,117 @@ Item {
                     (width - (columns - 1) * columnSpacing) / columns
 
                 Repeater {
+                    id: groupRep
                     model: page.d.groups || []
+
+                    // A tile whose only content was two lines of prose was the
+                    // flattest thing on the page: the count -- the one number
+                    // that differs between these cards -- was buried mid
+                    // sentence in the same size and colour as the sentence. It
+                    // is the reading, so it is set like one, and the row it
+                    // hides behind is set like the command you would type.
                     delegate: Panel {
+                        id: groupCard
                         required property var modelData
+                        required property int index
+
                         width: groupGrid.cell
-                        height: 74
+                        height: 88
+                        interactive: true
+                        hovered: groupHov.hovered
+                        color: groupHov.hovered ? Tokens.cardHi : Tokens.card
+                        tag: groupCard.index < 9 ? "0" + (groupCard.index + 1)
+                                                 : String(groupCard.index + 1)
 
-                        Column {
-                            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-                            anchors.leftMargin: 16
-                            spacing: 4
-
-                            Text {
-                                text: (page.o.actionPrefix || ">") + modelData.name
-                                color: Tokens.textHi
-                                font.family: Tokens.mono
-                                font.pixelSize: 14
-                            }
-                            Text {
-                                text: qsTr("%1 entries behind one row").arg(modelData.count)
-                                color: Tokens.textDim
-                                font.family: Tokens.sans
-                                font.pixelSize: 11
+                        // The tiles arrive one after another, the same way the
+                        // Overview telemetry does. Eight appearing together is
+                        // a flash; eight in sequence is the page assembling.
+                        opacity: 0
+                        Component.onCompleted: groupIn.start()
+                        SequentialAnimation {
+                            id: groupIn
+                            PauseAnimation { duration: groupCard.index * 60 }
+                            ParallelAnimation {
+                                NumberAnimation {
+                                    target: groupCard; property: "opacity"
+                                    from: 0; to: 1
+                                    duration: Tokens.normal; easing.type: Easing.OutCubic
+                                }
+                                NumberAnimation {
+                                    target: groupBody; property: "anchors.leftMargin"
+                                    from: 4; to: 16
+                                    duration: Tokens.normal; easing.type: Easing.OutCubic
+                                }
                             }
                         }
+
+                        Column {
+                            id: groupBody
+                            anchors {
+                                left: parent.left; right: parent.right
+                                verticalCenter: parent.verticalCenter
+                            }
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 14
+                            spacing: 6
+
+                            // The prompt, drawn as a prompt: the prefix is the
+                            // part you type and the part that is not the name,
+                            // so it is coloured as punctuation and the name is
+                            // not.
+                            Row {
+                                spacing: 0
+                                Text {
+                                    text: page.o.actionPrefix || ">"
+                                    color: Tokens.accent
+                                    font.family: Tokens.mono
+                                    font.pixelSize: 14
+                                }
+                                Text {
+                                    text: groupCard.modelData.name
+                                    color: Tokens.textHi
+                                    font.family: Tokens.mono
+                                    font.pixelSize: 14
+                                }
+                            }
+
+                            Rectangle {
+                                width: parent.width - 2
+                                height: 1
+                                color: groupHov.hovered ? Tokens.accentDeep : Tokens.lineSoft
+                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                            }
+
+                            // A plain Item, not a Row: the unit sits on the
+                            // number's BASELINE, and a positioner top-aligns
+                            // its children instead -- which puts a 9px label
+                            // level with the top of a 19px digit.
+                            Item {
+                                width: parent.width
+                                height: groupCount.height
+
+                                Text {
+                                    id: groupCount
+                                    text: groupCard.modelData.count
+                                    color: groupHov.hovered ? Tokens.accent : Tokens.text
+                                    font.family: Tokens.mono
+                                    font.pixelSize: 19
+                                    Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                                }
+                                Text {
+                                    anchors.left: groupCount.right
+                                    anchors.leftMargin: 6
+                                    anchors.baseline: groupCount.baseline
+                                    text: qsTr("entries · one row")
+                                    color: Tokens.textDim
+                                    font.family: Tokens.mono
+                                    font.pixelSize: Tokens.fsMicro
+                                    font.letterSpacing: 1.1
+                                }
+                            }
+                        }
+
+                        HoverHandler { id: groupHov }
                     }
                 }
             }

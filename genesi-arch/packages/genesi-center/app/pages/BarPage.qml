@@ -277,6 +277,10 @@ Item {
                     spacing: 12
 
                     SectionHead {
+                        // No rule: this head shares its Row with the status
+                        // line beside it, and a rule would fill the row and
+                        // push that off the end.
+                        rule: false
                         index: "—"
                         text: page.shells.length > 1 ? qsTr("Looks for the side rail")
                                                      : qsTr("Looks")

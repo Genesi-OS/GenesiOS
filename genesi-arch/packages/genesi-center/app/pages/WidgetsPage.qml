@@ -96,6 +96,8 @@ Item {
                 // the meaning.
                 Panel {
                     id: placer
+                    // Same reason as shapePreview: this card IS a diagram.
+                    ticks: false
                     width: 232
                     height: clockRow.rowHeight
 

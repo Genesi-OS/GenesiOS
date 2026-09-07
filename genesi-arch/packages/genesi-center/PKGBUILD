@@ -33,7 +33,15 @@ pkgver=0.1.0
 # 4: the Bar page, and the rail hides what the running session cannot do --
 # a control that appears to work and changes nothing is worse than a
 # missing page.
-pkgrel=15
+# 16: the cards have a face. Sixty-two hairline rectangles down a page read
+# as a form, not as an instrument: correct, legible and anonymous. Panel
+# now carries diagonal corner ticks and an optional micro tag, SectionHead
+# finally draws the rule it was named for, and Fact ticks each reading --
+# three shared components, so the change lands on all sixteen pages at
+# once. Then the flat tiles individually: the launcher's groups set their
+# count as a reading, Settings' tool cards name the command they run, and
+# the colour schemes are marked and set as the identifiers they are.
+pkgrel=16
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
