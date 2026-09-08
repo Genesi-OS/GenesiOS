@@ -10,9 +10,27 @@
 #   changes — the "dynamic theme" the static genesi-dark.conf couldn't give.
 #
 #   qt6ct apps read the palette at launch (qt6ct has no live reload), so a scheme
-#   change recolours NEWLY launched apps; that's the same limitation caelestia's
-#   own (absent) Qt theming would have. KDE/KF6 apps (Dolphin) read kdeglobals
-#   instead — a separate, dual-DE-risky step left for a follow-up.
+#   change recolours NEWLY launched apps.
+#
+#   KDE/KF6 APPS ARE THE OTHER HALF, and they were the follow-up this file's
+#   header used to promise. They do not read qt6ct at all: Dolphin, Ark, Kate
+#   and every app built on Kirigami — which is all six Genesi apps that use the
+#   shared UI kit — take their colours from ~/.config/kdeglobals. That file
+#   shipped with nothing in it but [Icons], so those apps fell back to Breeze
+#   defaults and sat there in blue while the rest of the desktop followed the
+#   wallpaper. That is what "the apps do not follow the theme" was.
+#
+#   kdeglobals is written by MERGE, never by replacement: [Icons] and anything
+#   else in there is somebody's, and this only owns the colour groups. KF6 apps
+#   watch the file (KConfigWatcher), so most of them recolour without a restart.
+#
+#   ── The dual-DE risk, and why it is acceptable ──────────────────────────────
+#
+#   kdeglobals is shared with a Plasma session on the same account. This runs
+#   only under Hyprland (it is started from caelestia's hyprland.conf), so a
+#   Plasma login inherits whatever scheme Hyprland last set. That is a
+#   consistent desktop rather than a broken one, and Plasma's own scheme picker
+#   overwrites it the moment somebody uses it.
 #
 # USAGE
 #   genesi-caelestia-theme-sync           # one-shot: regenerate from the scheme
@@ -21,6 +39,8 @@
 # Pure stdlib (no deps). Started with --watch from the caelestia hyprland.conf.
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -32,6 +52,14 @@ SCHEME = _STATE / "caelestia" / "scheme.json"
 QT6CT_DIR = _CFG / "qt6ct"
 COLORS = QT6CT_DIR / "colors" / "genesi-caelestia.conf"
 QT6CT_CONF = QT6CT_DIR / "qt6ct.conf"
+KDEGLOBALS = _CFG / "kdeglobals"
+QT5CT_DIR = _CFG / "qt5ct"
+QT5CT_COLORS = QT5CT_DIR / "colors" / "genesi-caelestia.conf"
+
+# The name that shows up in KDE's own scheme list. It is written into
+# [General] so an app that asks "which scheme is this" has an answer other
+# than an empty string.
+SCHEME_NAME = "Genesi Caelestia"
 
 
 def _hex(c, fallback="000000"):
@@ -136,6 +164,182 @@ def _set_appearance(text, kv):
     return "\n".join(out) + "\n"
 
 
+def _rgb(colours, key, fb="000000"):
+    """KDE writes colours as decimal 'r,g,b', not as hex."""
+    h = _hex(colours.get(key), fb)
+    return "%d,%d,%d" % (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def kdeglobals_groups(colours, mode):
+    """
+    The colour groups every KF6 and Kirigami app reads.
+
+    Six groups plus the window manager's, because KDE does not have one palette
+    — it has one per surface, and an app that only gets [Colors:Window] draws
+    its list views in the default blue-grey while its chrome follows the scheme.
+    That is worse than not theming it at all: it looks broken rather than
+    untouched.
+
+    Every group needs the same twelve keys. A missing key does not inherit from
+    another group; it falls back to Breeze's value for that key, which is how a
+    half-written scheme ends up with one stray blue link on every page.
+    """
+    def g(bg, alt, fg, dim):
+        return {
+            "BackgroundNormal": _rgb(colours, bg, "1a1a1a"),
+            "BackgroundAlternate": _rgb(colours, alt, "202020"),
+            "ForegroundNormal": _rgb(colours, fg, "e6e6e6"),
+            "ForegroundInactive": _rgb(colours, dim, "888888"),
+            "ForegroundActive": _rgb(colours, "primary", "4a90d9"),
+            "ForegroundLink": _rgb(colours, "primary", "4a90d9"),
+            "ForegroundVisited": _rgb(colours, "secondary", "8888aa"),
+            "ForegroundNegative": _rgb(colours, "error", "d64541"),
+            "ForegroundNeutral": _rgb(colours, "tertiary", "d6a441"),
+            "ForegroundPositive": _rgb(colours, "secondary", "41d67a"),
+            "DecorationFocus": _rgb(colours, "primary", "4a90d9"),
+            "DecorationHover": _rgb(colours, "primary", "4a90d9"),
+        }
+
+    groups = {
+        "General": {
+            "ColorScheme": SCHEME_NAME,
+            # Light or dark is not derivable from the colours by anything that
+            # reads this file, and getting it wrong makes an app pick black
+            # icons for a black background.
+            "ColorSchemeHash": mode,
+        },
+        "Colors:Window": g("surface", "surfaceContainer", "onSurface",
+                           "onSurfaceVariant"),
+        # Views are lists and text areas -- the surface a document sits on.
+        "Colors:View": g("surfaceContainerLowest", "surfaceContainerLow",
+                         "onSurface", "onSurfaceVariant"),
+        "Colors:Button": g("surfaceContainer", "surfaceContainerHigh",
+                           "onSurface", "onSurfaceVariant"),
+        "Colors:Selection": g("primary", "primary", "onPrimary", "onPrimary"),
+        "Colors:Tooltip": g("surfaceContainerHigh", "surfaceContainerHighest",
+                            "onSurface", "onSurfaceVariant"),
+        "Colors:Complementary": g("surfaceContainerLowest", "surfaceContainerLow",
+                                  "onSurface", "onSurfaceVariant"),
+        "Colors:Header": g("surfaceContainer", "surfaceContainerHigh",
+                           "onSurface", "onSurfaceVariant"),
+        # Titlebars, for the KDE apps that draw their own.
+        "WM": {
+            "activeBackground": _rgb(colours, "surfaceContainer", "202020"),
+            "activeForeground": _rgb(colours, "onSurface", "e6e6e6"),
+            "inactiveBackground": _rgb(colours, "surface", "1a1a1a"),
+            "inactiveForeground": _rgb(colours, "onSurfaceVariant", "888888"),
+            "activeBlend": _rgb(colours, "primary", "4a90d9"),
+            "inactiveBlend": _rgb(colours, "outline", "888888"),
+        },
+    }
+    return groups
+
+
+def merge_ini(text, groups):
+    """
+    Set the given sections' keys, keeping every other section and key.
+
+    kdeglobals is not ours. It carries [Icons] from the package, whatever KDE
+    apps have written into it, and whatever the user has. Rewriting the file
+    from a template would take the icon theme with it -- which is the shape of
+    the bug this project has already had once, where a first-login race
+    clobbered kdeglobals and every selected item went black.
+    """
+    lines = text.splitlines() if text else []
+    out, current, seen = [], None, {}
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            # Leaving a section we own: append the keys it did not already have.
+            if current in groups:
+                for k, v in groups[current].items():
+                    if k not in seen.get(current, ()):
+                        out.append("%s=%s" % (k, v))
+            current = stripped[1:-1]
+            seen.setdefault(current, set())
+            out.append(line)
+            continue
+        if current in groups and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in groups[current]:
+                out.append("%s=%s" % (key, groups[current][key]))
+                seen[current].add(key)
+                continue
+        out.append(line)
+
+    if current in groups:
+        for k, v in groups[current].items():
+            if k not in seen.get(current, ()):
+                out.append("%s=%s" % (k, v))
+
+    # Sections the file did not have at all.
+    for name, kv in groups.items():
+        if name in seen:
+            continue
+        if out and out[-1].strip():
+            out.append("")
+        out.append("[%s]" % name)
+        out.extend("%s=%s" % (k, v) for k, v in kv.items())
+
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def apply_kde(colours, mode):
+    """Write the colour groups into kdeglobals, keeping everything else."""
+    try:
+        existing = KDEGLOBALS.read_text()
+    except OSError:
+        existing = ""
+    KDEGLOBALS.parent.mkdir(parents=True, exist_ok=True)
+    KDEGLOBALS.write_text(merge_ini(existing, kdeglobals_groups(colours, mode)))
+
+
+def poke_kde():
+    """
+    Tell running KDE apps the palette changed.
+
+    KF6 apps watch kdeglobals through KConfigWatcher and mostly repaint on their
+    own, but the signal is what KDE itself emits and it is what the ones that do
+    not watch are listening for. Without it, "the theme changed" means "the apps
+    you open from now on"; with it, most of what is already open follows.
+
+    Best effort by design: no dbus-send, no signal, no complaint. A theme sync
+    that fails because a notification could not be delivered would be a worse
+    program than one that quietly themes the next launch.
+    """
+    if not shutil.which("dbus-send"):
+        return
+    try:
+        subprocess.run(
+            ["dbus-send", "--session", "--type=signal", "/KGlobalSettings",
+             "org.kde.KGlobalSettings.notifyChange", "int32:2", "int32:0"],
+            capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def apply_qt5(colours):
+    """
+    The same palette for qt5ct, for the Qt5 apps that are still around.
+
+    The colour file is written unconditionally -- it is inert if nothing reads
+    it -- but qt5ct.conf is only touched when it already exists. Creating one
+    would be this package deciding that a machine uses qt5ct, which is not its
+    call and would put a config file in front of a program that is not there.
+    """
+    QT5CT_COLORS.parent.mkdir(parents=True, exist_ok=True)
+    QT5CT_COLORS.write_text(
+        "# Auto-generated by genesi-caelestia-theme-sync.\n"
+        + qt6ct_colorscheme(colours))
+    conf = QT5CT_DIR / "qt5ct.conf"
+    if not conf.exists():
+        return
+    conf.write_text(_set_appearance(conf.read_text(), {
+        "color_scheme_path": str(QT5CT_COLORS),
+        "custom_palette": "true",
+    }))
+
+
 def apply():
     """Regenerate the qt6ct colour scheme from caelestia's active scheme and
     point qt6ct.conf at it. No-op (keeps the static fallback) if no scheme."""
@@ -159,6 +363,19 @@ def apply():
         "custom_palette": "true",
         "icon_theme": icon,
     }))
+
+    # The other two toolkits. Wrapped so a failure in one does not stop the
+    # others: a machine with no kdeglobals is not a reason for Qt apps to go
+    # untouched, and the whole point of this program is that it either themes
+    # everything it can or says which part it could not.
+    for name, fn in (("kdeglobals", lambda: apply_kde(colours, mode)),
+                     ("qt5ct", lambda: apply_qt5(colours)),
+                     ("notify", poke_kde)):
+        try:
+            fn()
+        except Exception as exc:
+            sys.stderr.write("genesi-caelestia-theme-sync: %s: %s\n"
+                             % (name, exc))
     return True
 
 

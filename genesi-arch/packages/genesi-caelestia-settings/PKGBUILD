@@ -163,7 +163,21 @@ pkgver=1.0.0
 # 35: `genesi-bar shell` switches between caelestia's rail and Genesi's own
 # top bar, hyprland.conf starts whichever is remembered, and the migration
 # rewrites existing configs to ask rather than to name one.
-pkgrel=37
+# 38: every window follows the scheme, not just the shell.
+#
+# KDE/KF6 apps -- Dolphin, Ark, and all six Genesi apps built on the
+# shared UI kit -- read ~/.config/kdeglobals, never qt6ct. That file
+# shipped carrying nothing but [Icons], so every one of them fell back
+# to Breeze and sat there in blue while the rest of the desktop followed
+# the wallpaper. That is what "the apps do not follow the theme" was.
+# theme-sync writes the seven colour groups now, by MERGE: [Icons] and
+# anything else in there is somebody's.
+#
+# And GTK was missing two dependencies. caelestia's apply_gtk dconf-writes
+# gtk-theme='adw-gtk3-dark'; without `dconf` that raises inside a
+# @log_exception wrapper -- swallowed, so GTK theming did nothing and said
+# nothing -- and without `adw-gtk3` it selects a theme that is not there.
+pkgrel=38
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -212,6 +226,16 @@ depends=(
     'wl-clipboard'
     'brightnessctl'
     'qt6ct'
+    # The GTK half of the theme, and it was missing entirely.
+    #
+    # caelestia's `apply_gtk` writes gtk.css for GTK3 and GTK4 and then dconf
+    # writes gtk-theme='adw-gtk3-dark'. Without `dconf` that call raises
+    # FileNotFoundError inside a @log_exception wrapper -- swallowed, so GTK
+    # theming did nothing at all and said nothing about it. Without `adw-gtk3`
+    # the theme it selects does not exist, so GTK3 apps fall back to Adwaita
+    # and stay light while the rest of the desktop follows the wallpaper.
+    'dconf'
+    'adw-gtk3'
     'papirus-icon-theme'       # app icons for the launcher/menus (no icon theme
                                # shipped before -> magenta "missing icon" squares)
 )
