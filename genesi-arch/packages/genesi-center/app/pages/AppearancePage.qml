@@ -497,7 +497,7 @@ Item {
             Grid {
                 id: schemeGrid
                 width: parent.width
-                columns: Math.max(2, Math.floor(width / 170))
+                columns: Math.max(2, Math.floor(width / 205))
                 columnSpacing: Tokens.gap
                 rowSpacing: Tokens.gap
 
@@ -509,68 +509,104 @@ Item {
                     delegate: Panel {
                         id: schemeCard
                         required property var modelData
-                        required property int index
+
+                        readonly property var cur: page.d.scheme || ({})
+                        readonly property bool on: cur.name === modelData.name
+                                                   && cur.flavour === modelData.flavour
 
                         width: schemeGrid.cell
-                        height: 54
-                        // No corner ticks: the lozenge already marks this card,
-                        // and on 54px the two land within 20px of each other and
-                        // read as one smudge.
+                        height: 152
+                        // No Genesi ticks and no Genesi card colour: this card
+                        // is painted in the SCHEME's colours, because that is
+                        // the only honest preview of a colour scheme. A row of
+                        // names tells you nothing; this setting's value is a
+                        // picture, so the control is one.
                         ticks: false
                         interactive: true
                         hovered: schemeHov.hovered
-                        color: schemeHov.hovered ? Tokens.cardHi : Tokens.card
+                        color: modelData.surface
+                        border.color: schemeCard.on ? Tokens.accent
+                                                    : (schemeHov.hovered ? modelData.ink
+                                                                         : modelData.outline)
+                        border.width: schemeCard.on ? 2 : 1
 
-                        // A scheme name is an identifier -- "catppuccin",
-                        // "rosepine" -- not prose, so it is set as one. The
-                        // lozenge in front is what turns a wall of twenty
-                        // identical name-cards into a list you can aim at, and
-                        // the arrow says the card DOES something, which a name
-                        // sitting in a box does not.
-                        Text {
-                            id: schemeMark
-                            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-                            anchors.leftMargin: 14
-                            text: "◈"
-                            color: schemeHov.hovered ? Tokens.accent : Tokens.accentDeep
-                            font.family: Tokens.mono
-                            font.pixelSize: 11
-                            Behavior on color { ColorAnimation { duration: Tokens.quick } }
-                        }
+                        Column {
+                            anchors { left: parent.left; right: parent.right; top: parent.top }
+                            anchors.margins: 12
+                            spacing: 9
 
-                        Text {
-                            anchors {
-                                left: schemeMark.right; right: schemeArrow.left
-                                verticalCenter: parent.verticalCenter
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: schemeCard.modelData.flavour === "default"
+                                      ? schemeCard.modelData.name
+                                      : schemeCard.modelData.name + " " + schemeCard.modelData.flavour
+                                color: schemeCard.modelData.ink
+                                font.family: Tokens.sans
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
                             }
-                            anchors.leftMargin: 9
-                            anchors.rightMargin: 8
-                            text: schemeCard.modelData
-                            color: schemeHov.hovered ? Tokens.textHi : Tokens.text
-                            font.family: Tokens.mono
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                        }
 
-                        Text {
-                            id: schemeArrow
-                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                            anchors.rightMargin: 14
-                            text: "→"
-                            color: Tokens.accent
-                            font.family: Tokens.mono
-                            font.pixelSize: 11
-                            opacity: schemeHov.hovered ? 1 : 0
-                            transform: Translate {
-                                x: schemeHov.hovered ? 0 : -5
-                                Behavior on x {
-                                    NumberAnimation {
-                                        duration: Tokens.quick
-                                        easing.type: Easing.OutCubic
+                            // The title bar of an imaginary window, which is
+                            // what tells you these colours are meant to be used
+                            // together rather than merely to sit side by side.
+                            Rectangle {
+                                width: parent.width
+                                height: 22
+                                radius: 5
+                                color: schemeCard.modelData.container
+
+                                Rectangle {
+                                    anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                                    anchors.leftMargin: 7
+                                    width: 26
+                                    height: 7
+                                    radius: 3.5
+                                    color: schemeCard.modelData.swatch[1]
+                                }
+
+                                Row {
+                                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                    anchors.rightMargin: 7
+                                    spacing: 4
+
+                                    Repeater {
+                                        model: [2, 3, 4]
+                                        delegate: Rectangle {
+                                            required property int modelData
+                                            width: 6; height: 6; radius: 3
+                                            color: schemeCard.modelData.swatch[modelData]
+                                        }
                                     }
                                 }
                             }
-                            Behavior on opacity { NumberAnimation { duration: Tokens.quick } }
+
+                            Row {
+                                width: parent.width
+                                spacing: 5
+
+                                Repeater {
+                                    model: schemeCard.modelData.swatch || []
+                                    delegate: Rectangle {
+                                        required property string modelData
+                                        width: (schemeGrid.cell - 24 - 20) / 5
+                                        height: 72
+                                        radius: width / 2
+                                        color: modelData
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            visible: schemeCard.on
+                            anchors { right: parent.right; bottom: parent.bottom }
+                            anchors.margins: 8
+                            text: qsTr("IN USE")
+                            color: Tokens.accent
+                            font.family: Tokens.mono
+                            font.pixelSize: 8
+                            font.letterSpacing: 1
                         }
 
                         HoverHandler { id: schemeHov; cursorShape: Qt.PointingHandCursor }
@@ -579,11 +615,20 @@ Item {
                             // shell, GTK, Qt and the terminal. Which is why it
                             // goes through its own CLI rather than this writing
                             // a colour anywhere itself.
+                            //
+                            // The FLAVOUR goes with the name. Half these
+                            // schemes have several -- catppuccin alone has
+                            // four -- and setting the name alone leaves
+                            // whichever flavour was already in use, so picking
+                            // "catppuccin latte" from a light card would hand
+                            // you mocha and look like the card lied.
                             onTapped: {
-                                if (page.backend)
-                                    page.backend.act(["caelestia", "scheme", "set",
-                                                      "-n", String(schemeCard.modelData)],
-                                                     "appearance");
+                                if (schemeCard.on || !page.backend)
+                                    return;
+                                page.backend.act(["caelestia", "scheme", "set",
+                                                  "-n", String(schemeCard.modelData.name),
+                                                  "-f", String(schemeCard.modelData.flavour)],
+                                                 "appearance");
                             }
                         }
                     }

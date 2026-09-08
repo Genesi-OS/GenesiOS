@@ -640,6 +640,83 @@ def audio():
             "mixer": bool(shutil.which("genesi-open-usb-mixer"))}
 
 
+def _schemes():
+    """
+    Every colour scheme caelestia has, WITH its colours.
+
+    `caelestia scheme list` prints one line of JSON: {name: {flavour: colours}}.
+    This read it as text and took the first whitespace-separated token of each
+    line, which on one line of `json.dumps` output is the single string
+    `{"caelestia":` -- so the Appearance page has been offering exactly one
+    scheme, named after a JSON fragment, and setting it did nothing. Confirmed
+    against the CLI's own source: `print(json.dumps(schemes))`, no indent, and
+    the shell's Schemes.qml parses the same command with JSON.parse.
+
+    Returning the colours as well as the names is what lets a scheme be drawn
+    rather than listed. A row of names tells you nothing about a colour scheme;
+    it is the one kind of setting whose value IS a picture.
+    """
+    out = _run(["caelestia", "scheme", "list"], timeout=10)
+    try:
+        data = json.loads(out)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+
+    def hexish(colours, key, fallback):
+        v = colours.get(key) if isinstance(colours, dict) else None
+        if not isinstance(v, str) or not v:
+            return fallback
+        return v if v.startswith("#") else "#" + v
+
+    out_list = []
+    for name in sorted(data):
+        flavours = data[name]
+        if not isinstance(flavours, dict):
+            continue
+        for flavour in sorted(flavours):
+            c = flavours[flavour]
+            # The five that make a scheme recognisable at a glance, in the
+            # order they read best: the text colour, then the three accents,
+            # then the error red every scheme defines and no two define alike.
+            swatch = [hexish(c, k, d) for k, d in (
+                ("onSurface", "#ffffff"),
+                ("primary", "#888888"),
+                ("tertiary", "#888888"),
+                ("secondary", "#888888"),
+                ("error", "#ff5555"),
+            )]
+            out_list.append({
+                "name": name,
+                "flavour": flavour,
+                # The card is painted in the scheme's OWN colours, so it needs
+                # its ground and its ink as well as the swatch.
+                "surface": hexish(c, "surface", "#111111"),
+                "container": hexish(c, "surfaceContainerHigh",
+                                    hexish(c, "surfaceContainer", "#1a1a1a")),
+                "ink": hexish(c, "onSurface", "#ffffff"),
+                "outline": hexish(c, "outline", hexish(c, "onSurfaceVariant",
+                                                       "#888888")),
+                "swatch": swatch,
+            })
+    return out_list
+
+
+def _current_scheme():
+    """
+    The scheme in use, as {name, flavour}.
+
+    Two calls rather than parsing `caelestia scheme get`'s prose, because the
+    prose is a __str__ nobody promised to keep stable and the flags are the
+    documented interface.
+    """
+    name = _run(["caelestia", "scheme", "get", "--name"], timeout=6).strip()
+    flavour = _run(["caelestia", "scheme", "get", "--flavour"], timeout=6).strip()
+    return {"name": name.splitlines()[0] if name else "",
+            "flavour": flavour.splitlines()[0] if flavour else ""}
+
+
 def appearance():
     """The desktop's own look: the frame, the corners, the wallpaper."""
     cfg = _caelestia_config()
@@ -661,12 +738,8 @@ def appearance():
             cur = (cur or {}).get(key) if isinstance(cur, dict) else None
         v = (cur or {}).get(parts[-1]) if isinstance(cur, dict) else None
         return default if v is None else v
-    schemes = []
-    out = _run(["caelestia", "scheme", "list"], timeout=6)
-    for line in out.splitlines():
-        name = line.strip().split()[0] if line.strip() else ""
-        if name and not name.startswith("-"):
-            schemes.append(name)
+    schemes = _schemes()
+    current = _current_scheme()
     return {
         "available": bool(cfg),
         "border": {
@@ -680,6 +753,7 @@ def appearance():
             os.path.expanduser("~/.local/state/caelestia/wallpaper/path.txt")
         ).strip() or None,
         "schemes": schemes,
+        "scheme": current,
         # hyprshade's own directory, which is where genesi-shaders installs
         # too -- it deliberately does not create a second one, so there is a
         # single list and `hyprshade on <name>` always matches what is shown.

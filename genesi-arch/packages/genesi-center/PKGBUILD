@@ -47,7 +47,17 @@ pkgver=0.1.0
 # the number of columns, and the clock, weather, selection card and mode
 # buttons -- applies to the Genesi one and is hidden next to the other, since a
 # page of controls that quietly do nothing is worse than a page with a shape.
-pkgrel=17
+# 18: the colour schemes are drawn, not listed -- and they were not even
+# listed. `caelestia scheme list` prints ONE line of JSON; this read it as text
+# and took the first whitespace-separated token, which is the string
+# {"caelestia": -- so the page offered exactly one scheme, named after a JSON
+# fragment, and picking it did nothing. It parses the JSON now, which hands us
+# the colours as well as the names, so each scheme is a card painted in its own
+# surface, ink and accents. A colour scheme is the one setting whose value IS a
+# picture. The flavour is set with the name: catppuccin alone has four, and
+# setting the name alone leaves whichever flavour was in use, which would make
+# the card look like it lied.
+pkgrel=18
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
