@@ -11,6 +11,8 @@ that can be tested without a display.
   genesi-center-set caelestia <path> <json>  a value in caelestia's shell.json
   genesi-center-set bind <old> <new> <disp> [arg]   move a shortcut
   genesi-center-set unbind <MODS,KEY>        drop our override
+  genesi-center-set newbind <MODS,KEY> <disp> [arg]  a shortcut of your own
+  genesi-center-set delbind <MODS,KEY>       remove one of those
   genesi-center-set binds                    every override written
   genesi-center-set options                  every option this will write
 
@@ -491,6 +493,12 @@ def cmd_caelestia(path, raw):
 # second unbind on top of the first.
 BIND_MARK = "# genesi-bind"
 
+# A shortcut the user INVENTED, as opposed to one they moved. It gets a
+# mark of its own for two reasons: there is no original combination to
+# unbind, and there is nothing to "put back" -- the page must offer to
+# delete it instead, and it can only tell the two apart by the mark.
+NEWBIND_MARK = "# genesi-newbind"
+
 MODS = ("SUPER", "ALT", "CTRL", "SHIFT")
 
 # Key names, loosely: what Hyprland accepts is xkb's list, which is long. This
@@ -540,17 +548,48 @@ def write_dropin(lines):
 
 
 def drop_bind_block(lines, tag):
-    """Remove the block for one original combination, if it is there."""
+    """
+    Remove the block for one combination, whichever kind it is.
+
+    An override is three lines (mark, unbind, bind); a shortcut we created is
+    two (mark, bind). The count has to come from the mark that was actually
+    found -- skipping a fixed three past a two-line block eats whatever line
+    follows it, which is somebody else's shortcut.
+    """
     out, skip = [], 0
     for line in lines:
         if skip > 0:
             skip -= 1
             continue
-        if line.strip() == f"{BIND_MARK} {tag}":
+        stripped = line.strip()
+        if stripped == f"{BIND_MARK} {tag}":
             skip = 2          # the unbind and the bind under it
+            continue
+        if stripped == f"{NEWBIND_MARK} {tag}":
+            skip = 1          # just the bind under it
             continue
         out.append(line)
     return out
+
+
+def reload_hypr():
+    """
+    `hyprctl reload`, not two `hyprctl keyword` calls.
+
+    A keyword is a config ASSIGNMENT, and `unbind` is not one -- so
+    `hyprctl keyword unbind "SUPER, V"` removed nothing while the paired
+    `keyword bind` happily added the new combination. Both fired, which is what
+    "it duplicates the shortcut" was.
+
+    A reload re-reads hyprland.conf and the drop-in it sources, in that order,
+    so an unbind above a bind does what it does in a file.
+    """
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return
+    try:
+        subprocess.run(["hyprctl", "reload"], capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def cmd_bind(old_combo, new_combo, dispatcher, arg):
@@ -619,6 +658,44 @@ def cmd_unbind(combo):
     print(f"reset {m}, {k}")
 
 
+def cmd_newbind(combo, dispatcher, arg):
+    """
+    A shortcut that did not exist before.
+
+    No `unbind` line, because nothing shipped this combination -- and unbinding
+    a combination nothing bound is not harmless bookkeeping, it is a line in
+    the drop-in that would silently kill the bind if the user later added one
+    for that key in their own config above ours.
+
+    Rebinding the same new combination replaces its block rather than stacking
+    a second bind on the first, the same way cmd_bind does.
+    """
+    if dispatcher not in DISPATCHERS:
+        die(f"{dispatcher!r} is not a dispatcher this writes. "
+            "`genesi-center-set options` lists them.")
+    if re.search(r"[\r\n{}]", arg):
+        die("a shortcut's argument may not contain newlines or braces")
+
+    mods, key = check_combo(*combo.split(",", 1), what="the shortcut")
+    tag = f"{mods},{key}"
+
+    lines = drop_bind_block(read_dropin(), tag)
+    lines += [
+        f"{NEWBIND_MARK} {tag}",
+        f"bind = {mods}, {key}, {dispatcher}" + (f", {arg}" if arg else ""),
+    ]
+    write_dropin(lines)
+    reload_hypr()
+
+
+def cmd_delbind(combo):
+    """Remove a shortcut this created. Leaves overrides alone."""
+    mods, key = check_combo(*combo.split(",", 1), what="the shortcut")
+    lines = drop_bind_block(read_dropin(), f"{mods},{key}")
+    write_dropin(lines)
+    reload_hypr()
+
+
 def cmd_binds():
     """Every override this has written, so a page can mark them."""
     out = []
@@ -640,8 +717,28 @@ def cmd_binds():
                 "arg": (m.group(4) or "").strip() if m else "",
             } if m else None,
         })
-    json.dump({"overrides": out, "dropin": DROPIN}, sys.stdout,
-              ensure_ascii=False)
+    created = []
+    for i, line in enumerate(lines):
+        if not line.strip().startswith(NEWBIND_MARK):
+            continue
+        tag = line.strip()[len(NEWBIND_MARK):].strip()
+        # ONE line under the mark, not two: a shortcut nobody shipped has
+        # nothing to unbind above it.
+        bound = lines[i + 1] if i + 1 < len(lines) else ""
+        m = re.match(r"\s*bind\s*=\s*([^,]*),\s*([^,]+),\s*([^,]+)(?:,\s*(.*))?",
+                     bound)
+        if not m:
+            continue
+        mods, _, key = tag.partition(",")
+        created.append({
+            "mods": mods.split(),
+            "key": key,
+            "dispatcher": m.group(3).strip(),
+            "arg": (m.group(4) or "").strip(),
+        })
+
+    json.dump({"overrides": out, "created": created, "dropin": DROPIN},
+              sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
 
 
@@ -677,12 +774,20 @@ def main():
                  sys.argv[5] if len(sys.argv) > 5 else "")
     elif what == "unbind" and len(sys.argv) == 3:
         cmd_unbind(sys.argv[2])
+    elif what == "newbind" and len(sys.argv) in (4, 5):
+        # "MODS,KEY", dispatcher, [arg]
+        cmd_newbind(sys.argv[2], sys.argv[3],
+                    sys.argv[4] if len(sys.argv) > 4 else "")
+    elif what == "delbind" and len(sys.argv) == 3:
+        cmd_delbind(sys.argv[2])
     else:
         sys.stderr.write(
             "usage: genesi-center-set {hypr <option> <value>"
             " | caelestia <path> <value>"
             " | bind <old MODS,KEY> <new MODS,KEY> <dispatcher> [arg]"
-            " | unbind <MODS,KEY> | binds | options}\n")
+            " | unbind <MODS,KEY>"
+            " | newbind <MODS,KEY> <dispatcher> [arg]"
+            " | delbind <MODS,KEY> | binds | options}\n")
         return 2
     return 0
 

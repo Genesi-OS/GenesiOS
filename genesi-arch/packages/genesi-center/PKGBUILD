@@ -63,7 +63,15 @@ pkgver=0.1.0
 # different. Position and size appear only once a widget is on, because a
 # control for something that is not drawn is a control that appears to do
 # nothing.
-pkgrel=19
+# 20: shortcuts you make yourself. The page could MOVE a shortcut and not add
+# one, and the answer to "I want a new one" was to edit hyprland.conf -- the
+# exact file this app promises never to touch. genesi-center-set grew newbind
+# and delbind, writing a two-line block (no unbind: nothing shipped that
+# combination, and unbinding a combination nobody bound would silently kill it
+# if the user later added their own). ci/center-binds-test.py exercises the
+# drop-in writer, with a neighbouring line under every block, because the skip
+# counts are where an off-by-one eats somebody else's shortcut in silence.
+pkgrel=20
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

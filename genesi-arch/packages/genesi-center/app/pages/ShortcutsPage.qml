@@ -39,6 +39,42 @@ Item {
     // The bind being rebound, while the capture is up.
     property var editing: null
 
+    // The one being invented. `creating` is what tells the shared KeyCapture
+    // which of the two jobs it is doing -- a second capture component would be
+    // a second place for the escape key and the modifier list to drift.
+    property bool creating: false
+    property var newMods: []
+    property string newKey: ""
+    property string newCmd: ""
+
+    // The combinations this app created, so a row can offer to DELETE itself
+    // rather than to put back a shortcut that never shipped.
+    readonly property var mine: {
+        const out = {};
+        for (const c of (page.d.created || []))
+            out[c.mods.join(" ") + "," + c.key] = c;
+        return out;
+    }
+
+    readonly property bool newReady: page.newKey !== "" && page.newCmd.trim() !== ""
+
+    function create() {
+        if (!page.backend || !page.newReady)
+            return;
+        page.backend.act(["genesi-center-set", "newbind",
+                          page.newMods.join(" ") + "," + page.newKey,
+                          "exec", page.newCmd.trim()], "shortcuts");
+        page.newMods = [];
+        page.newKey = "";
+        page.newCmd = "";
+    }
+
+    function forget(bind) {
+        if (page.backend)
+            page.backend.act(["genesi-center-set", "delbind",
+                              page.comboOf(bind)], "shortcuts");
+    }
+
     // "SUPER SHIFT,Q" for a bind, which is how genesi-center-set names one.
     function comboOf(b) {
         return b.mods.join(" ") + "," + b.key;
@@ -176,6 +212,115 @@ Item {
             }
         }
 
+        // ── One of your own ──────────────────────────────────────────────
+        //
+        // Everything below this point is Hyprland's list, which can be moved
+        // but not added to. This is the other thing people come here for, and
+        // until now the answer was "edit hyprland.conf" -- which is exactly
+        // the file this app promises never to touch.
+        SectionHead { index: "—"; text: qsTr("Add one of your own") }
+
+        Panel {
+            width: parent.width
+            height: 92
+            visible: page.ready
+
+            Row {
+                anchors { left: parent.left; right: parent.right; top: parent.top }
+                anchors.margins: 14
+                spacing: 10
+
+                // The key first, because it is the part that can fail: a
+                // command with no combination behind it is a note to self.
+                Rectangle {
+                    id: comboBox
+                    width: 168
+                    height: 34
+                    radius: Tokens.radiusSm
+                    color: page.newKey !== "" ? Tokens.cardHi : Tokens.card
+                    border.width: 1
+                    border.color: page.newKey !== "" ? Tokens.accentDim
+                                                     : (comboHov.hovered ? Tokens.accentDeep
+                                                                         : Tokens.line)
+                    Behavior on border.color { ColorAnimation { duration: Tokens.quick } }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: page.newKey === ""
+                              ? qsTr("SET A COMBINATION")
+                              : (page.newMods.length > 0
+                                 ? page.newMods.join(" + ") + " + " + page.newKey
+                                 : page.newKey)
+                        color: page.newKey === "" ? Tokens.textDim : Tokens.textHi
+                        font.family: Tokens.mono
+                        font.pixelSize: Tokens.fsLabel
+                        font.letterSpacing: 1
+                    }
+
+                    HoverHandler { id: comboHov; cursorShape: Qt.PointingHandCursor }
+                    TapHandler {
+                        onTapped: {
+                            page.creating = true;
+                            capture.start();
+                        }
+                    }
+                }
+
+                Field {
+                    id: cmdField
+                    width: parent.width - 168 - 92 - 20
+                    placeholder: qsTr("command to run, e.g. kitty")
+                    text: page.newCmd
+                    onTextChanged: page.newCmd = text
+                    onAccepted: page.create()
+                }
+
+                Rectangle {
+                    width: 82
+                    height: 34
+                    radius: Tokens.radiusSm
+                    color: page.newReady ? (addHov.hovered ? Tokens.accentDeep : Tokens.cardHi)
+                                         : Tokens.card
+                    border.width: 1
+                    border.color: page.newReady ? Tokens.accentDim : Tokens.lineSoft
+                    opacity: page.newReady ? 1 : 0.5
+                    Behavior on color { ColorAnimation { duration: Tokens.quick } }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("ADD")
+                        color: page.newReady ? Tokens.accent : Tokens.textFaint
+                        font.family: Tokens.mono
+                        font.pixelSize: Tokens.fsLabel
+                        font.letterSpacing: 1.4
+                    }
+
+                    HoverHandler {
+                        id: addHov
+                        enabled: page.newReady
+                        cursorShape: Qt.PointingHandCursor
+                    }
+                    TapHandler {
+                        enabled: page.newReady
+                        onTapped: page.create()
+                    }
+                }
+            }
+
+            Text {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                anchors.margins: 14
+                text: qsTr("It runs a command — the same as `exec` in Hyprland. "
+                           + "It goes in Genesi's drop-in, so your hyprland.conf "
+                           + "is not touched, and the row it makes can be deleted "
+                           + "from the list below.")
+                color: Tokens.textDim
+                font.family: Tokens.sans
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+        }
+
         Panel {
             width: parent.width
             height: bindCol.implicitHeight + 20
@@ -196,6 +341,12 @@ Item {
 
                         readonly property bool moved:
                             page.overridden[page.comboOf(modelData)] !== undefined
+
+                        // A shortcut this app CREATED, as opposed to one it
+                        // moved. It cannot be reset -- there is nothing to go
+                        // back to -- so it offers to be deleted instead.
+                        readonly property bool ours:
+                            page.mine[page.comboOf(modelData)] !== undefined
 
                         width: bindCol.width
                         height: 30
@@ -273,8 +424,8 @@ Item {
 
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: bindRow.moved
-                                text: qsTr("MOVED")
+                                visible: bindRow.moved || bindRow.ours
+                                text: bindRow.ours ? qsTr("YOURS") : qsTr("MOVED")
                                 color: Tokens.accent
                                 font.family: Tokens.mono
                                 font.pixelSize: 8
@@ -283,7 +434,28 @@ Item {
 
                             Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: bindRow.moved
+                                visible: bindRow.ours
+                                width: 62; height: 20; radius: 4
+                                color: delHov.hovered ? Tokens.cardHi : "transparent"
+                                border.width: 1
+                                border.color: delHov.hovered ? Tokens.accentDim
+                                                             : Tokens.line
+                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: qsTr("DELETE")
+                                    color: Tokens.textDim
+                                    font.family: Tokens.mono
+                                    font.pixelSize: 8
+                                    font.letterSpacing: 1
+                                }
+                                HoverHandler { id: delHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: page.forget(bindRow.modelData) }
+                            }
+
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: bindRow.moved && !bindRow.ours
                                 width: 56; height: 20; radius: 4
                                 color: resetHov.hovered ? Tokens.cardHi : "transparent"
                                 border.width: 1
@@ -368,17 +540,29 @@ Item {
 
     KeyCapture {
         id: capture
-        prompt: page.editing
-                ? qsTr("new shortcut for “%1”")
-                  .arg(page.says[page.editing.dispatcher]
-                       || page.editing.dispatcher)
-                : qsTr("press a combination")
+        prompt: {
+            if (page.creating)
+                return qsTr("the combination for your shortcut");
+            if (page.editing)
+                return qsTr("new shortcut for “%1”")
+                    .arg(page.says[page.editing.dispatcher]
+                         || page.editing.dispatcher);
+            return qsTr("press a combination");
+        }
 
         onCaptured: (mods, key) => {
-            if (page.editing)
+            if (page.creating) {
+                page.newMods = mods;
+                page.newKey = key;
+            } else if (page.editing) {
                 page.rebind(page.editing, mods, key);
+            }
             page.editing = null;
+            page.creating = false;
         }
-        onCancelled: page.editing = null
+        onCancelled: {
+            page.editing = null;
+            page.creating = false;
+        }
     }
 }

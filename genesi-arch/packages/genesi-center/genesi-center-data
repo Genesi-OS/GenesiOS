@@ -983,16 +983,33 @@ def shortcuts():
     # Which of these WE moved, so the page can mark them and offer to put
     # them back. Read from genesi-center-set rather than by parsing the
     # drop-in a second way -- it is the thing that writes them.
-    overrides = []
+    #
+    # `created` is the other half: shortcuts the user INVENTED here. They also
+    # appear in `binds` above, because the compositor holds them like any
+    # other -- this is what tells the page which of those rows it may delete.
+    overrides, created = [], []
     if shutil.which("genesi-center-set"):
         try:
-            overrides = json.loads(
-                _run(["genesi-center-set", "binds"], timeout=6) or "{}"
-            ).get("overrides", [])
+            written = json.loads(
+                _run(["genesi-center-set", "binds"], timeout=6) or "{}")
+            overrides = written.get("overrides", [])
+            created = written.get("created", [])
         except (json.JSONDecodeError, ValueError):
-            overrides = []
+            overrides, created = [], []
 
-    return {"available": True, "binds": out, "overrides": overrides}
+    # The dispatchers the setter will accept, so the page offers exactly those
+    # and not a list of its own that drifts.
+    dispatchers = []
+    if shutil.which("genesi-center-set"):
+        try:
+            dispatchers = json.loads(
+                _run(["genesi-center-set", "options"], timeout=6) or "{}"
+            ).get("dispatchers", [])
+        except (json.JSONDecodeError, ValueError):
+            dispatchers = []
+
+    return {"available": True, "binds": out, "overrides": overrides,
+            "created": created, "dispatchers": dispatchers}
 
 
 def _tool_json(argv):
