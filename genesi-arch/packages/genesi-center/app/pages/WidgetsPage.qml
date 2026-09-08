@@ -35,6 +35,48 @@ Item {
                               String(value)], "desktop");
     }
 
+    readonly property var corners: [
+        { id: "", label: qsTr("Where it prefers") },
+        { id: "top-left", label: qsTr("Top left") },
+        { id: "top-centre", label: qsTr("Top centre") },
+        { id: "top-right", label: qsTr("Top right") },
+        { id: "mid-left", label: qsTr("Middle left") },
+        { id: "centre", label: qsTr("Centre") },
+        { id: "mid-right", label: qsTr("Middle right") },
+        { id: "bottom-left", label: qsTr("Bottom left") },
+        { id: "bottom-centre", label: qsTr("Bottom centre") },
+        { id: "bottom-right", label: qsTr("Bottom right") }
+    ]
+
+    // The names and the one line under each. Copy lives with the page that
+    // shows it, not in the data plane, which reports config and nothing else.
+    readonly property var widgetText: ({
+        "weather": [qsTr("Weather"), qsTr("Now: the glyph, the temperature and what it actually feels like.")],
+        "forecast": [qsTr("Forecast"), qsTr("Four days. Five is a table and three is not a forecast.")],
+        "media": [qsTr("Now playing"), qsTr("Art, title, artist and how far through. Hidden when nothing is.")],
+        "cpu": [qsTr("Processor"), qsTr("Load as a ring, with the temperature under it.")],
+        "memory": [qsTr("Memory"), qsTr("Used against total, in GiB.")],
+        "storage": [qsTr("Storage"), qsTr("The primary disk, and how much of it is left.")],
+        "network": [qsTr("Network"), qsTr("Down and up, each on its own line.")],
+        "battery": [qsTr("Battery"), qsTr("Charge and time left. Draws nothing on a desktop.")],
+        "calendar": [qsTr("Calendar"), qsTr("The month, with today marked.")],
+        "analogClock": [qsTr("Analogue clock"), qsTr("Hands. The digital one is better read; this one is better looked at.")],
+        "workspaces": [qsTr("Workspaces"), qsTr("One pill each: filled when occupied, wide when active.")],
+        "notifications": [qsTr("Notifications"), qsTr("The last three still open. A wallpaper is not an inbox.")],
+        "uptime": [qsTr("Uptime"), qsTr("How long since the machine came up.")],
+        "greeting": [qsTr("Greeting"), qsTr("Your name, and the time of day. The one that is not a readout.")]
+    })
+
+    function widgetName(id) {
+        const e = page.widgetText[id];
+        return e ? e[0] : id;
+    }
+
+    function widgetBlurb(id) {
+        const e = page.widgetText[id];
+        return e ? e[1] : "";
+    }
+
     function num(node, key, fallback) {
         const v = node[key];
         return (v === undefined || v === null) ? fallback : Number(v);
@@ -404,5 +446,183 @@ Item {
                 wrapMode: Text.WordWrap
             }
         }
+
+        // ── What Genesi adds ─────────────────────────────────────────────────
+        //
+        // Fourteen rows drawn from one list rather than fourteen hand-written
+        // blocks. A page that repeats itself fourteen times is a page where the
+        // fifteenth widget gets a row that is subtly different from the others.
+        Column {
+            width: parent.width
+            spacing: 10
+            visible: page.ready
+
+            SectionHead { index: "—"; text: qsTr("What Genesi adds") }
+
+            Panel {
+                width: parent.width
+                height: cardsRow.implicitHeight + 8
+
+                Column {
+                    id: cardsRow
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    anchors.margins: 4
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Cards behind them")
+                        description: qsTr("Off, they float on the wallpaper the "
+                                          + "way the clock does. On, they stay "
+                                          + "readable over a busy picture — "
+                                          + "which is most pictures.")
+                        last: true
+                        Toggle {
+                            checked: page.d.cards !== false
+                            onToggled: v => page.set("background.widgets.cards", v)
+                        }
+                    }
+                }
+            }
+
+            Grid {
+                id: wGrid
+                width: parent.width
+                columns: Math.max(1, Math.floor(width / 330))
+                columnSpacing: Tokens.gap
+                rowSpacing: Tokens.gap
+
+                readonly property real cell:
+                    (width - (columns - 1) * columnSpacing) / columns
+
+                Repeater {
+                    model: page.d.widgets || []
+
+                    delegate: Panel {
+                        id: wCard
+                        required property var modelData
+                        required property int index
+
+                        readonly property bool on: modelData.enabled === true
+
+                        width: wGrid.cell
+                        height: 60 + (on ? 74 : 0)
+                        interactive: true
+                        hovered: wHov.hovered
+                        color: on ? Tokens.cardHi : Tokens.card
+                        tag: wCard.index < 9 ? "0" + (wCard.index + 1)
+                                             : String(wCard.index + 1)
+
+                        Behavior on height {
+                            NumberAnimation {
+                                duration: Tokens.normal
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+
+                        Column {
+                            anchors { left: parent.left; right: parent.right; top: parent.top }
+                            anchors.margins: 14
+                            anchors.rightMargin: 34
+                            spacing: 3
+
+                            Text {
+                                text: page.widgetName(wCard.modelData.name)
+                                color: wCard.on ? Tokens.textHi : Tokens.text
+                                font.family: Tokens.sans
+                                font.pixelSize: 13
+                            }
+                            Text {
+                                width: parent.width
+                                text: page.widgetBlurb(wCard.modelData.name)
+                                color: Tokens.textDim
+                                font.family: Tokens.sans
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                elide: Text.ElideRight
+                                maximumLineCount: 2
+                            }
+                        }
+
+                        Toggle {
+                            anchors { right: parent.right; top: parent.top }
+                            anchors.rightMargin: 14
+                            anchors.topMargin: 28
+                            checked: wCard.on
+                            onToggled: v => page.set("background.widgets."
+                                                     + wCard.modelData.name
+                                                     + ".enabled", v)
+                        }
+
+                        // Position and size appear only once the widget is on.
+                        // Controls for something that is not drawn are controls
+                        // that appear to do nothing.
+                        Column {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            anchors.margins: 14
+                            spacing: 8
+                            visible: wCard.on
+                            opacity: wCard.on ? 1 : 0
+
+                            Behavior on opacity { NumberAnimation { duration: Tokens.quick } }
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: qsTr("WHERE")
+                                    color: Tokens.textDim
+                                    font.family: Tokens.mono
+                                    font.pixelSize: Tokens.fsMicro
+                                    font.letterSpacing: 1.1
+                                    width: 48
+                                }
+                                Select {
+                                    width: parent.width - 56
+                                    options: page.corners
+                                    current: wCard.modelData.position || ""
+                                    onPicked: id => page.set("background.widgets."
+                                                             + wCard.modelData.name
+                                                             + ".position", id)
+                                }
+                            }
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: qsTr("SIZE")
+                                    color: Tokens.textDim
+                                    font.family: Tokens.mono
+                                    font.pixelSize: Tokens.fsMicro
+                                    font.letterSpacing: 1.1
+                                    width: 48
+                                }
+                                Slider {
+                                    width: parent.width - 56
+                                    // Percent, not a multiplier: this Slider
+                                    // draws whole numbers, and 0.5 to 2.0 in
+                                    // steps of 0.1 would read "1x" at nearly
+                                    // every stop. The shell wants the
+                                    // multiplier, so the conversion happens on
+                                    // the way out.
+                                    from: 50; to: 200; step: 10; unit: "%"
+                                    value: Math.round(Number(wCard.modelData.scale || 1) * 100)
+                                    onReleased: v => page.set("background.widgets."
+                                                              + wCard.modelData.name
+                                                              + ".scale", v / 100)
+                                }
+                            }
+                        }
+
+                        HoverHandler { id: wHov }
+                    }
+                }
+            }
+        }
+
     }
 }

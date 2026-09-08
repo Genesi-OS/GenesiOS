@@ -57,7 +57,13 @@ pkgver=0.1.0
 # picture. The flavour is set with the name: catppuccin alone has four, and
 # setting the name alone leaves whichever flavour was in use, which would make
 # the card look like it lied.
-pkgrel=18
+# 19: the Widgets page grows the fourteen Genesi adds to the wallpaper, drawn
+# from one list rather than fourteen hand-written blocks -- a page that repeats
+# itself fourteen times is a page where the fifteenth row comes out subtly
+# different. Position and size appear only once a widget is on, because a
+# control for something that is not drawn is a control that appears to do
+# nothing.
+pkgrel=19
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

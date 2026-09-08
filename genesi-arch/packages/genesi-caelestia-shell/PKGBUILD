@@ -85,7 +85,22 @@ pkgver=2.0.3
 # picture. Off to the sides the cards tilt, drop and fall behind; a click on one
 # of those brings it to the middle first rather than repainting the desktop from
 # a half-hidden card.
-pkgrel=23
+# 24: fourteen desktop widgets. caelestia draws two things on the
+# wallpaper -- a clock and an audio visualiser -- and this is the rest of
+# what a desktop is usually asked to show: weather and forecast, what is
+# playing, cpu, memory, storage, network, battery, a calendar, an
+# analogue clock, the workspaces, recent notifications, uptime and a
+# greeting. Each is off by default, sits in one of nine named corners,
+# and scales; everything that lands in the same corner stacks in a
+# column instead of piling on top of itself.
+#
+# Verified by standing the services up as stubs and having Qt parse,
+# instantiate and lay out all sixteen files offscreen with every widget
+# on. That caught what reading them would not have: fourteen of them
+# used `Tokens` without importing Caelestia.Config, which is not a
+# warning but a ReferenceError at every size, radius and font in the
+# widget.
+pkgrel=24
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -104,8 +119,40 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "MousePage.qml"
         "GenesiContent.qml"
         "GenesiAppGrid.qml"
-        "GenesiSchemeFlow.qml")
+        "GenesiSchemeFlow.qml"
+        "GenesiWidgetAnalogClock.qml"
+        "GenesiWidgetBattery.qml"
+        "GenesiWidgetCalendar.qml"
+        "GenesiWidgetCard.qml"
+        "GenesiWidgetCpu.qml"
+        "GenesiWidgetForecast.qml"
+        "GenesiWidgetGreeting.qml"
+        "GenesiWidgetMedia.qml"
+        "GenesiWidgetMemory.qml"
+        "GenesiWidgetNetwork.qml"
+        "GenesiWidgetNotifications.qml"
+        "GenesiWidgetStorage.qml"
+        "GenesiWidgetUptime.qml"
+        "GenesiWidgetWeather.qml"
+        "GenesiWidgetWorkspaces.qml"
+        "GenesiWidgets.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

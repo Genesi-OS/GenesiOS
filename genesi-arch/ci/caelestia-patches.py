@@ -1368,6 +1368,187 @@ def patch_launcher_layout(release):
     print("launcher: the Genesi layout is selectable")
 
 
+# The desktop widgets Genesi adds. The name is the config key, the QML file and
+# the id the host switches on -- one list, so adding a widget cannot half-happen.
+WIDGETS = ["weather", "forecast", "media", "cpu", "memory", "storage",
+           "network", "battery", "calendar", "analogClock", "workspaces",
+           "notifications", "uptime", "greeting"]
+
+WIDGET_FILES = tuple(
+    "GenesiWidget" + n[0].upper() + n[1:] + ".qml" for n in WIDGETS
+) + ("GenesiWidgets.qml", "GenesiWidgetCard.qml")
+
+
+def patch_desktop_widgets(release):
+    """
+    Fourteen more things that can be drawn on the wallpaper.
+
+        background.widgets.<name>.enabled   off by default, every one of them
+        background.widgets.<name>.position  one of nine anchors, "" = the
+                                            widget's own sensible corner
+        background.widgets.<name>.scale     0.5 - 2.0
+        background.widgets.cards            draw a card behind them, or not
+
+    caelestia ships two -- a clock and an audio visualiser -- and both are good.
+    This is the rest of what a desktop is usually asked to show: the weather and
+    its forecast, what is playing, CPU, memory, storage, network, battery, a
+    calendar, an analogue clock, the workspaces, recent notifications, uptime,
+    and a greeting.
+
+    ── Why fourteen subobjects and not one list ─────────────────────────────
+
+    A QVariantList would be one property instead of fourteen. It would also
+    REPLACE wholesale rather than merge -- which is what `launcher.actions`
+    does, and what forces Genesi to carry every one of upstream's defaults in
+    shell.json forever, silently losing any they add. Fourteen subobjects merge
+    per key: a user who turns the weather on has a config saying exactly that,
+    and everything else keeps following our default even when we change it.
+
+    ── One class, and the default position lives in QML ─────────────────────
+
+    Every widget asks the same three questions -- on, where, how big -- so they
+    share ONE config class. The first draft gave each one a subclass so it could
+    carry its own default corner, which does not compile: CONFIG_PROPERTY puts
+    the member behind `private:`, so a subclass cannot set m_position. So the
+    default is the empty string, meaning "the corner this widget prefers", and
+    the host supplies that. It is the better shape anyway -- the preferred
+    corner is a layout decision and it now lives with the layout.
+
+    ── Placement is an anchor, not a coordinate ─────────────────────────────
+
+    Nine named positions, the same vocabulary upstream's desktopClock uses. Free
+    coordinates would need a drag surface to be usable, and a widget dragged
+    half off the screen is invisible with no way back except editing JSON.
+    Widgets sharing an anchor stack in a column instead of piling on top of each
+    other, which is the failure that makes nine anchors feel like two.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "backgroundconfig.hpp")
+    background = os.path.join(release, "modules", "background", "Background.qml")
+    for p in (hpp, background):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the desktop background moved or was renamed.")
+
+    for name in WIDGET_FILES:
+        shipped = os.path.join(release, "modules", "background", name)
+        if os.path.exists(shipped):
+            fail(f"upstream now ships its own {name}. Ours would silently "
+                 "replace it. Decide by hand.")
+
+    src = {p: io.open(p, encoding="utf-8").read() for p in (hpp, background)}
+
+    if "GenesiWidgetConfig" in src[hpp]:
+        fail("backgroundconfig.hpp already has the Genesi widgets -- this ran "
+             "twice, or upstream took the name.")
+
+    anchor = "class BackgroundConfig : public ConfigObject {"
+    if anchor not in src[hpp]:
+        fail("BackgroundConfig is not where the patch expects it.")
+
+    block = (
+        "// Genesi: one desktop widget. On, where, and how big -- the same three\n"
+        "// questions for all fourteen, so they share one class.\n"
+        "//\n"
+        "// `position` defaults to the EMPTY STRING rather than to a corner:\n"
+        "// empty means \"wherever this widget prefers\", and the host knows that.\n"
+        "// A shared default corner would pile every widget somebody turns on\n"
+        "// into the same one, and a per-widget default would need a subclass\n"
+        "// per widget -- which cannot work, because CONFIG_PROPERTY puts the\n"
+        "// member behind private:.\n"
+        "class GenesiWidgetConfig : public ConfigObject {\n"
+        "    Q_OBJECT\n"
+        "    QML_ANONYMOUS\n"
+        "\n"
+        "    CONFIG_PROPERTY(bool, enabled, false)\n"
+        "    CONFIG_PROPERTY(QString, position, QStringLiteral(\"\"))\n"
+        "    CONFIG_PROPERTY(qreal, scale, 1.0)\n"
+        "\n"
+        "public:\n"
+        "    explicit GenesiWidgetConfig(QObject* parent = nullptr)\n"
+        "        : ConfigObject(parent) {}\n"
+        "};\n"
+        "\n"
+        "class GenesiWidgets : public ConfigObject {\n"
+        "    Q_OBJECT\n"
+        "    QML_ANONYMOUS\n"
+        "\n"
+        "    // A card behind each widget. Off, they float on the wallpaper the\n"
+        "    // way the clock does; on, they stay readable on a busy picture,\n"
+        "    // which is most pictures.\n"
+        "    CONFIG_PROPERTY(bool, cards, true)\n")
+    # Written out rather than looped, so each declaration EXISTS as text in
+    # this file. ci/center-wiring-test.py greps here to prove the shell declares
+    # every setting the Center writes, and a line built at run time is a line
+    # that guard cannot see -- a guard that cannot see the thing it checks is
+    # theatre. The loop is kept below to assert the two lists agree.
+    block += (
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, media)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, network)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)\n")
+    for name in WIDGETS:
+        if "CONFIG_SUBOBJECT(GenesiWidgetConfig, %s)" % name not in block:
+            fail(f"WIDGETS lists {name!r} but the declaration block above does "
+                 "not carry it. The list and the block are written separately "
+                 "so the guard can read the block; they have drifted.")
+    block += ("\npublic:\n"
+              "    explicit GenesiWidgets(QObject* parent = nullptr)\n"
+              "        : ConfigObject(parent)\n")
+    block += "".join("        , m_%s(new GenesiWidgetConfig(this))\n" % n
+                     for n in WIDGETS)
+    block += "    {}\n};\n\n"
+
+    out = {hpp: src[hpp].replace(anchor, block + anchor, 1)}
+
+    member = "    CONFIG_SUBOBJECT(BackgroundVisualiser, visualiser)\n"
+    if member not in out[hpp]:
+        fail("BackgroundConfig's members are not where the patch expects them.")
+    out[hpp] = out[hpp].replace(
+        member, member + "    CONFIG_SUBOBJECT(GenesiWidgets, widgets)\n", 1)
+
+    init = "        , m_visualiser(new BackgroundVisualiser(this)) {}\n"
+    if init not in out[hpp]:
+        fail("BackgroundConfig's constructor is not what the patch expects.")
+    out[hpp] = out[hpp].replace(
+        init,
+        "        , m_visualiser(new BackgroundVisualiser(this))\n"
+        "        , m_widgets(new GenesiWidgets(this)) {}\n", 1)
+
+    # The host goes in beside the visualiser, inside the same window, so it
+    # inherits the layer, the screen and the exclusion rules decided there.
+    s = src[background]
+    old = ("            Visualiser {\n"
+           "                anchors.fill: parent\n"
+           "                screen: win.modelData\n"
+           "                wallpaper: wallpaper\n"
+           "            }\n")
+    if old not in s:
+        fail("Background.qml's Visualiser is not where the patch expects it -- "
+             "it is what the widget layer is inserted beside.")
+    new = (old +
+           "\n"
+           "            // Genesi: everything else drawn on the wallpaper.\n"
+           "            GenesiWidgets {\n"
+           "                anchors.fill: parent\n"
+           "            }\n")
+    out[background] = s.replace(old, new, 1)
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("background: %d Genesi desktop widgets" % len(WIDGETS))
+
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__.strip())
@@ -1398,6 +1579,7 @@ def main():
     patch_frame_opacity(release)
     patch_launcher_position(release)
     patch_launcher_layout(release)
+    patch_desktop_widgets(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 
@@ -1420,6 +1602,15 @@ def main():
                  "and Wrapper.qml has already been told to build it.")
         shutil.copyfile(src, os.path.join(launcher_dest, name))
         print(f"installed {name}")
+
+    widget_dest = os.path.join(release, "modules", "background")
+    for name in WIDGET_FILES:
+        src = os.path.join(ours, name)
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- Background.qml has already been told to "
+                 "build the widget layer.")
+        shutil.copyfile(src, os.path.join(widget_dest, name))
+    print(f"installed {len(WIDGET_FILES)} widget files")
     return 0
 
 

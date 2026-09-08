@@ -717,6 +717,14 @@ def _current_scheme():
             "flavour": flavour.splitlines()[0] if flavour else ""}
 
 
+# The desktop widgets Genesi adds, in the order the Center offers them. Kept in
+# step with ci/caelestia-patches.py by ci/center-wiring-test.py, which refuses a
+# setting this app writes and the shell does not declare.
+WIDGETS = ["weather", "forecast", "media", "cpu", "memory", "storage",
+           "network", "battery", "calendar", "analogClock", "workspaces",
+           "notifications", "uptime", "greeting"]
+
+
 def appearance():
     """The desktop's own look: the frame, the corners, the wallpaper."""
     cfg = _caelestia_config()
@@ -811,11 +819,18 @@ def _families():
 
 def desktop():
     """
-    What is drawn ON the wallpaper: the clock and the audio visualiser.
+    What is drawn ON the wallpaper.
 
-    Both are caelestia's, both ship OFF, and until now nothing could turn
-    either on -- so in practice they did not exist. This is the whole of the
-    Widgets page's data.
+    caelestia's two -- the clock and the audio visualiser -- both of which ship
+    OFF and, until this page existed, could not be turned on. And the fourteen
+    Genesi adds beside them: weather, forecast, media, cpu, memory, storage,
+    network, battery, calendar, an analogue clock, workspaces, notifications,
+    uptime and a greeting.
+
+    Every widget reports the same three answers, so the page can draw one row
+    per widget from a list rather than fourteen hand-written blocks. An empty
+    position means "the corner this one prefers", which the shell resolves --
+    a real value, not a missing one.
     """
     cfg = _caelestia_config()
     if not cfg and not os.path.exists(
@@ -824,8 +839,19 @@ def desktop():
     bg = cfg.get("background") or {}
     clock = bg.get("desktopClock") or {}
     vis = bg.get("visualiser") or {}
+    widgets = bg.get("widgets") or {}
     return {
         "available": True,
+        "cards": bool(widgets.get("cards", True)),
+        "widgets": [
+            {
+                "name": name,
+                "enabled": bool((widgets.get(name) or {}).get("enabled", False)),
+                "position": (widgets.get(name) or {}).get("position", ""),
+                "scale": (widgets.get(name) or {}).get("scale", 1.0),
+            }
+            for name in WIDGETS
+        ],
         "clock": {
             "enabled": bool(clock.get("enabled", False)),
             "scale": clock.get("scale", 1.0),

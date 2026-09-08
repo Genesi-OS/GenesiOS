@@ -204,11 +204,27 @@ def main():
                                 "a section"))
 
         # Every option written through the setter must be one it accepts.
+        #
+        # A page with fourteen of something builds the path instead of writing
+        # it out -- `set("background.widgets." + name + ".enabled", v)` -- and
+        # what lands here is the PREFIX. Refusing those outright would push the
+        # page into forty-two hand-written calls; ignoring them would let a page
+        # write into a namespace the shell has never heard of. So a literal
+        # ending in "." is a prefix write, and it has to match at least one
+        # setting the setter accepts. The individual keys are still checked
+        # against the patcher below, through the setter's own table.
         for kind, opt in re.findall(
                 r'"genesi-center-set"\s*,\s*"(hypr|caelestia)"\s*,\s*"([^"]+)"',
                 src):
-            wrote.add(opt)
             table = hypr_opts if kind == "hypr" else cael_opts
+            if opt.endswith("."):
+                matched = [k for k in table if k.startswith(opt)]
+                if not matched:
+                    bad.append((fn, f"builds {kind} paths under {opt!r}, and "
+                                    "genesi-center-set accepts nothing there"))
+                wrote.update(matched)
+                continue
+            wrote.add(opt)
             if opt not in table:
                 bad.append((fn, f"writes {kind} {opt!r}, which "
                                 "genesi-center-set refuses"))
@@ -218,6 +234,16 @@ def main():
                 src):
             table = hypr_opts if kind == "hypr" else cael_opts
             for opt in re.findall(r'\b%s\(\s*"([^"]+)"' % re.escape("set"), src):
+                # Same prefix rule as above: a page that builds fourteen paths
+                # from one literal is not a page writing into nowhere.
+                if opt.endswith("."):
+                    matched = [k for k in table if k.startswith(opt)]
+                    if not matched:
+                        bad.append((fn, f"builds {kind} paths under {opt!r} "
+                                        "through set(), and genesi-center-set "
+                                        "accepts nothing there"))
+                    wrote.update(matched)
+                    continue
                 wrote.add(opt)
                 if opt not in table:
                     bad.append((fn, f"writes {kind} {opt!r} through set(), "
