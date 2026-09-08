@@ -97,3 +97,45 @@ genesi-arch/packages/genesi-update-kcm/*.h    text eol=lf
 genesi-arch/packages/genesi-update-kcm/*.json text eol=lf
 genesi-arch/packages/genesi-update-kcm/CMakeLists.txt text eol=lf
 genesi-arch/packages/genesi-display/genesi-display text eol=lf
+
+# Every remaining extensionless script with a shebang. A CRLF here is
+# `bad interpreter: /usr/bin/env python3^M` on the installed system --
+# the package builds, it installs, and the program does not start.
+# ci/eol-test.py fails the build when a new one appears without a rule,
+# because this list cannot be a pattern: gitattributes has no way to say
+# "a file with no extension".
+
+genesi-arch/archiso/airootfs/usr/local/bin/choose-mirror                   text eol=lf
+genesi-arch/archiso/airootfs/usr/local/bin/dmcheck                         text eol=lf
+genesi-arch/archiso/airootfs/usr/local/bin/nvidia-module-loader            text eol=lf
+genesi-arch/archiso/airootfs/usr/local/bin/pkexec-wrapper                  text eol=lf
+genesi-arch/archiso/airootfs/usr/local/bin/remove-nvidia                   text eol=lf
+genesi-arch/archiso/airootfs/usr/local/bin/removeun                        text eol=lf
+genesi-arch/archiso/airootfs/usr/local/bin/removeun-online                 text eol=lf
+genesi-arch/packages/genesi-ai-mode/genesi-ai-quick-shortcuts              text eol=lf
+genesi-arch/packages/genesi-ai-mode/genesi-ai-tray                         text eol=lf
+genesi-arch/packages/genesi-ai-mode/genesi-automationd                     text eol=lf
+genesi-arch/packages/genesi-ai-mode/monitor/genesi-ai-quick                text eol=lf
+genesi-arch/packages/genesi-caelestia-settings/genesi-caelestia-theme-sync text eol=lf
+genesi-arch/packages/genesi-channel/genesi-channel                         text eol=lf
+genesi-arch/packages/genesi-channel/genesi-channel-gui                     text eol=lf
+genesi-arch/packages/genesi-containers/genesi-containers                   text eol=lf
+genesi-arch/packages/genesi-containers/genesi-containers-tray              text eol=lf
+genesi-arch/packages/genesi-db-explorer/genesi-db                          text eol=lf
+genesi-arch/packages/genesi-forge/genesi-forge                             text eol=lf
+genesi-arch/packages/genesi-gaming/genesi-game                             text eol=lf
+genesi-arch/packages/genesi-grub-theme/genesi-grub-theme-check             text eol=lf
+genesi-arch/packages/genesi-grub-theme/genesi-grub-update                  text eol=lf
+genesi-arch/packages/genesi-input/genesi-input                             text eol=lf
+genesi-arch/packages/genesi-mempalace/genesi-mempalace                     text eol=lf
+genesi-arch/packages/genesi-netinspect/genesi-netinspect                   text eol=lf
+genesi-arch/packages/genesi-netinspect/genesi-netinspect-gui               text eol=lf
+genesi-arch/packages/genesi-netinspect/genesi-proxy                        text eol=lf
+genesi-arch/packages/genesi-ports/genesi-ports                             text eol=lf
+genesi-arch/packages/genesi-ports/genesi-ports-gui                         text eol=lf
+genesi-arch/packages/genesi-ports/genesi-ports-panel-migrate               text eol=lf
+genesi-arch/packages/genesi-ports/genesi-ports-tray                        text eol=lf
+genesi-arch/packages/genesi-sandboxes/genesi-sandboxes                     text eol=lf
+genesi-arch/packages/genesi-sandboxes/genesi-sandboxes-gui                 text eol=lf
+genesi-arch/packages/genesi-settings/genesi-fix-sddm-contrast              text eol=lf
+genesi-arch/packages/genesi-snapshots/genesi-snapshots-recovery-autostart  text eol=lf
