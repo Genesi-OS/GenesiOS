@@ -1376,7 +1376,8 @@ WIDGETS = ["weather", "forecast", "media", "cpu", "memory", "storage",
 
 WIDGET_FILES = tuple(
     "GenesiWidget" + n[0].upper() + n[1:] + ".qml" for n in WIDGETS
-) + ("GenesiWidgets.qml", "GenesiWidgetCard.qml")
+) + ("GenesiWidgets.qml", "GenesiWidgetCard.qml", "GenesiWidgetHost.qml",
+     "GenesiDesktopMenu.qml")
 
 
 def patch_desktop_widgets(release):
@@ -1462,6 +1463,12 @@ def patch_desktop_widgets(release):
         "    CONFIG_PROPERTY(bool, enabled, false)\n"
         "    CONFIG_PROPERTY(QString, position, QStringLiteral(\"\"))\n"
         "    CONFIG_PROPERTY(qreal, scale, 1.0)\n"
+        "    // Where a DRAGGED widget landed, as a fraction of the screen.\n"
+        "    // Fractions and not pixels, because the config outlives the\n"
+        "    // monitor: a widget dropped at x=1700 on a 1920 screen is off\n"
+        "    // the edge of a 1366 one. Only read when position is \"free\".\n"
+        "    CONFIG_PROPERTY(qreal, x, 0.05)\n"
+        "    CONFIG_PROPERTY(qreal, y, 0.05)\n"
         "\n"
         "public:\n"
         "    explicit GenesiWidgetConfig(QObject* parent = nullptr)\n"
@@ -1549,6 +1556,130 @@ def patch_desktop_widgets(release):
 
 
 
+DOCK_FILES = ("GenesiDock.qml",)
+
+
+def patch_dock(release):
+    """
+    A dock: the open applications, along the bottom edge.
+
+        dock.enabled        off by default
+        dock.iconSize       px
+        dock.flow           the animated line running between the icons
+        dock.hideWhenEmpty  no windows, no dock
+        dock.background     draw a bar behind the icons at all
+        dock.backgroundOpacity  0-100
+        dock.radius         the bar's corners
+        dock.iconRadius     the icons' corners
+        dock.spacing        the gap the flow runs across
+        dock.padding        the bar's inner padding
+
+    caelestia has a bar and no dock, and the bar is a vertical rail that shows
+    workspaces rather than applications. This is the other thing: what is open,
+    as icons, where Windows and macOS have taught everyone to look for it.
+
+    ── Its own window, on the Top layer ─────────────────────────────────────
+
+    Not part of the background layer, which sits UNDER windows -- a dock you
+    cannot see because Firefox is in front of it is not a dock. Its own
+    layer-shell surface, above windows, with an input mask that covers the bar
+    and nothing else: the rest of that strip has to keep belonging to whatever
+    is underneath it, or the bottom of every maximised window stops responding.
+
+    ── The one edit to upstream is one line in shell.qml ────────────────────
+
+    `GenesiDock {}` beside `Background {}`. The file lives in modules/background
+    so the import list at the top of shell.qml does not change either -- the
+    window it opens decides its own layer, so where the file sits costs nothing
+    and buying a second import line costs a second thing to assert.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "backgroundconfig.hpp")
+    cfg = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "config.hpp")
+    # The members are DECLARED in config.hpp and INITIALISED in config.cpp --
+    # where there are two constructors, both listing every one. Patching only
+    # the header compiles and leaves m_dock null in whichever constructor was
+    # missed, which is a crash on the first read of Config.dock.
+    ccpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                        "config.cpp")
+    shell = os.path.join(release, "shell.qml")
+    for p in (hpp, cfg, ccpp, shell):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the shell's layout moved.")
+
+    for name in DOCK_FILES:
+        shipped = os.path.join(release, "modules", "background", name)
+        if os.path.exists(shipped):
+            fail(f"upstream now ships its own {name}. Decide by hand.")
+
+    src = {p: io.open(p, encoding="utf-8").read()
+           for p in (hpp, cfg, ccpp, shell)}
+
+    if "GenesiDockConfig" in src[hpp] or "GenesiDockConfig" in src[cfg]:
+        fail("the dock config is already there -- this ran twice, or upstream "
+             "took the name.")
+
+    anchor = "class BackgroundConfig : public ConfigObject {"
+    if anchor not in src[hpp]:
+        fail("BackgroundConfig is not where the dock patch expects it.")
+    block = (
+        "// Genesi: the dock. It lives in this header rather than one of its own\n"
+        "// because config.hpp already includes this one, and a new header would\n"
+        "// be a second file to add to the build for one class.\n"
+        "class GenesiDockConfig : public ConfigObject {\n"
+        "    Q_OBJECT\n"
+        "    QML_ANONYMOUS\n"
+        "\n"
+        "    CONFIG_PROPERTY(bool, enabled, false)\n"
+        "    CONFIG_PROPERTY(int, iconSize, 44)\n"
+        "    CONFIG_PROPERTY(bool, flow, true)\n"
+        "    CONFIG_PROPERTY(bool, hideWhenEmpty, true)\n"
+        "    // The look. `background` off leaves the icons floating on the\n"
+        "    // desktop with nothing behind them, which is a different thing\n"
+        "    // from an opacity of zero: no bar means no border either.\n"
+        "    CONFIG_PROPERTY(bool, background, true)\n"
+        "    CONFIG_PROPERTY(int, backgroundOpacity, 82)\n"
+        "    CONFIG_PROPERTY(int, radius, 28)\n"
+        "    CONFIG_PROPERTY(int, iconRadius, 16)\n"
+        "    CONFIG_PROPERTY(int, spacing, 28)\n"
+        "    CONFIG_PROPERTY(int, padding, 16)\n"
+        "\n"
+        "public:\n"
+        "    explicit GenesiDockConfig(QObject* parent = nullptr)\n"
+        "        : ConfigObject(parent) {}\n"
+        "};\n"
+        "\n")
+    out = {hpp: src[hpp].replace(anchor, block + anchor, 1)}
+
+    member = "    CONFIG_SUBOBJECT(BackgroundConfig, background)\n"
+    if member not in src[cfg]:
+        fail("config.hpp's members are not where the dock patch expects them.")
+    out[cfg] = src[cfg].replace(
+        member, member + "    CONFIG_SUBOBJECT(GenesiDockConfig, dock)\n", 1)
+
+    init = "    , m_background(new BackgroundConfig(this))\n"
+    n = src[ccpp].count(init)
+    if n != 2:
+        fail(f"config.cpp initialises m_background {n} times, not 2 -- the "
+             "constructors changed, and a member added to only some of them "
+             "is null in the rest.")
+    out[ccpp] = src[ccpp].replace(
+        init, init + "    , m_dock(new GenesiDockConfig(this))\n")
+
+    line = "    Background {}\n"
+    if line not in src[shell]:
+        fail("shell.qml does not instantiate Background where the dock patch "
+             "expects it -- that is the line the dock goes beside.")
+    out[shell] = src[shell].replace(
+        line, line + "    GenesiDock {}\n", 1)
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("dock: a dock, on its own layer")
+
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__.strip())
@@ -1580,6 +1711,7 @@ def main():
     patch_launcher_position(release)
     patch_launcher_layout(release)
     patch_desktop_widgets(release)
+    patch_dock(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 
@@ -1611,6 +1743,14 @@ def main():
                  "build the widget layer.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(WIDGET_FILES)} widget files")
+
+    for name in DOCK_FILES:
+        src = os.path.join(ours, name)
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- shell.qml has already been told to "
+                 "build the dock.")
+        shutil.copyfile(src, os.path.join(widget_dest, name))
+    print(f"installed {len(DOCK_FILES)} dock file(s)")
     return 0
 
 

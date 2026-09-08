@@ -45,7 +45,11 @@ Item {
         { id: "mid-right", label: qsTr("Middle right") },
         { id: "bottom-left", label: qsTr("Bottom left") },
         { id: "bottom-centre", label: qsTr("Bottom centre") },
-        { id: "bottom-right", label: qsTr("Bottom right") }
+        { id: "bottom-right", label: qsTr("Bottom right") },
+        // Not pickable in the usual sense -- it is what a widget becomes when
+        // it is dragged on the desktop. It is in the list so a dragged widget
+        // says where it is rather than showing a blank.
+        { id: "free", label: qsTr("Where you dropped it") }
     ]
 
     // The names and the one line under each. Copy lives with the page that
@@ -456,6 +460,142 @@ Item {
             width: parent.width
             spacing: 10
             visible: page.ready
+
+            SectionHead { index: "—"; text: qsTr("The dock") }
+
+            Panel {
+                width: parent.width
+                height: dockCol.implicitHeight + 8
+
+                Column {
+                    id: dockCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    anchors.margins: 4
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Show the dock")
+                        description: qsTr("The open applications as icons along "
+                                          + "the bottom edge, grouped one icon "
+                                          + "per application. It sits above "
+                                          + "windows, so it is there when you "
+                                          + "need it.")
+                        Toggle {
+                            checked: (page.d.dock || ({})).enabled === true
+                            onToggled: v => page.set("dock.enabled", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Icon size")
+                        visible: (page.d.dock || ({})).enabled === true
+                        Slider {
+                            width: 200
+                            from: 24; to: 96; step: 4; unit: "px"
+                            value: page.num(page.d.dock || ({}), "iconSize", 44)
+                            onReleased: v => page.set("dock.iconSize", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("The flow")
+                        description: qsTr("Lights running along a track between "
+                                          + "one icon and the next. Decoration, "
+                                          + "and the thing that makes a row of "
+                                          + "icons feel like part of a desktop.")
+                        visible: (page.d.dock || ({})).enabled === true
+                        Toggle {
+                            checked: (page.d.dock || ({})).flow !== false
+                            onToggled: v => page.set("dock.flow", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Hide it when nothing is open")
+                        description: qsTr("An empty dock is a bar with nothing "
+                                          + "in it.")
+                        visible: (page.d.dock || ({})).enabled === true
+                        Toggle {
+                            checked: (page.d.dock || ({})).hideWhenEmpty !== false
+                            onToggled: v => page.set("dock.hideWhenEmpty", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("A bar behind the icons")
+                        description: qsTr("Off, the icons float on the desktop "
+                                          + "with nothing behind them — which "
+                                          + "is not the same as a bar at zero: "
+                                          + "no bar means no edge either.")
+                        visible: (page.d.dock || ({})).enabled === true
+                        Toggle {
+                            checked: (page.d.dock || ({})).background !== false
+                            onToggled: v => page.set("dock.background", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("How solid that bar is")
+                        visible: (page.d.dock || ({})).enabled === true
+                                 && (page.d.dock || ({})).background !== false
+                        Slider {
+                            width: 200
+                            from: 0; to: 100; step: 2; unit: "%"
+                            value: page.num(page.d.dock || ({}), "backgroundOpacity", 82)
+                            onReleased: v => page.set("dock.backgroundOpacity", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("The bar's corners")
+                        visible: (page.d.dock || ({})).enabled === true
+                                 && (page.d.dock || ({})).background !== false
+                        Slider {
+                            width: 200
+                            from: 0; to: 40; step: 2; unit: "px"
+                            value: page.num(page.d.dock || ({}), "radius", 28)
+                            onReleased: v => page.set("dock.radius", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("The icons' corners")
+                        description: qsTr("Past half an icon's width it is a "
+                                          + "circle, and stays one.")
+                        visible: (page.d.dock || ({})).enabled === true
+                        Slider {
+                            width: 200
+                            from: 0; to: 32; step: 2; unit: "px"
+                            value: page.num(page.d.dock || ({}), "iconRadius", 16)
+                            onReleased: v => page.set("dock.iconRadius", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Space between icons")
+                        description: qsTr("Also how far the flow has to run.")
+                        visible: (page.d.dock || ({})).enabled === true
+                        Slider {
+                            width: 200
+                            from: 0; to: 80; step: 4; unit: "px"
+                            value: page.num(page.d.dock || ({}), "spacing", 28)
+                            onReleased: v => page.set("dock.spacing", v)
+                        }
+                    }
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Padding inside the bar")
+                        visible: (page.d.dock || ({})).enabled === true
+                        last: true
+                        Slider {
+                            width: 200
+                            from: 0; to: 40; step: 2; unit: "px"
+                            value: page.num(page.d.dock || ({}), "padding", 16)
+                            onReleased: v => page.set("dock.padding", v)
+                        }
+                    }
+                }
+            }
 
             SectionHead { index: "—"; text: qsTr("What Genesi adds") }
 

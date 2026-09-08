@@ -71,7 +71,14 @@ pkgver=0.1.0
 # if the user later added their own). ci/center-binds-test.py exercises the
 # drop-in writer, with a neighbouring line under every block, because the skip
 # counts are where an off-by-one eats somebody else's shortcut in silence.
-pkgrel=20
+# 21: the dock, and free widget positions. The Widgets page grew a section for
+# the dock (on, icon size, the flow, hide-when-empty, and the whole look: the
+# bar on or off, how solid, its corners, the icons corners, spacing, padding),
+# and the widget position list grew "Where you dropped it" -- which is not a
+# choice you make here but what a widget becomes when it is dragged on the
+# desktop, and it is in the list so a dragged widget says where it is rather
+# than showing a blank.
+pkgrel=21
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

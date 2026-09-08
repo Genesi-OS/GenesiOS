@@ -1,8 +1,9 @@
-// GENESI — the things drawn on the wallpaper.
+// GENESI — the things drawn on the wallpaper, and the menu that manages them.
 //
 // caelestia ships two: a clock and an audio visualiser. This is the layer that
-// holds the rest, and it does three jobs and no more -- decide what is on,
-// decide where it goes, and stack whatever lands in the same corner.
+// holds the rest, and it does four jobs -- decide what is on, decide where it
+// goes, stack whatever lands in the same corner, and let a right-click on the
+// desktop change any of that without opening an app.
 //
 // ── Adding a widget is two lines and a file ─────────────────────────────────
 //
@@ -12,18 +13,27 @@
 // through a switch over fourteen Components, because a switch is a fifteenth
 // place to forget.
 //
-// ── Nine anchors, and why they stack ────────────────────────────────────────
+// ── Nine anchors, or anywhere ───────────────────────────────────────────────
 //
-// Free coordinates would want a drag surface, and a widget dragged half off a
-// screen is invisible with no way back except editing JSON. So: nine named
-// corners, the same vocabulary upstream's desktopClock uses.
+// A widget sits in one of nine named corners, and everything that lands in one
+// corner goes in a COLUMN -- without that, turning on the second widget draws
+// it exactly on top of the first and nine anchors behave like nine slots.
 //
-// Everything that lands in one corner goes in a COLUMN. Without that, turning
-// on the second widget draws it exactly on top of the first, and nine anchors
-// behave like nine slots -- which is the version of this that feels broken.
+// Or it is dragged, and then its position is "free" and it remembers where it
+// was dropped as a FRACTION of the screen. Fractions because the config
+// outlives the monitor: a widget dropped at x=1700 on a 1920 screen is off the
+// edge of a 1366 one.
+//
+// ── Writing goes through genesi-center-set ──────────────────────────────────
+//
+// The menu does not edit shell.json. It shells out to the same writer Genesi
+// Center uses, which validates the key and the value and owns the file format.
+// Two programs writing one JSON file by two sets of rules is how a config ends
+// up with a key that only one of them understands.
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell
 import Caelestia.Config
 import qs.components
 
@@ -96,6 +106,23 @@ Item {
     readonly property int margin: Tokens.padding.extraLargeIncreased + Config.border.thickness
     readonly property int gap: Tokens.spacing.large
 
+    // Arrange mode. While it is on, every widget can be dragged and says so;
+    // while it is off, nothing on the wallpaper is draggable, because a desktop
+    // whose contents move when you brush past them is a desktop you stop
+    // putting things on.
+    property bool arranging: false
+
+    function cfgOf(name: string): var {
+        return Config.background.widgets[name];
+    }
+
+    function write(name: string, leaf: string, value: string): void {
+        // The same writer Genesi Center uses. It validates the key and the
+        // value; this does not want a second opinion about either.
+        Quickshell.execDetached(["genesi-center-set", "caelestia",
+                                 `background.widgets.${name}.${leaf}`, value]);
+    }
+
     // The names enabled at one anchor, in the order `defs` lists them. Reading
     // `enabled` and `position` here is what makes the callers' bindings track
     // them: a binding follows every notifiable property read while it runs,
@@ -103,11 +130,32 @@ Item {
     function at(anchor: string): var {
         const out = [];
         for (const d of root.defs) {
-            const c = Config.background.widgets[d.name];
+            const c = root.cfgOf(d.name);
             if (c && c.enabled && (c.position || d.home) === anchor)
                 out.push(d.name);
         }
         return out;
+    }
+
+    function floating(): var {
+        const out = [];
+        for (const d of root.defs) {
+            const c = root.cfgOf(d.name);
+            if (c && c.enabled && c.position === "free")
+                out.push(d.name);
+        }
+        return out;
+    }
+
+    // ── Right-click anywhere on the wallpaper ────────────────────────────────
+    //
+    // RightButton only. Accepting every button would swallow the left click as
+    // well, and this window covers the whole screen -- the desktop would stop
+    // responding to anything else that ever wants a click there.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.RightButton
+        onClicked: event => menu.openAt(event.x, event.y)
     }
 
     // ── The nine ─────────────────────────────────────────────────────────────
@@ -165,6 +213,60 @@ Item {
         anchors.margins: root.margin
     }
 
+    // ── And the dragged ones ─────────────────────────────────────────────────
+    Repeater {
+        model: root.floating()
+
+        Item {
+            id: floater
+
+            required property string modelData
+
+            readonly property var cfg: root.cfgOf(floater.modelData)
+
+            width: body.implicitWidth * body.scale
+            height: body.implicitHeight * body.scale
+
+            x: (floater.cfg?.x ?? 0.05) * root.width
+            y: (floater.cfg?.y ?? 0.05) * root.height
+
+            GenesiWidgetHost {
+                id: body
+
+                widget: floater.modelData
+                corner: "top-left"
+                arranging: root.arranging
+
+                // Dropped, so remember where. The binding above is restored by
+                // hand afterwards: the drag wrote x and y imperatively, which
+                // breaks it, and a widget that stops following its own config
+                // is one that jumps back to where it was on the next reload
+                // and nowhere else.
+                onDropped: {
+                    const fx = Math.max(0, Math.min(0.98, floater.x / root.width));
+                    const fy = Math.max(0, Math.min(0.98, floater.y / root.height));
+                    root.write(floater.modelData, "x", fx.toFixed(4));
+                    root.write(floater.modelData, "y", fy.toFixed(4));
+                    floater.x = Qt.binding(() => (floater.cfg?.x ?? 0.05) * root.width);
+                    floater.y = Qt.binding(() => (floater.cfg?.y ?? 0.05) * root.height);
+                }
+                dragTarget: floater
+            }
+        }
+    }
+
+    GenesiDesktopMenu {
+        id: menu
+
+        defs: root.defs
+        onToggle: name => {
+            const c = root.cfgOf(name);
+            root.write(name, "enabled", c && c.enabled ? "false" : "true");
+        }
+        onArrange: root.arranging = !root.arranging
+        arranging: root.arranging
+    }
+
     component Slot: Column {
         id: slot
 
@@ -175,48 +277,24 @@ Item {
         Repeater {
             model: root.at(slot.anchorName)
 
-            Loader {
-                id: holder
-
+            GenesiWidgetHost {
                 required property string modelData
 
-                readonly property var cfg: Config.background.widgets[holder.modelData]
+                widget: modelData
+                corner: slot.anchorName
+                arranging: root.arranging
 
-                // Built by name. The file, the config key and this string are
-                // one identifier, so a widget that exists is reachable and one
-                // that is not fails visibly at its own Loader instead of
-                // quietly not being drawn.
-                source: Qt.resolvedUrl("GenesiWidget" + holder.modelData.charAt(0).toUpperCase() + holder.modelData.slice(1) + ".qml")
-                asynchronous: true
-
-                // Scale from the corner the widget is anchored to, so growing
-                // one does not push it off the edge of the screen it sits in.
-                transformOrigin: {
-                    const a = slot.anchorName;
-                    if (a === "top-left")
-                        return Item.TopLeft;
-                    if (a === "top-centre")
-                        return Item.Top;
-                    if (a === "top-right")
-                        return Item.TopRight;
-                    if (a === "mid-left")
-                        return Item.Left;
-                    if (a === "mid-right")
-                        return Item.Right;
-                    if (a === "bottom-left")
-                        return Item.BottomLeft;
-                    if (a === "bottom-centre")
-                        return Item.Bottom;
-                    if (a === "bottom-right")
-                        return Item.BottomRight;
-                    return Item.Center;
-                }
-                scale: Math.max(0.5, Math.min(2, holder.cfg?.scale ?? 1))
-
-                opacity: status === Loader.Ready ? 1 : 0
-
-                Behavior on opacity {
-                    Anim {}
+                // Dragging an ANCHORED widget is what makes it free. The drop
+                // point is where it already is on screen, mapped into the
+                // layer -- otherwise the widget would jump to a corner of its
+                // own column the moment it stopped being anchored.
+                onDropped: {
+                    const p = mapToItem(root, 0, 0);
+                    const fx = Math.max(0, Math.min(0.98, p.x / root.width));
+                    const fy = Math.max(0, Math.min(0.98, p.y / root.height));
+                    root.write(modelData, "x", fx.toFixed(4));
+                    root.write(modelData, "y", fy.toFixed(4));
+                    root.write(modelData, "position", "free");
                 }
             }
         }

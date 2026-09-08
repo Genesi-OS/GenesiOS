@@ -197,47 +197,86 @@ CAELESTIA_PATHS = {
     # the shell resolves -- so it is a legal value, not a missing one.
     "background.widgets.cards": ("bool",),
     "background.widgets.weather.enabled": ("bool",),
-    "background.widgets.weather.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.weather.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.weather.scale": ("float", 0.5, 2.0),
+    "background.widgets.weather.x": ("float", 0.0, 1.0),
+    "background.widgets.weather.y": ("float", 0.0, 1.0),
     "background.widgets.forecast.enabled": ("bool",),
-    "background.widgets.forecast.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.forecast.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.forecast.scale": ("float", 0.5, 2.0),
+    "background.widgets.forecast.x": ("float", 0.0, 1.0),
+    "background.widgets.forecast.y": ("float", 0.0, 1.0),
     "background.widgets.media.enabled": ("bool",),
-    "background.widgets.media.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.media.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.media.scale": ("float", 0.5, 2.0),
+    "background.widgets.media.x": ("float", 0.0, 1.0),
+    "background.widgets.media.y": ("float", 0.0, 1.0),
     "background.widgets.cpu.enabled": ("bool",),
-    "background.widgets.cpu.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.cpu.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.cpu.scale": ("float", 0.5, 2.0),
+    "background.widgets.cpu.x": ("float", 0.0, 1.0),
+    "background.widgets.cpu.y": ("float", 0.0, 1.0),
     "background.widgets.memory.enabled": ("bool",),
-    "background.widgets.memory.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.memory.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.memory.scale": ("float", 0.5, 2.0),
+    "background.widgets.memory.x": ("float", 0.0, 1.0),
+    "background.widgets.memory.y": ("float", 0.0, 1.0),
     "background.widgets.storage.enabled": ("bool",),
-    "background.widgets.storage.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.storage.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.storage.scale": ("float", 0.5, 2.0),
+    "background.widgets.storage.x": ("float", 0.0, 1.0),
+    "background.widgets.storage.y": ("float", 0.0, 1.0),
     "background.widgets.network.enabled": ("bool",),
-    "background.widgets.network.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.network.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.network.scale": ("float", 0.5, 2.0),
+    "background.widgets.network.x": ("float", 0.0, 1.0),
+    "background.widgets.network.y": ("float", 0.0, 1.0),
     "background.widgets.battery.enabled": ("bool",),
-    "background.widgets.battery.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.battery.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.battery.scale": ("float", 0.5, 2.0),
+    "background.widgets.battery.x": ("float", 0.0, 1.0),
+    "background.widgets.battery.y": ("float", 0.0, 1.0),
     "background.widgets.calendar.enabled": ("bool",),
-    "background.widgets.calendar.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.calendar.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.calendar.scale": ("float", 0.5, 2.0),
+    "background.widgets.calendar.x": ("float", 0.0, 1.0),
+    "background.widgets.calendar.y": ("float", 0.0, 1.0),
     "background.widgets.analogClock.enabled": ("bool",),
-    "background.widgets.analogClock.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.analogClock.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.analogClock.scale": ("float", 0.5, 2.0),
+    "background.widgets.analogClock.x": ("float", 0.0, 1.0),
+    "background.widgets.analogClock.y": ("float", 0.0, 1.0),
     "background.widgets.workspaces.enabled": ("bool",),
-    "background.widgets.workspaces.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.workspaces.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.workspaces.scale": ("float", 0.5, 2.0),
+    "background.widgets.workspaces.x": ("float", 0.0, 1.0),
+    "background.widgets.workspaces.y": ("float", 0.0, 1.0),
     "background.widgets.notifications.enabled": ("bool",),
-    "background.widgets.notifications.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.notifications.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.notifications.scale": ("float", 0.5, 2.0),
+    "background.widgets.notifications.x": ("float", 0.0, 1.0),
+    "background.widgets.notifications.y": ("float", 0.0, 1.0),
     "background.widgets.uptime.enabled": ("bool",),
-    "background.widgets.uptime.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.uptime.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.uptime.scale": ("float", 0.5, 2.0),
+    "background.widgets.uptime.x": ("float", 0.0, 1.0),
+    "background.widgets.uptime.y": ("float", 0.0, 1.0),
     "background.widgets.greeting.enabled": ("bool",),
-    "background.widgets.greeting.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', '')),
+    "background.widgets.greeting.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
     "background.widgets.greeting.scale": ("float", 0.5, 2.0),
+    "background.widgets.greeting.x": ("float", 0.0, 1.0),
+    "background.widgets.greeting.y": ("float", 0.0, 1.0),
+    # Genesi-only: the dock, from ci/caelestia-patches.py.
+    "dock.enabled": ("bool",),
+    "dock.iconSize": ("int", 24, 96),
+    "dock.flow": ("bool",),
+    "dock.hideWhenEmpty": ("bool",),
+    "dock.background": ("bool",),
+    "dock.backgroundOpacity": ("int", 0, 100),
+    "dock.radius": ("int", 0, 40),
+    "dock.iconRadius": ("int", 0, 32),
+    "dock.spacing": ("int", 0, 80),
+    "dock.padding": ("int", 0, 40),
     "bar.persistent": ("bool",),
     "bar.showOnHover": ("bool",),
     "bar.workspaces.realWindowIcons": ("bool",),
@@ -274,11 +313,19 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
     "background.widgets.weather.scale":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
+    "background.widgets.weather.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
+    "background.widgets.weather.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
     "background.widgets.forecast.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
     "background.widgets.forecast.position":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
     "background.widgets.forecast.scale":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
+    "background.widgets.forecast.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
+    "background.widgets.forecast.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
     "background.widgets.media.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
@@ -286,11 +333,19 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
     "background.widgets.media.scale":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
+    "background.widgets.media.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
+    "background.widgets.media.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
     "background.widgets.cpu.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
     "background.widgets.cpu.position":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
     "background.widgets.cpu.scale":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
+    "background.widgets.cpu.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
+    "background.widgets.cpu.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
     "background.widgets.memory.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
@@ -298,11 +353,19 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
     "background.widgets.memory.scale":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
+    "background.widgets.memory.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
+    "background.widgets.memory.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
     "background.widgets.storage.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
     "background.widgets.storage.position":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
     "background.widgets.storage.scale":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
+    "background.widgets.storage.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
+    "background.widgets.storage.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
     "background.widgets.network.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
@@ -310,11 +373,19 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
     "background.widgets.network.scale":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
+    "background.widgets.network.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
+    "background.widgets.network.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
     "background.widgets.battery.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
     "background.widgets.battery.position":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
     "background.widgets.battery.scale":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
+    "background.widgets.battery.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
+    "background.widgets.battery.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
     "background.widgets.calendar.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
@@ -322,11 +393,19 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
     "background.widgets.calendar.scale":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
+    "background.widgets.calendar.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
+    "background.widgets.calendar.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
     "background.widgets.analogClock.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
     "background.widgets.analogClock.position":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
     "background.widgets.analogClock.scale":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
+    "background.widgets.analogClock.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
+    "background.widgets.analogClock.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
     "background.widgets.workspaces.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
@@ -334,11 +413,19 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
     "background.widgets.workspaces.scale":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
+    "background.widgets.workspaces.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
+    "background.widgets.workspaces.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
     "background.widgets.notifications.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
     "background.widgets.notifications.position":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
     "background.widgets.notifications.scale":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
+    "background.widgets.notifications.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
+    "background.widgets.notifications.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
     "background.widgets.uptime.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
@@ -346,12 +433,30 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
     "background.widgets.uptime.scale":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
+    "background.widgets.uptime.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
+    "background.widgets.uptime.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
     "background.widgets.greeting.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
     "background.widgets.greeting.position":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
     "background.widgets.greeting.scale":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
+    "background.widgets.greeting.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
+    "background.widgets.greeting.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
+    "dock.enabled": "CONFIG_PROPERTY(bool, enabled, false)",
+    "dock.iconSize": "CONFIG_PROPERTY(int, iconSize, 44)",
+    "dock.flow": "CONFIG_PROPERTY(bool, flow, true)",
+    "dock.hideWhenEmpty": "CONFIG_PROPERTY(bool, hideWhenEmpty, true)",
+    "dock.background": "CONFIG_PROPERTY(bool, background, true)",
+    "dock.backgroundOpacity": "CONFIG_PROPERTY(int, backgroundOpacity, 82)",
+    "dock.radius": "CONFIG_PROPERTY(int, radius, 28)",
+    "dock.iconRadius": "CONFIG_PROPERTY(int, iconRadius, 16)",
+    "dock.spacing": "CONFIG_PROPERTY(int, spacing, 28)",
+    "dock.padding": "CONFIG_PROPERTY(int, padding, 16)",
     "border.opacity": "CONFIG_PROPERTY(int, opacity, 100)",
     "bar.workspaces.realWindowIcons":
         "CONFIG_PROPERTY(bool, realWindowIcons, false)",

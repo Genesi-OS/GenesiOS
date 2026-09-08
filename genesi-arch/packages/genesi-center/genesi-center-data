@@ -840,8 +840,23 @@ def desktop():
     clock = bg.get("desktopClock") or {}
     vis = bg.get("visualiser") or {}
     widgets = bg.get("widgets") or {}
+    dock = cfg.get("dock") or {}
     return {
         "available": True,
+        # The dock is not part of `background` in the config -- it is above
+        # windows, not behind them -- but it is the same page's business.
+        "dock": {
+            "enabled": bool(dock.get("enabled", False)),
+            "iconSize": dock.get("iconSize", 44),
+            "flow": bool(dock.get("flow", True)),
+            "hideWhenEmpty": bool(dock.get("hideWhenEmpty", True)),
+            "background": bool(dock.get("background", True)),
+            "backgroundOpacity": dock.get("backgroundOpacity", 82),
+            "radius": dock.get("radius", 28),
+            "iconRadius": dock.get("iconRadius", 16),
+            "spacing": dock.get("spacing", 28),
+            "padding": dock.get("padding", 16),
+        },
         "cards": bool(widgets.get("cards", True)),
         "widgets": [
             {

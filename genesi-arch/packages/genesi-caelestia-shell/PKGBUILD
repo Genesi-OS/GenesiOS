@@ -100,7 +100,40 @@ pkgver=2.0.3
 # used `Tokens` without importing Caelestia.Config, which is not a
 # warning but a ReferenceError at every size, radius and font in the
 # widget.
-pkgrel=24
+# 25: a menu on the desktop, widgets you can drag, and a dock.
+#
+# Right-click the wallpaper: every widget with a tick, arrange mode, and
+# the two things people go looking for straight after (Genesi Center, and
+# another wallpaper). It writes through genesi-center-set rather than
+# editing shell.json -- two programs writing one file by two sets of
+# rules is how a config grows a key only one of them understands.
+#
+# Arrange mode has TWO gestures, not one. A widget in a corner lives in a
+# Column, and a Column sets the x and y of everything in it -- a drag
+# handler writing the same properties is two things assigning one value
+# every frame, which does not look like dragging, it looks like
+# vibrating. So an anchored widget offers UNPIN (it becomes free exactly
+# where it stands) and a free one is dragged. Free positions are stored
+# as FRACTIONS: the config outlives the monitor.
+#
+# And the dock: the open applications as icons along the bottom, grouped
+# one per application with a count, on its own layer above windows, with
+# an input mask that covers the bar and nothing else -- without that it
+# is a strip that swallows clicks meant for the bottom edge of every
+# maximised window. Between one icon and the next, lights run along a
+# track, staggered per GAP: every gap pulsing in unison reads as one
+# progress bar that never finishes.
+#
+# Its look is configurable down to the corners -- the bar on or off (not
+# the same as an opacity of zero: no bar means no edge), how solid it is,
+# its radius, the icons' radius, the spacing and the padding.
+#
+# The dock config lands in config.hpp AND config.cpp, where there are two
+# constructors both listing every member. Patching only the header
+# compiles and leaves m_dock null in whichever one was missed, which is a
+# crash on the first read of Config.dock; the patcher asserts it finds
+# exactly two.
+pkgrel=25
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -135,8 +168,14 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiWidgetUptime.qml"
         "GenesiWidgetWeather.qml"
         "GenesiWidgetWorkspaces.qml"
-        "GenesiWidgets.qml")
+        "GenesiWidgets.qml"
+        "GenesiWidgetHost.qml"
+        "GenesiDesktopMenu.qml"
+        "GenesiDock.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
