@@ -66,10 +66,30 @@ Item {
     // mode that has twenty curated entries in it.
     readonly property bool gridMode: !search.text.startsWith(root.prefix)
 
-    readonly property var currentEntry: gridMode ? (grid.currentEntry ?? null) : (fallback.item?.currentList?.currentItem?.modelData ?? null)
+    // The one mode that gets a body of its own rather than the grid or
+    // upstream's list. A colour scheme is a picture, and a list of names
+    // with a two-tone dot beside each is not one.
+    readonly property bool schemeMode: search.text.startsWith(root.prefix + "scheme ")
+
+    // Null in scheme mode on purpose: every card in the fan is already a
+    // full-size preview of itself, so the card above it would be a second
+    // copy of the thing you are looking at.
+    readonly property var currentEntry: {
+        if (root.gridMode)
+            return grid.currentEntry ?? null;
+        if (root.schemeMode)
+            return null;
+        return fallback.item?.currentList?.currentItem?.modelData ?? null;
+    }
 
     readonly property int columns: root.gridMode ? Math.max(1, Math.min(3, Config.launcher.columns)) : 1
-    readonly property int total: root.gridMode ? grid.count : (fallback.item?.currentList?.count ?? 0)
+    readonly property int total: {
+        if (root.gridMode)
+            return grid.count;
+        if (root.schemeMode)
+            return flow.item?.count ?? 0;
+        return fallback.item?.currentList?.count ?? 0;
+    }
     readonly property int hidden: root.gridMode ? Math.max(0, grid.count - grid.shown) : 0
 
     // Where the picture stops: the header, plus the panel's padding above
@@ -563,7 +583,13 @@ Item {
             id: results
 
             width: parent.width
-            implicitHeight: root.gridMode ? grid.implicitHeight : (fallback.item?.implicitHeight ?? 0)
+            implicitHeight: {
+                if (root.gridMode)
+                    return grid.implicitHeight;
+                if (root.schemeMode)
+                    return flow.item?.implicitHeight ?? 0;
+                return fallback.item?.implicitHeight ?? 0;
+            }
 
             GenesiAppGrid {
                 id: grid
@@ -581,6 +607,22 @@ Item {
             }
 
             Loader {
+                id: flow
+
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+
+                active: false
+                visible: root.schemeMode
+
+                sourceComponent: GenesiSchemeFlow {
+                    search: search
+                    visibilities: root.visibilities
+                }
+            }
+
+            Loader {
                 id: fallback
 
                 anchors.left: parent.left
@@ -591,7 +633,7 @@ Item {
                 // kept afterwards. `active: !root.gridMode` alone would rebuild
                 // upstream's whole list every time you delete the ">".
                 active: false
-                visible: !root.gridMode
+                visible: !root.gridMode && !root.schemeMode
 
                 sourceComponent: ContentList {
                     content: root
@@ -606,13 +648,29 @@ Item {
         }
     }
 
-    onGridModeChanged: if (!gridMode)
+    // Each body is built the first time it is needed and kept afterwards.
+    // Tying `active` straight to the mode would tear down and rebuild the whole
+    // list -- or twenty-four painted cards -- every time the ">" is deleted.
+    onGridModeChanged: if (!gridMode && !schemeMode)
         fallback.active = true
+    onSchemeModeChanged: if (schemeMode)
+        flow.active = true
 
     // ── Selection plumbing ───────────────────────────────────────────────────
     function move(by: int): void {
         if (root.gridMode) {
             grid.moveBy(by);
+            return;
+        }
+
+        if (root.schemeMode) {
+            const fan = flow.item;
+            if (!fan)
+                return;
+            if (by > 0)
+                fan.incrementCurrentIndex();
+            else
+                fan.decrementCurrentIndex();
             return;
         }
 
@@ -628,6 +686,11 @@ Item {
     function activate(): void {
         if (root.gridMode) {
             grid.activateCurrent();
+            return;
+        }
+
+        if (root.schemeMode) {
+            flow.item?.activateCurrent();
             return;
         }
 

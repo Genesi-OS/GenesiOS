@@ -1236,7 +1236,8 @@ def patch_ddc_timeout(services_dir):
 
 # The two files Genesi adds to the launcher. Copied in like the Nexus pages --
 # after every "does upstream already ship this?" test has run, never before.
-LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml")
+LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml",
+                   "GenesiSchemeFlow.qml")
 
 
 def patch_launcher_layout(release):

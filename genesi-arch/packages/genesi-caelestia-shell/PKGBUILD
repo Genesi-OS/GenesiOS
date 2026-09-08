@@ -76,7 +76,16 @@ pkgver=2.0.3
 # warning. That is also how the band bug was found: the children said
 # `parent.band`, a clipping container reparented them, the binding went
 # undefined, and the wallpaper covered the whole panel.
-pkgrel=22
+# 23: the colour schemes, fanned out. `>scheme` in the Genesi launcher body is
+# a PathView of cards, each PAINTED IN ITS OWN COLOURS -- surface as the ground,
+# onSurface as the ink, a title bar in the container colour, and text/primary/
+# tertiary/secondary/error as five swatches. Upstream lists names with a
+# two-tone dot beside each, which tells catppuccin from gruvbox and cannot tell
+# four catppuccins apart. A colour scheme is the one setting whose value IS a
+# picture. Off to the sides the cards tilt, drop and fall behind; a click on one
+# of those brings it to the middle first rather than repainting the desktop from
+# a half-hidden card.
+pkgrel=23
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -94,8 +103,10 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "DisplayPage.qml"
         "MousePage.qml"
         "GenesiContent.qml"
-        "GenesiAppGrid.qml")
+        "GenesiAppGrid.qml"
+        "GenesiSchemeFlow.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
