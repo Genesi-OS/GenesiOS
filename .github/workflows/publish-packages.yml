@@ -10,6 +10,23 @@ on:
       - '!genesi-arch/packages/genesi-code/**'
       - '.github/workflows/publish-packages.yml'
       - '.gitmodules'
+      # genesi-caelestia-shell's prepare() RUNS these two. They are not tests
+      # from this workflow's point of view -- they are part of the build, and
+      # caelestia-patches.py decides what the shipped QML and the plugin's C++
+      # actually contain.
+      #
+      # Without these paths a patcher fix is committed, CI never fires, and
+      # `repo/x86_64` keeps the package built from the previous version of the
+      # patch -- the same shape as the submodule-gitlink problem above.
+      # Reproduced 2026-09-09: a one-line fix to a compile error in the patcher
+      # was pushed and produced no run at all.
+      #
+      # Listed one by one rather than as `genesi-arch/ci/**`, because the rest
+      # of that directory is guards that run in the hygiene workflow, and a
+      # fifty-minute rebuild of every package is a steep price for editing a
+      # test's error message.
+      - 'genesi-arch/ci/caelestia-patches.py'
+      - 'genesi-arch/ci/caelestia-actions-test.py'
       # Submodule gitlinks. PKGBUILDs source from these via
       # `source=("git+https://github.com/Genesi-OS/genesi-*.git")` (cloning
       # HEAD of the submodule's upstream branch), so a bare submodule
