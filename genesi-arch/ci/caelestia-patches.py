@@ -1655,7 +1655,17 @@ def patch_dock(release):
     member = "    CONFIG_SUBOBJECT(BackgroundConfig, background)\n"
     if member not in src[cfg]:
         fail("config.hpp's members are not where the dock patch expects them.")
-    out[cfg] = src[cfg].replace(
+
+    # config.hpp does NOT include the headers its members come from -- it
+    # FORWARD-DECLARES every one of them. Adding the member without adding the
+    # declaration is `'GenesiDockConfig' does not name a type`, which is a
+    # compiler error twenty minutes into the build, and is exactly what shipped.
+    fwd = "class BackgroundConfig;\n"
+    if fwd not in src[cfg]:
+        fail("config.hpp no longer forward-declares its config classes -- the "
+             "dock's declaration has to go wherever they went.")
+    out[cfg] = src[cfg].replace(fwd, fwd + "class GenesiDockConfig;\n", 1)
+    out[cfg] = out[cfg].replace(
         member, member + "    CONFIG_SUBOBJECT(GenesiDockConfig, dock)\n", 1)
 
     init = "    , m_background(new BackgroundConfig(this))\n"
@@ -1673,6 +1683,24 @@ def patch_dock(release):
              "expects it -- that is the line the dock goes beside.")
     out[shell] = src[shell].replace(
         line, line + "    GenesiDock {}\n", 1)
+
+    # ── The post-condition, because there is no compiler here ────────────────
+    #
+    # Every CONFIG_SUBOBJECT in config.hpp names a type that must be either
+    # forward-declared in that file or defined in something it includes. It
+    # includes none of them, so "declared here" is the whole rule -- and
+    # checking it is as close as this can get to compiling the result.
+    #
+    # The first version of this patch did not check, added the member, and the
+    # build failed on `does not name a type` after twenty minutes. A patcher
+    # that asserts its anchors and not its output is checking that it found the
+    # right place to write the bug.
+    for m in re.finditer(r"CONFIG_SUBOBJECT\((\w+),", out[cfg]):
+        cls = m.group(1)
+        if "class %s;" % cls not in out[cfg]:
+            fail(f"config.hpp uses {cls} without forward-declaring it. That is "
+                 "a compile error, and this is the last place to catch it "
+                 "before a twenty-minute build does.")
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
