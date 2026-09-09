@@ -177,7 +177,14 @@ pkgver=1.0.0
 # gtk-theme='adw-gtk3-dark'; without `dconf` that raises inside a
 # @log_exception wrapper -- swallowed, so GTK theming did nothing and said
 # nothing -- and without `adw-gtk3` it selects a theme that is not there.
-pkgrel=38
+# 39: genesi-theme-doctor. Every link in the theming chain fails in
+# SILENCE -- Qt ignores a platform theme whose plugin is not installed
+# and quietly uses its default palette, a missing kdeglobals key falls
+# back to Breeze, caelestia's GTK step raises inside a swallowed
+# exception. One symptom, a dozen causes, none of them announced. This
+# walks the whole chain and names the broken link, instead of another
+# round of guessing from a description of what a window looks like.
+pkgrel=39
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -246,8 +253,8 @@ depends=(
 )
 install='genesi-caelestia-settings.install'
 source=('genesi-bar' 'hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini' 'genesi-dark.conf'
-        'genesi-caelestia-theme-sync' 'cli.json' 'shell.json')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+        'genesi-caelestia-theme-sync' 'genesi-theme-doctor' 'cli.json' 'shell.json')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     # Default Hyprland config for new users. Hyprland reads
@@ -280,6 +287,13 @@ package() {
     # hyprland.conf. Falls back to the static genesi-dark.conf when no scheme.
     install -Dm755 "${srcdir}/genesi-caelestia-theme-sync" \
         "${pkgdir}/usr/local/bin/genesi-caelestia-theme-sync"
+
+    # The diagnostic. Six toolkits read six different files and every one of
+    # them fails in silence, so "the apps do not follow the theme" is a dozen
+    # possible causes behind one symptom. This walks the chain and names the
+    # link that is broken, instead of another round of guessing.
+    install -Dm755 "${srcdir}/genesi-theme-doctor" \
+        "${pkgdir}/usr/local/bin/genesi-theme-doctor"
 
     # caelestia-cli config: disable terminal colour-sequence application so a
     # scheme/wallpaper change doesn't spam the "system message" notification with

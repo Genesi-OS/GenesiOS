@@ -116,6 +116,7 @@ genesi-arch/packages/genesi-ai-mode/genesi-ai-quick-shortcuts              text 
 genesi-arch/packages/genesi-ai-mode/genesi-ai-tray                         text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-automationd                     text eol=lf
 genesi-arch/packages/genesi-ai-mode/monitor/genesi-ai-quick                text eol=lf
+genesi-arch/packages/genesi-caelestia-settings/genesi-theme-doctor            text eol=lf
 genesi-arch/packages/genesi-caelestia-settings/genesi-caelestia-theme-sync text eol=lf
 genesi-arch/packages/genesi-channel/genesi-channel                         text eol=lf
 genesi-arch/packages/genesi-channel/genesi-channel-gui                     text eol=lf

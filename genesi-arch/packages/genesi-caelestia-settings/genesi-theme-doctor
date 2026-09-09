@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""
+genesi-theme-doctor — why is that window not following the colour scheme?
+
+Six toolkits read six different files, and every one of them fails in silence:
+a missing plugin means Qt quietly uses its default palette, a missing key falls
+back to Breeze, a swallowed exception means GTK theming did nothing and said
+nothing. "The apps do not follow the theme" is not one bug, it is any of a
+dozen, and none of them announce themselves.
+
+So this walks the whole chain and says which link is broken.
+
+    genesi-theme-doctor          # check everything, print a verdict
+    genesi-theme-doctor --raw    # add the values it read, for a bug report
+
+It changes nothing. Pure stdlib, no deps.
+"""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+CFG = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+STATE = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local/state"))
+SCHEME = STATE / "caelestia" / "scheme.json"
+
+RAW = "--raw" in sys.argv[1:]
+
+# The rules and ticks below are box-drawing characters. A console that
+# cannot encode them raises UnicodeEncodeError halfway through the report
+# -- which turns a diagnostic into one more thing that is broken.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, OSError):
+    pass
+
+GREEN, RED, YELLOW, DIM, OFF = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
+if not sys.stdout.isatty():
+    GREEN = RED = YELLOW = DIM = OFF = ""
+
+problems = []
+
+
+def ok(what, detail=""):
+    print(f"  {GREEN}ok{OFF}    {what}" + (f" {DIM}{detail}{OFF}" if detail else ""))
+
+
+def bad(what, fix):
+    print(f"  {RED}FAIL{OFF}  {what}")
+    print(f"        {YELLOW}→ {fix}{OFF}")
+    problems.append(what)
+
+
+def warn(what, detail=""):
+    print(f"  {YELLOW}?{OFF}     {what}" + (f" {DIM}{detail}{OFF}" if detail else ""))
+
+
+def section(name):
+    print(f"\n{DIM}── {name} {'─' * max(0, 58 - len(name))}{OFF}")
+
+
+def read(path):
+    try:
+        return Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def ini(text):
+    """{section: {key: value}} — not configparser, which lowercases keys, and
+    KDE's keys are camelCase."""
+    out, cur = {}, None
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            cur = line[1:-1]
+            out.setdefault(cur, {})
+        elif cur and "=" in line and not line.startswith("#"):
+            k, _, v = line.partition("=")
+            out[cur][k.strip()] = v.strip()
+    return out
+
+
+def installed(pkg):
+    try:
+        return subprocess.run(["pacman", "-Qq", pkg], capture_output=True,
+                              timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def plugin(*names):
+    """The first platform-theme plugin that exists, or None."""
+    roots = ["/usr/lib/qt6/plugins/platformthemes",
+             "/usr/lib/qt/plugins/platformthemes"]
+    for root in roots:
+        for name in names:
+            p = Path(root) / name
+            if p.exists():
+                return str(p)
+    return None
+
+
+# ── 1. The source ───────────────────────────────────────────────────────────
+section("the scheme itself")
+
+colours, mode, name = {}, "?", "?"
+raw = read(SCHEME)
+if raw is None:
+    bad(f"{SCHEME} does not exist",
+        "run `caelestia scheme set -n dracula -f medium` once; nothing "
+        "downstream has a scheme to follow until it does")
+else:
+    try:
+        data = json.loads(raw)
+        colours = {k: "#" + v.lstrip("#") for k, v in
+                   (data.get("colours") or {}).items() if isinstance(v, str)}
+        mode = data.get("mode") or "?"
+        name = f"{data.get('name', '?')} {data.get('flavour', '')}".strip()
+    except ValueError:
+        bad(f"{SCHEME} is not valid JSON", "re-apply a scheme to rewrite it")
+
+    if colours:
+        ok(f"active scheme: {name} ({mode})", f"{len(colours)} colours")
+        if RAW:
+            for k in ("surface", "onSurface", "primary"):
+                print(f"        {DIM}{k} = {colours.get(k, '—')}{OFF}")
+    else:
+        bad("the scheme file has no colours in it",
+            "re-apply a scheme: `caelestia scheme set -n dracula -f medium`")
+
+want_surface = colours.get("surface", "").lower()
+
+
+# ── 2. The bridge ───────────────────────────────────────────────────────────
+section("genesi-caelestia-theme-sync")
+
+sync = "/usr/local/bin/genesi-caelestia-theme-sync"
+if not Path(sync).exists():
+    bad(f"{sync} is not installed",
+        "pacman -S genesi-caelestia-settings")
+else:
+    ok("installed")
+
+    try:
+        ps = subprocess.run(["pgrep", "-f", "genesi-caelestia-theme-sync"],
+                            capture_output=True, timeout=10)
+        if ps.returncode == 0:
+            ok("running with --watch")
+        else:
+            bad("not running",
+                "it is started from hyprland.conf as `exec-once = "
+                "genesi-caelestia-theme-sync --watch`; log out and back in, or "
+                "start it by hand to test")
+    except (OSError, subprocess.SubprocessError):
+        warn("could not check whether it is running")
+
+
+# ── 3. Qt, and the part that decides everything ─────────────────────────────
+section("Qt")
+
+pt = os.environ.get("QT_QPA_PLATFORMTHEME", "")
+if not pt:
+    warn("QT_QPA_PLATFORMTHEME is not set in THIS shell",
+         "(it is set for the Hyprland session; this only matters if you are "
+         "in a TTY)")
+else:
+    ok(f"QT_QPA_PLATFORMTHEME = {pt}")
+
+# THE decisive check. Qt does not complain when the platform theme it was told
+# to load does not exist -- it falls back to no theming at all, and every Qt
+# app opens in the default palette. That looks exactly like "the theme is not
+# being written", which is why this is worth checking before anything else.
+if pt in ("qt6ct", "qt5ct"):
+    found = plugin(f"lib{pt}.so", f"{pt}.so")
+    if found:
+        ok(f"the {pt} platform theme plugin exists", found)
+    else:
+        bad(f"QT_QPA_PLATFORMTHEME is {pt}, and that plugin is NOT installed",
+            f"pacman -S {pt} — until then Qt silently ignores the setting and "
+            "every Qt app opens in its default palette, no matter what is "
+            "written to qt6ct's files")
+elif pt == "kde":
+    found = plugin("KDEPlatformTheme.so")
+    if found:
+        ok("the KDE platform theme plugin exists", found)
+    else:
+        bad("QT_QPA_PLATFORMTHEME is kde, and that plugin is NOT installed",
+            "it comes from `plasma-integration`. Without it Qt ignores the "
+            "setting entirely")
+
+qt6 = ini(read(CFG / "qt6ct" / "qt6ct.conf"))
+app = qt6.get("Appearance", {})
+if not app:
+    bad("~/.config/qt6ct/qt6ct.conf has no [Appearance] section",
+        "run genesi-caelestia-theme-sync once")
+else:
+    if app.get("custom_palette") == "true":
+        ok("qt6ct: custom_palette = true")
+    else:
+        bad("qt6ct: custom_palette is not true",
+            "run genesi-caelestia-theme-sync")
+
+    path = app.get("color_scheme_path", "")
+    pal = ini(read(path)) if path else {}
+    line = pal.get("ColorScheme", {}).get("active_colors", "")
+    if not line:
+        bad(f"qt6ct's palette file is missing or empty ({path or 'unset'})",
+            "run genesi-caelestia-theme-sync")
+    else:
+        parts = [c.strip().lower() for c in line.split(",")]
+        if len(parts) != 21:
+            bad(f"qt6ct's palette has {len(parts)} roles, not 21",
+                "run genesi-caelestia-theme-sync")
+        else:
+            # Role 10 is Window. If it does not match the scheme's surface,
+            # the palette on disk is from an older scheme.
+            window = parts[10].replace("#ff", "#")
+            if want_surface and window != want_surface:
+                warn("qt6ct's palette is from a DIFFERENT scheme",
+                     f"window {window} vs scheme surface {want_surface}")
+            else:
+                ok("qt6ct: 21 roles, matching the active scheme")
+
+
+# ── 4. KDE ──────────────────────────────────────────────────────────────────
+section("KDE and Kirigami (Dolphin, Ark, the Genesi apps)")
+
+kde = ini(read(CFG / "kdeglobals"))
+GROUPS = ("Colors:Window", "Colors:View", "Colors:Button", "Colors:Selection",
+          "Colors:Tooltip", "Colors:Complementary", "Colors:Header")
+missing = [g for g in GROUPS if g not in kde]
+if missing:
+    bad(f"kdeglobals is missing {len(missing)} colour group(s): "
+        + ", ".join(missing),
+        "run genesi-caelestia-theme-sync — every one of these has to be there "
+        "or the app takes Breeze's value for whatever is absent")
+else:
+    ok("kdeglobals carries all seven colour groups")
+    if RAW:
+        print(f"        {DIM}Window bg = "
+              f"{kde['Colors:Window'].get('BackgroundNormal', '—')}{OFF}")
+
+# The palette a KDE app STARTS with comes from the platform theme, not from
+# kdeglobals. Without plasma-integration there is no KDE platform theme, so a
+# KDE app gets whatever qt6ct gives it -- which is fine, as long as qt6ct's
+# plugin is actually installed. Both missing is the case where nothing follows.
+if installed("plasma-integration"):
+    ok("plasma-integration is installed", "KDE apps can take the KDE palette")
+else:
+    warn("plasma-integration is NOT installed",
+         "KDE apps fall back to the qt6ct palette above — which is fine if "
+         "that plugin exists, and is nothing at all if it does not")
+
+
+# ── 5. GTK ──────────────────────────────────────────────────────────────────
+section("GTK")
+
+for pkg, why in (("dconf", "caelestia writes the GTK theme through it; without "
+                           "it the call raises inside a swallowed exception "
+                           "and GTK theming does nothing at all"),
+                 ("adw-gtk-theme", "it is the theme caelestia selects "
+                                   "(adw-gtk3-dark); without it GTK3 apps stay "
+                                   "on Adwaita")):
+    if installed(pkg):
+        ok(f"{pkg} is installed")
+    else:
+        bad(f"{pkg} is NOT installed", f"pacman -S {pkg} — {why}")
+
+css = read(CFG / "gtk-3.0" / "gtk.css")
+if css and "@define-color" in css:
+    ok("~/.config/gtk-3.0/gtk.css has colours in it")
+else:
+    bad("~/.config/gtk-3.0/gtk.css is missing or empty",
+        "apply a scheme once: `caelestia scheme set -n dracula -f medium` — "
+        "installing a package does not re-run the theming, only applying a "
+        "scheme does")
+
+
+# ── The verdict ─────────────────────────────────────────────────────────────
+print()
+if problems:
+    print(f"{RED}{len(problems)} broken link(s).{OFF} The first FAIL above is "
+          "the one to fix; the rest often follow from it.")
+    sys.exit(1)
+
+print(f"{GREEN}Every link in the chain is intact.{OFF}")
+print(f"{DIM}If a window still does not follow, it was opened before the last "
+      f"scheme change — Qt reads the palette once, at startup.{OFF}")
