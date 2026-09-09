@@ -78,7 +78,16 @@ pkgver=0.1.0
 # choice you make here but what a widget becomes when it is dragged on the
 # desktop, and it is in the list so a dragged widget says where it is rather
 # than showing a blank.
-pkgrel=21
+# 22: this app can follow the desktop's colour scheme.
+#
+# Every other window follows it now, and a control centre that is the one
+# thing still painted its own colour is the exception that makes the rule
+# look like an accident. Emerald on near-black is still the DEFAULT -- the
+# identity does not leave in an update -- and the switch is on the Settings
+# page. The three accent shades are DERIVED from the scheme's one primary
+# rather than mapped onto secondary and tertiary, which are different hues
+# in most schemes and would give the app an accent nobody chose.
+pkgrel=22
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

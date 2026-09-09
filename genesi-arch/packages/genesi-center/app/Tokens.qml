@@ -21,25 +21,65 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-    // ── Ground ───────────────────────────────────────────────────────────────
-    readonly property color bg:        "#050a07"
-    readonly property color panel:     "#08120c"
-    readonly property color card:      "#0a1710"
-    readonly property color cardHi:    "#0d1e14"
-    readonly property color line:      "#16301f"
-    readonly property color lineSoft:  "#0f2116"
+    id: tokens
 
-    // ── Emerald ──────────────────────────────────────────────────────────────
-    readonly property color accent:    "#35e07f"
-    readonly property color accentDim: "#1f8f4f"
-    readonly property color accentDeep:"#0d4527"
-    readonly property color glow:      "#35e07f"
+    // ── Which of the two palettes ────────────────────────────────────────────
+    //
+    // The comment above still holds -- emerald on near-black is this app's own
+    // conviction, and it is the DEFAULT. But "every window follows the theme"
+    // has to mean every window, and a control centre that is the one thing on
+    // the desktop still painted its own colour is the exception that makes the
+    // rule look like an accident.
+    //
+    // So both, and a switch on the Settings page. Following is off until
+    // somebody turns it on; the identity does not quietly leave in an update.
+    property bool useGenesi: true
+
+    // The active scheme's colours, pushed in by Main from the backend. Empty
+    // until it arrives, which is why every derived colour below falls back to
+    // its Genesi value rather than to black: a window that flashes black for
+    // one frame on every launch is worse than one that never follows at all.
+    property var sys: ({})
+
+    readonly property bool following: !tokens.useGenesi && !!tokens.sys.surface
+
+    function role(key, fallback) {
+        const v = tokens.sys[key];
+        return (typeof v === "string" && v.length > 0) ? v : fallback;
+    }
+
+    function pickC(key, fallback) {
+        return tokens.following ? tokens.role(key, fallback) : fallback;
+    }
+
+    // ── Ground ───────────────────────────────────────────────────────────────
+    readonly property color bg:        tokens.pickC("surfaceContainerLowest", "#050a07")
+    readonly property color panel:     tokens.pickC("surface", "#08120c")
+    readonly property color card:      tokens.pickC("surfaceContainer", "#0a1710")
+    readonly property color cardHi:    tokens.pickC("surfaceContainerHigh", "#0d1e14")
+    readonly property color line:      tokens.pickC("outlineVariant", "#16301f")
+    readonly property color lineSoft:  tokens.pickC("surfaceContainerHighest", "#0f2116")
+
+    // ── Emerald, or whatever the desktop is wearing ──────────────────────────
+    //
+    // A scheme gives one accent, and this app uses three shades of it. They are
+    // DERIVED rather than mapped onto secondary and tertiary: those two are
+    // different hues in most schemes, and using them here would give the app a
+    // three-colour accent nobody chose. Darkening one hue keeps the app's own
+    // shape and lets the scheme decide the colour.
+    readonly property color accent:    tokens.pickC("primary", "#35e07f")
+    readonly property color accentDim: tokens.following ? Qt.darker(tokens.accent, 1.6)
+                                                        : "#1f8f4f"
+    readonly property color accentDeep: tokens.following ? Qt.darker(tokens.accent, 3.0)
+                                                         : "#0d4527"
+    readonly property color glow:      tokens.accent
 
     // ── Text ─────────────────────────────────────────────────────────────────
-    readonly property color textHi:    "#d6ffe6"
-    readonly property color text:      "#8fbfa2"
-    readonly property color textDim:   "#4d7a5e"
-    readonly property color textFaint: "#2c5039"
+    readonly property color textHi:    tokens.pickC("onSurface", "#d6ffe6")
+    readonly property color text:      tokens.pickC("onSurfaceVariant", "#8fbfa2")
+    readonly property color textDim:   tokens.pickC("outline", "#4d7a5e")
+    readonly property color textFaint: tokens.following ? Qt.darker(tokens.textDim, 1.5)
+                                                        : "#2c5039"
 
     // ── Type ─────────────────────────────────────────────────────────────────
     // A monospace family for everything factual. The list is a fallback chain:

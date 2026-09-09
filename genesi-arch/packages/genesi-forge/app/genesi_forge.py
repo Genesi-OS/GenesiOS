@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from PySide6.QtCore import QObject, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -473,12 +473,55 @@ class Backend(QObject):
     consoleOut = Signal(str)       # one line of embedded-console output
     consoleDone = Signal(int)      # console command exit code
 
+    # ── The system palette ──────────────────────────────────────────────
+    #
+    # Read once at startup and handed to ForgeTheme, so this app can follow the
+    # desktop's colour scheme like every other window does.
+    #
+    # The SWITCH is Genesi Center's, deliberately: one setting called "follow
+    # the desktop's colour scheme" that governs both apps. Two switches, one
+    # per app, is two places to look when only one of them followed.
+    _CENTER_SETTINGS = os.path.expanduser(
+        "~/.config/genesi/center/settings.json")
+    _SCHEME = os.path.expanduser("~/.local/state/caelestia/scheme.json")
+
+    @staticmethod
+    def _read_scheme():
+        """caelestia's active colours, as things QML can parse."""
+        try:
+            with open(Backend._SCHEME, encoding="utf-8") as fh:
+                raw = (json.load(fh).get("colours") or {})
+        except (OSError, ValueError):
+            return {}
+        return {k: "#" + v.lstrip("#") for k, v in raw.items()
+                if isinstance(v, str) and len(v.lstrip("#")) == 6}
+
+    @staticmethod
+    def _read_follow():
+        try:
+            with open(Backend._CENTER_SETTINGS, encoding="utf-8") as fh:
+                return bool(json.load(fh).get("followSystemTheme", False))
+        except (OSError, ValueError):
+            return False
+
     def __init__(self):
         super().__init__()
         self.busy = False
         self._jobs = {}
         self._jobs_lock = threading.Lock()
         self._job_context = threading.local()
+        self._palette = self._read_scheme()
+        self._follow = self._read_follow() and bool(self._palette)
+
+    paletteChanged = Signal()
+
+    @Property("QVariantMap", notify=paletteChanged)
+    def systemPalette(self):
+        return self._palette
+
+    @Property(bool, notify=paletteChanged)
+    def followSystemTheme(self):
+        return self._follow
 
     def _set_busy(self, value):
         self.busy = value

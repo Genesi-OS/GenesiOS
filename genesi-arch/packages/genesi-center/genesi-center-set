@@ -13,6 +13,7 @@ that can be tested without a display.
   genesi-center-set unbind <MODS,KEY>        drop our override
   genesi-center-set newbind <MODS,KEY> <disp> [arg]  a shortcut of your own
   genesi-center-set delbind <MODS,KEY>       remove one of those
+  genesi-center-set center <key> <value>     one of this app's own settings
   genesi-center-set binds                    every override written
   genesi-center-set options                  every option this will write
 
@@ -801,6 +802,40 @@ def cmd_delbind(combo):
     reload_hypr()
 
 
+# This app's own settings, which are not caelestia's and do not belong in its
+# file. One key so far; the shape is a JSON object so the second one costs
+# nothing.
+CENTER_SETTINGS = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
+    "genesi", "center", "settings.json")
+
+CENTER_KEYS = {
+    "followSystemTheme": "bool",
+}
+
+
+def cmd_center(key, raw):
+    """Set one of this app's own settings."""
+    if key not in CENTER_KEYS:
+        die(f"{key!r} is not a setting this app keeps. "
+            "Known: " + ", ".join(sorted(CENTER_KEYS)))
+    value = coerce((CENTER_KEYS[key],), raw, key)
+
+    try:
+        with open(CENTER_SETTINGS, encoding="utf-8") as fh:
+            data = json.load(fh)
+        if not isinstance(data, dict):
+            data = {}
+    except (OSError, ValueError):
+        data = {}
+
+    data[key] = value
+    os.makedirs(os.path.dirname(CENTER_SETTINGS), exist_ok=True)
+    with open(CENTER_SETTINGS, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+
 def cmd_binds():
     """Every override this has written, so a page can mark them."""
     out = []
@@ -885,6 +920,8 @@ def main():
                     sys.argv[4] if len(sys.argv) > 4 else "")
     elif what == "delbind" and len(sys.argv) == 3:
         cmd_delbind(sys.argv[2])
+    elif what == "center" and len(sys.argv) == 4:
+        cmd_center(sys.argv[2], sys.argv[3])
     else:
         sys.stderr.write(
             "usage: genesi-center-set {hypr <option> <value>"

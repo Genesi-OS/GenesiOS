@@ -31,6 +31,29 @@ Window {
     // Set by the Python side; null when the QML is opened on its own, which is
     // how the design is rendered offscreen for review.
     property var backend: null
+
+    // ── The palette this app paints itself in ────────────────────────────────
+    //
+    // Asked for here rather than by a page, because it is the WINDOW's colours:
+    // a page that owned it would stop applying the moment somebody navigated
+    // away from that page.
+    onBackendChanged: if (win.backend)
+        win.backend.ask("palette")
+
+    Connections {
+        target: win.backend
+        ignoreUnknownSignals: true
+
+        function onSectionReady(name, payload) {
+            if (name !== "palette")
+                return;
+            try {
+                const d = JSON.parse(payload);
+                Tokens.sys = d.colours || ({});
+                Tokens.useGenesi = d.followSystem !== true;
+            } catch (e) {}
+        }
+    }
     // Resolved by the Python side: a user drop-in, else the packaged
     // asset, else empty and the page draws its own glow.
     property string treeArt: ""

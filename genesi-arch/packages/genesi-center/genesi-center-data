@@ -235,6 +235,52 @@ def telemetry():
     }
 
 
+# Where this app keeps its own handful of settings. Not caelestia's shell.json
+# -- that file is the desktop's, and a control centre writing its own
+# preferences into it would be putting its laundry in somebody else's drawer.
+CENTER_SETTINGS = os.path.expanduser("~/.config/genesi/center/settings.json")
+
+
+def palette():
+    """
+    The colours this app should paint itself in, and whether it should.
+
+    Read from caelestia's active scheme -- the same file genesi-caelestia-theme-
+    sync bridges to Qt and KDE -- so the Center follows exactly what every other
+    window follows, rather than a second reading of the same thing that can
+    disagree with it.
+    """
+    colours = {}
+    try:
+        with open(os.path.expanduser(
+                "~/.local/state/caelestia/scheme.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+        raw = data.get("colours") or {}
+        # caelestia stores bare hex; QML wants a colour it can parse.
+        colours = {k: ("#" + v.lstrip("#")) for k, v in raw.items()
+                   if isinstance(v, str) and len(v.lstrip("#")) == 6}
+    except (OSError, ValueError):
+        colours = {}
+
+    follow = False
+    try:
+        with open(CENTER_SETTINGS, encoding="utf-8") as fh:
+            follow = bool(json.load(fh).get("followSystemTheme", False))
+    except (OSError, ValueError):
+        follow = False
+
+    return {
+        "available": True,
+        "colours": colours,
+        # Off unless asked for: this app's own palette is a decision, not a
+        # default nobody chose, and it should not leave in an update.
+        "followSystem": follow,
+        # Said plainly so the page can explain itself when there is no scheme
+        # to follow rather than showing a switch that does nothing.
+        "hasScheme": bool(colours),
+    }
+
+
 def core():
     osr = {}
     for line in _read("/etc/os-release").splitlines():
@@ -1127,6 +1173,7 @@ SECTIONS = {
     "session": session,
     "telemetry": telemetry,
     "core": core,
+    "palette": palette,
     "storage": storage,
     "activity": activity,
     "system": system,

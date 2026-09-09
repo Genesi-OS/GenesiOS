@@ -24,7 +24,14 @@ pkgver=2.3.0
 # and its icon and its text ended up marooned at opposite ends of it. Capped at
 # the pitch the column count is computed from, which fixes one and two project
 # cards too.
-pkgrel=10
+# 11: Forge follows the scheme too, behind Genesi Center's switch.
+#
+# One setting for both apps rather than one each: two switches is two
+# places to look when only one of them followed. Fixed graphite is still
+# the default. `red` follows (it is the scheme's error colour) but turbo,
+# purple and blue do not -- those carry meaning here, and a semantic colour
+# that changes with the wallpaper is a legend that stops being true.
+pkgrel=11
 pkgdesc='Genesi Forge: the project hub — full git panel, GitHub pipelines, deployments and the Forge Canvas workflow builder'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

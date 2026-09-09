@@ -17,10 +17,21 @@ Item {
     property var backend: null
     property var core: ({})
     property var caps: ({})
+    // The palette section, so the switch below can show its own state. Main
+    // also listens for this one -- it is what actually repaints the window.
+    property var pal: ({})
 
     Connections {
         target: page.backend
         ignoreUnknownSignals: true
+
+        function onSectionReady(name, payload) {
+            if (name !== "palette")
+                return;
+            try {
+                page.pal = JSON.parse(payload);
+            } catch (e) {}
+        }
         function onDataReady(payload) {
             try {
                 const d = JSON.parse(payload);
@@ -98,6 +109,46 @@ Item {
         Column {
             width: parent.width
             spacing: 10
+
+            SectionHead { index: "—"; text: qsTr("Colours") }
+
+            Panel {
+                width: parent.width
+                height: paletteCol.implicitHeight + 8
+
+                Column {
+                    id: paletteCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    anchors.margins: 4
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Follow the desktop's colour scheme")
+                        description: page.pal.hasScheme === false
+                                     ? qsTr("No caelestia scheme found, so there "
+                                            + "is nothing to follow yet.")
+                                     : qsTr("Every other window follows the scheme "
+                                            + "you pick in the launcher. Off, this "
+                                            + "one keeps Genesi's emerald — which "
+                                            + "is the default, because a control "
+                                            + "centre that restates itself in "
+                                            + "whatever hue the wallpaper produced "
+                                            + "has no identity to recognise.")
+                        last: true
+                        Toggle {
+                            enabled: page.pal.hasScheme !== false
+                            checked: page.pal.followSystem === true
+                            onToggled: v => {
+                                if (!page.backend)
+                                    return;
+                                page.backend.act(["genesi-center-set", "center",
+                                                  "followSystemTheme", String(v)],
+                                                 "palette");
+                            }
+                        }
+                    }
+                }
+            }
 
             SectionHead { index: "—"; text: qsTr("The rest of Genesi") }
 

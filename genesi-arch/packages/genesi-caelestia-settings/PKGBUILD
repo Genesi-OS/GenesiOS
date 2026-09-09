@@ -234,8 +234,13 @@ depends=(
     # theming did nothing at all and said nothing about it. Without `adw-gtk3`
     # the theme it selects does not exist, so GTK3 apps fall back to Adwaita
     # and stay light while the rest of the desktop follows the wallpaper.
+    # NAME: the theme is `adw-gtk-theme` in [extra]. `adw-gtk3` is what the
+    # AUR calls it, it is not in any repo the CI container has, and pacman
+    # answers a missing target with `target not found` twenty-five minutes into
+    # a build. The package ships /usr/share/themes/adw-gtk3-dark, which is the
+    # directory caelestia's dconf write actually selects.
     'dconf'
-    'adw-gtk3'
+    'adw-gtk-theme'
     'papirus-icon-theme'       # app icons for the launcher/menus (no icon theme
                                # shipped before -> magenta "missing icon" squares)
 )
