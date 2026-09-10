@@ -73,7 +73,14 @@ pkgver=1.0.0
 # sat directly above a red banner saying root is not Btrfs. Two red boxes are
 # not twice as clear; the remedy that lived in the second has moved into the
 # first, where the diagnosis already was, and the banner is gone.
-pkgrel=17
+# 18: follows the desktop's colour scheme when Genesi Center's switch
+# says to, through the shared genesi_palette bridge -- which also sets
+# the application QPalette. That second half is what was missing: Qt
+# draws popups, scrollbars and Fusion buttons from a palette no Genesi
+# app ever set, so they arrived in Fusion's default LIGHT one. A dark
+# window with a few white controls in it was not an app half following
+# the scheme, it was an app following nothing while Qt filled the gaps.
+pkgrel=18
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -120,6 +127,12 @@ package() {
     # genesi-ui-kit/README.md for why).
     install -Dm644 "${startdir}/app/genesi_snapshots.py" \
         "$pkgdir/usr/share/genesi-snapshots/app/genesi_snapshots.py"
+
+    # The shared colour bridge, bundled from genesi-ui-kit the same way the
+    # kit's QML is -- and beside the app's own module, because that is the
+    # directory the app puts on sys.path to import it.
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/genesi_palette.py" \
+        "$pkgdir/usr/share/genesi-snapshots/app/genesi_palette.py"
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-snapshots/app/Main.qml"
     for comp in Theme GlassCard StudioTheme StudioCard GButton StatusBanner I18n; do

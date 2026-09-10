@@ -208,6 +208,14 @@ jobs:
         # prepare() thirteen minutes in with "that file is missing".
         run: python genesi-arch/ci/caelestia-sources-test.py
 
+      - name: every Genesi app follows the scheme, or Genesi's, coherently
+        # A Genesi app paints from two places: the UI kit's Theme.qml for what
+        # it draws itself, and the application QPalette for what Qt draws --
+        # popups, scrollbars, Fusion buttons. No app ever set the second, so
+        # those arrived in Fusion's default LIGHT palette: a dark navy window
+        # with a handful of white controls in it.
+        run: python genesi-arch/ci/app-palette-test.py
+
       - name: every shebang script is pinned to LF
         # An extensionless script committed with CRLF is `bad interpreter: no
         # such file or directory` on the installed system and nowhere else.

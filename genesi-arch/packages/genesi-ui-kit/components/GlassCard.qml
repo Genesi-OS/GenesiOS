@@ -28,9 +28,19 @@ import org.kde.kirigami as Kirigami
 Rectangle {
     id: card
 
-    // Pinned to the mockup's window base (#040b17); the elevation gradient below
-    // lifts it to ~#0d1623 for the card body. (Matches Theme.qml's fixed palette.)
-    readonly property color sysBg: "#040b17"
+    // The window base the elevation gradient below lifts to the card body.
+    //
+    // Pinned to the mockup's #040b17 until Genesi Center's switch says to
+    // follow the desktop, and then it is the scheme's own surface -- the same
+    // decision Theme.qml makes, made the same way, because a card that stayed
+    // navy on a themed window is worse than one that never followed.
+    //
+    // `typeof` because genesiPalette is a context property the app sets before
+    // the QML loads, and a card must still draw in an app that has not adopted
+    // that yet.
+    readonly property var _pal: (typeof genesiPalette !== "undefined" && genesiPalette) ? genesiPalette : ({})
+    readonly property bool _following: (typeof genesiFollowing !== "undefined") && genesiFollowing === true
+    readonly property color sysBg: (card._following && card._pal.surface) ? card._pal.surface : "#040b17"
     readonly property bool dark: !((0.299 * sysBg.r + 0.587 * sysBg.g + 0.114 * sysBg.b) >= 0.5)
 
     // Elevation/separator helpers (kept local so the card takes no `theme`).
@@ -41,7 +51,7 @@ Rectangle {
     function _elev(p) { return _mix(sysBg, _white, p) }
     function _sep(p)  { return dark ? _mix(sysBg, _white, p) : _mix(sysBg, _black, p) }
 
-    property color accent: Kirigami.Theme.highlightColor
+    property color accent: (card._following && card._pal.primary) ? card._pal.primary : Kirigami.Theme.highlightColor
     property bool active: false
     property bool interactive: true
     property bool wash: false

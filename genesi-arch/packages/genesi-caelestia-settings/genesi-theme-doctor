@@ -347,6 +347,45 @@ else:
         print(f"        {DIM}Window bg = {bg or '—'}"
               + (f" (scheme: {want_rgb})" if want_rgb else "") + f"{OFF}")
 
+# ── The name, and whether anything answers to it ────────────────────────────
+#
+# kdeglobals says which colour scheme is in use by NAME, and a KDE or Kirigami
+# app resolves that name to a .colors file at startup. A name nothing answers
+# to does not mean "leave the palette alone" -- it means Breeze, which is
+# light, on a desktop whose every other surface is dark.
+#
+# This is the check that was missing while an app could be fixed by hand
+# (setting its colours to Default, which reads the groups above) and broke
+# again on restart (which resolves the name).
+want = kde.get("General", {}).get("ColorScheme", "")
+if not want:
+    warn("kdeglobals does not name a colour scheme",
+         "apps fall back to their own default at startup")
+else:
+    roots = [Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local/share")),
+             Path("/usr/share")]
+    found = None
+    for root in roots:
+        d = root / "color-schemes"
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.colors")):
+            name = ini(read(f)).get("General", {}).get("Name", "")
+            if f.stem == want or name == want:
+                found = f
+                break
+        if found:
+            break
+    if found:
+        ok(f"kdeglobals names {want}, and that scheme exists", str(found))
+    else:
+        bad(f"kdeglobals names the colour scheme {want!r}, and no .colors file "
+            "answers to it",
+            "run genesi-caelestia-theme-sync — it writes that file now. Until "
+            "it exists, a KDE app resolves the name at startup, finds nothing, "
+            "and uses Breeze: the app opens light, setting its colours to "
+            "Default fixes it for that run, and restarting undoes it")
+
 # The palette a KDE app STARTS with comes from the platform theme, not from
 # kdeglobals. Without plasma-integration there is no KDE platform theme, so a
 # KDE app gets whatever qt6ct gives it -- which is fine, as long as qt6ct's

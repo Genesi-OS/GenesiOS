@@ -31,10 +31,34 @@ Item {
     visible: false
     width: 0; height: 0
 
+    // ── Which palette, and where it comes from ─────────────────────
+    //
+    // genesiPalette and genesiFollowing are set by genesi_palette.install()
+    // before the QML loads. `typeof` rather than a plain read: a context
+    // property that was never set is a ReferenceError, and an app that has not
+    // adopted the helper yet must still start.
+    //
+    // Following is OFF unless Genesi Center's one switch says otherwise, so
+    // the pinned Genesi look does not quietly leave in an update -- and when it
+    // is on, the surfaces below come from the desktop's scheme rather than from
+    // the six hex literals this file used to end at.
+    readonly property var pal: (typeof genesiPalette !== "undefined" && genesiPalette) ? genesiPalette : ({})
+    readonly property bool following: (typeof genesiFollowing !== "undefined") && genesiFollowing === true
+
+    function fromScheme(key, fallback) {
+        return (t.following && t.pal[key]) ? t.pal[key] : fallback
+    }
+
     // ── System inputs (live from the active scheme) ────────────────
-    readonly property color sysBg:     Kirigami.Theme.backgroundColor
-    readonly property color sysText:   Kirigami.Theme.textColor
-    readonly property color sysAccent: Kirigami.Theme.highlightColor
+    //
+    // Kirigami.Theme second, not first. On a Plasma session it reflects the
+    // active colour scheme; under Hyprland it reflects whatever KDE resolved,
+    // which is the thing that was landing on Breeze. The scheme file is the
+    // same source genesi-caelestia-theme-sync reads, so preferring it means
+    // these apps and the shell cannot disagree about what the scheme is.
+    readonly property color sysBg:     t.fromScheme("surface", Kirigami.Theme.backgroundColor)
+    readonly property color sysText:   t.fromScheme("onSurface", Kirigami.Theme.textColor)
+    readonly property color sysAccent: t.fromScheme("primary", Kirigami.Theme.highlightColor)
     readonly property real  sysLum:    0.299 * sysBg.r + 0.587 * sysBg.g + 0.114 * sysBg.b
     readonly property bool  dark:      !(sysLum >= 0.5)
 
@@ -62,9 +86,14 @@ Item {
     // (bg/card/line) and text still derive from the scheme, so the app keeps the
     // system's dark background while the brand colour stays put. (sysAccent above
     // is retained for `dark`/luminance helpers but no longer drives the accent.)
-    readonly property color accent:      "#1FBE6A"
-    readonly property color green:       "#1FBE6A"   // primary emerald
-    readonly property color greenBright: "#34D989"   // gauges, dots, active text
+    //
+    // 2026-09: and then the switch. "Every window follows the theme" has to
+    // mean every window, so when Genesi Center's one switch is on, the accent
+    // is the scheme's primary and the surfaces below are the scheme's too.
+    // Off -- the default -- these are exactly the values above, unchanged.
+    readonly property color accent:      t.fromScheme("primary", "#1FBE6A")
+    readonly property color green:       t.accent
+    readonly property color greenBright: t.fromScheme("secondary", "#34D989")
     readonly property color greenDeep:   "#0F7A47"   // logo/brand-mark gradient foot
 
     // Legible accent text for use ON an accent-TINTED surface (a chip/badge/nav
@@ -101,12 +130,18 @@ Item {
     // elev/sep above stay defined for the accent helpers; they no longer drive
     // these surfaces.) GlassCard.qml pins the same #040b17 base so its cards land on
     // ~#0d1623 too.
-    readonly property color bgBottom: "#040b17"   // window / scroll base
-    readonly property color bgTop:    "#0a1220"   // header / raised base
-    readonly property color card:     "#0d1623"   // sidebar, panels, card base
-    readonly property color cardHi:   "#16223a"   // hover / raised chips, search fields
-    readonly property color line:     "#1b2740"   // subtle separators / borders
-    readonly property color lineHi:   "#27374f"   // stronger borders
+    //
+    // 2026-09: pinned until the switch says otherwise. The mapping is the
+    // Material You elevation ladder, so a scheme's own idea of "one step up
+    // from the window" is used rather than a lightening of its background --
+    // which is what made every followed app look washed out rather than
+    // themed.
+    readonly property color bgBottom: t.fromScheme("surface", "#040b17")
+    readonly property color bgTop:    t.fromScheme("surfaceContainerLow", "#0a1220")
+    readonly property color card:     t.fromScheme("surfaceContainer", "#0d1623")
+    readonly property color cardHi:   t.fromScheme("surfaceContainerHigh", "#16223a")
+    readonly property color line:     t.fromScheme("surfaceContainerHighest", "#1b2740")
+    readonly property color lineHi:   t.fromScheme("outline", "#27374f")
 
     // ── Text (from the system foreground) ──────────────────────────
     readonly property color textHi:   sysText

@@ -192,7 +192,14 @@ pkgver=1.0.0
 # the ACTIVE scheme rather than counting its sections, because a
 # kdeglobals written for a scheme you have since changed away from passes
 # "all seven groups are present" and gives every KDE app the wrong colours.
-pkgrel=40
+# 41: the colour scheme kdeglobals NAMES now exists as a file.
+# There was no .colors anywhere called what [General] ColorScheme
+# asked for, and a name that resolves to nothing does not mean
+# "leave the palette alone" -- it means Breeze, which is light.
+# That is Dolphin opening white, being fixed by hand by setting its
+# colours to Default (which reads the groups), and reverting on the
+# next launch (which resolves the name).
+pkgrel=41
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

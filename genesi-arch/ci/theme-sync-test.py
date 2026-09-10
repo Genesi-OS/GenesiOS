@@ -51,6 +51,7 @@ def ini(path):
 home = tempfile.mkdtemp()
 os.environ["XDG_CONFIG_HOME"] = os.path.join(home, "config")
 os.environ["XDG_STATE_HOME"] = os.path.join(home, "state")
+os.environ["XDG_DATA_HOME"] = os.path.join(home, "data")
 
 spec = importlib.util.spec_from_loader(
     "sync", importlib.machinery.SourceFileLoader("sync", SRC))
@@ -111,8 +112,38 @@ check(g.get("Colors:View", {}).get("BackgroundNormal") == "25,26,33",
       "views use the lowest container, not the window colour")
 check(g.get("Colors:Selection", {}).get("BackgroundNormal") == "189,147,249",
       "selection is the scheme's primary")
-check(g.get("General", {}).get("ColorScheme") == "Genesi Caelestia",
+check(g.get("General", {}).get("ColorScheme") == sync.SCHEME_NAME,
       "the scheme has a name")
+
+# ── And that something answers to that name ──────────────────────────────────
+#
+# kdeglobals naming a scheme is only half of it. A KDE or Kirigami app resolves
+# that name to a .colors file at startup, and a name nothing answers to does
+# not leave the palette alone -- it falls back to Breeze, which is light. That
+# was the bug: Dolphin opened white, setting its colours to Default fixed it
+# for that run (Default reads the groups), and restarting undid it (startup
+# resolves the name).
+want = sync.SCHEME_NAME
+check(" " not in want,
+      "the scheme name is a single token (KDE matches this file by its Name "
+      "in some code paths and by its base name in others)")
+scheme_file = str(sync.COLOR_SCHEME)
+check(os.path.exists(scheme_file),
+      "the .colors file the name points at was written")
+sc = ini(scheme_file)
+check(sc.get("General", {}).get("Name") == want,
+      "its Name is the name kdeglobals asks for")
+check(os.path.basename(scheme_file) == want + ".colors",
+      "and so is its file name")
+check(sc.get("Colors:Window", {}).get("BackgroundNormal") == "52,55,70",
+      "it carries the same window colour as kdeglobals (two files describing "
+      "one scheme that disagree is worse than one file)")
+check(sc.get("Colors:Selection", {}).get("BackgroundNormal") == "189,147,249",
+      "and the same selection colour")
+for eff in ("ColorEffects:Disabled", "ColorEffects:Inactive"):
+    check(eff in sc,
+          f"[{eff}] is present (KDE derives greyed-out text from these rather "
+          "than from colours)")
 
 WANT = ("Colors:Window", "Colors:View", "Colors:Button", "Colors:Selection",
         "Colors:Tooltip", "Colors:Complementary", "Colors:Header", "WM")

@@ -597,6 +597,54 @@ Item {
                 }
             }
 
+            // ── Weather ──────────────────────────────────────────────────────
+            //
+            // The weather widget, the forecast widget and the launcher's own
+            // header all read one setting, and there was nowhere to set it.
+            // Left empty, caelestia guesses the location from the IP address --
+            // a round trip to a third party that is rate limited, wrong behind
+            // a VPN, and silently does nothing when it fails. What you see then
+            // is "--" with no temperature and nothing anywhere saying why.
+            SectionHead { index: "—"; text: qsTr("Weather") }
+
+            Panel {
+                width: parent.width
+                height: weatherCol.implicitHeight + 8
+
+                Column {
+                    id: weatherCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    anchors.margins: 4
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Where you are")
+                        description: qsTr("A city name, or coordinates as "
+                                          + "\"lat,lon\". Empty means guess "
+                                          + "from the network, which is why "
+                                          + "the temperature can be blank.")
+                        Field {
+                            width: 220
+                            text: (page.d.weather || {}).location || ""
+                            placeholder: qsTr("Belo Horizonte")
+                            onAccepted: v => page.set("services.weatherLocation", v)
+                        }
+                    }
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Fahrenheit")
+                        description: qsTr("Everything is Celsius otherwise, "
+                                          + "including the forecast.")
+                        last: true
+                        Toggle {
+                            checked: (page.d.weather || {}).fahrenheit === true
+                            onToggled: v => page.set("services.useFahrenheit", v)
+                        }
+                    }
+                }
+            }
+
             SectionHead { index: "—"; text: qsTr("What Genesi adds") }
 
             Panel {

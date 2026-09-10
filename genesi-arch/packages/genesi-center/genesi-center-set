@@ -165,6 +165,21 @@ CAELESTIA_PATHS = {
     "background.visualiser.rounding": ("float", 0.0, 3.0),
     "background.visualiser.spacing": ("float", 0.0, 3.0),
     "background.wallpaperEnabled": ("bool",),
+
+    # ── The services the shell reads the world through ───────────────────────
+    #
+    # Upstream's, not Genesi's. The weather widget and the launcher's header
+    # both print "--" with no temperature until this is set, because with no
+    # location caelestia has nowhere to ask about and falls back to guessing
+    # from the IP address -- which is a network round trip to a third party
+    # that is rate-limited, often wrong, and silently does nothing when it
+    # fails. There was no way to set it from anywhere in Genesi.
+    #
+    # A city name or "lat,lon"; caelestia geocodes the first and uses the
+    # second directly.
+    "services.weatherLocation": ("str",),
+    "services.useFahrenheit": ("bool",),
+    "services.useTwelveHourClock": ("bool",),
     "background.transitionDuration": ("int", 0, 3000),
 
     "border.thickness": ("int", 0, 40),

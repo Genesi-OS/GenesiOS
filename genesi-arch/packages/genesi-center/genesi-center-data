@@ -917,8 +917,18 @@ def desktop():
     vis = bg.get("visualiser") or {}
     widgets = bg.get("widgets") or {}
     dock = cfg.get("dock") or {}
+    svc = cfg.get("services") or {}
     return {
         "available": True,
+        # Where the weather comes from. With this unset caelestia has nothing
+        # to ask about: it falls back to guessing the location from the IP
+        # address, and when that guess fails -- rate limited, offline, behind a
+        # VPN -- every temperature on the desktop reads "--" with nothing
+        # anywhere to say why.
+        "weather": {
+            "location": svc.get("weatherLocation", ""),
+            "fahrenheit": bool(svc.get("useFahrenheit", False)),
+        },
         # The dock is not part of `background` in the config -- it is above
         # windows, not behind them -- but it is the same page's business.
         "dock": {

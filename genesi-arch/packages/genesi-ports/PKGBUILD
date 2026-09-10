@@ -36,7 +36,14 @@ pkgver=1.0.0
 # scope's ids -- so every GButton/StudioCard/StatusBanner written that way was
 # handed `undefined` and rendered unstyled. Swept here too; the id is
 # `appTheme` now. ci/qml-sanity-test.py fails on the pattern from now on.
-pkgrel=10
+# 11: follows the desktop's colour scheme when Genesi Center's switch
+# says to, through the shared genesi_palette bridge -- which also sets
+# the application QPalette. That second half is what was missing: Qt
+# draws popups, scrollbars and Fusion buttons from a palette no Genesi
+# app ever set, so they arrived in Fusion's default LIGHT one. A dark
+# window with a few white controls in it was not an app half following
+# the scheme, it was an app following nothing while Qt filled the gaps.
+pkgrel=11
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -60,6 +67,12 @@ package() {
 
     install -Dm644 "${startdir}/app/genesi_ports.py" \
         "$pkgdir/usr/share/genesi-ports/app/genesi_ports.py"
+
+    # The shared colour bridge, bundled from genesi-ui-kit the same way the
+    # kit's QML is -- and beside the app's own module, because that is the
+    # directory the app puts on sys.path to import it.
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/genesi_palette.py" \
+        "$pkgdir/usr/share/genesi-ports/app/genesi_palette.py"
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-ports/app/Main.qml"
     for comp in Theme GlassCard StudioTheme StudioCard GButton StatusBanner I18n; do

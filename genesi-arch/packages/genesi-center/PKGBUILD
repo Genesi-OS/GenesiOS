@@ -97,7 +97,12 @@ pkgver=0.1.0
 # and the settings pages that came up empty. Pairs now, one write, a
 # private scratch file; a damaged shell.json is salvaged up to the point
 # it stops parsing instead of being read as "no configuration at all".
-pkgrel=23
+# 24: a place to set the weather location. The widget, the forecast
+# and the launcher's header all read one key and nothing in Genesi
+# could write it, so caelestia fell back to guessing from the IP --
+# and when that guess fails, every temperature on the desktop reads
+# "--" with nothing anywhere saying why.
+pkgrel=24
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
