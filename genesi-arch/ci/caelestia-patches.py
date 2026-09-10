@@ -1575,6 +1575,37 @@ def patch_desktop_widgets(release):
 DOCK_FILES = ("GenesiDock.qml",)
 
 
+def verify_string_literals(path, text):
+    """
+    A header using `_s` has the operator in scope, or this stops the build.
+
+    Qt's `u"x"_s` is a user-defined literal, and the operator it needs is not
+    in scope by default: seven of upstream's config headers open with
+    `using Qt::StringLiterals::operator""_s;` and the rest do not, because the
+    rest have no QString default in them.
+
+    backgroundconfig.hpp was one of the rest. The dock's config is all bools
+    and ints, so nothing noticed -- and the first QString default written into
+    it died with `unable to find string literal operator`, fifteen minutes into
+    the build. Every other precondition in this file had passed.
+
+    Two seconds here instead. The check is per FILE, because the operator is
+    scoped per file and a patch that writes into two headers can easily get one
+    of them right.
+    """
+    if '_s' not in text:
+        return
+    if not re.search(r'u"[^"]*"_s', text):
+        return
+    if 'using Qt::StringLiterals::operator""_s;' not in text:
+        fail(f"{os.path.basename(path)} now uses u\"...\"_s and does not have "
+             '`using Qt::StringLiterals::operator""_s;` in it. That is not a '
+             "warning, it is `unable to find string literal operator` -- and "
+             "it surfaces at the END of a twenty-minute compile. Add the line "
+             "upstream's other config headers open with, right after the "
+             "namespace.")
+
+
 def verify_config_reachable(cfg_text, att_text, attc_text):
     """
     Every config section reaches QML, or the build stops here instead of there.
@@ -1796,6 +1827,9 @@ def patch_dock(release):
     # that asserts its anchors and not its output is checking that it found the
     # right place to write the bug.
     verify_config_reachable(out[cfg], out[att], out[attc])
+    for _path, _text in out.items():
+        if _path.endswith(".hpp"):
+            verify_string_literals(_path, _text)
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
@@ -1913,6 +1947,25 @@ def patch_topbar(release):
         "\n")
     out = {hpp: src[hpp].replace(anchor, block + anchor, 1)}
 
+    # ── `u"top"_s` needs the operator in scope ───────────────────────────────
+    #
+    # Seven of upstream's config headers carry this line and backgroundconfig
+    # is not one of them, because nothing in it had a QString default until
+    # now -- the dock's config is all bools and ints. Without it the build dies
+    # on `unable to find string literal operator 'operator""_s'`, which it did,
+    # fifteen minutes in.
+    #
+    # Upstream's exact form, and placed where upstream places it: immediately
+    # after the namespace opens.
+    using_line = 'using Qt::StringLiterals::operator""_s;\n'
+    if using_line not in out[hpp]:
+        ns = "namespace caelestia::config {\n"
+        if ns not in out[hpp]:
+            fail("backgroundconfig.hpp does not open the config namespace "
+                 "where this expects it, so there is nowhere to put the "
+                 "string-literal operator the top bar's defaults need.")
+        out[hpp] = out[hpp].replace(ns, ns + "\n" + using_line, 1)
+
     fwd = "class GenesiDockConfig;\n"
     if fwd not in src[cfg]:
         fail("config.hpp does not forward-declare GenesiDockConfig -- "
@@ -1957,6 +2010,9 @@ def patch_topbar(release):
         impl, impl + "CONFIG_ATTACHED_GETTER(GenesiTopBarConfig, topbar)\n", 1)
 
     verify_config_reachable(out[cfg], out[att], out[attc])
+    for _path, _text in out.items():
+        if _path.endswith(".hpp"):
+            verify_string_literals(_path, _text)
 
     # ── The one line in upstream's bar ───────────────────────────────────────
     old = ("    readonly property bool disabled: "
