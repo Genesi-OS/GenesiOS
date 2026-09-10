@@ -4,16 +4,20 @@
 // things a widget needs to be moved: an outline saying it can be, and a way to
 // move it.
 //
-// ── Anchored widgets are unpinned, not dragged ──────────────────────────────
+// ── Everything is draggable in arrange mode ─────────────────────────────────
 //
 // A widget in a corner lives inside a Column, and a Column SETS the x and y of
 // everything in it. A drag handler writing x and y to the same item is two
 // things assigning one property every frame, and what that looks like is not a
 // widget being dragged -- it is a widget vibrating.
 //
-// So there are two gestures, not one. An anchored widget shows UNPIN, which
-// makes it free exactly where it already stands; a free widget is dragged. Both
-// end in the same place, and neither fights a positioner.
+// The first answer to that was two gestures: UNPIN a corner widget, then drag
+// it. Two problems. It is not what anybody means by "move it", and the pill sat
+// under the widget -- which is off the bottom of the screen for anything
+// anchored there.
+//
+// So arrange mode moves every widget into the free layer instead, seeded from
+// where it already was. One gesture, no positioner to fight, nothing jumps.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -30,8 +34,9 @@ Item {
     // right edge, so growing a widget does not push it off the screen.
     property string corner: "top-left"
     property bool arranging: false
-    // The item the drag moves. Free widgets pass their own wrapper; anchored
-    // ones pass nothing, and get UNPIN instead.
+    // The item the drag moves -- the wrapper that owns this host's position.
+    // Null means "not draggable", which is every widget while arrange mode is
+    // off, and none of them while it is on.
     property Item dragTarget: null
 
     signal dropped
@@ -79,9 +84,9 @@ Item {
     DragHandler {
         id: drag
 
-        // A free widget only. `target` null on an anchored one means the
-        // gesture exists and moves nothing, which is worse than not existing;
-        // `enabled` is what keeps it off.
+        // `target: null` would mean a gesture that exists and moves nothing,
+        // which is worse than no gesture at all. `enabled` is what keeps it off
+        // when there is nothing for it to move.
         enabled: host.arranging && host.dragTarget !== null
         target: host.dragTarget
         cursorShape: Qt.ClosedHandCursor
@@ -90,39 +95,4 @@ Item {
             host.dropped()
     }
 
-    // UNPIN, for the ones in a corner. It reads as the opposite of what it is
-    // -- you are not detaching it from anything, you are saying "this one I
-    // will place myself" -- and no shorter word says that.
-    Rectangle {
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.bottom
-        anchors.topMargin: 4
-        visible: host.arranging && host.dragTarget === null
-        implicitWidth: unpinText.implicitWidth + Tokens.padding.medium * 2
-        implicitHeight: unpinText.implicitHeight + Tokens.padding.extraSmall * 2
-        radius: Tokens.rounding.full
-        color: unpinArea.containsMouse ? Colours.palette.m3primary : Colours.palette.m3surfaceContainerHigh
-
-        Behavior on color {
-            CAnim {}
-        }
-
-        StyledText {
-            id: unpinText
-
-            anchors.centerIn: parent
-            text: qsTr("UNPIN")
-            font: Tokens.font.label.small
-            color: unpinArea.containsMouse ? Colours.palette.m3onPrimary : Colours.palette.m3onSurfaceVariant
-        }
-
-        MouseArea {
-            id: unpinArea
-
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: host.dropped()
-        }
-    }
 }

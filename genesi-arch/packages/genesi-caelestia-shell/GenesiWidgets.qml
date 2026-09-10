@@ -112,6 +112,43 @@ Item {
     // putting things on.
     property bool arranging: false
 
+    // Where each anchored widget WAS when arrange mode started, in pixels.
+    //
+    // This is what lets every widget be dragged directly instead of being
+    // unpinned first. A widget in a corner lives inside a Column, and a Column
+    // sets the x and y of everything in it -- a drag handler writing the same
+    // properties is two things assigning one value every frame, which does not
+    // look like dragging, it looks like vibrating.
+    //
+    // So arrange mode moves ALL of them into the free layer at once. Their
+    // positions are read off the screen first, so nothing jumps: the widget you
+    // grab is exactly where it was a moment ago.
+    property var placed: ({})
+
+    function beginArrange(): void {
+        const map = {};
+        for (const slot of [tl, tc, tr, ml, cc, mr, bl, bc, br]) {
+            for (const child of slot.children) {
+                // The Repeater is a child of the Column too, and it is not a
+                // widget. `widget` is what tells them apart.
+                if (!child.widget)
+                    continue;
+                const p = child.mapToItem(root, 0, 0);
+                map[child.widget] = {
+                    "x": p.x,
+                    "y": p.y
+                };
+            }
+        }
+        root.placed = map;
+        root.arranging = true;
+    }
+
+    function endArrange(): void {
+        root.arranging = false;
+        root.placed = ({});
+    }
+
     function cfgOf(name: string): var {
         return Config.background.widgets[name];
     }
@@ -128,6 +165,10 @@ Item {
     // them: a binding follows every notifiable property read while it runs,
     // including the ones read inside a function it called.
     function at(anchor: string): var {
+        // Nothing is anchored while arranging: they are all in the free layer,
+        // where they can be dragged without fighting a positioner.
+        if (root.arranging)
+            return [];
         const out = [];
         for (const d of root.defs) {
             const c = root.cfgOf(d.name);
@@ -141,7 +182,9 @@ Item {
         const out = [];
         for (const d of root.defs) {
             const c = root.cfgOf(d.name);
-            if (c && c.enabled && c.position === "free")
+            if (!c || !c.enabled)
+                continue;
+            if (root.arranging || c.position === "free")
                 out.push(d.name);
         }
         return out;
@@ -160,53 +203,71 @@ Item {
 
     // ── The nine ─────────────────────────────────────────────────────────────
     Slot {
+        id: tl
+
         anchorName: "top-left"
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.margins: root.margin
     }
     Slot {
+        id: tc
+
         anchorName: "top-centre"
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: root.margin
     }
     Slot {
+        id: tr
+
         anchorName: "top-right"
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: root.margin
     }
     Slot {
+        id: ml
+
         anchorName: "mid-left"
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         anchors.leftMargin: root.margin
     }
     Slot {
+        id: cc
+
         anchorName: "centre"
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
     }
     Slot {
+        id: mr
+
         anchorName: "mid-right"
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: root.margin
     }
     Slot {
+        id: bl
+
         anchorName: "bottom-left"
         anchors.left: parent.left
         anchors.bottom: parent.bottom
         anchors.margins: root.margin
     }
     Slot {
+        id: bc
+
         anchorName: "bottom-centre"
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: root.margin
     }
     Slot {
+        id: br
+
         anchorName: "bottom-right"
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -227,8 +288,11 @@ Item {
             width: body.implicitWidth * body.scale
             height: body.implicitHeight * body.scale
 
-            x: (floater.cfg?.x ?? 0.05) * root.width
-            y: (floater.cfg?.y ?? 0.05) * root.height
+            // Where it already was if arrange mode just moved it here, and its
+            // stored fraction otherwise. Without the first case, entering
+            // arrange mode piles every anchored widget into one corner.
+            x: root.placed[floater.modelData] !== undefined ? root.placed[floater.modelData].x : (floater.cfg?.x ?? 0.05) * root.width
+            y: root.placed[floater.modelData] !== undefined ? root.placed[floater.modelData].y : (floater.cfg?.y ?? 0.05) * root.height
 
             GenesiWidgetHost {
                 id: body
@@ -237,18 +301,20 @@ Item {
                 corner: "top-left"
                 arranging: root.arranging
 
-                // Dropped, so remember where. The binding above is restored by
-                // hand afterwards: the drag wrote x and y imperatively, which
-                // breaks it, and a widget that stops following its own config
-                // is one that jumps back to where it was on the next reload
-                // and nowhere else.
+                // Dropped, so remember where -- and that it is placed by hand
+                // now, which is what `free` means. A widget dragged out of a
+                // corner that stayed "top-left" in the config would snap back
+                // there on the next reload and nowhere else.
+                //
+                // The x and y bindings are NOT restored: the drag wrote them
+                // imperatively, and leaving arrange mode rebuilds this item
+                // from the model anyway, with fresh ones.
                 onDropped: {
                     const fx = Math.max(0, Math.min(0.98, floater.x / root.width));
                     const fy = Math.max(0, Math.min(0.98, floater.y / root.height));
                     root.write(floater.modelData, "x", fx.toFixed(4));
                     root.write(floater.modelData, "y", fy.toFixed(4));
-                    floater.x = Qt.binding(() => (floater.cfg?.x ?? 0.05) * root.width);
-                    floater.y = Qt.binding(() => (floater.cfg?.y ?? 0.05) * root.height);
+                    root.write(floater.modelData, "position", "free");
                 }
                 dragTarget: floater
             }
@@ -263,7 +329,7 @@ Item {
             const c = root.cfgOf(name);
             root.write(name, "enabled", c && c.enabled ? "false" : "true");
         }
-        onArrange: root.arranging = !root.arranging
+        onArrange: root.arranging ? root.endArrange() : root.beginArrange()
         arranging: root.arranging
     }
 
@@ -284,18 +350,6 @@ Item {
                 corner: slot.anchorName
                 arranging: root.arranging
 
-                // Dragging an ANCHORED widget is what makes it free. The drop
-                // point is where it already is on screen, mapped into the
-                // layer -- otherwise the widget would jump to a corner of its
-                // own column the moment it stopped being anchored.
-                onDropped: {
-                    const p = mapToItem(root, 0, 0);
-                    const fx = Math.max(0, Math.min(0.98, p.x / root.width));
-                    const fy = Math.max(0, Math.min(0.98, p.y / root.height));
-                    root.write(modelData, "x", fx.toFixed(4));
-                    root.write(modelData, "y", fy.toFixed(4));
-                    root.write(modelData, "position", "free");
-                }
             }
         }
     }

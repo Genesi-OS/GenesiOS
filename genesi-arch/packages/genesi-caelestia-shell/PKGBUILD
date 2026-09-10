@@ -133,7 +133,25 @@ pkgver=2.0.3
 # compiles and leaves m_dock null in whichever one was missed, which is a
 # crash on the first read of Config.dock; the patcher asserts it finds
 # exactly two.
-pkgrel=25
+# 26: the dock never appeared, and widgets could not be dragged.
+#
+# The dock's input mask was `Region { item: bar }`. Not one Region in
+# caelestia names an item -- all of them are written as geometry -- and a
+# property that does not exist does not fail quietly in QML: the whole
+# file fails to load, so the dock was never built at all. Geometry now,
+# the same shape upstream uses.
+#
+# Its slide also did nothing: the bar is anchored to its parent's bottom
+# AND had a `y:` binding, which is two things assigning one property.
+# The anchor wins. It rides the margin now, like the launcher's Wrapper.
+#
+# And arrange mode asked for two gestures -- UNPIN a corner widget, then
+# drag it -- which is not what anybody means by "move it", and put the
+# pill under the widget, which is off-screen for anything anchored at the
+# bottom. Arrange mode moves every widget into the free layer instead,
+# seeded from where it already was, so one drag works on all of them and
+# nothing jumps.
+pkgrel=26
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

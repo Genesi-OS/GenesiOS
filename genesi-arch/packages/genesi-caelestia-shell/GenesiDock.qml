@@ -84,8 +84,17 @@ Variants {
         // across the bottom of every screen that swallows clicks meant for the
         // window underneath it -- which is the bottom edge of every maximised
         // window there is.
+        //
+        // GEOMETRY, not `item: bar`. Every Region in caelestia is written this
+        // way and not one of them names an item, which is the only evidence
+        // available for what this Quickshell accepts -- and a property that
+        // does not exist does not fail quietly here: the whole file fails to
+        // load, and the dock never appears at all. That is what shipped.
         mask: Region {
-            item: bar
+            x: bar.x
+            y: bar.y
+            width: bar.width
+            height: bar.height
         }
 
         StyledRect {
@@ -93,7 +102,18 @@ Variants {
 
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: Tokens.padding.medium
+            // The slide rides the MARGIN, not y. An item anchored to its
+            // parent's bottom has its y set by that anchor, so a `y:` binding
+            // on the same item is a second thing assigning one property -- the
+            // anchor wins and the animation silently does nothing. Same shape
+            // the launcher's Wrapper uses.
+            anchors.bottomMargin: win.shown
+                ? Tokens.padding.medium
+                : -(implicitHeight + Tokens.padding.medium)
+
+            Behavior on anchors.bottomMargin {
+                Anim {}
+            }
 
             implicitWidth: row.implicitWidth + Config.dock.padding * 2
             implicitHeight: Config.dock.iconSize + Config.dock.padding * 2
@@ -106,16 +126,12 @@ Variants {
             border.width: Config.dock.background ? 1 : 0
             border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
 
-            opacity: win.shown ? 1 : 0
             // Slid down as well as faded, so an empty dock leaves rather than
             // dissolves. It also means nothing is drawn under the pointer at
             // 1% opacity, waiting to be clicked by accident.
-            y: win.shown ? 0 : Tokens.padding.medium + implicitHeight
+            opacity: win.shown ? 1 : 0
 
             Behavior on opacity {
-                Anim {}
-            }
-            Behavior on y {
                 Anim {}
             }
 
