@@ -1,0 +1,421 @@
+#!/usr/bin/env python3
+"""
+genesi-depth — cut the subject out of a wallpaper so widgets can sit behind it.
+
+    genesi-depth cutout <image> [--quality draft|standard|fine]
+    genesi-depth path <image>            where the cutout for that image is
+    genesi-depth status
+    genesi-depth clear
+
+`cutout` prints the path of a transparent PNG holding the subject and nothing
+else. The shell draws it over the clock and the widgets, so the subject of the
+picture appears to stand in FRONT of them while the rest of the wallpaper is
+still behind. That is the whole trick, and it is worth saying plainly because
+the effect is often described as "3D": there is no depth map and no parallax.
+There is one cut-out, drawn twice -- once as part of the wallpaper underneath,
+once as a layer on top -- and the widgets are in between.
+
+── Why this is classical vision and not a model ───────────────────────────────
+
+The obvious way is a segmentation network. It is also 170MB of weights, an
+onnxruntime dependency that pulls in half a numerical stack, and a first run
+that either downloads from somewhere or ships the weights in a package that
+every Genesi user pays for whether or not they turn this on.
+
+Spectral-residual saliency plus GrabCut needs numpy and the core half of
+OpenCV, both of which are small, both of which are already packaged, and on a
+wallpaper -- one clear subject, a background that is deliberately quieter than
+it -- it is close to as good. Wallpapers are the easy case for saliency: they
+are chosen by a person for having a subject.
+
+If `rembg` happens to be installed, `--quality fine` uses it, because on the
+hard cases (hair, foliage, a subject the same brightness as its background) a
+network really is better. It is an optdepend, never a requirement, and the
+other two tiers never touch it.
+
+── The tiers ─────────────────────────────────────────────────────────────────
+
+    draft      short side 480, 3 GrabCut iterations, hard edge
+    standard   short side 720, 5 iterations, 2px feather
+    fine       rembg if it is installed; otherwise short side 1080,
+               8 iterations, 3px feather and an edge refinement pass
+
+Higher tiers trace hair and leaf edges better and take longer. On a 4K
+wallpaper standard is about a second and fine about four.
+
+── The cache ─────────────────────────────────────────────────────────────────
+
+Keyed by the image's path, size and mtime, plus the quality. So changing the
+wallpaper and changing it back does not recompute, and editing a wallpaper in
+place does. The shell asks for a cutout on every wallpaper change and gets an
+instant answer for one it has seen.
+"""
+import argparse
+import hashlib
+import io
+import os
+import shutil
+import sys
+
+CACHE = os.path.join(
+    os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+    "genesi", "depth")
+
+# `contract` pulls the alpha in by a pixel or two before it is feathered.
+# GrabCut's edge lands a hair OUTSIDE the subject -- it has to put the
+# boundary somewhere and the pixels there are a blend of both -- so a cutout
+# laid back over its own wallpaper wears a thin fringe of the background it
+# came from, which is the one artefact that makes the effect look pasted on.
+TIERS = {
+    "draft": {"side": 480, "iters": 3, "feather": 0, "contract": 1},
+    "standard": {"side": 720, "iters": 5, "feather": 2, "contract": 2},
+    "fine": {"side": 1080, "iters": 8, "feather": 3, "contract": 2},
+}
+
+
+def die(msg, code=1):
+    print(msg, file=sys.stderr)
+    raise SystemExit(code)
+
+
+def key_for(path, quality, feather):
+    """A name that changes when the picture or the setting does.
+
+    The path alone is not enough: a wallpaper edited in place keeps its name,
+    and a cutout of the old version is worse than no cutout because nothing
+    about it looks stale. Size and mtime cost one stat() and catch that."""
+    try:
+        st = os.stat(path)
+    except OSError as e:
+        die(f"genesi-depth: cannot read {path}: {e}")
+    h = hashlib.sha256(
+        f"{os.path.abspath(path)}\0{st.st_size}\0{int(st.st_mtime)}"
+        f"\0{quality}\0{feather}"
+        .encode("utf-8")).hexdigest()[:32]
+    return h + ".png"
+
+
+def load_cv():
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        die("genesi-depth: needs python-opencv and python-numpy.\n"
+            "  pacman -S python-opencv python-numpy")
+    return cv2, np
+
+
+def saliency(cv2, np, gray):
+    """Spectral residual saliency, from Hou and Zhang 2007.
+
+    Written out rather than taken from cv2.saliency, which lives in the
+    contrib modules and is not in Arch's opencv package -- an import that
+    works on the developer's machine and not on anybody else's is the worst
+    kind of dependency.
+
+    The idea in one line: the log-magnitude spectrum of a natural image is
+    nearly the same for every natural image, so whatever a particular picture
+    has that the average does not is the part that stands out.
+    """
+    # 192, not the 64 the paper uses. Hou and Zhang were answering "where
+    # should an eye go next", and for that a blurred blob in the right part of
+    # the frame is a complete answer. This has to CUT along the answer, and a
+    # 64-pixel map stretched over a 4K wallpaper is a smear a third wider than
+    # the thing it describes -- which is a halo of sky welded to every subject.
+    # The FFT is on 192 squared either way, which is nothing.
+    small = cv2.resize(gray, (192, 192), interpolation=cv2.INTER_AREA)
+    f = np.fft.fft2(small.astype(np.float32))
+    log_amp = np.log(np.abs(f) + 1e-8)
+    phase = np.angle(f)
+    # The "average" spectrum, approximated by a local mean of this one.
+    avg = cv2.blur(log_amp, (3, 3))
+    residual = log_amp - avg
+    back = np.fft.ifft2(np.exp(residual + 1j * phase))
+    sal = np.abs(back) ** 2
+    sal = cv2.GaussianBlur(sal, (7, 7), 1.6)
+    sal -= sal.min()
+    if sal.max() > 0:
+        sal /= sal.max()
+    return sal
+
+
+def subject_mask(cv2, np, bgr, tier):
+    """A 0-255 alpha for the subject, at the working resolution.
+
+    None when the picture has no subject to find, which is a real answer: a
+    texture, a gradient or an abstract has nothing to lift in front of the
+    clock, and cutting out a piece of one anyway is the failure that makes
+    this feature look broken rather than subtle.
+    """
+    h, w = bgr.shape[:2]
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+
+    sal = saliency(cv2, np, gray)
+    sal = cv2.resize(sal, (w, h), interpolation=cv2.INTER_CUBIC)
+    sal8 = np.clip(sal * 255, 0, 255).astype(np.uint8)
+
+    # Otsu rather than a fixed threshold: how salient the salient part is
+    # varies enormously between a portrait and a landscape, and any constant
+    # here is a constant that is wrong for one of them. Otsu always splits
+    # SOMETHING, which is why the contrast test below exists.
+    _, hard = cv2.threshold(sal8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    hard = cv2.morphologyEx(hard, cv2.MORPH_CLOSE, k, iterations=2)
+    hard = cv2.morphologyEx(hard, cv2.MORPH_OPEN, k, iterations=1)
+
+    # The largest blob, and only it. A saliency map of a busy wallpaper lights
+    # up in several places, and a "subject" made of four unconnected pieces
+    # scattered across the screen reads as damage rather than as depth.
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(hard, 8)
+    if n <= 1:
+        return None
+    biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    hard = np.where(labels == biggest, 255, 0).astype(np.uint8)
+
+    # ── Is there a subject at all? ────────────────────────────────────────
+    #
+    # By CONTRAST, not by area. Area cannot tell a subject from the brighter
+    # half of a gradient -- both are a large connected region -- and a flat
+    # picture split by Otsu produced a third of the frame. How much brighter
+    # the saliency map is inside the candidate than outside it separates them
+    # cleanly: measured over a disc on a gradient, a planet on a starfield and
+    # a plain gradient, the ratio is 25, 85 and 2.3.
+    hull = cv2.convexHull(cv2.findNonZero(hard))
+    probe = np.zeros_like(hard)
+    cv2.fillConvexPoly(probe, hull, 255)
+    inside = float(sal8[probe > 0].mean()) if (probe > 0).any() else 0.0
+    outside = float(sal8[probe == 0].mean()) if (probe == 0).any() else 0.0
+    if inside < max(outside, 1e-6) * 4:
+        return None
+    # ...and a candidate covering most of the frame is the scene, not a thing
+    # in it. Nothing is gained by lifting the whole wallpaper off itself.
+    if (probe > 0).mean() > 0.6:
+        return None
+
+    # ── The region GrabCut works in ───────────────────────────────────────
+    #
+    # A bounding BOX, which is GrabCut's own documented starting point
+    # (GC_INIT_WITH_RECT takes a rectangle somebody drew), because GrabCut
+    # cannot grow past the region it is handed and saliency does not hand it
+    # the subject. It hands it the subject's RIM: an evenly coloured disc
+    # lights up as an arc, and a box drawn round that arc produced a cut-out
+    # of the top third of the disc, flat along the bottom where the box ended.
+    #
+    # So the box is measured from a LOW threshold -- a fixed fraction of the
+    # map's own maximum rather than Otsu's split -- which reaches down the
+    # shoulders of the saliency peak and out to the subject's real extent. On
+    # a disc whose true bounds are x430..690 y170..430 it gives x423..698
+    # y162..440. Otsu on the same picture gives y163..266.
+    #
+    # Otsu's blob stays as the CERTAIN core below. One threshold says where
+    # the subject definitely is, the other says how far it could reach.
+    reach = (sal8 >= max(1, int(0.15 * int(sal8.max())))).astype(np.uint8) * 255
+    reach = cv2.morphologyEx(reach, cv2.MORPH_CLOSE, k, iterations=2)
+    rn, rlabels, rstats, _ = cv2.connectedComponentsWithStats(reach, 8)
+    if rn > 1:
+        rbig = 1 + int(np.argmax(rstats[1:, cv2.CC_STAT_AREA]))
+        reach = np.where(rlabels == rbig, 255, 0).astype(np.uint8)
+        # Only if it still contains the certain core. A low threshold can
+        # light a bigger region somewhere else in a busy picture, and a box
+        # round THAT is a box round the wrong thing.
+        if not (reach[hard > 0] > 0).any():
+            reach = hard
+    else:
+        reach = hard
+
+    bx, by, bw_, bh_ = cv2.boundingRect(
+        cv2.convexHull(cv2.findNonZero(reach)))
+    px, py = int(bw_ * 0.1) + 8, int(bh_ * 0.1) + 8
+    x0, y0 = max(0, bx - px), max(0, by - py)
+    x1, y1 = min(w, bx + bw_ + px), min(h, by + bh_ + py)
+
+    # CERTAINLY subject: the brightest quarter of the saliency map inside the
+    # blob. Not an erosion of the blob -- the blob's edge is a threshold on a
+    # smear, so eroding it gives a smaller smear, and every pixel of it would
+    # be put beyond GrabCut's reach. The brightest saliency really is the
+    # subject; everything else is offered rather than asserted.
+    lit = sal8[hard > 0]
+    cut = np.percentile(lit, 60) if lit.size else 255
+    sure_fg = ((sal8 >= cut) & (hard > 0)).astype(np.uint8) * 255
+    sure_fg = cv2.morphologyEx(sure_fg, cv2.MORPH_OPEN,
+                               cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
+                                                         (5, 5)))
+    if not sure_fg.any():
+        sure_fg = hard
+
+    gc = np.full((h, w), cv2.GC_BGD, np.uint8)
+    gc[y0:y1, x0:x1] = cv2.GC_PR_FGD
+    gc[sure_fg > 0] = cv2.GC_FGD
+
+    bgd = np.zeros((1, 65), np.float64)
+    fgd = np.zeros((1, 65), np.float64)
+    try:
+        cv2.grabCut(bgr, gc, None, bgd, fgd, tier["iters"],
+                    cv2.GC_INIT_WITH_MASK)
+    except cv2.error:
+        # GrabCut refuses a mask with no background or no foreground pixels --
+        # a subject filling the frame, most likely. The thresholded blob is a
+        # worse answer than the refined one and a much better answer than an
+        # exception.
+        return hard
+
+    mask = np.where((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD), 255, 0)
+    mask = mask.astype(np.uint8)
+
+    # One last look: GrabCut can decide the whole box is foreground, which on
+    # a subject against a similar background means the cut-out is a rectangle.
+    # A rectangle drawn over the clock is worse than no depth at all.
+    n2, labels2, stats2, _ = cv2.connectedComponentsWithStats(mask, 8)
+    if n2 <= 1:
+        return None
+    keep = 1 + int(np.argmax(stats2[1:, cv2.CC_STAT_AREA]))
+    mask = np.where(labels2 == keep, 255, 0).astype(np.uint8)
+    if (mask > 0).mean() > 0.6 or (mask > 0).mean() < 0.005:
+        return None
+    return mask
+
+
+def rembg_mask(bgr):
+    """rembg's alpha, when it is installed. None when it is not."""
+    try:
+        from rembg import remove
+    except ImportError:
+        return None
+    import cv2
+    import numpy as np
+    rgba = remove(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+    arr = np.asarray(rgba)
+    if arr.ndim != 3 or arr.shape[2] != 4:
+        return None
+    return arr[:, :, 3]
+
+
+def cutout(path, quality, out, feather):
+    cv2, np = load_cv()
+    tier = dict(TIERS[quality])
+    if feather is not None:
+        tier["feather"] = feather
+
+    data = np.fromfile(path, dtype=np.uint8)
+    full = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    if full is None:
+        die(f"genesi-depth: {path} is not an image this can read")
+    fh, fw = full.shape[:2]
+
+    # Worked at the tier's resolution and scaled back up. The alpha is a soft
+    # edge either way, so upscaling it costs far less than segmenting a 4K
+    # picture would -- and the whole point of the tiers is that somebody can
+    # choose to spend that.
+    scale = tier["side"] / min(fh, fw)
+    if scale < 1:
+        small = cv2.resize(full, (int(fw * scale), int(fh * scale)),
+                           interpolation=cv2.INTER_AREA)
+    else:
+        small = full
+
+    mask = rembg_mask(small) if quality == "fine" else None
+    if mask is None:
+        mask = subject_mask(cv2, np, small, tier)
+    if mask is None:
+        die("genesi-depth: nothing in this picture stands out enough to be a "
+            "subject", 2)
+
+    mask = cv2.resize(mask, (fw, fh), interpolation=cv2.INTER_LINEAR)
+    # Scaled with the picture: two pixels at a 720 working size is six on a
+    # 4K wallpaper, and a fixed erode would be invisible on one and a bite out
+    # of the subject on the other.
+    contract = int(round(tier["contract"] * max(1.0, fh / tier["side"])))
+    if contract > 0:
+        r = contract * 2 + 1
+        mask = cv2.erode(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
+                                                         (r, r)))
+    if tier["feather"] > 0:
+        r = tier["feather"] * 2 + 1
+        mask = cv2.GaussianBlur(mask, (r, r), tier["feather"])
+
+    rgba = cv2.cvtColor(full, cv2.COLOR_BGR2BGRA)
+    rgba[:, :, 3] = mask
+
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    # Through a temporary in the same directory: the shell watches this path,
+    # and a half-written PNG that it manages to load is a subject drawn as a
+    # grey band across the top of the screen.
+    tmp = f"{out}.tmp.{os.getpid()}"
+    ok, buf = cv2.imencode(".png", rgba)
+    if not ok:
+        die("genesi-depth: could not encode the cutout")
+    with io.open(tmp, "wb") as fh_out:
+        fh_out.write(buf.tobytes())
+    os.replace(tmp, out)
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="genesi-depth", add_help=True)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    c = sub.add_parser("cutout", help="make (or reuse) the cutout for an image")
+    c.add_argument("image")
+    c.add_argument("--quality", choices=sorted(TIERS), default="standard")
+    c.add_argument("--force", action="store_true",
+                   help="recompute even if it is cached")
+    # Overrides the tier's own softness. It is a separate setting because the
+    # tier is about how carefully the edge is TRACED and this is about how
+    # sharply it is drawn -- the panel offers both and they are not the same
+    # question.
+    c.add_argument("--feather", type=int, default=None,
+                   help="edge softness in pixels, overriding the quality")
+
+    p = sub.add_parser("path", help="where the cutout for an image would be")
+    p.add_argument("image")
+    p.add_argument("--quality", choices=sorted(TIERS), default="standard")
+    p.add_argument("--feather", type=int, default=None)
+
+    sub.add_parser("status", help="what is installed and what is cached")
+    sub.add_parser("clear", help="drop every cached cutout")
+
+    a = ap.parse_args()
+
+    if a.cmd == "clear":
+        shutil.rmtree(CACHE, ignore_errors=True)
+        print(CACHE)
+        return 0
+
+    if a.cmd == "status":
+        try:
+            import cv2  # noqa: F401
+            import numpy  # noqa: F401
+            engine = "opencv"
+        except ImportError:
+            engine = "missing"
+        try:
+            import rembg  # noqa: F401
+            fine = "rembg"
+        except ImportError:
+            fine = "opencv"
+        n = 0
+        if os.path.isdir(CACHE):
+            n = len([f for f in os.listdir(CACHE) if f.endswith(".png")])
+        print(f"engine {engine}")
+        print(f"fine {fine}")
+        print(f"cached {n}")
+        print(f"cache {CACHE}")
+        return 0 if engine == "opencv" else 1
+
+    out = os.path.join(CACHE, key_for(a.image, a.quality, a.feather))
+
+    if a.cmd == "path":
+        print(out)
+        return 0 if os.path.exists(out) else 3
+
+    if os.path.exists(out) and not a.force:
+        print(out)
+        return 0
+
+    print(cutout(a.image, a.quality, out, a.feather))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

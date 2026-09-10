@@ -236,6 +236,11 @@ Variants {
                                 tip: qsTr("Notifications")
                             },
                             {
+                                icon: "filter_center_focus",
+                                what: "depth",
+                                tip: qsTr("Depth")
+                            },
+                            {
                                 icon: "wallpaper",
                                 what: "wallpaper",
                                 tip: qsTr("Next wallpaper")
@@ -292,6 +297,11 @@ Variants {
                                         if (v)
                                             v.sidebar = true;
                                         GenesiSidePanelState.hide();
+                                        return;
+                                    case "depth":
+                                        GenesiSidePanelState.hide();
+                                        GenesiTopBarState.section = "depth";
+                                        GenesiTopBarState.show();
                                         return;
                                     case "wallpaper":
                                         win.run(["caelestia", "wallpaper", "-r"]);

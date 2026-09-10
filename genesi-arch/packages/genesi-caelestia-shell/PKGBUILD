@@ -283,7 +283,26 @@ pkgver=2.0.3
 #
 # The mark itself can be something else now. `topbar.markIcon` takes any
 # Material Symbols name, and the Panel page in the studio offers six.
-pkgrel=32
+# 33: Depth. The subject of the wallpaper, cut out and drawn again on
+# top of the clock and the widgets -- so they sit behind it while the
+# rest of the picture stays in front of nothing. There is no depth map
+# and nothing moves: one cut-out and a stacking order.
+#
+# genesi-depth does the cutting, and it is classical vision rather than
+# a network on purpose. A segmentation model is 170MB of weights and an
+# onnxruntime dependency for a feature that is off by default;
+# spectral-residual saliency and GrabCut need numpy and the core half of
+# OpenCV, and a wallpaper is the easy case for saliency because it was
+# chosen by a person for having a subject. If python-rembg happens to be
+# installed the Fine tier uses it, because on hair and foliage a network
+# really is better -- an optdepend, never a requirement.
+#
+# Cut-outs are cached by the picture's path, size and mtime plus the
+# settings, so changing the wallpaper and changing it back is instant
+# and editing one in place is not. A picture with no subject to find --
+# a texture, a gradient -- is left alone rather than cut down to a speck
+# and drawn over the clock.
+pkgrel=33
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -292,8 +311,13 @@ depends=('caelestia-cli' 'quickshell' 'ddcutil' 'brightnessctl' 'app2unit' 'libc
          'lm_sensors' 'fish' 'aubio' 'libpipewire' 'glibc' 'gcc-libs' 'ttf-material-symbols-variable'
          'power-profiles-daemon' 'ttf-rubik-vf' 'ttf-cascadia-code-nerd' 'swappy' 'libqalculate' 'bash'
          'qt6-base' 'qt6-declarative' 'qt6-imageformats' 'hyprsunset'
-         'util-linux' 'bluez')
+         'util-linux' 'bluez' 'python' 'python-opencv' 'python-numpy')
 makedepends=('cmake' 'ninja' 'qt6-shadertools')
+# python-rembg is Depth's Fine tier when it happens to be installed: a
+# segmentation network is genuinely better on hair and foliage. Never a
+# requirement -- without it Fine is the same classical method at a larger
+# working size, which is what the other two tiers already are.
+optdepends=('python-rembg: a segmentation network for Depth's Fine tier')
 provides=('caelestia-shell')
 conflicts=('caelestia-shell' 'caelestia-shell-git')
 source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
@@ -331,8 +355,12 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiTopBarState.qml"
         "GenesiEdges.qml"
         "GenesiSidePanel.qml"
-        "GenesiSidePanelState.qml")
+        "GenesiSidePanelState.qml"
+        "GenesiDepth.qml"
+        "genesi-depth")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
@@ -483,5 +511,7 @@ build() {
 package() {
     cd "${srcdir}/release"
     DESTDIR="$pkgdir" cmake --install build
+    install -Dm755 "${srcdir}/genesi-depth" \
+        "${pkgdir}/usr/bin/genesi-depth"
     install -Dm644 LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
 }

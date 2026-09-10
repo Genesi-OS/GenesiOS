@@ -216,6 +216,23 @@ jobs:
         # with a handful of white controls in it.
         run: python genesi-arch/ci/app-palette-test.py
 
+      - name: Depth cuts a subject out, and admits when there is not one
+        # Three lists of the same words -- the tiers in genesi-depth, the
+        # enums genesi-center-set accepts, and the switch statements in
+        # GenesiDepth.qml that turn a name into an opacity or a blur. A word
+        # in two of the three is a setting that saves, applies to nothing and
+        # produces no error.
+        #
+        # And the cut itself, on two pictures made for it: one with an obvious
+        # subject, which has to come back with a cut-out roughly the size and
+        # shape of that subject, and one with nothing in it, which has to come
+        # back with nothing. Otsu always splits SOMETHING -- a flat gradient
+        # once produced a "subject" covering a third of the frame, and the
+        # shell would have drawn it over the clock.
+        run: |
+          python -m pip install --quiet opencv-python-headless numpy
+          python genesi-arch/ci/depth-test.py
+
       - name: every shebang script is pinned to LF
         # An extensionless script committed with CRLF is `bad interpreter: no
         # such file or directory` on the installed system and nowhere else.

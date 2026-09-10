@@ -1257,6 +1257,11 @@ TOPBAR_FILES = ("GenesiTopBar.qml", "GenesiStudio.qml", "GenesiMark.qml")
 # feature: a hover point with nothing behind it is not a thing.
 SIDEPANEL_FILES = ("GenesiSidePanel.qml",)
 
+# The wallpaper's subject, drawn over the clock and the widgets. The
+# cutting is done by genesi-depth, a CLI in this same package; this file
+# is the layer that draws what it produced.
+DEPTH_FILES = ("GenesiDepth.qml",)
+
 
 def patch_launcher_layout(release):
     """
@@ -2151,6 +2156,135 @@ def patch_topbar(release):
     print("topbar: a bar across the top, inside caelestia")
 
 
+def patch_depth(release):
+    """
+    The wallpaper's subject, in front of the clock.
+
+        background.depth.enabled
+        background.depth.quality    draft | standard | fine
+        background.depth.edgeFade   none | soft | strong
+        background.depth.strength   subtle | medium | full
+        background.depth.shadow     none | soft | strong
+
+    ── What it actually is ─────────────────────────────────────────────────
+
+    Background.qml draws the wallpaper, the visualiser, the Genesi widgets and
+    the desktop clock, in that order. This adds a fifth layer on top holding
+    the SUBJECT of the wallpaper and nothing else, cut out with an alpha
+    channel -- so the subject is drawn twice, once as part of the picture
+    underneath and once here, with the clock and the widgets in between.
+
+    There is no depth map and nothing moves. It is one cut-out and a stacking
+    order, and it is worth saying because the effect is usually sold as 3D.
+
+    ── Why the layer goes after the clock's Loader ─────────────────────────
+
+    Because in front of the clock is the whole point. Inside `behindClock`,
+    where the Genesi widgets live, it would be under the clock and under
+    nothing else -- which is a layer that costs a segmentation pass to move a
+    subject in front of a visualiser.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "backgroundconfig.hpp")
+    background = os.path.join(release, "modules", "background",
+                              "Background.qml")
+    for p in (hpp, background):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the desktop layer moved.")
+
+    for name in DEPTH_FILES:
+        shipped = os.path.join(release, "modules", "background", name)
+        if os.path.exists(shipped):
+            fail(f"upstream now ships its own {name}. Decide by hand.")
+
+    src = {p: io.open(p, encoding="utf-8").read() for p in (hpp, background)}
+
+    if "GenesiDepthConfig" in src[hpp]:
+        fail("the depth config is already there -- this ran twice.")
+
+    # A sub-object of background, not a section of its own: it is a property
+    # of the wallpaper, it is meaningless without one, and background.depth.*
+    # is where somebody would look for it.
+    anchor = "class GenesiDockConfig : public ConfigObject {"
+    if anchor not in src[hpp]:
+        fail("GenesiDockConfig is not in backgroundconfig.hpp -- patch_dock "
+             "did not run.")
+    block = (
+        "// Genesi: the wallpaper's subject, drawn again over the clock and\n"
+        "// the widgets so it appears to stand in front of them. genesi-depth\n"
+        "// does the cutting; the shell draws what it produced.\n"
+        "class GenesiDepthConfig : public ConfigObject {\n"
+        "    Q_OBJECT\n"
+        "    QML_ANONYMOUS\n"
+        "\n"
+        "    CONFIG_PROPERTY(bool, enabled, false)\n"
+        "    // How carefully the edge is TRACED. Higher tiers work at a\n"
+        "    // larger size and run GrabCut for longer -- better on hair and\n"
+        "    // foliage, slower the first time a wallpaper is seen.\n"
+        "    CONFIG_PROPERTY(QString, quality, u\"standard\"_s)\n"
+        "    // ...and how sharply it is DRAWN, which is a different\n"
+        "    // question. A hard edge suits a poster and reads as a sticker\n"
+        "    // on a photograph.\n"
+        "    CONFIG_PROPERTY(QString, edgeFade, u\"soft\"_s)\n"
+        "    // How much the subject stands out in front: the layer's own\n"
+        "    // opacity. Below full, the clock shows faintly through it.\n"
+        "    CONFIG_PROPERTY(QString, strength, u\"full\"_s)\n"
+        "    CONFIG_PROPERTY(QString, shadow, u\"soft\"_s)\n"
+        "\n"
+        "public:\n"
+        "    explicit GenesiDepthConfig(QObject* parent = nullptr)\n"
+        "        : ConfigObject(parent) {}\n"
+        "};\n"
+        "\n")
+    out = {hpp: src[hpp].replace(anchor, block + anchor, 1)}
+
+    member = "    CONFIG_SUBOBJECT(GenesiWidgets, widgets)\n"
+    if member not in out[hpp]:
+        fail("BackgroundConfig has no widgets member -- patch_desktop_widgets "
+             "did not run, and depth goes beside it.")
+    out[hpp] = out[hpp].replace(
+        member, member + "    CONFIG_SUBOBJECT(GenesiDepthConfig, depth)\n", 1)
+
+    # The widgets initialiser is the LAST one, so it carries the constructor's
+    # empty body on the same line. Inserting after it would put a member
+    # initialiser after the body; the new one goes in front of the `{}`.
+    init = "        , m_widgets(new GenesiWidgets(this)) {}\n"
+    n = out[hpp].count(init)
+    if n != 1:
+        fail(f"BackgroundConfig initialises m_widgets {n} times, not 1 -- a "
+             "member added to only some of the constructors is null in the "
+             "rest.")
+    out[hpp] = out[hpp].replace(init, (
+        "        , m_widgets(new GenesiWidgets(this))\n"
+        "        , m_depth(new GenesiDepthConfig(this)) {}\n"), 1)
+
+    out[hpp] = ensure_header_deps(out[hpp])
+    verify_string_literals(hpp, out[hpp])
+
+    # ── The layer, after the clock ──────────────────────────────────────────
+    tail = ("            sourceComponent: DesktopClock {\n"
+            "                wallpaper: behindClock\n"
+            "                absX: clockLoader.x\n"
+            "                absY: clockLoader.y\n"
+            "            }\n"
+            "        }\n")
+    if tail not in src[background]:
+        fail("Background.qml's clock Loader is not what the depth patch "
+             "expects. The depth layer has to go AFTER it -- in front of the "
+             "clock is the entire point of the feature -- and there is no "
+             "other landmark for 'after the clock' in that file.")
+    out[background] = src[background].replace(tail, tail + (
+        "\n"
+        "        // Genesi: the wallpaper's subject again, over everything\n"
+        "        // else on the desktop. Last child, so the stacking order is\n"
+        "        // wallpaper, visualiser, widgets, clock, subject.\n"
+        "        GenesiDepth {}\n"), 1)
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("depth: the wallpaper's subject, in front of the clock")
+
+
 def patch_side_panel(release):
     """
     Quick settings down the left edge, when the Genesi bar is on.
@@ -2473,6 +2607,7 @@ def main():
     patch_scheme_screen(release)
     patch_topbar(release)
     patch_side_panel(release)
+    patch_depth(release)
     patch_edge_regions(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
@@ -2537,6 +2672,14 @@ def main():
                  "build the side panel.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(SIDEPANEL_FILES)} side-panel file(s)")
+
+    for name in DEPTH_FILES:
+        src = os.path.join(ours, name)
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- Background.qml has already been told "
+                 "to build the depth layer.")
+        shutil.copyfile(src, os.path.join(widget_dest, name))
+    print(f"installed {len(DEPTH_FILES)} depth file(s)")
     return 0
 
 

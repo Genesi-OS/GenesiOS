@@ -222,6 +222,11 @@ CAELESTIA_PATHS = {
     "sidepanel.showCalendar": ("bool",),
     "sidepanel.showPower": ("bool",),
     "sidepanel.nightTemperature": ("int", 1000, 6500),
+    "background.depth.enabled": ("bool",),
+    "background.depth.quality": ("enum", ("draft", "standard", "fine")),
+    "background.depth.edgeFade": ("enum", ("none", "soft", "strong")),
+    "background.depth.strength": ("enum", ("subtle", "medium", "full")),
+    "background.depth.shadow": ("enum", ("none", "soft", "strong")),
     "topbar.background": ("bool",),
     "topbar.backgroundOpacity": ("int", 0, 100),
     "topbar.showLogo": ("bool",),
@@ -394,6 +399,15 @@ GENESI_ONLY = {
     "sidepanel.showPower": "CONFIG_PROPERTY(bool, showPower, true)",
     "sidepanel.nightTemperature":
         "CONFIG_PROPERTY(int, nightTemperature, 4000)",
+    "background.depth.enabled": "CONFIG_PROPERTY(bool, enabled, false)",
+    "background.depth.quality":
+        'CONFIG_PROPERTY(QString, quality, u"standard"_s)',
+    "background.depth.edgeFade":
+        'CONFIG_PROPERTY(QString, edgeFade, u"soft"_s)',
+    "background.depth.strength":
+        'CONFIG_PROPERTY(QString, strength, u"full"_s)',
+    "background.depth.shadow":
+        'CONFIG_PROPERTY(QString, shadow, u"soft"_s)',
     "topbar.background": "CONFIG_PROPERTY(bool, background, true)",
     "topbar.backgroundOpacity": "CONFIG_PROPERTY(int, backgroundOpacity, 85)",
     "topbar.showLogo": "CONFIG_PROPERTY(bool, showLogo, true)",

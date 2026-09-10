@@ -118,6 +118,11 @@ Variants {
                 GenesiTopBarState.hide();
                 GenesiSchemeState.show();
                 return;
+            case "depthclear":
+                // Not through run(): clearing a cache is not a reason to
+                // close the page you are clearing it from.
+                Quickshell.execDetached(["genesi-depth", "clear"]);
+                return;
             case "session":
                 const v = Visibilities.getForActive();
                 if (v)
@@ -261,6 +266,12 @@ Variants {
                                 label: qsTr("Desktop"),
                                 icon: "wallpaper",
                                 blurb: qsTr("The wallpaper, the clock on it, and the visualiser.")
+                            },
+                            {
+                                id: "depth",
+                                label: qsTr("Depth"),
+                                icon: "filter_center_focus",
+                                blurb: qsTr("Lift the wallpaper's subject in front of the clock and the widgets.")
                             }
                         ]
                     },
@@ -283,10 +294,25 @@ Variants {
                     }
                 ]
 
-                Column {
+                // Scrolls, because the rail is nine entries now and the
+                // card is a fixed height. It ran under the ON NOW block, which
+                // is anchored to the bottom -- the last page in the list was
+                // drawn behind two lines of text and could not be clicked.
+                StyledFlickable {
+                    id: railScroll
+
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
+                    anchors.bottom: onNow.top
+                    anchors.bottomMargin: win.tok.spacing.small
+                    contentHeight: railCol.implicitHeight
+                    clip: true
+
+                Column {
+                    id: railCol
+
+                    width: railScroll.width
                     spacing: win.tok.spacing.small
 
                     Row {
@@ -382,9 +408,12 @@ Variants {
                         }
                     }
                 }
+                }
 
                 // What is on, at a glance, without opening a page for it.
                 Column {
+                    id: onNow
+
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
@@ -573,6 +602,37 @@ Variants {
                         { kind: "head", label: qsTr("KEYS") },
                         { kind: "switch", section: "launcher", key: "vimKeybinds", label: qsTr("Vim keys") },
                         { kind: "switch", section: "launcher", key: "enableDangerousActions", label: qsTr("Allow the dangerous actions") }
+                    ],
+                    "depth": [
+                        { kind: "note", label: qsTr("The subject of the wallpaper, cut out and drawn again on top -- so the clock and the widgets sit behind it while the rest of the picture stays in front of nothing. There is no depth map and nothing moves: it is one cut-out and a stacking order.") },
+                        { kind: "head", label: qsTr("DEPTH") },
+                        { kind: "switch", section: "background", key: "depth.enabled", label: qsTr("Depth effect") },
+                        { kind: "head", label: qsTr("QUALITY") },
+                        { kind: "cards", section: "background", key: "depth.quality", label: qsTr("Detail"), options: [
+                            { id: "draft", label: qsTr("DRAFT"), blurb: qsTr("Fastest") },
+                            { id: "standard", label: qsTr("STANDARD"), blurb: qsTr("Balanced") },
+                            { id: "fine", label: qsTr("FINE"), blurb: qsTr("Traces hair") }
+                        ] },
+                        { kind: "note", label: qsTr("How carefully the edge is traced. Higher tiers work at a larger size and take longer the first time a wallpaper is seen; after that the cut-out is cached and the setting costs nothing.") },
+                        { kind: "head", label: qsTr("LOOK") },
+                        { kind: "cards", section: "background", key: "depth.edgeFade", label: qsTr("Edge fade"), options: [
+                            { id: "none", label: qsTr("NONE"), blurb: qsTr("Hard cut") },
+                            { id: "soft", label: qsTr("SOFT"), blurb: qsTr("A little") },
+                            { id: "strong", label: qsTr("STRONG"), blurb: qsTr("Blended") }
+                        ] },
+                        { kind: "cards", section: "background", key: "depth.strength", label: qsTr("Strength"), options: [
+                            { id: "subtle", label: qsTr("SUBTLE"), blurb: qsTr("Shows through") },
+                            { id: "medium", label: qsTr("MEDIUM"), blurb: qsTr("Mostly solid") },
+                            { id: "full", label: qsTr("FULL"), blurb: qsTr("In front") }
+                        ] },
+                        { kind: "cards", section: "background", key: "depth.shadow", label: qsTr("Shadow"), options: [
+                            { id: "none", label: qsTr("NONE"), blurb: qsTr("Flat") },
+                            { id: "soft", label: qsTr("SOFT"), blurb: qsTr("A hint") },
+                            { id: "strong", label: qsTr("STRONG"), blurb: qsTr("Lifted") }
+                        ] },
+                        { kind: "head", label: qsTr("CUT-OUTS") },
+                        { kind: "action", label: qsTr("Clear the cached cut-outs"), blurb: qsTr("They are keyed by the picture and the settings, so this only costs the time to make them again."), button: qsTr("CLEAR"), act: "depthclear" },
+                        { kind: "note", label: qsTr("Some pictures have no subject to find -- a texture, a gradient, an abstract. Depth leaves those alone rather than cutting out a speck and drawing it over the clock.") }
                     ],
                     "shape": [
                         { kind: "head", label: qsTr("SCALES") },
@@ -960,6 +1020,8 @@ Variants {
                                     Cards {
                                         required property var modelData
 
+                                        label: modelData.label ?? ""
+                                        blurb: modelData.blurb ?? ""
                                         options: modelData.options
                                         current: String(win.get(modelData.section,
                                                                 modelData.key) ?? "")
@@ -1116,16 +1178,48 @@ Variants {
             // either -- each one is a different bar, and the fastest way to
             // say so is a card per answer with its name and one line about it,
             // read next to the preview above them.
-            component Cards: Flow {
+            component Cards: ColumnLayout {
                 id: cards
 
+                property string label: ""
+                property string blurb: ""
                 property var options: []
                 property string current: ""
 
                 signal picked(string id)
 
                 Layout.fillWidth: true
-                spacing: win.tok.spacing.small
+                spacing: win.tok.spacing.extraSmall
+
+                // Named, because three rows of cards under one heading read
+                // as one control with nine answers. The heading says what
+                // KIND of thing this page is about; each row still has to say
+                // which question it is.
+                StyledText {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: win.tok.padding.small
+                    visible: cards.label !== ""
+                    text: cards.label
+                    font: Tokens.font.body.medium
+                    color: Colours.palette.m3onSurface
+                }
+
+                StyledText {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: win.tok.padding.small
+                    Layout.bottomMargin: 2
+                    visible: cards.blurb !== ""
+                    text: cards.blurb
+                    font: Tokens.font.body.small
+                    color: Colours.palette.m3onSurfaceVariant
+                    wrapMode: Text.WordWrap
+                }
+
+                Flow {
+                    id: cardFlow
+
+                    Layout.fillWidth: true
+                    spacing: win.tok.spacing.small
 
                 Repeater {
                     model: cards.options
@@ -1186,6 +1280,7 @@ Variants {
                             onClicked: cards.picked(card.modelData.id)
                         }
                     }
+                }
                 }
             }
 
