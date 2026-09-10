@@ -184,7 +184,15 @@ pkgver=1.0.0
 # exception. One symptom, a dozen causes, none of them announced. This
 # walks the whole chain and names the broken link, instead of another
 # round of guessing from a description of what a window looks like.
-pkgrel=39
+# 40: the doctor stops reading files and MEASURES. Every check it had
+# passed on a machine where nothing followed the scheme, which means the
+# files were never the question. It now starts a real Qt application and
+# asks it for the palette it resolved -- there is no chain of reasoning
+# between that answer and the truth. It also compares kdeglobals against
+# the ACTIVE scheme rather than counting its sections, because a
+# kdeglobals written for a scheme you have since changed away from passes
+# "all seven groups are present" and gives every KDE app the wrong colours.
+pkgrel=40
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

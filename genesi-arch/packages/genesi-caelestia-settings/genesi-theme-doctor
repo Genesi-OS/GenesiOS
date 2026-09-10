@@ -223,6 +223,97 @@ else:
             else:
                 ok("qt6ct: 21 roles, matching the active scheme")
 
+    style = app.get("style", "")
+    # Not a failure. Breeze and Kvantum both source their own colours instead of
+    # taking the platform theme's palette, so if the probe below disagrees with
+    # the file above, this line is usually why.
+    if style and style.lower() in ("breeze", "kvantum", "kvantum-dark"):
+        warn(f"qt6ct: style = {style}",
+             "this style paints from its own colour source, not from the "
+             "palette qt6ct hands it")
+    elif style:
+        ok(f"qt6ct: style = {style}")
+
+
+# ── 3b. What a Qt application actually GETS ─────────────────────────────────
+#
+# Everything above reads files and says they are correct. They were correct,
+# on a machine where nothing followed the theme -- which means checking the
+# files was checking the wrong thing.
+#
+# So this stops inspecting inputs and measures the output: start a real Qt
+# application, ask it for the palette it resolved, and compare that to the
+# scheme. There is no chain of reasoning between this answer and the truth.
+section("what a Qt app actually gets (measured, not read)")
+
+PROBE = (
+    "import sys\n"
+    "from PySide6.QtWidgets import QApplication\n"
+    "from PySide6.QtGui import QPalette\n"
+    "a = QApplication(sys.argv)\n"
+    "p = a.palette()\n"
+    "print(p.color(QPalette.ColorGroup.Active, QPalette.ColorRole.Window).name())\n"
+    "print(p.color(QPalette.ColorGroup.Active, QPalette.ColorRole.WindowText).name())\n"
+    "print(a.style().objectName())\n")
+
+
+def probe(extra_env):
+    env = dict(os.environ)
+    env.update(extra_env)
+    # No window is ever shown, so nothing flashes on screen.
+    try:
+        p = subprocess.run([sys.executable, "-c", PROBE], capture_output=True,
+                           text=True, timeout=45, env=env)
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, str(e)
+    lines = p.stdout.strip().splitlines()
+    if len(lines) < 3:
+        return None, (p.stderr.strip().splitlines() or ["no output"])[-1]
+    return lines, ""
+
+
+try:
+    import PySide6  # noqa: F401
+    have_qt = True
+except ImportError:
+    have_qt = False
+
+if not have_qt:
+    warn("PySide6 is not installed, so this cannot be measured",
+         "pacman -S pyside6 — every other check here reads a file; this is "
+         "the only one that reads the result")
+else:
+    # The real session first: same display, same environment, same everything
+    # a normal application would start with. Offscreen only as a fallback, and
+    # labelled as such, because it is a different platform plugin and a
+    # different answer is not proof of anything.
+    lines, why = probe({})
+    where = "in this session"
+    if lines is None:
+        lines, why = probe({"QT_QPA_PLATFORM": "offscreen"})
+        where = "offscreen (no display was reachable)"
+    if lines is None:
+        warn("could not start a Qt application to measure with", why)
+    else:
+        window, text, style_name = lines[0].lower(), lines[1].lower(), lines[2]
+        if RAW:
+            print(f"        {DIM}{where}: window={window} text={text} "
+                  f"style={style_name}{OFF}")
+        if want_surface and window == want_surface:
+            ok(f"a new Qt app opens with the scheme's colours ({window})",
+               f"style {style_name}, {where}")
+        elif want_surface:
+            bad(f"a new Qt app opens with {window}, not the scheme's "
+                f"{want_surface}",
+                "the palette on disk is right and Qt is not using it. The "
+                "usual causes, in order: the platform theme plugin is not "
+                "being loaded (check QT_QPA_PLATFORMTHEME above), or the "
+                f"widget style ({style_name}) overrides the palette it is "
+                "given. Re-run with --raw and include this line in a report")
+        else:
+            warn(f"a new Qt app opens with {window}",
+                 "no active scheme to compare it against")
+
 
 # ── 4. KDE ──────────────────────────────────────────────────────────────────
 section("KDE and Kirigami (Dolphin, Ark, the Genesi apps)")
@@ -237,10 +328,24 @@ if missing:
         "run genesi-caelestia-theme-sync — every one of these has to be there "
         "or the app takes Breeze's value for whatever is absent")
 else:
-    ok("kdeglobals carries all seven colour groups")
+    # Present is not the same as current. kdeglobals written for a scheme the
+    # user has since changed away from passes a "seven groups are there" check
+    # and gives every KDE app the wrong colours -- which looks identical to no
+    # theming at all if the two schemes are both dark.
+    bg = kde["Colors:Window"].get("BackgroundNormal", "")
+    triple = [p.strip() for p in bg.split(",")]
+    want_rgb = ""
+    if want_surface and len(want_surface) == 7:
+        want_rgb = ",".join(str(int(want_surface[i:i + 2], 16))
+                            for i in (1, 3, 5))
+    if want_rgb and len(triple) == 3 and ",".join(triple) != want_rgb:
+        warn("kdeglobals is from a DIFFERENT scheme",
+             f"window background {bg} vs the active scheme's {want_rgb}")
+    else:
+        ok("kdeglobals carries all seven colour groups")
     if RAW:
-        print(f"        {DIM}Window bg = "
-              f"{kde['Colors:Window'].get('BackgroundNormal', '—')}{OFF}")
+        print(f"        {DIM}Window bg = {bg or '—'}"
+              + (f" (scheme: {want_rgb})" if want_rgb else "") + f"{OFF}")
 
 # The palette a KDE app STARTS with comes from the platform theme, not from
 # kdeglobals. Without plasma-integration there is no KDE platform theme, so a

@@ -8,7 +8,9 @@ you can change from the app and from a terminal, that lands in one place, and
 that can be tested without a display.
 
   genesi-center-set hypr <option> <value>    a Hyprland option
-  genesi-center-set caelestia <path> <json>  a value in caelestia's shell.json
+  genesi-center-set caelestia <path> <value> [<path> <value> ...]
+                                             values in caelestia's shell.json,
+                                             all of them in ONE write
   genesi-center-set bind <old> <new> <disp> [arg]   move a shortcut
   genesi-center-set unbind <MODS,KEY>        drop our override
   genesi-center-set newbind <MODS,KEY> <disp> [arg]  a shortcut of your own
@@ -175,6 +177,9 @@ CAELESTIA_PATHS = {
     "launcher.position": ("enum", ("bottom", "centre")),
     "launcher.width": ("int", 0, 1400),
     "launcher.layout": ("enum", ("caelestia", "genesi")),
+    # Where the colour schemes are shown. "launcher" fans them out inside the
+    # panel; "fullscreen" gives them a layer-shell surface of their own.
+    "launcher.schemePicker": ("enum", ("launcher", "fullscreen")),
     # An enum, not free text, even though the shell will take any path. The
     # three answers people actually want are "none", "whatever the desktop is
     # showing" and "the Genesi one" -- and a text field for the rest would be a
@@ -298,6 +303,8 @@ GENESI_ONLY = {
     "launcher.position": 'CONFIG_PROPERTY(QString, position, u"bottom"_s)',
     "launcher.width": "CONFIG_PROPERTY(int, width, 0)",
     "launcher.layout": 'CONFIG_PROPERTY(QString, layout, u"caelestia"_s)',
+    "launcher.schemePicker":
+        'CONFIG_PROPERTY(QString, schemePicker, u"launcher"_s)',
     "launcher.background": 'CONFIG_PROPERTY(QString, background, u""_s)',
     "launcher.backgroundExtent":
         'CONFIG_PROPERTY(QString, backgroundExtent, u"header"_s)',
@@ -552,39 +559,136 @@ def cmd_hypr(option, raw):
     print(f"{option} = {value}")
 
 
-def cmd_caelestia(path, raw):
-    spec = CAELESTIA_PATHS.get(path)
-    if spec is None:
-        die(f"{path!r} is not a value this writes. "
-            "`genesi-center-set options` lists them.")
-    value = coerce(spec, raw, path)
+def cmd_caelestia(pairs):
+    """
+    Set one or more values in shell.json, in ONE read-modify-write.
 
-    try:
-        with open(CAELESTIA, encoding="utf-8") as fh:
-            cfg = json.load(fh)
-    except FileNotFoundError:
-        cfg = {}
-    except (OSError, json.JSONDecodeError) as e:
-        die(f"cannot read {CAELESTIA}: {e}")
+    ── Why this takes a list ────────────────────────────────────────────────
 
-    parts = path.split(".")
-    node = cfg
-    for p in parts[:-1]:
-        if not isinstance(node.get(p), dict):
-            node[p] = {}
-        node = node[p]
-    node[parts[-1]] = value
+    Dropping a widget on the desktop changes three things: its x, its y, and
+    the fact that it is placed by hand now. As three invocations that was three
+    processes reading the same file, each editing its own copy, each writing
+    the whole thing back -- so two of the three edits were overwritten by
+    whoever finished last. The symptom was a widget that could be dragged
+    anywhere and snapped back the moment you let go.
+
+    Worse, they all wrote through a temporary file at the SAME path. os.replace
+    is atomic, so the story ended there in theory; in practice the second
+    process opened that shared temp with "w" while the first was still writing
+    into it, and the file that finally got renamed over shell.json was two
+    JSON documents spliced together. That is the "erro de json" at the next
+    login, the widgets that vanished with it, and the Genesi Center pages that
+    came up empty -- every one of them was this.
+
+    So: one process, one write, one temp file named after this process.
+    """
+    if not pairs:
+        die("nothing to set. Pass one or more `<path> <value>` pairs.")
+    resolved = []
+    for path, raw in pairs:
+        spec = CAELESTIA_PATHS.get(path)
+        if spec is None:
+            die(f"{path!r} is not a value this writes. "
+                "`genesi-center-set options` lists them.")
+        resolved.append((path, coerce(spec, raw, path)))
+
+    cfg = read_caelestia()
+
+    for path, value in resolved:
+        parts = path.split(".")
+        node = cfg
+        for p in parts[:-1]:
+            if not isinstance(node.get(p), dict):
+                node[p] = {}
+            node = node[p]
+        node[parts[-1]] = value
 
     os.makedirs(os.path.dirname(CAELESTIA), exist_ok=True)
     # Written whole, through a temporary file in the same directory: a crash
     # halfway through leaves the old config rather than a truncated one, and a
     # truncated shell.json is a desktop that comes up with no bar.
-    tmp = CAELESTIA + ".genesi-tmp"
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(cfg, fh, ensure_ascii=False, indent=2)
-        fh.write("\n")
-    os.replace(tmp, CAELESTIA)
-    print(f"{path} = {json.dumps(value)}")
+    #
+    # The pid is in the name because two of these CAN still overlap -- a drop
+    # is one call now, but the desktop menu and the Center are two programs.
+    # A shared scratch file makes them corrupt each other's writes; a private
+    # one makes them merely race, and the loser's change is simply not saved.
+    tmp = f"{CAELESTIA}.genesi-tmp.{os.getpid()}"
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(cfg, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+            fh.flush()
+            # The rename is atomic; the CONTENT reaching the disk is not. A
+            # power cut between the two leaves a file that exists, is named
+            # right, and is full of zeroes.
+            os.fsync(fh.fileno())
+        os.replace(tmp, CAELESTIA)
+    except OSError as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        die(f"cannot write {CAELESTIA}: {e}")
+    for path, value in resolved:
+        print(f"{path} = {json.dumps(value)}")
+
+
+def read_caelestia():
+    """
+    shell.json as a dict -- and a way back when it is not one.
+
+    A config file this cannot parse is not a reason to stop: the desktop is
+    already broken at that point, and the one program that could fix it
+    refusing to run is the worst possible moment to be strict. So the
+    unreadable file is MOVED ASIDE, under a name that says what it is, and the
+    write starts from nothing.
+
+    Moved, never deleted. Restoring it is a `mv` away, which matters because
+    the thing that lands here is somebody's whole desktop configuration.
+    """
+    try:
+        text = open(CAELESTIA, encoding="utf-8").read()
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        die(f"cannot read {CAELESTIA}: {e}")
+
+    try:
+        cfg = json.loads(text)
+    except json.JSONDecodeError as e:
+        # Salvage first. The way this file got broken was two writers splicing
+        # their output together, and a spliced JSON document has a very
+        # particular shape: a COMPLETE object, then rubbish. json says so --
+        # "Extra data" with the offset where the good part ended -- so the
+        # prefix parses, and the prefix is the user's actual configuration.
+        #
+        # Worth the twelve lines. The alternative is handing somebody a default
+        # desktop and telling them their settings are in a .broken file they
+        # now have to merge by hand.
+        cfg = None
+        if e.pos > 0:
+            try:
+                salvaged = json.loads(text[:e.pos])
+                if isinstance(salvaged, dict):
+                    cfg = salvaged
+            except json.JSONDecodeError:
+                cfg = None
+        broken = f"{CAELESTIA}.broken"
+        try:
+            os.replace(CAELESTIA, broken)
+        except OSError:
+            die(f"{CAELESTIA} is not valid JSON ({e}) and cannot be moved "
+                "aside. Fix or delete it by hand.")
+        sys.stderr.write(
+            f"genesi-center-set: {CAELESTIA} was not valid JSON ({e}).\n"
+            f"                   Kept a copy at {broken}.\n"
+            + (f"                   Recovered {len(cfg)} section(s) from it.\n"
+               if cfg is not None else
+               "                   Nothing was recoverable; starting fresh.\n"))
+        return cfg if cfg is not None else {}
+    if not isinstance(cfg, dict):
+        die(f"{CAELESTIA} is valid JSON but not an object.")
+    return cfg
 
 
 # ── Keybinds ─────────────────────────────────────────────────────────────────
@@ -904,8 +1008,12 @@ def main():
         cmd_options()
     elif what == "hypr" and len(sys.argv) == 4:
         cmd_hypr(sys.argv[2], sys.argv[3])
-    elif what == "caelestia" and len(sys.argv) == 4:
-        cmd_caelestia(sys.argv[2], sys.argv[3])
+    elif what == "caelestia" and len(sys.argv) >= 4 and len(sys.argv) % 2 == 0:
+        # Pairs, so a caller that changes three things at once changes them in
+        # one write. An odd argument count is a path with no value, which is
+        # worth refusing rather than guessing at.
+        rest = sys.argv[2:]
+        cmd_caelestia(list(zip(rest[0::2], rest[1::2])))
     elif what == "binds":
         cmd_binds()
     elif what == "bind" and len(sys.argv) in (6, 7):

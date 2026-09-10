@@ -151,7 +151,21 @@ pkgver=2.0.3
 # bottom. Arrange mode moves every widget into the free layer instead,
 # seeded from where it already was, so one drag works on all of them and
 # nothing jumps.
-pkgrel=26
+# pkgrel 27: the dock STILL did not appear, and the reason was one level
+# deeper. `Config` in QML is not the config object -- it is an attached
+# type that mirrors it property by property, and the dock's section was
+# added to the object and not to the mirror. That compiles, loads, runs,
+# and `Config.dock` is undefined: every binding in the file throws and the
+# dock is enabled and invisible. The patcher now writes the mirror too,
+# and refuses to finish if any section of the config is missing from it.
+#
+# Also: the colour schemes get a surface of their own, edge to edge, over
+# a dimmed desktop -- `launcher.schemePicker`. And a bug the offscreen
+# render found in the fan that has been there since it shipped: it read
+# `PathView.itemIndex`, which is Repeater's attached property and does not
+# exist here, so clicking a card did nothing at all and only Enter ever
+# applied a scheme.
+pkgrel=27
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

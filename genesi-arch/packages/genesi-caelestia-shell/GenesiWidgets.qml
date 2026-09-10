@@ -36,6 +36,8 @@ import QtQuick
 import Quickshell
 import Caelestia.Config
 import qs.components
+// GenesiSchemeState -- the flag the full-screen picker watches.
+import qs.modules.launcher
 
 Item {
     id: root
@@ -158,6 +160,20 @@ Item {
         // value; this does not want a second opinion about either.
         Quickshell.execDetached(["genesi-center-set", "caelestia",
                                  `background.widgets.${name}.${leaf}`, value]);
+    }
+
+    // Several leaves of ONE widget, in one process.
+    //
+    // A drop sets x, y and position. As three calls that was three processes
+    // each rewriting the whole of shell.json from its own copy -- so two of the
+    // three changes were lost, and the widget sprang back to where it started
+    // the instant it was released. When they overlapped badly enough the file
+    // itself came out spliced, which is the JSON error at the next login.
+    function writeAll(name: string, leaves: var): void {
+        const argv = ["genesi-center-set", "caelestia"];
+        for (const leaf in leaves)
+            argv.push(`background.widgets.${name}.${leaf}`, leaves[leaf]);
+        Quickshell.execDetached(argv);
     }
 
     // The names enabled at one anchor, in the order `defs` lists them. Reading
@@ -312,9 +328,30 @@ Item {
                 onDropped: {
                     const fx = Math.max(0, Math.min(0.98, floater.x / root.width));
                     const fy = Math.max(0, Math.min(0.98, floater.y / root.height));
-                    root.write(floater.modelData, "x", fx.toFixed(4));
-                    root.write(floater.modelData, "y", fy.toFixed(4));
-                    root.write(floater.modelData, "position", "free");
+                    root.writeAll(floater.modelData, {
+                        "x": fx.toFixed(4),
+                        "y": fy.toFixed(4),
+                        "position": "free"
+                    });
+                    // Remembered here as well, so leaving arrange mode does not
+                    // put it back where the drag started. `placed` is what the
+                    // free layer reads its position from while arranging, and
+                    // the config is written by a process that has not finished
+                    // yet -- for those few hundred milliseconds this map is the
+                    // only record that the widget moved at all.
+                    //
+                    // A COPY, not the same object with a key added: assigning a
+                    // var property the reference it already holds changes
+                    // nothing as far as QML is concerned, and every binding
+                    // reading it keeps the old value.
+                    const map = {};
+                    for (const k in root.placed)
+                        map[k] = root.placed[k];
+                    map[floater.modelData] = {
+                        "x": floater.x,
+                        "y": floater.y
+                    };
+                    root.placed = map;
                 }
                 dragTarget: floater
             }
@@ -330,6 +367,9 @@ Item {
             root.write(name, "enabled", c && c.enabled ? "false" : "true");
         }
         onArrange: root.arranging ? root.endArrange() : root.beginArrange()
+        // Opened from here rather than from the menu itself, because this is
+        // the file that already imports the launcher's side of the shell.
+        onSchemes: GenesiSchemeState.show()
         arranging: root.arranging
     }
 

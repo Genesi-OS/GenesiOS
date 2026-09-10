@@ -166,3 +166,42 @@ jobs:
         # that does not exist while leaving the service file's NAME alone, and
         # the failure appeared on every boot in the journal and nowhere else.
         run: python genesi-arch/ci/systemd-unit-refs-test.py
+
+      # ── Guards that were written and never wired up ────────────────────────
+      #
+      # These five existed for months and no workflow ran any of them, which
+      # makes them documentation rather than guards: they only ever fired when
+      # somebody remembered to run them by hand, and the bugs they describe
+      # shipped anyway. They are pure stdlib Python and take seconds.
+
+      - name: Genesi Center asks, runs and writes only what exists
+        # Every page's data section, every command it shells out to, and every
+        # shell.json key it writes, checked against the programs and the
+        # patcher that have to carry them. A page can otherwise write a key
+        # nothing reads, for ever, in silence.
+        run: python genesi-arch/ci/center-wiring-test.py
+
+      - name: shell.json survives concurrent writers
+        # A widget drop used to be three processes rewriting one JSON file
+        # through one shared scratch path. Two of the three changes were lost
+        # and the file came out spliced -- which read to the user as "the
+        # widget snaps back", "the settings pages are empty" and "JSON error at
+        # login", three symptoms of one bug.
+        run: python genesi-arch/ci/center-set-atomic-test.py
+
+      - name: the keybind drop-in writer
+        run: python genesi-arch/ci/center-binds-test.py
+
+      - name: the theme sync writes what each toolkit reads
+        run: python genesi-arch/ci/theme-sync-test.py
+
+      - name: QML that cannot be compiled is at least sane
+        # Nothing in the build compiles the shell's QML -- CMake installs it as
+        # plain files -- so a green build says nothing about whether the
+        # desktop loads at all.
+        run: python genesi-arch/ci/qml-sanity-test.py
+
+      - name: every shebang script is pinned to LF
+        # An extensionless script committed with CRLF is `bad interpreter: no
+        # such file or directory` on the installed system and nowhere else.
+        run: python genesi-arch/ci/eol-test.py

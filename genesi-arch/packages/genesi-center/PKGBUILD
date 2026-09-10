@@ -87,7 +87,17 @@ pkgver=0.1.0
 # page. The three accent shades are DERIVED from the scheme's one primary
 # rather than mapped onto secondary and tertiary, which are different hues
 # in most schemes and would give the app an accent nobody chose.
-pkgrel=22
+# 23: genesi-center-set took ONE key per invocation and wrote through a
+# scratch file at a fixed path. A widget drop sets three keys, so it was
+# three processes each rewriting the whole of shell.json from its own copy
+# -- two of the three changes lost, and when they overlapped the scratch
+# file was truncated mid-write and what landed was two JSON documents
+# spliced together. That one bug is the widget that snapped back, the
+# widget toggles that stopped working, the JSON error at the next login,
+# and the settings pages that came up empty. Pairs now, one write, a
+# private scratch file; a damaged shell.json is salvaged up to the point
+# it stops parsing instead of being read as "no configuration at all".
+pkgrel=23
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

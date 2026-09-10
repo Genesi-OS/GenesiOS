@@ -1237,7 +1237,13 @@ def patch_ddc_timeout(services_dir):
 # The two files Genesi adds to the launcher. Copied in like the Nexus pages --
 # after every "does upstream already ship this?" test has run, never before.
 LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml",
-                   "GenesiSchemeFlow.qml")
+                   "GenesiSchemeFlow.qml", "GenesiSchemeState.qml")
+
+# The full-screen colour-scheme picker. Its WINDOW goes in modules/background,
+# which is the one Genesi directory shell.qml already imports -- so putting it
+# there costs no new import line up there. Its state singleton goes beside the
+# fan in modules/launcher, where the launcher body and the window both see it.
+SCHEME_FILES = ("GenesiSchemeScreen.qml",)
 
 
 def patch_launcher_layout(release):
@@ -1320,7 +1326,11 @@ def patch_launcher_layout(release):
         '    CONFIG_PROPERTY(bool, showWeather, true)\n'
         '    CONFIG_PROPERTY(bool, showHero, true)\n'
         '    CONFIG_PROPERTY(bool, showChips, true)\n'
-        '    CONFIG_PROPERTY(int, columns, 2)\n'), 1)}
+        '    CONFIG_PROPERTY(int, columns, 2)\n'
+        '    // Genesi: where the colour schemes are shown. "launcher" fans\n'
+        '    // them out inside this panel; "fullscreen" hands them to a\n'
+        '    // layer-shell surface of their own covering the screen.\n'
+        '    CONFIG_PROPERTY(QString, schemePicker, u"launcher"_s)\n'), 1)}
 
     old_loader = (
         '        sourceComponent: Content {\n'
@@ -1603,8 +1613,20 @@ def patch_dock(release):
     # missed, which is a crash on the first read of Config.dock.
     ccpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
                         "config.cpp")
+    # And a THIRD place, which is the one the first version of this patch
+    # missed. `Config` in QML is not GlobalConfig -- it is an ATTACHED type
+    # (configattached.hpp) that mirrors GlobalConfig property by property so a
+    # window can inherit a per-monitor override. A section added to
+    # GlobalConfig and not to the mirror compiles, loads, and is simply not
+    # there when QML asks for it: `Config.dock` is undefined, every binding
+    # that touches it throws, and the dock is enabled and invisible. That is
+    # what shipped, and it is why patch_dock ends by checking the mirror.
+    att = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "configattached.hpp")
+    attc = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                        "configattached.cpp")
     shell = os.path.join(release, "shell.qml")
-    for p in (hpp, cfg, ccpp, shell):
+    for p in (hpp, cfg, ccpp, att, attc, shell):
         if not os.path.exists(p):
             fail(f"{p} is gone -- the shell's layout moved.")
 
@@ -1614,7 +1636,7 @@ def patch_dock(release):
             fail(f"upstream now ships its own {name}. Decide by hand.")
 
     src = {p: io.open(p, encoding="utf-8").read()
-           for p in (hpp, cfg, ccpp, shell)}
+           for p in (hpp, cfg, ccpp, att, attc, shell)}
 
     if "GenesiDockConfig" in src[hpp] or "GenesiDockConfig" in src[cfg]:
         fail("the dock config is already there -- this ran twice, or upstream "
@@ -1677,6 +1699,39 @@ def patch_dock(release):
     out[ccpp] = src[ccpp].replace(
         init, init + "    , m_dock(new GenesiDockConfig(this))\n")
 
+    # ── The mirror, which is what QML actually reads ─────────────────────────
+    #
+    # Three edits, all keyed off `background` because GenesiDockConfig lives in
+    # backgroundconfig.hpp -- which configattached.hpp already names in a
+    # Q_MOC_INCLUDE, so moc can see the type and no include line is needed.
+    moc = 'Q_MOC_INCLUDE("backgroundconfig.hpp")'
+    if moc not in src[att]:
+        fail("configattached.hpp no longer Q_MOC_INCLUDEs backgroundconfig.hpp "
+             "-- the dock's class lives there, and moc cannot see a type it "
+             "was not told about.")
+
+    prop = ("    Q_PROPERTY(const caelestia::config::BackgroundConfig* background "
+            "READ background NOTIFY sourceChanged)\n")
+    getter = "    [[nodiscard]] const BackgroundConfig* background() const;\n"
+    for needle, what in ((prop, "the background Q_PROPERTY"),
+                         (getter, "the background getter")):
+        if needle not in src[att]:
+            fail(f"configattached.hpp does not carry {what} where the dock "
+                 "patch expects it.")
+    out[att] = src[att].replace(prop, prop + (
+        "    Q_PROPERTY(const caelestia::config::GenesiDockConfig* dock "
+        "READ dock NOTIFY sourceChanged)\n"), 1)
+    out[att] = out[att].replace(getter, getter + (
+        "    [[nodiscard]] const GenesiDockConfig* dock() const;\n"), 1)
+
+    impl = "CONFIG_ATTACHED_GETTER(BackgroundConfig, background)\n"
+    if impl not in src[attc]:
+        fail("configattached.cpp does not define the background getter with "
+             "CONFIG_ATTACHED_GETTER -- the dock's getter is written the same "
+             "way, and there is nowhere else to put it.")
+    out[attc] = src[attc].replace(
+        impl, impl + "CONFIG_ATTACHED_GETTER(GenesiDockConfig, dock)\n", 1)
+
     line = "    Background {}\n"
     if line not in src[shell]:
         fail("shell.qml does not instantiate Background where the dock patch "
@@ -1702,10 +1757,84 @@ def patch_dock(release):
                  "a compile error, and this is the last place to catch it "
                  "before a twenty-minute build does.")
 
+    # ── And the second post-condition, for the failure that compiles ─────────
+    #
+    # The one above catches a section QML cannot reach because the build broke.
+    # This catches a section QML cannot reach even though the build SUCCEEDED,
+    # which is strictly worse: `Config.dock` was undefined for a whole release
+    # and the only symptom was a dock that would not appear.
+    #
+    # GlobalConfig and the attached Config are two lists of the same sections,
+    # kept in step by hand upstream. Anything in the first and not the second
+    # is written to shell.json, parsed, held in memory, and unreachable.
+    for m in re.finditer(r"CONFIG_SUBOBJECT\((\w+), (\w+)\)", out[cfg]):
+        cls, name = m.group(1), m.group(2)
+        if f"* {name} READ {name} " not in out[att]:
+            fail(f"config.hpp has a {name} section that configattached.hpp "
+                 f"does not mirror. It will compile, and QML asking for "
+                 f"Config.{name} will get undefined -- which is a feature that "
+                 "silently does nothing, not a build failure.")
+        if f"CONFIG_ATTACHED_GETTER({cls}, {name})" not in out[attc]:
+            fail(f"configattached.hpp declares {name} but configattached.cpp "
+                 f"does not define it. That is a link error at the very end of "
+                 "the build.")
+
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
     print("dock: a dock, on its own layer")
 
+
+
+def patch_scheme_screen(release):
+    """
+    The colour schemes, on a surface of their own covering the screen.
+
+        launcher.schemePicker  "launcher" (the fan inside the panel) or
+                               "fullscreen" (a window of its own)
+
+    The fan of painted cards already existed inside the launcher, and the
+    launcher is the wrong frame for it: a fixed-width slab with a rounded edge,
+    so the cards must stay inside it, stay small enough that nine fit, and stop
+    short of both ends. Those are compromises made for a list of applications.
+
+    Given a screen, the same fan runs off both sides and the middle card is big
+    enough to judge a colour scheme from. Which one you get is a setting,
+    because for somebody who arrived by typing `>scheme` the panel is still the
+    right answer.
+
+    One line in shell.qml, exactly like the dock: the window decides its own
+    layer, so the only thing upstream has to be told is that it exists. The
+    property itself is added by patch_launcher_layout, which is why this runs
+    after it and checks for it rather than adding it again.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "launcherconfig.hpp")
+    shell = os.path.join(release, "shell.qml")
+    for p in (hpp, shell):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the shell's layout moved.")
+
+    for name in SCHEME_FILES:
+        shipped = os.path.join(release, "modules", "background", name)
+        if os.path.exists(shipped):
+            fail(f"upstream now ships its own {name}. Decide by hand.")
+
+    src = io.open(hpp, encoding="utf-8").read()
+    if "CONFIG_PROPERTY(QString, schemePicker" not in src:
+        fail("launcherconfig.hpp has no schemePicker -- patch_launcher_layout "
+             "did not run, or its property block moved. The window would load "
+             "and nothing would ever open it.")
+
+    text = io.open(shell, encoding="utf-8").read()
+    if "GenesiSchemeScreen" in text:
+        fail("shell.qml already builds the scheme picker -- this ran twice.")
+    line = "    GenesiDock {}\n"
+    if line not in text:
+        fail("shell.qml does not build the dock, which is the line the scheme "
+             "picker goes beside -- patch_dock did not run.")
+    io.open(shell, "w", encoding="utf-8", newline="\n").write(
+        text.replace(line, line + "    GenesiSchemeScreen {}\n", 1))
+    print("schemes: a full-screen picker, on its own layer")
 
 
 def main():
@@ -1740,6 +1869,7 @@ def main():
     patch_launcher_layout(release)
     patch_desktop_widgets(release)
     patch_dock(release)
+    patch_scheme_screen(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 
@@ -1779,6 +1909,14 @@ def main():
                  "build the dock.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(DOCK_FILES)} dock file(s)")
+
+    for name in SCHEME_FILES:
+        src = os.path.join(ours, name)
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- shell.qml has already been told to "
+                 "build the full-screen scheme picker.")
+        shutil.copyfile(src, os.path.join(widget_dest, name))
+    print(f"installed {len(SCHEME_FILES)} scheme-picker file(s)")
     return 0
 
 

@@ -360,7 +360,7 @@ def session():
         # caelestia only means anything inside Hyprland: its config is read by
         # a shell that only runs there.
         "caelestia": hypr and (
-            os.path.exists(os.path.expanduser("~/.config/caelestia/shell.json"))
+            _caelestia_available()
             or bool(shutil.which("caelestia"))),
         "plasma": "kde" in desktop or "plasma" in desktop,
         "x11": (os.environ.get("XDG_SESSION_TYPE") or "").lower() == "x11",
@@ -435,14 +435,45 @@ def _hypr_json(*args):
         return None
 
 
+_SHELL_JSON = os.path.expanduser("~/.config/caelestia/shell.json")
+
+
 def _caelestia_config():
-    """The user's shell.json, or {} when there is none."""
+    """
+    The user's shell.json, or {} when there is none.
+
+    A file that will not parse is read as far as it parses. That is not
+    politeness: a shell.json spliced by two writers is a COMPLETE object
+    followed by rubbish, so the prefix is the real configuration, and the
+    difference between salvaging it and giving up is the difference between a
+    settings page that shows what is set and one that is blank.
+    """
     try:
-        with open(os.path.expanduser("~/.config/caelestia/shell.json"),
-                  encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, json.JSONDecodeError):
+        text = open(_SHELL_JSON, encoding="utf-8").read()
+    except OSError:
         return {}
+    try:
+        cfg = json.loads(text)
+    except json.JSONDecodeError as e:
+        if e.pos <= 0:
+            return {}
+        try:
+            cfg = json.loads(text[:e.pos])
+        except json.JSONDecodeError:
+            return {}
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _caelestia_available():
+    """
+    Whether there is a caelestia config to talk about at all.
+
+    The FILE, not whether it parsed. Every page here hides its whole body when
+    this is false, and tying that to a successful parse meant one bad write
+    turned Genesi Center into a stack of empty pages -- with the settings
+    still on disk, and no way in the app to reach them.
+    """
+    return os.path.exists(_SHELL_JSON)
 
 
 def system():
@@ -795,7 +826,7 @@ def appearance():
     schemes = _schemes()
     current = _current_scheme()
     return {
-        "available": bool(cfg),
+        "available": _caelestia_available(),
         "border": {
             "thickness": border.get("thickness", 10),
             "rounding": border.get("rounding", 25),
@@ -879,8 +910,7 @@ def desktop():
     a real value, not a missing one.
     """
     cfg = _caelestia_config()
-    if not cfg and not os.path.exists(
-            os.path.expanduser("~/.config/caelestia/shell.json")):
+    if not _caelestia_available():
         return {"available": False}
     bg = cfg.get("background") or {}
     clock = bg.get("desktopClock") or {}
@@ -956,7 +986,7 @@ def launcher():
         else:
             top += 1
     return {
-        "available": bool(cfg),
+        "available": _caelestia_available(),
         "options": {
             # Genesi-only; the defaults here are what the patch declares, so
             # an unset value reads as what is in effect.
@@ -972,6 +1002,7 @@ def launcher():
             # declares, so an unset key reads as what is actually in effect
             # rather than as blank.
             "layout": l.get("layout", "caelestia"),
+            "schemePicker": l.get("schemePicker", "launcher"),
             "background": l.get("background", ""),
             "backgroundExtent": l.get("backgroundExtent", "header"),
             "backgroundDim": l.get("backgroundDim", 78),

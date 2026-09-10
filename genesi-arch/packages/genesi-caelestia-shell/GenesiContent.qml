@@ -36,6 +36,11 @@ import Caelestia.Config
 import qs.components
 import qs.components.controls
 import qs.services
+// GenesiSchemeState -- the flag the full-screen picker watches. It sits in this
+// same directory, so QML would find it anyway; naming the module is what makes
+// a singleton that moves a compile-time failure rather than a mode that does
+// nothing the first time somebody types `>scheme`.
+import qs.modules.launcher
 import qs.modules.launcher.services
 
 Item {
@@ -653,8 +658,35 @@ Item {
     // list -- or twenty-four painted cards -- every time the ">" is deleted.
     onGridModeChanged: if (!gridMode && !schemeMode)
         fallback.active = true
-    onSchemeModeChanged: if (schemeMode)
-        flow.active = true
+    onSchemeModeChanged: {
+        if (!schemeMode)
+            return;
+        // Two homes for one fan, and this is where the fork happens.
+        //
+        // "fullscreen" hands the schemes to a layer-shell surface of their own
+        // and gets out of the way: the launcher CLOSES, because leaving a
+        // panel open behind a full-screen picker means two things holding the
+        // keyboard and one of them winning by accident.
+        //
+        // The text typed so far is carried across, so `>scheme drac` opens the
+        // big picker already filtered rather than at the top of the list.
+        if (Config.launcher.schemePicker === "fullscreen") {
+            GenesiSchemeState.filter =
+                search.text.slice((root.prefix + "scheme ").length);
+            // DEFERRED, not done here. Closing the launcher clears the prompt,
+            // which changes `schemeMode` again -- and doing that from inside
+            // that property's own change handler is a binding loop, which Qt
+            // detects, warns about, and then stops re-evaluating.
+            Qt.callLater(root.handOff);
+            return;
+        }
+        flow.active = true;
+    }
+
+    function handOff(): void {
+        GenesiSchemeState.open = true;
+        root.visibilities.launcher = false;
+    }
 
     // ── Selection plumbing ───────────────────────────────────────────────────
     function move(by: int): void {

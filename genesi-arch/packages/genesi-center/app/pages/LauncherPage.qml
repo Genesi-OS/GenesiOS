@@ -318,6 +318,49 @@ Item {
                 }
             }
 
+            // Outside the Genesi-only block on purpose: the full-screen picker
+            // is a window of its own, so it is reachable from the desktop's
+            // right-click menu whichever body the launcher is using. Only the
+            // route through `>scheme` differs.
+            SectionHead { index: "—"; text: qsTr("Colour schemes") }
+
+            Panel {
+                width: parent.width
+                height: schemeCol.implicitHeight + 8
+
+                Column {
+                    id: schemeCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    anchors.margins: 4
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("Where the schemes are shown")
+                        description: qsTr("A colour scheme is the one setting "
+                                          + "whose value is a picture, and the "
+                                          + "launcher panel is a narrow frame "
+                                          + "for one. Full screen fans the cards "
+                                          + "off both edges of the display; the "
+                                          + "launcher keeps them inside the "
+                                          + "panel, next to whatever you typed.")
+                        Segmented {
+                            options: [
+                                { id: "launcher", label: qsTr("IN THE LAUNCHER") },
+                                { id: "fullscreen", label: qsTr("FULL SCREEN") }
+                            ]
+                            current: page.o.schemePicker || "launcher"
+                            onPicked: id => page.set("launcher.schemePicker", id)
+                        }
+                    }
+
+                    Fact {
+                        width: parent.width
+                        label: qsTr("ALSO REACHABLE FROM")
+                        value: qsTr("right-click on the wallpaper")
+                    }
+                }
+            }
+
             // Everything below applies to the Genesi body only, so it is not
             // shown next to the other one. A page full of controls that quietly
             // do nothing is worse than a page that is honest about its shape.

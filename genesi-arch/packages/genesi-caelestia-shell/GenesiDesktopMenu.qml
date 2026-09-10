@@ -30,6 +30,7 @@ Item {
 
     signal toggle(string name)
     signal arrange
+    signal schemes
 
     // Names for the menu. The widget's config key is not a label: "analogClock"
     // is a fine identifier and a poor thing to read at four in the afternoon.
@@ -198,6 +199,19 @@ Item {
                 highlight: root.arranging
                 onTriggered: {
                     root.arrange();
+                    root.close();
+                }
+            }
+
+            // The full-screen picker, reachable without typing. Signalled
+            // rather than opened here: this file is a menu and does not import
+            // the launcher's half of the shell, and the host already owns the
+            // one place a scheme change is triggered from.
+            Action {
+                label: qsTr("Colour scheme…")
+                icon: "palette"
+                onTriggered: {
+                    root.schemes();
                     root.close();
                 }
             }
