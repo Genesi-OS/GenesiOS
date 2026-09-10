@@ -203,8 +203,12 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiWidgets.qml"
         "GenesiWidgetHost.qml"
         "GenesiDesktopMenu.qml"
-        "GenesiDock.qml")
+        "GenesiDock.qml"
+        "GenesiSchemeState.qml"
+        "GenesiSchemeScreen.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

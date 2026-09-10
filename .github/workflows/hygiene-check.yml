@@ -201,6 +201,13 @@ jobs:
         # desktop loads at all.
         run: python genesi-arch/ci/qml-sanity-test.py
 
+      - name: every QML file the patcher installs is in the shell's source=()
+        # Two lists that have to agree and nothing checked that they did. Add a
+        # file to the patcher and not to the PKGBUILD and the package builds
+        # Calamares, materialyoucolor and half of Qt first, then dies in
+        # prepare() thirteen minutes in with "that file is missing".
+        run: python genesi-arch/ci/caelestia-sources-test.py
+
       - name: every shebang script is pinned to LF
         # An extensionless script committed with CRLF is `bad interpreter: no
         # such file or directory` on the installed system and nowhere else.
