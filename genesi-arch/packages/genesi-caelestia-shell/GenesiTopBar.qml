@@ -435,10 +435,11 @@ Variants {
             // strange thing for the one place on the desktop that is supposed
             // to say whose desktop it is.
             //
-            // It opens the side panel rather than the launcher. A mark in the
-            // corner of a bar is where every desktop puts its own controls,
-            // and the launcher already answers to SUPER, to a tap of SUPER,
-            // and to the search glyph.
+            // It opens the side panel -- the quick settings down the left
+            // edge -- rather than the launcher. A mark in the corner of a bar
+            // is where every desktop puts its own controls, and the launcher
+            // already answers to SUPER, to a tap of SUPER, and to the search
+            // glyph beside this one.
             Item {
                 id: markButton
 
@@ -459,10 +460,28 @@ Variants {
                     }
                 }
 
+                // The Genesi mark, unless somebody asked for something
+                // else. `markIcon` is a Material Symbols ligature -- the same
+                // names every other icon in the shell uses -- so wanting a
+                // different glyph in the corner costs no file and no restart.
+                //
+                // The mark is a Shape and takes the scheme's colours; a
+                // ligature takes them too. Neither is an image with a hex
+                // value baked into it, which is the whole reason the mark was
+                // drawn rather than loaded.
                 GenesiMark {
                     anchors.centerIn: parent
+                    visible: win.cfg.markIcon === ""
                     width: parent.width * 0.72
                     height: parent.height * 0.72
+                }
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    visible: win.cfg.markIcon !== ""
+                    text: win.cfg.markIcon
+                    color: Colours.palette.m3primary
+                    fontStyle: Tokens.font.icon.medium
                 }
 
                 MouseArea {
@@ -471,11 +490,17 @@ Variants {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        const v = Visibilities.getForActive();
-                        if (v)
-                            v.dashboard = !v.dashboard;
-                    }
+                    // The Genesi panel, pinned -- you asked for it by
+                    // name, so it stays until it is dismissed. The left edge
+                    // of the screen opens the same panel on hover, and that
+                    // one closes when the pointer leaves.
+                    //
+                    // It used to open caelestia's dashboard, which is a clock,
+                    // a calendar, a media player and four graphs. Useful, and
+                    // not what a mark in the corner of a bar is for: that is
+                    // where a desktop keeps the switches you reach for without
+                    // thinking.
+                    onClicked: GenesiSidePanelState.toggle()
                 }
             }
 

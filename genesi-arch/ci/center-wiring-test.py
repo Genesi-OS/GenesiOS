@@ -327,6 +327,20 @@ def main():
                             f'a row reads and writes "{path}", which '
                             "genesi-center-set does not accept -- the control "
                             "draws, responds, and the write is refused"))
+        # ...and the studio has to be able to READ it. sectionOf() is a
+        # switch over the sections it knows how to reach in the config, and a
+        # row naming one that is missing from it gets undefined for every
+        # value on the page: switches drawn off, sliders at their minimum, no
+        # warning anywhere. The Panel page shipped that way for one render.
+        m = re.search(r"function sectionOf.*?\n            \}", rows, re.S)
+        reachable = set(re.findall(r'case "(\w+)":', m.group(0))) if m else set()
+        for section in sorted({sec for sec, _ in pairs}):
+            if section not in reachable:
+                bad.append(("GenesiStudio.qml",
+                            f'rows name the section "{section}", which '
+                            "sectionOf() cannot reach -- every value on that "
+                            "page reads undefined"))
+
         print(f"  studio rows: {len(seen)} distinct keys, all in the writer"
               if not any(f == "GenesiStudio.qml" for f, _ in bad)
               else f"  studio rows: {len(seen)} distinct keys")

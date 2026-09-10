@@ -212,6 +212,16 @@ CAELESTIA_PATHS = {
     "topbar.radius": ("int", 0, 30),
     "topbar.form": ("enum", ("islands", "full", "fit", "dock", "notch")),
     "topbar.frost": ("bool",),
+    "topbar.markIcon": ("str", 32),
+    "sidepanel.enabled": ("bool",),
+    "sidepanel.edgeHover": ("bool",),
+    "sidepanel.width": ("int", 280, 640),
+    "sidepanel.showSession": ("bool",),
+    "sidepanel.showToggles": ("bool",),
+    "sidepanel.showSliders": ("bool",),
+    "sidepanel.showCalendar": ("bool",),
+    "sidepanel.showPower": ("bool",),
+    "sidepanel.nightTemperature": ("int", 1000, 6500),
     "topbar.background": ("bool",),
     "topbar.backgroundOpacity": ("int", 0, 100),
     "topbar.showLogo": ("bool",),
@@ -372,6 +382,18 @@ GENESI_ONLY = {
     "topbar.radius": "CONFIG_PROPERTY(int, radius, 14)",
     "topbar.form": 'CONFIG_PROPERTY(QString, form, u"islands"_s)',
     "topbar.frost": "CONFIG_PROPERTY(bool, frost, false)",
+    "topbar.markIcon": 'CONFIG_PROPERTY(QString, markIcon, u""_s)',
+    "sidepanel.enabled": "CONFIG_PROPERTY(bool, enabled, true)",
+    "sidepanel.edgeHover": "CONFIG_PROPERTY(bool, edgeHover, true)",
+    "sidepanel.width": "CONFIG_PROPERTY(int, width, 360)",
+    "sidepanel.showSession": "CONFIG_PROPERTY(bool, showSession, true)",
+    "sidepanel.showToggles": "CONFIG_PROPERTY(bool, showToggles, true)",
+    "sidepanel.showSliders": "CONFIG_PROPERTY(bool, showSliders, true)",
+    "sidepanel.showCalendar":
+        "CONFIG_PROPERTY(bool, showCalendar, true)",
+    "sidepanel.showPower": "CONFIG_PROPERTY(bool, showPower, true)",
+    "sidepanel.nightTemperature":
+        "CONFIG_PROPERTY(int, nightTemperature, 4000)",
     "topbar.background": "CONFIG_PROPERTY(bool, background, true)",
     "topbar.backgroundOpacity": "CONFIG_PROPERTY(int, backgroundOpacity, 85)",
     "topbar.showLogo": "CONFIG_PROPERTY(bool, showLogo, true)",
@@ -624,6 +646,12 @@ def coerce(spec, raw, what):
     # str
     if not re.fullmatch(r"[A-Za-z0-9_,:+.\- ]*", str(raw)):
         die(f"{what} may only hold letters, digits and , : + . - _")
+    # An optional cap, for the keys whose value is a NAME. A Material Symbols
+    # ligature is at most a couple of dozen characters, and a config file that
+    # will accept a kilobyte in that slot is a config file somebody will
+    # eventually put a kilobyte in.
+    if len(spec) > 1 and len(str(raw)) > spec[1]:
+        die(f"{what} takes at most {spec[1]} characters; got {len(str(raw))}")
     return str(raw)
 
 

@@ -1238,7 +1238,8 @@ def patch_ddc_timeout(services_dir):
 # after every "does upstream already ship this?" test has run, never before.
 LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml",
                    "GenesiSchemeFlow.qml", "GenesiSchemeState.qml",
-                   "GenesiTopBarState.qml", "GenesiEdges.qml")
+                   "GenesiTopBarState.qml", "GenesiEdges.qml",
+                   "GenesiSidePanelState.qml")
 
 # The full-screen colour-scheme picker. Its WINDOW goes in modules/background,
 # which is the one Genesi directory shell.qml already imports -- so putting it
@@ -1250,6 +1251,11 @@ SCHEME_FILES = ("GenesiSchemeScreen.qml",)
 # which is the whole point of this second attempt: the first one was a separate
 # Quickshell process, and switching to it ran `pkill -f caelestia`.
 TOPBAR_FILES = ("GenesiTopBar.qml", "GenesiStudio.qml", "GenesiMark.qml")
+
+# The quick settings down the left edge, and the thin strip that opens
+# them on hover. Both windows are in one file because they are one
+# feature: a hover point with nothing behind it is not a thing.
+SIDEPANEL_FILES = ("GenesiSidePanel.qml",)
 
 
 def patch_launcher_layout(release):
@@ -2034,6 +2040,13 @@ def patch_topbar(release):
         "    CONFIG_PROPERTY(int, backgroundOpacity, 85)\n"
         "\n"
         "    CONFIG_PROPERTY(bool, showLogo, true)\n"
+        "    // What the mark button DRAWS. Empty is the Genesi mark,\n"
+        "    // which is a Shape and follows the scheme. Anything else\n"
+        "    // is a Material Symbols ligature -- the same names the\n"
+        "    // rest of the shell's icons use, so a person who wants\n"
+        "    // 'apps' or their own distro glyph there can have it\n"
+        "    // without a file to install.\n"
+        "    CONFIG_PROPERTY(QString, markIcon, u\"\"_s)\n"
         "    CONFIG_PROPERTY(bool, showSidebarButton, true)\n"
         "    CONFIG_PROPERTY(bool, showWorkspaces, true)\n"
         "    CONFIG_PROPERTY(bool, showActiveWindow, true)\n"
@@ -2138,6 +2151,155 @@ def patch_topbar(release):
     print("topbar: a bar across the top, inside caelestia")
 
 
+def patch_side_panel(release):
+    """
+    Quick settings down the left edge, when the Genesi bar is on.
+
+        sidepanel.enabled          the panel exists at all
+        sidepanel.edgeHover        the strip on the left that opens it
+        sidepanel.width
+        sidepanel.show*            which of its five blocks are drawn
+        sidepanel.nightTemperature what hyprsunset is asked for
+
+    ── Why the left edge is free ────────────────────────────────────────────
+
+    caelestia's rail lives there, and its popouts with it. With the Genesi bar
+    on, BarWrapper.disabled collapses that rail to the border thickness and
+    drops its exclusive zone -- so the left edge is the one edge of the screen
+    nothing is using. That is why the panel exists exactly when the bar does:
+    with the rail back, a second panel arriving from underneath it would be
+    two things answering one gesture.
+
+    ── The edge has to be yielded as well as free ──────────────────────────
+
+    Regions.qml insets its interior by the drag margin on every side, so on an
+    empty workspace the drawers window owns the left ninety pixels the same
+    way it owned the top -- see patch_edge_regions. GenesiEdges reports the
+    left now, and the panel's hover strip is four pixels of screen that
+    actually receive a pointer.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "backgroundconfig.hpp")
+    cfg = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "config.hpp")
+    ccpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                        "config.cpp")
+    att = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "configattached.hpp")
+    attc = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                        "configattached.cpp")
+    shell = os.path.join(release, "shell.qml")
+    for p in (hpp, cfg, ccpp, att, attc, shell):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the shell's layout moved.")
+
+    for name in SIDEPANEL_FILES:
+        shipped = os.path.join(release, "modules", "background", name)
+        if os.path.exists(shipped):
+            fail(f"upstream now ships its own {name}. Decide by hand.")
+
+    src = {p: io.open(p, encoding="utf-8").read()
+           for p in (hpp, cfg, ccpp, att, attc, shell)}
+
+    if "GenesiSidePanelConfig" in src[hpp]:
+        fail("the side panel config is already there -- this ran twice.")
+
+    anchor = "class GenesiTopBarConfig : public ConfigObject {"
+    if anchor not in src[hpp]:
+        fail("GenesiTopBarConfig is not in backgroundconfig.hpp -- "
+             "patch_topbar did not run. The side panel only exists when the "
+             "top bar does, so its config goes beside it.")
+    block = (
+        "// Genesi: the quick settings down the left edge. Beside the bar's\n"
+        "// config because it only exists when the bar does -- without it\n"
+        "// caelestia's rail is on that edge and this would be a second panel\n"
+        "// answering the same gesture.\n"
+        "class GenesiSidePanelConfig : public ConfigObject {\n"
+        "    Q_OBJECT\n"
+        "    QML_ANONYMOUS\n"
+        "\n"
+        "    CONFIG_PROPERTY(bool, enabled, true)\n"
+        "    // The four-pixel strip on the left that opens it on hover. Off\n"
+        "    // leaves the mark on the bar as the only way in, which is what\n"
+        "    // somebody who keeps hitting it by accident will want.\n"
+        "    CONFIG_PROPERTY(bool, edgeHover, true)\n"
+        "    CONFIG_PROPERTY(int, width, 360)\n"
+        "\n"
+        "    CONFIG_PROPERTY(bool, showSession, true)\n"
+        "    CONFIG_PROPERTY(bool, showToggles, true)\n"
+        "    CONFIG_PROPERTY(bool, showSliders, true)\n"
+        "    CONFIG_PROPERTY(bool, showCalendar, true)\n"
+        "    CONFIG_PROPERTY(bool, showPower, true)\n"
+        "\n"
+        "    // What hyprsunset is asked for. 4000K is the warm end of what\n"
+        "    // still reads as white; below about 3000 a screen looks broken\n"
+        "    // rather than warm.\n"
+        "    CONFIG_PROPERTY(int, nightTemperature, 4000)\n"
+        "\n"
+        "public:\n"
+        "    explicit GenesiSidePanelConfig(QObject* parent = nullptr)\n"
+        "        : ConfigObject(parent) {}\n"
+        "};\n"
+        "\n")
+    out = {hpp: src[hpp].replace(anchor, block + anchor, 1)}
+
+    fwd = "class GenesiTopBarConfig;\n"
+    if fwd not in src[cfg]:
+        fail("config.hpp does not forward-declare GenesiTopBarConfig.")
+    out[cfg] = src[cfg].replace(fwd, fwd + "class GenesiSidePanelConfig;\n", 1)
+
+    member = "    CONFIG_SUBOBJECT(GenesiTopBarConfig, topbar)\n"
+    if member not in out[cfg]:
+        fail("config.hpp has no topbar member.")
+    out[cfg] = out[cfg].replace(
+        member,
+        member + "    CONFIG_SUBOBJECT(GenesiSidePanelConfig, sidepanel)\n", 1)
+
+    init = "    , m_topbar(new GenesiTopBarConfig(this))\n"
+    n = src[ccpp].count(init)
+    if n != 2:
+        fail(f"config.cpp initialises m_topbar {n} times, not 2 -- a member "
+             "added to only some of the constructors is null in the rest.")
+    out[ccpp] = src[ccpp].replace(
+        init, init + "    , m_sidepanel(new GenesiSidePanelConfig(this))\n")
+
+    prop = ("    Q_PROPERTY(const caelestia::config::GenesiTopBarConfig* topbar "
+            "READ topbar NOTIFY sourceChanged)\n")
+    getter = "    [[nodiscard]] const GenesiTopBarConfig* topbar() const;\n"
+    for needle, what in ((prop, "the topbar Q_PROPERTY"),
+                         (getter, "the topbar getter")):
+        if needle not in src[att]:
+            fail(f"configattached.hpp does not carry {what}.")
+    out[att] = src[att].replace(prop, prop + (
+        "    Q_PROPERTY(const caelestia::config::GenesiSidePanelConfig* "
+        "sidepanel READ sidepanel NOTIFY sourceChanged)\n"), 1)
+    out[att] = out[att].replace(getter, getter + (
+        "    [[nodiscard]] const GenesiSidePanelConfig* sidepanel() const;\n"), 1)
+
+    impl = "CONFIG_ATTACHED_GETTER(GenesiTopBarConfig, topbar)\n"
+    if impl not in src[attc]:
+        fail("configattached.cpp has no topbar getter.")
+    out[attc] = src[attc].replace(
+        impl, impl + "CONFIG_ATTACHED_GETTER(GenesiSidePanelConfig, sidepanel)\n",
+        1)
+
+    verify_config_reachable(out[cfg], out[att], out[attc])
+    for _path in list(out):
+        if _path.endswith(".hpp"):
+            out[_path] = ensure_header_deps(out[_path])
+            verify_string_literals(_path, out[_path])
+
+    line = "    GenesiTopBar {}\n"
+    if line not in src[shell]:
+        fail("shell.qml does not build the top bar -- patch_topbar did not "
+             "run, and the panel only exists beside it.")
+    out[shell] = src[shell].replace(line, line + "    GenesiSidePanel {}\n", 1)
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("side panel: quick settings on the edge the bar freed")
+
+
 def patch_edge_regions(release):
     """
     caelestia stops claiming the edge a Genesi surface is standing on.
@@ -2186,7 +2348,7 @@ def patch_edge_regions(release):
     old = ("    x: bar.clampedWidth + win.dragMaskPadding\n"
            "    y: clampedThickness + win.dragMaskPadding\n"
            "    width: win.width - bar.clampedWidth - clampedThickness"
-           " - win.dragMaskPadding * 2\n"
+           " - leftPad - win.dragMaskPadding\n"
            "    height: win.height - clampedThickness * 2"
            " - win.dragMaskPadding * 2\n")
     if old not in src:
@@ -2203,8 +2365,10 @@ def patch_edge_regions(release):
            " ? 0 : win.dragMaskPadding\n"
            "    readonly property real bottomPad: GenesiEdges.bottom"
            " ? 0 : win.dragMaskPadding\n"
+           "    readonly property real leftPad: GenesiEdges.left"
+           " ? 0 : win.dragMaskPadding\n"
            "\n"
-           "    x: bar.clampedWidth + win.dragMaskPadding\n"
+           "    x: bar.clampedWidth + leftPad\n"
            "    y: clampedThickness + topPad\n"
            "    width: win.width - bar.clampedWidth - clampedThickness"
            " - win.dragMaskPadding * 2\n"
@@ -2308,6 +2472,7 @@ def main():
     patch_dock(release)
     patch_scheme_screen(release)
     patch_topbar(release)
+    patch_side_panel(release)
     patch_edge_regions(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
@@ -2364,6 +2529,14 @@ def main():
                  "build the top bar.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(TOPBAR_FILES)} top-bar file(s)")
+
+    for name in SIDEPANEL_FILES:
+        src = os.path.join(ours, name)
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- shell.qml has already been told to "
+                 "build the side panel.")
+        shutil.copyfile(src, os.path.join(widget_dest, name))
+    print(f"installed {len(SIDEPANEL_FILES)} side-panel file(s)")
     return 0
 
 

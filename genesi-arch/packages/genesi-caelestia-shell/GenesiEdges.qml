@@ -56,4 +56,12 @@ Singleton {
     readonly property bool top: root.barAtTop || root.dockAtTop
     readonly property bool bottom: (GlobalConfig.topbar.enabled && !root.barAtTop)
         || (GlobalConfig.dock.enabled && !root.dockAtTop)
+
+    // The left edge belongs to caelestia's rail -- except when the Genesi bar
+    // has taken the rail's place, which collapses it to the border thickness
+    // and leaves that edge with nothing on it. The side panel's hover strip
+    // is four pixels of screen, and the drawers window's drag margin is
+    // eighty, so without this the strip would never see a pointer.
+    readonly property bool left: GlobalConfig.topbar.enabled
+        && GlobalConfig.sidepanel.enabled && GlobalConfig.sidepanel.edgeHover
 }

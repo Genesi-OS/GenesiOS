@@ -87,6 +87,8 @@ Variants {
             switch (section) {
             case "topbar":
                 return c.topbar;
+            case "sidepanel":
+                return c.sidepanel;
             case "dock":
                 return c.dock;
             case "appearance":
@@ -230,6 +232,12 @@ Variants {
                                 label: qsTr("Dock"),
                                 icon: "dock",
                                 blurb: qsTr("The applications along the opposite edge.")
+                            },
+                            {
+                                id: "panel",
+                                label: qsTr("Panel"),
+                                icon: "left_panel_open",
+                                blurb: qsTr("The quick settings on the left edge, and the mark that opens them.")
                             },
                             {
                                 id: "launcher",
@@ -480,6 +488,32 @@ Variants {
                         { kind: "switch", section: "topbar", key: "showPower", label: qsTr("Power") },
                         { kind: "switch", section: "topbar", key: "showConfigButton", label: qsTr("This studio's button") },
                         { kind: "note", label: qsTr("With the studio's button off, this opens from Genesi Center → Bar.") }
+                    ],
+                    "panel": [
+                        { kind: "note", label: qsTr("Wi-Fi, Bluetooth, the volume and the screen, down the left edge. It exists only while the top bar does: without the bar, caelestia's rail is on that edge and its own popouts with it.") },
+                        { kind: "head", label: qsTr("PANEL") },
+                        { kind: "switch", section: "sidepanel", key: "enabled", label: qsTr("A quick settings panel") },
+                        { kind: "switch", section: "sidepanel", key: "edgeHover", label: qsTr("Open on the left edge"), blurb: qsTr("A four-pixel strip that notices the pointer. The panel it opens closes again when you leave it; the one the mark opens stays.") },
+                        { kind: "amount", section: "sidepanel", key: "width", label: qsTr("Width"), from: 280, to: 640 },
+                        { kind: "head", label: qsTr("WHAT IS ON IT") },
+                        { kind: "switch", section: "sidepanel", key: "showSession", label: qsTr("Log out, lock, restart, power") },
+                        { kind: "switch", section: "sidepanel", key: "showToggles", label: qsTr("Connect"), blurb: qsTr("Wi-Fi, Bluetooth, Airplane, Night light, Keep awake, Do not disturb, Gaming.") },
+                        { kind: "switch", section: "sidepanel", key: "showSliders", label: qsTr("Sound and display") },
+                        { kind: "switch", section: "sidepanel", key: "showCalendar", label: qsTr("Calendar") },
+                        { kind: "switch", section: "sidepanel", key: "showPower", label: qsTr("Power profile"), blurb: qsTr("Hidden anyway on a machine whose firmware offers no profiles to choose between.") },
+                        { kind: "head", label: qsTr("NIGHT LIGHT") },
+                        { kind: "amount", section: "sidepanel", key: "nightTemperature", label: qsTr("Temperature"), from: 1000, to: 6500, step: 100 },
+                        { kind: "note", label: qsTr("4000K is the warm end of what still reads as white. Below about 3000 a screen looks broken rather than warm.") },
+                        { kind: "head", label: qsTr("THE MARK") },
+                        { kind: "cards", section: "topbar", key: "markIcon", label: qsTr("Button icon"), options: [
+                            { id: "", label: qsTr("GENESI"), blurb: qsTr("The mark") },
+                            { id: "apps", label: qsTr("APPS"), blurb: qsTr("Nine dots") },
+                            { id: "grid_view", label: qsTr("GRID"), blurb: qsTr("Four panes") },
+                            { id: "menu", label: qsTr("MENU"), blurb: qsTr("Three lines") },
+                            { id: "widgets", label: qsTr("WIDGETS"), blurb: qsTr("Four tiles") },
+                            { id: "blur_on", label: qsTr("BLOOM"), blurb: qsTr("A soft field") }
+                        ] },
+                        { kind: "note", label: qsTr("Any Material Symbols name works here; these are the six that suit a bar. The mark itself is drawn rather than loaded, so it takes the scheme's colours like everything else.") }
                     ],
                     "dock": [
                         { kind: "preview", of: "dock" },

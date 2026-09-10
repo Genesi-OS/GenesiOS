@@ -253,7 +253,37 @@ pkgver=2.0.3
 # with a search across every row in it. A result is the REAL row --
 # same delegate, same key -- because a search that shows you a copy of
 # a control is a search that can disagree with the page it came from.
-pkgrel=31
+# 32: the quick settings, down the left edge.
+#
+# The Genesi mark used to open caelestia's dashboard -- a clock, a
+# calendar, a media player and four graphs. Useful, and not what a mark
+# in the corner of a bar is for: that is where a desktop keeps the
+# switches you reach for without thinking. It opens a panel of them now:
+# Wi-Fi, Bluetooth, Airplane, Night light, Keep awake, Do not disturb and
+# Gaming, the volume, the microphone and the screen, a calendar, and the
+# power profile.
+#
+# Two ways in, and they mean different things. The mark opens it PINNED,
+# because you asked for it by name and a panel that vanishes while you
+# reach for a slider is a panel nobody uses twice. The left four pixels
+# of the screen open it on hover and it closes when the pointer leaves --
+# caelestia already teaches that edges are where panels come from, and
+# with the Genesi bar on, the left edge is the one nothing is using: the
+# side rail has collapsed to make room for the bar. Which is also why
+# the panel exists exactly when the bar does.
+#
+# Every switch on it is a real service or it is not on it. Aeroplane mode
+# is rfkill and night light is hyprsunset -- the two that were not
+# already in the shell -- and both read their state back rather than
+# remembering what they were told, because something else can block a
+# radio and a toggle that only remembers is then showing the opposite of
+# what is true. hyprsunset is a hard dependency for the same reason: a
+# switch that turns on and does nothing is the failure this repository
+# keeps writing guards for.
+#
+# The mark itself can be something else now. `topbar.markIcon` takes any
+# Material Symbols name, and the Panel page in the studio offers six.
+pkgrel=32
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -261,7 +291,8 @@ license=('GPL-3.0-only')
 depends=('caelestia-cli' 'quickshell' 'ddcutil' 'brightnessctl' 'app2unit' 'libcava' 'networkmanager'
          'lm_sensors' 'fish' 'aubio' 'libpipewire' 'glibc' 'gcc-libs' 'ttf-material-symbols-variable'
          'power-profiles-daemon' 'ttf-rubik-vf' 'ttf-cascadia-code-nerd' 'swappy' 'libqalculate' 'bash'
-         'qt6-base' 'qt6-declarative' 'qt6-imageformats')
+         'qt6-base' 'qt6-declarative' 'qt6-imageformats' 'hyprsunset'
+         'util-linux' 'bluez')
 makedepends=('cmake' 'ninja' 'qt6-shadertools')
 provides=('caelestia-shell')
 conflicts=('caelestia-shell' 'caelestia-shell-git')
@@ -298,8 +329,12 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiStudio.qml"
         "GenesiMark.qml"
         "GenesiTopBarState.qml"
-        "GenesiEdges.qml")
+        "GenesiEdges.qml"
+        "GenesiSidePanel.qml"
+        "GenesiSidePanelState.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

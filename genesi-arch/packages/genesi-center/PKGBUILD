@@ -119,7 +119,11 @@ pkgver=0.1.0
 # checked its hundred and eighty rows against what the writer accepts;
 # ci/center-wiring-test.py does, the same way it checks this app's own
 # pages.
-pkgrel=27
+# 28: the writer learns the side panel -- sidepanel.* and the mark's
+# icon. The shell's studio is where they are set; this holds the
+# validation and the file format, as it does for the other hundred and
+# seventy.
+pkgrel=28
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
