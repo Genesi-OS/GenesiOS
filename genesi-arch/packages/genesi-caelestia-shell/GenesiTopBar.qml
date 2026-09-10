@@ -31,12 +31,28 @@
 // bar's centre and the sides are anchored to the edges, so the clock does not
 // move when anything else does.
 //
-// `topbar.islands` off draws the three groups on one continuous surface
-// instead, for people who want a bar rather than a tray of pills.
+// ── Five forms, not a switch ────────────────────────────────────────────────
+//
+// This started as `topbar.islands`, a bool: three pills, or one inset slab.
+// Which is two bars, and a switch labelled "islands rather than one bar"
+// cannot grow a third answer without becoming a switch that lies. So the
+// shape is a NAME now, and there are five of them:
+//
+//   islands   three surfaces, one per group, floating in the strip
+//   full      one slab, edge to edge, square into the screen's corners
+//   fit       one slab, inset on all four sides, rounded
+//   dock      one slab flush to its edge, rounded only away from it
+//   notch     the centre alone, flush to the edge, with shoulders that
+//             curve back into it; the side groups ride on nothing
+//
+// Each one also decides how TALL the strip is, because a bar flush to the
+// screen edge that still reserves a gap above itself is a bar with a stripe
+// of desktop above it that nothing can ever be dropped into.
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
@@ -68,6 +84,60 @@ Variants {
         // not have to. Getting this wrong is how the dock shipped invisible.
         readonly property bool atTop: win.cfg.position !== "bottom"
 
+        // ── The form ────────────────────────────────────────────────────
+        readonly property string form: win.cfg.form
+        readonly property bool islands: win.form === "islands"
+        readonly property bool notch: win.form === "notch"
+        // One continuous surface behind the whole bar.
+        readonly property bool slab: win.form === "full" || win.form === "fit"
+            || win.form === "dock"
+
+        // How much of the screen the bar occupies, form by form. `fit` is the
+        // only one that floats, so it is the only one that pays for a gap on
+        // both sides.
+        readonly property int strip: win.cfg.height + (win.form === "fit"
+            ? win.cfg.gap * 2 : (win.form === "full" ? 0 : win.cfg.gap))
+
+        // Where the slab's edges sit. Named rather than written inline four
+        // times: a margin that says `form === "fit" ? gap : 0` in three places
+        // is three chances to get one of them backwards.
+        readonly property int slabEdge: win.form === "fit" ? win.cfg.gap : 0
+        readonly property int slabFar: win.form === "full" ? 0 : win.cfg.gap
+        readonly property int slabSide: win.form === "fit" ? win.cfg.gap : 0
+        readonly property int slabRadius: win.form === "full" ? 0 : win.cfg.radius
+        // `dock` is flush to its edge, so the two corners on that side are
+        // square however round the rest of it is.
+        readonly property int slabEdgeRadius: win.form === "dock" ? 0 : win.slabRadius
+
+        // ── Frost ───────────────────────────────────────────────────────
+        //
+        // Blur behind the bar. Hyprland owns this and Qt cannot: a layer
+        // surface has no way to read what is under it, so there is nothing to
+        // blur from inside QML. The rule goes on our namespace, which
+        // StyledWindow builds as `caelestia-${name}`.
+        //
+        // `unset` is the way back. There is no negative form of a layerrule,
+        // and the alternative -- reloading Hyprland's whole config to drop one
+        // runtime keyword -- would throw away every other thing the session
+        // had set since login.
+        readonly property string ns: "caelestia-genesi-topbar"
+        readonly property bool frost: win.cfg.frost
+
+        function applyFrost(): void {
+            if (win.frost) {
+                Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
+                                         `blur,${win.ns}`]);
+                Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
+                                         `ignorezero,${win.ns}`]);
+            } else {
+                Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
+                                         `unset,${win.ns}`]);
+            }
+        }
+
+        onFrostChanged: win.applyFrost()
+        Component.onCompleted: win.applyFrost()
+
         screen: modelData
         name: "genesi-topbar"
         visible: win.cfg.enabled
@@ -80,7 +150,7 @@ Variants {
         anchors.left: true
         anchors.right: true
 
-        implicitHeight: win.cfg.height + win.cfg.gap * 2
+        implicitHeight: win.strip
 
         // Withdrawn until the pointer reaches the edge. The WINDOW keeps its
         // height either way -- only the islands slide out of view -- because a
@@ -94,7 +164,7 @@ Variants {
         // the dock differ on purpose: a dock is somewhere you point at, a bar
         // is somewhere you read, and a bar you have to move a window to read is
         // not doing its job.
-        exclusiveZone: win.cfg.enabled ? win.cfg.height + win.cfg.gap : 0
+        exclusiveZone: win.cfg.enabled ? win.strip : 0
 
         // Only the islands take input. Without this the strip swallows clicks
         // along the entire top edge of every window on the screen.
@@ -131,13 +201,23 @@ Variants {
             onContainsMouseChanged: win.peek = containsMouse
         }
 
-        // ── One continuous surface, when islands are off ─────────────────────
+        // ── One continuous surface: full, fit and dock ───────────────────────
         StyledRect {
             anchors.fill: parent
-            anchors.margins: win.cfg.gap
-            visible: !win.cfg.islands && win.cfg.background
+            anchors.topMargin: win.atTop ? win.slabEdge : win.slabFar
+            anchors.bottomMargin: win.atTop ? win.slabFar : win.slabEdge
+            anchors.leftMargin: win.slabSide
+            anchors.rightMargin: win.slabSide
+
+            visible: win.slab && win.cfg.background
             opacity: win.shown ? 1 : 0
-            radius: win.cfg.radius
+
+            radius: win.slabRadius
+            topLeftRadius: win.atTop ? win.slabEdgeRadius : win.slabRadius
+            topRightRadius: win.atTop ? win.slabEdgeRadius : win.slabRadius
+            bottomLeftRadius: win.atTop ? win.slabRadius : win.slabEdgeRadius
+            bottomRightRadius: win.atTop ? win.slabRadius : win.slabEdgeRadius
+
             color: Qt.alpha(Colours.palette.m3surfaceContainer,
                             Math.max(0, Math.min(100, win.cfg.backgroundOpacity)) / 100)
             border.width: win.cfg.border ? 1 : 0
@@ -145,6 +225,101 @@ Variants {
 
             Behavior on opacity {
                 Anim {}
+            }
+        }
+
+        // ── The notch ───────────────────────────────────────────────────────
+        //
+        // The centre group alone on a slab that reaches the screen edge, with
+        // a shoulder on each side curving back into the bar. The side groups
+        // sit on nothing, which is the point: a notch is a bar that only
+        // exists where something is written.
+        //
+        // The shoulders are Shapes rather than rectangles with a radius: the
+        // fillet is CONCAVE -- the surface is the part of a square OUTSIDE a
+        // quarter circle -- and no rounded rectangle can be that. They cannot
+        // be punched out of the slab either, because what shows through is the
+        // desktop, and a hole cannot be drawn by painting over it.
+        Item {
+            id: notch
+
+            readonly property real r: Math.min(win.cfg.radius, win.cfg.height / 2)
+            readonly property color surface: Qt.alpha(
+                Colours.palette.m3surfaceContainer,
+                Math.max(0, Math.min(100, win.cfg.backgroundOpacity)) / 100)
+
+            visible: win.notch && win.cfg.background
+            opacity: win.shown ? 1 : 0
+
+            x: centre.x - win.tok.padding.large
+            width: centre.width + win.tok.padding.large * 2
+            y: win.atTop ? 0 : parent.height - height
+            height: win.cfg.height + win.cfg.gap
+
+            Behavior on opacity {
+                Anim {}
+            }
+
+            StyledRect {
+                anchors.fill: parent
+                color: notch.surface
+                topLeftRadius: win.atTop ? 0 : win.cfg.radius
+                topRightRadius: win.atTop ? 0 : win.cfg.radius
+                bottomLeftRadius: win.atTop ? win.cfg.radius : 0
+                bottomRightRadius: win.atTop ? win.cfg.radius : 0
+            }
+
+            Repeater {
+                model: 2
+
+                Shape {
+                    id: shoulder
+
+                    required property int index
+                    // Not `onLeft`: a property whose name is `on` plus a capital is
+// parsed as a handler for a signal called `left`, and QML refuses
+// to assign a value to a signal. ci/qml-sanity-test.py catches it.
+                    readonly property bool leftSide: shoulder.index === 0
+                    readonly property real r: notch.r
+
+                    x: shoulder.leftSide ? -shoulder.r : notch.width
+                    y: win.atTop ? 0 : notch.height - shoulder.r
+                    width: shoulder.r
+                    height: shoulder.r
+                    preferredRendererType: Shape.CurveRenderer
+
+                    ShapePath {
+                        strokeWidth: 0
+                        strokeColor: "transparent"
+                        fillColor: notch.surface
+
+                        // Three corners of the square and a curve across the
+                        // fourth, bowing INTO the square so what is left is
+                        // the outside of the fillet. A quadratic rather than
+                        // an arc on purpose: an SVG arc between two points
+                        // has two possible centres, chosen by a pair of flags
+                        // that are easy to write backwards and produce a
+                        // convex bulge when you do. A quadratic has one
+                        // control point and no way to mean the other shape.
+                        //
+                        // One path per orientation rather than a mirrored
+                        // transform, because mirroring a Shape mirrors its
+                        // winding too, and a filled path that changes winding
+                        // is a path that disappears.
+                        PathSvg {
+                            path: {
+                                const r = shoulder.r;
+                                if (win.atTop)
+                                    return shoulder.leftSide
+                                        ? `M 0,0 L ${r},0 L ${r},${r} Q 0,${r} 0,0 Z`
+                                        : `M ${r},0 L 0,0 L 0,${r} Q ${r},${r} ${r},0 Z`;
+                                return shoulder.leftSide
+                                    ? `M 0,${r} L ${r},${r} L ${r},0 Q 0,0 0,${r} Z`
+                                    : `M ${r},${r} L 0,${r} L 0,0 Q ${r},0 ${r},${r} Z`;
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -160,7 +335,7 @@ Variants {
         // is no gap for a connector to cross, and drawing one anyway would be a
         // line across the middle of a bar.
         Repeater {
-            model: (win.cfg.flow && win.cfg.islands && win.shown) ? 2 : 0
+            model: (win.cfg.flow && win.islands && win.shown) ? 2 : 0
 
             Item {
                 id: gap
@@ -252,7 +427,7 @@ Variants {
             id: left
 
             anchors.left: parent.left
-            anchors.leftMargin: win.cfg.gap * 2
+            anchors.leftMargin: win.islands ? win.cfg.gap * 2 : win.tok.padding.medium
             anchors.verticalCenter: parent.verticalCenter
 
             // The Genesi mark. It was the "workspaces" glyph -- three dots
@@ -410,7 +585,7 @@ Variants {
             id: right
 
             anchors.right: parent.right
-            anchors.rightMargin: win.cfg.gap * 2
+            anchors.rightMargin: win.islands ? win.cfg.gap * 2 : win.tok.padding.medium
             anchors.verticalCenter: parent.verticalCenter
 
             Reading {
@@ -497,11 +672,15 @@ Variants {
             // Only when the groups ARE islands. On one continuous surface the
             // pills would be three lighter rectangles drawn on top of a bar,
             // which reads as a rendering mistake rather than as a design.
-            color: (win.cfg.islands && win.cfg.background)
+            // Only in the `islands` form. On a slab the pills would be
+            // three lighter rectangles drawn on top of a bar, which reads as
+            // a rendering mistake rather than as a design; under a notch the
+            // centre already has a surface of its own.
+            color: (win.islands && win.cfg.background)
                    ? Qt.alpha(Colours.palette.m3surfaceContainer,
                               Math.max(0, Math.min(100, win.cfg.backgroundOpacity)) / 100)
                    : "transparent"
-            border.width: (win.cfg.islands && win.cfg.background && win.cfg.border) ? 1 : 0
+            border.width: (win.islands && win.cfg.background && win.cfg.border) ? 1 : 0
             border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
 
             // Slid out of view and faded, rather than merely faded: nothing is

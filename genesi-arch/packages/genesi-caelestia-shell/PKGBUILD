@@ -222,7 +222,38 @@ pkgver=2.0.3
 # that never changes is not an error. ci/qml-sanity-test.py fails on it
 # now, reading the comment-stripped source, since the paragraph
 # explaining it names both strings it looks for.
-pkgrel=30
+# 31: the bar has a shape, the dock has a style, and the studio has a
+# front door.
+#
+# `topbar.islands` was a bool -- three pills or one inset slab -- and a
+# switch labelled "islands rather than one bar" cannot grow a third
+# answer without becoming a switch that lies. It is `topbar.form` now,
+# with five: islands, full, fit, dock and notch. The dock has four the
+# same way: bar, islands, rail and seal. Each of them also decides how
+# tall the strip is, because a bar flush to the screen edge that still
+# reserves a gap above itself leaves a stripe of desktop nothing can be
+# dropped into.
+#
+# Both surfaces grew Frost, which is a Hyprland layerrule and not a Qt
+# effect: a layer surface cannot read what is under it, so there is
+# nothing for QML to blur. And the dock grew the media chip -- what is
+# playing, at the end of the row, click to play or pause and
+# right-click for the whole player.
+#
+# The studio: a viewfinder at the top of the Bar and Dock pages drawing
+# the surface as it is set, because five named forms and four styles
+# are nine words, and a word for a shape is something you have to try
+# before you know whether you wanted it. Form and style are picked as
+# CARDS next to it rather than as list rows. Every switch can carry a
+# second line, so "Auto-hide" can also say that the pointer is what
+# brings it back.
+#
+# And a front door: seven pages and a hundred and eighty rows is more
+# than a rail can answer for, so the studio opens on a map of the pages
+# with a search across every row in it. A result is the REAL row --
+# same delegate, same key -- because a search that shows you a copy of
+# a control is a search that can disagree with the page it came from.
+pkgrel=31
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

@@ -111,7 +111,15 @@ pkgver=0.1.0
 # 26: following the desktop's colour scheme is this app's default too,
 # for the same reason the other six flipped. Emerald on near-black is
 # still one switch away on the Settings page.
-pkgrel=26
+# 27: the writer learns the bar's form and the dock's style.
+# `topbar.islands` is gone -- a bar has a shape and it is not a
+# yes-or-no -- and in its place are topbar.form (five), dock.style
+# (four), frost on both, and the dock's media chip. The studio in the
+# shell is a second front end on this writer, and until now nothing
+# checked its hundred and eighty rows against what the writer accepts;
+# ci/center-wiring-test.py does, the same way it checks this app's own
+# pages.
+pkgrel=27
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

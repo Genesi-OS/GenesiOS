@@ -206,6 +206,17 @@ Variants {
 
                 readonly property var groups: [
                     {
+                        title: qsTr("START"),
+                        items: [
+                            {
+                                id: "home",
+                                label: qsTr("Everything"),
+                                icon: "grid_view",
+                                blurb: qsTr("Search every setting in the shell, or pick a page to work through.")
+                            }
+                        ]
+                    },
+                    {
                         title: qsTr("EDGES"),
                         items: [
                             {
@@ -434,16 +445,24 @@ Variants {
                 // different would be the one nobody noticed.
                 readonly property var tables: ({
                     "bar": [
+                        { kind: "preview", of: "bar" },
                         { kind: "head", label: qsTr("PLACE") },
                         { kind: "choice", section: "topbar", key: "position", label: qsTr("Edge"), options: [{ id: "top", label: qsTr("TOP") }, { id: "bottom", label: qsTr("BOTTOM") }] },
-                        { kind: "switch", section: "topbar", key: "autoHide", label: qsTr("Hide until the pointer is there") },
+                        { kind: "switch", section: "topbar", key: "autoHide", label: qsTr("Auto-hide"), blurb: qsTr("Reveal it by putting the pointer on the edge.") },
                         { kind: "head", label: qsTr("FORM") },
-                        { kind: "switch", section: "topbar", key: "islands", label: qsTr("Islands rather than one bar") },
-                        { kind: "switch", section: "topbar", key: "flow", label: qsTr("The flow between the islands") },
+                        { kind: "cards", section: "topbar", key: "form", label: qsTr("Form"), options: [
+                            { id: "islands", label: qsTr("ISLANDS"), blurb: qsTr("Three pills") },
+                            { id: "full", label: qsTr("FULL"), blurb: qsTr("Edge to edge") },
+                            { id: "fit", label: qsTr("FIT"), blurb: qsTr("Inset frame") },
+                            { id: "dock", label: qsTr("DOCK"), blurb: qsTr("Open edge") },
+                            { id: "notch", label: qsTr("NOTCH"), blurb: qsTr("Flowing shoulders") }
+                        ] },
+                        { kind: "switch", section: "topbar", key: "flow", label: qsTr("Flow"), blurb: qsTr("A light running between the islands. Only where there is a gap for it to cross.") },
                         { kind: "head", label: qsTr("SURFACE") },
                         { kind: "switch", section: "topbar", key: "background", label: qsTr("Background") },
                         { kind: "amount", section: "topbar", key: "backgroundOpacity", label: qsTr("Opacity"), from: 0, to: 100 },
                         { kind: "switch", section: "topbar", key: "border", label: qsTr("Border") },
+                        { kind: "switch", section: "topbar", key: "frost", label: qsTr("Frost"), blurb: qsTr("Blur whatever is behind it. Hyprland does this, not the shell.") },
                         { kind: "switch", section: "topbar", key: "shadow", label: qsTr("Shadow") },
                         { kind: "amount", section: "topbar", key: "radius", label: qsTr("Corners"), from: 0, to: 30 },
                         { kind: "head", label: qsTr("SIZE") },
@@ -463,17 +482,30 @@ Variants {
                         { kind: "note", label: qsTr("With the studio's button off, this opens from Genesi Center → Bar.") }
                     ],
                     "dock": [
+                        { kind: "preview", of: "dock" },
                         { kind: "head", label: qsTr("DOCK") },
                         { kind: "switch", section: "dock", key: "enabled", label: qsTr("An application dock") },
                         { kind: "choice", section: "dock", key: "edge", label: qsTr("Edge"), options: [{ id: "bottom", label: qsTr("BOTTOM") }, { id: "top", label: qsTr("TOP") }] },
-                        { kind: "switch", section: "dock", key: "autoHide", label: qsTr("Hide until the pointer is there") },
-                        { kind: "switch", section: "dock", key: "hideWhenEmpty", label: qsTr("No windows, no dock") },
+                        { kind: "switch", section: "dock", key: "autoHide", label: qsTr("Auto-hide"), blurb: qsTr("Reveal it by putting the pointer on the edge.") },
+                        { kind: "switch", section: "dock", key: "hideWhenEmpty", label: qsTr("No windows, no dock"), blurb: qsTr("Pinned applications still count as something to show.") },
+                        { kind: "head", label: qsTr("STYLE") },
+                        { kind: "cards", section: "dock", key: "style", label: qsTr("Style"), options: [
+                            { id: "bar", label: qsTr("BAR"), blurb: qsTr("One surface") },
+                            { id: "islands", label: qsTr("ISLANDS"), blurb: qsTr("One each") },
+                            { id: "rail", label: qsTr("RAIL"), blurb: qsTr("Full width") },
+                            { id: "seal", label: qsTr("SEAL"), blurb: qsTr("Round ends") }
+                        ] },
                         { kind: "head", label: qsTr("BEHAVIOUR") },
-                        { kind: "switch", section: "dock", key: "magnify", label: qsTr("Magnify under the pointer") },
-                        { kind: "switch", section: "dock", key: "hoverLabels", label: qsTr("Name on hover") },
-                        { kind: "switch", section: "dock", key: "flow", label: qsTr("The flow between the icons") },
+                        { kind: "switch", section: "dock", key: "magnify", label: qsTr("Magnify"), blurb: qsTr("The icon under the pointer grows, and its neighbours grow less.") },
+                        { kind: "switch", section: "dock", key: "hoverLabels", label: qsTr("Hover labels"), blurb: qsTr("The application's name, on the side away from the edge.") },
+                        { kind: "switch", section: "dock", key: "flow", label: qsTr("Flow"), blurb: qsTr("A light running between the icons.") },
+                        { kind: "head", label: qsTr("NOW PLAYING") },
+                        { kind: "switch", section: "dock", key: "media", label: qsTr("Media chip"), blurb: qsTr("What is playing, at the end of the dock. Click to play or pause, right-click for the whole player.") },
+                        { kind: "switch", section: "dock", key: "mediaOnlyWhenPlaying", label: qsTr("Only while it plays"), blurb: qsTr("Otherwise a paused player keeps its place in the dock.") },
+                        { kind: "switch", section: "dock", key: "mediaArt", label: qsTr("Album art") },
                         { kind: "head", label: qsTr("SURFACE") },
                         { kind: "switch", section: "dock", key: "background", label: qsTr("Background") },
+                        { kind: "switch", section: "dock", key: "frost", label: qsTr("Frost"), blurb: qsTr("Blur whatever is behind it. Hyprland does this, not the shell.") },
                         { kind: "amount", section: "dock", key: "backgroundOpacity", label: qsTr("Opacity"), from: 0, to: 100 },
                         { kind: "amount", section: "dock", key: "radius", label: qsTr("Corners"), from: 0, to: 40 },
                         { kind: "amount", section: "dock", key: "iconRadius", label: qsTr("Icon corners"), from: 0, to: 30 },
@@ -619,7 +651,84 @@ Variants {
                     ]
                 })
 
+                readonly property bool home: GenesiTopBarState.section === "home"
+
+                // The label a page is known by, for the trail above a search
+                // result. Read off the rail rather than kept in a second list:
+                // a page renamed in one place and not the other is how a
+                // result ends up filed under a name that is not on the rail.
+                function pageLabel(id: string): string {
+                    for (const g of rail.groups)
+                        for (const it of g.items)
+                            if (it.id === id)
+                                return it.label;
+                    return id;
+                }
+
+                // ── The front door ──────────────────────────────────────────
+                //
+                // Seven pages and a hundred and eighty rows is more than a
+                // rail can answer for. With nothing typed this is the map --
+                // one card per page, saying what is on it. With something
+                // typed it is every row in the studio whose name contains it,
+                // each under the page and the group it lives in, and each one
+                // the REAL row: the same delegate, reading and writing the
+                // same key. A search that shows you a copy of a control is a
+                // search that can disagree with the page it came from.
+                readonly property var homeRows: {
+                    const q = home.query.trim().toLowerCase();
+                    if (q === "") {
+                        const out = [];
+                        for (const g of rail.groups)
+                            for (const it of g.items)
+                                if (it.id !== "home")
+                                    out.push({
+                                        "kind": "page",
+                                        "id": it.id,
+                                        "label": it.label,
+                                        "blurb": it.blurb,
+                                        "icon": it.icon
+                                    });
+                        return out;
+                    }
+
+                    const out = [];
+                    for (const id of Object.keys(pane.tables)) {
+                        let head = "";
+                        for (const r of pane.tables[id]) {
+                            if (r.kind === "head") {
+                                head = r.label;
+                                continue;
+                            }
+                            if (r.kind === "note" || r.kind === "preview")
+                                continue;
+                            const label = r.label ?? "";
+                            const blurb = r.blurb ?? "";
+                            if (!label)
+                                continue;
+                            if (label.toLowerCase().indexOf(q) === -1
+                                && blurb.toLowerCase().indexOf(q) === -1)
+                                continue;
+                            out.push({
+                                "kind": "head",
+                                "label": head === ""
+                                    ? pane.pageLabel(id)
+                                    : `${pane.pageLabel(id)} · ${head}`
+                            });
+                            out.push(r);
+                        }
+                    }
+                    if (out.length === 0)
+                        out.push({
+                            "kind": "note",
+                            "label": qsTr("Nothing in the studio is called that.")
+                        });
+                    return out;
+                }
+
                 readonly property var rows: {
+                    if (pane.home)
+                        return pane.homeRows;
                     const base = pane.tables[GenesiTopBarState.section] ?? [];
                     if (GenesiTopBarState.section !== "dock")
                         return base;
@@ -673,12 +782,80 @@ Variants {
                     }
                 }
 
+                // ── The search ──────────────────────────────────────────
+                StyledRect {
+                    id: home
+
+                    property string query: ""
+
+                    visible: pane.home
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: pageHead.bottom
+                    anchors.topMargin: win.tok.spacing.medium
+                    implicitHeight: 40
+                    radius: win.tok.rounding.large
+                    color: Colours.layer(Colours.palette.m3surfaceContainer, 2)
+
+                    MaterialIcon {
+                        id: searchIcon
+
+                        anchors.left: parent.left
+                        anchors.leftMargin: win.tok.padding.large
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "search"
+                        color: Colours.palette.m3onSurfaceVariant
+                        fontStyle: Tokens.font.icon.small
+                    }
+
+                    StyledTextField {
+                        id: searchField
+
+                        anchors.left: searchIcon.right
+                        anchors.right: clearButton.left
+                        anchors.leftMargin: win.tok.spacing.small
+                        anchors.rightMargin: win.tok.spacing.small
+                        anchors.verticalCenter: parent.verticalCenter
+                        placeholderText: qsTr("Search every setting")
+                        // The field is the only thing on this page that wants
+                        // the keyboard, so it takes focus when the page opens
+                        // rather than waiting to be clicked.
+                        focus: pane.home && win.mine
+                        onTextChanged: home.query = text
+                        Keys.onEscapePressed: {
+                            if (text === "")
+                                GenesiTopBarState.hide();
+                            else
+                                text = "";
+                        }
+                    }
+
+                    MaterialIcon {
+                        id: clearButton
+
+                        anchors.right: parent.right
+                        anchors.rightMargin: win.tok.padding.large
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: home.query !== ""
+                        text: "close"
+                        color: Colours.palette.m3onSurfaceVariant
+                        fontStyle: Tokens.font.icon.small
+
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -6
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: searchField.text = ""
+                        }
+                    }
+                }
+
                 StyledFlickable {
                     id: flick
 
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.top: pageHead.bottom
+                    anchors.top: pane.home ? home.bottom : pageHead.bottom
                     anchors.bottom: parent.bottom
                     anchors.topMargin: win.tok.spacing.medium
                     contentHeight: pages.implicitHeight
@@ -726,14 +903,57 @@ Variants {
                                 DelegateChoice {
                                     roleValue: "switch"
 
-                                    SwitchRow {
+                                    // Not caelestia's SwitchRow: a row here
+                                    // often needs a second line saying what
+                                    // the switch actually does, and a label
+                                    // that has to carry the explanation is a
+                                    // label nobody finishes reading.
+                                    Toggle {
                                         required property var modelData
 
                                         label: modelData.label
+                                        blurb: modelData.blurb ?? ""
                                         checked: win.get(modelData.section,
                                                          modelData.key) === true
                                         onToggled: v => win.set(modelData.section,
                                                                 modelData.key, v)
+                                    }
+                                }
+
+                                DelegateChoice {
+                                    roleValue: "cards"
+
+                                    Cards {
+                                        required property var modelData
+
+                                        options: modelData.options
+                                        current: String(win.get(modelData.section,
+                                                                modelData.key) ?? "")
+                                        onPicked: id => win.set(modelData.section,
+                                                                modelData.key, id)
+                                    }
+                                }
+
+                                DelegateChoice {
+                                    roleValue: "preview"
+
+                                    Preview {
+                                        required property var modelData
+
+                                        of: modelData.of
+                                    }
+                                }
+
+                                DelegateChoice {
+                                    roleValue: "page"
+
+                                    PageCard {
+                                        required property var modelData
+
+                                        label: modelData.label
+                                        blurb: modelData.blurb
+                                        icon: modelData.icon
+                                        onTriggered: GenesiTopBarState.section = modelData.id
                                     }
                                 }
 
@@ -803,6 +1023,426 @@ Variants {
             }
 
             // ── The rows every page is built from ────────────────────────────
+
+            // A switch with room to say what it does. caelestia's SwitchRow
+            // has a label and nothing else, and half the settings in here need
+            // a sentence -- "Auto-hide" alone does not tell you the pointer is
+            // what brings it back.
+            component Toggle: StyledRect {
+                id: toggle
+
+                property string label: ""
+                property string blurb: ""
+                property bool checked: false
+
+                signal toggled(bool v)
+
+                Layout.fillWidth: true
+                implicitHeight: toggleCol.implicitHeight + win.tok.padding.large * 2
+                radius: win.tok.rounding.large
+                color: Colours.layer(Colours.palette.m3surfaceContainer, 2)
+
+                RowLayout {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: win.tok.padding.large
+                    spacing: win.tok.spacing.medium
+
+                    ColumnLayout {
+                        id: toggleCol
+
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: toggle.label
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            visible: toggle.blurb !== ""
+                            text: toggle.blurb
+                            font: Tokens.font.body.small
+                            color: Colours.palette.m3onSurfaceVariant
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    StyledSwitch {
+                        checked: toggle.checked
+                        onToggled: toggle.toggled(checked)
+                    }
+                }
+            }
+
+            // A choice whose values have SHAPES. The bar's form and the dock's
+            // style are not two-state answers and they are not list entries
+            // either -- each one is a different bar, and the fastest way to
+            // say so is a card per answer with its name and one line about it,
+            // read next to the preview above them.
+            component Cards: Flow {
+                id: cards
+
+                property var options: []
+                property string current: ""
+
+                signal picked(string id)
+
+                Layout.fillWidth: true
+                spacing: win.tok.spacing.small
+
+                Repeater {
+                    model: cards.options
+
+                    StyledRect {
+                        id: card
+
+                        required property var modelData
+
+                        readonly property bool on: card.modelData.id === cards.current
+
+                        implicitWidth: Math.max(96, cardCol.implicitWidth
+                                                + win.tok.padding.large * 2)
+                        implicitHeight: cardCol.implicitHeight + win.tok.padding.large * 2
+                        radius: win.tok.rounding.large
+
+                        color: card.on
+                            ? Colours.palette.m3primaryContainer
+                            : (cardHover.containsMouse
+                               ? Colours.layer(Colours.palette.m3surfaceContainer, 3)
+                               : Colours.layer(Colours.palette.m3surfaceContainer, 2))
+                        border.width: card.on ? 0 : 1
+                        border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
+
+                        Behavior on color {
+                            CAnim {}
+                        }
+
+                        Column {
+                            id: cardCol
+
+                            anchors.centerIn: parent
+                            spacing: 2
+
+                            StyledText {
+                                text: card.modelData.label
+                                font: Tokens.font.label.medium
+                                color: card.on ? Colours.palette.m3onPrimaryContainer
+                                               : Colours.palette.m3onSurface
+                            }
+
+                            StyledText {
+                                visible: (card.modelData.blurb ?? "") !== ""
+                                text: card.modelData.blurb ?? ""
+                                font: Tokens.font.body.small
+                                color: card.on
+                                    ? Qt.alpha(Colours.palette.m3onPrimaryContainer, 0.8)
+                                    : Colours.palette.m3onSurfaceVariant
+                            }
+                        }
+
+                        MouseArea {
+                            id: cardHover
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: cards.picked(card.modelData.id)
+                        }
+                    }
+                }
+            }
+
+            // ── The viewfinder ───────────────────────────────────────────────
+            //
+            // A small screen with the bar or the dock drawn on it as it is set
+            // right now. Five named forms and four styles are nine words, and
+            // a word for a shape is a thing you have to try before you know
+            // whether you wanted it -- which for a bar means changing it,
+            // looking up, and changing it back.
+            //
+            // Drawn from the same config the real surface reads, at a size
+            // that cannot be mistaken for the real surface. It is deliberately
+            // not a screenshot: what matters is the SHAPE and where it sits,
+            // and a thumbnail of the actual bar at this scale is a grey smear.
+            component Preview: StyledRect {
+                id: preview
+
+                property string of: "bar"
+
+                readonly property bool bar: preview.of === "bar"
+                readonly property bool atTop: preview.bar
+                    ? win.bar.position !== "bottom"
+                    : win.dock.edge === "top"
+                readonly property string form: preview.bar ? win.bar.form : win.dock.style
+
+                Layout.fillWidth: true
+                Layout.topMargin: win.tok.spacing.small
+                implicitHeight: 108
+                radius: win.tok.rounding.large
+                color: Colours.layer(Colours.palette.m3surfaceContainer, 1)
+                border.width: 1
+                border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.4)
+                clip: true
+
+                // The screen the miniature sits on. Inset, so the surface
+                // being previewed can be flush against ITS edge and still be
+                // seen to be flush -- against the card's own border there
+                // would be nothing to be flush with.
+                Item {
+                    id: screen
+
+                    anchors.fill: parent
+                    anchors.margins: win.tok.padding.large
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: win.tok.rounding.small
+                        // The darkest surface there is, so what is drawn on it
+                        // reads as a bar rather than as a slightly different
+                        // shade of the card it is inside.
+                        color: Colours.palette.m3surface
+                    }
+
+                    // ── The bar ──────────────────────────────────────────
+                    Item {
+                        id: mini
+
+                        readonly property real thickness: 16
+                        readonly property real inset: preview.form === "fit" ? 5 : 0
+
+                        visible: preview.bar
+                        width: parent.width
+                        height: mini.thickness + mini.inset * 2
+                        y: preview.atTop ? 0 : parent.height - height
+
+                        // One surface, for every form but islands and notch.
+                        Rectangle {
+                            visible: preview.form === "full" || preview.form === "fit"
+                                || preview.form === "dock"
+                            x: mini.inset
+                            y: mini.inset
+                            width: parent.width - mini.inset * 2
+                            height: mini.thickness
+                            color: Colours.palette.m3surfaceContainerHighest
+
+                            readonly property real r: preview.form === "full" ? 0 : 6
+                            readonly property real edgeR: preview.form === "dock" ? 0 : r
+
+                            topLeftRadius: preview.atTop ? edgeR : r
+                            topRightRadius: preview.atTop ? edgeR : r
+                            bottomLeftRadius: preview.atTop ? r : edgeR
+                            bottomRightRadius: preview.atTop ? r : edgeR
+                        }
+
+                        // The notch: the centre alone, flush to the edge.
+                        Rectangle {
+                            visible: preview.form === "notch"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            y: preview.atTop ? 0 : parent.height - height
+                            width: 74
+                            height: mini.thickness
+                            color: Colours.palette.m3surfaceContainerHighest
+                            topLeftRadius: preview.atTop ? 0 : 6
+                            topRightRadius: preview.atTop ? 0 : 6
+                            bottomLeftRadius: preview.atTop ? 6 : 0
+                            bottomRightRadius: preview.atTop ? 6 : 0
+                        }
+
+                        // The three groups. Always drawn, whatever is under
+                        // them: a bar is what is written on it, and a preview
+                        // showing only the surface would say nothing about
+                        // where the clock ends up.
+                        Repeater {
+                            model: 3
+
+                            Item {
+                                id: group
+
+                                required property int index
+
+                                readonly property int dots: [3, 4, 5][group.index]
+
+                                y: mini.inset
+                                height: mini.thickness
+                                width: group.dots * 7 + 10
+                                x: group.index === 0 ? mini.inset + 6
+                                    : (group.index === 1
+                                       ? (mini.width - width) / 2
+                                       : mini.width - width - mini.inset - 6)
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    visible: preview.form === "islands"
+                                    radius: 6
+                                    color: Colours.palette.m3surfaceContainerHighest
+                                }
+
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 3
+
+                                    Repeater {
+                                        model: group.dots
+
+                                        Rectangle {
+                                            width: 4
+                                            height: 4
+                                            radius: 2
+                                            color: Colours.palette.m3onSurfaceVariant
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── The dock ─────────────────────────────────────────
+                    Item {
+                        id: miniDock
+
+                        readonly property real thickness: 20
+
+                        visible: !preview.bar
+                        width: parent.width
+                        height: miniDock.thickness + 6
+                        y: preview.atTop ? 0 : parent.height - height
+
+                        Rectangle {
+                            id: dockSurface
+
+                            visible: preview.form !== "islands"
+                            anchors.horizontalCenter: preview.form === "rail"
+                                ? undefined : parent.horizontalCenter
+                            anchors.left: preview.form === "rail" ? parent.left : undefined
+                            anchors.right: preview.form === "rail" ? parent.right : undefined
+                            y: preview.form === "rail"
+                                ? (preview.atTop ? 0 : parent.height - height)
+                                : (preview.atTop ? 6 : 0)
+                            width: preview.form === "rail" ? parent.width : dockRow.width + 14
+                            height: miniDock.thickness
+                            radius: preview.form === "seal" ? height / 2
+                                : (preview.form === "rail" ? 0 : 7)
+                            color: Colours.palette.m3surfaceContainerHighest
+                        }
+
+                        Row {
+                            id: dockRow
+
+                            anchors.centerIn: dockSurface
+                            spacing: 5
+
+                            Repeater {
+                                model: 5
+
+                                Rectangle {
+                                    width: 12
+                                    height: 12
+                                    radius: preview.form === "seal" ? 6 : 3
+                                    color: Colours.palette.m3primary
+                                    opacity: 0.75
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        anchors.margins: -3
+                                        visible: preview.form === "islands"
+                                        z: -1
+                                        radius: 6
+                                        color: Colours.palette.m3surfaceContainerHighest
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // What it is, in words, for the two things a picture of a
+                // shape cannot say.
+                // What it is, in words, for the two things a picture of a
+                // shape cannot say. On the edge the surface is NOT: a caption
+                // printed across the group it describes is worse than no
+                // caption.
+                StyledText {
+                    anchors.right: parent.right
+                    anchors.top: preview.atTop ? undefined : parent.top
+                    anchors.bottom: preview.atTop ? parent.bottom : undefined
+                    anchors.margins: win.tok.padding.medium
+                    text: [preview.form.toUpperCase(),
+                           preview.atTop ? qsTr("TOP") : qsTr("BOTTOM")].join(" · ")
+                    font: Tokens.font.mono.small
+                    color: Colours.palette.m3outline
+                }
+            }
+
+            // One page, on the front door.
+            component PageCard: StyledRect {
+                id: pageCard
+
+                property string label: ""
+                property string blurb: ""
+                property string icon: ""
+
+                signal triggered
+
+                Layout.fillWidth: true
+                implicitHeight: pageCardCol.implicitHeight + win.tok.padding.large * 2
+                radius: win.tok.rounding.large
+                color: pageHover.containsMouse
+                    ? Colours.layer(Colours.palette.m3surfaceContainer, 3)
+                    : Colours.layer(Colours.palette.m3surfaceContainer, 2)
+
+                Behavior on color {
+                    CAnim {}
+                }
+
+                MaterialIcon {
+                    id: pageIcon
+
+                    anchors.left: parent.left
+                    anchors.leftMargin: win.tok.padding.large
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: pageCard.icon
+                    color: Colours.palette.m3primary
+                    fontStyle: Tokens.font.icon.medium
+                }
+
+                Column {
+                    id: pageCardCol
+
+                    anchors.left: pageIcon.right
+                    anchors.right: parent.right
+                    anchors.leftMargin: win.tok.spacing.large
+                    anchors.rightMargin: win.tok.padding.large
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+
+                    StyledText {
+                        text: pageCard.label
+                        font: Tokens.font.body.large
+                        color: Colours.palette.m3onSurface
+                    }
+
+                    StyledText {
+                        width: parent.width
+                        text: pageCard.blurb
+                        font: Tokens.font.body.small
+                        color: Colours.palette.m3onSurfaceVariant
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                MouseArea {
+                    id: pageHover
+
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: pageCard.triggered()
+                }
+            }
+
             component Head: StyledText {
                 Layout.fillWidth: true
                 Layout.topMargin: win.tok.spacing.medium

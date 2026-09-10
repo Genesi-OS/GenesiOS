@@ -299,6 +299,38 @@ def main():
     if unused:
         print(f"  note  no page asks for: {', '.join(unused)}")
 
+    # ── The shell studio's rows ───────────────────────────────────────────
+    #
+    # GenesiStudio.qml is a second front end on the same writer -- a hundred
+    # and eighty rows, each naming a section and a key the way a page names an
+    # option -- and nothing checked it. `topbar.islands` became `topbar.form`
+    # in the config and the writer, and the studio would have gone on sending
+    # a key that no longer exists: a control that responds and changes
+    # nothing, which is the exact failure the rest of this file was written
+    # to stop.
+    #
+    # Read off the comment-stripped source, because half these rows are
+    # explained in a comment that names the key it replaced.
+    studio = os.path.join(ROOT, "genesi-arch", "packages",
+                          "genesi-caelestia-shell", "GenesiStudio.qml")
+    if os.path.exists(studio):
+        rows = strip_qml_comments(read(studio))
+        pairs = re.findall(r'section:\s*"(\w+)"\s*,\s*key:\s*"([\w.]+)"', rows)
+        seen = set()
+        for section, key in pairs:
+            path = f"{section}.{key}"
+            if path in seen:
+                continue
+            seen.add(path)
+            if path not in cael_opts:
+                bad.append(("GenesiStudio.qml",
+                            f'a row reads and writes "{path}", which '
+                            "genesi-center-set does not accept -- the control "
+                            "draws, responds, and the write is refused"))
+        print(f"  studio rows: {len(seen)} distinct keys, all in the writer"
+              if not any(f == "GenesiStudio.qml" for f, _ in bad)
+              else f"  studio rows: {len(seen)} distinct keys")
+
     if bad:
         print(f"  FAIL  {len(bad)} problem(s):")
         for fn, why in bad:

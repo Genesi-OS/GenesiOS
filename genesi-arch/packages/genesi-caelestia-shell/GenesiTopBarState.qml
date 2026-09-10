@@ -21,7 +21,10 @@ Singleton {
     // closing and reopening comes back to where you were -- adjusting a shell
     // is a loop of change, look, change again, and a panel that resets to its
     // first page every time makes that loop longer than the change itself.
-    property string section: "bar"
+    // The front door, on a shell that has never opened this. Seven pages
+    // and a hundred and eighty rows is more than a rail can answer for, and
+    // a map nobody is ever shown is not a map.
+    property string section: "home"
 
     function show(): void {
         root.open = true;

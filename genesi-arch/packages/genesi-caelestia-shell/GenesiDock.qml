@@ -95,6 +95,45 @@ Variants {
         readonly property var cfg: contentItem.Config.dock
         readonly property bool atBottom: win.cfg.edge !== "top"
 
+        // ── How it is drawn ─────────────────────────────────────────────
+        //
+        //   bar      one rounded surface behind every icon (the default)
+        //   islands  each icon on a surface of its own, no shared bar
+        //   rail     a strip the width of the screen, flush to its edge
+        //   seal     one surface with fully round ends
+        //
+        // A style is a NAME rather than three more switches, because "bar" and
+        // "islands" and "rail" are mutually exclusive and three booleans can
+        // be set to a combination that means nothing.
+        readonly property string style: win.cfg.style
+        readonly property bool tiles: win.style === "islands"
+        readonly property bool rail: win.style === "rail"
+        readonly property bool seal: win.style === "seal"
+
+        // ── Frost ───────────────────────────────────────────────────────
+        //
+        // Blur behind the dock, which Hyprland does and Qt cannot: a layer
+        // surface has no way to read what is under it. Same mechanism as the
+        // bar's, on this window's own namespace, and `unset` is the way back
+        // because there is no negative form of a layerrule.
+        readonly property string ns: "caelestia-genesi-dock"
+        readonly property bool frost: win.cfg.frost
+
+        function applyFrost(): void {
+            if (win.frost) {
+                Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
+                                         `blur,${win.ns}`]);
+                Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
+                                         `ignorezero,${win.ns}`]);
+            } else {
+                Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
+                                         `unset,${win.ns}`]);
+            }
+        }
+
+        onFrostChanged: win.applyFrost()
+        Component.onCompleted: win.applyFrost()
+
         property bool peek: false
 
         // Three separate reasons to be out of view, and they are not the same
@@ -147,7 +186,14 @@ Variants {
         StyledRect {
             id: bar
 
-            anchors.horizontalCenter: parent.horizontalCenter
+            // A rail spans the screen; every other style is as wide as
+            // what is in it. `undefined` on the centre anchor rather than
+            // false: an anchor that is set and an anchor that is not are
+            // different states, and setting both a centre and two edges is
+            // how an item ends up with a width nobody asked for.
+            anchors.horizontalCenter: win.rail ? undefined : parent.horizontalCenter
+            anchors.left: win.rail ? parent.left : undefined
+            anchors.right: win.rail ? parent.right : undefined
             anchors.bottom: win.atBottom ? parent.bottom : undefined
             anchors.top: win.atBottom ? undefined : parent.top
             // The slide rides the MARGIN, not y. An item anchored to its
@@ -155,11 +201,15 @@ Variants {
             // on the same item is a second thing assigning one property -- the
             // anchor wins and the animation silently does nothing. Same shape
             // the launcher's Wrapper uses.
+            // A rail is flush to its edge, so the margin it rests at is
+            // zero rather than a padding.
+            readonly property real restMargin: win.rail ? 0 : Tokens.padding.medium
+
             anchors.bottomMargin: win.shown
-                ? Tokens.padding.medium
+                ? bar.restMargin
                 : -(implicitHeight + Tokens.padding.medium)
             anchors.topMargin: win.shown
-                ? Tokens.padding.medium
+                ? bar.restMargin
                 : -(implicitHeight + Tokens.padding.medium)
 
             Behavior on anchors.bottomMargin {
@@ -172,12 +222,21 @@ Variants {
             implicitWidth: row.implicitWidth + Config.dock.padding * 2
             implicitHeight: Config.dock.iconSize + Config.dock.padding * 2
 
-            radius: Config.dock.radius
+            // `seal` is round ends whatever the corner setting says -- that is
+            // what the style IS -- and a rail flush to the edge has nothing to
+            // round on the side it is flush with.
+            radius: win.seal ? implicitHeight / 2
+                             : (win.rail ? 0 : Config.dock.radius)
+
             // No bar is not the same as a bar at zero opacity: it also means no
             // border, which is the difference between icons floating on the
             // wallpaper and icons inside an invisible box with a lit edge.
-            color: Config.dock.background ? Qt.alpha(Colours.palette.m3surfaceContainer, Math.max(0, Math.min(100, Config.dock.backgroundOpacity)) / 100) : "transparent"
-            border.width: win.cfg.background ? 1 : 0
+            //
+            // The `islands` style has no shared surface at all: each icon
+            // carries its own, so this one steps out of the way rather than
+            // being drawn behind them at a lower opacity.
+            color: (Config.dock.background && !win.tiles) ? Qt.alpha(Colours.palette.m3surfaceContainer, Math.max(0, Math.min(100, Config.dock.backgroundOpacity)) / 100) : "transparent"
+            border.width: (win.cfg.background && !win.tiles) ? 1 : 0
             border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
 
             // Slid down as well as faded, so an empty dock leaves rather than
@@ -319,10 +378,20 @@ Variants {
                             width: Config.dock.iconSize + Tokens.padding.small * 2
                             height: Config.dock.iconSize
 
+                            // The tile's own surface. Transparent under
+                            // every style but `islands`, where it is the only
+                            // surface there is -- the shared bar has stepped
+                            // out of the way for exactly this.
                             StyledRect {
                                 anchors.fill: parent
                                 radius: Math.min(Config.dock.iconRadius, height / 2)
-                                color: area.containsMouse ? Qt.alpha(Colours.palette.m3onSurface, 0.1) : "transparent"
+                                color: area.containsMouse
+                                    ? Qt.alpha(Colours.palette.m3onSurface, 0.1)
+                                    : ((win.tiles && Config.dock.background)
+                                       ? Qt.alpha(Colours.palette.m3surfaceContainer, Math.max(0, Math.min(100, Config.dock.backgroundOpacity)) / 100)
+                                       : "transparent")
+                                border.width: (win.tiles && Config.dock.background) ? 1 : 0
+                                border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
 
                                 Behavior on color {
                                     CAnim {}
@@ -445,6 +514,135 @@ Variants {
                                     Quickshell.execDetached(
                                         ["app2unit", "--", slot.modelData.cls]);
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // ── What is playing ─────────────────────────────────────
+                //
+                // A dock is where you go to get back to something, and for
+                // the last hour of most days that something is whatever is
+                // making noise. The chip is part of the ROW rather than a
+                // separate window: it moves with the dock, hides with it and
+                // is magnified by the same pointer.
+                //
+                // Off when nothing has a title, which is not the same as no
+                // player -- a browser tab that once played something keeps an
+                // MPRIS object with an empty track for as long as it is open,
+                // and a dock chip reading nothing is a hole in the dock.
+                Row {
+                    id: media
+
+                    readonly property var player: Players.active
+                    readonly property bool playing: media.player?.isPlaying ?? false
+                    readonly property string title: media.player?.trackTitle ?? ""
+
+                    spacing: 0
+                    visible: win.cfg.media && media.title !== ""
+                        && (!win.cfg.mediaOnlyWhenPlaying || media.playing)
+
+                    Item {
+                        width: Config.dock.spacing
+                        height: Config.dock.iconSize
+
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.margins: 2
+                            height: 2
+                            radius: 1
+                            color: Qt.alpha(Colours.palette.m3outlineVariant, 0.7)
+                        }
+                    }
+
+                    StyledRect {
+                        id: chip
+
+                        implicitWidth: chipRow.implicitWidth + Tokens.padding.medium * 2
+                        implicitHeight: Config.dock.iconSize
+                        radius: Math.min(Config.dock.iconRadius, implicitHeight / 2)
+                        color: chipArea.containsMouse
+                            ? Qt.alpha(Colours.palette.m3onSurface, 0.1)
+                            : Qt.alpha(Colours.palette.m3surfaceContainerHighest, 0.6)
+
+                        Behavior on color {
+                            CAnim {}
+                        }
+
+                        Row {
+                            id: chipRow
+
+                            anchors.centerIn: parent
+                            spacing: Tokens.spacing.small
+
+                            ClippingRectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: Config.dock.mediaArt
+                                implicitWidth: Config.dock.iconSize - Tokens.padding.medium
+                                implicitHeight: implicitWidth
+                                radius: Math.min(Config.dock.iconRadius, implicitWidth / 2)
+                                color: Colours.palette.m3surfaceContainerHigh
+
+                                Image {
+                                    id: art
+
+                                    anchors.fill: parent
+                                    source: media.player?.trackArtUrl ?? ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    visible: status === Image.Ready
+                                }
+
+                                MaterialIcon {
+                                    anchors.centerIn: parent
+                                    visible: !art.visible
+                                    text: "music_note"
+                                    color: Colours.palette.m3onSurfaceVariant
+                                    fontStyle: Tokens.font.icon.small
+                                }
+                            }
+
+                            StyledText {
+                                anchors.verticalCenter: parent.verticalCenter
+                                // Capped rather than sized to the title: a
+                                // dock that changes width with the song is a
+                                // dock whose icons move while you aim at one.
+                                width: Math.min(implicitWidth, 150)
+                                text: media.title
+                                font: Tokens.font.label.medium
+                                color: Colours.palette.m3onSurface
+                                elide: Text.ElideRight
+                            }
+
+                            MaterialIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: media.playing ? "pause" : "play_arrow"
+                                color: Colours.palette.m3primary
+                                fontStyle: Tokens.font.icon.small
+                            }
+                        }
+
+                        MouseArea {
+                            id: chipArea
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            // Left plays or pauses, right opens the dashboard
+                            // where the whole player is. A chip this size can
+                            // carry one control honestly; the rest belongs
+                            // somewhere with room for it.
+                            onClicked: e => {
+                                if (e.button === Qt.RightButton) {
+                                    const v = Visibilities.getForActive();
+                                    if (v)
+                                        v.dashboard = true;
+                                    return;
+                                }
+                                media.player?.togglePlaying();
                             }
                         }
                     }
