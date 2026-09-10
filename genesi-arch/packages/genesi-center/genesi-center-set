@@ -195,6 +195,34 @@ CAELESTIA_PATHS = {
     # Where the colour schemes are shown. "launcher" fans them out inside the
     # panel; "fullscreen" gives them a layer-shell surface of their own.
     "launcher.schemePicker": ("enum", ("launcher", "fullscreen")),
+
+    # ── The bar across the top ───────────────────────────────────────────
+    #
+    # Genesi-only, added by ci/caelestia-patches.py. `enabled` is the only one
+    # of these the Hub offers: everything else is set from the bar's own panel,
+    # because you change a bar while looking at it or you change it twice.
+    #
+    # Turning it on also hides caelestia's side rail, and that is NOT done here
+    # -- BarWrapper.qml reads topbar.enabled directly. One key, one switch,
+    # and no way to end up with two bars or with none.
+    "topbar.enabled": ("bool",),
+    "topbar.position": ("enum", ("top", "bottom")),
+    "topbar.height": ("int", 24, 72),
+    "topbar.gap": ("int", 0, 24),
+    "topbar.radius": ("int", 0, 30),
+    "topbar.islands": ("bool",),
+    "topbar.background": ("bool",),
+    "topbar.backgroundOpacity": ("int", 0, 100),
+    "topbar.showLogo": ("bool",),
+    "topbar.showSidebarButton": ("bool",),
+    "topbar.showWorkspaces": ("bool",),
+    "topbar.showActiveWindow": ("bool",),
+    "topbar.showClock": ("bool",),
+    "topbar.showDate": ("bool",),
+    "topbar.showResources": ("bool",),
+    "topbar.showStatus": ("bool",),
+    "topbar.showPower": ("bool",),
+    "topbar.showConfigButton": ("bool",),
     # An enum, not free text, even though the shell will take any path. The
     # three answers people actually want are "none", "whatever the desktop is
     # showing" and "the Genesi one" -- and a text field for the rest would be a
@@ -320,6 +348,24 @@ GENESI_ONLY = {
     "launcher.layout": 'CONFIG_PROPERTY(QString, layout, u"caelestia"_s)',
     "launcher.schemePicker":
         'CONFIG_PROPERTY(QString, schemePicker, u"launcher"_s)',
+    "topbar.enabled": "CONFIG_PROPERTY(bool, enabled, false)",
+    "topbar.position": 'CONFIG_PROPERTY(QString, position, u"top"_s)',
+    "topbar.height": "CONFIG_PROPERTY(int, height, 34)",
+    "topbar.gap": "CONFIG_PROPERTY(int, gap, 6)",
+    "topbar.radius": "CONFIG_PROPERTY(int, radius, 14)",
+    "topbar.islands": "CONFIG_PROPERTY(bool, islands, true)",
+    "topbar.background": "CONFIG_PROPERTY(bool, background, true)",
+    "topbar.backgroundOpacity": "CONFIG_PROPERTY(int, backgroundOpacity, 85)",
+    "topbar.showLogo": "CONFIG_PROPERTY(bool, showLogo, true)",
+    "topbar.showSidebarButton": "CONFIG_PROPERTY(bool, showSidebarButton, true)",
+    "topbar.showWorkspaces": "CONFIG_PROPERTY(bool, showWorkspaces, true)",
+    "topbar.showActiveWindow": "CONFIG_PROPERTY(bool, showActiveWindow, true)",
+    "topbar.showClock": "CONFIG_PROPERTY(bool, showClock, true)",
+    "topbar.showDate": "CONFIG_PROPERTY(bool, showDate, true)",
+    "topbar.showResources": "CONFIG_PROPERTY(bool, showResources, true)",
+    "topbar.showStatus": "CONFIG_PROPERTY(bool, showStatus, true)",
+    "topbar.showPower": "CONFIG_PROPERTY(bool, showPower, true)",
+    "topbar.showConfigButton": "CONFIG_PROPERTY(bool, showConfigButton, true)",
     "launcher.background": 'CONFIG_PROPERTY(QString, background, u""_s)',
     "launcher.backgroundExtent":
         'CONFIG_PROPERTY(QString, backgroundExtent, u"header"_s)',

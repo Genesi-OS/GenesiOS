@@ -59,8 +59,20 @@ wanted = set()
 
 # The plain tuples. `WIDGET_FILES` is built with a comprehension over WIDGETS
 # plus a literal tail, so it is handled separately below.
-for name in ("LAUNCHER_FILES", "DOCK_FILES", "SCHEME_FILES"):
-    m = re.search(r"^%s = \((.*?)\)\n" % name, patcher, re.S | re.M)
+# EVERY tuple named *_FILES, found rather than listed.
+#
+# The first version of this named the three that existed, and the very next
+# feature added a fourth -- so the guard reported two of the three new files
+# and passed the third straight through to a thirteen-minute build. A guard
+# that has to be updated for each new list is the same bug it exists to catch,
+# one level up.
+lists = re.findall(r"^(\w+_FILES) = ", patcher, re.M)
+check("the patcher's file lists are still named *_FILES", len(lists) >= 3,
+      f"found {lists!r} -- if they were renamed this guard now checks nothing")
+for name in lists:
+    m = re.search(r"^%s = (?:tuple)?\((.*?)\n\n" % name, patcher, re.S | re.M)
+    if not m:
+        m = re.search(r"^%s = \((.*?)\)\n" % name, patcher, re.S | re.M)
     if not m:
         check(f"{name} is where this expects it", False,
               "the patcher's file lists moved or were renamed")

@@ -165,7 +165,23 @@ pkgver=2.0.3
 # `PathView.itemIndex`, which is Repeater's attached property and does not
 # exist here, so clicking a card did nothing at all and only Enter ever
 # applied a scheme.
-pkgrel=27
+# pkgrel 28: the bar across the top, and it does not take caelestia away.
+#
+# Genesi shipped one of these once, as its OWN Quickshell process, and
+# switching to it ran `pkill -f caelestia` -- which does not disable a bar,
+# it kills the shell: the launcher, every drawer, the notification daemon,
+# the wallpaper, the theme bridge and the CLI go with it. It was withdrawn.
+#
+# This is a WINDOW inside caelestia, like the dock. Turning it on sets the
+# `disabled` flag caelestia's own BarWrapper already had for excludedScreens,
+# which collapses the rail's width AND its exclusive zone -- and every drawer
+# reflows on its own, because Panels.qml anchors them to bar.implicitWidth.
+# Nothing is killed and nothing is restarted, in either direction.
+#
+# The bar carries its own settings panel, because you change a bar while
+# looking at it or you change it twice; Genesi Center keeps exactly one
+# control for it, the switch that turns it on.
+pkgrel=28
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -205,8 +221,14 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiDesktopMenu.qml"
         "GenesiDock.qml"
         "GenesiSchemeState.qml"
-        "GenesiSchemeScreen.qml")
+        "GenesiSchemeScreen.qml"
+        "GenesiTopBar.qml"
+        "GenesiTopBarPanel.qml"
+        "GenesiTopBarState.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

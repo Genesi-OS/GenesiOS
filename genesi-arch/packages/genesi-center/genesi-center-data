@@ -929,6 +929,12 @@ def desktop():
             "location": svc.get("weatherLocation", ""),
             "fahrenheit": bool(svc.get("useFahrenheit", False)),
         },
+        # The bar across the top. Only whether it is ON: everything else
+        # about it is set from the bar's own panel, and a second copy of
+        # those eighteen settings here would be two places to disagree.
+        "topbar": {
+            "enabled": bool((cfg.get("topbar") or {}).get("enabled", False)),
+        },
         # The dock is not part of `background` in the config -- it is above
         # windows, not behind them -- but it is the same page's business.
         "dock": {

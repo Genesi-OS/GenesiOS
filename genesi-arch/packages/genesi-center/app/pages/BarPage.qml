@@ -9,11 +9,11 @@
  *
  * ── The second bar ──────────────────────────────────────────────────────────
  *
- * Genesi has its own bar, across the top, and this page used to let you switch
- * to it. Doing so broke caelestia badly on hardware, so genesi-bar no longer
- * offers it and the chooser hides itself when there is only one bar to choose.
- * The switcher below is still here and still correct; it simply has nothing to
- * choose between until the top bar is fixed.
+ * Genesi has its own bar, across the top, and this page used to CHOOSE between
+ * the two as separate Quickshell processes -- which is what broke caelestia,
+ * because switching meant killing it. It is a window inside caelestia now, so
+ * the question is no longer which shell runs: it is whether that bar is on,
+ * which is one switch. Everything else about it is on the bar itself.
  *
  * Everything goes through `genesi-bar`, the same CLI the `>bar` launcher rows
  * call, so the app and the launcher can never disagree about what is applied.
@@ -32,8 +32,21 @@ Item {
     property var shells: []
     property string currentId: ""
     property string shell: "caelestia"
+    // The top bar's own state, from the `desktop` section. Only whether it is
+    // on: the rest of its settings live on the bar.
+    property var topbar: ({})
 
-    readonly property bool sideRail: page.shell === "caelestia"
+    function setTopbar(key, value) {
+        if (page.backend)
+            page.backend.act(["genesi-center-set", "caelestia",
+                              "topbar." + key, String(value)], "desktop");
+    }
+
+    // Whether the bar these looks apply to is the one on screen. It used to
+    // mean "the caelestia SHELL is the one running", which stopped being a
+    // question the moment the top bar became a window inside it. It means the
+    // rail is visible, which is what the section below actually depends on.
+    readonly property bool sideRail: (page.topbar || {}).enabled !== true
 
     function refresh() {
         if (backend)
@@ -53,9 +66,21 @@ Item {
             page.shells = d.shells || [];
             page.shell = d.shell || "caelestia";
         }
+
+        function onSectionReady(name, payload) {
+            if (name !== "desktop")
+                return;
+            try {
+                page.topbar = JSON.parse(payload).topbar || ({});
+            } catch (e) {}
+        }
     }
 
-    Component.onCompleted: page.refresh()
+    Component.onCompleted: {
+        page.refresh();
+        if (page.backend)
+            page.backend.ask("desktop");
+    }
 
     Column {
         id: head
@@ -104,157 +129,51 @@ Item {
             width: parent.width
             spacing: 18
 
-            // ── Which bar ────────────────────────────────────────────────────
+            // ── The bar across the top ───────────────────────────────────
             //
-            // Hidden while there is only one to choose. The Genesi top bar is
-            // withdrawn -- it broke caelestia on hardware -- and genesi-bar
-            // stops listing a withdrawn shell, so this section disappears with
-            // it rather than showing a chooser with one card in it.
+            // One switch, and it is the only control for that bar in this app.
+            // Everything else about it -- where it sits, how tall, what each
+            // island carries -- is on the bar's own panel, because you change
+            // a bar while looking at it or you change it twice.
+            //
+            // This used to be a chooser between two Quickshell PROCESSES, and
+            // picking Genesi's ran `pkill -f caelestia`. The top bar is a
+            // window inside caelestia now, so there is no longer a question of
+            // which shell: there is a bar, and it is on or it is not.
             Column {
                 width: parent.width
                 spacing: 10
-                visible: page.shells.length > 1
 
-                SectionHead { index: "—"; text: qsTr("Which bar") }
+                SectionHead { index: "—"; text: qsTr("Top bar") }
 
-                Row {
+                Panel {
                     width: parent.width
-                    spacing: Tokens.gap
+                    height: topCol.implicitHeight + 8
 
-                    Repeater {
-                        model: page.shells
+                    Column {
+                        id: topCol
+                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                        anchors.margins: 4
 
-                        delegate: Panel {
-                            id: shellCard
-                            required property var modelData
-                            required property int index
-
-                            readonly property bool on: modelData.id === page.shell
-
-                            width: (parent.width - Tokens.gap) / 2
-                            height: 108
-                            interactive: true
-                            hovered: shov.hovered
-                            color: on ? Tokens.cardHi : Tokens.card
-                            border.color: on ? Tokens.accentDim
-                                             : (shov.hovered ? Tokens.accentDeep : Tokens.line)
-
-                            // A drawing of where the bar actually sits. It is
-                            // the one thing a name cannot say, and the whole
-                            // difference between the two.
-                            Rectangle {
-                                id: screenSketch
-                                anchors { left: parent.left; top: parent.top }
-                                anchors.margins: 16
-                                width: 58
-                                height: 38
-                                radius: 3
-                                color: "transparent"
-                                border.width: 1
-                                border.color: shellCard.on ? Tokens.accentDim : Tokens.line
-
-                                // Two rectangles rather than one with switched
-                                // anchors: flipping an anchor between a value
-                                // and `undefined` is how a QML item ends up
-                                // anchored to nothing and vanishes, and this
-                                // sketch is the only thing on the card that
-                                // says where the bar goes.
-                                Rectangle {
-                                    visible: shellCard.modelData.id === "genesi"
-                                    anchors {
-                                        left: parent.left; right: parent.right
-                                        top: parent.top; margins: 3
-                                    }
-                                    height: 7
-                                    radius: 2
-                                    color: shellCard.on ? Tokens.accent : Tokens.textFaint
-                                    Behavior on color { ColorAnimation { duration: Tokens.quick } }
-                                }
-                                Rectangle {
-                                    visible: shellCard.modelData.id !== "genesi"
-                                    anchors {
-                                        left: parent.left; top: parent.top
-                                        bottom: parent.bottom; margins: 3
-                                    }
-                                    width: 7
-                                    radius: 2
-                                    color: shellCard.on ? Tokens.accent : Tokens.textFaint
-                                    Behavior on color { ColorAnimation { duration: Tokens.quick } }
-                                }
+                        SettingRow {
+                            width: parent.width
+                            label: qsTr("A bar across the top")
+                            description: qsTr("Three islands along the top edge "
+                                              + "instead of caelestia's rail down "
+                                              + "the left. Turning it on hides the "
+                                              + "rail and reflows every drawer; "
+                                              + "turning it off puts the rail back. "
+                                              + "Nothing restarts either way.")
+                            Toggle {
+                                checked: (page.topbar || {}).enabled === true
+                                onToggled: v => page.setTopbar("enabled", v)
                             }
+                        }
 
-                            Column {
-                                anchors {
-                                    left: screenSketch.right
-                                    right: parent.right
-                                    top: parent.top
-                                }
-                                anchors.leftMargin: 14
-                                anchors.rightMargin: 16
-                                anchors.topMargin: 16
-                                spacing: 5
-
-                                Row {
-                                    width: parent.width
-                                    spacing: 8
-                                    Text {
-                                        text: shellCard.modelData.name
-                                        color: shellCard.on ? Tokens.textHi : Tokens.text
-                                        font.family: Tokens.sans
-                                        font.pixelSize: 13
-                                        width: parent.width - 54
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        visible: shellCard.on
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: qsTr("RUNNING")
-                                        color: Tokens.accent
-                                        font.family: Tokens.mono
-                                        font.pixelSize: 8
-                                        font.letterSpacing: 1
-                                    }
-                                }
-                                Text {
-                                    width: parent.width
-                                    text: shellCard.modelData.description
-                                    color: Tokens.textDim
-                                    font.family: Tokens.sans
-                                    font.pixelSize: 11
-                                    wrapMode: Text.WordWrap
-                                }
-                            }
-
-                            Text {
-                                anchors { left: parent.left; bottom: parent.bottom }
-                                anchors.margins: 16
-                                text: shellCard.modelData.id === "genesi"
-                                      ? qsTr("open windows as app icons")
-                                      : qsTr("fifteen looks, below")
-                                color: Tokens.textFaint
-                                font.family: Tokens.mono
-                                font.pixelSize: Tokens.fsMicro
-                            }
-
-                            opacity: 0
-                            Component.onCompleted: shellArrive.start()
-                            SequentialAnimation {
-                                id: shellArrive
-                                PauseAnimation { duration: shellCard.index * 70 }
-                                NumberAnimation {
-                                    target: shellCard; property: "opacity"
-                                    from: 0; to: 1
-                                    duration: Tokens.normal; easing.type: Easing.OutCubic
-                                }
-                            }
-
-                            HoverHandler { id: shov; cursorShape: Qt.PointingHandCursor }
-                            TapHandler {
-                                onTapped: {
-                                    if (page.backend && !shellCard.on)
-                                        page.backend.barShell(shellCard.modelData.id);
-                                }
-                            }
+                        Fact {
+                            width: parent.width
+                            label: qsTr("EVERYTHING ELSE")
+                            value: qsTr("the tune button on the bar itself")
                         }
                     }
                 }
@@ -282,8 +201,7 @@ Item {
                         // push that off the end.
                         rule: false
                         index: "—"
-                        text: page.shells.length > 1 ? qsTr("Looks for the side rail")
-                                                     : qsTr("Looks")
+                        text: qsTr("Looks for the side rail")
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter

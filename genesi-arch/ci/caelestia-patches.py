@@ -1237,13 +1237,19 @@ def patch_ddc_timeout(services_dir):
 # The two files Genesi adds to the launcher. Copied in like the Nexus pages --
 # after every "does upstream already ship this?" test has run, never before.
 LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml",
-                   "GenesiSchemeFlow.qml", "GenesiSchemeState.qml")
+                   "GenesiSchemeFlow.qml", "GenesiSchemeState.qml",
+                   "GenesiTopBarState.qml")
 
 # The full-screen colour-scheme picker. Its WINDOW goes in modules/background,
 # which is the one Genesi directory shell.qml already imports -- so putting it
 # there costs no new import line up there. Its state singleton goes beside the
 # fan in modules/launcher, where the launcher body and the window both see it.
 SCHEME_FILES = ("GenesiSchemeScreen.qml",)
+
+# The top bar and its own settings panel. Both are WINDOWS inside caelestia,
+# which is the whole point of this second attempt: the first one was a separate
+# Quickshell process, and switching to it ran `pkill -f caelestia`.
+TOPBAR_FILES = ("GenesiTopBar.qml", "GenesiTopBarPanel.qml")
 
 
 def patch_launcher_layout(release):
@@ -1569,6 +1575,45 @@ def patch_desktop_widgets(release):
 DOCK_FILES = ("GenesiDock.qml",)
 
 
+def verify_config_reachable(cfg_text, att_text, attc_text):
+    """
+    Every config section reaches QML, or the build stops here instead of there.
+
+    Two post-conditions, for two different silences.
+
+    The first is a compile error. config.hpp FORWARD-DECLARES every class it
+    uses and includes none of their headers, so a member whose class is not
+    declared is `does not name a type` -- twenty minutes into the build, which
+    is exactly where the dock's first version died.
+
+    The second is worse, because it compiles. `Config` in QML is not
+    GlobalConfig; it is an attached type that mirrors it property by property
+    so a window can inherit a per-monitor override. A section added to the one
+    and not the other builds, links, loads, and is simply undefined when QML
+    asks for it -- `Config.dock` was undefined for an entire release and the
+    only symptom was a dock that would not appear.
+
+    Called by every patch that adds a section, on the text it is about to
+    write. A patcher that asserts its anchors and not its output is checking
+    that it found the right place to write the bug.
+    """
+    for m in re.finditer(r"CONFIG_SUBOBJECT\((\w+), (\w+)\)", cfg_text):
+        cls, name = m.group(1), m.group(2)
+        if "class %s;" % cls not in cfg_text:
+            fail(f"config.hpp uses {cls} without forward-declaring it. That is "
+                 "a compile error, and this is the last place to catch it "
+                 "before a twenty-minute build does.")
+        if f"* {name} READ {name} " not in att_text:
+            fail(f"config.hpp has a {name} section that configattached.hpp "
+                 "does not mirror. It will compile, and QML asking for "
+                 f"Config.{name} will get undefined -- which is a feature that "
+                 "silently does nothing, not a build failure.")
+        if f"CONFIG_ATTACHED_GETTER({cls}, {name})" not in attc_text:
+            fail(f"configattached.hpp declares {name} but configattached.cpp "
+                 "does not define it. That is a link error at the very end of "
+                 "the build.")
+
+
 def patch_dock(release):
     """
     A dock: the open applications, along the bottom edge.
@@ -1750,39 +1795,197 @@ def patch_dock(release):
     # build failed on `does not name a type` after twenty minutes. A patcher
     # that asserts its anchors and not its output is checking that it found the
     # right place to write the bug.
-    for m in re.finditer(r"CONFIG_SUBOBJECT\((\w+),", out[cfg]):
-        cls = m.group(1)
-        if "class %s;" % cls not in out[cfg]:
-            fail(f"config.hpp uses {cls} without forward-declaring it. That is "
-                 "a compile error, and this is the last place to catch it "
-                 "before a twenty-minute build does.")
-
-    # ── And the second post-condition, for the failure that compiles ─────────
-    #
-    # The one above catches a section QML cannot reach because the build broke.
-    # This catches a section QML cannot reach even though the build SUCCEEDED,
-    # which is strictly worse: `Config.dock` was undefined for a whole release
-    # and the only symptom was a dock that would not appear.
-    #
-    # GlobalConfig and the attached Config are two lists of the same sections,
-    # kept in step by hand upstream. Anything in the first and not the second
-    # is written to shell.json, parsed, held in memory, and unreachable.
-    for m in re.finditer(r"CONFIG_SUBOBJECT\((\w+), (\w+)\)", out[cfg]):
-        cls, name = m.group(1), m.group(2)
-        if f"* {name} READ {name} " not in out[att]:
-            fail(f"config.hpp has a {name} section that configattached.hpp "
-                 f"does not mirror. It will compile, and QML asking for "
-                 f"Config.{name} will get undefined -- which is a feature that "
-                 "silently does nothing, not a build failure.")
-        if f"CONFIG_ATTACHED_GETTER({cls}, {name})" not in out[attc]:
-            fail(f"configattached.hpp declares {name} but configattached.cpp "
-                 f"does not define it. That is a link error at the very end of "
-                 "the build.")
+    verify_config_reachable(out[cfg], out[att], out[attc])
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
     print("dock: a dock, on its own layer")
 
+
+
+def patch_topbar(release):
+    """
+    A bar across the top, without taking caelestia away.
+
+        topbar.enabled            off by default
+        topbar.position           "top" or "bottom"
+        topbar.height, gap, radius
+        topbar.islands            three surfaces, or one continuous bar
+        topbar.background, backgroundOpacity
+        topbar.show*              what each island carries
+
+    ── Why this is a patch and not a package ────────────────────────────────
+
+    Genesi shipped a top bar once, as its OWN Quickshell process with its own
+    shell.qml, and switching to it ran `pkill -f caelestia`. That does not
+    disable a bar. It kills the shell: the launcher, every drawer, the
+    notification daemon, the wallpaper, the theme bridge and the CLI all go
+    with it, and what is left cannot be undone by any setting. It was
+    withdrawn, and the withdrawal note asked what the two shells fight over.
+
+    The answer is that they should never have been two. This is a window
+    inside caelestia -- same process, same config, same colours -- exactly
+    like the dock.
+
+    ── The one line that hides the side rail ────────────────────────────────
+
+    BarWrapper already has `disabled`, for excludedScreens, and everything
+    about the rail keys off it: its width collapses to the border thickness,
+    its exclusive zone goes with it, and Panels.qml anchors every drawer to
+    `bar.implicitWidth`, so the whole layout reflows on its own.
+
+    So turning the top bar on sets that same flag. Nothing is killed, nothing
+    is restarted, and turning it off puts the rail back. One switch, and it
+    cannot leave a machine with two bars or with none.
+    """
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "backgroundconfig.hpp")
+    cfg = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "config.hpp")
+    ccpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                        "config.cpp")
+    att = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "configattached.hpp")
+    attc = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                        "configattached.cpp")
+    wrapper = os.path.join(release, "modules", "bar", "BarWrapper.qml")
+    shell = os.path.join(release, "shell.qml")
+    for p in (hpp, cfg, ccpp, att, attc, wrapper, shell):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the shell's layout moved.")
+
+    for name in TOPBAR_FILES:
+        shipped = os.path.join(release, "modules", "background", name)
+        if os.path.exists(shipped):
+            fail(f"upstream now ships its own {name}. Decide by hand.")
+
+    src = {p: io.open(p, encoding="utf-8").read()
+           for p in (hpp, cfg, ccpp, att, attc, wrapper, shell)}
+
+    if "GenesiTopBarConfig" in src[hpp] or "GenesiTopBarConfig" in src[cfg]:
+        fail("the top bar config is already there -- this ran twice, or "
+             "upstream took the name.")
+
+    # Beside the dock's, in backgroundconfig.hpp, for the same reason: that
+    # header is already Q_MOC_INCLUDEd by configattached.hpp, so moc can see
+    # the type and no new file joins the build for one class.
+    anchor = "class GenesiDockConfig : public ConfigObject {"
+    if anchor not in src[hpp]:
+        fail("GenesiDockConfig is not in backgroundconfig.hpp -- patch_dock "
+             "did not run, or its class moved. The top bar's config goes "
+             "beside it.")
+    block = (
+        "// Genesi: the bar across the top. Beside the dock's config for the\n"
+        "// same reason -- configattached.hpp already Q_MOC_INCLUDEs this\n"
+        "// header, so a new one would be a second file in the build for one\n"
+        "// class.\n"
+        "class GenesiTopBarConfig : public ConfigObject {\n"
+        "    Q_OBJECT\n"
+        "    QML_ANONYMOUS\n"
+        "\n"
+        "    CONFIG_PROPERTY(bool, enabled, false)\n"
+        "    // \"top\" or \"bottom\". A string rather than a bool because a\n"
+        "    // setting called topbar.atBottom is a name that argues with\n"
+        "    // itself the first time somebody reads the config.\n"
+        "    CONFIG_PROPERTY(QString, position, u\"top\"_s)\n"
+        "    CONFIG_PROPERTY(int, height, 34)\n"
+        "    CONFIG_PROPERTY(int, gap, 6)\n"
+        "    CONFIG_PROPERTY(int, radius, 14)\n"
+        "    CONFIG_PROPERTY(bool, islands, true)\n"
+        "    CONFIG_PROPERTY(bool, background, true)\n"
+        "    CONFIG_PROPERTY(int, backgroundOpacity, 85)\n"
+        "\n"
+        "    CONFIG_PROPERTY(bool, showLogo, true)\n"
+        "    CONFIG_PROPERTY(bool, showSidebarButton, true)\n"
+        "    CONFIG_PROPERTY(bool, showWorkspaces, true)\n"
+        "    CONFIG_PROPERTY(bool, showActiveWindow, true)\n"
+        "    CONFIG_PROPERTY(bool, showClock, true)\n"
+        "    CONFIG_PROPERTY(bool, showDate, true)\n"
+        "    CONFIG_PROPERTY(bool, showResources, true)\n"
+        "    CONFIG_PROPERTY(bool, showStatus, true)\n"
+        "    CONFIG_PROPERTY(bool, showPower, true)\n"
+        "    CONFIG_PROPERTY(bool, showConfigButton, true)\n"
+        "\n"
+        "public:\n"
+        "    explicit GenesiTopBarConfig(QObject* parent = nullptr)\n"
+        "        : ConfigObject(parent) {}\n"
+        "};\n"
+        "\n")
+    out = {hpp: src[hpp].replace(anchor, block + anchor, 1)}
+
+    fwd = "class GenesiDockConfig;\n"
+    if fwd not in src[cfg]:
+        fail("config.hpp does not forward-declare GenesiDockConfig -- "
+             "patch_dock did not run.")
+    out[cfg] = src[cfg].replace(fwd, fwd + "class GenesiTopBarConfig;\n", 1)
+
+    member = "    CONFIG_SUBOBJECT(GenesiDockConfig, dock)\n"
+    if member not in src[cfg]:
+        fail("config.hpp has no dock member -- patch_dock did not run.")
+    out[cfg] = out[cfg].replace(
+        member, member + "    CONFIG_SUBOBJECT(GenesiTopBarConfig, topbar)\n", 1)
+
+    init = "    , m_dock(new GenesiDockConfig(this))\n"
+    n = src[ccpp].count(init)
+    if n != 2:
+        fail(f"config.cpp initialises m_dock {n} times, not 2 -- a member "
+             "added to only some of the constructors is null in the rest.")
+    out[ccpp] = src[ccpp].replace(
+        init, init + "    , m_topbar(new GenesiTopBarConfig(this))\n")
+
+    # The mirror. Everything QML reads goes through the attached type, and a
+    # section missing from it compiles, links, loads and is undefined -- which
+    # is how the dock shipped enabled and invisible.
+    prop = ("    Q_PROPERTY(const caelestia::config::GenesiDockConfig* dock "
+            "READ dock NOTIFY sourceChanged)\n")
+    getter = "    [[nodiscard]] const GenesiDockConfig* dock() const;\n"
+    for needle, what in ((prop, "the dock Q_PROPERTY"),
+                         (getter, "the dock getter")):
+        if needle not in src[att]:
+            fail(f"configattached.hpp does not carry {what} -- patch_dock did "
+                 "not run.")
+    out[att] = src[att].replace(prop, prop + (
+        "    Q_PROPERTY(const caelestia::config::GenesiTopBarConfig* topbar "
+        "READ topbar NOTIFY sourceChanged)\n"), 1)
+    out[att] = out[att].replace(getter, getter + (
+        "    [[nodiscard]] const GenesiTopBarConfig* topbar() const;\n"), 1)
+
+    impl = "CONFIG_ATTACHED_GETTER(GenesiDockConfig, dock)\n"
+    if impl not in src[attc]:
+        fail("configattached.cpp has no dock getter -- patch_dock did not run.")
+    out[attc] = src[attc].replace(
+        impl, impl + "CONFIG_ATTACHED_GETTER(GenesiTopBarConfig, topbar)\n", 1)
+
+    verify_config_reachable(out[cfg], out[att], out[attc])
+
+    # ── The one line in upstream's bar ───────────────────────────────────────
+    old = ("    readonly property bool disabled: "
+           "Strings.testRegexList(Config.bar.excludedScreens, screen.name)\n")
+    if old not in src[wrapper]:
+        fail("BarWrapper.qml's `disabled` is not what the top bar patch "
+             "expects. That one property is what collapses the rail's width "
+             "and its exclusive zone, and every drawer reflows off it.")
+    out[wrapper] = src[wrapper].replace(old, (
+        "    // Genesi: the top bar takes the rail's place rather than\n"
+        "    // caelestia's process. Everything about the rail already keys\n"
+        "    // off this one flag -- its width collapses to the border\n"
+        "    // thickness, its exclusive zone goes with it, and Panels.qml\n"
+        "    // anchors every drawer to bar.implicitWidth -- so one switch\n"
+        "    // moves the whole layout and nothing has to be restarted.\n"
+        "    readonly property bool disabled: Config.topbar.enabled || "
+        "Strings.testRegexList(Config.bar.excludedScreens, screen.name)\n"), 1)
+
+    line = "    GenesiSchemeScreen {}\n"
+    if line not in src[shell]:
+        fail("shell.qml does not build the scheme picker, which is the line "
+             "the top bar goes beside -- patch_scheme_screen did not run.")
+    out[shell] = src[shell].replace(line, line + (
+        "    GenesiTopBar {}\n"
+        "    GenesiTopBarPanel {}\n"), 1)
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("topbar: a bar across the top, inside caelestia")
 
 
 def patch_scheme_screen(release):
@@ -1870,6 +2073,7 @@ def main():
     patch_desktop_widgets(release)
     patch_dock(release)
     patch_scheme_screen(release)
+    patch_topbar(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 
@@ -1917,6 +2121,14 @@ def main():
                  "build the full-screen scheme picker.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(SCHEME_FILES)} scheme-picker file(s)")
+
+    for name in TOPBAR_FILES:
+        src = os.path.join(ours, name)
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- shell.qml has already been told to "
+                 "build the top bar.")
+        shutil.copyfile(src, os.path.join(widget_dest, name))
+    print(f"installed {len(TOPBAR_FILES)} top-bar file(s)")
     return 0
 
 

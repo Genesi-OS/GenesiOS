@@ -102,7 +102,13 @@ pkgver=0.1.0
 # could write it, so caelestia fell back to guessing from the IP --
 # and when that guess fails, every temperature on the desktop reads
 # "--" with nothing anywhere saying why.
-pkgrel=24
+# 25: the Bar page stops asking WHICH SHELL runs. That question only existed
+# because the top bar used to be a second Quickshell process, and picking it
+# killed caelestia. The top bar is a window inside caelestia now, so this app
+# keeps exactly one control for it -- the switch that turns it on -- and
+# everything else about it is on the bar's own panel, where you can see what
+# you are changing.
+pkgrel=25
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

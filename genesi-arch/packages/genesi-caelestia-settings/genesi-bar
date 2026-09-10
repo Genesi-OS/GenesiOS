@@ -184,14 +184,21 @@ SHELLS = {
         "start": ["caelestia", "shell", "-d"],
         "stop": ["pkill", "-f", "qs -c genesi-topbar"],
     },
-    # WITHDRAWN, not deleted. Switching to it broke caelestia badly on
-    # hardware -- reported, and not reproducible here because Quickshell does
-    # not run on the machine this is written on.
+    # WITHDRAWN, and it is not coming back -- the question it answered turned
+    # out to be the wrong question.
     #
-    # What is left to do before it comes back: find out what the two shells
-    # fight over. Both are layer-shell clients that reserve an exclusive zone,
-    # and stopping caelestia with `pkill -f caelestia` also kills the theme
-    # bridge and the CLI, which is a likely part of it.
+    # It asked which of two Quickshell PROCESSES should run, so switching to
+    # Genesi's ran `pkill -f caelestia`. That does not disable a bar. It kills
+    # the shell, and the launcher, the drawers, the notification daemon, the
+    # wallpaper, the theme bridge and the CLI go with it.
+    #
+    # The top bar exists again as a WINDOW inside caelestia (Config.topbar,
+    # drawn by GenesiTopBar.qml), which is the same process, the same config
+    # and nothing to kill. Turning it on sets caelestia's own BarWrapper
+    # `disabled` flag, so the rail collapses and every drawer reflows.
+    #
+    # This entry stays only so a machine with "genesi" left in its state file
+    # still resolves to caelestia at the next login. Nothing offers it.
     "genesi": {
         "name": "Genesi bar · Barra Genesi",
         "desc": "Genesi's own bar, across the top",
