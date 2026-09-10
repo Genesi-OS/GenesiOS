@@ -198,7 +198,31 @@ pkgver=2.0.3
 # a shadow; the dock grew an edge, auto-hide, magnification, hover labels
 # and PINNED APPLICATIONS -- which are in the dock whether or not they
 # are running, and launch rather than focus when they are not.
-pkgrel=29
+# 30: the bar was dead after every login, and no slider in the studio
+# wrote anything. Two bugs, both of which loaded clean.
+#
+# caelestia's drawers window takes input on a frame around the screen:
+# the border, plus a drag margin so a panel can be pulled in from its
+# edge. That margin is the largest dragThreshold of the four panels --
+# 80, the sidebar's -- and it applies whenever the active workspace has
+# no windows on it. So on an empty desktop the drawers window owns the
+# top and bottom ninety pixels. The top bar is 46 tall and the dock 76;
+# both sit entirely inside it, the drawers window is above them, and
+# neither took a click. An empty workspace is the state a session starts
+# in, which is why this read as a startup bug -- log in and the bar is
+# dead, open any window and it works. Regions.qml now drops that margin
+# on an edge a Genesi surface owns and keeps its border strip, so every
+# caelestia hover point stays where it was.
+#
+# And caelestia's StyledSlider never moves its own `value`: a MouseArea
+# of its own drives a 0-to-1 `pos` and hands it back through
+# `interaction`. The studio's rows watched `pressed` and read `value`,
+# and a drag touches neither -- so the handle moved, snapped back on
+# release and wrote nothing, silently, because a handler for a property
+# that never changes is not an error. ci/qml-sanity-test.py fails on it
+# now, reading the comment-stripped source, since the paragraph
+# explaining it names both strings it looks for.
+pkgrel=30
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -242,8 +266,10 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiTopBar.qml"
         "GenesiStudio.qml"
         "GenesiMark.qml"
-        "GenesiTopBarState.qml")
+        "GenesiTopBarState.qml"
+        "GenesiEdges.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

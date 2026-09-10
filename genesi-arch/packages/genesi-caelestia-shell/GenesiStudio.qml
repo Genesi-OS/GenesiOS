@@ -828,6 +828,35 @@ Variants {
 
                 signal committed(real v)
 
+                // What the row shows. The config is the source of it, except
+                // for the moment between letting go and the write landing:
+                // genesi-center-set is a process and the new config arrives
+                // back through a file watcher, which is easily long enough to
+                // watch the handle snap to the old number and then forward
+                // again. `pending` holds what was committed until the config
+                // agrees, and a fresh grab drops it -- so a write that was
+                // rejected shows the truth the next time the slider is
+                // touched rather than lying until the shell reloads.
+                property real pending: NaN
+                readonly property real shown: isNaN(amount.pending)
+                    ? amount.value : amount.pending
+
+                onValueChanged: amount.pending = NaN
+
+                function snap(v: real): real {
+                    const stepped = Math.round((v - amount.from) / amount.step)
+                        * amount.step + amount.from;
+                    const clamped = Math.max(amount.from,
+                                             Math.min(amount.to, stepped));
+                    return amount.step >= 1 ? Math.round(clamped)
+                                            : Number(clamped.toFixed(3));
+                }
+
+                function commit(v: real): void {
+                    amount.pending = v;
+                    amount.committed(v);
+                }
+
                 Layout.fillWidth: true
                 implicitHeight: amountCol.implicitHeight + win.tok.padding.large * 2
                 radius: win.tok.rounding.large
@@ -852,10 +881,17 @@ Variants {
                         }
 
                         StyledText {
-                            // Shown at the precision it is set at, so a
-                        // scale does not read as "1" across its whole range.
-                        text: amount.step >= 1 ? Math.round(slider.value)
-                                               : slider.value.toFixed(2)
+                            // Reads `pos`, not `value`, so it follows the
+                            // handle during the drag -- see below for why
+                            // those are not the same thing here. Shown at the
+                            // precision it is set at, so a scale does not read
+                            // as "1" across its whole range.
+                            text: {
+                                const v = amount.snap(amount.from
+                                    + slider.pos * (amount.to - amount.from));
+                                return amount.step >= 1 ? String(v)
+                                                        : v.toFixed(2);
+                            }
                             font: Tokens.font.mono.small
                             color: Colours.palette.m3onSurfaceVariant
                         }
@@ -868,16 +904,37 @@ Variants {
                         enabled: amount.enabled
                         from: amount.from
                         to: amount.to
-                        value: amount.value
-                        stepSize: amount.step
+                        value: amount.shown
 
-                        // Written when you LET GO. A slider that wrote on
-                        // every frame would be sixty processes a second
-                        // rewriting shell.json.
-                        onPressedChanged: if (!pressed)
-                            amount.committed(amount.step >= 1
-                                             ? Math.round(value)
-                                             : Number(value.toFixed(3)))
+                        // ── Why this is not `onPressedChanged` and `value` ──
+                        //
+                        // caelestia's slider never moves its own `value`. The
+                        // handle rides `pos`, a 0-to-1 position its own
+                        // MouseArea drives through a Binding, and letting go
+                        // hands that position back through `interaction`;
+                        // turning it into a value and storing it somewhere is
+                        // the caller's job. All three uses upstream are
+                        // written that way.
+                        //
+                        // This row watched `pressed` and read `value`, and the
+                        // drag touches neither: the template's `pressed` stays
+                        // false because the template is not what is handling
+                        // the mouse. So the handle moved, `pos` fell back to
+                        // `visualPosition` on release, and the slider slid
+                        // back to where it started having written nothing --
+                        // every slider in the studio, exactly as reported, and
+                        // silently, because a signal handler for a property
+                        // that never changes is not an error.
+                        //
+                        // `interactionOnMove` off so `interaction` arrives
+                        // once, on release, carrying the final position. A
+                        // slider that wrote on every frame would be sixty
+                        // processes a second rewriting shell.json.
+                        interactionOnMove: false
+                        onInteraction: v => amount.commit(amount.snap(
+                            amount.from + v * (amount.to - amount.from)))
+                        onDraggingChanged: if (dragging)
+                            amount.pending = NaN
                     }
                 }
             }

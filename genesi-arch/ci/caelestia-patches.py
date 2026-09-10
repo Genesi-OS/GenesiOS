@@ -1238,7 +1238,7 @@ def patch_ddc_timeout(services_dir):
 # after every "does upstream already ship this?" test has run, never before.
 LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml",
                    "GenesiSchemeFlow.qml", "GenesiSchemeState.qml",
-                   "GenesiTopBarState.qml")
+                   "GenesiTopBarState.qml", "GenesiEdges.qml")
 
 # The full-screen colour-scheme picker. Its WINDOW goes in modules/background,
 # which is the one Genesi directory shell.qml already imports -- so putting it
@@ -2108,6 +2108,90 @@ def patch_topbar(release):
     print("topbar: a bar across the top, inside caelestia")
 
 
+def patch_edge_regions(release):
+    """
+    caelestia stops claiming the edge a Genesi surface is standing on.
+
+    ── The bug ──────────────────────────────────────────────────────────────
+
+    The drawers window covers the whole screen and takes input on a frame
+    around it: the border, plus a drag margin so each panel can be pulled in
+    from its own edge. Regions.qml sizes that margin as the largest
+    dragThreshold of the four panels -- 80, the sidebar's -- and applies it on
+    every edge whenever the active workspace has no windows on it.
+
+    So on an empty desktop the drawers window owns the top and bottom NINETY
+    pixels of the screen. The Genesi top bar is 46 tall and the dock about 76.
+    Both sit entirely inside that, the drawers window is above them, and
+    neither takes a single click.
+
+    An empty workspace is exactly the state a session starts in, which is why
+    this read as a bug in the bar's own startup: log in and the bar is dead;
+    open any window and the margin collapses to zero and the bar works.
+    Toggling the bar off and on also "fixed" it, by remapping its surface
+    above the drawers -- which is how it survived every test that did not
+    begin with a fresh login.
+
+    ── The edit ─────────────────────────────────────────────────────────────
+
+    On an edge a Genesi surface owns, the drag margin is dropped and the
+    border strip is kept. That is the smallest change that works -- 10 pixels
+    against the bar's 46 and the dock's 76 -- and it leaves every caelestia
+    hover point where it was, at the size it was. Yielding the whole edge
+    would have taken the dashboard's top hover and the launcher's drag-up with
+    it.
+
+    GenesiEdges answers only yes or no, deliberately: a version that published
+    each surface's HEIGHT would have put the bar's geometry in two files, and
+    two expressions for one number is the failure this project keeps meeting.
+    """
+    regions = os.path.join(release, "modules", "drawers", "Regions.qml")
+    if not os.path.exists(regions):
+        fail(f"{regions} is gone -- the drawers' input mask moved.")
+    src = io.open(regions, encoding="utf-8").read()
+
+    if "GenesiEdges" in src:
+        fail("Regions.qml already mentions GenesiEdges -- this ran twice.")
+
+    old = ("    x: bar.clampedWidth + win.dragMaskPadding\n"
+           "    y: clampedThickness + win.dragMaskPadding\n"
+           "    width: win.width - bar.clampedWidth - clampedThickness"
+           " - win.dragMaskPadding * 2\n"
+           "    height: win.height - clampedThickness * 2"
+           " - win.dragMaskPadding * 2\n")
+    if old not in src:
+        fail("Regions.qml's root geometry is not what the edge patch expects. "
+             "Those four lines decide how much of each screen edge the drawers "
+             "window takes input on, and the Genesi bar and dock both stand "
+             "inside it.")
+    new = ("    // Genesi: the drag margin, only on the edges nothing of ours\n"
+           "    // is standing on. See GenesiEdges.qml -- on an empty\n"
+           "    // workspace that margin is 80 pixels, and it was taking every\n"
+           "    // click meant for the top bar or the dock. The border strip\n"
+           "    // stays, so caelestia's own hover points are untouched.\n"
+           "    readonly property real topPad: GenesiEdges.top"
+           " ? 0 : win.dragMaskPadding\n"
+           "    readonly property real bottomPad: GenesiEdges.bottom"
+           " ? 0 : win.dragMaskPadding\n"
+           "\n"
+           "    x: bar.clampedWidth + win.dragMaskPadding\n"
+           "    y: clampedThickness + topPad\n"
+           "    width: win.width - bar.clampedWidth - clampedThickness"
+           " - win.dragMaskPadding * 2\n"
+           "    height: win.height - clampedThickness * 2 - topPad"
+           " - bottomPad\n")
+    src = src.replace(old, new, 1)
+
+    imp = "import qs.modules.bar as Bar\n"
+    if imp not in src:
+        fail("Regions.qml does not import qs.modules.bar -- there is no "
+             "import block where this expects one.")
+    src = src.replace(imp, imp + "import qs.modules.launcher\n", 1)
+
+    io.open(regions, "w", encoding="utf-8", newline="\n").write(src)
+    print("drawers: the edges a Genesi surface owns are its own")
+
+
 def patch_scheme_screen(release):
     """
     The colour schemes, on a surface of their own covering the screen.
@@ -2194,6 +2278,7 @@ def main():
     patch_dock(release)
     patch_scheme_screen(release)
     patch_topbar(release)
+    patch_edge_regions(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 

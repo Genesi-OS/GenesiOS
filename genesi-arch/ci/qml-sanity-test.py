@@ -354,6 +354,45 @@ for _f in sorted(PACKAGES.rglob("*.qml")):
                             "property to itself"
                             % (_f.relative_to(PACKAGES).as_posix(), _n))
 
+# ── A StyledSlider that is read like a QtQuick Slider writes nothing ───────
+#
+# caelestia's StyledSlider extends QtQuick.Templates.Slider but does not use
+# it: a MouseArea of its own drives `pos`, a 0-to-1 position, and hands that
+# position back through `interaction`. The template's `value` and `pressed`
+# are never touched by a drag.
+#
+# So a row written the obvious way --
+#
+#     value: someConfigValue
+#     onPressedChanged: if (!pressed) write(value)
+#
+# loads clean, animates its handle, snaps back on release and writes nothing.
+# A handler for a property that never changes is not an error anywhere. That
+# shipped, and it was every slider in the shell studio at once.
+#
+# The check runs on the COMMENT-STRIPPED source, because the paragraph above
+# this one names both of the strings it is looking for, and three Genesi
+# guards have already passed on the bug they existed to catch by matching
+# their own prose.
+_SLIDER = re.compile(r"\bStyledSlider\s*\{")
+for _f in sorted(PACKAGES.rglob("*.qml")):
+    _code = strip(_f.read_text(encoding="utf-8", errors="replace"))
+    _rel = _f.relative_to(PACKAGES).as_posix()
+    for _m in _SLIDER.finditer(_code):
+        _body = block_body(_code, _m.end() - 1)
+        if _body is None:
+            continue
+        _line = _code[:_m.start()].count(chr(10)) + 1
+        if "onPressedChanged" in _body:
+            failures.append("%s:%d a StyledSlider watching `pressed` -- the "
+                            "template's pressed stays false, the custom "
+                            "MouseArea is what handles the drag"
+                            % (_rel, _line))
+        if "onInteraction" not in _body:
+            failures.append("%s:%d a StyledSlider with no `onInteraction` -- "
+                            "nothing else tells you the handle moved"
+                            % (_rel, _line))
+
 print(f"checked {checked} QML files")
 if failures:
     print(f"\n{len(failures)} PROBLEM(S):")
