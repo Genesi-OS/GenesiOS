@@ -199,7 +199,12 @@ pkgver=1.0.0
 # That is Dolphin opening white, being fixed by hand by setting its
 # colours to Default (which reads the groups), and reverting on the
 # next launch (which resolves the name).
-pkgrel=41
+# 42: genesi-bar's withdrawn "genesi" shell entry says what actually
+# happened. It asked which of two Quickshell PROCESSES should run, so
+# picking Genesi's killed caelestia; the top bar exists again as a WINDOW
+# inside caelestia instead. The entry stays only so a machine with "genesi"
+# left in its state file still resolves to caelestia at the next login.
+pkgrel=42
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
