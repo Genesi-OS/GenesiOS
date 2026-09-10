@@ -1,0 +1,1117 @@
+// GENESI — the shell's own studio.
+//
+// Everything about how the shell is DRAWN, in one surface, reachable from the
+// thing being drawn. The bar, the dock, the desktop and the shell's own
+// actions, each a page behind a rail.
+//
+// ── Why it is here and not in Genesi Center ─────────────────────────────────
+//
+// You change a bar while looking at it, or you change it twice: once in a
+// settings window, and again after seeing what it did. Every control in here
+// is one whose result is on screen the moment it is used, which is exactly the
+// set that does not belong in an application across the desktop.
+//
+// Genesi Center keeps one switch per surface -- the one that turns it on --
+// and nothing else, so there is never a second copy of these forty settings to
+// disagree with this one.
+//
+// ── A card over the desktop, not a screen ──────────────────────────────────
+//
+// The window covers the display so a click anywhere outside dismisses it, but
+// it paints a card. A settings surface that blacks out the desktop hides the
+// thing being configured, which for a shell is the entire point.
+//
+// ── Every control writes through genesi-center-set ─────────────────────────
+//
+// The same writer Genesi Center and the desktop menu use: it validates the key
+// and the value and owns the file format. It takes several keys per call, and
+// this uses that -- a page that wrote its rows one process at a time is the
+// widget-drop race again with more rows.
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Layouts
+import QtQml.Models
+import Quickshell
+import Quickshell.Wayland
+import Quickshell.Widgets
+import Caelestia.Config
+import qs.components
+import qs.components.containers
+import qs.components.controls
+import qs.services
+import qs.modules.launcher
+
+Variants {
+    model: Screens.screens
+
+    StyledWindow {
+        id: win
+
+        required property ShellScreen modelData
+
+        readonly property var bar: contentItem.Config.topbar
+        readonly property var dock: contentItem.Config.dock
+        readonly property var tok: contentItem.Tokens
+
+        // One screen, the focused one. Two monitors would otherwise get two
+        // studios, both holding the keyboard.
+        readonly property bool mine: GenesiTopBarState.open
+            && Hypr.monitorFor(win.modelData)?.id === Hypr.focusedMonitor?.id
+
+        function set(section: string, key: string, value: var): void {
+            Quickshell.execDetached(["genesi-center-set", "caelestia",
+                                     `${section}.${key}`, String(value)]);
+        }
+
+        // The live value behind a row, by the same section-and-key pair the
+        // row writes with. Dotted, because caelestia's config is nested three
+        // deep in places -- appearance.rounding.scale, and every widget under
+        // background.widgets.<name>.<leaf>.
+        //
+        // Reading it here rather than binding each row to a literal path is
+        // what lets the table be a table: a row names its key once and both
+        // halves use it, so a row cannot read one setting and write another.
+        function get(section: string, key: string): var {
+            let node = win.sectionOf(section);
+            for (const part of key.split(".")) {
+                if (node === null || node === undefined)
+                    return undefined;
+                node = node[part];
+            }
+            return node;
+        }
+
+        function sectionOf(section: string): var {
+            const c = contentItem.Config;
+            switch (section) {
+            case "topbar":
+                return c.topbar;
+            case "dock":
+                return c.dock;
+            case "appearance":
+                return c.appearance;
+            case "border":
+                return c.border;
+            case "launcher":
+                return c.launcher;
+            case "background":
+                return c.background;
+            }
+            return null;
+        }
+
+        function act(what: string): void {
+            switch (what) {
+            case "center":
+                win.run(["genesi-center"]);
+                return;
+            case "wallpaper":
+                win.run(["caelestia", "wallpaper", "-r"]);
+                return;
+            case "reload":
+                win.run(["caelestia", "shell", "-d"]);
+                return;
+            case "schemes":
+                GenesiTopBarState.hide();
+                GenesiSchemeState.show();
+                return;
+            case "session":
+                const v = Visibilities.getForActive();
+                if (v)
+                    v.session = true;
+                GenesiTopBarState.hide();
+                return;
+            }
+        }
+
+        function run(argv: var): void {
+            Quickshell.execDetached(argv);
+            GenesiTopBarState.hide();
+        }
+
+        screen: modelData
+        name: "genesi-studio"
+        visible: win.mine
+
+        WlrLayershell.exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.keyboardFocus: win.mine ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        color: "transparent"
+
+        anchors.top: true
+        anchors.bottom: true
+        anchors.left: true
+        anchors.right: true
+
+        // Declared first, so the card is drawn over it and takes its own
+        // clicks. Without that every toggle would close the studio.
+        MouseArea {
+            anchors.fill: parent
+            onClicked: GenesiTopBarState.hide()
+        }
+
+        StyledRect {
+            id: card
+
+            // Under the bar, on the side the bar's button is. A panel that
+            // opens at the top while the bar is at the bottom makes you look
+            // for the connection between the two.
+            anchors.left: parent.left
+            anchors.leftMargin: win.bar.gap * 3
+            anchors.top: win.bar.position !== "bottom" ? parent.top : undefined
+            anchors.bottom: win.bar.position === "bottom" ? parent.bottom : undefined
+            anchors.topMargin: win.bar.height + win.bar.gap * 3
+            anchors.bottomMargin: win.bar.height + win.bar.gap * 3
+
+            implicitWidth: Math.min(win.width - win.bar.gap * 6, 860)
+            implicitHeight: Math.min(win.height * 0.78, 620)
+
+            radius: win.tok.rounding.large
+            color: Colours.palette.m3surfaceContainer
+            border.width: 1
+            border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.6)
+
+            opacity: win.mine ? 1 : 0
+            scale: win.mine ? 1 : 0.97
+
+            Behavior on opacity {
+                Anim {}
+            }
+            Behavior on scale {
+                Anim {}
+            }
+
+            MouseArea {
+                anchors.fill: parent
+            }
+
+            focus: true
+            Keys.onEscapePressed: GenesiTopBarState.hide()
+
+            // ── The rail ─────────────────────────────────────────────────────
+            //
+            // Grouped, because eight flat entries read as a list and three
+            // groups of two or three read as a shape. The groups are the three
+            // things a shell is: what is along an edge, what is on the
+            // wallpaper, and what the shell itself does.
+            Item {
+                id: rail
+
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.margins: win.tok.padding.large
+                width: 178
+
+                readonly property var groups: [
+                    {
+                        title: qsTr("EDGES"),
+                        items: [
+                            {
+                                id: "bar",
+                                label: qsTr("Bar"),
+                                icon: "toolbar",
+                                blurb: qsTr("Where it sits, what shape it takes, how its surface reads.")
+                            },
+                            {
+                                id: "dock",
+                                label: qsTr("Dock"),
+                                icon: "dock",
+                                blurb: qsTr("The applications along the opposite edge.")
+                            },
+                            {
+                                id: "launcher",
+                                label: qsTr("Launcher"),
+                                icon: "search",
+                                blurb: qsTr("The panel that opens on SUPER, and what it carries.")
+                            }
+                        ]
+                    },
+                    {
+                        title: qsTr("DESKTOP"),
+                        items: [
+                            {
+                                id: "widgets",
+                                label: qsTr("Widgets"),
+                                icon: "widgets",
+                                blurb: qsTr("Fifteen things that can be drawn on the wallpaper.")
+                            },
+                            {
+                                id: "desktop",
+                                label: qsTr("Desktop"),
+                                icon: "wallpaper",
+                                blurb: qsTr("The wallpaper, the clock on it, and the visualiser.")
+                            }
+                        ]
+                    },
+                    {
+                        title: qsTr("SHELL"),
+                        items: [
+                            {
+                                id: "shape",
+                                label: qsTr("Shape"),
+                                icon: "shapes",
+                                blurb: qsTr("Four scales that change the character of every surface at once.")
+                            },
+                            {
+                                id: "system",
+                                label: qsTr("System"),
+                                icon: "tune",
+                                blurb: qsTr("The shell's own actions, and where the rest of the settings are.")
+                            }
+                        ]
+                    }
+                ]
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    spacing: win.tok.spacing.small
+
+                    Row {
+                        spacing: win.tok.spacing.small
+                        bottomPadding: win.tok.spacing.medium
+
+                        GenesiMark {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 20
+                            height: 20
+                        }
+
+                        StyledText {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("SHELL STUDIO")
+                            font: Tokens.font.label.small
+                            color: Colours.palette.m3onSurfaceVariant
+                        }
+                    }
+
+                    Repeater {
+                        model: rail.groups
+
+                        Column {
+                            id: group
+
+                            required property var modelData
+
+                            width: rail.width
+                            spacing: win.tok.spacing.extraSmall
+                            topPadding: win.tok.spacing.small
+
+                            StyledText {
+                                leftPadding: win.tok.padding.small
+                                bottomPadding: win.tok.spacing.extraSmall
+                                text: group.modelData.title
+                                font: Tokens.font.label.small
+                                color: Colours.palette.m3outline
+                            }
+
+                            Repeater {
+                                model: group.modelData.items
+
+                                StyledRect {
+                                    id: entry
+
+                                    required property var modelData
+
+                                    readonly property bool on: entry.modelData.id === GenesiTopBarState.section
+
+                                    width: rail.width
+                                    implicitHeight: 34
+                                    radius: win.tok.rounding.large
+                                    color: entry.on ? Colours.palette.m3surfaceContainerHighest
+                                                    : (entryHover.containsMouse
+                                                       ? Qt.alpha(Colours.palette.m3onSurface, 0.06)
+                                                       : "transparent")
+
+                                    Behavior on color {
+                                        CAnim {}
+                                    }
+
+                                    MaterialIcon {
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: win.tok.padding.medium
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: entry.modelData.icon
+                                        color: entry.on ? Colours.palette.m3primary
+                                                        : Colours.palette.m3onSurfaceVariant
+                                        fontStyle: Tokens.font.icon.small
+                                    }
+
+                                    StyledText {
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 44
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: entry.modelData.label
+                                        font: Tokens.font.body.medium
+                                        color: entry.on ? Colours.palette.m3onSurface
+                                                        : Colours.palette.m3onSurfaceVariant
+                                    }
+
+                                    MouseArea {
+                                        id: entryHover
+
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: GenesiTopBarState.section = entry.modelData.id
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // What is on, at a glance, without opening a page for it.
+                Column {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    spacing: win.tok.spacing.extraSmall
+
+                    StyledText {
+                        text: qsTr("ON NOW")
+                        font: Tokens.font.label.small
+                        color: Colours.palette.m3outline
+                    }
+
+                    StyledText {
+                        width: parent.width
+                        text: [
+                            win.bar.enabled ? qsTr("top bar") : qsTr("side rail"),
+                            win.dock.enabled ? qsTr("dock") : ""
+                        ].filter(s => s !== "").join(" · ")
+                        font: Tokens.font.mono.small
+                        color: Colours.palette.m3onSurfaceVariant
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.left: rail.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: win.tok.padding.large
+                anchors.topMargin: win.tok.padding.large
+                anchors.bottomMargin: win.tok.padding.large
+                width: 1
+                color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
+            }
+
+            // ── The page ─────────────────────────────────────────────────────
+            Item {
+                id: pane
+
+                anchors.left: rail.right
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.margins: win.tok.padding.large
+                anchors.leftMargin: win.tok.padding.extraLarge
+
+                readonly property var current: {
+                    for (const g of rail.groups)
+                        for (const it of g.items)
+                            if (it.id === GenesiTopBarState.section)
+                                return it;
+                    return rail.groups[0].items[0];
+                }
+
+                // ── Every page, as data ──────────────────────────────────────
+                //
+                // A row names the section and the key it reads AND writes, once
+                // -- so a row cannot show one setting and change another, and
+                // ci/center-wiring-test.py can check every one of them against
+                // the writer's own list of what exists.
+                //
+                // Hand-written rows came to forty settings out of the hundred
+                // and sixty-two the writer accepts. The rest as QML would be
+                // two thousand lines in which every row is the same four lines
+                // with different words, and the row that came out subtly
+                // different would be the one nobody noticed.
+                readonly property var tables: ({
+                    "bar": [
+                        { kind: "head", label: qsTr("PLACE") },
+                        { kind: "choice", section: "topbar", key: "position", label: qsTr("Edge"), options: [{ id: "top", label: qsTr("TOP") }, { id: "bottom", label: qsTr("BOTTOM") }] },
+                        { kind: "switch", section: "topbar", key: "autoHide", label: qsTr("Hide until the pointer is there") },
+                        { kind: "head", label: qsTr("FORM") },
+                        { kind: "switch", section: "topbar", key: "islands", label: qsTr("Islands rather than one bar") },
+                        { kind: "switch", section: "topbar", key: "flow", label: qsTr("The flow between the islands") },
+                        { kind: "head", label: qsTr("SURFACE") },
+                        { kind: "switch", section: "topbar", key: "background", label: qsTr("Background") },
+                        { kind: "amount", section: "topbar", key: "backgroundOpacity", label: qsTr("Opacity"), from: 0, to: 100 },
+                        { kind: "switch", section: "topbar", key: "border", label: qsTr("Border") },
+                        { kind: "switch", section: "topbar", key: "shadow", label: qsTr("Shadow") },
+                        { kind: "amount", section: "topbar", key: "radius", label: qsTr("Corners"), from: 0, to: 30 },
+                        { kind: "head", label: qsTr("SIZE") },
+                        { kind: "amount", section: "topbar", key: "height", label: qsTr("Height"), from: 24, to: 72 },
+                        { kind: "amount", section: "topbar", key: "gap", label: qsTr("Margin"), from: 0, to: 24 },
+                        { kind: "head", label: qsTr("CONTENTS") },
+                        { kind: "switch", section: "topbar", key: "showLogo", label: qsTr("Genesi mark") },
+                        { kind: "switch", section: "topbar", key: "showSidebarButton", label: qsTr("Search") },
+                        { kind: "switch", section: "topbar", key: "showWorkspaces", label: qsTr("Workspaces") },
+                        { kind: "switch", section: "topbar", key: "showActiveWindow", label: qsTr("Window title") },
+                        { kind: "switch", section: "topbar", key: "showClock", label: qsTr("Clock") },
+                        { kind: "switch", section: "topbar", key: "showDate", label: qsTr("Date") },
+                        { kind: "switch", section: "topbar", key: "showResources", label: qsTr("Processor and memory") },
+                        { kind: "switch", section: "topbar", key: "showStatus", label: qsTr("Network and battery") },
+                        { kind: "switch", section: "topbar", key: "showPower", label: qsTr("Power") },
+                        { kind: "switch", section: "topbar", key: "showConfigButton", label: qsTr("This studio's button") },
+                        { kind: "note", label: qsTr("With the studio's button off, this opens from Genesi Center → Bar.") }
+                    ],
+                    "dock": [
+                        { kind: "head", label: qsTr("DOCK") },
+                        { kind: "switch", section: "dock", key: "enabled", label: qsTr("An application dock") },
+                        { kind: "choice", section: "dock", key: "edge", label: qsTr("Edge"), options: [{ id: "bottom", label: qsTr("BOTTOM") }, { id: "top", label: qsTr("TOP") }] },
+                        { kind: "switch", section: "dock", key: "autoHide", label: qsTr("Hide until the pointer is there") },
+                        { kind: "switch", section: "dock", key: "hideWhenEmpty", label: qsTr("No windows, no dock") },
+                        { kind: "head", label: qsTr("BEHAVIOUR") },
+                        { kind: "switch", section: "dock", key: "magnify", label: qsTr("Magnify under the pointer") },
+                        { kind: "switch", section: "dock", key: "hoverLabels", label: qsTr("Name on hover") },
+                        { kind: "switch", section: "dock", key: "flow", label: qsTr("The flow between the icons") },
+                        { kind: "head", label: qsTr("SURFACE") },
+                        { kind: "switch", section: "dock", key: "background", label: qsTr("Background") },
+                        { kind: "amount", section: "dock", key: "backgroundOpacity", label: qsTr("Opacity"), from: 0, to: 100 },
+                        { kind: "amount", section: "dock", key: "radius", label: qsTr("Corners"), from: 0, to: 40 },
+                        { kind: "amount", section: "dock", key: "iconRadius", label: qsTr("Icon corners"), from: 0, to: 30 },
+                        { kind: "amount", section: "dock", key: "iconSize", label: qsTr("Icon size"), from: 28, to: 72 },
+                        { kind: "amount", section: "dock", key: "spacing", label: qsTr("Gap between icons"), from: 0, to: 60 },
+                        { kind: "amount", section: "dock", key: "padding", label: qsTr("Padding"), from: 0, to: 40 },
+                        { kind: "head", label: qsTr("PINNED") },
+                        { kind: "note", label: qsTr("A pinned application is in the dock whether or not it is running. These are what is open now, plus what is already pinned.") }
+                    ],
+                    "launcher": [
+                        { kind: "head", label: qsTr("PLACE") },
+                        { kind: "choice", section: "launcher", key: "position", label: qsTr("Where it opens"), options: [{ id: "bottom", label: qsTr("BOTTOM") }, { id: "centre", label: qsTr("CENTRE") }] },
+                        { kind: "amount", section: "launcher", key: "width", label: qsTr("Width (0 fits the contents)"), from: 0, to: 1400 },
+                        { kind: "switch", section: "launcher", key: "showOnHover", label: qsTr("Open when the pointer reaches the edge") },
+                        { kind: "head", label: qsTr("BODY") },
+                        { kind: "choice", section: "launcher", key: "layout", label: qsTr("Layout"), options: [{ id: "caelestia", label: qsTr("CAELESTIA") }, { id: "genesi", label: qsTr("GENESI") }] },
+                        { kind: "amount", section: "launcher", key: "columns", label: qsTr("Columns"), from: 1, to: 3 },
+                        { kind: "amount", section: "launcher", key: "maxShown", label: qsTr("Rows shown"), from: 3, to: 20 },
+                        { kind: "amount", section: "launcher", key: "maxWallpapers", label: qsTr("Wallpapers shown"), from: 3, to: 30 },
+                        { kind: "head", label: qsTr("THE GENESI BODY") },
+                        { kind: "note", label: qsTr("Everything under here applies to the Genesi layout only.") },
+                        { kind: "choice", section: "launcher", key: "background", label: qsTr("Picture behind it"), options: [{ id: "", label: qsTr("NONE") }, { id: "wallpaper", label: qsTr("WALLPAPER") }, { id: "/usr/share/wallpapers/genesi/wallpaper.png", label: qsTr("GENESI") }] },
+                        { kind: "choice", section: "launcher", key: "backgroundExtent", label: qsTr("How much it covers"), options: [{ id: "header", label: qsTr("THE PROMPT") }, { id: "panel", label: qsTr("ALL OF IT") }] },
+                        { kind: "amount", section: "launcher", key: "backgroundDim", label: qsTr("Dim"), from: 0, to: 100 },
+                        { kind: "switch", section: "launcher", key: "showClock", label: qsTr("Clock") },
+                        { kind: "switch", section: "launcher", key: "showWeather", label: qsTr("Weather") },
+                        { kind: "switch", section: "launcher", key: "showHero", label: qsTr("The selection card") },
+                        { kind: "switch", section: "launcher", key: "showChips", label: qsTr("The mode buttons") },
+                        { kind: "head", label: qsTr("COLOUR SCHEMES") },
+                        { kind: "choice", section: "launcher", key: "schemePicker", label: qsTr("Where the schemes are shown"), options: [{ id: "launcher", label: qsTr("IN THE LAUNCHER") }, { id: "fullscreen", label: qsTr("FULL SCREEN") }] },
+                        { kind: "head", label: qsTr("KEYS") },
+                        { kind: "switch", section: "launcher", key: "vimKeybinds", label: qsTr("Vim keys") },
+                        { kind: "switch", section: "launcher", key: "enableDangerousActions", label: qsTr("Allow the dangerous actions") }
+                    ],
+                    "shape": [
+                        { kind: "head", label: qsTr("SCALES") },
+                        { kind: "note", label: qsTr("Each one multiplies a whole family of values rather than setting one, so four sliders change the character of the desktop.") },
+                        { kind: "amount", section: "appearance", key: "rounding.scale", label: qsTr("Corners"), from: 0.0, to: 2.0, step: 0.05 },
+                        { kind: "amount", section: "appearance", key: "spacing.scale", label: qsTr("Spacing"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "amount", section: "appearance", key: "padding.scale", label: qsTr("Padding"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "amount", section: "appearance", key: "font.scale", label: qsTr("Type"), from: 0.8, to: 1.4, step: 0.02 },
+                        { kind: "amount", section: "appearance", key: "anim.durations.scale", label: qsTr("Animation speed"), from: 0.0, to: 2.5, step: 0.05 },
+                        { kind: "head", label: qsTr("TRANSPARENCY") },
+                        { kind: "switch", section: "appearance", key: "transparency.enabled", label: qsTr("Translucent surfaces") },
+                        { kind: "amount", section: "appearance", key: "transparency.base", label: qsTr("Base"), from: 0.3, to: 1.0, step: 0.02 },
+                        { kind: "amount", section: "appearance", key: "transparency.layers", label: qsTr("Layers"), from: 0.0, to: 1.0, step: 0.02 },
+                        { kind: "head", label: qsTr("THE FRAME") },
+                        { kind: "note", label: qsTr("The border the desktop sits inside. The bar takes its padding from the same value, so the two move together.") },
+                        { kind: "amount", section: "border", key: "thickness", label: qsTr("Thickness"), from: 0, to: 40 },
+                        { kind: "amount", section: "border", key: "rounding", label: qsTr("Corners"), from: 0, to: 60 },
+                        { kind: "amount", section: "border", key: "smoothing", label: qsTr("Smoothing"), from: 0, to: 40 },
+                        { kind: "amount", section: "border", key: "opacity", label: qsTr("Opacity"), from: 15, to: 100 }
+                    ],
+                    "desktop": [
+                        { kind: "head", label: qsTr("WALLPAPER") },
+                        { kind: "switch", section: "background", key: "wallpaperEnabled", label: qsTr("Draw a wallpaper") },
+                        { kind: "amount", section: "background", key: "transitionDuration", label: qsTr("Transition (ms)"), from: 0, to: 3000 },
+                        { kind: "action", label: qsTr("Another wallpaper"), blurb: qsTr("Retints the whole scheme when it is dynamic."), button: qsTr("SWITCH"), act: "wallpaper" },
+                        { kind: "head", label: qsTr("THE CLOCK ON IT") },
+                        { kind: "switch", section: "background", key: "desktopClock.enabled", label: qsTr("caelestia's desktop clock") },
+                        { kind: "amount", section: "background", key: "desktopClock.scale", label: qsTr("Size"), from: 0.4, to: 2.5, step: 0.05 },
+                        { kind: "choice", section: "background", key: "desktopClock.position", label: qsTr("Where"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-center", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "middle-center", label: qsTr("C") }, { id: "bottom-center", label: qsTr("B") }] },
+                        { kind: "switch", section: "background", key: "desktopClock.invertColors", label: qsTr("Invert its colours") },
+                        { kind: "switch", section: "background", key: "desktopClock.background.enabled", label: qsTr("A card behind it") },
+                        { kind: "switch", section: "background", key: "desktopClock.shadow.enabled", label: qsTr("Shadow") },
+                        { kind: "head", label: qsTr("THE VISUALISER") },
+                        { kind: "switch", section: "background", key: "visualiser.enabled", label: qsTr("Audio visualiser") },
+                        { kind: "switch", section: "background", key: "visualiser.autoHide", label: qsTr("Only while something plays") },
+                        { kind: "switch", section: "background", key: "visualiser.blur", label: qsTr("Blur behind it") },
+                        { kind: "amount", section: "background", key: "visualiser.rounding", label: qsTr("Bar corners"), from: 0.0, to: 3.0, step: 0.1 },
+                        { kind: "amount", section: "background", key: "visualiser.spacing", label: qsTr("Bar spacing"), from: 0.0, to: 3.0, step: 0.1 }
+                    ],
+                    "widgets": [
+                        { kind: "head", label: qsTr("ALL OF THEM") },
+                        { kind: "switch", section: "background", key: "widgets.cards", label: qsTr("Cards behind them") },
+                        { kind: "note", label: qsTr("Off, they float on the wallpaper the way the clock does. On, they stay readable over a busy picture -- which is most pictures.") },
+                        { kind: "head", label: qsTr("EACH ONE") },
+                        { kind: "note", label: qsTr("Drag them where you want from the desktop itself: right-click the wallpaper, then Arrange widgets.") },
+                        { kind: "head", label: qsTr("WEATHER") },
+                        { kind: "switch", section: "background", key: "widgets.weather.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.weather.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.weather.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("FORECAST") },
+                        { kind: "switch", section: "background", key: "widgets.forecast.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.forecast.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.forecast.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("NOW PLAYING") },
+                        { kind: "switch", section: "background", key: "widgets.media.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.media.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.media.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("PROCESSOR") },
+                        { kind: "switch", section: "background", key: "widgets.cpu.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.cpu.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.cpu.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("MEMORY") },
+                        { kind: "switch", section: "background", key: "widgets.memory.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.memory.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.memory.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("STORAGE") },
+                        { kind: "switch", section: "background", key: "widgets.storage.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.storage.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.storage.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("NETWORK") },
+                        { kind: "switch", section: "background", key: "widgets.network.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.network.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.network.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("BATTERY") },
+                        { kind: "switch", section: "background", key: "widgets.battery.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.battery.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.battery.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("CALENDAR") },
+                        { kind: "switch", section: "background", key: "widgets.calendar.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.calendar.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.calendar.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("ANALOGUE CLOCK") },
+                        { kind: "switch", section: "background", key: "widgets.analogClock.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.analogClock.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.analogClock.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("WORKSPACES") },
+                        { kind: "switch", section: "background", key: "widgets.workspaces.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.workspaces.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.workspaces.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("NOTIFICATIONS") },
+                        { kind: "switch", section: "background", key: "widgets.notifications.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.notifications.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.notifications.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("UPTIME") },
+                        { kind: "switch", section: "background", key: "widgets.uptime.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.uptime.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.uptime.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 },
+                        { kind: "head", label: qsTr("GREETING") },
+                        { kind: "switch", section: "background", key: "widgets.greeting.enabled", label: qsTr("On") },
+                        { kind: "choice", section: "background", key: "widgets.greeting.position", label: qsTr("Corner"), options: [{ id: "top-left", label: qsTr("TL") }, { id: "top-centre", label: qsTr("T") }, { id: "top-right", label: qsTr("TR") }, { id: "mid-left", label: qsTr("L") }, { id: "centre", label: qsTr("C") }, { id: "mid-right", label: qsTr("R") }, { id: "bottom-left", label: qsTr("BL") }, { id: "bottom-centre", label: qsTr("B") }, { id: "bottom-right", label: qsTr("BR") }] },
+                        { kind: "amount", section: "background", key: "widgets.greeting.scale", label: qsTr("Size"), from: 0.5, to: 2.0, step: 0.05 }
+                    ],
+                    "system": [
+                        { kind: "head", label: qsTr("ACTIONS") },
+                        { kind: "action", label: qsTr("Colour scheme"), blurb: qsTr("The schemes, fanned out across the screen."), button: qsTr("PICK"), act: "schemes" },
+                        { kind: "action", label: qsTr("Genesi Center"), blurb: qsTr("Every setting, not just the ones you can see."), button: qsTr("OPEN"), act: "center" },
+                        { kind: "action", label: qsTr("Reload the shell"), blurb: qsTr("Redraws every surface. Nothing is lost."), button: qsTr("RELOAD"), act: "reload" },
+                        { kind: "head", label: qsTr("SESSION") },
+                        { kind: "action", label: qsTr("Lock, log out, restart"), blurb: qsTr("caelestia's own session drawer."), button: qsTr("OPEN"), act: "session" }
+                    ]
+                })
+
+                readonly property var rows: {
+                    const base = pane.tables[GenesiTopBarState.section] ?? [];
+                    if (GenesiTopBarState.section !== "dock")
+                        return base;
+                    // The dock's pinnable applications are not a fixed list --
+                    // they are what is running right now, plus what is already
+                    // pinned. So that one page is the table plus a tail.
+                    const out = base.slice();
+                    const seen = {};
+                    for (const cls of (win.dock.pinned ?? [])) {
+                        if (seen[cls])
+                            continue;
+                        seen[cls] = true;
+                        out.push({
+                            "kind": "pin",
+                            "label": cls
+                        });
+                    }
+                    for (const t of (Hypr.toplevels?.values ?? [])) {
+                        const c = t.lastIpcObject?.class;
+                        if (!c || seen[c])
+                            continue;
+                        seen[c] = true;
+                        out.push({
+                            "kind": "pin",
+                            "label": c
+                        });
+                    }
+                    return out;
+                }
+
+                Column {
+                    id: pageHead
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    spacing: 2
+
+                    StyledText {
+                        text: pane.current.label
+                        font: Tokens.font.title.large
+                        color: Colours.palette.m3onSurface
+                    }
+
+                    StyledText {
+                        width: parent.width
+                        text: pane.current.blurb
+                        font: Tokens.font.body.small
+                        color: Colours.palette.m3onSurfaceVariant
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                StyledFlickable {
+                    id: flick
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: pageHead.bottom
+                    anchors.bottom: parent.bottom
+                    anchors.topMargin: win.tok.spacing.medium
+                    contentHeight: pages.implicitHeight
+                    clip: true
+
+                    ColumnLayout {
+                        id: pages
+
+                        width: flick.width
+                        spacing: win.tok.spacing.small
+
+                        Repeater {
+                            model: pane.rows
+
+                            // One delegate per KIND, chosen by the row itself.
+                            // A switch statement over five Components inside
+                            // one delegate is a sixth place to forget.
+                            delegate: DelegateChooser {
+                                role: "kind"
+
+                                DelegateChoice {
+                                    roleValue: "head"
+
+                                    Head {
+                                        required property var modelData
+
+                                        text: modelData.label
+                                    }
+                                }
+
+                                DelegateChoice {
+                                    roleValue: "note"
+
+                                    StyledText {
+                                        required property var modelData
+
+                                        Layout.fillWidth: true
+                                        text: modelData.label
+                                        font: Tokens.font.label.small
+                                        color: Colours.palette.m3outline
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+
+                                DelegateChoice {
+                                    roleValue: "switch"
+
+                                    SwitchRow {
+                                        required property var modelData
+
+                                        label: modelData.label
+                                        checked: win.get(modelData.section,
+                                                         modelData.key) === true
+                                        onToggled: v => win.set(modelData.section,
+                                                                modelData.key, v)
+                                    }
+                                }
+
+                                DelegateChoice {
+                                    roleValue: "amount"
+
+                                    Amount {
+                                        required property var modelData
+
+                                        label: modelData.label
+                                        from: modelData.from
+                                        to: modelData.to
+                                        // A scale is 0.5 to 2.0 and a corner
+                                        // radius is 0 to 40, so the slider
+                                        // works in whole STEPS and the row
+                                        // converts. Without that every scale
+                                        // would snap to 1.
+                                        step: modelData.step ?? 1
+                                        value: win.get(modelData.section,
+                                                       modelData.key) ?? modelData.from
+                                        onCommitted: v => win.set(modelData.section,
+                                                                  modelData.key, v)
+                                    }
+                                }
+
+                                DelegateChoice {
+                                    roleValue: "choice"
+
+                                    Choice {
+                                        required property var modelData
+
+                                        label: modelData.label
+                                        options: modelData.options
+                                        current: String(win.get(modelData.section,
+                                                                modelData.key) ?? "")
+                                        onPicked: id => win.set(modelData.section,
+                                                                modelData.key, id)
+                                    }
+                                }
+
+                                DelegateChoice {
+                                    roleValue: "action"
+
+                                    Action {
+                                        required property var modelData
+
+                                        label: modelData.label
+                                        blurb: modelData.blurb ?? ""
+                                        button: modelData.button ?? qsTr("OPEN")
+                                        onTriggered: win.act(modelData.act)
+                                    }
+                                }
+
+                                DelegateChoice {
+                                    roleValue: "pin"
+
+                                    PinRow {
+                                        required property var modelData
+
+                                        app: modelData.label
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── The rows every page is built from ────────────────────────────
+            component Head: StyledText {
+                Layout.fillWidth: true
+                Layout.topMargin: win.tok.spacing.medium
+                font: Tokens.font.label.small
+                color: Colours.palette.m3outline
+            }
+
+            // A labelled slider that writes when you LET GO, not while you
+            // drag. Writing on every frame is sixty processes a second
+            // rewriting shell.json.
+            component Amount: StyledRect {
+                id: amount
+
+                property string label: ""
+                property real from: 0
+                property real to: 100
+                property real value: 0
+                // A whole number for a pixel count, a fraction for a scale.
+                // Without this every scale on the Shape page would snap to 1
+                // and four of the most useful sliders in the studio would be
+                // three-position switches.
+                property real step: 1
+
+                signal committed(real v)
+
+                Layout.fillWidth: true
+                implicitHeight: amountCol.implicitHeight + win.tok.padding.large * 2
+                radius: win.tok.rounding.large
+                color: Colours.layer(Colours.palette.m3surfaceContainer, 2)
+                opacity: amount.enabled ? 1 : 0.45
+
+                ColumnLayout {
+                    id: amountCol
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: win.tok.padding.large
+                    spacing: win.tok.spacing.small
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: amount.label
+                        }
+
+                        StyledText {
+                            // Shown at the precision it is set at, so a
+                        // scale does not read as "1" across its whole range.
+                        text: amount.step >= 1 ? Math.round(slider.value)
+                                               : slider.value.toFixed(2)
+                            font: Tokens.font.mono.small
+                            color: Colours.palette.m3onSurfaceVariant
+                        }
+                    }
+
+                    StyledSlider {
+                        id: slider
+
+                        Layout.fillWidth: true
+                        enabled: amount.enabled
+                        from: amount.from
+                        to: amount.to
+                        value: amount.value
+                        stepSize: amount.step
+
+                        // Written when you LET GO. A slider that wrote on
+                        // every frame would be sixty processes a second
+                        // rewriting shell.json.
+                        onPressedChanged: if (!pressed)
+                            amount.committed(amount.step >= 1
+                                             ? Math.round(value)
+                                             : Number(value.toFixed(3)))
+                    }
+                }
+            }
+
+            component Choice: StyledRect {
+                id: choice
+
+                property string label: ""
+                property var options: []
+                property string current: ""
+
+                signal picked(string id)
+
+                Layout.fillWidth: true
+                implicitHeight: choiceRow.implicitHeight + win.tok.padding.large * 2
+                radius: win.tok.rounding.large
+                color: Colours.layer(Colours.palette.m3surfaceContainer, 2)
+
+                RowLayout {
+                    id: choiceRow
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: win.tok.padding.large
+                    spacing: win.tok.spacing.small
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: choice.label
+                    }
+
+                    Repeater {
+                        model: choice.options
+
+                        StyledRect {
+                            id: opt
+
+                            required property var modelData
+
+                            readonly property bool on: opt.modelData.id === choice.current
+
+                            implicitWidth: optText.implicitWidth + win.tok.padding.large * 2
+                            implicitHeight: 26
+                            radius: Tokens.rounding.full
+                            color: opt.on ? Colours.palette.m3primary
+                                          : Colours.palette.m3surfaceContainerHighest
+
+                            Behavior on color {
+                                CAnim {}
+                            }
+
+                            StyledText {
+                                id: optText
+
+                                anchors.centerIn: parent
+                                text: opt.modelData.label
+                                font: Tokens.font.label.small
+                                color: opt.on ? Colours.palette.m3onPrimary
+                                              : Colours.palette.m3onSurfaceVariant
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: choice.picked(opt.modelData.id)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // One application, pinned or not. The list it belongs to is
+            // built from what is running plus what is already pinned, because
+            // pinning what you have open is how anybody has ever built a dock
+            // and it needs no application browser to do.
+            component PinRow: StyledRect {
+                id: pin
+
+                property string app: ""
+
+                readonly property bool on:
+                    (win.dock.pinned ?? []).indexOf(pin.app) >= 0
+
+                Layout.fillWidth: true
+                implicitHeight: 44
+                radius: win.tok.rounding.large
+                color: Colours.layer(Colours.palette.m3surfaceContainer, 2)
+
+                IconImage {
+                    id: pinIcon
+
+                    anchors.left: parent.left
+                    anchors.leftMargin: win.tok.padding.large
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitSize: 22
+                    asynchronous: true
+                    source: Quickshell.iconPath(pin.app.toLowerCase(),
+                                                "application-x-executable")
+                }
+
+                StyledText {
+                    anchors.left: pinIcon.right
+                    anchors.leftMargin: win.tok.spacing.medium
+                    anchors.right: pinButton.left
+                    anchors.rightMargin: win.tok.spacing.medium
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: pin.app
+                    font: Tokens.font.body.medium
+                    color: Colours.palette.m3onSurface
+                    elide: Text.ElideRight
+                }
+
+                StyledRect {
+                    id: pinButton
+
+                    anchors.right: parent.right
+                    anchors.rightMargin: win.tok.padding.large
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: pinLabel.implicitWidth + win.tok.padding.large * 2
+                    implicitHeight: 24
+                    radius: Tokens.rounding.full
+                    color: pin.on ? Colours.palette.m3primary
+                                  : Colours.palette.m3surfaceContainerHighest
+
+                    Behavior on color {
+                        CAnim {}
+                    }
+
+                    StyledText {
+                        id: pinLabel
+
+                        anchors.centerIn: parent
+                        text: pin.on ? qsTr("PINNED") : qsTr("PIN")
+                        font: Tokens.font.label.small
+                        color: pin.on ? Colours.palette.m3onPrimary
+                                      : Colours.palette.m3onSurfaceVariant
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            // The whole list, every time. The writer takes a
+                            // list and replaces it; there is no add-one
+                            // operation, because a list whose ORDER is the
+                            // setting cannot have one.
+                            const cur = (win.dock.pinned ?? []).slice();
+                            const at = cur.indexOf(pin.app);
+                            if (at >= 0)
+                                cur.splice(at, 1);
+                            else
+                                cur.push(pin.app);
+                            win.set("dock", "pinned", cur.join(","));
+                        }
+                    }
+                }
+            }
+
+            component Action: StyledRect {
+                id: action
+
+                property string label: ""
+                property string blurb: ""
+                property string button: qsTr("OPEN")
+
+                signal triggered
+
+                Layout.fillWidth: true
+                implicitHeight: actionCol.implicitHeight + win.tok.padding.large * 2
+                radius: win.tok.rounding.large
+                color: Colours.layer(Colours.palette.m3surfaceContainer, 2)
+
+                Column {
+                    id: actionCol
+
+                    anchors.left: parent.left
+                    anchors.right: actionButton.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: win.tok.padding.large
+                    anchors.rightMargin: win.tok.spacing.medium
+                    spacing: 2
+
+                    StyledText {
+                        text: action.label
+                        font: Tokens.font.body.medium
+                        color: Colours.palette.m3onSurface
+                    }
+
+                    StyledText {
+                        width: parent.width
+                        text: action.blurb
+                        font: Tokens.font.label.small
+                        color: Colours.palette.m3outline
+                        elide: Text.ElideRight
+                    }
+                }
+
+                StyledRect {
+                    id: actionButton
+
+                    anchors.right: parent.right
+                    anchors.rightMargin: win.tok.padding.large
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: actionLabel.implicitWidth + win.tok.padding.large * 2
+                    implicitHeight: 26
+                    radius: Tokens.rounding.full
+                    color: actionHover.containsMouse ? Colours.palette.m3primary
+                                                     : Colours.palette.m3surfaceContainerHighest
+
+                    Behavior on color {
+                        CAnim {}
+                    }
+
+                    StyledText {
+                        id: actionLabel
+
+                        anchors.centerIn: parent
+                        text: action.button
+                        font: Tokens.font.label.small
+                        color: actionHover.containsMouse ? Colours.palette.m3onPrimary
+                                                         : Colours.palette.m3onSurfaceVariant
+                    }
+
+                    MouseArea {
+                        id: actionHover
+
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: action.triggered()
+                    }
+                }
+            }
+        }
+    }
+}

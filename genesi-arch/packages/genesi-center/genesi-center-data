@@ -265,9 +265,10 @@ def palette():
     follow = False
     try:
         with open(CENTER_SETTINGS, encoding="utf-8") as fh:
-            follow = bool(json.load(fh).get("followSystemTheme", False))
+            follow = bool(json.load(fh).get("followSystemTheme", True))
     except (OSError, ValueError):
-        follow = False
+        # No settings file yet is a fresh install, which follows.
+        follow = True
 
     return {
         "available": True,

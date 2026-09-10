@@ -35,6 +35,11 @@ to hand Qt a DARK palette, or the popups are white on a black window.
 Forge reads. Two switches, one per app, is two places to look when only one of
 them followed.
 
+It defaults to ON. It did not, and that was backwards: "every window follows
+the theme" cannot be the claim while the default is that Genesi's own windows
+do not. The emerald palette is still one switch away, and it is still the same
+switch -- it is simply what you ask for now rather than what you get.
+
 Read once at startup, because Qt resolves a palette once at startup: an app
 that re-read this every second would still not repaint what Qt has already
 drawn, and would only be lying more often.
@@ -82,9 +87,10 @@ def read_follow():
     """Whether Genesi Center's one switch says to follow the desktop."""
     try:
         with open(CENTER_SETTINGS, encoding="utf-8") as fh:
-            return bool(json.load(fh).get("followSystemTheme", False))
+            return bool(json.load(fh).get("followSystemTheme", True))
     except (OSError, ValueError):
-        return False
+        # No settings file yet is a fresh install, which follows.
+        return True
 
 
 def resolve():

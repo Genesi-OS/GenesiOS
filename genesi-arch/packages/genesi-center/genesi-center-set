@@ -223,6 +223,10 @@ CAELESTIA_PATHS = {
     "topbar.showStatus": ("bool",),
     "topbar.showPower": ("bool",),
     "topbar.showConfigButton": ("bool",),
+    "topbar.flow": ("bool",),
+    "topbar.autoHide": ("bool",),
+    "topbar.border": ("bool",),
+    "topbar.shadow": ("bool",),
     # An enum, not free text, even though the shell will take any path. The
     # three answers people actually want are "none", "whatever the desktop is
     # showing" and "the Genesi one" -- and a text field for the rest would be a
@@ -326,6 +330,13 @@ CAELESTIA_PATHS = {
     "dock.iconRadius": ("int", 0, 32),
     "dock.spacing": ("int", 0, 80),
     "dock.padding": ("int", 0, 40),
+    "dock.edge": ("enum", ("bottom", "top")),
+    "dock.autoHide": ("bool",),
+    "dock.magnify": ("bool",),
+    "dock.hoverLabels": ("bool",),
+    # The pinned applications, as one comma-separated argument that lands in
+    # shell.json as a JSON array. The ORDER is the setting.
+    "dock.pinned": ("strlist",),
     "bar.persistent": ("bool",),
     "bar.showOnHover": ("bool",),
     "bar.workspaces.realWindowIcons": ("bool",),
@@ -366,6 +377,10 @@ GENESI_ONLY = {
     "topbar.showStatus": "CONFIG_PROPERTY(bool, showStatus, true)",
     "topbar.showPower": "CONFIG_PROPERTY(bool, showPower, true)",
     "topbar.showConfigButton": "CONFIG_PROPERTY(bool, showConfigButton, true)",
+    "topbar.flow": "CONFIG_PROPERTY(bool, flow, true)",
+    "topbar.autoHide": "CONFIG_PROPERTY(bool, autoHide, false)",
+    "topbar.border": "CONFIG_PROPERTY(bool, border, true)",
+    "topbar.shadow": "CONFIG_PROPERTY(bool, shadow, false)",
     "launcher.background": 'CONFIG_PROPERTY(QString, background, u""_s)',
     "launcher.backgroundExtent":
         'CONFIG_PROPERTY(QString, backgroundExtent, u"header"_s)',
@@ -526,6 +541,11 @@ GENESI_ONLY = {
     "dock.iconRadius": "CONFIG_PROPERTY(int, iconRadius, 16)",
     "dock.spacing": "CONFIG_PROPERTY(int, spacing, 28)",
     "dock.padding": "CONFIG_PROPERTY(int, padding, 16)",
+    "dock.edge": 'CONFIG_PROPERTY(QString, edge, u"bottom"_s)',
+    "dock.autoHide": "CONFIG_PROPERTY(bool, autoHide, false)",
+    "dock.magnify": "CONFIG_PROPERTY(bool, magnify, true)",
+    "dock.hoverLabels": "CONFIG_PROPERTY(bool, hoverLabels, true)",
+    "dock.pinned": "CONFIG_PROPERTY(QStringList, pinned, {})",
     "border.opacity": "CONFIG_PROPERTY(int, opacity, 100)",
     "bar.workspaces.realWindowIcons":
         "CONFIG_PROPERTY(bool, realWindowIcons, false)",
@@ -567,6 +587,27 @@ def coerce(spec, raw, what):
         if str(raw) not in spec[1]:
             die(f"{what} must be one of: " + ", ".join(spec[1]))
         return str(raw)
+    if kind == "strlist":
+        # A JSON ARRAY in shell.json, not a comma-joined string, because that
+        # is what a QStringList config property parses. Written as one
+        # comma-separated argument because a shell command taking a list would
+        # have to decide what an empty list looks like on a command line, and
+        # every answer to that is a footgun.
+        #
+        # Order is kept: this is what the dock pins, and the order of pinned
+        # apps is the whole point of pinning them.
+        out = []
+        for part in str(raw).split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if not re.fullmatch(r"[A-Za-z0-9_.+-]{1,128}", part):
+                die(f"{what} holds application ids; {part!r} is not one")
+            if part not in out:
+                out.append(part)
+        if len(out) > 32:
+            die(f"{what} takes at most 32 entries; got {len(out)}")
+        return out
     # str
     if not re.fullmatch(r"[A-Za-z0-9_,:+.\- ]*", str(raw)):
         die(f"{what} may only hold letters, digits and , : + . - _")

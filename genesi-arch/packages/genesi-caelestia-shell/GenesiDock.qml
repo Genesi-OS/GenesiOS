@@ -41,9 +41,30 @@ Variants {
         // One entry per application class, in the order they were opened.
         // `lastIpcObject` is where Hyprland's own fields live -- the class and
         // the address are both there, and the address is what focuses it.
+        // Pinned applications FIRST and always, then everything else that is
+        // running. Pinned order is the order they were pinned in, because for
+        // a dock the arrangement is the setting -- a pinned list that sorted
+        // itself would move the icon you aim at without being asked.
+        //
+        // A pinned application that IS running is one entry, not two: it keeps
+        // its place in the pinned order and gains the running mark and the
+        // window count.
         readonly property var apps: {
             const seen = {};
             const out = [];
+            for (const cls of (win.cfg.pinned ?? [])) {
+                if (seen[cls])
+                    continue;
+                const entry = {
+                    "cls": cls,
+                    "count": 0,
+                    "address": "",
+                    "title": cls,
+                    "pinned": true
+                };
+                seen[cls] = entry;
+                out.push(entry);
+            }
             for (const t of (Hypr.toplevels?.values ?? [])) {
                 const o = t.lastIpcObject;
                 if (!o || !o.class)
@@ -51,13 +72,19 @@ Variants {
                 const found = seen[o.class];
                 if (found) {
                     found.count += 1;
+                    // The first window found is the one a click focuses. A
+                    // pinned entry starts with no address, so this is also
+                    // what turns it from "launch" into "focus".
+                    if (!found.address)
+                        found.address = o.address ?? "";
                     continue;
                 }
                 const entry = {
                     "cls": o.class,
                     "count": 1,
                     "address": o.address ?? "",
-                    "title": o.title ?? o.class
+                    "title": o.title ?? o.class,
+                    "pinned": false
                 };
                 seen[o.class] = entry;
                 out.push(entry);
@@ -65,7 +92,17 @@ Variants {
             return out;
         }
 
-        readonly property bool shown: Config.dock.enabled && (win.apps.length > 0 || !Config.dock.hideWhenEmpty)
+        readonly property var cfg: contentItem.Config.dock
+        readonly property bool atBottom: win.cfg.edge !== "top"
+
+        property bool peek: false
+
+        // Three separate reasons to be out of view, and they are not the same
+        // thing: nothing is open, auto-hide is on and the pointer is elsewhere,
+        // or the dock is off entirely.
+        readonly property bool shown: win.cfg.enabled
+            && (win.apps.length > 0 || !win.cfg.hideWhenEmpty)
+            && (!win.cfg.autoHide || win.peek)
 
         screen: modelData
         name: "genesi-dock"
@@ -75,10 +112,11 @@ Variants {
         WlrLayershell.layer: WlrLayer.Top
         color: "transparent"
 
-        anchors.bottom: true
+        anchors.bottom: win.atBottom
+        anchors.top: !win.atBottom
         anchors.left: true
         anchors.right: true
-        implicitHeight: Config.dock.iconSize + Config.dock.padding * 2 + Tokens.padding.medium * 2
+        implicitHeight: win.cfg.iconSize + win.cfg.padding * 2 + contentItem.Tokens.padding.medium * 2
 
         // Only the bar itself takes input. Without this the window is a strip
         // across the bottom of every screen that swallows clicks meant for the
@@ -91,17 +129,27 @@ Variants {
         // does not exist does not fail quietly here: the whole file fails to
         // load, and the dock never appears at all. That is what shipped.
         mask: Region {
-            x: bar.x
-            y: bar.y
-            width: bar.width
-            height: bar.height
+            x: win.cfg.autoHide ? 0 : bar.x
+            y: win.cfg.autoHide ? 0 : bar.y
+            width: win.cfg.autoHide ? win.width : bar.width
+            height: win.cfg.autoHide ? win.height : bar.height
+        }
+
+        // Under the bar, so it never takes a click meant for an icon.
+        MouseArea {
+            anchors.fill: parent
+            enabled: win.cfg.autoHide
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+            onContainsMouseChanged: win.peek = containsMouse
         }
 
         StyledRect {
             id: bar
 
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
+            anchors.bottom: win.atBottom ? parent.bottom : undefined
+            anchors.top: win.atBottom ? undefined : parent.top
             // The slide rides the MARGIN, not y. An item anchored to its
             // parent's bottom has its y set by that anchor, so a `y:` binding
             // on the same item is a second thing assigning one property -- the
@@ -110,8 +158,14 @@ Variants {
             anchors.bottomMargin: win.shown
                 ? Tokens.padding.medium
                 : -(implicitHeight + Tokens.padding.medium)
+            anchors.topMargin: win.shown
+                ? Tokens.padding.medium
+                : -(implicitHeight + Tokens.padding.medium)
 
             Behavior on anchors.bottomMargin {
+                Anim {}
+            }
+            Behavior on anchors.topMargin {
                 Anim {}
             }
 
@@ -123,7 +177,7 @@ Variants {
             // border, which is the difference between icons floating on the
             // wallpaper and icons inside an invisible box with a lit edge.
             color: Config.dock.background ? Qt.alpha(Colours.palette.m3surfaceContainer, Math.max(0, Math.min(100, Config.dock.backgroundOpacity)) / 100) : "transparent"
-            border.width: Config.dock.background ? 1 : 0
+            border.width: win.cfg.background ? 1 : 0
             border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
 
             // Slid down as well as faded, so an empty dock leaves rather than
@@ -135,8 +189,24 @@ Variants {
                 Anim {}
             }
 
+            // Where the pointer is along the row, which is what magnification
+            // is a function of. hoverEnabled with NoButton: it reports
+            // position and takes nothing, so every click still reaches the
+            // icon underneath.
+            MouseArea {
+                anchors.fill: row
+                enabled: win.cfg.magnify
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+                onPositionChanged: e => row.pointerX = e.x
+                onContainsMouseChanged: row.hovering = containsMouse
+            }
+
             Row {
                 id: row
+
+                property real pointerX: 0
+                property bool hovering: false
 
                 anchors.centerIn: parent
                 spacing: 0
@@ -232,6 +302,20 @@ Variants {
                         Item {
                             id: tile
 
+                            // How near the pointer is, 0 at two icons away and
+                            // 1 under it. The neighbours grow too, less --
+                            // magnification that only lifts the icon under the
+                            // cursor reads as a click, not as a dock.
+                            readonly property real nearness: {
+                                if (!win.cfg.magnify || !row.hovering)
+                                    return 0;
+                                const mine = tile.x + tile.width / 2
+                                    + slot.x + row.x;
+                                const d = Math.abs(row.pointerX - mine);
+                                const reach = win.cfg.iconSize * 2.2;
+                                return d > reach ? 0 : 1 - d / reach;
+                            }
+
                             width: Config.dock.iconSize + Tokens.padding.small * 2
                             height: Config.dock.iconSize
 
@@ -257,7 +341,12 @@ Variants {
                                 // same circle with a number nobody can explain.
                                 radius: Math.min(Config.dock.iconRadius, implicitWidth / 2)
 
-                                scale: area.containsMouse ? 1.12 : 1
+                                // Magnification when it is on, a plain hover
+                                // lift when it is not.
+                                scale: win.cfg.magnify
+                                       ? 1 + tile.nearness * 0.45
+                                       : (area.containsMouse ? 1.12 : 1)
+                                transformOrigin: win.atBottom ? Item.Bottom : Item.Top
 
                                 Behavior on scale {
                                     Anim {}
@@ -269,6 +358,51 @@ Variants {
                                     implicitSize: parent.implicitWidth
                                     source: Quickshell.iconPath(slot.modelData.cls.toLowerCase(), "application-x-executable")
                                 }
+                            }
+
+                            // The application's name while the pointer is on
+                            // it. Drawn OUTSIDE the tile, so it is not clipped
+                            // by an icon-sized box, and on the side away from
+                            // the screen edge.
+                            StyledRect {
+                                id: hoverLabel
+
+                                visible: win.cfg.hoverLabels && area.containsMouse
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: win.atBottom ? parent.top : undefined
+                                anchors.top: win.atBottom ? undefined : parent.bottom
+                                anchors.margins: Tokens.spacing.small
+                                z: 10
+                                implicitWidth: hoverText.implicitWidth + Tokens.padding.large * 2
+                                implicitHeight: hoverText.implicitHeight + Tokens.padding.small * 2
+                                radius: Tokens.rounding.full
+                                color: Colours.palette.m3surfaceContainerHighest
+                                border.width: 1
+                                border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.6)
+
+                                StyledText {
+                                    id: hoverText
+
+                                    anchors.centerIn: parent
+                                    text: slot.modelData.cls
+                                    font: Tokens.font.label.small
+                                    color: Colours.palette.m3onSurface
+                                }
+                            }
+
+                            // A dot under a pinned application that is running.
+                            // Pinned and running look identical otherwise, and
+                            // "is this thing open" is the question a dock is
+                            // most often asked.
+                            StyledRect {
+                                visible: slot.modelData.pinned && slot.modelData.count > 0
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: win.atBottom ? parent.bottom : undefined
+                                anchors.top: win.atBottom ? undefined : parent.top
+                                implicitWidth: 4
+                                implicitHeight: 4
+                                radius: 2
+                                color: Colours.palette.m3primary
                             }
 
                             // How many windows this application has. Only from
@@ -298,9 +432,18 @@ Variants {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                // Focus it if it is running, start it if it
+                                // is only pinned. A pinned icon that did
+                                // nothing until you had already opened the app
+                                // by other means would be a bookmark, not a
+                                // dock.
                                 onClicked: {
-                                    if (slot.modelData.address)
+                                    if (slot.modelData.address) {
                                         Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", `address:${slot.modelData.address}`]);
+                                        return;
+                                    }
+                                    Quickshell.execDetached(
+                                        ["app2unit", "--", slot.modelData.cls]);
                                 }
                             }
                         }

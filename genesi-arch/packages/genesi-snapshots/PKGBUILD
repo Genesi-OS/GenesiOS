@@ -80,7 +80,14 @@ pkgver=1.0.0
 # app ever set, so they arrived in Fusion's default LIGHT one. A dark
 # window with a few white controls in it was not an app half following
 # the scheme, it was an app following nothing while Qt filled the gaps.
-pkgrel=18
+# 19: follows the desktop's colour scheme by DEFAULT. It was the other
+# way round, on the reasoning that an identity should not leave in an
+# update -- but that reasoning is about the identity, not about the
+# desktop. "Every window follows the theme" cannot be true by default
+# in an OS whose default is that its own six windows do not. The
+# emerald is one switch away, on the same switch, and it is what you
+# ask for now rather than what you get.
+pkgrel=19
 pkgdesc='Effortless Btrfs snapshots — automatic protection before every update, one-click rollback'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

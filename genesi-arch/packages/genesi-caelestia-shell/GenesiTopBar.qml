@@ -36,6 +36,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
@@ -81,6 +82,13 @@ Variants {
 
         implicitHeight: win.cfg.height + win.cfg.gap * 2
 
+        // Withdrawn until the pointer reaches the edge. The WINDOW keeps its
+        // height either way -- only the islands slide out of view -- because a
+        // window that shrinks to nothing has no edge left to notice a pointer
+        // arriving at, and the bar could never come back.
+        property bool peek: false
+        readonly property bool shown: !win.cfg.autoHide || win.peek
+
         // The whole strip reserves space, so a maximised window stops below the
         // bar instead of underneath it. This is the one place the top bar and
         // the dock differ on purpose: a dock is somewhere you point at, a bar
@@ -90,11 +98,15 @@ Variants {
 
         // Only the islands take input. Without this the strip swallows clicks
         // along the entire top edge of every window on the screen.
+        //
+        // With auto-hide on it is the whole strip instead, because there has to
+        // be something for the pointer to arrive at -- a hidden bar whose input
+        // region is the islands it just hid cannot be reached again.
         mask: Region {
-            x: left.x
-            y: left.y
-            width: left.width
-            height: left.height
+            x: win.cfg.autoHide ? 0 : left.x
+            y: win.cfg.autoHide ? 0 : left.y
+            width: win.cfg.autoHide ? win.width : left.width
+            height: win.cfg.autoHide ? win.height : left.height
 
             Region {
                 x: centre.x
@@ -110,16 +122,129 @@ Variants {
             }
         }
 
+        // Under everything, so it never takes a click meant for an island.
+        MouseArea {
+            anchors.fill: parent
+            enabled: win.cfg.autoHide
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+            onContainsMouseChanged: win.peek = containsMouse
+        }
+
         // ── One continuous surface, when islands are off ─────────────────────
         StyledRect {
             anchors.fill: parent
             anchors.margins: win.cfg.gap
             visible: !win.cfg.islands && win.cfg.background
+            opacity: win.shown ? 1 : 0
             radius: win.cfg.radius
             color: Qt.alpha(Colours.palette.m3surfaceContainer,
                             Math.max(0, Math.min(100, win.cfg.backgroundOpacity)) / 100)
-            border.width: 1
+            border.width: win.cfg.border ? 1 : 0
             border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
+
+            Behavior on opacity {
+                Anim {}
+            }
+        }
+
+        // ── The flow, between the islands ────────────────────────────────────
+        //
+        // Two tracks with lights running along them, one from the left island
+        // to the centre and one from the centre to the right. It is decoration
+        // and it is the point: three separate pills read as three unrelated
+        // things until something ties them together, which is the same reason
+        // the dock has one between its icons.
+        //
+        // Only when the islands ARE islands -- on one continuous surface there
+        // is no gap for a connector to cross, and drawing one anyway would be a
+        // line across the middle of a bar.
+        Repeater {
+            model: (win.cfg.flow && win.cfg.islands && win.shown) ? 2 : 0
+
+            Item {
+                id: gap
+
+                required property int index
+
+                readonly property Item from: gap.index === 0 ? left : centre
+                readonly property Item to: gap.index === 0 ? centre : right
+
+                x: gap.from.x + gap.from.width
+                width: Math.max(0, gap.to.x - x)
+                y: left.y
+                height: left.height
+                // A track between two islands that are touching is a track of
+                // negative width drawn as a smear.
+                visible: width > 24
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: win.tok.spacing.medium
+                    height: 2
+                    radius: 1
+                    color: Qt.alpha(Colours.palette.m3outlineVariant, 0.55)
+                }
+
+                Repeater {
+                    model: 3
+
+                    Rectangle {
+                        id: light
+
+                        required property int index
+
+                        width: 4
+                        height: 4
+                        radius: 2
+                        y: (gap.height - height) / 2
+                        color: Colours.palette.m3primary
+
+                        SequentialAnimation {
+                            running: true
+                            loops: Animation.Infinite
+
+                            // Staggered per GAP as well as per light: both
+                            // gaps pulsing in unison reads as one bar filling,
+                            // which is a progress bar that never finishes.
+                            PauseAnimation {
+                                duration: gap.index * 420 + light.index * 340
+                            }
+                            ParallelAnimation {
+                                NumberAnimation {
+                                    target: light
+                                    property: "x"
+                                    from: 0
+                                    to: Math.max(0, gap.width - light.width)
+                                    duration: 1600
+                                    easing.type: Easing.InOutSine
+                                }
+                                SequentialAnimation {
+                                    NumberAnimation {
+                                        target: light
+                                        property: "opacity"
+                                        from: 0
+                                        to: 1
+                                        duration: 320
+                                    }
+                                    NumberAnimation {
+                                        target: light
+                                        property: "opacity"
+                                        from: 1
+                                        to: 0
+                                        duration: 1280
+                                    }
+                                }
+                            }
+                            PauseAnimation {
+                                duration: 900
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // ── Left ─────────────────────────────────────────────────────
@@ -130,33 +255,65 @@ Variants {
             anchors.leftMargin: win.cfg.gap * 2
             anchors.verticalCenter: parent.verticalCenter
 
-            // The Genesi mark, and the launcher behind it. Same gesture as
-            // caelestia's own OsIcon, because it is the same affordance in a
-            // different place.
-            BarIcon {
+            // The Genesi mark. It was the "workspaces" glyph -- three dots
+            // that mean nothing and belong to Material Symbols -- which is a
+            // strange thing for the one place on the desktop that is supposed
+            // to say whose desktop it is.
+            //
+            // It opens the side panel rather than the launcher. A mark in the
+            // corner of a bar is where every desktop puts its own controls,
+            // and the launcher already answers to SUPER, to a tap of SUPER,
+            // and to the search glyph.
+            Item {
+                id: markButton
+
                 visible: win.cfg.showLogo
-                icon: "workspaces"
-                accent: true
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: win.cfg.height * 0.66
+                implicitHeight: win.cfg.height * 0.66
+
+                StyledRect {
+                    anchors.fill: parent
+                    radius: Tokens.rounding.full
+                    color: markHover.containsMouse
+                           ? Qt.alpha(Colours.palette.m3onSurface, 0.1)
+                           : "transparent"
+
+                    Behavior on color {
+                        CAnim {}
+                    }
+                }
+
+                GenesiMark {
+                    anchors.centerIn: parent
+                    width: parent.width * 0.72
+                    height: parent.height * 0.72
+                }
+
+                MouseArea {
+                    id: markHover
+
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        const v = Visibilities.getForActive();
+                        if (v)
+                            v.dashboard = !v.dashboard;
+                    }
+                }
+            }
+
+            // Search, which is what the launcher is. It used to be the mark's
+            // job and the mark used to be a row of dots; both are in the right
+            // place now.
+            BarIcon {
+                visible: win.cfg.showSidebarButton
+                icon: "search"
                 onActivated: {
                     const v = Visibilities.getForActive();
                     if (v)
                         v.launcher = !v.launcher;
-                }
-            }
-
-            // The button the sidebar needs, because a drawer you can only
-            // reach by dragging from an edge is a drawer most people never
-            // find. It opens caelestia's own dashboard rather than a second
-            // panel of Genesi's: there is one place the calendar, the media
-            // controls and the quick toggles live, and duplicating it would be
-            // two of everything to keep in step.
-            BarIcon {
-                visible: win.cfg.showSidebarButton
-                icon: "dock_to_right"
-                onActivated: {
-                    const v = Visibilities.getForActive();
-                    if (v)
-                        v.dashboard = !v.dashboard;
                 }
             }
 
@@ -344,8 +501,39 @@ Variants {
                    ? Qt.alpha(Colours.palette.m3surfaceContainer,
                               Math.max(0, Math.min(100, win.cfg.backgroundOpacity)) / 100)
                    : "transparent"
-            border.width: (win.cfg.islands && win.cfg.background) ? 1 : 0
+            border.width: (win.cfg.islands && win.cfg.background && win.cfg.border) ? 1 : 0
             border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
+
+            // Slid out of view and faded, rather than merely faded: nothing is
+            // then drawn under the pointer at 1% opacity waiting to be clicked
+            // by accident.
+            opacity: win.shown ? 1 : 0
+            // The MARGIN, not y: every island is anchored to the strip's
+            // vertical centre, and a `y` binding on an anchored item is two
+            // things assigning one property. The anchor wins and the slide
+            // silently does nothing -- which is exactly how the dock's slide
+            // was dead for a release.
+            anchors.verticalCenterOffset: win.shown ? 0
+                : (win.atTop ? -(win.cfg.height + win.cfg.gap * 3)
+                             : win.cfg.height + win.cfg.gap * 3)
+
+            Behavior on opacity {
+                Anim {}
+            }
+            Behavior on anchors.verticalCenterOffset {
+                Anim {}
+            }
+
+            // A soft drop, off by default. On a busy wallpaper it is the
+            // difference between a surface and a stain; on a plain one it is
+            // just haze.
+            layer.enabled: win.cfg.shadow
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: Qt.alpha(Colours.palette.m3shadow, 0.45)
+                shadowBlur: 0.6
+                shadowVerticalOffset: 2
+            }
 
             MouseArea {
                 anchors.fill: parent

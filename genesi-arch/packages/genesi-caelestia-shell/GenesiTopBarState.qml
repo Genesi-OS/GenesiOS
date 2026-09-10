@@ -1,8 +1,8 @@
-// GENESI — is the top bar's own settings panel open?
+// GENESI — is the shell studio open, and on which page?
 //
-// The same one-boolean singleton as GenesiSchemeState, and for the same
-// reason: the bar ASKS for the panel and a separate layer-shell surface
-// ANSWERS, and two windows cannot reach into each other's item trees.
+// The same small singleton as GenesiSchemeState, and for the same reason:
+// the bar ASKS for the studio and a separate layer-shell surface ANSWERS,
+// and two windows cannot reach into each other's item trees.
 //
 // It lives beside the launcher's body rather than beside the bar because that
 // directory is already a module both halves import. Putting a second singleton
@@ -17,12 +17,11 @@ Singleton {
 
     property bool open: false
 
-    // Which group of settings the panel is showing. Kept here rather than in
-    // the panel so that closing and reopening comes back to where you were --
-    // adjusting a bar is a loop of change, look, change again, and a panel
-    // that resets to its first tab every time makes that loop longer than the
-    // change.
-    property string section: "shape"
+    // Which page the studio is on. Kept here rather than in the studio so that
+    // closing and reopening comes back to where you were -- adjusting a shell
+    // is a loop of change, look, change again, and a panel that resets to its
+    // first page every time makes that loop longer than the change itself.
+    property string section: "bar"
 
     function show(): void {
         root.open = true;

@@ -181,7 +181,24 @@ pkgver=2.0.3
 # The bar carries its own settings panel, because you change a bar while
 # looking at it or you change it twice; Genesi Center keeps exactly one
 # control for it, the switch that turns it on.
-pkgrel=28
+# pkgrel 29: the shell studio. The bar's settings card became a rail and
+# seven pages -- bar, dock, launcher, widgets, desktop, shape, system --
+# driven by a TABLE rather than hand-written rows, because forty
+# hand-written controls out of the hundred and sixty-two the writer
+# accepts was the shape of that answer. It is a hundred and seventy now,
+# and a row names the config key it reads and writes exactly once.
+#
+# The bar wears the Genesi mark instead of a Material Symbols glyph of
+# three dots, drawn as a Shape so it takes the scheme's colours -- an SVG
+# carries its own green, and the one Genesi thing on the bar would be the
+# one green thing on a violet desktop. It opens the side panel now; the
+# launcher moved to the search glyph beside it.
+#
+# The bar also grew the flow between its islands, auto-hide, a border and
+# a shadow; the dock grew an edge, auto-hide, magnification, hover labels
+# and PINNED APPLICATIONS -- which are in the dock whether or not they
+# are running, and launch rather than focus when they are not.
+pkgrel=29
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -223,9 +240,11 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiSchemeState.qml"
         "GenesiSchemeScreen.qml"
         "GenesiTopBar.qml"
-        "GenesiTopBarPanel.qml"
+        "GenesiStudio.qml"
+        "GenesiMark.qml"
         "GenesiTopBarState.qml")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

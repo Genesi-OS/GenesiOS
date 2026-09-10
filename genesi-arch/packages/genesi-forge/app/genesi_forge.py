@@ -500,9 +500,10 @@ class Backend(QObject):
     def _read_follow():
         try:
             with open(Backend._CENTER_SETTINGS, encoding="utf-8") as fh:
-                return bool(json.load(fh).get("followSystemTheme", False))
+                return bool(json.load(fh).get("followSystemTheme", True))
         except (OSError, ValueError):
-            return False
+            # No settings file yet is a fresh install, which follows.
+            return True
 
     def __init__(self):
         super().__init__()

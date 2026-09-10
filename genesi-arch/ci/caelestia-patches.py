@@ -1249,7 +1249,7 @@ SCHEME_FILES = ("GenesiSchemeScreen.qml",)
 # The top bar and its own settings panel. Both are WINDOWS inside caelestia,
 # which is the whole point of this second attempt: the first one was a separate
 # Quickshell process, and switching to it ran `pkill -f caelestia`.
-TOPBAR_FILES = ("GenesiTopBar.qml", "GenesiTopBarPanel.qml")
+TOPBAR_FILES = ("GenesiTopBar.qml", "GenesiStudio.qml", "GenesiMark.qml")
 
 
 def patch_launcher_layout(release):
@@ -1575,35 +1575,83 @@ def patch_desktop_widgets(release):
 DOCK_FILES = ("GenesiDock.qml",)
 
 
+HEADER_DEPS = [
+    # what the header USES            what it must SAY to be allowed to
+    (r'u"[^"]*"_s', 'using Qt::StringLiterals::operator""_s;'),
+    (r"\bQStringList\b", "#include <qstringlist.h>"),
+    (r"\bQVariantList\b|\bQVariantMap\b", "#include <qvariant.h>"),
+]
+
+
+def ensure_header_deps(text):
+    """
+    Give a header what the properties just written into it need to compile.
+
+    The counterpart of verify_string_literals: that one is the post-condition,
+    this is the fix. Both read one table, so a new kind of default is described
+    in a single place rather than in a check and, separately, in whichever
+    patch happened to add it first.
+
+    Placed the way upstream places them -- the using-declaration immediately
+    after the namespace opens, the includes beside <qstring.h> -- so a patched
+    header still reads like the seven upstream ones that already do this.
+    """
+    for pattern, required in HEADER_DEPS:
+        if not re.search(pattern, text) or required in text:
+            continue
+        if required.startswith("#include"):
+            anchor = "#include <qstring.h>\n"
+            if anchor not in text:
+                fail("a header needs %s and does not include <qstring.h>, so "
+                     "there is nowhere obvious to put it." % required)
+            text = text.replace(anchor, anchor + required + "\n", 1)
+        else:
+            anchor = "namespace caelestia::config {\n"
+            if anchor not in text:
+                fail("a header needs %s and does not open the config "
+                     "namespace where this expects it." % required)
+            text = text.replace(anchor, anchor + "\n" + required + "\n", 1)
+    return text
+
+
 def verify_string_literals(path, text):
     """
-    A header using `_s` has the operator in scope, or this stops the build.
+    A header can compile what this patcher just wrote into it.
 
-    Qt's `u"x"_s` is a user-defined literal, and the operator it needs is not
-    in scope by default: seven of upstream's config headers open with
-    `using Qt::StringLiterals::operator""_s;` and the rest do not, because the
-    rest have no QString default in them.
+    C++ headers only see what they include, and a config header includes the
+    bare minimum for what WAS in it. Every time a patch puts a new kind of
+    default into one, it can land in a file with no declaration for that kind
+    -- and the failure is always the same shape: every precondition in this
+    file passes, the build compiles Calamares and most of Qt, and then dies at
+    the far end on something one line long.
 
-    backgroundconfig.hpp was one of the rest. The dock's config is all bools
-    and ints, so nothing noticed -- and the first QString default written into
-    it died with `unable to find string literal operator`, fifteen minutes into
-    the build. Every other precondition in this file had passed.
+    That has happened twice on the same header now.
 
-    Two seconds here instead. The check is per FILE, because the operator is
-    scoped per file and a patch that writes into two headers can easily get one
-    of them right.
+      * `u"top"_s` is a user-defined literal whose operator is not in scope by
+        default. Seven of upstream's config headers open with
+        `using Qt::StringLiterals::operator""_s;`; backgroundconfig.hpp does
+        not, because the dock's config is all bools and ints. The top bar's
+        `position` was the first QString default in it, and the build died on
+        `unable to find string literal operator` fifteen minutes in.
+
+      * `QStringList` needs <qstringlist.h>. Same header, same reason, the
+        very next property.
+
+    So it is a table rather than a special case: what a header USES, and what
+    it must SAY to be allowed to use it. Checked per file, because both of
+    these are per-file facts and a patch that writes two headers can easily get
+    one of them right.
     """
-    if '_s' not in text:
-        return
-    if not re.search(r'u"[^"]*"_s', text):
-        return
-    if 'using Qt::StringLiterals::operator""_s;' not in text:
-        fail(f"{os.path.basename(path)} now uses u\"...\"_s and does not have "
-             '`using Qt::StringLiterals::operator""_s;` in it. That is not a '
-             "warning, it is `unable to find string literal operator` -- and "
-             "it surfaces at the END of a twenty-minute compile. Add the line "
-             "upstream's other config headers open with, right after the "
-             "namespace.")
+    name = os.path.basename(path)
+    for pattern, required in HEADER_DEPS:
+        if not re.search(pattern, text):
+            continue
+        if required in text:
+            continue
+        fail(f"{name} now uses {pattern!r} and does not carry `{required}`. "
+             "That is not a warning -- it is a compile error, and it surfaces "
+             "at the END of a twenty-minute build. ensure_header_deps() adds "
+             "it; whichever patch wrote this property did not call it.")
 
 
 def verify_config_reachable(cfg_text, att_text, attc_text):
@@ -1743,12 +1791,37 @@ def patch_dock(release):
         "    CONFIG_PROPERTY(int, spacing, 28)\n"
         "    CONFIG_PROPERTY(int, padding, 16)\n"
         "\n"
+        "    // Which edge. Only the two horizontal ones: a vertical dock is a\n"
+        "    // different LAYOUT, not a different anchor, and offering it as a\n"
+        "    // fifth value of this property would be a setting that half\n"
+        "    // works.\n"
+        "    CONFIG_PROPERTY(QString, edge, u\"bottom\"_s)\n"
+        "    CONFIG_PROPERTY(bool, autoHide, false)\n"
+        "    // The icon under the pointer grows, its neighbours grow less.\n"
+        "    CONFIG_PROPERTY(bool, magnify, true)\n"
+        "    CONFIG_PROPERTY(bool, hoverLabels, true)\n"
+        "    // Applications that are in the dock whether or not they are\n"
+        "    // running, as desktop entry ids, in the order they are shown --\n"
+        "    // the order IS the setting, which is why it is a list.\n"
+        "    CONFIG_PROPERTY(QStringList, pinned, {})\n"
+        "\n"
         "public:\n"
         "    explicit GenesiDockConfig(QObject* parent = nullptr)\n"
         "        : ConfigObject(parent) {}\n"
         "};\n"
         "\n")
     out = {hpp: src[hpp].replace(anchor, block + anchor, 1)}
+
+    # `pinned` is a QStringList and this header includes <qstring.h> and
+    # nothing else -- it had no list in it before. Upstream's launcherconfig
+    # carries the same include for the same reason.
+    inc = "#include <qstring.h>\n"
+    if inc not in out[hpp]:
+        fail("backgroundconfig.hpp no longer includes <qstring.h>, so there is "
+             "nowhere obvious to put the list include the dock's pinned apps "
+             "need.")
+    if "#include <qstringlist.h>" not in out[hpp]:
+        out[hpp] = out[hpp].replace(inc, inc + "#include <qstringlist.h>\n", 1)
 
     member = "    CONFIG_SUBOBJECT(BackgroundConfig, background)\n"
     if member not in src[cfg]:
@@ -1827,9 +1900,10 @@ def patch_dock(release):
     # that asserts its anchors and not its output is checking that it found the
     # right place to write the bug.
     verify_config_reachable(out[cfg], out[att], out[attc])
-    for _path, _text in out.items():
+    for _path in list(out):
         if _path.endswith(".hpp"):
-            verify_string_literals(_path, _text)
+            out[_path] = ensure_header_deps(out[_path])
+            verify_string_literals(_path, out[_path])
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
@@ -1940,31 +2014,20 @@ def patch_topbar(release):
         "    CONFIG_PROPERTY(bool, showPower, true)\n"
         "    CONFIG_PROPERTY(bool, showConfigButton, true)\n"
         "\n"
+        "    // The animated connector between the islands -- the same idea as\n"
+        "    // the dock's flow. Three separate pills read as three unrelated\n"
+        "    // things until something ties them together.\n"
+        "    CONFIG_PROPERTY(bool, flow, true)\n"
+        "    CONFIG_PROPERTY(bool, autoHide, false)\n"
+        "    CONFIG_PROPERTY(bool, border, true)\n"
+        "    CONFIG_PROPERTY(bool, shadow, false)\n"
+        "\n"
         "public:\n"
         "    explicit GenesiTopBarConfig(QObject* parent = nullptr)\n"
         "        : ConfigObject(parent) {}\n"
         "};\n"
         "\n")
     out = {hpp: src[hpp].replace(anchor, block + anchor, 1)}
-
-    # ── `u"top"_s` needs the operator in scope ───────────────────────────────
-    #
-    # Seven of upstream's config headers carry this line and backgroundconfig
-    # is not one of them, because nothing in it had a QString default until
-    # now -- the dock's config is all bools and ints. Without it the build dies
-    # on `unable to find string literal operator 'operator""_s'`, which it did,
-    # fifteen minutes in.
-    #
-    # Upstream's exact form, and placed where upstream places it: immediately
-    # after the namespace opens.
-    using_line = 'using Qt::StringLiterals::operator""_s;\n'
-    if using_line not in out[hpp]:
-        ns = "namespace caelestia::config {\n"
-        if ns not in out[hpp]:
-            fail("backgroundconfig.hpp does not open the config namespace "
-                 "where this expects it, so there is nowhere to put the "
-                 "string-literal operator the top bar's defaults need.")
-        out[hpp] = out[hpp].replace(ns, ns + "\n" + using_line, 1)
 
     fwd = "class GenesiDockConfig;\n"
     if fwd not in src[cfg]:
@@ -2010,9 +2073,10 @@ def patch_topbar(release):
         impl, impl + "CONFIG_ATTACHED_GETTER(GenesiTopBarConfig, topbar)\n", 1)
 
     verify_config_reachable(out[cfg], out[att], out[attc])
-    for _path, _text in out.items():
+    for _path in list(out):
         if _path.endswith(".hpp"):
-            verify_string_literals(_path, _text)
+            out[_path] = ensure_header_deps(out[_path])
+            verify_string_literals(_path, out[_path])
 
     # ── The one line in upstream's bar ───────────────────────────────────────
     old = ("    readonly property bool disabled: "
@@ -2037,7 +2101,7 @@ def patch_topbar(release):
              "the top bar goes beside -- patch_scheme_screen did not run.")
     out[shell] = src[shell].replace(line, line + (
         "    GenesiTopBar {}\n"
-        "    GenesiTopBarPanel {}\n"), 1)
+        "    GenesiStudio {}\n"), 1)
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)

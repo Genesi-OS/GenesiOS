@@ -83,6 +83,24 @@ check("which are Genesi's", colours["surface"] == "#040b17"
       and colours["primary"] == "#1FBE6A", repr(colours.get("surface")))
 
 print()
+print("-- a scheme and NO settings file: the fresh install " + "-" * 14)
+io.open(gp.SCHEME, "w", encoding="utf-8").write(json.dumps({
+    "mode": "dark",
+    "colours": {"surface": "1e1e2e", "surfaceContainer": "313244",
+                "onSurface": "cdd6f4", "primary": "89b4fa",
+                "onPrimary": "11111b", "outline": "6c7086"},
+}))
+colours, following = gp.resolve()
+# The default was the other way round, on the reasoning that an identity
+# should not leave in an update. That reasoning was about the identity and not
+# about the desktop: "every window follows the theme" cannot be true by default
+# in an OS where the default is that six windows do not.
+check("a fresh install FOLLOWS the desktop", following is True,
+      "the emerald is one switch away; it is no longer the assumption")
+check("and paints from the scheme", colours["surface"] == "#1e1e2e",
+      repr(colours.get("surface")))
+
+print()
 print("-- a scheme, switch off " + "-" * 41)
 io.open(gp.SCHEME, "w", encoding="utf-8").write(json.dumps({
     "mode": "dark",
@@ -93,9 +111,9 @@ io.open(gp.SCHEME, "w", encoding="utf-8").write(json.dumps({
 io.open(gp.CENTER_SETTINGS, "w", encoding="utf-8").write(
     json.dumps({"followSystemTheme": False}))
 colours, following = gp.resolve()
-check("a scheme alone does not turn following on", following is False,
-      "the Genesi look is the default and does not leave in an update")
-check("so the colours are still Genesi's", colours["surface"] == "#040b17")
+check("turning the switch OFF keeps Genesi's palette", following is False,
+      "the emerald has to stay reachable, it is just not the default")
+check("so the colours are Genesi's", colours["surface"] == "#040b17")
 
 print()
 print("-- a scheme, switch on " + "-" * 42)

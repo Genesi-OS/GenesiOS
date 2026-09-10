@@ -108,7 +108,10 @@ pkgver=0.1.0
 # keeps exactly one control for it -- the switch that turns it on -- and
 # everything else about it is on the bar's own panel, where you can see what
 # you are changing.
-pkgrel=25
+# 26: following the desktop's colour scheme is this app's default too,
+# for the same reason the other six flipped. Emerald on near-black is
+# still one switch away on the Settings page.
+pkgrel=26
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
