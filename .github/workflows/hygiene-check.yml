@@ -216,6 +216,19 @@ jobs:
         # with a handful of white controls in it.
         run: python genesi-arch/ci/app-palette-test.py
 
+      - name: every PKGBUILD parses as bash
+        # One apostrophe cost a full build. `optdepends=('... for Depth's Fine
+        # tier')` closes its own single-quoted string, so bash read the rest of
+        # the file in the wrong quoting context and reported a syntax error a
+        # hundred and forty lines lower, in a line that was fine -- and makepkg
+        # failed to source the PKGBUILD at all, after the runner had installed
+        # a hundred dependencies to get there.
+        #
+        # `bash -n` parses without running anything and takes milliseconds.
+        # With extglob on, because makepkg runs with it and a vendored CachyOS
+        # PKGBUILD uses `rm -r !(test)`.
+        run: python genesi-arch/ci/pkgbuild-syntax-test.py
+
       - name: Depth cuts a subject out, and admits when there is not one
         # Three lists of the same words -- the tiers in genesi-depth, the
         # enums genesi-center-set accepts, and the switch statements in

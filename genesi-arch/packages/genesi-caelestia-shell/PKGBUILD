@@ -317,7 +317,13 @@ makedepends=('cmake' 'ninja' 'qt6-shadertools')
 # segmentation network is genuinely better on hair and foliage. Never a
 # requirement -- without it Fine is the same classical method at a larger
 # working size, which is what the other two tiers already are.
-optdepends=('python-rembg: a segmentation network for Depth's Fine tier')
+# No apostrophe in that description. This line read "Depth's Fine tier"
+# and the apostrophe CLOSED the single-quoted string -- bash then read
+# the rest of the file in the wrong quoting context and reported a
+# syntax error a hundred and forty lines later, and makepkg failed to
+# source the PKGBUILD at all. ci/pkgbuild-syntax-test.py runs `bash -n`
+# over every one of them now.
+optdepends=('python-rembg: a segmentation network for the Fine tier of Depth')
 provides=('caelestia-shell')
 conflicts=('caelestia-shell' 'caelestia-shell-git')
 source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
