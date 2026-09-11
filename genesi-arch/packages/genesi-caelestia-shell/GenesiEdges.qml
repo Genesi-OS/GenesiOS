@@ -73,14 +73,27 @@ Singleton {
 
     readonly property real barStrip: root.stripFor(GlobalConfig.topbar)
 
-    // What upstream has to give up, per edge. Only the BAR counts here: it
-    // reserves an exclusive zone and the dock deliberately does not, so a
-    // panel opening under the dock is a panel behind a floating thing, which
-    // is what a dock is. A panel opening under the bar is a panel behind a
-    // wall.
+    // ── Two questions, two names ──────────────────────────────────────
+    //
+    // HOW MUCH of an edge the bar occupies, for the things that have to lay
+    // out around it: its exclusion zone, caelestia's panel inset, the blob
+    // backgrounds, where a closed drawer hides. Only the BAR counts, because
+    // only the bar reserves space -- a panel opening behind the dock is a
+    // panel behind a floating thing, which is what a dock is.
     readonly property real top: root.barAtTop ? root.barStrip : 0
     readonly property real bottom: (GlobalConfig.topbar.enabled && !root.barAtTop)
         ? root.barStrip : 0
+
+    // ...and WHETHER anything of ours is standing on that edge at all, which
+    // is a different question with a different answer. It decides whether the
+    // drawers window gives up its eighty-pixel drag margin there, and the
+    // dock needs that as much as the bar does: `hyprctl layers` puts the
+    // drawers above the dock, so without this the dock takes no clicks on an
+    // empty workspace. That was the first bug in this whole sequence, and it
+    // came back the day these two questions were given one name.
+    readonly property bool claimsTop: root.top > 0 || root.dockAtTop
+    readonly property bool claimsBottom: root.bottom > 0
+        || (GlobalConfig.dock.enabled && !root.dockAtTop)
 
     // The left edge belongs to caelestia's rail -- except when the Genesi bar
     // has taken the rail's place, which collapses it to the border thickness

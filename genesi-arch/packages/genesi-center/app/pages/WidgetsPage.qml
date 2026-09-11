@@ -198,7 +198,7 @@ Item {
                                     Column {
                                         anchors.centerIn: parent
                                         spacing: 1
-                                        visible: cell.on && page.clock.enabled
+                                        visible: cell.on && page.clock.enabled === true
                                         Text {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             text: "09:41"

@@ -29,7 +29,13 @@ import sys
 OURS = ("caelestia-genesi-topbar", "caelestia-genesi-dock",
         "caelestia-genesi-sidepanel", "caelestia-genesi-edge",
         "caelestia-genesi-studio", "caelestia-genesi-scheme")
-SHELL = "/usr/lib/caelestia/shell"
+# Where caelestia's CMake actually puts the QML. The first guess was
+# /usr/lib/caelestia/shell, and the doctor reported the whole tree
+# missing on a machine where every file was present -- a diagnostic
+# that lies is worse than one that says nothing.
+SHELL_DIRS = ("/etc/xdg/quickshell/caelestia",
+              "/usr/lib/caelestia/shell",
+              "/usr/share/caelestia/shell")
 
 
 def head(title):
@@ -110,9 +116,11 @@ def config():
 
 def installed():
     head("the files the shell is running")
-    if not os.path.isdir(SHELL):
-        print("  no shell tree at", SHELL)
+    shell = next((p for p in SHELL_DIRS if os.path.isdir(p)), None)
+    if shell is None:
+        print("  no shell tree in any of: " + ", ".join(SHELL_DIRS))
         return
+    print("  shell tree:", shell)
     want = {
         "modules/background/GenesiTopBar.qml": "the bar",
         "modules/background/GenesiSidePanel.qml": "the side panel",
@@ -122,13 +130,13 @@ def installed():
         "modules/launcher/GenesiSidePanelState.qml": "the panel's open flag",
     }
     for rel, what in sorted(want.items()):
-        p = os.path.join(SHELL, rel)
+        p = os.path.join(shell, rel)
         print("  %-52s %s" % (rel, "present" if os.path.exists(p)
                               else "MISSING -- " + what + " cannot exist"))
 
     # ...and that shell.qml actually builds them. A file on disk that nothing
     # instantiates is the same as a file that is not there.
-    qml = os.path.join(SHELL, "shell.qml")
+    qml = os.path.join(shell, "shell.qml")
     if os.path.exists(qml):
         text = io.open(qml, encoding="utf-8", errors="replace").read()
         for comp in ("GenesiTopBar", "GenesiSidePanel", "GenesiStudio"):

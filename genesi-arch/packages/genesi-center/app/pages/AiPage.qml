@@ -235,7 +235,7 @@ Item {
 
                             Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: page.voice.ready
+                                visible: page.voice.ready === true
                                 width: 72; height: 26; radius: Tokens.radiusSm
                                 color: sayHov.hovered ? Tokens.cardHi : "transparent"
                                 border.width: 1
@@ -322,7 +322,7 @@ Item {
 
                             Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: page.cloud.configured
+                                visible: page.cloud.configured === true
                                 width: 62; height: 26; radius: Tokens.radiusSm
                                 color: testHov.hovered ? Tokens.cardHi : "transparent"
                                 border.width: 1
@@ -350,7 +350,7 @@ Item {
 
                             Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: page.cloud.configured
+                                visible: page.cloud.configured === true
                                 width: 62; height: 26; radius: Tokens.radiusSm
                                 color: clearHov.hovered ? Tokens.cardHi : "transparent"
                                 border.width: 1

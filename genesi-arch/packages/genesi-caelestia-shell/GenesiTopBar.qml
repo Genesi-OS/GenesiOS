@@ -142,53 +142,31 @@ Variants {
             }
         }
 
-        // ── Where this sits among the other layer surfaces ──────────────
-        //
-        // Hyprland stacks the surfaces on a layer in the order they were
-        // mapped, and the order at login is not the order after a toggle.
-        // That is why the bar came up underneath caelestia's drawers on a
-        // cold start and sat above them the moment it was switched off and
-        // on again -- and underneath, the drawers' own border is drawn over
-        // it and its hover strips take the clicks.
-        //
-        // `order` is the only way to say it from inside the shell. An older
-        // Hyprland prints an error for the rule and changes nothing, which is
-        // the right failure: the bar is then exactly where it was before.
-        function applyStacking(): void {
-            Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
-                                     `order 2,${win.ns}`]);
-        }
-
         onFrostChanged: win.applyFrost()
-        Component.onCompleted: {
-            win.applyFrost();
-            win.applyStacking();
-        }
+        Component.onCompleted: win.applyFrost()
 
         // ── Why the bar appears a moment after everything else ──────────
         //
-        // Two things decide whether this surface ends up above caelestia's
-        // drawers or underneath them, and both of them are about WHEN it
-        // maps.
-        //
-        // Hyprland stacks the surfaces on a layer in map order, and it
-        // applies a `layerrule` to a surface as it maps -- not to one that is
-        // already up. The rule is asked for in Component.onCompleted, which
-        // is after this window exists, so at login it arrived too late to
-        // mean anything.
+        // Within a layer, Hyprland stacks surfaces in the order they mapped,
+        // and there is no way to say otherwise from here: `layerrule = order`
+        // is refused by 0.56.2, which answers "invalid field ... missing a
+        // value" and changes nothing. Map order is the whole mechanism.
         //
         // And the drawers window remaps itself during startup on its own: its
-        // layer is a binding on whether something is fullscreen, and that
+        // layer is a binding on whether anything is fullscreen, and that
         // answer arrives from Hyprland's IPC a moment after the shell starts.
-        // So even declared after it, this bar could be mapped first and the
-        // drawers could land on top -- their border drawn over the bar, their
-        // hover strips taking its clicks.
+        // So even though shell.qml builds this bar after the drawers, the bar
+        // could be mapped first and the drawers land on top of it -- their
+        // border drawn over the bar, their hover strips taking its clicks.
         //
         // Toggling the bar off and on fixed it every single time, because
-        // that is a remap: with the rule in place, after the drawers have
-        // settled. This is that toggle, done once, at the only moment it is
-        // needed. `mapped` never goes back to false, so turning the bar off
-        // and on later behaves normally.
+        // that is a remap, after the drawers have settled. This is that
+        // toggle, done once, at the only moment it is needed. `mapped` never
+        // goes back to false, so turning the bar off and on later behaves
+        // normally.
+        //
+        // `hyprctl layers` says it works: the bar is the last surface on the
+        // top layer on both monitors, above caelestia-drawers.
         property bool mapped: false
 
         Timer {

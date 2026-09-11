@@ -126,7 +126,13 @@ pkgver=0.1.0
 # 29: the writer learns topbar.margin -- how far the bar sits from the
 # screen edge, which is not the same setting as the gap around its
 # islands.
-pkgrel=29
+# 30: four QML warnings the shell log was printing on every start.
+# `page.voice.ready` and `page.cloud.configured` on the AI page and
+# `page.clock.enabled` on the Widgets page are read before the data
+# plane has answered, and a missing key on a section that defaults to
+# {} is `undefined` -- which Qt refuses to assign to `visible` and
+# complains about, once per page, for ever. Compared against true now.
+pkgrel=30
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

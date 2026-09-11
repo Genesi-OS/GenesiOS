@@ -131,19 +131,8 @@ Variants {
             }
         }
 
-        // Above caelestia's drawers, for the same reason the bar is: the
-        // order surfaces mapped in at login is not the order they end up in
-        // after a toggle, and underneath them a dock takes no clicks.
-        function applyStacking(): void {
-            Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
-                                     `order 2,${win.ns}`]);
-        }
-
         onFrostChanged: win.applyFrost()
-        Component.onCompleted: {
-            win.applyFrost();
-            win.applyStacking();
-        }
+        Component.onCompleted: win.applyFrost()
 
         property bool peek: false
 

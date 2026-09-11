@@ -405,7 +405,29 @@ pkgver=2.0.3
 # test suite had a bright subject on a dark field and a flat gradient --
 # not the case that broke. It has it now, and the old code refuses that
 # picture outright while the new one cuts the figure.
-pkgrel=36
+# 37: what genesi-shell-doctor said, acted on.
+#
+# `hyprctl layers` puts the bar last on the top layer on both monitors,
+# above caelestia-drawers -- so the stacking is fixed and the delayed
+# first map is what fixed it. The `layerrule = order` it also asked for
+# is refused by Hyprland 0.56.2 ("invalid field ... missing a value"),
+# so that call did nothing but print an error on every boot. Gone, from
+# the bar and from the dock.
+#
+# The same output showed caelestia-drawers sitting ABOVE the dock while
+# GenesiEdges.bottom was zero -- because the BAR is at the top. So the
+# drawers' eighty-pixel drag margin covered the dock again on an empty
+# workspace, which is the first bug in this whole sequence, back because
+# "does anything of ours own this edge" and "how much of it does the bar
+# occupy" had been given one name. Two questions, two names now:
+# top/bottom for layout, claimsTop/claimsBottom for input.
+#
+# And the doctor itself was looking for the shell in
+# /usr/lib/caelestia/shell; caelestia's CMake installs it to
+# /etc/xdg/quickshell/caelestia, so it reported the whole tree missing
+# on a machine where every file was present. A diagnostic that lies is
+# worse than one that says nothing.
+pkgrel=37
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
