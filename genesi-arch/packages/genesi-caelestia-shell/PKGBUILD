@@ -342,7 +342,39 @@ pkgver=2.0.3
 # exactly as it did before, so the feature reads as broken. And
 # genesi-depth takes the edge fade by name now, so no caller translates
 # "soft" into a pixel count.
-pkgrel=34
+# 35: the side panel could not load at all, and the fix for it in 34
+# is what made that true. `modelData` was declared `required` on both of
+# its windows -- and Variants sets modelData on its DELEGATE, which is
+# the Scope, not on anything inside it. A required property nobody
+# initialises is a hard load error, so the whole file stopped
+# instantiating. It reads scope.modelData now, the way upstream's own
+# Drawers.qml does with the same shape.
+#
+# The offscreen harness had been substituting a plain property for EVERY
+# required declaration in the file before rendering it, so the shape
+# that cannot load rendered perfectly. It only supplies what Variants
+# supplies now -- the delegate's screen -- and it fails on the rest.
+#
+# 34 also moved caelestia's panels below the bar and left their
+# backgrounds where they were: three places convert a Panels-relative
+# position into a window-relative one by adding the border thickness,
+# and that was the whole offset until the bar was added to it. Every
+# blob, the fullscreen region and every panel's input region were drawn
+# one bar-height too high, which is the surface sticking out over the
+# notifications.
+#
+# And the bar still came up underneath the drawers on a cold start,
+# because the `layerrule` it asks for is applied to a surface as it MAPS
+# and this one was already up -- and because the drawers window remaps
+# itself during startup anyway, when Hyprland's IPC answers whether
+# something is fullscreen. The bar's first map waits for the shell to
+# settle now, which is the toggle that fixed it by hand, done once.
+#
+# genesi-shell-doctor prints what the surfaces are actually doing:
+# stacking order per monitor, what each reserved, which files loaded and
+# what the shell said while starting. Three bugs in a row were diagnosed
+# from a screenshot and two of those guesses were wrong.
+pkgrel=35
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -403,8 +435,10 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiSidePanel.qml"
         "GenesiSidePanelState.qml"
         "GenesiDepth.qml"
-        "genesi-depth")
+        "genesi-depth"
+        "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
@@ -559,5 +593,7 @@ package() {
     DESTDIR="$pkgdir" cmake --install build
     install -Dm755 "${srcdir}/genesi-depth" \
         "${pkgdir}/usr/bin/genesi-depth"
+    install -Dm755 "${srcdir}/genesi-shell-doctor" \
+        "${pkgdir}/usr/bin/genesi-shell-doctor"
     install -Dm644 LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
 }

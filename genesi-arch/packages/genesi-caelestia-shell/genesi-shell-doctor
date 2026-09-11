@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""
+genesi-shell-doctor — what the shell's surfaces are actually doing.
+
+Three bugs in a row have been diagnosed from a screenshot and a guess, and two
+of those guesses were wrong. The things that decide them are not visible in a
+screenshot:
+
+  * which layer surface is ON TOP of which, which is map order and nothing
+    else, and which a screenshot can only hint at
+  * what each one reserved, and where the compositor therefore put it
+  * whether a QML file loaded at all -- a component that fails to load leaves
+    no trace on screen, it is simply absent
+
+So: run this on the machine and paste what it prints.
+
+    genesi-shell-doctor
+
+It reads. It does not change anything.
+"""
+import io
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+OURS = ("caelestia-genesi-topbar", "caelestia-genesi-dock",
+        "caelestia-genesi-sidepanel", "caelestia-genesi-edge",
+        "caelestia-genesi-studio", "caelestia-genesi-scheme")
+SHELL = "/usr/lib/caelestia/shell"
+
+
+def head(title):
+    print()
+    print("== " + title + " " + "=" * max(0, 60 - len(title)))
+
+
+def run(argv):
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.SubprocessError) as e:
+        return 1, "", str(e)
+
+
+def layers():
+    """Every layer surface, per monitor, in the order the compositor has them.
+
+    This is the answer to "is the bar above or below the drawers". Hyprland
+    lists each layer's surfaces in stacking order, first at the bottom, so
+    the LAST line of a layer is the one on top.
+    """
+    head("layer surfaces, bottom to top")
+    code, out, err = run(["hyprctl", "layers", "-j"])
+    if code != 0:
+        print("  hyprctl layers failed:", (err or out).strip()[:200])
+        return
+    try:
+        data = json.loads(out)
+    except ValueError:
+        print("  hyprctl did not answer with JSON")
+        return
+
+    for monitor, info in data.items():
+        print(f"  monitor {monitor}")
+        for level in info.get("levels", {}):
+            names = info["levels"][level]
+            if not names:
+                continue
+            label = {"0": "background", "1": "bottom",
+                     "2": "top", "3": "overlay"}.get(level, level)
+            print(f"    layer {label}")
+            for i, s in enumerate(names):
+                ns = s.get("namespace", "?")
+                mark = "  <-- ours" if ns in OURS else ""
+                print("      %d. %-34s %4dx%-4d at %4d,%-4d%s"
+                      % (i, ns, s.get("w", 0), s.get("h", 0),
+                         s.get("x", 0), s.get("y", 0), mark))
+            top = names[-1].get("namespace", "?") if names else ""
+            print(f"       (on top: {top})")
+
+
+def config():
+    head("what the shell is configured to do")
+    path = os.path.join(
+        os.environ.get("XDG_CONFIG_HOME")
+        or os.path.expanduser("~/.config"), "caelestia", "shell.json")
+    if not os.path.exists(path):
+        print("  no shell.json at", path)
+        return
+    try:
+        cfg = json.loads(io.open(path, encoding="utf-8").read())
+    except ValueError as e:
+        print("  shell.json does not parse:", e)
+        return
+    for section in ("topbar", "dock", "sidepanel"):
+        block = cfg.get(section)
+        if block is None:
+            print(f"  {section}: not in shell.json (every value is its default)")
+            continue
+        print(f"  {section}: " + ", ".join(
+            f"{k}={v}" for k, v in sorted(block.items())))
+    depth = (cfg.get("background") or {}).get("depth")
+    print("  background.depth: " + (", ".join(
+        f"{k}={v}" for k, v in sorted(depth.items())) if depth
+        else "not in shell.json (every value is its default)"))
+
+
+def installed():
+    head("the files the shell is running")
+    if not os.path.isdir(SHELL):
+        print("  no shell tree at", SHELL)
+        return
+    want = {
+        "modules/background/GenesiTopBar.qml": "the bar",
+        "modules/background/GenesiSidePanel.qml": "the side panel",
+        "modules/background/GenesiDepth.qml": "the depth layer",
+        "modules/background/GenesiDock.qml": "the dock",
+        "modules/launcher/GenesiEdges.qml": "the edge measurements",
+        "modules/launcher/GenesiSidePanelState.qml": "the panel's open flag",
+    }
+    for rel, what in sorted(want.items()):
+        p = os.path.join(SHELL, rel)
+        print("  %-52s %s" % (rel, "present" if os.path.exists(p)
+                              else "MISSING -- " + what + " cannot exist"))
+
+    # ...and that shell.qml actually builds them. A file on disk that nothing
+    # instantiates is the same as a file that is not there.
+    qml = os.path.join(SHELL, "shell.qml")
+    if os.path.exists(qml):
+        text = io.open(qml, encoding="utf-8", errors="replace").read()
+        for comp in ("GenesiTopBar", "GenesiSidePanel", "GenesiStudio"):
+            built = re.search(r"^\s*%s\s*\{" % comp, text, re.M) is not None
+            print("  shell.qml builds %-20s %s"
+                  % (comp, "yes" if built else "NO -- it is never created"))
+
+
+def logs():
+    """QML errors from the running shell.
+
+    A component that fails to load -- a required property nobody sets, a
+    singleton that is not registered -- draws nothing and says nothing on
+    screen. It says everything here.
+    """
+    head("what the shell said while starting")
+    if shutil.which("quickshell"):
+        code, out, _ = run(["quickshell", "log", "-i", "caelestia"])
+        if code == 0 and out.strip():
+            keep = [l for l in out.splitlines()
+                    if any(w in l for w in ("rror", "arning", "Required",
+                                            "not a type", "unavailable",
+                                            "is not defined", "Genesi"))]
+            for line in keep[-40:]:
+                print("  " + line.strip()[:200])
+            if not keep:
+                print("  nothing that looks like an error")
+            return
+    code, out, _ = run(["journalctl", "--user", "-n", "400", "--no-pager",
+                        "-o", "cat"])
+    keep = [l for l in out.splitlines()
+            if "Genesi" in l or "Required property" in l or "qml" in l.lower()]
+    if keep:
+        for line in keep[-40:]:
+            print("  " + line.strip()[:200])
+    else:
+        print("  no shell log found. Start it in a terminal to see them:")
+        print("    pkill -f 'quickshell.*caelestia'; caelestia shell")
+
+
+def layerrules():
+    head("does this Hyprland understand `layerrule = order`")
+    code, out, err = run(["hyprctl", "version", "-j"])
+    if code == 0:
+        try:
+            print("  hyprland", json.loads(out).get("tag", "?"))
+        except ValueError:
+            pass
+    # Asking for the rule is the only reliable test: an unsupported rule is
+    # answered with an error and changes nothing.
+    code, out, err = run(["hyprctl", "keyword", "layerrule",
+                          "order 2,caelestia-genesi-topbar"])
+    answer = (out or err).strip()
+    print("  setting it answers: " + (answer[:120] or "(nothing, which is ok)"))
+    if "invalid" in answer.lower() or "unknown" in answer.lower():
+        print("  -- this Hyprland does not support it, so the bar's stacking")
+        print("     depends on map order alone.")
+
+
+def main():
+    print("genesi-shell-doctor")
+    code, out, _ = run(["pacman", "-Q", "genesi-caelestia-shell"])
+    print("  " + (out.strip() if code == 0 else "package not installed?"))
+    config()
+    installed()
+    layers()
+    layerrules()
+    logs()
+    print()
+    print("Paste all of the above.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

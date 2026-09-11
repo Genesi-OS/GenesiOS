@@ -73,9 +73,11 @@ Variants {
         StyledWindow {
             id: edge
 
-            required property ShellScreen modelData
-
-            screen: edge.modelData
+            // scope.modelData, not a declaration of its own. Variants hands
+            // `modelData` to its delegate -- the Scope -- and to nothing
+            // inside it, so a `required property` here is one nobody sets,
+            // which is a load error for the whole file.
+            screen: scope.modelData
             name: "genesi-edge"
             visible: scope.available && GlobalConfig.sidepanel.edgeHover
 
@@ -100,13 +102,6 @@ Variants {
         StyledWindow {
             id: win
 
-            // On the WINDOW, the way the dock and the bar declare it. It was
-            // on the Scope, and `win.modelData` was therefore undefined --
-            // which made `mine` compare undefined to a monitor id, which is
-            // false, which meant this window was never once visible. Reading
-            // a property that is not there is not an error in QML.
-            required property ShellScreen modelData
-
             readonly property var cfg: contentItem.Config.sidepanel
             readonly property var tok: contentItem.Tokens
 
@@ -114,7 +109,7 @@ Variants {
             // two panels, both of them live.
             readonly property bool mine: GenesiSidePanelState.open
                 && scope.available
-                && Hypr.monitorFor(win.modelData)?.id === Hypr.focusedMonitor?.id
+                && Hypr.monitorFor(scope.modelData)?.id === Hypr.focusedMonitor?.id
 
             // Named on the window, not read from `contentItem` down in the
             // card. Config is an ATTACHED type: at window level it has to be
@@ -165,7 +160,7 @@ Variants {
                 GenesiSidePanelState.hide();
             }
 
-            screen: win.modelData
+            screen: scope.modelData
             name: "genesi-sidepanel"
             visible: win.mine
 

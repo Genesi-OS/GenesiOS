@@ -2466,12 +2466,14 @@ def patch_edge_layout(release):
     """
     exclusions = os.path.join(release, "modules", "drawers", "Exclusions.qml")
     panels = os.path.join(release, "modules", "drawers", "Panels.qml")
-    for p in (exclusions, panels):
+    content = os.path.join(release, "modules", "drawers", "ContentWindow.qml")
+    for p in (exclusions, panels, content):
         if not os.path.exists(p):
             fail(f"{p} is gone -- the drawers' layout moved.")
 
-    src = {p: io.open(p, encoding="utf-8").read() for p in (exclusions, panels)}
-    for p in (exclusions, panels):
+    src = {p: io.open(p, encoding="utf-8").read()
+           for p in (exclusions, panels, content)}
+    for p in (exclusions, panels, content):
         if "GenesiEdges" in src[p]:
             fail(f"{os.path.basename(p)} already mentions GenesiEdges -- this "
                  "ran twice.")
@@ -2550,6 +2552,43 @@ def patch_edge_layout(release):
     if "import qs.modules.launcher as Launcher\n" not in out[panels]:
         fail("Panels.qml no longer imports qs.modules.launcher as Launcher -- "
              "the depth of that qualifier is what this patch writes against.")
+
+    # ── ...and so does everything that draws them ─────────────────────────
+    #
+    # PanelBg turns a Panels-relative position into a window-relative one by
+    # adding `borderThickness`, which was the entire offset until the line
+    # above added the bar to it. Left alone, every blob background is drawn
+    # one bar-height above the panel it belongs to -- a surface sticking out
+    # over the top of a notification, which is exactly how it looked.
+    old = ("        x: panel.x + bar.implicitWidth\n"
+           "        y: panel.y + root.borderThickness\n")
+    if old not in src[content]:
+        fail("ContentWindow.qml's PanelBg does not offset by the border the "
+             "way the edge layout patch expects. That offset and Panels' own "
+             "top margin have to be the same number, or every drawer's "
+             "background is drawn somewhere its drawer is not.")
+    out[content] = src[content].replace(old, (
+        "        x: panel.x + bar.implicitWidth\n"
+        "        // Genesi: the same inset Panels uses. These two are one\n"
+        "        // number -- the offset from this window to that item -- and\n"
+        "        // they disagreed for a release.\n"
+        "        y: panel.y + root.borderThickness + GenesiEdges.top\n"), 1)
+
+    old = ("        y: panels.notifications.y + root.borderThickness\n")
+    if old not in out[content]:
+        fail("ContentWindow.qml's fullscreen region does not offset by the "
+             "border -- it converts a Panels position the same way PanelBg "
+             "does and has to move with it.")
+    out[content] = out[content].replace(old, (
+        "        y: panels.notifications.y + root.borderThickness"
+        " + GenesiEdges.top\n"), 1)
+
+    imp = "import qs.modules.bar\n"
+    if imp not in out[content]:
+        fail("ContentWindow.qml does not import qs.modules.bar -- there is no "
+             "import block where this expects one.")
+    out[content] = out[content].replace(
+        imp, imp + "import qs.modules.launcher\n", 1)
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
@@ -2634,6 +2673,18 @@ def patch_edge_regions(release):
            "    height: win.height - clampedThickness * 2 - topPad"
            " - bottomPad\n")
     src = src.replace(old, new, 1)
+
+    # The same Panels-to-window conversion PanelBg does, for input rather
+    # than for drawing. It has to move with the panels for the same reason.
+    old = ("        x: panel.x + root.bar.implicitWidth\n"
+           "        y: panel.y + root.borderThickness\n")
+    if old not in src:
+        fail("Regions.qml's R component does not offset by the border -- that "
+             "offset and Panels' top margin are one number, and a region that "
+             "keeps the old one answers where its panel is not.")
+    src = src.replace(old, (
+        "        x: panel.x + root.bar.implicitWidth\n"
+        "        y: panel.y + root.borderThickness + GenesiEdges.top\n"), 1)
 
     imp = "import qs.modules.bar as Bar\n"
     if imp not in src:

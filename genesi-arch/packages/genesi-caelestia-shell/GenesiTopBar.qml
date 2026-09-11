@@ -160,9 +160,41 @@ Variants {
             win.applyStacking();
         }
 
+        // ── Why the bar appears a moment after everything else ──────────
+        //
+        // Two things decide whether this surface ends up above caelestia's
+        // drawers or underneath them, and both of them are about WHEN it
+        // maps.
+        //
+        // Hyprland stacks the surfaces on a layer in map order, and it
+        // applies a `layerrule` to a surface as it maps -- not to one that is
+        // already up. The rule is asked for in Component.onCompleted, which
+        // is after this window exists, so at login it arrived too late to
+        // mean anything.
+        //
+        // And the drawers window remaps itself during startup on its own: its
+        // layer is a binding on whether something is fullscreen, and that
+        // answer arrives from Hyprland's IPC a moment after the shell starts.
+        // So even declared after it, this bar could be mapped first and the
+        // drawers could land on top -- their border drawn over the bar, their
+        // hover strips taking its clicks.
+        //
+        // Toggling the bar off and on fixed it every single time, because
+        // that is a remap: with the rule in place, after the drawers have
+        // settled. This is that toggle, done once, at the only moment it is
+        // needed. `mapped` never goes back to false, so turning the bar off
+        // and on later behaves normally.
+        property bool mapped: false
+
+        Timer {
+            running: !win.mapped
+            interval: 800
+            onTriggered: win.mapped = true
+        }
+
         screen: modelData
         name: "genesi-topbar"
-        visible: win.cfg.enabled
+        visible: win.cfg.enabled && win.mapped
 
         WlrLayershell.layer: WlrLayer.Top
         color: "transparent"
