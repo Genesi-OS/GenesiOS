@@ -2479,10 +2479,13 @@ def patch_edge_regions(release):
     if "GenesiEdges" in src:
         fail("Regions.qml already mentions GenesiEdges -- this ran twice.")
 
+    # Upstream's four lines, exactly as upstream writes them. Nothing
+    # this patch introduces belongs in here: a precondition naming a
+    # property the patch has not added yet can never match.
     old = ("    x: bar.clampedWidth + win.dragMaskPadding\n"
            "    y: clampedThickness + win.dragMaskPadding\n"
            "    width: win.width - bar.clampedWidth - clampedThickness"
-           " - leftPad - win.dragMaskPadding\n"
+           " - win.dragMaskPadding * 2\n"
            "    height: win.height - clampedThickness * 2"
            " - win.dragMaskPadding * 2\n")
     if old not in src:
@@ -2505,7 +2508,7 @@ def patch_edge_regions(release):
            "    x: bar.clampedWidth + leftPad\n"
            "    y: clampedThickness + topPad\n"
            "    width: win.width - bar.clampedWidth - clampedThickness"
-           " - win.dragMaskPadding * 2\n"
+           " - leftPad - win.dragMaskPadding\n"
            "    height: win.height - clampedThickness * 2 - topPad"
            " - bottomPad\n")
     src = src.replace(old, new, 1)

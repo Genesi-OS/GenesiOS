@@ -216,6 +216,20 @@ jobs:
         # with a handful of white controls in it.
         run: python genesi-arch/ci/app-palette-test.py
 
+      - name: a patcher precondition describes upstream, not us
+        # caelestia-patches.py is written as pairs: what upstream says today,
+        # and what it will say once we are done. The first is asserted before
+        # the second is written, so an expired override fails the build with a
+        # specific message instead of shipping a silently wrong shell.
+        #
+        # That only works while the two halves stay on their own sides. A
+        # `.replace()` meant for the replacement landed on the precondition
+        # once, and the patch then asserted that upstream already mentioned a
+        # property that patch adds. It cannot -- so the build stopped with a
+        # message blaming upstream for a change upstream had not made, twenty
+        # minutes in.
+        run: python genesi-arch/ci/patcher-sanity-test.py
+
       - name: every PKGBUILD parses as bash
         # One apostrophe cost a full build. `optdepends=('... for Depth's Fine
         # tier')` closes its own single-quoted string, so bash read the rest of
