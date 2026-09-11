@@ -1,11 +1,11 @@
-// GENESI — which screen edges a Genesi surface already owns.
+// GENESI — which screen edges a Genesi surface owns, and how much of them.
 //
 // ── The bug this exists to answer ──────────────────────────────────────────
 //
 // caelestia's drawers window covers the whole screen and takes input on a
 // FRAME around it: the border, plus a drag margin so a panel can be pulled in
-// from its edge. That margin is not small. Regions.qml computes it as the
-// largest dragThreshold of the four panels
+// from its edge. That margin is not small. Regions.qml sizes it as the largest
+// dragThreshold of the four panels
 //
 //     max(dashboard 50, launcher 50, session 30, sidebar 80)
 //
@@ -14,32 +14,32 @@
 // belong to the drawers window.
 //
 // The Genesi top bar is 46 pixels tall and the dock about 76. Both sit
-// entirely inside that strip, and the drawers window is above them, so on a
-// freshly logged-in session -- nothing open, which is every login and every
-// reboot -- neither received a single click. Open any window and the margin
-// collapses to zero and both come back to life, which is why this read as a
-// startup bug rather than a layout one.
+// entirely inside that strip, and on a freshly logged-in session -- nothing
+// open, which is every login and every reboot -- neither received a click.
 //
-// ── What it yields, and what it keeps ──────────────────────────────────────
+// ── What reads this, and why it is one file ───────────────────────────────
 //
-// On an edge a Genesi surface owns, caelestia gives up the drag MARGIN and
-// keeps its border strip. That is the smallest change that works: the bar
-// needs 46 of those 90 pixels and the dock 76, while the border is 10, so
-// both are clear -- and every caelestia hover point stays exactly where it
-// was, at exactly its normal size. Yielding the whole edge would have taken
-// the dashboard's top hover and the launcher's drag-up with it.
+// Four things need to know how tall the bar is:
 //
-// ── Why a boolean and not a height ─────────────────────────────────────────
+//   * the bar itself, to size its own window
+//   * Regions.qml, to stop claiming that strip for input
+//   * Exclusions.qml, so caelestia's border stops reserving the same edge the
+//     bar reserves -- that is what pushed the bar ten pixels down into the
+//     border on every cold start
+//   * Panels.qml, so the dashboard, the launcher and the notifications open
+//     BELOW the bar instead of underneath it
 //
-// The first version of this published how TALL each surface was, so upstream
-// could inset by exactly that. Which meant the bar's height had an expression
-// in the file that draws it and a second one here, and every bug this project
-// has spent a day on has been two lists quietly disagreeing. A yes-or-no
-// cannot drift.
+// The first version of this answered only yes or no, to avoid writing the
+// bar's height in two places. Four callers later that is no longer the choice
+// on offer: the number exists, and the question is whether there is one
+// expression for it or four. `stripFor()` is the expression, and everything
+// calls it -- the bar with its own per-screen config, the three upstream files
+// through `top` and `bottom`.
 //
 // GlobalConfig rather than the per-screen attached Config: this is a
-// singleton, so there is no screen to attach to, and the surfaces it reports
-// on are configured once for the whole session.
+// singleton, so there is no screen to attach to. The surfaces it reports on
+// are configured once for the whole session, and a per-screen override of
+// topbar.height is not a thing Genesi offers.
 pragma Singleton
 
 import Quickshell
@@ -48,20 +48,40 @@ import Caelestia.Config
 Singleton {
     id: root
 
+    // How much of an edge the bar occupies, given a topbar config. The one
+    // expression; `fit` is the only form that floats, so it is the only one
+    // that pays for a gap on both sides.
+    function stripFor(cfg): real {
+        if (!cfg.enabled)
+            return 0;
+        if (cfg.form === "fit")
+            return cfg.height + cfg.gap * 2;
+        if (cfg.form === "full")
+            return cfg.height;
+        return cfg.height + cfg.gap;
+    }
+
     readonly property bool barAtTop: GlobalConfig.topbar.enabled
         && GlobalConfig.topbar.position !== "bottom"
     readonly property bool dockAtTop: GlobalConfig.dock.enabled
         && GlobalConfig.dock.edge === "top"
 
-    readonly property bool top: root.barAtTop || root.dockAtTop
-    readonly property bool bottom: (GlobalConfig.topbar.enabled && !root.barAtTop)
-        || (GlobalConfig.dock.enabled && !root.dockAtTop)
+    readonly property real barStrip: root.stripFor(GlobalConfig.topbar)
+
+    // What upstream has to give up, per edge. Only the BAR counts here: it
+    // reserves an exclusive zone and the dock deliberately does not, so a
+    // panel opening under the dock is a panel behind a floating thing, which
+    // is what a dock is. A panel opening under the bar is a panel behind a
+    // wall.
+    readonly property real top: root.barAtTop ? root.barStrip : 0
+    readonly property real bottom: (GlobalConfig.topbar.enabled && !root.barAtTop)
+        ? root.barStrip : 0
 
     // The left edge belongs to caelestia's rail -- except when the Genesi bar
     // has taken the rail's place, which collapses it to the border thickness
-    // and leaves that edge with nothing on it. The side panel's hover strip
-    // is four pixels of screen, and the drawers window's drag margin is
-    // eighty, so without this the strip would never see a pointer.
+    // and leaves that edge with nothing on it. The side panel's hover strip is
+    // four pixels of screen and the drawers window's drag margin is eighty, so
+    // without this the strip would never see a pointer.
     readonly property bool left: GlobalConfig.topbar.enabled
         && GlobalConfig.sidepanel.enabled && GlobalConfig.sidepanel.edgeHover
 }

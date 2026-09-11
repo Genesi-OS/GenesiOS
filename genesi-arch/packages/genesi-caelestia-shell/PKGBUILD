@@ -302,7 +302,47 @@ pkgver=2.0.3
 # and editing one in place is not. A picture with no subject to find --
 # a texture, a gradient -- is left alone rather than cut down to a speck
 # and drawn over the clock.
-pkgrel=33
+# 34: the side panel never appeared, and the bar came up in the wrong
+# place and would not take a click.
+#
+# The panel declared `modelData` on the Scope and then asked for
+# `win.modelData` -- a property the window does not have. So its "is
+# this my screen?" test compared undefined to a monitor id, which is
+# false, on every screen, always. Reading a property that is not there
+# is not an error in QML, and the offscreen harness had been editing
+# that very expression out of the file before rendering it.
+#
+# The bar: caelestia reserves each screen edge with a one-pixel window,
+# and the bar reserves the same edge. Layer-shell hands out exclusive
+# zones in map order, so on a cold start the border went first and the
+# bar was placed ten pixels down, inside the border that is drawn over
+# it. Exclusions.qml yields the edge the bar is on now. Everything
+# caelestia opens -- the dashboard, the launcher, the notifications in
+# the top right -- was laid out by Panels.qml inside `borderThickness`
+# and nothing else, which is why a notification arrived underneath the
+# bar; Panels insets by the bar as well now. Both read the one
+# expression for the bar's height, in GenesiEdges.
+#
+# Auto-hide flickered and could not be used: a MouseArea reports the
+# pointer has LEFT the moment it moves onto a child that takes hover,
+# and every button on the bar does. Reaching for one hid the bar, which
+# moved it away, which brought the bar back. HoverHandler does not
+# behave that way.
+#
+# The dock respects exclusive zones now (and still reserves none), so a
+# dock on the top edge sits below the bar; it grew headroom above it,
+# because a layer surface clips its own contents and the hover label was
+# drawn with its top half missing; and the media chip opens a player in
+# that headroom.
+#
+# Depth moved to the side panel, where it was asked for, and shows what
+# it FOUND -- the cut-out over a dimmed wallpaper, or a plain sentence
+# when the picture has no subject to cut. A sky full of cloud has none,
+# which is a correct answer and an invisible one: the desktop looks
+# exactly as it did before, so the feature reads as broken. And
+# genesi-depth takes the edge fade by name now, so no caller translates
+# "soft" into a pixel count.
+pkgrel=34
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

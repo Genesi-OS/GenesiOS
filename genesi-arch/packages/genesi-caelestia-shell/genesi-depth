@@ -3,6 +3,7 @@
 genesi-depth — cut the subject out of a wallpaper so widgets can sit behind it.
 
     genesi-depth cutout <image> [--quality draft|standard|fine]
+                                [--edge-fade none|soft|strong]
     genesi-depth path <image>            where the cutout for that image is
     genesi-depth status
     genesi-depth clear
@@ -66,6 +67,16 @@ CACHE = os.path.join(
 # boundary somewhere and the pixels there are a blend of both -- so a cutout
 # laid back over its own wallpaper wears a thin fringe of the background it
 # came from, which is the one artefact that makes the effect look pasted on.
+# How soft the cut edge is drawn, by name. The names are the setting -- the
+# shell passes `background.depth.edgeFade` straight through, and the panel
+# that previews the cut-out passes the same string. A caller that had to turn
+# "soft" into a pixel count would be a second place for these three words to
+# live, and the second place is always the one that goes stale.
+#
+# Separate from the tier, because the tier is how carefully the edge is TRACED
+# and this is how sharply it is DRAWN. Tracing costs time; drawing does not.
+FADES = {"none": 0, "soft": 2, "strong": 6}
+
 TIERS = {
     "draft": {"side": 480, "iters": 3, "feather": 0, "contract": 1},
     "standard": {"side": 720, "iters": 5, "feather": 2, "contract": 2},
@@ -78,7 +89,7 @@ def die(msg, code=1):
     raise SystemExit(code)
 
 
-def key_for(path, quality, feather):
+def key_for(path, quality, fade):
     """A name that changes when the picture or the setting does.
 
     The path alone is not enough: a wallpaper edited in place keeps its name,
@@ -90,7 +101,7 @@ def key_for(path, quality, feather):
         die(f"genesi-depth: cannot read {path}: {e}")
     h = hashlib.sha256(
         f"{os.path.abspath(path)}\0{st.st_size}\0{int(st.st_mtime)}"
-        f"\0{quality}\0{feather}"
+        f"\0{quality}\0{fade}"
         .encode("utf-8")).hexdigest()[:32]
     return h + ".png"
 
@@ -291,11 +302,11 @@ def rembg_mask(bgr):
     return arr[:, :, 3]
 
 
-def cutout(path, quality, out, feather):
+def cutout(path, quality, out, fade):
     cv2, np = load_cv()
     tier = dict(TIERS[quality])
-    if feather is not None:
-        tier["feather"] = feather
+    if fade is not None:
+        tier["feather"] = FADES[fade]
 
     data = np.fromfile(path, dtype=np.uint8)
     full = cv2.imdecode(data, cv2.IMREAD_COLOR)
@@ -360,17 +371,15 @@ def main():
     c.add_argument("--quality", choices=sorted(TIERS), default="standard")
     c.add_argument("--force", action="store_true",
                    help="recompute even if it is cached")
-    # Overrides the tier's own softness. It is a separate setting because the
-    # tier is about how carefully the edge is TRACED and this is about how
-    # sharply it is drawn -- the panel offers both and they are not the same
-    # question.
-    c.add_argument("--feather", type=int, default=None,
-                   help="edge softness in pixels, overriding the quality")
+    c.add_argument("--edge-fade", choices=sorted(FADES), default=None,
+                   dest="fade",
+                   help="how softly the cut edge is drawn")
 
     p = sub.add_parser("path", help="where the cutout for an image would be")
     p.add_argument("image")
     p.add_argument("--quality", choices=sorted(TIERS), default="standard")
-    p.add_argument("--feather", type=int, default=None)
+    p.add_argument("--edge-fade", choices=sorted(FADES), default=None,
+                   dest="fade")
 
     sub.add_parser("status", help="what is installed and what is cached")
     sub.add_parser("clear", help="drop every cached cutout")
@@ -403,7 +412,7 @@ def main():
         print(f"cache {CACHE}")
         return 0 if engine == "opencv" else 1
 
-    out = os.path.join(CACHE, key_for(a.image, a.quality, a.feather))
+    out = os.path.join(CACHE, key_for(a.image, a.quality, a.fade))
 
     if a.cmd == "path":
         print(out)
@@ -413,7 +422,7 @@ def main():
         print(out)
         return 0
 
-    print(cutout(a.image, a.quality, out, a.feather))
+    print(cutout(a.image, a.quality, out, a.fade))
     return 0
 
 

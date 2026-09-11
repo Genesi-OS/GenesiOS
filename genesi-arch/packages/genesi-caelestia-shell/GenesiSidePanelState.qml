@@ -24,6 +24,22 @@ Singleton {
     // slider in it.
     property bool pinned: false
 
+    // Which face the panel is showing: "quick" for the switches and sliders,
+    // "depth" for the wallpaper cut-out. A page rather than a second window
+    // because they are the same panel -- the rail down its left side is how
+    // you get between them, and a panel that closed and reopened somewhere
+    // else would not read as one thing.
+    property string page: "quick"
+
+    // Not `open()`. There is a property called `open` on this object, and a
+    // function of the same name is a second thing answering to one word --
+    // which QML resolves quietly and in nobody's favour.
+    function openPage(what: string): void {
+        root.page = what;
+        root.open = true;
+        root.pinned = true;
+    }
+
     function show(): void {
         root.open = true;
     }
@@ -38,6 +54,10 @@ Singleton {
     function hide(): void {
         root.open = false;
         root.pinned = false;
+        // Back to the switches. The quick settings are what the mark is for;
+        // coming back to a settings page you visited once is a panel that
+        // has forgotten what it is.
+        root.page = "quick";
     }
 
     function toggle(): void {

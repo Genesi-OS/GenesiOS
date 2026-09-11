@@ -78,9 +78,24 @@ layer = io.open(LAYER, encoding="utf-8").read()
 # that passes on the bug it exists to catch.
 layer = re.sub(r"//[^\n]*", "", layer)
 
+# edgeFade is the TOOL's list: the shell passes the name straight through and
+# genesi-depth owns what it means in pixels. So it is checked against FADES,
+# the way quality is checked against TIERS -- there is no switch in the layer
+# to compare against any more, and that is the improvement.
+fades = set(re.findall(r'^FADES = \{([^}]*)\}', src, re.M))
+fade_names = set(re.findall(r'"(\w+)":', "".join(fades)))
+want = enum_for("background.depth.edgeFade")
+if want is None:
+    bad("the writer accepts background.depth.edgeFade", "there is no enum")
+elif want != fade_names:
+    bad("the tool and the writer agree on edgeFade",
+        f"genesi-depth has {sorted(fade_names)}, the writer takes "
+        f"{sorted(want)}")
+else:
+    ok(f"edgeFade is {sorted(fade_names)} in both the tool and the writer")
+
 for key, prop in (("background.depth.strength", "strength"),
-                  ("background.depth.shadow", "shadow"),
-                  ("background.depth.edgeFade", "edgeFade")):
+                  ("background.depth.shadow", "shadow")):
     want = enum_for(key)
     if want is None:
         bad(f"the writer accepts {key}", "there is no enum for it")
@@ -133,7 +148,8 @@ else:
 
     def run(path):
         return subprocess.run(
-            [sys.executable, DEPTH, "cutout", path, "--quality", "standard"],
+            [sys.executable, DEPTH, "cutout", path, "--quality", "standard",
+             "--edge-fade", "soft"],
             capture_output=True, text=True, env=env)
 
     r = run(sub_path)

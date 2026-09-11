@@ -92,11 +92,13 @@ Variants {
         readonly property bool slab: win.form === "full" || win.form === "fit"
             || win.form === "dock"
 
-        // How much of the screen the bar occupies, form by form. `fit` is the
-        // only one that floats, so it is the only one that pays for a gap on
-        // both sides.
-        readonly property int strip: win.cfg.height + (win.form === "fit"
-            ? win.cfg.gap * 2 : (win.form === "full" ? 0 : win.cfg.gap))
+        // How much of the screen the bar occupies. The expression lives in
+        // GenesiEdges because three upstream files need the same number --
+        // Regions.qml to stop claiming this strip for input, Exclusions.qml
+        // so the border stops reserving the same edge, and Panels.qml so the
+        // drawers open below the bar rather than underneath it. Four copies
+        // of one formula is four chances for three of them to be right.
+        readonly property real strip: GenesiEdges.stripFor(win.cfg)
 
         // Where the slab's edges sit. Named rather than written inline four
         // times: a margin that says `form === "fit" ? gap : 0` in three places
@@ -135,8 +137,28 @@ Variants {
             }
         }
 
+        // ── Where this sits among the other layer surfaces ──────────────
+        //
+        // Hyprland stacks the surfaces on a layer in the order they were
+        // mapped, and the order at login is not the order after a toggle.
+        // That is why the bar came up underneath caelestia's drawers on a
+        // cold start and sat above them the moment it was switched off and
+        // on again -- and underneath, the drawers' own border is drawn over
+        // it and its hover strips take the clicks.
+        //
+        // `order` is the only way to say it from inside the shell. An older
+        // Hyprland prints an error for the rule and changes nothing, which is
+        // the right failure: the bar is then exactly where it was before.
+        function applyStacking(): void {
+            Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
+                                     `order 2,${win.ns}`]);
+        }
+
         onFrostChanged: win.applyFrost()
-        Component.onCompleted: win.applyFrost()
+        Component.onCompleted: {
+            win.applyFrost();
+            win.applyStacking();
+        }
 
         screen: modelData
         name: "genesi-topbar"
@@ -192,13 +214,22 @@ Variants {
             }
         }
 
-        // Under everything, so it never takes a click meant for an island.
-        MouseArea {
-            anchors.fill: parent
+        // ── Auto-hide ────────────────────────────────────────────────────
+        //
+        // A HoverHandler, not a MouseArea. A MouseArea's `containsMouse` goes
+        // FALSE the moment the pointer moves onto a child that takes hover --
+        // and every island button takes hover. So reaching for the clock made
+        // the strip report the pointer had left, which hid the bar, which
+        // moved the button out from under the pointer, which made the strip
+        // report it had arrived. The bar flickered in and out and could not
+        // be clicked, exactly as reported.
+        //
+        // A HoverHandler is not blocking and does not care what is above it:
+        // it is hovered whenever the pointer is inside this item, children
+        // included.
+        HoverHandler {
             enabled: win.cfg.autoHide
-            hoverEnabled: true
-            acceptedButtons: Qt.NoButton
-            onContainsMouseChanged: win.peek = containsMouse
+            onHoveredChanged: win.peek = hovered
         }
 
         // ── One continuous surface: full, fit and dock ───────────────────────

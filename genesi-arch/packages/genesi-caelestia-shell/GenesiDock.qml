@@ -131,14 +131,33 @@ Variants {
             }
         }
 
+        // Above caelestia's drawers, for the same reason the bar is: the
+        // order surfaces mapped in at login is not the order they end up in
+        // after a toggle, and underneath them a dock takes no clicks.
+        function applyStacking(): void {
+            Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
+                                     `order 2,${win.ns}`]);
+        }
+
         onFrostChanged: win.applyFrost()
-        Component.onCompleted: win.applyFrost()
+        Component.onCompleted: {
+            win.applyFrost();
+            win.applyStacking();
+        }
 
         property bool peek: false
+
+        // The media chip's player card. On the window rather than on the chip
+        // because the input mask has to know about it, and the mask is a
+        // property of the window.
+        property bool playerOpen: false
 
         // Three separate reasons to be out of view, and they are not the same
         // thing: nothing is open, auto-hide is on and the pointer is elsewhere,
         // or the dock is off entirely.
+        onShownChanged: if (!win.shown)
+            win.playerOpen = false
+
         readonly property bool shown: win.cfg.enabled
             && (win.apps.length > 0 || !win.cfg.hideWhenEmpty)
             && (!win.cfg.autoHide || win.peek)
@@ -147,7 +166,16 @@ Variants {
         name: "genesi-dock"
         visible: Config.dock.enabled
 
-        WlrLayershell.exclusionMode: ExclusionMode.Ignore
+        // Normal, not Ignore, with a zone of zero: it RESPECTS what other
+        // surfaces have reserved -- which is how a dock on the top edge ends
+        // up below the bar instead of underneath it -- while reserving
+        // nothing itself, because a dock is something you point at and a
+        // window should be allowed to go behind it.
+        //
+        // `exclusiveZone: 0` is not optional here. Left unset, Normal derives
+        // a zone from the anchors and the dock would reserve its own height.
+        WlrLayershell.exclusionMode: ExclusionMode.Normal
+        exclusiveZone: 0
         WlrLayershell.layer: WlrLayer.Top
         color: "transparent"
 
@@ -155,7 +183,14 @@ Variants {
         anchors.top: !win.atBottom
         anchors.left: true
         anchors.right: true
-        implicitHeight: win.cfg.iconSize + win.cfg.padding * 2 + contentItem.Tokens.padding.medium * 2
+        // Room ABOVE the dock for what is drawn above it: the hover label
+        // and the media chip's player card. A layer surface clips its own
+        // contents, so a label drawn outside this height is a label with its
+        // top half missing -- which is what the name of an application looked
+        // like on every hover.
+        readonly property int headroom: 220
+
+        implicitHeight: win.cfg.iconSize + win.cfg.padding * 2 + contentItem.Tokens.padding.medium * 2 + win.headroom
 
         // Only the bar itself takes input. Without this the window is a strip
         // across the bottom of every screen that swallows clicks meant for the
@@ -167,20 +202,48 @@ Variants {
         // available for what this Quickshell accepts -- and a property that
         // does not exist does not fail quietly here: the whole file fails to
         // load, and the dock never appears at all. That is what shipped.
+        // The strip the pointer has to reach to bring an auto-hidden dock
+        // back: the dock's own thickness at its edge, and not a pixel more.
+        // `win.height` would have been right when the window was exactly as
+        // tall as the dock; with headroom above it for hover labels it is a
+        // 220-pixel-deep bite out of every window along that edge.
+        readonly property int revealBand: win.cfg.iconSize + win.cfg.padding * 2
+            + contentItem.Tokens.padding.medium * 2
+
         mask: Region {
-            x: win.cfg.autoHide ? 0 : bar.x
-            y: win.cfg.autoHide ? 0 : bar.y
-            width: win.cfg.autoHide ? win.width : bar.width
-            height: win.cfg.autoHide ? win.height : bar.height
+            // With the player open the whole window takes input: the card is
+            // drawn in the headroom above the dock and a click anywhere else
+            // in here is how you dismiss it. Working out the card's rectangle
+            // from the window would mean naming a geometry that lives four
+            // items deep, and the window is only as wide as the screen and as
+            // tall as the dock plus its headroom.
+            x: win.playerOpen ? 0 : (win.cfg.autoHide ? 0 : bar.x)
+            y: win.playerOpen ? 0 : (win.cfg.autoHide
+                ? (win.atBottom ? win.height - win.revealBand : 0)
+                : bar.y)
+            width: win.playerOpen ? win.width
+                : (win.cfg.autoHide ? win.width : bar.width)
+            height: win.playerOpen ? win.height
+                : (win.cfg.autoHide ? win.revealBand : bar.height)
         }
 
-        // Under the bar, so it never takes a click meant for an icon.
+        // Under the card, over everything else: a click that misses the card
+        // puts it away.
         MouseArea {
             anchors.fill: parent
+            enabled: win.playerOpen
+            onClicked: win.playerOpen = false
+        }
+
+        // ── Auto-hide ────────────────────────────────────────────────────
+        //
+        // A HoverHandler, not a MouseArea, for the reason the bar's is: a
+        // MouseArea reports the pointer has LEFT as soon as it moves onto a
+        // child that takes hover, and every icon does. Reaching for one hid
+        // the dock, which moved it away, which brought the dock back.
+        HoverHandler {
             enabled: win.cfg.autoHide
-            hoverEnabled: true
-            acceptedButtons: Qt.NoButton
-            onContainsMouseChanged: win.peek = containsMouse
+            onHoveredChanged: win.peek = hovered
         }
 
         StyledRect {
@@ -624,6 +687,148 @@ Variants {
                             }
                         }
 
+                        // ── The player ──────────────────────────────
+                        //
+                        // A child of the chip, so it follows the chip along
+                        // the row without anchoring across parents, and drawn
+                        // outside it -- which works because nothing here
+                        // clips until the window, and the window was given
+                        // headroom for exactly this and the hover labels.
+                        StyledRect {
+                            id: card
+
+                            z: 100
+                            visible: win.playerOpen && media.title !== ""
+                            opacity: win.playerOpen ? 1 : 0
+
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: win.atBottom ? parent.top : undefined
+                            anchors.top: win.atBottom ? undefined : parent.bottom
+                            anchors.margins: Tokens.spacing.medium
+
+                            implicitWidth: 250
+                            implicitHeight: cardCol.implicitHeight
+                                + Tokens.padding.large * 2
+                            radius: Tokens.rounding.large
+                            color: Colours.palette.m3surfaceContainer
+                            border.width: 1
+                            border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.6)
+
+                            Behavior on opacity {
+                                Anim {}
+                            }
+
+                            // Its own, so a click on the card does not reach
+                            // the dismiss area underneath it.
+                            MouseArea {
+                                anchors.fill: parent
+                            }
+
+                            Column {
+                                id: cardCol
+
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: Tokens.padding.large
+                                spacing: Tokens.spacing.small
+
+                                StyledText {
+                                    text: qsTr("NOW PLAYING")
+                                    font: Tokens.font.label.small
+                                    color: Colours.palette.m3outline
+                                }
+
+                                ClippingRectangle {
+                                    width: parent.width
+                                    implicitHeight: width * 0.62
+                                    radius: Tokens.rounding.small
+                                    color: Colours.palette.m3surfaceContainerHigh
+
+                                    Image {
+                                        id: cardArt
+
+                                        anchors.fill: parent
+                                        source: media.player?.trackArtUrl ?? ""
+                                        fillMode: Image.PreserveAspectCrop
+                                        asynchronous: true
+                                        visible: status === Image.Ready
+                                    }
+
+                                    MaterialIcon {
+                                        anchors.centerIn: parent
+                                        visible: !cardArt.visible
+                                        text: "music_note"
+                                        color: Colours.palette.m3onSurfaceVariant
+                                        fontStyle: Tokens.font.icon.large
+                                    }
+                                }
+
+                                StyledText {
+                                    width: parent.width
+                                    text: media.title
+                                    font: Tokens.font.body.large
+                                    color: Colours.palette.m3onSurface
+                                    elide: Text.ElideRight
+                                }
+
+                                StyledText {
+                                    width: parent.width
+                                    visible: text !== ""
+                                    text: media.player?.trackArtist ?? ""
+                                    font: Tokens.font.body.small
+                                    color: Colours.palette.m3onSurfaceVariant
+                                    elide: Text.ElideRight
+                                }
+
+                                // How far through, as a line. A slider here
+                                // would be a control that has to be dragged
+                                // accurately on a card 250 wide.
+                                Rectangle {
+                                    width: parent.width
+                                    height: 3
+                                    radius: 2
+                                    color: Qt.alpha(Colours.palette.m3outlineVariant, 0.7)
+
+                                    Rectangle {
+                                        readonly property real len:
+                                            media.player?.length ?? 0
+
+                                        anchors.left: parent.left
+                                        height: parent.height
+                                        radius: parent.radius
+                                        width: parent.width * (len > 0
+                                            ? Math.max(0, Math.min(1,
+                                                (media.player?.position ?? 0) / len))
+                                            : 0)
+                                        color: Colours.palette.m3primary
+                                    }
+                                }
+
+                                Row {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    spacing: Tokens.spacing.large
+                                    topPadding: Tokens.spacing.extraSmall
+
+                                    Control {
+                                        icon: "skip_previous"
+                                        onTriggered: media.player?.previous()
+                                    }
+
+                                    Control {
+                                        icon: media.playing ? "pause" : "play_arrow"
+                                        accent: true
+                                        onTriggered: media.player?.togglePlaying()
+                                    }
+
+                                    Control {
+                                        icon: "skip_next"
+                                        onTriggered: media.player?.next()
+                                    }
+                                }
+                            }
+                        }
+
                         MouseArea {
                             id: chipArea
 
@@ -635,18 +840,61 @@ Variants {
                             // where the whole player is. A chip this size can
                             // carry one control honestly; the rest belongs
                             // somewhere with room for it.
+                            // Left opens the player, right plays or pauses
+                            // without opening anything. A chip this size can
+                            // carry one control honestly; the rest of them go
+                            // on the card.
                             onClicked: e => {
                                 if (e.button === Qt.RightButton) {
-                                    const v = Visibilities.getForActive();
-                                    if (v)
-                                        v.dashboard = true;
+                                    media.player?.togglePlaying();
                                     return;
                                 }
-                                media.player?.togglePlaying();
+                                win.playerOpen = !win.playerOpen;
                             }
                         }
                     }
                 }
+            }
+        }
+
+        // A round transport button. Declared at window level so the card can
+        // use it three times without three copies of the same twenty lines.
+        component Control: StyledRect {
+            id: control
+
+            property string icon: ""
+            property bool accent: false
+
+            signal triggered
+
+            implicitWidth: 32
+            implicitHeight: 32
+            radius: Tokens.rounding.full
+            color: control.accent
+                ? Colours.palette.m3primary
+                : (controlHover.containsMouse
+                   ? Qt.alpha(Colours.palette.m3onSurface, 0.1)
+                   : "transparent")
+
+            Behavior on color {
+                CAnim {}
+            }
+
+            MaterialIcon {
+                anchors.centerIn: parent
+                text: control.icon
+                color: control.accent ? Colours.palette.m3onPrimary
+                                      : Colours.palette.m3onSurface
+                fontStyle: Tokens.font.icon.small
+            }
+
+            MouseArea {
+                id: controlHover
+
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: control.triggered()
             }
         }
     }

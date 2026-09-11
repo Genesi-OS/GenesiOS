@@ -57,8 +57,12 @@ Variants {
 
         required property ShellScreen modelData
 
-        readonly property bool available: Config.topbar.enabled
-            && Config.sidepanel.enabled
+        // GlobalConfig, not the attached Config. A Scope is not an Item, so
+        // there is no screen for the attached type to resolve against --
+        // every singleton and every Scope upstream reads GlobalConfig for
+        // exactly this reason.
+        readonly property bool available: GlobalConfig.topbar.enabled
+            && GlobalConfig.sidepanel.enabled
 
         // ── The strip along the left edge ───────────────────────────────────
         //
@@ -69,9 +73,11 @@ Variants {
         StyledWindow {
             id: edge
 
-            screen: scope.modelData
+            required property ShellScreen modelData
+
+            screen: edge.modelData
             name: "genesi-edge"
-            visible: scope.available && Config.sidepanel.edgeHover
+            visible: scope.available && GlobalConfig.sidepanel.edgeHover
 
             WlrLayershell.exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Top
@@ -93,6 +99,13 @@ Variants {
 
         StyledWindow {
             id: win
+
+            // On the WINDOW, the way the dock and the bar declare it. It was
+            // on the Scope, and `win.modelData` was therefore undefined --
+            // which made `mine` compare undefined to a monitor id, which is
+            // false, which meant this window was never once visible. Reading
+            // a property that is not there is not an error in QML.
+            required property ShellScreen modelData
 
             readonly property var cfg: contentItem.Config.sidepanel
             readonly property var tok: contentItem.Tokens
@@ -116,12 +129,43 @@ Variants {
             readonly property bool barAtTop:
                 contentItem.Config.topbar.position !== "bottom"
 
+            // ── Depth, as this panel sees it ────────────────────────────
+            readonly property var depth: contentItem.Config.background.depth
+            readonly property string wallpaper: Wallpapers.current
+
+            property string cutout: ""
+            property string cutError: ""
+            readonly property bool cutting: cutter.running
+
+            function set(section: string, key: string, value: var): void {
+                Quickshell.execDetached(["genesi-center-set", "caelestia",
+                                         `${section}.${key}`, String(value)]);
+            }
+
+            // The same command the desktop layer runs, with the same two
+            // names passed straight through -- so the picture on this page is
+            // the picture on the wallpaper and not a second opinion about it.
+            function recut(force: bool): void {
+                win.cutout = "";
+                win.cutError = "";
+                if (!win.depth.enabled || win.wallpaper === "") {
+                    return;
+                }
+                const argv = ["genesi-depth", "cutout", win.wallpaper,
+                              "--quality", win.depth.quality,
+                              "--edge-fade", win.depth.edgeFade];
+                if (force)
+                    argv.push("--force");
+                cutter.command = argv;
+                cutter.running = true;
+            }
+
             function run(argv: var): void {
                 Quickshell.execDetached(argv);
                 GenesiSidePanelState.hide();
             }
 
-            screen: modelData
+            screen: win.modelData
             name: "genesi-sidepanel"
             visible: win.mine
 
@@ -262,12 +306,17 @@ Variants {
 
                             required property var modelData
 
+                            readonly property bool on: railItem.modelData.what
+                                === GenesiSidePanelState.page
+
                             width: rail.width
                             implicitHeight: rail.width
                             radius: win.tok.rounding.full
-                            color: railHover.containsMouse
-                                ? Qt.alpha(Colours.palette.m3onSurface, 0.1)
-                                : "transparent"
+                            color: railItem.on
+                                ? Colours.palette.m3primaryContainer
+                                : (railHover.containsMouse
+                                   ? Qt.alpha(Colours.palette.m3onSurface, 0.1)
+                                   : "transparent")
 
                             Behavior on color {
                                 CAnim {}
@@ -276,7 +325,9 @@ Variants {
                             MaterialIcon {
                                 anchors.centerIn: parent
                                 text: railItem.modelData.icon
-                                color: Colours.palette.m3onSurfaceVariant
+                                color: railItem.on
+                                    ? Colours.palette.m3onPrimaryContainer
+                                    : Colours.palette.m3onSurfaceVariant
                                 fontStyle: Tokens.font.icon.small
                             }
 
@@ -299,9 +350,7 @@ Variants {
                                         GenesiSidePanelState.hide();
                                         return;
                                     case "depth":
-                                        GenesiSidePanelState.hide();
-                                        GenesiTopBarState.section = "depth";
-                                        GenesiTopBarState.show();
+                                        GenesiSidePanelState.openPage("depth");
                                         return;
                                     case "wallpaper":
                                         win.run(["caelestia", "wallpaper", "-r"]);
@@ -329,14 +378,168 @@ Variants {
                     anchors.bottom: parent.bottom
                     anchors.margins: win.tok.padding.large
                     anchors.leftMargin: win.tok.spacing.small
-                    contentHeight: body.implicitHeight
+                    contentHeight: GenesiSidePanelState.page === "depth"
+                        ? depthBody.implicitHeight : body.implicitHeight
                     clip: true
+
+                    // ── Depth ────────────────────────────────────────────
+                    //
+                    // Here rather than in the shell studio because this is
+                    // where it belongs: the studio is about how the shell is
+                    // DRAWN, and this is about the picture behind it.
+                    //
+                    // The preview is the point of the page. genesi-depth
+                    // answers "there is no subject in this picture" for a
+                    // texture, a gradient or a sky full of cloud -- which is
+                    // a correct answer and an invisible one, because the
+                    // desktop then looks exactly as it did before. Showing
+                    // the cut-out, or saying plainly that there is not one,
+                    // is the difference between a feature that is off and a
+                    // feature that is broken.
+                    ColumnLayout {
+                        id: depthBody
+
+                        width: flick.width
+                        spacing: win.tok.spacing.medium
+                        visible: GenesiSidePanelState.page === "depth"
+
+                        Head {
+                            text: qsTr("DEPTH")
+                        }
+
+                        StyledRect {
+                            id: preview
+
+                            Layout.fillWidth: true
+                            implicitHeight: 130
+                            radius: win.tok.rounding.large
+                            color: Colours.palette.m3surface
+                            border.width: 1
+                            border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
+                            clip: true
+
+                            // The wallpaper, dimmed, so the cut-out on top of
+                            // it reads as a piece taken OUT of that picture
+                            // rather than as a picture of its own.
+                            Image {
+                                anchors.fill: parent
+                                source: win.wallpaper === "" ? "" : `file://${win.wallpaper}`
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                opacity: 0.28
+                            }
+
+                            Image {
+                                id: previewCut
+
+                                anchors.fill: parent
+                                source: win.cutout === "" ? "" : `file://${win.cutout}`
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                visible: win.cutout !== ""
+                            }
+
+                            StyledText {
+                                anchors.centerIn: parent
+                                width: parent.width - win.tok.padding.large * 2
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                                visible: win.cutout === ""
+                                text: win.cutting
+                                    ? qsTr("Looking for a subject…")
+                                    : (win.cutError !== ""
+                                       ? win.cutError
+                                       : qsTr("Turn Depth on to see what it finds."))
+                                font: Tokens.font.body.small
+                                color: Colours.palette.m3onSurfaceVariant
+                            }
+                        }
+
+                        Tile {
+                            icon: "filter_center_focus"
+                            label: qsTr("Depth effect")
+                            reading: win.depth.enabled ? qsTr("On") : qsTr("Off")
+                            on: win.depth.enabled
+                            onTriggered: win.set("background", "depth.enabled",
+                                                 !win.depth.enabled)
+                        }
+
+                        Pick {
+                            label: qsTr("Detail")
+                            blurb: qsTr("Higher detail traces hair and fine edges, but the cut takes longer.")
+                            options: [
+                                { id: "draft", label: qsTr("DRAFT") },
+                                { id: "standard", label: qsTr("STANDARD") },
+                                { id: "fine", label: qsTr("FINE") }
+                            ]
+                            current: win.depth.quality
+                            onPicked: id => win.set("background", "depth.quality", id)
+                        }
+
+                        Pick {
+                            label: qsTr("Edge fade")
+                            blurb: qsTr("Soften where the cut-out meets the scene.")
+                            options: [
+                                { id: "none", label: qsTr("NONE") },
+                                { id: "soft", label: qsTr("SOFT") },
+                                { id: "strong", label: qsTr("STRONG") }
+                            ]
+                            current: win.depth.edgeFade
+                            onPicked: id => win.set("background", "depth.edgeFade", id)
+                        }
+
+                        Pick {
+                            label: qsTr("Strength")
+                            blurb: qsTr("How much the subject stands out in front.")
+                            options: [
+                                { id: "subtle", label: qsTr("SUBTLE") },
+                                { id: "medium", label: qsTr("MEDIUM") },
+                                { id: "full", label: qsTr("FULL") }
+                            ]
+                            current: win.depth.strength
+                            onPicked: id => win.set("background", "depth.strength", id)
+                        }
+
+                        Pick {
+                            label: qsTr("Shadow")
+                            blurb: qsTr("A soft shadow behind the subject, for more depth.")
+                            options: [
+                                { id: "none", label: qsTr("NONE") },
+                                { id: "soft", label: qsTr("SOFT") },
+                                { id: "strong", label: qsTr("STRONG") }
+                            ]
+                            current: win.depth.shadow
+                            onPicked: id => win.set("background", "depth.shadow", id)
+                        }
+
+                        Head {
+                            text: qsTr("CUT-OUT")
+                        }
+
+                        Tile {
+                            icon: "refresh"
+                            label: qsTr("Re-render the cut-out")
+                            reading: qsTr("Ignores the cache")
+                            onTriggered: win.recut(true)
+                        }
+
+                        Tile {
+                            icon: "delete_sweep"
+                            label: qsTr("Clear cached cut-outs")
+                            reading: qsTr("They are made again on demand")
+                            onTriggered: {
+                                Quickshell.execDetached(["genesi-depth", "clear"]);
+                                win.cutout = "";
+                            }
+                        }
+                    }
 
                     ColumnLayout {
                         id: body
 
                         width: flick.width
                         spacing: win.tok.spacing.medium
+                        visible: GenesiSidePanelState.page === "quick"
 
                         // ── The head ─────────────────────────────────────────
                         RowLayout {
@@ -825,8 +1028,48 @@ Variants {
             // Read when the panel opens, not on a timer: nothing else in the
             // shell needs this, and polling rfkill every few seconds for a
             // reading nobody is looking at is a process per tick for ever.
-            onMineChanged: if (win.mine)
-                readProc.running = true
+            onMineChanged: {
+                if (!win.mine)
+                    return;
+                readProc.running = true;
+                win.recut(false);
+            }
+
+            Process {
+                id: cutter
+
+                stdout: StdioCollector {
+                    onStreamFinished: win.cutout = text.trim()
+                }
+                stderr: StdioCollector {
+                    onStreamFinished: win.cutError = text.trim()
+                }
+                // A non-zero exit is a real answer -- "nothing in this picture
+                // stands out enough to be a subject" -- and the message on
+                // stderr is the one worth showing. Clearing the path on
+                // failure matters: the collector still fires, and a stale one
+                // would leave the last wallpaper's subject on this page.
+                onExited: code => {
+                    if (code !== 0)
+                        win.cutout = "";
+                }
+            }
+
+            Connections {
+                function onEnabledChanged(): void {
+                    win.recut(false);
+                }
+
+                function onQualityChanged(): void {
+                    win.recut(false);
+                }
+
+                function onEdgeFadeChanged(): void {
+                    win.recut(false);
+                }
+
+                target: win.depth
+            }
 
             // ── The parts ────────────────────────────────────────────────────
             component Head: StyledText {
@@ -909,6 +1152,83 @@ Variants {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: tile.triggered()
+                }
+            }
+
+            // A named row of choices. The panel's own, rather than the
+            // studio's: this is a 360-wide column, and the studio's cards are
+            // sized for a pane three times that.
+            component Pick: ColumnLayout {
+                id: pick
+
+                property string label: ""
+                property string blurb: ""
+                property var options: []
+                property string current: ""
+
+                signal picked(string id)
+
+                Layout.fillWidth: true
+                spacing: 2
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: pick.label
+                    font: Tokens.font.label.medium
+                    color: Colours.palette.m3onSurface
+                }
+
+                StyledText {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 4
+                    visible: pick.blurb !== ""
+                    text: pick.blurb
+                    font: Tokens.font.body.small
+                    color: Colours.palette.m3onSurfaceVariant
+                    wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: win.tok.spacing.extraSmall
+
+                    Repeater {
+                        model: pick.options
+
+                        StyledRect {
+                            id: opt
+
+                            required property var modelData
+
+                            readonly property bool on: opt.modelData.id === pick.current
+
+                            Layout.fillWidth: true
+                            implicitHeight: 30
+                            radius: win.tok.rounding.large
+                            color: opt.on
+                                ? Colours.palette.m3primaryContainer
+                                : Colours.layer(Colours.palette.m3surfaceContainer, 2)
+
+                            Behavior on color {
+                                CAnim {}
+                            }
+
+                            StyledText {
+                                anchors.centerIn: parent
+                                text: opt.modelData.label
+                                font: Tokens.font.label.small
+                                color: opt.on
+                                    ? Colours.palette.m3onPrimaryContainer
+                                    : Colours.palette.m3onSurfaceVariant
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: pick.picked(opt.modelData.id)
+                            }
+                        }
+                    }
                 }
             }
 

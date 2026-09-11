@@ -118,11 +118,6 @@ Variants {
                 GenesiTopBarState.hide();
                 GenesiSchemeState.show();
                 return;
-            case "depthclear":
-                // Not through run(): clearing a cache is not a reason to
-                // close the page you are clearing it from.
-                Quickshell.execDetached(["genesi-depth", "clear"]);
-                return;
             case "session":
                 const v = Visibilities.getForActive();
                 if (v)
@@ -266,12 +261,6 @@ Variants {
                                 label: qsTr("Desktop"),
                                 icon: "wallpaper",
                                 blurb: qsTr("The wallpaper, the clock on it, and the visualiser.")
-                            },
-                            {
-                                id: "depth",
-                                label: qsTr("Depth"),
-                                icon: "filter_center_focus",
-                                blurb: qsTr("Lift the wallpaper's subject in front of the clock and the widgets.")
                             }
                         ]
                     },
@@ -602,37 +591,6 @@ Variants {
                         { kind: "head", label: qsTr("KEYS") },
                         { kind: "switch", section: "launcher", key: "vimKeybinds", label: qsTr("Vim keys") },
                         { kind: "switch", section: "launcher", key: "enableDangerousActions", label: qsTr("Allow the dangerous actions") }
-                    ],
-                    "depth": [
-                        { kind: "note", label: qsTr("The subject of the wallpaper, cut out and drawn again on top -- so the clock and the widgets sit behind it while the rest of the picture stays in front of nothing. There is no depth map and nothing moves: it is one cut-out and a stacking order.") },
-                        { kind: "head", label: qsTr("DEPTH") },
-                        { kind: "switch", section: "background", key: "depth.enabled", label: qsTr("Depth effect") },
-                        { kind: "head", label: qsTr("QUALITY") },
-                        { kind: "cards", section: "background", key: "depth.quality", label: qsTr("Detail"), options: [
-                            { id: "draft", label: qsTr("DRAFT"), blurb: qsTr("Fastest") },
-                            { id: "standard", label: qsTr("STANDARD"), blurb: qsTr("Balanced") },
-                            { id: "fine", label: qsTr("FINE"), blurb: qsTr("Traces hair") }
-                        ] },
-                        { kind: "note", label: qsTr("How carefully the edge is traced. Higher tiers work at a larger size and take longer the first time a wallpaper is seen; after that the cut-out is cached and the setting costs nothing.") },
-                        { kind: "head", label: qsTr("LOOK") },
-                        { kind: "cards", section: "background", key: "depth.edgeFade", label: qsTr("Edge fade"), options: [
-                            { id: "none", label: qsTr("NONE"), blurb: qsTr("Hard cut") },
-                            { id: "soft", label: qsTr("SOFT"), blurb: qsTr("A little") },
-                            { id: "strong", label: qsTr("STRONG"), blurb: qsTr("Blended") }
-                        ] },
-                        { kind: "cards", section: "background", key: "depth.strength", label: qsTr("Strength"), options: [
-                            { id: "subtle", label: qsTr("SUBTLE"), blurb: qsTr("Shows through") },
-                            { id: "medium", label: qsTr("MEDIUM"), blurb: qsTr("Mostly solid") },
-                            { id: "full", label: qsTr("FULL"), blurb: qsTr("In front") }
-                        ] },
-                        { kind: "cards", section: "background", key: "depth.shadow", label: qsTr("Shadow"), options: [
-                            { id: "none", label: qsTr("NONE"), blurb: qsTr("Flat") },
-                            { id: "soft", label: qsTr("SOFT"), blurb: qsTr("A hint") },
-                            { id: "strong", label: qsTr("STRONG"), blurb: qsTr("Lifted") }
-                        ] },
-                        { kind: "head", label: qsTr("CUT-OUTS") },
-                        { kind: "action", label: qsTr("Clear the cached cut-outs"), blurb: qsTr("They are keyed by the picture and the settings, so this only costs the time to make them again."), button: qsTr("CLEAR"), act: "depthclear" },
-                        { kind: "note", label: qsTr("Some pictures have no subject to find -- a texture, a gradient, an abstract. Depth leaves those alone rather than cutting out a speck and drawing it over the clock.") }
                     ],
                     "shape": [
                         { kind: "head", label: qsTr("SCALES") },

@@ -73,25 +73,18 @@ Item {
         return 0;
     }
 
-    readonly property int feather: {
-        switch (root.cfg.edgeFade) {
-        case "none":
-            return 0;
-        case "strong":
-            return 6;
-        }
-        return 2;
-    }
-
     function refresh(): void {
         root.cutout = "";
         if (!root.cfg.enabled || root.wallpaper === "")
             return;
         // A path, not a shell line: the wallpaper's name is somebody's file
         // name and it will one day contain a space, a quote or a dollar sign.
+        // Both names passed straight through. genesi-depth owns what "soft"
+        // means in pixels, so this file does not have an opinion about it to
+        // get out of step with.
         cutter.command = ["genesi-depth", "cutout", root.wallpaper,
                           "--quality", root.cfg.quality,
-                          "--feather", String(root.feather)];
+                          "--edge-fade", root.cfg.edgeFade];
         cutter.running = true;
     }
 

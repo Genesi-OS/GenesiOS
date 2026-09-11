@@ -2434,6 +2434,128 @@ def patch_side_panel(release):
     print("side panel: quick settings on the edge the bar freed")
 
 
+def patch_edge_layout(release):
+    """
+    The Genesi bar reserves its edge, and caelestia lays out below it.
+
+    ── Two bugs, one cause ─────────────────────────────────────────────────
+
+    caelestia reserves the screen edges with four one-pixel windows
+    (Exclusions.qml), each claiming `border.thickness`. The Genesi bar claims
+    its own strip on the same edge. Layer-shell hands out exclusive zones in
+    the order surfaces are mapped, so on a cold start the border's window went
+    first and the bar was placed ten pixels down -- inside the border, which is
+    drawn over it. Toggling the bar remapped it and it jumped into place, which
+    is why this only ever showed up after a reboot.
+
+    And everything caelestia opens -- the dashboard, the launcher, the session
+    menu, the notifications in the top right -- is laid out inside Panels.qml,
+    which insets itself by `borderThickness` and nothing else. With a bar
+    across the top, a notification arrives UNDERNEATH it.
+
+    So: the border stops reserving an edge the bar has reserved, and Panels
+    insets by the bar as well as by the border. Both read the same number from
+    GenesiEdges, which owns the one expression for how tall the bar is.
+
+    ── Why not just let the bar ignore exclusion zones ─────────────────────
+
+    Because then nothing reserves the space and a maximised window opens
+    underneath the bar. The bar is somewhere you READ; a bar you have to move
+    a window off to read is not doing its job. The edge has to be reserved by
+    exactly one of the two, and it should be the one that is actually there.
+    """
+    exclusions = os.path.join(release, "modules", "drawers", "Exclusions.qml")
+    panels = os.path.join(release, "modules", "drawers", "Panels.qml")
+    for p in (exclusions, panels):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- the drawers' layout moved.")
+
+    src = {p: io.open(p, encoding="utf-8").read() for p in (exclusions, panels)}
+    for p in (exclusions, panels):
+        if "GenesiEdges" in src[p]:
+            fail(f"{os.path.basename(p)} already mentions GenesiEdges -- this "
+                 "ran twice.")
+
+    # ── The border stops reserving the bar's edge ──────────────────────────
+    old = ("    ExclusionZone {\n"
+           "        anchors.top: true\n"
+           "    }\n"
+           "\n"
+           "    ExclusionZone {\n"
+           "        anchors.right: true\n"
+           "    }\n"
+           "\n"
+           "    ExclusionZone {\n"
+           "        anchors.bottom: true\n"
+           "    }\n")
+    if old not in src[exclusions]:
+        fail("Exclusions.qml's four border windows are not what the edge "
+             "layout patch expects. Those windows are what reserves each "
+             "screen edge, and the Genesi bar reserves one of the same ones.")
+    new = ("    ExclusionZone {\n"
+           "        anchors.top: true\n"
+           "        // Genesi: not when the bar is up there. Two surfaces\n"
+           "        // reserving one edge are handed their zones in the order\n"
+           "        // they mapped, and on a cold start the border won -- which\n"
+           "        // put the bar ten pixels down, inside the border that is\n"
+           "        // drawn over it.\n"
+           "        exclusiveZone: GenesiEdges.top > 0"
+           " ? 0 : contentItem.Config.border.thickness\n"
+           "    }\n"
+           "\n"
+           "    ExclusionZone {\n"
+           "        anchors.right: true\n"
+           "    }\n"
+           "\n"
+           "    ExclusionZone {\n"
+           "        anchors.bottom: true\n"
+           "        exclusiveZone: GenesiEdges.bottom > 0"
+           " ? 0 : contentItem.Config.border.thickness\n"
+           "    }\n")
+    out = {exclusions: src[exclusions].replace(old, new, 1)}
+
+    imp = "import qs.modules.bar as Bar\n"
+    if imp not in out[exclusions]:
+        fail("Exclusions.qml does not import qs.modules.bar -- there is no "
+             "import block where this expects one.")
+    out[exclusions] = out[exclusions].replace(
+        imp, imp + "import qs.modules.launcher\n", 1)
+
+    # ── The panels open below it ───────────────────────────────────────────
+    old = ("    anchors.fill: parent\n"
+           "    anchors.margins: borderThickness\n"
+           "    anchors.leftMargin: bar.implicitWidth\n")
+    if old not in src[panels]:
+        fail("Panels.qml's root anchors are not what the edge layout patch "
+             "expects. Every drawer caelestia opens is laid out inside that "
+             "one inset, and with a bar across the top they open underneath "
+             "it.")
+    new = ("    anchors.fill: parent\n"
+           "    anchors.margins: borderThickness\n"
+           "    anchors.leftMargin: bar.implicitWidth\n"
+           "    // Genesi: and clear of the bar. Everything below this line --\n"
+           "    // the dashboard, the launcher, the session menu, the\n"
+           "    // notifications in the top right -- is positioned inside this\n"
+           "    // inset, so without it a notification arrives underneath the\n"
+           "    // bar rather than below it.\n"
+           "    anchors.topMargin: borderThickness + Launcher.GenesiEdges.top\n"
+           "    anchors.bottomMargin: borderThickness"
+           " + Launcher.GenesiEdges.bottom\n")
+    out[panels] = src[panels].replace(old, new, 1)
+
+    # Panels.qml already imports the launcher, QUALIFIED. Reusing that
+    # qualifier rather than adding a second unqualified import of the same
+    # module: one module imported twice under two names is two ways to spell
+    # the same singleton, and the day they disagree nobody will look here.
+    if "import qs.modules.launcher as Launcher\n" not in out[panels]:
+        fail("Panels.qml no longer imports qs.modules.launcher as Launcher -- "
+             "the depth of that qualifier is what this patch writes against.")
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("drawers: caelestia reserves and lays out around the Genesi bar")
+
+
 def patch_edge_regions(release):
     """
     caelestia stops claiming the edge a Genesi surface is standing on.
@@ -2612,6 +2734,7 @@ def main():
     patch_side_panel(release)
     patch_depth(release)
     patch_edge_regions(release)
+    patch_edge_layout(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 
