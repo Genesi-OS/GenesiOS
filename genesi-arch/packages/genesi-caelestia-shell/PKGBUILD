@@ -444,7 +444,35 @@ pkgver=2.0.3
 # the patcher checks itself now -- after the last file is installed it
 # walks the tree and fails the build if a Genesi singleton is used
 # anywhere that cannot see it.
-pkgrel=38
+# 39: the import that fixed 38 broke the dashboard instead.
+#
+# `import qs.modules.launcher` in modules/dashboard/Wrapper.qml was added to
+# reach GenesiEdges, and it did. It also brought in the launcher's
+# Content.qml -- and modules/dashboard has a Content.qml of its own. An
+# explicit module import outranks the file's own directory, so `Content` a
+# few lines further down stopped meaning the dashboard's Content and started
+# meaning the launcher's, which has no `facePicker`:
+#
+#   Wrapper.qml[59:13]: Cannot assign to non-existent property "facePicker"
+#
+# Same ending as 36 and 37 -- Wrapper fails, Panels fails, ContentWindow
+# fails, Drawers fails, the shell sits on its loading screen -- reached from
+# the same line, by the opposite mistake. An import that was meant to add one
+# name had quietly taken another away.
+#
+# Every cross-directory import the patcher injects is qualified now, and the
+# singletons are reached through it: `import qs.modules.launcher as Launcher`,
+# `Launcher.GenesiEdges.top`. Panels.qml had been doing exactly that since 35
+# and is the one file this never touched. The launcher's own Wrapper keeps the
+# plain form -- importing the module you live in resolves to the files beside
+# you, so there is nothing there to shadow.
+#
+# And the patcher now checks what an import TAKES as well as what it gives:
+# for every unqualified `import qs.x.y`, if that module and the file's own
+# directory both define a type and the file builds it, the build fails and
+# says which file, which type and which import. Reintroducing the bug was
+# tried, and it fails on it.
+pkgrel=39
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

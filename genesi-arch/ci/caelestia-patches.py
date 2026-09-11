@@ -2506,7 +2506,7 @@ def patch_edge_layout(release):
            "        // they mapped, and on a cold start the border won -- which\n"
            "        // put the bar ten pixels down, inside the border that is\n"
            "        // drawn over it.\n"
-           "        exclusiveZone: GenesiEdges.top > 0"
+           "        exclusiveZone: Launcher.GenesiEdges.top > 0"
            " ? 0 : contentItem.Config.border.thickness\n"
            "    }\n"
            "\n"
@@ -2516,7 +2516,7 @@ def patch_edge_layout(release):
            "\n"
            "    ExclusionZone {\n"
            "        anchors.bottom: true\n"
-           "        exclusiveZone: GenesiEdges.bottom > 0"
+           "        exclusiveZone: Launcher.GenesiEdges.bottom > 0"
            " ? 0 : contentItem.Config.border.thickness\n"
            "    }\n")
     out = {exclusions: src[exclusions].replace(old, new, 1)}
@@ -2526,7 +2526,7 @@ def patch_edge_layout(release):
         fail("Exclusions.qml does not import qs.modules.bar -- there is no "
              "import block where this expects one.")
     out[exclusions] = out[exclusions].replace(
-        imp, imp + "import qs.modules.launcher\n", 1)
+        imp, imp + "import qs.modules.launcher as Launcher\n", 1)
 
     # ── The panels open below it ───────────────────────────────────────────
     old = ("    anchors.fill: parent\n"
@@ -2577,7 +2577,7 @@ def patch_edge_layout(release):
         "        // Genesi: the same inset Panels uses. These two are one\n"
         "        // number -- the offset from this window to that item -- and\n"
         "        // they disagreed for a release.\n"
-        "        y: panel.y + root.borderThickness + GenesiEdges.top\n"), 1)
+        "        y: panel.y + root.borderThickness + Launcher.GenesiEdges.top\n"), 1)
 
     old = ("        y: panels.notifications.y + root.borderThickness\n")
     if old not in out[content]:
@@ -2586,14 +2586,14 @@ def patch_edge_layout(release):
              "does and has to move with it.")
     out[content] = out[content].replace(old, (
         "        y: panels.notifications.y + root.borderThickness"
-        " + GenesiEdges.top\n"), 1)
+        " + Launcher.GenesiEdges.top\n"), 1)
 
     imp = "import qs.modules.bar\n"
     if imp not in out[content]:
         fail("ContentWindow.qml does not import qs.modules.bar -- there is no "
              "import block where this expects one.")
     out[content] = out[content].replace(
-        imp, imp + "import qs.modules.launcher\n", 1)
+        imp, imp + "import qs.modules.launcher as Launcher\n", 1)
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
@@ -2636,15 +2636,22 @@ def verify_genesi_imports(release):
             body = re.sub(r"//[^\n]*", "", text)
             has_import = re.search(r"^import qs\.modules\.launcher\s*$",
                                    body, re.M) is not None
+            has_qual = re.search(
+                r"^import qs\.modules\.launcher as Launcher\s*$",
+                body, re.M) is not None
             for singleton in GENESI_SINGLETONS:
                 if name == singleton + ".qml":
                     continue
-                # Bare uses only: `Launcher.GenesiEdges` comes through a
-                # qualified import and resolves on its own.
+                rel = os.path.relpath(path, release)
+                # `Launcher.GenesiEdges` needs the qualified import, and
+                # nothing else does.
+                if re.search(r"(?<![.\w])Launcher\.%s\s*\." % singleton,
+                             body) and not has_qual:
+                    bad.append((rel, "Launcher." + singleton))
                 if not re.search(r"(?<![.\w])%s\s*\." % singleton, body):
                     continue
                 if not has_import:
-                    bad.append((os.path.relpath(path, release), singleton))
+                    bad.append((rel, singleton))
 
     if bad:
         lines = "\n".join(f"      {f} uses {n}" for f, n in sorted(bad))
@@ -2658,6 +2665,74 @@ def verify_genesi_imports(release):
              "builds it fails with it.")
     print(f"imports: {len(GENESI_SINGLETONS)} Genesi singletons all reachable "
           "where they are used")
+
+
+def verify_no_shadowed_types(release):
+    """An unqualified import of another module outranks the file's own directory.
+
+    This is the failure that cost the release after the one the check above
+    was written for, and it came from the same line. patch_hidden_panels put
+    a plain `import qs.modules.launcher` into modules/dashboard/Wrapper.qml to
+    reach GenesiEdges. modules/launcher has a Content.qml; so does
+    modules/dashboard. An explicit module import wins, so `Content { ... }`
+    thirty lines further down stopped meaning the dashboard's Content and
+    started meaning the launcher's -- which has no `facePicker`:
+
+        Wrapper.qml[59:13]: Cannot assign to non-existent property "facePicker"
+
+    and the file failed, and Panels failed, and the drawers never came up, and
+    the shell sat on its loading screen. An import that was meant to add one
+    name had quietly taken another away.
+
+    So: for every unqualified `import qs.x.y` in a file, if that module and
+    the file's OWN directory both define a type, and the file builds that
+    type, the import has changed which one it means. Qualifying the import
+    fixes it and is what every Genesi injection does now; this is here to
+    catch the next one that does not, including one caused by upstream adding
+    a file rather than by anything written here.
+    """
+    types = {}
+    for base, dirs, files in os.walk(release):
+        if "build" in dirs:
+            dirs.remove("build")
+        rel = os.path.relpath(base, release).replace(os.sep, "/")
+        types[rel] = {f[:-4] for f in files
+                      if f.endswith(".qml") and f[:1].isupper()}
+
+    bad = []
+    for base, dirs, files in os.walk(release):
+        if "build" in dirs:
+            dirs.remove("build")
+        here = os.path.relpath(base, release).replace(os.sep, "/")
+        for name in files:
+            if not name.endswith(".qml"):
+                continue
+            path = os.path.join(base, name)
+            body = re.sub(r"//[^\n]*", "", io.open(
+                path, encoding="utf-8", errors="replace").read())
+            for m in re.finditer(r"^import qs\.([\w.]+)\s*$", body, re.M):
+                mod = m.group(1).replace(".", "/")
+                # Importing the module you live in resolves to the files
+                # beside you; there is nothing there to shadow.
+                if mod == here:
+                    continue
+                for t in sorted(types.get(mod, set()) & types.get(here, set())):
+                    if re.search(r"(?<![.\w])%s\s*\{" % t, body):
+                        bad.append((os.path.relpath(path, release),
+                                    m.group(1), t))
+
+    if bad:
+        lines = "\n".join(f"      {f} builds {t}, and `import qs.{mod}` "
+                           f"replaces it" for f, mod, t in sorted(bad))
+        fail("an unqualified import takes a type away from the file that "
+             "declared it:\n" + lines + "\n"
+             "    Both that module and this file's own directory define that "
+             "type, and an explicit module import outranks the\n"
+             "    directory -- so the name now means the other one, and the "
+             "first property it does not have fails the whole file.\n"
+             "    Import it `as Something` and reach the singleton through "
+             "that.")
+    print("imports: no import replaces a type its file declares")
 
 
 def patch_hidden_panels(release):
@@ -2703,7 +2778,7 @@ def patch_hidden_panels(release):
         "    // Genesi: plus the bar. This measures from the top of the panel\n"
         "    // AREA, and that area now starts below the bar -- so hiding by\n"
         "    // its own height left the closed blob hanging in view as a tab.\n"
-        "    anchors.topMargin: (-implicitHeight - 5 - GenesiEdges.top)"
+        "    anchors.topMargin: (-implicitHeight - 5 - Launcher.GenesiEdges.top)"
         " * offsetScale\n"), 1)
 
     # patch_launcher_position has already rewritten this line, so the
@@ -2725,7 +2800,20 @@ def patch_hidden_panels(release):
         if not m:
             fail(f"{os.path.basename(path)} has no import block for the "
                  "GenesiEdges import to join.")
-        out[path] = text[:m.end()] + "import qs.modules.launcher\n" + text[m.end():]
+        # The dashboard's takes it QUALIFIED. modules/launcher has a
+        # Content.qml and so does modules/dashboard, and an explicit module
+        # import beats the file's own directory -- so the plain form made
+        # `Content` in dashboard/Wrapper.qml mean the LAUNCHER's Content,
+        # which has no facePicker, which failed the file, which failed Panels
+        # and the drawers and the shell. Qualified, the name cannot be
+        # reached by accident.
+        #
+        # The launcher's own Wrapper keeps the plain form: importing the
+        # module you live in resolves to the files beside you, so there is
+        # nothing there to shadow. That is what GenesiContent.qml runs.
+        line = ("import qs.modules.launcher\n" if path == launcher
+                else "import qs.modules.launcher as Launcher\n")
+        out[path] = text[:m.end()] + line + text[m.end():]
 
     # The launcher's Wrapper keeps it too, even though it lives in that very
     # directory. Quickshell exposes a directory's singletons through its
@@ -2804,11 +2892,11 @@ def patch_edge_regions(release):
            "    // workspace that margin is 80 pixels, and it was taking every\n"
            "    // click meant for the top bar or the dock. The border strip\n"
            "    // stays, so caelestia's own hover points are untouched.\n"
-           "    readonly property real topPad: GenesiEdges.claimsTop"
+           "    readonly property real topPad: Launcher.GenesiEdges.claimsTop"
            " ? 0 : win.dragMaskPadding\n"
            "    readonly property real bottomPad:"
-           " GenesiEdges.claimsBottom ? 0 : win.dragMaskPadding\n"
-           "    readonly property real leftPad: GenesiEdges.left"
+           " Launcher.GenesiEdges.claimsBottom ? 0 : win.dragMaskPadding\n"
+           "    readonly property real leftPad: Launcher.GenesiEdges.left"
            " ? 0 : win.dragMaskPadding\n"
            "\n"
            "    x: bar.clampedWidth + leftPad\n"
@@ -2829,13 +2917,14 @@ def patch_edge_regions(release):
              "keeps the old one answers where its panel is not.")
     src = src.replace(old, (
         "        x: panel.x + root.bar.implicitWidth\n"
-        "        y: panel.y + root.borderThickness + GenesiEdges.top\n"), 1)
+        "        y: panel.y + root.borderThickness + Launcher.GenesiEdges.top\n"), 1)
 
     imp = "import qs.modules.bar as Bar\n"
     if imp not in src:
         fail("Regions.qml does not import qs.modules.bar -- there is no "
              "import block where this expects one.")
-    src = src.replace(imp, imp + "import qs.modules.launcher\n", 1)
+    src = src.replace(
+        imp, imp + "import qs.modules.launcher as Launcher\n", 1)
 
     io.open(regions, "w", encoding="utf-8", newline="\n").write(src)
     print("drawers: the edges a Genesi surface owns are its own")
@@ -3005,6 +3094,7 @@ def main():
     print(f"installed {len(DEPTH_FILES)} depth file(s)")
 
     verify_genesi_imports(release)
+    verify_no_shadowed_types(release)
     return 0
 
 
