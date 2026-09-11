@@ -427,7 +427,24 @@ pkgver=2.0.3
 # /etc/xdg/quickshell/caelestia, so it reported the whole tree missing
 # on a machine where every file was present. A diagnostic that lies is
 # worse than one that says nothing.
-pkgrel=37
+# 38: 36 and 37 left the shell as a wallpaper and a spinner.
+#
+# patch_hidden_panels writes `GenesiEdges.bottom` into the launcher's own
+# Wrapper.qml, and then removed the import again on the reasoning that a
+# file does not import its own directory. Quickshell does not work that
+# way: it exposes a directory's singletons through its MODULE, and a file
+# beside them still has to import it -- caelestia's own GenesiContent.qml
+# sits in modules/launcher and carries that import with a comment saying
+# so. Without it `GenesiEdges` is an unresolved name, Wrapper.qml fails to
+# load, Panels.qml fails with it, the drawers never come up, and there is
+# nothing on screen but the wallpaper.
+#
+# No harness could have caught it: every one of them renders Genesi's own
+# QML, and this is a file the PATCHER writes, in a tree no test loads. So
+# the patcher checks itself now -- after the last file is installed it
+# walks the tree and fails the build if a Genesi singleton is used
+# anywhere that cannot see it.
+pkgrel=38
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

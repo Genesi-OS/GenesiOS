@@ -2600,6 +2600,66 @@ def patch_edge_layout(release):
     print("drawers: caelestia reserves and lays out around the Genesi bar")
 
 
+# The singletons Genesi installs into modules/launcher. Every one of them is
+# reached through `import qs.modules.launcher`, INCLUDING from a file that
+# lives in that same directory -- Quickshell exposes a directory's singletons
+# through its module, not by proximity.
+GENESI_SINGLETONS = ("GenesiEdges", "GenesiSchemeState", "GenesiTopBarState",
+                     "GenesiSidePanelState")
+
+
+def verify_genesi_imports(release):
+    """A name the patcher writes has to resolve in the file it writes it into.
+
+    This is the failure that cost a release: patch_hidden_panels put
+    `GenesiEdges.bottom` into the launcher's own Wrapper.qml and then removed
+    the import again, reasoning that a file does not import its own directory.
+    Quickshell does not work that way. `GenesiEdges` became an unresolved
+    name, Wrapper.qml failed to load, Panels.qml failed with it, the drawers
+    never came up, and the shell was a wallpaper and a spinner.
+
+    Nothing could have caught it earlier. Every offscreen harness renders
+    Genesi's own QML; this is a file the PATCHER writes, in a tree no test
+    loads. So the check belongs here, at the end of the patching, against the
+    tree that is about to be built.
+    """
+    bad = []
+    for base, dirs, files in os.walk(release):
+        if "build" in dirs:
+            dirs.remove("build")
+        for name in files:
+            if not name.endswith(".qml"):
+                continue
+            path = os.path.join(base, name)
+            text = io.open(path, encoding="utf-8", errors="replace").read()
+            # Comments explain these by name constantly.
+            body = re.sub(r"//[^\n]*", "", text)
+            has_import = re.search(r"^import qs\.modules\.launcher\s*$",
+                                   body, re.M) is not None
+            for singleton in GENESI_SINGLETONS:
+                if name == singleton + ".qml":
+                    continue
+                # Bare uses only: `Launcher.GenesiEdges` comes through a
+                # qualified import and resolves on its own.
+                if not re.search(r"(?<![.\w])%s\s*\." % singleton, body):
+                    continue
+                if not has_import:
+                    bad.append((os.path.relpath(path, release), singleton))
+
+    if bad:
+        lines = "\n".join(f"      {f} uses {n}" for f, n in sorted(bad))
+        fail("a Genesi singleton is used in a file that cannot see it:\n"
+             + lines + "\n"
+             "    Every one of them is reached through `import qs.modules."
+             "launcher`, including from a file in that same directory --\n"
+             "    Quickshell exposes a directory's singletons through its "
+             "module, not by proximity. Without the import the name is\n"
+             "    unresolved, that file fails to load, and everything that "
+             "builds it fails with it.")
+    print(f"imports: {len(GENESI_SINGLETONS)} Genesi singletons all reachable "
+          "where they are used")
+
+
 def patch_hidden_panels(release):
     """
     A closed drawer tucks out of sight past the BAR, not past the border.
@@ -2667,9 +2727,13 @@ def patch_hidden_panels(release):
                  "GenesiEdges import to join.")
         out[path] = text[:m.end()] + "import qs.modules.launcher\n" + text[m.end():]
 
-    # ...except the launcher, which IS that module. Importing your own
-    # directory is a cycle QML refuses; a singleton beside you needs no import.
-    out[launcher] = out[launcher].replace("import qs.modules.launcher\n", "", 1)
+    # The launcher's Wrapper keeps it too, even though it lives in that very
+    # directory. Quickshell exposes a directory's singletons through its
+    # MODULE, and a file beside them still has to import it -- caelestia's own
+    # GenesiContent.qml sits in modules/launcher and carries the same import
+    # with a comment saying why. Removing it here made `GenesiEdges` an
+    # unresolved name, which failed the launcher, which failed Panels, which
+    # failed the drawers, which left the shell as a wallpaper and a spinner.
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
@@ -2939,6 +3003,8 @@ def main():
                  "to build the depth layer.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(DEPTH_FILES)} depth file(s)")
+
+    verify_genesi_imports(release)
     return 0
 
 

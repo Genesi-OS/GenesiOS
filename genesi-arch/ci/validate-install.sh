@@ -267,8 +267,23 @@ dryrun_hard() { # <label> <pkgs...>
     ok "Level 1: $label resolves"
   else
     bad "Level 1: $label FAILED to resolve"
-    grep -iE 'error|unable to satisfy|cannot resolve|target not found|conflict' /tmp/_err \
-      | sed 's/^/      /' | head -20
+    # Everything pacman said, not a guess at which phrasing it used. The
+    # previous filter looked for 'cannot resolve' and 'unable to satisfy',
+    # and pacman writes the useful part as ':: pkg: requires dep' -- so the
+    # gate reported a failure and swallowed its own reason.
+    #
+    # The one thing held back is the mirror 404 storm: when a CachyOS mirror
+    # is mid-sync every package in the set produces a line, and a hundred of
+    # those bury the one that matters. Counted instead, because "the mirrors
+    # are behind" and "this dependency does not exist" are the two answers
+    # and they have to be told apart at a glance.
+    local fetches
+    fetches="$(grep -c 'failed retrieving file' /tmp/_err || true)"
+    grep -v 'failed retrieving file' /tmp/_err | sed 's/^/      /' | head -40
+    if [ "${fetches:-0}" -gt 0 ]; then
+      echo "      (plus ${fetches} mirror download failures -- if those are"
+      echo "       404s, a repository is mid-sync and this is not our problem)"
+    fi
   fi
 }
 
