@@ -103,7 +103,12 @@ Variants {
         // Where the slab's edges sit. Named rather than written inline four
         // times: a margin that says `form === "fit" ? gap : 0` in three places
         // is three chances to get one of them backwards.
-        readonly property int slabEdge: win.form === "fit" ? win.cfg.gap : 0
+        // The screen-edge side carries the margin on every form: it is
+        // the space between the screen and the bar, and a `full` bar
+        // with a margin is a slab that floats rather than one that is
+        // flush.
+        readonly property int slabEdge: (win.form === "fit"
+            ? win.cfg.gap : 0) + win.cfg.margin
         readonly property int slabFar: win.form === "full" ? 0 : win.cfg.gap
         readonly property int slabSide: win.form === "fit" ? win.cfg.gap : 0
         readonly property int slabRadius: win.form === "full" ? 0 : win.cfg.radius
@@ -316,7 +321,8 @@ Variants {
 
             x: centre.x - win.tok.padding.large
             width: centre.width + win.tok.padding.large * 2
-            y: win.atTop ? 0 : parent.height - height
+            y: win.atTop ? win.cfg.margin
+                         : parent.height - height - win.cfg.margin
             height: win.cfg.height + win.cfg.gap
 
             Behavior on opacity {
@@ -780,7 +786,15 @@ Variants {
             // things assigning one property. The anchor wins and the slide
             // silently does nothing -- which is exactly how the dock's slide
             // was dead for a release.
-            anchors.verticalCenterOffset: win.shown ? 0
+            // Half the margin, because the strip grew by a whole margin on
+            // one side only and the island is centred in all of it. Folded
+            // into the SLIDE's offset rather than added as a second
+            // verticalCenterOffset: two things assigning one property is how
+            // the slide was silently dead for a release.
+            readonly property real restOffset:
+                (win.atTop ? 1 : -1) * win.cfg.margin / 2
+
+            anchors.verticalCenterOffset: win.shown ? island.restOffset
                 : (win.atTop ? -(win.cfg.height + win.cfg.gap * 3)
                              : win.cfg.height + win.cfg.gap * 3)
 

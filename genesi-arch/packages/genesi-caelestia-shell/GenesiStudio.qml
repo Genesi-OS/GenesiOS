@@ -475,6 +475,8 @@ Variants {
                         { kind: "head", label: qsTr("PLACE") },
                         { kind: "choice", section: "topbar", key: "position", label: qsTr("Edge"), options: [{ id: "top", label: qsTr("TOP") }, { id: "bottom", label: qsTr("BOTTOM") }] },
                         { kind: "switch", section: "topbar", key: "autoHide", label: qsTr("Auto-hide"), blurb: qsTr("Reveal it by putting the pointer on the edge.") },
+                        { kind: "amount", section: "topbar", key: "margin", label: qsTr("Margin"), from: 0, to: 40 },
+                        { kind: "note", label: qsTr("How far the bar sits from the edge of the screen. The gap below is the space around the islands inside it.") },
                         { kind: "head", label: qsTr("FORM") },
                         { kind: "cards", section: "topbar", key: "form", label: qsTr("Form"), options: [
                             { id: "islands", label: qsTr("ISLANDS"), blurb: qsTr("Three pills") },

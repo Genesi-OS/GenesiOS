@@ -185,10 +185,15 @@ Variants {
         anchors.right: true
         // Room ABOVE the dock for what is drawn above it: the hover label
         // and the media chip's player card. A layer surface clips its own
-        // contents, so a label drawn outside this height is a label with its
-        // top half missing -- which is what the name of an application looked
-        // like on every hover.
-        readonly property int headroom: 220
+        // contents, and everything outside this height is simply gone -- the
+        // label came back with its top half missing, and the card lost its
+        // whole transport row, which is why none of it could be clicked.
+        //
+        // Sized from the card rather than chosen: the card's height is a
+        // column of text and a picture, and a number picked by eye is a
+        // number that stops being right the first time a font changes.
+        readonly property int headroom: card.implicitHeight
+            + contentItem.Tokens.spacing.large * 2
 
         implicitHeight: win.cfg.iconSize + win.cfg.padding * 2 + contentItem.Tokens.padding.medium * 2 + win.headroom
 
@@ -741,7 +746,11 @@ Variants {
 
                                 ClippingRectangle {
                                     width: parent.width
-                                    implicitHeight: width * 0.62
+                                    // Capped: the card is 250 wide and the
+                                    // art at its natural ratio is most of
+                                    // the height, which pushed the controls
+                                    // out of the window.
+                                    implicitHeight: Math.min(width * 0.62, 120)
                                     radius: Tokens.rounding.small
                                     color: Colours.palette.m3surfaceContainerHigh
 

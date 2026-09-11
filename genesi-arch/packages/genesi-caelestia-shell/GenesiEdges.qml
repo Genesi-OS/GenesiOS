@@ -54,11 +54,16 @@ Singleton {
     function stripFor(cfg): real {
         if (!cfg.enabled)
             return 0;
+        // `margin` is the distance from the screen edge; `gap` is the space
+        // around the islands inside the strip. Both are part of how much of
+        // the screen the bar occupies, and everything that lays out around it
+        // -- the exclusion zone, caelestia's panels, its input regions --
+        // wants that one number.
         if (cfg.form === "fit")
-            return cfg.height + cfg.gap * 2;
+            return cfg.height + cfg.gap * 2 + cfg.margin;
         if (cfg.form === "full")
-            return cfg.height;
-        return cfg.height + cfg.gap;
+            return cfg.height + cfg.margin;
+        return cfg.height + cfg.gap + cfg.margin;
     }
 
     readonly property bool barAtTop: GlobalConfig.topbar.enabled

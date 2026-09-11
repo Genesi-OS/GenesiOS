@@ -139,6 +139,26 @@ else:
     sub_path = os.path.join(tmp, "subject.png")
     cv2.imwrite(sub_path, subject)
 
+    # A DARK subject on a bright, busy background -- the case that shipped
+    # broken. Spectral-residual saliency looks for unusual texture, so on a
+    # wallpaper of a hooded figure against an ember-filled sky it picked the
+    # embers and left the figure, which is the largest, flattest, darkest
+    # thing in the frame. The suite had only the opposite case, so it could
+    # not have caught it.
+    dark = np.zeros((600, 900, 3), np.uint8)
+    for y in range(600):
+        dark[y, :] = (40 + y // 6, 110 + y // 9, 210 - y // 12)
+    rng = np.random.default_rng(11)
+    for _ in range(500):
+        x, y = int(rng.integers(0, 900)), int(rng.integers(0, 600))
+        cv2.circle(dark, (x, y), int(rng.integers(1, 4)),
+                   (180, 230, 255), -1)
+    # The figure: a dark column with a hood, centred.
+    cv2.rectangle(dark, (400, 250), (500, 520), (28, 24, 22), -1)
+    cv2.ellipse(dark, (450, 250), (55, 70), 0, 180, 360, (28, 24, 22), -1)
+    dark_path = os.path.join(tmp, "dark.png")
+    cv2.imwrite(dark_path, dark)
+
     # ...and a picture with nothing in it at all.
     flat = np.zeros((600, 900, 3), np.uint8)
     for y in range(600):
@@ -187,6 +207,27 @@ else:
                 "a second run produced a different path")
         else:
             ok("the second run comes from the cache")
+
+    r = run(dark_path)
+    if r.returncode != 0:
+        bad("a dark subject on a bright background is found",
+            f"exit {r.returncode}: {r.stderr.strip()}")
+    else:
+        cut = cv2.imread(r.stdout.strip(), cv2.IMREAD_UNCHANGED)
+        a = cut[:, :, 3]
+        covered = (a > 128).mean()
+        # The figure is about 6% of the frame.
+        if not 0.015 < covered < 0.35:
+            bad("the dark subject's cut-out is about its size",
+                f"it covers {covered:.1%} of the frame")
+        elif a[400, 450] < 128:
+            bad("the cut-out covers the dark subject",
+                "the middle of the figure is transparent")
+        elif a[60, 80] > 128:
+            bad("the cut-out leaves the bright background",
+                "a corner of the sky is opaque")
+        else:
+            ok(f"a dark subject on a bright field is cut out, {covered:.1%}")
 
     r = run(flat_path)
     if r.returncode == 0:

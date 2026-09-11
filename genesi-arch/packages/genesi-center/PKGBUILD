@@ -123,7 +123,10 @@ pkgver=0.1.0
 # icon. The shell's studio is where they are set; this holds the
 # validation and the file format, as it does for the other hundred and
 # seventy.
-pkgrel=28
+# 29: the writer learns topbar.margin -- how far the bar sits from the
+# screen edge, which is not the same setting as the gap around its
+# islands.
+pkgrel=29
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

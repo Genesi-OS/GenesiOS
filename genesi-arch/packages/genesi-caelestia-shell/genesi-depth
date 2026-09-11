@@ -23,11 +23,16 @@ onnxruntime dependency that pulls in half a numerical stack, and a first run
 that either downloads from somewhere or ships the weights in a package that
 every Genesi user pays for whether or not they turn this on.
 
-Spectral-residual saliency plus GrabCut needs numpy and the core half of
-OpenCV, both of which are small, both of which are already packaged, and on a
-wallpaper -- one clear subject, a background that is deliberately quieter than
-it -- it is close to as good. Wallpapers are the easy case for saliency: they
-are chosen by a person for having a subject.
+Saliency plus GrabCut needs numpy and the core half of OpenCV, both of which
+are small and already packaged. Three measures, because one is not enough:
+
+  * spectral residual, which finds unusual TEXTURE
+  * frequency-tuned, which finds unusual COLOUR -- a large dark flat subject
+    against a bright background is invisible to the first and obvious to this
+  * a centre prior, because a wallpaper is composed and its subject is near
+    the middle, while its scattered bright detail is not
+
+The first alone picked embers out of a picture of a hooded figure.
 
 If `rembg` happens to be installed, `--quality fine` uses it, because on the
 hard cases (hair, foliage, a subject the same brightness as its background) a
@@ -116,7 +121,7 @@ def load_cv():
     return cv2, np
 
 
-def saliency(cv2, np, gray):
+def spectral(cv2, np, gray):
     """Spectral residual saliency, from Hou and Zhang 2007.
 
     Written out rather than taken from cv2.saliency, which lives in the
@@ -127,27 +132,69 @@ def saliency(cv2, np, gray):
     The idea in one line: the log-magnitude spectrum of a natural image is
     nearly the same for every natural image, so whatever a particular picture
     has that the average does not is the part that stands out.
+
+    192, not the 64 the paper uses. Hou and Zhang were answering "where should
+    an eye go next", and for that a blurred blob in the right part of the
+    frame is a complete answer. This has to CUT along the answer, and a
+    64-pixel map stretched over a 4K wallpaper is a smear a third wider than
+    the thing it describes.
     """
-    # 192, not the 64 the paper uses. Hou and Zhang were answering "where
-    # should an eye go next", and for that a blurred blob in the right part of
-    # the frame is a complete answer. This has to CUT along the answer, and a
-    # 64-pixel map stretched over a 4K wallpaper is a smear a third wider than
-    # the thing it describes -- which is a halo of sky welded to every subject.
-    # The FFT is on 192 squared either way, which is nothing.
     small = cv2.resize(gray, (192, 192), interpolation=cv2.INTER_AREA)
     f = np.fft.fft2(small.astype(np.float32))
     log_amp = np.log(np.abs(f) + 1e-8)
     phase = np.angle(f)
     # The "average" spectrum, approximated by a local mean of this one.
     avg = cv2.blur(log_amp, (3, 3))
-    residual = log_amp - avg
-    back = np.fft.ifft2(np.exp(residual + 1j * phase))
+    back = np.fft.ifft2(np.exp(log_amp - avg + 1j * phase))
     sal = np.abs(back) ** 2
-    sal = cv2.GaussianBlur(sal, (7, 7), 1.6)
-    sal -= sal.min()
-    if sal.max() > 0:
-        sal /= sal.max()
-    return sal
+    return cv2.GaussianBlur(sal, (7, 7), 1.6)
+
+
+def frequency_tuned(cv2, np, bgr):
+    """How far each pixel is from the picture's mean colour, in Lab.
+
+    Achanta 2009. Spectral residual is about texture and misses a subject that
+    is large, dark and flat -- a hooded figure against a bright background is
+    invisible to it and obvious to this. The two disagree often enough to be
+    worth having both, and where they agree the answer is very strong.
+    """
+    lab = cv2.cvtColor(cv2.GaussianBlur(bgr, (5, 5), 0), cv2.COLOR_BGR2LAB)
+    lab = lab.astype(np.float32)
+    mean = lab.reshape(-1, 3).mean(axis=0)
+    return np.sqrt(((lab - mean) ** 2).sum(axis=2))
+
+
+def centre_prior(np, h, w):
+    """A wallpaper is composed: its subject is near the middle.
+
+    Without this, a frame full of scattered bright detail -- embers, bokeh,
+    stars -- reads as more salient at the edges than the thing in the centre,
+    and the cut-out is a handful of sparks. Wide enough (a third of the frame)
+    that a subject standing off to one side is barely touched.
+    """
+    ys = np.linspace(-1, 1, h, dtype=np.float32)[:, None]
+    xs = np.linspace(-1, 1, w, dtype=np.float32)[None, :]
+    return np.exp(-(xs * xs + ys * ys) / (2 * 0.55 ** 2))
+
+
+def norm(np, a):
+    a = a - a.min()
+    m = a.max()
+    return a / m if m > 0 else a
+
+
+def saliency(cv2, np, bgr):
+    """The two measures, agreed, and damped towards the edges."""
+    h, w = bgr.shape[:2]
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+
+    spec = cv2.resize(norm(np, spectral(cv2, np, gray)), (w, h),
+                      interpolation=cv2.INTER_CUBIC)
+    ft = norm(np, frequency_tuned(cv2, np, bgr))
+
+    sal = 0.5 * norm(np, spec) + 0.5 * ft
+    sal *= centre_prior(np, h, w)
+    return norm(np, sal)
 
 
 def subject_mask(cv2, np, bgr, tier):
@@ -159,11 +206,8 @@ def subject_mask(cv2, np, bgr, tier):
     this feature look broken rather than subtle.
     """
     h, w = bgr.shape[:2]
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
 
-    sal = saliency(cv2, np, gray)
-    sal = cv2.resize(sal, (w, h), interpolation=cv2.INTER_CUBIC)
-    sal8 = np.clip(sal * 255, 0, 255).astype(np.uint8)
+    sal8 = np.clip(saliency(cv2, np, bgr) * 255, 0, 255).astype(np.uint8)
 
     # Otsu rather than a fixed threshold: how salient the salient part is
     # varies enormously between a portrait and a landscape, and any constant

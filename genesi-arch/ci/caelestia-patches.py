@@ -2023,6 +2023,11 @@ def patch_topbar(release):
         "    CONFIG_PROPERTY(QString, position, u\"top\"_s)\n"
         "    CONFIG_PROPERTY(int, height, 34)\n"
         "    CONFIG_PROPERTY(int, gap, 6)\n"
+        "    // How far the bar sits from the screen edge. Separate\n"
+        "    // from `gap`, which is the space around the ISLANDS\n"
+        "    // inside the strip -- one moves the bar off the edge,\n"
+        "    // the other changes how tall the bar is.\n"
+        "    CONFIG_PROPERTY(int, margin, 0)\n"
         "    CONFIG_PROPERTY(int, radius, 14)\n"
         "    // A bar has a SHAPE, and it is not a yes-or-no. `islands`\n"
         "    // was a bool, so the only two bars on offer were three\n"
@@ -2595,6 +2600,82 @@ def patch_edge_layout(release):
     print("drawers: caelestia reserves and lays out around the Genesi bar")
 
 
+def patch_hidden_panels(release):
+    """
+    A closed drawer tucks out of sight past the BAR, not past the border.
+
+    The panels are laid out inside Panels.qml, which patch_edge_layout insets
+    by the height of the Genesi bar so nothing opens underneath it. A closed
+    drawer hides by moving up by its own height plus five -- relative to that
+    inset area. Upstream that put its bottom edge five pixels above the
+    Panels' top, which is inside the ten-pixel border and therefore invisible.
+
+    With the bar in the inset, "five pixels above the Panels' top" is forty-
+    five pixels down the screen. So the dashboard's closed blob hung visibly
+    below the bar as a tab, permanently, in the middle of the top edge.
+
+    Each closed panel tucks an extra bar-height now, which puts its edge back
+    where upstream had it: five pixels above the top of the screen.
+
+    Only the two that hide against a horizontal edge need it. The session,
+    sidebar and OSD hide sideways, and the bar is never on that edge.
+    """
+    dash = os.path.join(release, "modules", "dashboard", "Wrapper.qml")
+    launcher = os.path.join(release, "modules", "launcher", "Wrapper.qml")
+    for p in (dash, launcher):
+        if not os.path.exists(p):
+            fail(f"{p} is gone -- a drawer moved.")
+
+    src = {p: io.open(p, encoding="utf-8").read() for p in (dash, launcher)}
+    for p in (dash, launcher):
+        if "GenesiEdges" in src[p]:
+            fail(f"{os.path.basename(p)} already mentions GenesiEdges -- this "
+                 "ran twice.")
+
+    out = {}
+
+    old = "    anchors.topMargin: (-implicitHeight - 5) * offsetScale\n"
+    if old not in src[dash]:
+        fail("the dashboard's closed position is not what this expects. That "
+             "one line is what puts it out of sight, and it measures from the "
+             "top of the panel area -- which the Genesi bar has moved.")
+    out[dash] = src[dash].replace(old, (
+        "    // Genesi: plus the bar. This measures from the top of the panel\n"
+        "    // AREA, and that area now starts below the bar -- so hiding by\n"
+        "    // its own height left the closed blob hanging in view as a tab.\n"
+        "    anchors.topMargin: (-implicitHeight - 5 - GenesiEdges.top)"
+        " * offsetScale\n"), 1)
+
+    # patch_launcher_position has already rewritten this line, so the
+    # shape to match is its output rather than upstream's. The closed
+    # end of the slide is the `* offsetScale` term; the resting end is
+    # left alone.
+    old = "        - (restingOffset + implicitHeight + 5) * offsetScale\n"
+    if old not in src[launcher]:
+        fail("the launcher's slide is not what this expects. "
+             "patch_launcher_position rewrites that line first, and "
+             "this adds the bar to the closed end of it.")
+    out[launcher] = src[launcher].replace(old, (
+        "        // Genesi: plus the bar, when the bar is on this edge.\n"
+        "        - (restingOffset + implicitHeight + 5 + GenesiEdges.bottom)"
+        " * offsetScale\n"), 1)
+
+    for path, text in out.items():
+        m = re.search(r"^import [\w.]+( as \w+)?\n(?!import)", text, re.M)
+        if not m:
+            fail(f"{os.path.basename(path)} has no import block for the "
+                 "GenesiEdges import to join.")
+        out[path] = text[:m.end()] + "import qs.modules.launcher\n" + text[m.end():]
+
+    # ...except the launcher, which IS that module. Importing your own
+    # directory is a cycle QML refuses; a singleton beside you needs no import.
+    out[launcher] = out[launcher].replace("import qs.modules.launcher\n", "", 1)
+
+    for path, text in out.items():
+        io.open(path, "w", encoding="utf-8", newline="\n").write(text)
+    print("drawers: a closed one hides past the bar, not past the border")
+
+
 def patch_edge_regions(release):
     """
     caelestia stops claiming the edge a Genesi surface is standing on.
@@ -2786,6 +2867,7 @@ def main():
     patch_depth(release)
     patch_edge_regions(release)
     patch_edge_layout(release)
+    patch_hidden_panels(release)
     patch_window_icons(release)
     patch_ddc_timeout(os.path.join(release, "services"))
 

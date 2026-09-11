@@ -374,7 +374,38 @@ pkgver=2.0.3
 # stacking order per monitor, what each reserved, which files loaded and
 # what the shell said while starting. Three bugs in a row were diagnosed
 # from a screenshot and two of those guesses were wrong.
-pkgrel=35
+# 36: the dashboard's closed tab hung permanently below the bar, the
+# music card was clipped, the bar had no margin setting, and Depth was
+# picking embers out of a picture of a person.
+#
+# The tab: 35 insets caelestia's panel area by the bar so nothing opens
+# underneath it, and a closed drawer hides by moving up its own height
+# plus five -- measured from the top of that AREA. Upstream that put its
+# edge inside the ten-pixel border, invisible. With the bar in the
+# inset, five pixels above the panel area is forty-five pixels down the
+# screen, so the dashboard's blob sat there in plain view. It tucks the
+# bar's height further now, which puts it back where upstream had it.
+#
+# topbar.margin: how far the bar sits from the screen edge, which is a
+# different question from `gap` -- that is the space around the islands
+# INSIDE the strip. GenesiEdges counts both, so the exclusion zone,
+# caelestia's panels and its input regions all move with it.
+#
+# The player card was 290 tall in 220 of headroom, so the window clipped
+# its whole transport row away -- which is why none of it could be
+# clicked. The headroom is measured from the card now instead of chosen,
+# and the album art is capped so a wider card is not a taller one.
+#
+# Depth was only asking one question. Spectral-residual saliency finds
+# unusual TEXTURE, so on a wallpaper of a dark hooded figure against an
+# ember-filled sky it found the embers. Two more terms: frequency-tuned
+# saliency, which finds unusual COLOUR and to which a large dark flat
+# subject is obvious; and a centre prior, because a wallpaper is
+# composed and its scattered bright detail is not in the middle. The
+# test suite had a bright subject on a dark field and a flat gradient --
+# not the case that broke. It has it now, and the old code refuses that
+# picture outright while the new one cuts the figure.
+pkgrel=36
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
