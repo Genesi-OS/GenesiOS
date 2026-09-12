@@ -50,7 +50,13 @@ pkgver=1.0.0
 # in an OS whose default is that its own six windows do not. The
 # emerald is one switch away, on the same switch, and it is what you
 # ask for now rather than what you get.
-pkgrel=12
+# 2026-09-12: rebuilt for the shared I18n.qml, which gained the two
+# labels the AI chat's new speaker switch reads. This package does not
+# use them -- it is bumped because it BUNDLES that file at build time,
+# and pacman compares versions rather than contents: republished at the
+# same version the new copy would sit in the repository as 'nothing to
+# do' on every machine that already has it.
+pkgrel=13
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -1411,7 +1411,41 @@ pkgver=1.0.0
 # ci/voice-model-test.py asks GitHub whether the two URLs resolve. A 4xx fails
 # the build; a network error does not, because a runner with no route to
 # github.com must not go red about a URL that is fine.
-pkgrel=196
+# 2026-09-12 (197): the API key was not connected to anything you talk to,
+# and there was no setting for the voice.
+#
+# Reported as "the API key is like it isn't integrated with our main AI
+# system: you can't choose to use it in the AI Mode Monitor or in Quick Chat",
+# which was exactly right. The key was wired into ask() -- the small
+# completions the passive helpers make -- and into nothing a person types
+# into. The chat picks a model string and routes it to Ollama or to
+# llama-server, and a hosted provider was not one of the things a model string
+# could be.
+#
+# It is now: `cloud:<provider>`, the same shape as the `gguf:<stem>` refs that
+# already make a local file a first-class model everywhere. So it appears in
+# the Monitor's picker and in Quick Chat's, `modelLabel` renders it as the
+# provider and the model it is set to, and the saved sessions and automation
+# configs keep treating a model as a string. Streaming lives in
+# genesi_ai_assist next to the dialects, because two places that know how
+# Anthropic differs from OpenAI is one too many -- and one stream is counted
+# as one request, there, including a stream the user stops partway (the
+# provider served it either way).
+#
+# Agent mode refuses a hosted model and says so. The loop runs tools, reads
+# files and asks for approval against a local transport; pointing it at a
+# provider would need the whole thing ported, and saying so is better than
+# half-doing it and much better than a silent nothing. Quick Chat sends a
+# hosted model through the plain chat path for the same reason.
+#
+# And spoken answers are a setting, remembered: a speaker chip beside the
+# model chip in the Monitor, a Voice row in Quick Chat's settings, and each
+# finished answer read out when it is on. Both are drawn only when
+# genesi-ai-voice says there is something to speak with, rather than drawn and
+# inert. `voiceReady` is cached, because answering it starts a second
+# interpreter to look inside a virtualenv, and `recheckVoice` is how it
+# changes after an install.
+pkgrel=197
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

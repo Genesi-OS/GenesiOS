@@ -35,6 +35,8 @@ QQC2.ApplicationWindow {
     property var availableModels: []
     property string modelName: backend.quickModel()
     property bool aiActive: false
+    property bool voiceReady: backend.voiceReady()
+    property bool speakAnswers: backend.speakAnswers()
     property string forceMode: "auto"
     property string profileMode: "auto"
     property bool turboRequested: backend.quickTurboActive()
@@ -177,7 +179,15 @@ QQC2.ApplicationWindow {
         settingsOpen = false
         activityText = "Thinking"
         thinking = true
-        backend.sendAgentPrompt(modelName, JSON.stringify(conversation), actionMode)
+        // A hosted model answers through the plain chat path. The agent loop
+        // runs tools, reads files and asks for approval against a local
+        // transport, so pointing it at a provider would need the whole loop
+        // ported -- and Quick Chat sends everything through the agent by
+        // default, which would make picking the cloud here an error message.
+        if (backend.isCloudModel(modelName))
+            backend.sendPrompt(modelName, JSON.stringify(conversation))
+        else
+            backend.sendAgentPrompt(modelName, JSON.stringify(conversation), actionMode)
     }
     function resolveApproval(approved) {
         if (!pendingApproval) return
@@ -479,6 +489,49 @@ QQC2.ApplicationWindow {
                             highlighted: modelPicker.highlightedIndex === index
                         }
                         onActivated: root.chooseModel(root.availableModels[currentIndex])
+                    }
+
+                    QQC2.Label {
+                        text: "Voice"
+                        color: root.textMid
+                        font.bold: true
+                        visible: root.voiceReady
+                    }
+                    RowLayout {
+                        visible: root.voiceReady
+                        spacing: 4
+                        Repeater {
+                            model: [
+                                { "value": false, "label": "Silent" },
+                                { "value": true, "label": "Read answers out" }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool picked:
+                                    root.speakAnswers === modelData.value
+                                Layout.preferredHeight: 26
+                                implicitWidth: voiceLbl.implicitWidth + 18
+                                radius: theme.rMd
+                                color: picked ? theme.a(theme.green, 0.18)
+                                              : theme.a(theme.textHi, 0.05)
+                                border.width: 1
+                                border.color: picked
+                                    ? theme.a(theme.green, 0.5) : "transparent"
+                                QQC2.Label {
+                                    id: voiceLbl
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    color: picked ? root.textHi : root.textMid
+                                    font.pixelSize: theme.fsSmall
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: backend.setSpeakAnswers(
+                                        modelData.value)
+                                }
+                            }
+                        }
                     }
 
                     QQC2.Label { text: "Actions"; color: root.textMid; font.bold: true }
@@ -797,7 +850,10 @@ QQC2.ApplicationWindow {
                 visible: root.expanded
                 Layout.fillWidth: true
                 QQC2.Label {
-                    text: root.modelName ? (root.modelName === "turbo" ? "Turbo ready" : root.modelName) : "No model available"
+                    text: root.modelName
+                        ? (root.modelName === "turbo" ? "Turbo ready"
+                                                      : backend.modelLabel(root.modelName))
+                        : "No model available"
                     color: root.modelName ? theme.greenBright : theme.red
                     font.pixelSize: 10; elide: Text.ElideRight
                 }
@@ -853,7 +909,25 @@ QQC2.ApplicationWindow {
             if (!token) return
             root.addMessage("assistant", token)
         }
-        function onChatDone(stats) { root.thinking = false; prompt.forceActiveFocus() }
+        function onChatDone(stats) {
+            root.thinking = false
+            prompt.forceActiveFocus()
+            // The whole answer, not the last token: onChatToken appends each
+            // one as its own entry, so the reply is every trailing assistant
+            // entry joined back together.
+            if (root.speakAnswers && root.voiceReady) {
+                var said = ""
+                for (var i = root.conversation.length - 1; i >= 0; --i) {
+                    if (root.conversation[i].role !== "assistant")
+                        break
+                    said = root.conversation[i].content + said
+                }
+                if (said.trim().length > 0)
+                    backend.speak(said)
+            }
+        }
+        function onSpeakAnswersChanged(on) { root.speakAnswers = on }
+        function onVoiceReadyChanged(ready) { root.voiceReady = ready }
         function onChatError(message) {
             root.thinking = false
             root.addMessage("assistant", message)

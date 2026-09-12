@@ -57,11 +57,20 @@ Kirigami.Page {
     // silently does nothing -- which is the shape of every dead control this
     // project has had to apologise for.
     property bool voiceReady: false
+    // Read out loud as each answer finishes. Remembered by the backend, so it
+    // survives closing the window -- a preference you have to set again every
+    // time is not a preference.
+    property bool speakAnswers: false
 
     Component.onCompleted: {
         backend.loadModels()
         page.agentMode = backend.agentMode()
         page.voiceReady = backend.voiceReady()
+        page.speakAnswers = backend.speakAnswers()
+        // The cached answer first, then ask again in the background: somebody
+        // who has just installed Kokoro should not have to know that this
+        // window caches it.
+        backend.recheckVoice()
     }
 
     // Debounce for prefill-as-you-type: fires ~450ms after the user stops typing
@@ -192,6 +201,8 @@ Kirigami.Page {
         }
         function onTurboStatus(s) { statsLabel.text = s }
         function onTurboNeedsInstall(need) { /* handled in Main.qml */ }
+        function onSpeakAnswersChanged(on) { page.speakAnswers = on }
+        function onVoiceReadyChanged(ready) { page.voiceReady = ready }
         function onModelsLoaded(jsonStr) {
             var arr = []
             try { arr = JSON.parse(jsonStr) } catch (e) {}
@@ -211,6 +222,15 @@ Kirigami.Page {
                     chatModel.remove(page.currentAi)
                 else if (stats.length > 0)
                     chatModel.setProperty(page.currentAi, "stats", stats)
+                // Spoken when the setting is on, and only the bubble that
+                // just finished. Reading a whole reloaded conversation out
+                // because a window opened would be a feature nobody asks for
+                // twice.
+                if (page.speakAnswers && page.voiceReady) {
+                    const b = chatModel.get(page.currentAi)
+                    if (b && b.body && b.body.length > 0)
+                        backend.speak(b.body)
+                }
             }
             statsLabel.text = page.shortStats(stats)
             page.busy = false
@@ -896,6 +916,54 @@ Kirigami.Page {
                         Layout.fillWidth: true
                         Layout.bottomMargin: 2
                         spacing: theme.sp2
+
+                        // Spoken answers. Beside the model chip, because it
+                        // is the same kind of choice -- what answers this
+                        // message and how it comes back -- and not drawn at
+                        // all when there is nothing to speak with, rather
+                        // than drawn and inert.
+                        Rectangle {
+                            visible: page.voiceReady
+                            width: speakRow.implicitWidth + theme.sp3
+                            height: 26
+                            radius: theme.rPill
+                            color: page.speakAnswers
+                                ? theme.a(theme.green, 0.16)
+                                : (speakMa.containsMouse ? theme.hover
+                                                         : "transparent")
+                            border.width: 1
+                            border.color: page.speakAnswers
+                                ? theme.a(theme.green, 0.55) : theme.hairline
+                            Behavior on color { ColorAnimation { duration: 140 } }
+                            RowLayout {
+                                id: speakRow
+                                anchors.centerIn: parent
+                                spacing: theme.sp1 + 1
+                                FIcon {
+                                    name: page.speakAnswers ? "volume-2"
+                                                            : "volume-x"
+                                    size: 12
+                                    color: page.speakAnswers ? theme.greenBright
+                                                             : theme.textLo
+                                }
+                                QQC2.Label {
+                                    text: page.speakAnswers
+                                        ? i18n.t("chat.speakOn")
+                                        : i18n.t("chat.speakOff")
+                                    color: page.speakAnswers ? theme.textHi
+                                                             : theme.textMid
+                                    font.pixelSize: theme.fsMicro
+                                }
+                            }
+                            MouseArea {
+                                id: speakMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: backend.setSpeakAnswers(
+                                    !page.speakAnswers)
+                            }
+                        }
 
                         // The model chip. The combo underneath is invisible and
                         // does the work: writing a popup list from scratch to

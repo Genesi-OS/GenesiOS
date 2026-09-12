@@ -104,6 +104,8 @@ Item {
             "bench.descPost": ". Takes ~1 min (runs twice).",
             // chat page
             "chat.model": "Model",
+            "chat.speakOn": "Speaking",
+            "chat.speakOff": "Speak",
             "chat.reload": "Reload models",
             "chat.noModels": "No Ollama models found. Run `ollama pull llama3.2` and make sure the service is up (`systemctl enable --now ollama`).",
             "chat.emptyTitle": "Chat with the local AI",
@@ -319,6 +321,8 @@ Item {
             "bench.descPost": ". Leva ~1 min (roda duas vezes).",
             // chat page
             "chat.model": "Modelo",
+            "chat.speakOn": "Falando",
+            "chat.speakOff": "Falar",
             "chat.reload": "Recarregar modelos",
             "chat.noModels": "Nenhum modelo do Ollama encontrado. Rode `ollama pull llama3.2` e confira se o serviço está ativo (`systemctl enable --now ollama`).",
             "chat.emptyTitle": "Converse com a IA local",

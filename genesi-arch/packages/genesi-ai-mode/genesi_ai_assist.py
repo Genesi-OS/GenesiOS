@@ -417,6 +417,104 @@ def cloud_request(cloud, payload, timeout):
         int(use.get("completion_tokens") or 0)
 
 
+def cloud_stream(cloud, payload, timeout, on_token, stop=None):
+    """Stream a completion, token by token, in whichever shape it speaks.
+
+    Returns (whole text, prompt tokens, completion tokens) and counts ONE
+    request, here, for the same reason the non-streaming path counts here: it
+    is the one place a hosted request is made, so one call is one use by
+    construction rather than by every caller remembering to say so.
+
+    Token counts come back zero on providers that do not volunteer them
+    mid-stream, and that is left alone rather than papered over -- asking for
+    them means sending a provider-specific option, and an unknown field is a
+    400 that would break the chat for the sake of a number on a settings page.
+    The REQUEST count, which is what anybody is actually watching, is exact.
+    """
+    base = cloud["base_url"].rstrip("/")
+    dialect = cloud.get("dialect") or "openai"
+    out = []
+    tin = tout = 0
+
+    if dialect == "anthropic":
+        msgs = [m for m in payload["messages"] if m.get("role") != "system"]
+        system = " ".join(m["content"] for m in payload["messages"]
+                          if m.get("role") == "system")
+        body = {"model": cloud["model"], "messages": msgs, "stream": True,
+                "max_tokens": payload.get("max_tokens", 1024)}
+        if system:
+            body["system"] = system
+        req = urllib.request.Request(
+            base + "/messages", data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "x-api-key": cloud["key"],
+                     "anthropic-version": ANTHROPIC_VERSION})
+    else:
+        body = dict(payload)
+        body["model"] = cloud["model"]
+        body["stream"] = True
+        req = urllib.request.Request(
+            base + "/chat/completions", data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer " + cloud["key"]})
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            for raw in resp:
+                if stop and stop():
+                    break
+                line = raw.decode("utf-8", "replace").strip()
+                # Server-sent events: `event:` lines and blank separators are
+                # part of the protocol and carry nothing we need.
+                if not line.startswith("data:"):
+                    continue
+                line = line[5:].strip()
+                if line == "[DONE]":
+                    break
+                try:
+                    o = json.loads(line)
+                except ValueError:
+                    continue
+                if dialect == "anthropic":
+                    kind = o.get("type")
+                    if kind == "content_block_delta":
+                        tok = (o.get("delta") or {}).get("text") or ""
+                    elif kind == "message_start":
+                        use = ((o.get("message") or {}).get("usage") or {})
+                        tin = int(use.get("input_tokens") or 0) or tin
+                        tok = ""
+                    elif kind == "message_delta":
+                        use = o.get("usage") or {}
+                        tout = int(use.get("output_tokens") or 0) or tout
+                        tok = ""
+                    elif kind == "error":
+                        raise ValueError(
+                            (o.get("error") or {}).get("message")
+                            or "the provider sent an error event")
+                    else:
+                        tok = ""
+                else:
+                    use = o.get("usage") or {}
+                    if use:
+                        tin = int(use.get("prompt_tokens") or 0) or tin
+                        tout = int(use.get("completion_tokens") or 0) or tout
+                    choices = o.get("choices") or []
+                    tok = ((choices[0].get("delta") or {}).get("content") or ""
+                           ) if choices else ""
+                if tok:
+                    out.append(tok)
+                    if on_token:
+                        on_token(tok)
+    except Exception:
+        usage_note("cloud", cloud.get("provider"), cloud.get("model"),
+                   ok=False)
+        raise
+
+    usage_note("cloud", cloud.get("provider"), cloud.get("model"), ok=True,
+               tokens=(tin, tout))
+    return "".join(out), tin, tout
+
+
 def _ask_cloud(cloud, payload, timeout):
     """
     One completion from the hosted model, or None.

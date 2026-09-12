@@ -20,6 +20,14 @@ on somebody's machine:
   * one request is one use; a request that fails is an error and NOT a use;
     local and hosted are counted apart
   * the names the settings page offers are the names the writer accepts
+  * STREAMING, per dialect. The chat gets its answer a token at a time, and
+    the two dialects disagree about everything in that path: the event names,
+    where the text sits in each event, and where the token counts arrive. A
+    parser written for one silently produces an empty answer on the other --
+    no error, no tokens, a bubble that finishes blank.
+  * the chat can actually reach it: a `cloud:` model has to be in the picker's
+    list, has to be recognised, and must not be handed to the agent loop,
+    which runs against a local transport.
 """
 import importlib.machinery
 import importlib.util
@@ -39,6 +47,8 @@ ASSIST = os.path.join(AI, "genesi_ai_assist.py")
 KEY = os.path.join(AI, "genesi-ai-key")
 PAGE = os.path.join(ROOT, "packages", "genesi-center", "app", "pages",
                     "AiPage.qml")
+MONITOR = os.path.join(AI, "monitor", "genesi_ai_monitor.py")
+QUICK = os.path.join(AI, "monitor", "QuickChat.qml")
 
 failures = []
 
@@ -103,6 +113,16 @@ class Fake(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def sse(self, chunks):
+        """An event stream, in the wire shape each dialect really uses."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        for c in chunks:
+            self.wfile.write(("data: " + json.dumps(c) + "\n\n").encode())
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(n) or b"{}")
@@ -123,12 +143,34 @@ class Fake(BaseHTTPRequestHandler):
                 return self.fail(401, "anthropic wants x-api-key")
             if not self.headers.get("anthropic-version"):
                 return self.fail(400, "anthropic wants a version header")
+            if body.get("stream"):
+                # Anthropic's real event sequence, abbreviated: the usage
+                # arrives in message_start and message_delta, and the text in
+                # content_block_delta.
+                return self.sse([
+                    {"type": "message_start",
+                     "message": {"usage": {"input_tokens": 11}}},
+                    {"type": "content_block_start", "index": 0},
+                    {"type": "content_block_delta",
+                     "delta": {"type": "text_delta", "text": "streamed "}},
+                    {"type": "content_block_delta",
+                     "delta": {"type": "text_delta", "text": "anthropic"}},
+                    {"type": "message_delta",
+                     "usage": {"output_tokens": 5}},
+                ])
             out = {"content": [{"type": "text", "text": "ok-anthropic"}],
                    "usage": {"input_tokens": 11, "output_tokens": 3}}
         elif self.path.endswith("/chat/completions"):
             if not (self.headers.get("Authorization") or "").startswith(
                     "Bearer "):
                 return self.fail(401, "openai wants a bearer token")
+            if body.get("stream"):
+                return self.sse([
+                    {"choices": [{"delta": {"content": "streamed "}}]},
+                    {"choices": [{"delta": {"content": "openai"}}]},
+                    {"choices": [{"delta": {}}],
+                     "usage": {"prompt_tokens": 7, "completion_tokens": 4}},
+                ])
             out = {"choices": [{"message": {"content": "ok-openai"}}],
                    "usage": {"prompt_tokens": 7, "completion_tokens": 2}}
         else:
@@ -214,6 +256,47 @@ for name in sorted(assist.PROVIDERS):
             ok(f"{name}: {dialect} dialect, {want_path}, system prompt "
                f"carried, {tin}/{tout} tokens")
 
+# ── Streaming, per dialect ─────────────────────────────────────────────────
+for name in ("openai", "anthropic"):
+    _base, model, dialect = assist.PROVIDERS[name]
+    cloud = {"provider": name, "base_url": f"{HOST}/{name}/v1",
+             "model": model, "dialect": dialect, "key": "k"}
+    seen = []
+    try:
+        text, tin, tout = assist.cloud_stream(
+            cloud, dict(PAYLOAD), 10, on_token=seen.append)
+    except Exception as e:  # noqa: BLE001
+        bad(f"{name} streams", f"{type(e).__name__}: {e}")
+        continue
+    want = "streamed " + ("anthropic" if dialect == "anthropic" else "openai")
+    if text != want:
+        bad(f"{name}'s stream is read back whole", f"got {text!r}")
+    elif len(seen) < 2:
+        bad(f"{name} streams token by token",
+            f"the callback fired {len(seen)} time(s), so the chat would get "
+            "the whole answer at once and the typing effect is a lie")
+    elif "".join(seen) != want:
+        bad(f"{name}'s tokens add up to its answer",
+            f"the callback saw {seen!r}")
+    elif (tin, tout) == (0, 0):
+        bad(f"{name} reports token use while streaming",
+            "both counts came back zero")
+    else:
+        ok(f"{name}: streamed in {len(seen)} tokens, {tin}/{tout} counted")
+
+# A stopped stream still counts as a request -- the provider served it.
+cloud = {"provider": "openai", "base_url": f"{HOST}/openai/v1", "model": "m",
+         "dialect": "openai", "key": "k"}
+before = (assist.usage_read().get("cloud", {}).get("openai") or {})
+assist.cloud_stream(cloud, dict(PAYLOAD), 10, on_token=None,
+                    stop=lambda: True)
+after = (assist.usage_read().get("cloud", {}).get("openai") or {})
+if after.get("requests", 0) != before.get("requests", 0) + 1:
+    bad("a stream stopped by the user still counts",
+        "it was not counted, and the provider served it either way")
+else:
+    ok("a stream stopped partway still counts as one request")
+
 # ── One request is one use ─────────────────────────────────────────────────
 before = assist.usage_read()
 cloud = {"provider": "openai", "base_url": f"{HOST}/openai/v1", "model": "m",
@@ -290,6 +373,46 @@ if re.search(r'^PROVIDERS\s*=', body, re.M):
         "genesi_ai_assist reads, and two tables of defaults disagree")
 else:
     ok("one provider table, in the module that sends the request")
+
+# ── Can the chat reach it? ─────────────────────────────────────────────────
+#
+# Three separate things have to line up for "you can choose to use the API key
+# in the Monitor" to be true, and each of them fails silently on its own: the
+# ref has to be in the list the picker reads, the send path has to recognise
+# it, and the AGENT path must refuse it rather than handing a provider to a
+# loop built on a local transport.
+mon = io.open(MONITOR, encoding="utf-8").read()
+body = re.sub(r"#[^\n]*", "", mon)
+for what, pattern, why in (
+    ("the model list offers it",
+     r"names\.append\(CLOUD_PREFIX",
+     "loadModels never appends it, so it is not in the picker and cannot be "
+     "chosen"),
+    ("the chat routes it",
+     r"startswith\(CLOUD_PREFIX\)[\s\S]{0,200}_chat_cloud",
+     "sendPrompt does not branch on it, so a cloud ref is handed to "
+     "_prepare_transport, which tries to load it as a local model"),
+    ("the agent refuses it",
+     r"startswith\(CLOUD_PREFIX\)[\s\S]{0,400}_agent_status\(\"error\"",
+     "sendAgentPrompt would hand a provider to the tool loop"),
+    ("the streaming goes through the shared module",
+     r"assist\.cloud_stream\(",
+     "the Monitor speaks to the provider itself, which is a second place "
+     "that has to know how Anthropic differs from OpenAI"),
+):
+    if re.search(pattern, body):
+        ok(what)
+    else:
+        bad(what, why)
+
+quick = io.open(QUICK, encoding="utf-8").read()
+if "isCloudModel" not in quick:
+    bad("Quick Chat routes a hosted model past the agent loop",
+        "it sends everything through sendAgentPrompt, which refuses a cloud "
+        "ref -- so picking one there is an error message rather than an "
+        "answer")
+else:
+    ok("Quick Chat sends a hosted model through the plain chat path")
 
 srv.shutdown()
 print()

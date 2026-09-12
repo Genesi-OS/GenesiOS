@@ -20,7 +20,7 @@ import genesi_turbo_ctl as turbo_ctl
 # moment of use. The constant this used to import was renamed to
 # LOCAL_TURBO when that landed, and Quick Chat was not updated with it —
 # so it has been dying on the import ever since, on every login.
-from genesi_ai_monitor import Backend, OLLAMA, _turbo_base
+from genesi_ai_monitor import Backend, CLOUD_PREFIX, OLLAMA, _turbo_base
 
 
 APP_ID = "org.genesi.aiquick"
@@ -108,6 +108,14 @@ class QuickBackend(Backend):
             local = turbo_ctl.list_gguf_models()
             if local:
                 model = local[0]["ref"]
+        # ...and last of all, the hosted model, when one is configured. Last
+        # because it bills per request and should be chosen rather than
+        # defaulted into -- but "no model available" on a machine that has a
+        # key set is Quick Chat refusing to use the thing it was given.
+        if not model:
+            cloud = self._cloud_config()
+            if cloud:
+                model = CLOUD_PREFIX + (cloud.get("provider") or "cloud")
         self.turboReady.emit(self._turbo)
         if model != self._quick_model:
             self._quick_model = model

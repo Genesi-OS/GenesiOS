@@ -19,6 +19,7 @@ import socket
 import tempfile
 import threading
 import subprocess
+import urllib.error
 import urllib.request
 import uuid
 
@@ -49,6 +50,26 @@ except ImportError:
 
 STATE_FILE = "/run/genesi-ai-mode/state.json"
 OLLAMA = "http://127.0.0.1:11434"
+
+# The shared gate, for the hosted-model half of it: the provider table, the
+# two dialects, the streaming, and the request counting all live there,
+# because genesi-ai-key writes the config that module reads and two places
+# that know how Anthropic differs from OpenAI is one too many.
+#
+# Optional, the same way genesi-find treats it: the Monitor has to start on a
+# machine where /usr/share is not what we think it is, and then the cloud
+# simply is not offered.
+sys.path.insert(0, "/usr/share/genesi-ai-mode")
+try:
+    import genesi_ai_assist as assist
+except ImportError:                                  # pragma: no cover
+    assist = None
+
+# What a hosted model looks like in a model string. The same idea as
+# `gguf:<stem>`: the picker, Quick Chat, the saved sessions and an
+# automation's config all keep treating a model as a string, and none of them
+# has to learn what a cloud is.
+CLOUD_PREFIX = "cloud:"
 def _turbo_base():
     """Where Turbo is, for THIS machine: the mesh's answer, or loopback.
 
@@ -75,6 +96,11 @@ BRIDGE = "http://127.0.0.1:11436"     # genesi-mempalace recall bridge (opt-in)
 # palace (same pattern Genesi Code uses with ~/.config/genesi-code/sessions).
 SESSIONS_DIR = os.path.expanduser("~/.config/genesi-ai-monitor/sessions")
 AGENT_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/agent.json")
+# Spoken answers, on or off, remembered. Its own file rather than a key in
+# agent.json: that one is about the agent loop, and a setting saved in the
+# wrong file is a setting that vanishes the next time the other one's shape
+# changes.
+VOICE_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/voice.json")
 # Automations: this Backend only EDITS the graphs; genesi-automationd runs them.
 AUTOMATIONS_DIR = os.path.expanduser("~/.config/genesi-ai-monitor/automations")
 AUTOMATION_STATUS = os.path.join(
@@ -111,6 +137,8 @@ class Backend(QObject):
     sessionsChanged = Signal()     # a chat session was saved/removed -> refresh HISTORY
     approvalRequested = Signal(str)  # JSON action awaiting the user's decision
     agentActivity = Signal(str)      # JSON status for the non-blocking UI indicator
+    speakAnswersChanged = Signal(bool)  # spoken answers turned on or off
+    voiceReadyChanged = Signal(bool)    # Kokoro became available, or went
     agentModeChanged = Signal(str)
     findStatus = Signal(str)          # human-readable progress for Genesi Find
     findResults = Signal(str)         # JSON: {query, results[], error}
@@ -131,6 +159,11 @@ class Backend(QObject):
         self._bench_running = False  # a benchmark is in flight (guard re-entry)
         self._recall = False         # route chat through the mempalace recall bridge?
         self._agent_mode = self._load_agent_mode()
+        self._speak = self._load_speak()
+        # Asked once and cached: `genesi-ai-voice status` builds a subprocess
+        # to look inside its virtualenv, and the answer changes only when
+        # somebody installs it.
+        self._voice_ready = None
         self._agent_pending = {}
         self._agent_lock = threading.Lock()
         self._agent_job_lock = threading.Lock()
@@ -510,6 +543,12 @@ class Backend(QObject):
             except Exception:
                 names = []
             names += [g["ref"] for g in turbo_ctl.list_gguf_models()]
+            # ...and the hosted model, when a key is set. Last, so the local
+            # ones are what a fresh picker lands on: a hosted model bills per
+            # request and should be chosen rather than defaulted into.
+            cloud = self._cloud_config()
+            if cloud:
+                names.append(CLOUD_PREFIX + (cloud.get("provider") or "cloud"))
             self.modelsLoaded.emit(json.dumps(names))
         threading.Thread(target=work, daemon=True).start()
 
@@ -519,14 +558,34 @@ class Backend(QObject):
     def voiceReady(self):
         """Is there a synthesiser to speak with?
 
-        Asked once when the chat opens, so a machine without Kokoro shows no
-        speaker button at all rather than one that does nothing. `--json`
-        rather than a look at the filesystem: genesi-ai-voice is what knows
-        that a model on disk with no environment built is not ready.
+        Asked when the chat opens, so a machine without Kokoro shows no
+        speaker at all rather than one that does nothing. `--json` rather than
+        a look at the filesystem: genesi-ai-voice is what knows that a model
+        on disk with no environment built is not ready.
+
+        Cached, because answering costs a subprocess that starts a second
+        interpreter to look inside a virtualenv, and the answer changes only
+        when somebody installs it. `recheckVoice` is how it changes.
         """
+        if self._voice_ready is None:
+            self._voice_ready = self._ask_voice_ready()
+        return bool(self._voice_ready)
+
+    @Slot()
+    def recheckVoice(self):
+        """Ask again, after an install."""
+        def work():
+            was = self._voice_ready
+            self._voice_ready = self._ask_voice_ready()
+            if self._voice_ready != was:
+                self.voiceReadyChanged.emit(bool(self._voice_ready))
+        threading.Thread(target=work, daemon=True).start()
+
+    @staticmethod
+    def _ask_voice_ready():
         try:
             r = subprocess.run(["genesi-ai-voice", "status", "--json"],
-                               capture_output=True, text=True, timeout=20)
+                               capture_output=True, text=True, timeout=25)
             return bool(json.loads(r.stdout or "{}").get("ready"))
         except (OSError, subprocess.SubprocessError, ValueError):
             return False
@@ -559,10 +618,30 @@ class Backend(QObject):
         except OSError:
             pass
 
+    def _cloud_config(self):
+        """The hosted model, if one is configured and usable. None otherwise."""
+        if assist is None:
+            return None
+        c = assist.cloud_config()
+        return c if c and c.get("key") and c.get("base_url") else None
+
+    @Slot(str, result=bool)
+    def isCloudModel(self, model):
+        """Is this reference a hosted provider rather than a local model?"""
+        return str(model).startswith(CLOUD_PREFIX)
+
     @Slot(str, result=str)
     def modelLabel(self, model):
         """Human-readable name for a model reference, for pickers and headers.
-        Ollama tags pass through unchanged; a GGUF ref becomes its real name."""
+        Ollama tags pass through unchanged; a GGUF ref becomes its real name;
+        a cloud ref becomes the provider and the model it is set to, because
+        "cloud:gemini" tells you who and not what."""
+        model = str(model)
+        if model.startswith(CLOUD_PREFIX):
+            who = model[len(CLOUD_PREFIX):]
+            c = self._cloud_config() or {}
+            what = c.get("model") or ""
+            return f"{who} · {what}" if what else who
         return turbo_ctl.model_label(model)
 
     @Slot(str, result=bool)
@@ -697,6 +776,35 @@ class Backend(QObject):
         except OSError:
             pass
 
+    @staticmethod
+    def _load_speak():
+        try:
+            with open(VOICE_CONFIG) as handle:
+                return bool(json.load(handle).get("speak", False))
+        except Exception:
+            return False
+
+    def _save_speak(self):
+        try:
+            os.makedirs(os.path.dirname(VOICE_CONFIG), exist_ok=True)
+            temporary = VOICE_CONFIG + ".tmp"
+            with open(temporary, "w") as handle:
+                json.dump({"speak": bool(self._speak)}, handle)
+            os.replace(temporary, VOICE_CONFIG)
+        except OSError:
+            pass
+
+    @Slot(result=bool)
+    def speakAnswers(self):
+        """Should an answer be read out when it finishes?"""
+        return bool(self._speak)
+
+    @Slot(bool)
+    def setSpeakAnswers(self, on):
+        self._speak = bool(on)
+        self._save_speak()
+        self.speakAnswersChanged.emit(bool(on))
+
     @Slot(result=str)
     def agentMode(self):
         return self._agent_mode
@@ -743,6 +851,17 @@ class Backend(QObject):
             # Same transport rule as chat: a local GGUF has to be loaded into
             # llama-server before the tool loop can talk to it. Already on a
             # worker thread, so blocking here is safe.
+            if str(model).startswith(CLOUD_PREFIX):
+                # The agent runs tools, reads files and asks for approval
+                # through a loop built on the local transports. Pointing it at
+                # a hosted model would need that whole loop ported; saying so
+                # is better than half-doing it and better than a silent
+                # nothing.
+                msg = ("Agent mode runs on a local model. Pick one, or switch "
+                       "off agent mode to use the hosted model.")
+                self._agent_status("error", error=msg)
+                self.chatError.emit(msg)
+                return
             _, ok, err = self._prepare_transport(model)
             if not ok:
                 self._agent_status("error", error=err or "could not start the model")
@@ -1015,6 +1134,13 @@ class Backend(QObject):
             messages = []
 
         def work():
+            # A hosted model needs no transport prepared: nothing to load,
+            # nothing to free, no VRAM to think about. Checked before
+            # _prepare_transport rather than inside it, because that function
+            # is about which local server to bring up and a cloud is neither.
+            if str(model).startswith(CLOUD_PREFIX):
+                self._chat_cloud(messages)
+                return
             use_turbo, ok, err = self._prepare_transport(model)
             if not ok:
                 self.chatError.emit(err or "could not start the model")
@@ -1023,6 +1149,49 @@ class Backend(QObject):
                 return
             (self._chat_turbo if use_turbo else self._chat_ollama)(model, messages)
         threading.Thread(target=work, daemon=True).start()
+
+    def _chat_cloud(self, messages):
+        """Stream an answer from the hosted provider.
+
+        No fallback to the local model here, deliberately, and that is the
+        difference from ask(): a passive helper that silently falls back is
+        doing somebody a favour, and a chat that silently answers from a
+        different model than the one named in the picker is lying about where
+        the answer came from. A failure is shown.
+        """
+        cloud = self._cloud_config()
+        if not cloud:
+            self.chatError.emit(
+                "no API key is set — Genesi Center → Local AI, or "
+                "`genesi-ai-key set`")
+            return
+        payload = {"messages": messages, "max_tokens": 1024,
+                   "temperature": 0.7}
+        try:
+            _text, tin, tout = assist.cloud_stream(
+                cloud, payload, 900,
+                on_token=lambda t: self.chatToken.emit(t),
+                stop=lambda: self._stop)
+        except urllib.error.HTTPError as e:
+            self.chatError.emit(
+                f"{cloud.get('provider')} answered {e.code} {e.reason}. "
+                + {401: "The key is wrong or expired.",
+                   403: "The key is not allowed to use this model.",
+                   404: f"There is no model called "
+                        f"{cloud.get('model')!r} at that endpoint.",
+                   429: "Rate limited — the key works, the account is busy."}
+                  .get(e.code, "Check the model name in genesi-ai-key."))
+            return
+        except Exception as e:                           # noqa: BLE001
+            self.chatError.emit(f"{cloud.get('provider')}: {e}")
+            return
+        # The same stats shape the local transports emit, so the bubble's
+        # panel needs no idea where the answer came from.
+        self.chatDone.emit(json.dumps({
+            "mode": "cloud",
+            "eval": tout,
+            "prompt": tin,
+        }))
 
     def _chat_ollama(self, model, messages):
         if not self._ensure_ollama():
