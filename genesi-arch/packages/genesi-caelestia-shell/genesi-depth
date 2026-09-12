@@ -5,6 +5,8 @@ genesi-depth — cut the subject out of a wallpaper so widgets can sit behind it
     genesi-depth cutout <image> [--quality draft|standard|fine]
                                 [--edge-fade none|soft|strong]
     genesi-depth path <image>            where the cutout for that image is
+    genesi-depth probe <image>           the measurements behind the verdict
+    genesi-depth setup [--remove]        fetch the segmentation model
     genesi-depth status
     genesi-depth clear
 
@@ -16,38 +18,48 @@ the effect is often described as "3D": there is no depth map and no parallax.
 There is one cut-out, drawn twice -- once as part of the wallpaper underneath,
 once as a layer on top -- and the widgets are in between.
 
-── Why this is classical vision and not a model ───────────────────────────────
+── Two engines, and why there are two ────────────────────────────────────────
 
-The obvious way is a segmentation network. It is also 170MB of weights, an
-onnxruntime dependency that pulls in half a numerical stack, and a first run
-that either downloads from somewhere or ships the weights in a package that
-every Genesi user pays for whether or not they turn this on.
+    model    u2net, a segmentation network. `genesi-depth setup` installs it.
+    opencv   saliency and GrabCut, needing only what is already on the system.
 
-Saliency plus GrabCut needs numpy and the core half of OpenCV, both of which
-are small and already packaged. Three measures, because one is not enough:
+The classical one shipped first, on the reasoning that a network is 176 MB of
+weights plus an onnxruntime dependency and nobody should pay for that to have
+a clock look nice. That reasoning was sound and the result was not: every
+threshold in a saliency pipeline is a guess about what a picture is made of,
+the guesses were tuned twice -- once against three drawn fixtures, once
+against eight photographs -- and wallpapers are more varied than any such
+guess. It is right on all eight photographs and it refused a cat on a lawn.
 
-  * spectral residual, which finds unusual TEXTURE
-  * frequency-tuned, which finds unusual COLOUR -- a large dark flat subject
-    against a bright background is invisible to the first and obvious to this
-  * a centre prior, because a wallpaper is composed and its subject is near
-    the middle, while its scattered bright detail is not
+u2net answers the question instead of inferring it. On the same eight:
 
-The first alone picked embers out of a picture of a hooded figure.
+    concrete wall      peak 0.02   nothing, and the model says so itself
+    mountain panorama  2%          a speck
+    cat on a lawn      10.8%       the cat, whiskers included
+    flower macro       18.2%       the flower
+    Porsche 911        35.1%       the car
+    Porsche 718        52.1%       the car
+    sand dune          48.8%       the dune face
 
-If `rembg` happens to be installed, `--quality fine` uses it, because on the
-hard cases (hair, foliage, a subject the same brightness as its background) a
-network really is better. It is an optdepend, never a requirement, and the
-other two tiers never touch it.
+Note the wall: the network's own confidence peaks at 0.02 there, so "there is
+nothing here" needs no threshold of ours. And note the 52% -- the classical
+pipeline refused anything over half the frame, because a big region was
+usually a mistake. When the answer comes from a model that has identified a
+car, it is not a mistake, it is a car filling the frame.
+
+The classical engine stays as the answer for a machine that has not run
+`setup`, and it is still what runs with no network and no download.
 
 ── The tiers ─────────────────────────────────────────────────────────────────
 
     draft      short side 480, 3 GrabCut iterations, hard edge
     standard   short side 720, 5 iterations, 2px feather
-    fine       rembg if it is installed; otherwise short side 1080,
-               8 iterations, 3px feather and an edge refinement pass
+    fine       short side 1080, 8 iterations, 3px feather
 
-Higher tiers trace hair and leaf edges better and take longer. On a 4K
-wallpaper standard is about a second and fine about four.
+The tier is the working resolution and how carefully the classical engine
+traces. The model runs at its own fixed 320x320 either way -- that is the
+input its weights were trained for -- so with the model installed the tier
+only decides how big the alpha is when it is scaled back up.
 
 ── The cache ─────────────────────────────────────────────────────────────────
 
@@ -87,6 +99,46 @@ TIERS = {
     "standard": {"side": 720, "iters": 5, "feather": 2, "contract": 2},
     "fine": {"side": 1080, "iters": 8, "feather": 3, "contract": 2},
 }
+
+# ── The model ────────────────────────────────────────────────────────────────
+#
+# u2net, from the rembg project's release, which is where every tool that uses
+# it gets it. Apache-2.0, and the same file rembg would have downloaded on
+# first use -- fetched here so that a 176 MB download happens when somebody
+# asks for it rather than the first time they change their wallpaper.
+#
+# ci/depth-model-test.py asks GitHub whether this URL resolves. The speech
+# model's URL was written from memory, was wrong, and produced an installer
+# that did everything right and then 404'd.
+MODEL_URL = ("https://github.com/danielgatis/rembg/releases/download/v0.0.0"
+             "/u2net.onnx")
+MODEL_SIZE = 175_997_641
+
+DEPTH_DATA = os.path.join(
+    os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"),
+    "genesi", "depth")
+VENV = os.path.join(DEPTH_DATA, "venv")
+MODEL = os.path.join(DEPTH_DATA, "u2net.onnx")
+
+# What u2net was trained against: 320x320, ImageNet mean and standard
+# deviation, and the image divided by its own maximum rather than by 255.
+# That last one looks wrong and is what the reference implementation does, so
+# it is what the weights expect.
+MODEL_SIDE = 320
+MODEL_MEAN = (0.485, 0.456, 0.406)
+MODEL_STD = (0.229, 0.224, 0.225)
+
+# The model's output is a probability, so these are the only three things left
+# to decide, and two of them are about degenerate answers rather than about
+# taste:
+#
+#   peak    below this the network found nothing. Measured 0.02 on a
+#           photograph of a concrete wall and 1.00 on every picture with a
+#           subject in it, so the gap this sits in is enormous.
+#   area    a speck is not a subject; neither is the entire frame.
+MODEL_MIN_PEAK = 0.5
+MODEL_MIN_AREA = 0.005
+MODEL_MAX_AREA = 0.92
 
 
 def die(msg, code=1):
@@ -294,14 +346,18 @@ def judge(cv2, np, bgr, mask):
                           "scene rather than something in it")
     if area < MIN_AREA:
         return False, m, f"it covers {area:.2%} of the picture — a speck"
+    # Plain words, because the side panel puts this sentence on screen under
+    # the preview. The first version said "the picture is only 2.2x as sharp
+    # along the cut as it is everywhere (needs 3.0)", which is the right
+    # measurement and the wrong audience -- somebody looking at their own
+    # wallpaper is not debugging a saliency pipeline. `probe` has the numbers.
     if m["edge"] < MIN_EDGE:
-        return False, m, ("its outline does not lie on anything: the picture "
-                          f"is only {m['edge']:.1f}x as sharp along the cut "
-                          f"as it is everywhere (needs {MIN_EDGE})")
+        return False, m, ("the edges of what it found do not follow anything "
+                          "in the picture, so the cut would run through open "
+                          "sky or flat ground")
     if m["colour"] < MIN_COLOUR:
-        return False, m, (f"it is {m['colour']:.0f} Lab units from the "
-                          "picture's average colour, which is not standing "
-                          f"out (needs {MIN_COLOUR:.0f})")
+        return False, m, ("nothing in it stands far enough from the rest of "
+                          "the picture's colour to be a subject")
     return True, m, ""
 
 
@@ -419,6 +475,311 @@ def subject_mask(cv2, np, bgr, tier):
     m["why"] = why
     return (mask if ok else None), m
 
+# ── The model engine ─────────────────────────────────────────────────────────
+
+
+STATE = os.path.join(DEPTH_DATA, "setup.state")
+
+
+def note(line):
+    """Where the setup has got to, in one line, for whoever asks.
+
+    Written through a temporary and renamed, because the panel reads this
+    while the setup writes it and a half-written line is a panel showing
+    nonsense. Every failure swallowed: progress reporting must never be the
+    reason an install fails.
+    """
+    try:
+        os.makedirs(DEPTH_DATA, exist_ok=True)
+        tmp = STATE + f".tmp.{os.getpid()}"
+        with io.open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(line.strip() + "\n")
+        os.replace(tmp, STATE)
+    except OSError:
+        pass
+
+
+def setup_state():
+    try:
+        return io.open(STATE, encoding="utf-8").read().strip()
+    except OSError:
+        return ""
+
+
+def venv_python():
+    """The environment's interpreter, or None when there is no environment."""
+    for rel in ("bin/python3", "bin/python", "Scripts/python.exe"):
+        p = os.path.join(VENV, *rel.split("/"))
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def have_model_file():
+    try:
+        return os.path.getsize(MODEL) >= MODEL_SIZE * 0.8
+    except OSError:
+        return False
+
+
+def have_onnx():
+    try:
+        import onnxruntime  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def probe_env():
+    """Can the environment import onnxruntime? False when there is none."""
+    vp = venv_python()
+    if not vp:
+        return False
+    import subprocess
+    try:
+        r = subprocess.run(
+            [vp, "-c", "import onnxruntime; print('y')"],
+            capture_output=True, text=True, timeout=60)
+        return r.stdout.strip() == "y"
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def engine_name():
+    """Which engine a cutout would use, without starting anything."""
+    if have_model_file() and (have_onnx() or venv_python()):
+        return "model"
+    return "opencv"
+
+
+def in_the_env():
+    """Re-exec with the environment's interpreter, when one is needed.
+
+    onnxruntime is a native extension: it is loaded by the interpreter that
+    started, so putting another environment's site-packages on sys.path gives
+    a crash rather than an error. Being that interpreter is the only honest
+    way to use it -- the same reasoning, and the same code, as
+    genesi-ai-voice.
+    """
+    if have_onnx():
+        return True
+    vp = venv_python()
+    if not vp or os.environ.get("GENESI_DEPTH_REEXEC") == "1":
+        return False
+    if os.path.abspath(vp) == os.path.abspath(sys.executable):
+        return False
+    os.environ["GENESI_DEPTH_REEXEC"] = "1"
+    try:
+        os.execv(vp, [vp, os.path.abspath(__file__)] + sys.argv[1:])
+    except OSError:
+        return False
+    return True   # unreachable; execv does not return
+
+
+def model_alpha(cv2, np, bgr):
+    """u2net's confidence that each pixel is the subject, 0..1.
+
+    Not normalised to its own min and max. That is the difference between a
+    probability and a picture of one: normalising makes a photograph of a
+    concrete wall -- where the model's highest confidence anywhere is 0.02 --
+    look exactly like a portrait. Every earlier version of this file's
+    judgement was destroyed by exactly that step.
+    """
+    import onnxruntime as ort
+
+    h, w = bgr.shape[:2]
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    small = cv2.resize(rgb, (MODEL_SIDE, MODEL_SIDE),
+                       interpolation=cv2.INTER_AREA)
+    x = small.astype(np.float32) / 255.0
+    mx = float(x.max())
+    if mx > 0:
+        x = x / mx
+    x = (x - np.array(MODEL_MEAN, np.float32)) / np.array(MODEL_STD, np.float32)
+    x = np.transpose(x, (2, 0, 1))[None].astype(np.float32)
+
+    sess = ort.InferenceSession(MODEL, providers=["CPUExecutionProvider"])
+    name = sess.get_inputs()[0].name
+    # Seven outputs, one per decoder stage. The first is the full-resolution
+    # one; the other six are the deep-supervision heads the training used and
+    # are coarser.
+    out = sess.get_outputs()[0].name
+    d0 = sess.run([out], {name: x})[0][0, 0]
+    return cv2.resize(d0, (w, h), interpolation=cv2.INTER_LINEAR)
+
+
+def model_mask(cv2, np, bgr):
+    """(alpha, measures) from the model, or (None, measures) when it says no."""
+    conf = model_alpha(cv2, np, bgr)
+    peak = float(conf.max())
+    m = {"engine": "model", "peak": peak, "area": 0.0}
+
+    if peak < MODEL_MIN_PEAK:
+        m["why"] = ("the model found nothing in this picture it would call a "
+                    "subject")
+        return None, m
+
+    hard = (conf > 0.5).astype(np.uint8) * 255
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(hard, 8)
+    if n <= 1:
+        m["why"] = "the model found nothing solid enough to cut out"
+        return None, m
+    keep = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    hard = np.where(labels == keep, 255, 0).astype(np.uint8)
+    hard = fill_holes(cv2, np, hard)
+    m["area"] = float((hard > 0).mean())
+
+    if m["area"] < MODEL_MIN_AREA:
+        m["why"] = f"what it found covers {m['area']:.2%} of the picture — a speck"
+        return None, m
+    if m["area"] > MODEL_MAX_AREA:
+        m["why"] = ("the model marked almost the whole picture, so there is "
+                    "nothing to stand in front of")
+        return None, m
+
+    # The alpha, not the threshold. A network's edge is soft where the real
+    # edge is soft -- fur, hair, a leaf -- and throwing that away to a 0/1
+    # mask is throwing away the thing a model is better at.
+    alpha = np.clip(conf * 255.0, 0, 255).astype(np.uint8)
+    alpha[hard == 0] = 0
+    return alpha, m
+
+
+def fetch(name, url, expected, dest):
+    tmp = dest + ".part"
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    import urllib.error
+    import urllib.request
+    done = 0
+    try:
+        with urllib.request.urlopen(url, timeout=60) as resp:
+            total = int(resp.headers.get("Content-Length") or expected)
+            with io.open(tmp, "wb") as fh:
+                while True:
+                    chunk = resp.read(1 << 20)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    done += len(chunk)
+                    pct = min(100, int(100 * done / max(1, total)))
+                    sys.stdout.write(
+                        f"\r  {name}  {pct:3d}%  "
+                        f"{done // 1_000_000}/{total // 1_000_000} MB")
+                    sys.stdout.flush()
+                    # Every 4 MB rather than every chunk: the panel polls
+                    # every few seconds and a rename per megabyte is a
+                    # thousand renames for one download.
+                    if done % (4 << 20) < (1 << 20):
+                        note(f"running downloading {pct}%")
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        die(f"\ngenesi-depth: could not download {name}: {e}")
+    sys.stdout.write("\n")
+    if done < expected * 0.8:
+        os.remove(tmp)
+        die(f"genesi-depth: {name} came back short — the download was cut off")
+    os.replace(tmp, dest)
+
+
+def cmd_setup(remove=False):
+    """Install the segmentation model, or take it away again."""
+    import subprocess
+
+    if remove:
+        if not os.path.isdir(DEPTH_DATA):
+            print("nothing to remove")
+            return 0
+        shutil.rmtree(DEPTH_DATA, ignore_errors=True)
+        print(f"removed {DEPTH_DATA}")
+        print("Depth falls back to the built-in cutter")
+        return 0
+
+    note("running preparing")
+    if not have_onnx() and not probe_env():
+        note("running building the environment")
+        print(f"Setting up the model's environment in {VENV}")
+        # --system-site-packages, so the opencv and numpy pacman already
+        # installed are reused. python-onnxruntime does not exist in Arch --
+        # checked, not assumed -- so it is the one thing fetched.
+        os.makedirs(DEPTH_DATA, exist_ok=True)
+        r = subprocess.run(
+            [sys.executable, "-m", "venv", "--system-site-packages", VENV])
+        note("failed could not create the environment; python's venv module is missing")
+        if r.returncode != 0:
+            die("genesi-depth: could not create the environment. On Arch the "
+                "venv module comes with python itself:\n"
+                "  sudo pacman -S --needed python")
+        vp = venv_python()
+        if vp is None:
+            die(f"genesi-depth: the environment in {VENV} has no interpreter "
+                "— remove that directory and try again")
+        note("running installing onnxruntime")
+        print("Installing onnxruntime")
+        r = subprocess.run([vp, "-m", "pip", "install", "--upgrade",
+                            "onnxruntime"])
+        note("failed pip could not install onnxruntime")
+        if r.returncode != 0:
+            die("genesi-depth: pip could not install onnxruntime. The output "
+                "above says why.")
+        if not probe_env():
+            die("genesi-depth: pip reported success and onnxruntime still "
+                f"does not import. Try removing {VENV} and running this again.")
+
+    if have_model_file():
+        print(f"model already here — {MODEL}")
+    else:
+        note("running downloading 0%")
+        mb = MODEL_SIZE // 1_000_000
+        print(f"Fetching the segmentation model (~{mb} MB) into {DEPTH_DATA}")
+        fetch("u2net.onnx", MODEL_URL, MODEL_SIZE, MODEL)
+
+    # ...and prove it runs, here, rather than leaving the first real attempt
+    # to happen when somebody changes their wallpaper. An install that
+    # reports success and cannot segment is the failure this whole file is a
+    # fix for.
+    print()
+    print("Checking it runs…")
+    vp = venv_python() or sys.executable
+    r = subprocess.run([vp, os.path.abspath(__file__), "selftest"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        why = (r.stderr or r.stdout).strip() or "no error given"
+        note("failed " + why.replace("\n", " ")[:200])
+        die("genesi-depth: the model is installed but will not run:\n" + why)
+    print(r.stdout.strip() or "ok")
+    note("ok")
+    print("done — Depth will use the model from now on")
+    return 0
+
+
+def cmd_selftest():
+    """Run the model on a picture made here, and check it finds the thing.
+
+    A disc on a plain field. If the model loads and answers with high
+    confidence inside the disc and low confidence outside it, then everything
+    between the weights on disk and the alpha this tool returns is working.
+    """
+    cv2, np = load_cv()
+    if not have_onnx():
+        die("genesi-depth: onnxruntime does not import in this interpreter")
+    if not have_model_file():
+        die("genesi-depth: the model file is not there")
+    img = np.zeros((480, 640, 3), np.uint8)
+    img[:, :] = (70, 70, 72)
+    cv2.circle(img, (320, 240), 130, (225, 220, 200), -1)
+    conf = model_alpha(cv2, np, img)
+    inside = float(conf[240, 320])
+    outside = float(conf[20, 20])
+    print(f"model ran: {inside:.2f} on the subject, {outside:.2f} off it")
+    if inside < 0.5 or outside > 0.5:
+        die("genesi-depth: the model ran and answered nonsense — "
+            f"{inside:.2f} inside the shape and {outside:.2f} outside it")
+    return 0
+
+
 def rembg_mask(bgr):
     """rembg's alpha, when it is installed. None when it is not."""
     try:
@@ -457,9 +818,17 @@ def cutout(path, quality, out, fade):
     else:
         small = full
 
-    mask = rembg_mask(small) if quality == "fine" else None
-    info = {}
-    if mask is None:
+    # The model when it is installed, the classical pipeline otherwise. Not
+    # a tier any more: a machine that has run `setup` should get the better
+    # answer at every quality, and the tier's job was always the working
+    # resolution rather than the choice of engine.
+    mask, info = None, {}
+    if have_model_file() and in_the_env():
+        mask, info = model_mask(cv2, np, small)
+        # A model that says "nothing here" is believed. It is a better judge
+        # than the pipeline underneath it, and falling through to a second
+        # opinion that guesses is how a concrete wall became a subject.
+    else:
         mask, info = subject_mask(cv2, np, small, tier)
     if mask is None:
         # With the reason, always. "nothing stands out enough" sent somebody
@@ -514,20 +883,37 @@ def probe(path, quality):
                         interpolation=cv2.INTER_AREA)
              if scale < 1 else full)
 
-    mask, m = subject_mask(cv2, np, small, tier)
     print(f"picture   {fw}x{fh}, worked at {small.shape[1]}x{small.shape[0]}")
+
+    if have_model_file() and in_the_env():
+        mask, m = model_mask(cv2, np, small)
+        print("engine    model (u2net)")
+        print(f"peak      {m['peak']:.3f}   (wanted >= {MODEL_MIN_PEAK}) "
+              "— the model's own highest confidence anywhere")
+        print(f"area      {m['area']:.2%}   (wanted {MODEL_MIN_AREA:.1%}"
+              f"-{MODEL_MAX_AREA:.0%})")
+        if mask is None:
+            print("verdict   refused — " + m.get("why", ""))
+            return 2
+        print("verdict   subject")
+        return 0
+
+    mask, m = subject_mask(cv2, np, small, tier)
+    print("engine    opencv (saliency + GrabCut)")
+    print("          `genesi-depth setup` installs the model, which is much "
+          "better at this")
     if not m:
         print("candidate none — the saliency map had no connected region at "
               "all, which is a picture with no structure in it")
         return 2
     print(f"area      {m['area']:.2%}   (wanted {MIN_AREA:.1%}"
-          f"–{MAX_AREA:.0%})")
+          f"-{MAX_AREA:.0%})")
     print(f"edge      {m['edge']:.2f}     (wanted >= {MIN_EDGE}) "
-          f"— sharpness along the cut, over the picture's own")
+          f"- sharpness along the cut, over the picture's own")
     print(f"colour    {m['colour']:.1f}     (wanted >= {MIN_COLOUR:.0f}) "
-          f"— Lab distance from the average colour")
+          f"- Lab distance from the average colour")
     if mask is None:
-        print("verdict   refused — " + m.get("why", ""))
+        print("verdict   refused - " + m.get("why", ""))
         return 2
     print("verdict   subject")
     return 0
@@ -556,6 +942,11 @@ def main():
     b.add_argument("image")
     b.add_argument("--quality", choices=sorted(TIERS), default="standard")
 
+    u = sub.add_parser("setup", help="install the segmentation model")
+    u.add_argument("--remove", action="store_true",
+                   help="delete the model and its environment")
+    sub.add_parser("selftest", help="run the model on a picture made for it")
+
     sub.add_parser("status", help="what is installed and what is cached")
     sub.add_parser("clear", help="drop every cached cutout")
 
@@ -566,6 +957,12 @@ def main():
         print(CACHE)
         return 0
 
+    if a.cmd == "setup":
+        return cmd_setup(a.remove)
+
+    if a.cmd == "selftest":
+        return cmd_selftest()
+
     if a.cmd == "probe":
         return probe(a.image, a.quality)
 
@@ -573,22 +970,26 @@ def main():
         try:
             import cv2  # noqa: F401
             import numpy  # noqa: F401
-            engine = "opencv"
+            base = True
         except ImportError:
-            engine = "missing"
-        try:
-            import rembg  # noqa: F401
-            fine = "rembg"
-        except ImportError:
-            fine = "opencv"
+            base = False
         n = 0
         if os.path.isdir(CACHE):
             n = len([f for f in os.listdir(CACHE) if f.endswith(".png")])
-        print(f"engine {engine}")
-        print(f"fine {fine}")
+        # Parsed by the side panel, so each line is `key value` and the keys
+        # do not move. `engine` is the one that matters: it is the difference
+        # between a cut-out somebody will keep and one they will turn off.
+        print("engine " + (engine_name() if base else "missing"))
+        st = setup_state()
+        if st:
+            print("setup " + st)
+        print("model " + ("yes" if have_model_file() else "no"))
+        print("model_env " + ("yes" if (have_onnx() or probe_env()) else "no"))
+        print(f"model_mb {MODEL_SIZE // 1_000_000}")
         print(f"cached {n}")
         print(f"cache {CACHE}")
-        return 0 if engine == "opencv" else 1
+        print(f"data {DEPTH_DATA}")
+        return 0 if base else 1
 
     out = os.path.join(CACHE, key_for(a.image, a.quality, a.fade))
 

@@ -293,10 +293,14 @@ Item {
                         // In a terminal, because the output is the point. It
                         // prints a line per control it opened, and on a machine
                         // with silent audio that list is the diagnosis.
+                        //
+                        // Through inTerminal, which keeps the window open when
+                        // the command ends and uses whichever terminal is
+                        // installed. This used to spell both of those out by
+                        // hand and name `foot` outright, so on a session
+                        // without foot the button did nothing at all.
                         onTapped: if (page.backend)
-                            page.backend.launch(["foot", "sh", "-c",
-                                "genesi-open-usb-mixer; "
-                                + "echo; echo 'Press enter to close'; read _"])
+                            page.backend.inTerminal(["genesi-open-usb-mixer"])
                     }
                 }
             }

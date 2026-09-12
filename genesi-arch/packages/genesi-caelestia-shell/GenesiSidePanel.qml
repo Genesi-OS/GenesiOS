@@ -132,6 +132,17 @@ Variants {
             property string cutError: ""
             readonly property bool cutting: cutter.running
 
+            // Which cutter is installed, from `genesi-depth status`. There
+            // are two: a segmentation model, and the saliency pipeline that
+            // needs nothing installed. The second one refused a cat sitting
+            // on a lawn, so this page's job is to put the first one one click
+            // away instead of in a paragraph nobody reads.
+            property string depthEngine: ""
+            property string depthSetup: ""
+            property int depthModelMb: 176
+            readonly property bool depthInstalling:
+                win.depthSetup.startsWith("running")
+
             function set(section: string, key: string, value: var): void {
                 Quickshell.execDetached(["genesi-center-set", "caelestia",
                                          `${section}.${key}`, String(value)]);
@@ -448,6 +459,70 @@ Variants {
                                 font: Tokens.font.body.small
                                 color: Colours.palette.m3onSurfaceVariant
                             }
+                        }
+
+                        // ── The cutter ───────────────────────────────
+                        //
+                        // Above the on/off switch, because it decides how
+                        // good everything below it can be. The built-in one
+                        // infers a subject from contrast and its thresholds
+                        // are guesses about what a picture is made of; the
+                        // model was trained to answer the question. On eight
+                        // photographs the built-in one refuses a cat on a
+                        // lawn and the model traces its whiskers.
+                        Tile {
+                            icon: win.depthEngine === "model"
+                                ? "auto_awesome" : "download"
+                            label: win.depthInstalling
+                                ? qsTr("Installing the cutter")
+                                : (win.depthEngine === "model"
+                                   ? qsTr("Trained cutter")
+                                   : qsTr("Install the better cutter"))
+                            reading: win.depthInstalling
+                                ? win.depthSetup.replace("running ", "")
+                                : (win.depthEngine === "model"
+                                   ? qsTr("In use")
+                                   : (win.depthSetup.startsWith("failed")
+                                      ? qsTr("Failed — tap to retry")
+                                      : qsTr("%1 MB").arg(win.depthModelMb)))
+                            // Lit when the model is in use. Nothing to turn
+                            // off: it is used whenever it is installed,
+                            // because there is no picture the worse cutter is
+                            // better on.
+                            on: win.depthEngine === "model"
+                            onTriggered: {
+                                if (win.depthEngine === "model"
+                                    || win.depthInstalling)
+                                    return;
+                                Quickshell.execDetached(["genesi-depth",
+                                                         "setup"]);
+                                // Optimistic, and corrected by the read two
+                                // and a half seconds later. Without it the
+                                // row sits unchanged after a tap, which reads
+                                // as a dead control -- and this project has
+                                // shipped enough of those.
+                                win.depthSetup = "running preparing";
+                                depthProc.running = true;
+                            }
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            Layout.bottomMargin: 4
+                            wrapMode: Text.WordWrap
+                            visible: win.depthEngine !== "model"
+                                     || win.depthSetup.startsWith("failed")
+                            text: win.depthSetup.startsWith("failed")
+                                ? qsTr("The install failed: %1")
+                                  .arg(win.depthSetup.replace("failed ", ""))
+                                : qsTr("The built-in cutter guesses from "
+                                       + "contrast and often finds nothing. "
+                                       + "The trained one is %1 MB, "
+                                       + "downloaded once, and runs on this "
+                                       + "machine like everything else.")
+                                  .arg(win.depthModelMb)
+                            font: Tokens.font.body.small
+                            color: Colours.palette.m3onSurfaceVariant
                         }
 
                         Tile {
@@ -1027,7 +1102,51 @@ Variants {
                 if (!win.mine)
                     return;
                 readProc.running = true;
+                depthProc.running = true;
                 win.recut(false);
+            }
+
+            // `genesi-depth status` prints `key value`, one per line. Read
+            // when the panel opens, and again every couple of seconds while
+            // an install is running -- which is the only time it changes. A
+            // timer that ran for ever would be a process per tick for a
+            // number nobody is looking at.
+            Process {
+                id: depthProc
+
+                command: ["genesi-depth", "status"]
+                stdout: StdioCollector {
+                    onStreamFinished: {
+                        const was = win.depthEngine;
+                        let setup = "";
+                        for (const line of text.trim().split("\n")) {
+                            const sp = line.indexOf(" ");
+                            if (sp < 0)
+                                continue;
+                            const k = line.slice(0, sp);
+                            const v = line.slice(sp + 1).trim();
+                            if (k === "engine")
+                                win.depthEngine = v;
+                            else if (k === "setup")
+                                setup = v;
+                            else if (k === "model_mb")
+                                win.depthModelMb = parseInt(v) || 176;
+                        }
+                        win.depthSetup = setup;
+                        // A cut-out made by the other engine is stale in a
+                        // way nothing about it looks stale, which is the same
+                        // reason the cache is keyed by the picture's mtime.
+                        if (was !== "" && was !== win.depthEngine)
+                            win.recut(true);
+                    }
+                }
+            }
+
+            Timer {
+                running: win.mine && win.depthInstalling
+                interval: 2500
+                repeat: true
+                onTriggered: depthProc.running = true
             }
 
             Process {

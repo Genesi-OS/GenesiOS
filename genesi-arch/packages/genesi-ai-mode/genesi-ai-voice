@@ -64,7 +64,16 @@ VENV = os.path.join(DATA, "venv")
 # The upstream release these are published in. Pinned to a version rather than
 # "latest": a model that changes under a machine is a machine whose voice
 # changes for no reason anyone can trace.
-RELEASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-v1.0"
+# `model-files-v1.0`, which is the tag that exists. It was written as
+# `model-v1.0` from memory and never fetched, so the environment built
+# perfectly and then the download answered 404 -- an installer that gets
+# everything right except the URL.
+#
+# ci/voice-model-test.py asks GitHub whether these two URLs resolve, because
+# the one thing a local test cannot check is whether a remote file is there,
+# and it is the thing that was wrong.
+RELEASE = ("https://github.com/thewh1teagle/kokoro-onnx/releases/download"
+           "/model-files-v1.0")
 FILES = (
     # name, url, roughly how big -- used to reject a truncated download and to
     # tell someone what they are about to spend before they spend it.

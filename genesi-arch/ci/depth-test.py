@@ -44,12 +44,16 @@ So the honest division of labour:
         GENESI_DEPTH_PHOTOS=~/pics python ci/depth-test.py
 """
 import ast
+import importlib.machinery
+import importlib.util
 import io
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
@@ -187,6 +191,45 @@ for const, value in sorted(WANT.items()):
     else:
         ok(f"{const} = {value}, as measured")
 
+# ── The model's download ───────────────────────────────────────────────────
+#
+# The speech model's installer did everything right and then answered 404: its
+# release tag was written from memory. This one's URL was verified by hand
+# before it was committed, and a verified-by-hand URL is a URL that is right
+# until the day it is not.
+#
+# A 4xx fails the build. A network error does not -- a runner with no route to
+# github.com must not go red about a URL that is fine.
+spec = importlib.util.spec_from_loader(
+    "depth", importlib.machinery.SourceFileLoader("depth", DEPTH))
+depth = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(depth)
+
+try:
+    req = urllib.request.Request(depth.MODEL_URL, method="HEAD")
+    with urllib.request.urlopen(req, timeout=30) as r:
+        got = int(r.headers.get("Content-Length") or 0)
+        if r.status != 200:
+            bad("the segmentation model is fetchable",
+                f"{depth.MODEL_URL} answered {r.status}")
+        elif got and abs(got - depth.MODEL_SIZE) > depth.MODEL_SIZE * 0.2:
+            # The size is also the installer's truncation test: it rejects
+            # anything under 80% of MODEL_SIZE, so a real file that far off
+            # would be downloaded in full and thrown away as a fragment.
+            bad("the model's expected size is right",
+                f"the server says {got} bytes and genesi-depth expects "
+                f"{depth.MODEL_SIZE}")
+        else:
+            ok(f"the segmentation model is there, {got // 1_000_000} MB")
+except urllib.error.HTTPError as e:
+    bad("the segmentation model is where genesi-depth looks for it",
+        f"{depth.MODEL_URL}\n         answered {e.code} {e.reason}. `setup` "
+        "builds an environment and installs onnxruntime before it gets here, "
+        "so this is a download that fails after minutes of apparent success.")
+except (urllib.error.URLError, OSError, TimeoutError) as e:
+    print(f"  note no answer from the network ({e}); the model's URL is "
+          "unchecked here")
+
 # ── Does it cut? ───────────────────────────────────────────────────────────
 try:
     import cv2
@@ -277,11 +320,27 @@ else:
     ground_path = os.path.join(tmp, "ground.png")
     cv2.imwrite(ground_path, np.clip(ground, 0, 255).astype(np.uint8))
 
+    # No model here, so this exercises the BUILT-IN engine -- which is the
+    # one that needs the fixtures, because it is the one making a judgement.
+    # The model is checked by `genesi-depth selftest`, which runs on the
+    # machine that installs it, against a picture it makes for itself.
+    env["XDG_DATA_HOME"] = os.path.join(tmp, "share")
+
     def run(path):
         return subprocess.run(
             [sys.executable, DEPTH, "cutout", path, "--quality", "standard",
              "--edge-fade", "soft"],
             capture_output=True, text=True, env=env)
+
+    r = subprocess.run([sys.executable, DEPTH, "status"],
+                       capture_output=True, text=True, env=env)
+    if "engine opencv" not in r.stdout:
+        bad("the fixtures exercise the built-in engine",
+            "`genesi-depth status` says "
+            f"{r.stdout.strip().splitlines()[:1]}, so these fixtures are "
+            "testing something other than the code they were written for")
+    else:
+        ok("the fixtures run against the built-in engine")
 
     r = run(sub_path)
     if r.returncode != 0:

@@ -279,6 +279,16 @@ jobs:
         # not counted as one, and that local and hosted are counted apart.
         run: python genesi-arch/ci/ai-cloud-test.py
 
+      - name: the speech model's downloads are actually there
+        # The installer built its environment correctly, resolved every
+        # dependency, and then answered 404: the release tag was written from
+        # memory. Everything checkable locally was right; the one thing that
+        # was not is the one thing that was wrong.
+        #
+        # A 4xx fails this. A network error does NOT -- a runner with no route
+        # to github.com must not go red about a URL that is fine.
+        run: python genesi-arch/ci/voice-model-test.py
+
       - name: every shebang script is pinned to LF
         # An extensionless script committed with CRLF is `bad interpreter: no
         # such file or directory` on the installed system and nowhere else.

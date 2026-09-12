@@ -506,7 +506,40 @@ pkgver=2.0.3
 # they were measured from, has the two negatives it never had (a busy texture
 # and a ground region, where its only negative was a flat gradient nothing has
 # ever accepted), and takes real photographs through GENESI_DEPTH_PHOTOS.
-pkgrel=40
+# 41: Depth stops guessing. It has a trained cutter now.
+#
+# Reported as "Depth keeps saying its outline does not match anything and it
+# should be 3x something", which is two problems: a sentence written for
+# whoever wrote the code, and a judgement that keeps saying no.
+#
+# The judgement was tuned twice -- once against three drawn fixtures, once
+# against eight photographs -- and it is right on all eight and still refuses
+# real wallpapers. There is no third number to find: every threshold in a
+# saliency pipeline is a guess about what a picture is made of, and wallpapers
+# are more varied than any such guess. It refuses a photograph of a cat
+# sitting on a lawn.
+#
+# So `genesi-depth setup` installs u2net, and the cutout uses it whenever it is
+# there. On the same eight photographs the model answers: 0.02 confidence on a
+# concrete wall (nothing, and it says so itself rather than needing a threshold
+# of ours), 10.8% for the cat -- traced to the whiskers -- 35% and 52% for two
+# Porsches, 18% for a flower. The built-in engine stays for a machine that has
+# not run setup, and its refusals are in plain words now.
+#
+# 176 MB of weights plus onnxruntime, which does not exist in Arch (checked,
+# not assumed -- assuming is what shipped a 404 for the speech model), so the
+# same shape as genesi-ai-voice: a virtualenv with --system-site-packages, so
+# the opencv and numpy pacman already installed are reused. Opt-in, because
+# nobody who leaves Depth off should pay for it.
+#
+# The side panel installs it in one tap and shows the progress, rather than
+# opening a terminal: the panel already polls `genesi-depth status`, so the
+# setup writes where it has got to and status reports it. A terminal that
+# closes takes its error with it, which is a bug this release also fixes
+# elsewhere.
+#
+# `genesi-depth probe <image>` names the engine and prints its numbers.
+pkgrel=41
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -527,7 +560,7 @@ makedepends=('cmake' 'ninja' 'qt6-shadertools')
 # syntax error a hundred and forty lines later, and makepkg failed to
 # source the PKGBUILD at all. ci/pkgbuild-syntax-test.py runs `bash -n`
 # over every one of them now.
-optdepends=('python-rembg: a segmentation network for the Fine tier of Depth')
+optdepends=()
 provides=('caelestia-shell')
 conflicts=('caelestia-shell' 'caelestia-shell-git')
 source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"

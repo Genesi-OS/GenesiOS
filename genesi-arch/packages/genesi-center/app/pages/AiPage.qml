@@ -72,6 +72,14 @@ Item {
     // provider rather than an arbitrary first entry.
     property string picked: page.cloud.provider || "gemini"
 
+    // What the last TEST said. It used to go to a terminal, which ran the
+    // command, printed one line and closed with it -- reported as "the test
+    // button opens an empty terminal and does nothing". The sentence was
+    // always the useful part; a terminal was never the only place to put one.
+    property string testResult: ""
+    property bool testOk: false
+    property bool testing: false
+
     readonly property int localCalls:
         (page.usage.local && page.usage.local.requests) || 0
     readonly property int cloudCalls: {
@@ -103,6 +111,12 @@ Item {
             try {
                 page.d = JSON.parse(payload);
             } catch (e) {}
+        }
+
+        function onCloudTested(message, ok) {
+            page.testResult = message;
+            page.testOk = ok;
+            page.testing = false;
         }
     }
 
@@ -338,14 +352,20 @@ Item {
                                 }
                                 TapHandler {
                                     // In a TERMINAL, on purpose. It is a 340 MB
-                                    // download that can fail on the network or
-                                    // on a missing dependency, and a settings
-                                    // window has nowhere to show either.
+                                    // download plus a pip install, either of
+                                    // which can fail, and a settings window
+                                    // has nowhere to show progress.
+                                    //
+                                    // Through inTerminal, which finds whichever
+                                    // terminal is installed and keeps the
+                                    // window open when the command ends. Both
+                                    // halves were bugs: `foot` was named
+                                    // outright, and a window that closes on
+                                    // exit takes the error with it.
                                     onTapped: {
                                         if (!page.voice.ready && page.backend)
-                                            page.backend.launch(
-                                                ["foot", "genesi-ai-voice",
-                                                 "install"]);
+                                            page.backend.inTerminal(
+                                                ["genesi-ai-voice", "install"]);
                                     }
                                 }
                             }
@@ -384,7 +404,7 @@ Item {
                                 Behavior on color { ColorAnimation { duration: Tokens.quick } }
                                 Text {
                                     anchors.centerIn: parent
-                                    text: qsTr("TEST")
+                                    text: page.testing ? qsTr("…") : qsTr("TEST")
                                     color: Tokens.text
                                     font.family: Tokens.mono
                                     font.pixelSize: Tokens.fsMicro
@@ -392,13 +412,19 @@ Item {
                                 }
                                 HoverHandler { id: testHov; cursorShape: Qt.PointingHandCursor }
                                 TapHandler {
-                                    // A terminal again: the useful part of a
-                                    // failed test is WHICH failure -- 401 is a
-                                    // wrong key, 404 a wrong model -- and that
-                                    // is a sentence, not a light.
-                                    onTapped: if (page.backend)
-                                        page.backend.launch(["foot", "genesi-ai-key",
-                                                             "test"])
+                                    // The useful part of a failed test is
+                                    // WHICH failure -- 401 is a wrong key,
+                                    // 404 a wrong model -- and that is a
+                                    // sentence. It goes under this row now.
+                                    // It used to go to a terminal, which
+                                    // closed the moment the command ended.
+                                    onTapped: {
+                                        if (!page.backend || page.testing)
+                                            return;
+                                        page.testResult = "";
+                                        page.testing = true;
+                                        page.backend.testCloudKey();
+                                    }
                                 }
                             }
 
@@ -444,6 +470,32 @@ Item {
                                     font.letterSpacing: 1
                                 }
                             }
+                        }
+                    }
+
+                    // What the test answered. Not a toast: a 404 naming a
+                    // model is worth reading twice, and something that fades
+                    // cannot be.
+                    Item {
+                        width: parent.width
+                        visible: page.testResult !== "" || page.testing
+                        height: visible ? resultText.implicitHeight + 16 : 0
+
+                        Text {
+                            id: resultText
+                            anchors {
+                                left: parent.left; right: parent.right
+                                verticalCenter: parent.verticalCenter
+                                leftMargin: 14; rightMargin: 14
+                            }
+                            wrapMode: Text.WordWrap
+                            text: page.testing
+                                  ? qsTr("asking the provider…")
+                                  : page.testResult
+                            color: page.testing ? Tokens.textDim
+                                 : (page.testOk ? Tokens.accent : "#E58A7B")
+                            font.family: Tokens.mono
+                            font.pixelSize: 11
                         }
                     }
 

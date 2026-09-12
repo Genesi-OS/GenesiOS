@@ -14,6 +14,8 @@ tick. Nothing about the reading is urgent, so it belongs off the main loop.
 """
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -49,11 +51,11 @@ ALLOWED = {
     "genesi-ai-voice", "genesi-ai-key",
     "genesi-open-usb-mixer",
     "caelestia", "hyprctl", "hyprshade", "wpctl",
-    # A terminal, for the two things that must not happen invisibly behind a
-    # settings window: a 340 MB download, and an API test whose useful answer
-    # is which HTTP status came back.
-    "foot",
 }
+# ...and the terminal is no longer one of these. A page asks for a COMMAND to
+# be run in a terminal now (inTerminal), and this list is what a command may
+# be; which terminal wraps it is not the page's business, and naming `foot`
+# outright meant a session without foot got a button that did nothing.
 
 
 class Backend(QObject):
@@ -241,6 +243,42 @@ class Backend(QObject):
             self.barPresets()
         threading.Thread(target=body, daemon=True).start()
 
+    cloudTested = Signal(str, bool)
+
+    @Slot()
+    def testCloudKey(self):
+        """One real request, and the answer on the page.
+
+        This used to open a terminal, on the reasoning that the useful part of
+        a failed test is WHICH failure -- 401 is a wrong key, 404 a wrong
+        model -- and that is a sentence rather than a light. The sentence was
+        right; the terminal was not. `foot genesi-ai-key test` runs, prints,
+        and exits, and the window closes with it: what the user sees is a
+        terminal flashing open and nothing else. Reported as "the test button
+        opens an empty terminal and does nothing".
+
+        A sentence can go on the page. So it does.
+        """
+        def body():
+            try:
+                r = subprocess.run(["genesi-ai-key", "test"],
+                                   capture_output=True, text=True, timeout=40,
+                                   encoding="utf-8", errors="replace")
+            except (OSError, subprocess.SubprocessError) as e:
+                self.cloudTested.emit(str(e), False)
+                return
+            out = (r.stdout or "").strip()
+            err = (r.stderr or "").strip()
+            # genesi-ai-key writes the diagnosis to stderr and the answer to
+            # stdout, and prefixes its errors with its own name -- which the
+            # page does not need to repeat.
+            msg = out if r.returncode == 0 else err
+            msg = msg.replace("genesi-ai-key: ", "").replace("\n", " ")
+            self.cloudTested.emit(msg or "no answer", r.returncode == 0)
+            # A test is a real request, so the count moved: re-read.
+            self.sectionReady.emit("ai", self._read("ai") or "{}")
+        threading.Thread(target=body, daemon=True).start()
+
     @Slot(str, str, str, str)
     def setCloudKey(self, provider, model, use_for, key):
         """
@@ -275,6 +313,67 @@ class Backend(QObject):
             # nothing at all, if the tool refused it.
             self.sectionReady.emit("ai", self._read("ai") or "{}")
         threading.Thread(target=body, daemon=True).start()
+
+    # Terminals, in the order we would rather have them. foot is what the
+    # Hyprland session ships and what every one of these calls used to name
+    # outright -- on a machine without it the button did nothing at all, with
+    # one line on the app's own stderr that nobody is reading.
+    TERMINALS = (
+        (["foot"], "-e"),
+        (["ghostty"], "-e"),
+        (["kitty"], None),
+        (["alacritty"], "-e"),
+        (["wezterm"], "start", ),
+        (["konsole"], "-e"),
+        (["gnome-terminal"], "--"),
+        (["xterm"], "-e"),
+    )
+
+    @Slot(list)
+    def inTerminal(self, argv):
+        """Run something in a terminal window that STAYS OPEN when it ends.
+
+        Two bugs in one, both reported as "it opens an empty terminal and does
+        nothing":
+
+        `foot <cmd>` exits when <cmd> exits. For a command whose whole purpose
+        is to print something -- a key test, a failed install -- the window
+        appears and vanishes before anything can be read. So the command is
+        wrapped: run it, then wait for a keypress.
+
+        And `foot` was named literally in every call site, so a session
+        without foot got nothing but a line on this app's stderr. Whichever
+        terminal is installed is used instead.
+        """
+        if not argv:
+            return
+        cmd = [str(a) for a in argv]
+        if cmd[0] not in ALLOWED:
+            sys.stderr.write(
+                f"genesi-center: refusing to run {cmd[0]!r} in a terminal\n")
+            return
+        # Quoted one at a time: a wallpaper path or a model name with a space
+        # in it is a command line that means something else.
+        inner = " ".join(shlex.quote(c) for c in cmd)
+        script = (inner + '; printf "\\n[done — press enter to close] ";'
+                  " read _")
+        for exe, flag in self.TERMINALS:
+            if not shutil.which(exe[0]):
+                continue
+            line = list(exe)
+            if flag:
+                line.append(flag)
+            line += ["sh", "-c", script]
+            try:
+                subprocess.Popen(line, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+                return
+            except OSError:
+                continue
+        sys.stderr.write(
+            "genesi-center: no terminal emulator found; tried "
+            + ", ".join(t[0][0] for t in self.TERMINALS) + "\n")
 
     @Slot(list)
     def launch(self, argv):

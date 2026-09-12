@@ -147,7 +147,20 @@ pkgver=0.1.0
 # provider. Never one total -- the whole point of the split is that the
 # helpers which fire on their own stay local, and a combined figure would hide
 # exactly that.
-pkgrel=31
+# 32: the TEST button opened an empty terminal and did nothing.
+#
+# It ran `foot genesi-ai-key test`, which ran, printed one line, and exited --
+# and the window closed with it. What you see is a terminal flashing open.
+# Two bugs, and the second one is worse: `foot` was named literally, so a
+# session without foot got no window at all and one line on this app's own
+# stderr.
+#
+# The test answers on the page now -- it is one sentence, and 401 versus 404
+# is exactly the sentence worth reading. And anything that really does need a
+# terminal (the Kokoro install: a download plus a pip install) goes through
+# inTerminal, which uses whichever terminal is installed and keeps the window
+# open when the command ends.
+pkgrel=32
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
