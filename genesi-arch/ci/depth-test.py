@@ -9,10 +9,39 @@ setting that saves, applies to nothing, and produces no error anywhere. That
 is this repository's oldest failure and it has a guard now.
 
 The cut itself is checked when OpenCV is importable, which it is in the build
-container and may not be on a laptop. Two pictures: one with an obvious
-subject, which must come back with a cut-out roughly where the subject is; and
-a flat gradient, which must come back with nothing rather than with a speck
-that the shell would then draw over the clock.
+container and may not be on a laptop.
+
+── What these pictures are for, and what they cannot do ─────────────────────
+
+The fixtures are drawn, and a drawn picture has a property no wallpaper has:
+its background has almost no saliency. The accept/reject threshold was once
+calibrated on three of them -- a disc on a gradient, a planet on a starfield,
+a plain gradient -- and the number that separated those (inside saliency four
+times outside) turned out to separate nothing on a photograph: measured on
+eight, it lands between 2.7 and 6.0, refusing a cat on a lawn and a Porsche in
+daylight while accepting a photograph of a concrete wall.
+
+So the honest division of labour:
+
+  * these fixtures are REGRESSION cover. A subject on a quiet field, a dark
+    subject on a bright busy one, the same two with a photograph's grain over
+    the whole frame, and three pictures with no subject in them -- a flat
+    gradient, a busy texture, and a ground region that is salient and is
+    still not a thing in the picture. The last two are new: the only negative
+    this suite used to have was a flat gradient, which every version of the
+    code has always refused.
+
+  * the THRESHOLDS are checked against the photographs they were measured on,
+    which are recorded here as numbers. Nothing drawn can stand in for that,
+    so instead: change a threshold and this test fails, pointing at the table
+    it was measured from.
+
+  * real pictures, when there are some. Point GENESI_DEPTH_PHOTOS at a folder
+    of `subject-*.jpg` / `nosubject-*.jpg` and each one is checked too. That
+    is how the thresholds below were arrived at, and it is how to check them
+    against your own wallpapers:
+
+        GENESI_DEPTH_PHOTOS=~/pics python ci/depth-test.py
 """
 import ast
 import io
@@ -121,6 +150,43 @@ for key, prop in (("background.depth.strength", "strength"),
     else:
         ok(f"{prop}: {sorted(want)}, one of them the fallthrough")
 
+# ── The thresholds, and the photographs they were measured on ─────────────
+#
+# Eight photographs, at the standard tier. `edge` is the gradient along the
+# cut over the gradient everywhere; `colour` is the mask's mean Lab distance
+# from the picture's average colour; `area` is the share of the frame.
+#
+#   picture                      area    edge  colour   should be
+#   Porsche 911, on a track     38.2%    4.54    69.7   subject
+#   Porsche 718, forecourt      22.2%    4.25    65.2   subject
+#   flower, macro               17.9%   12.01    99.5   subject
+#   cat on a lawn               56.0%    1.56    38.8   no subject
+#   city at night               57.2%    2.18    48.9   no subject
+#   mountain panorama           62.2%    1.42    44.1   no subject
+#   concrete wall               57.8%    1.37     1.4   no subject
+#   sand dune                  100.0%    0.00    34.2   no subject
+#
+# Every subject clears all three; every non-subject fails at least one by a
+# factor of two. The constants are pinned here so that moving one without
+# re-measuring fails the build -- the previous threshold was moved on a
+# reading of three drawn pictures, and that is the whole reason this table
+# exists.
+WANT = {"MIN_EDGE": "3.0", "MIN_COLOUR": "18.0",
+        "MIN_AREA": "0.005", "MAX_AREA": "0.50"}
+for const, value in sorted(WANT.items()):
+    m = re.search(r"^%s = (\S+)$" % const, src, re.M)
+    if not m:
+        bad(f"genesi-depth defines {const}",
+            "the verdict's thresholds are what this test is pinning; a "
+            "missing one means the judgement moved somewhere else")
+    elif m.group(1) != value:
+        bad(f"{const} is still {value}",
+            f"it is {m.group(1)}. The table above is the evidence for "
+            f"{value}; if {m.group(1)} is right, re-measure on photographs "
+            "and rewrite the table with the new numbers.")
+    else:
+        ok(f"{const} = {value}, as measured")
+
 # ── Does it cut? ───────────────────────────────────────────────────────────
 try:
     import cv2
@@ -165,6 +231,51 @@ else:
         flat[y, :] = (40 + y // 20, 40 + y // 20, 40 + y // 20)
     flat_path = os.path.join(tmp, "flat.png")
     cv2.imwrite(flat_path, flat)
+
+    def grain(h, w, seed, scale=5, amp=15):
+        """Low-frequency noise, the way a photograph's surfaces vary."""
+        rng = np.random.default_rng(seed)
+        small = rng.normal(0, 1, (h // scale + 2, w // scale + 2))
+        up = cv2.resize(small.astype(np.float32), (w, h),
+                        interpolation=cv2.INTER_CUBIC)
+        return cv2.GaussianBlur(up, (0, 0), 1.5) * amp
+
+    def grainy(img, seed=7):
+        out = img.astype(np.float32)
+        for c in range(3):
+            out[:, :, c] += grain(img.shape[0], img.shape[1], seed + c)
+        return np.clip(out, 0, 255).astype(np.uint8)
+
+    # The same two subjects with a photograph's grain over the WHOLE frame,
+    # background included. The subject is exactly where it was; the
+    # background stops being empty. A saliency stack that only works on clean
+    # gradients passes the two above and fails these.
+    grain_paths = {}
+    for label, base in (("subject", subject), ("dark", dark)):
+        p = os.path.join(tmp, label + "-grain.png")
+        cv2.imwrite(p, grainy(base))
+        grain_paths[label] = p
+
+    # Two pictures that ARE salient and are still not subjects. The only
+    # negative this suite had was a flat gradient, which no version of the
+    # code has ever accepted -- so it never tested the judgement, only the
+    # absence of one.
+    wall = np.zeros((620, 980, 3), np.float32)
+    wall[:, :] = (96, 92, 104)
+    for i, (sc, amp) in enumerate(((3, 26), (7, 20), (14, 14), (28, 10))):
+        g = grain(620, 980, 20 + i, sc, amp)
+        for c in range(3):
+            wall[:, :, c] += g * (1.0 + 0.1 * c)
+    wall_path = os.path.join(tmp, "wall.png")
+    cv2.imwrite(wall_path, np.clip(wall, 0, 255).astype(np.uint8))
+
+    ground = np.zeros((620, 980, 3), np.float32)
+    for y in range(620):
+        ground[y, :] = (150, 146, 142) if y < 210 else (60, 104, 66)
+    for c in range(3):
+        ground[:, :, c] += grain(620, 980, 40 + c, 4, 16)
+    ground_path = os.path.join(tmp, "ground.png")
+    cv2.imwrite(ground_path, np.clip(ground, 0, 255).astype(np.uint8))
 
     def run(path):
         return subprocess.run(
@@ -229,12 +340,69 @@ else:
         else:
             ok(f"a dark subject on a bright field is cut out, {covered:.1%}")
 
-    r = run(flat_path)
-    if r.returncode == 0:
-        bad("a picture with no subject produces nothing",
-            "it returned a cut-out, which the shell would draw over the clock")
+    for label, path, hint in (
+            ("subject", grain_paths["subject"], "a bright disc"),
+            ("dark", grain_paths["dark"], "a dark figure")):
+        r = run(path)
+        if r.returncode != 0:
+            bad(f"{hint} is still found with grain over the whole frame",
+                f"exit {r.returncode}: {r.stderr.strip()}\n"
+                "         This is the property a photograph has and a drawn "
+                "fixture does not: a background that is not empty.")
+            continue
+        cut = cv2.imread(r.stdout.strip(), cv2.IMREAD_UNCHANGED)
+        covered = (cut[:, :, 3] > 128).mean()
+        if not 0.015 < covered < 0.45:
+            bad(f"{hint}'s cut-out is about its size, with grain",
+                f"it covers {covered:.1%} of the frame")
+        else:
+            ok(f"{hint} survives a grainy background, {covered:.1%}")
+
+    for label, path, why in (
+            ("flat", flat_path, "a gradient with nothing in it"),
+            ("wall", wall_path, "a busy texture, salient everywhere"),
+            ("ground", ground_path, "a ground region: salient, not a thing")):
+        r = run(path)
+        if r.returncode == 0:
+            bad(f"{why} produces nothing",
+                "it returned a cut-out, which the shell would draw over the "
+                "clock")
+        elif "no subject here" not in (r.stderr or ""):
+            # The reason is the feature: `genesi-depth probe` exists because
+            # two of these were diagnosed from a screenshot and both
+            # diagnoses were wrong.
+            bad(f"{why} is refused WITH a reason",
+                f"it said {r.stderr.strip()[:90]!r}, which does not say "
+                "which measure failed")
+        else:
+            ok(f"{why} is refused, and says why")
+
+    # ── Real pictures, when there are any ─────────────────────────────────
+    #
+    # Nothing drawn can stand in for a photograph -- that is the lesson this
+    # whole section is a record of. So the suite takes them when they are
+    # offered and says nothing when they are not.
+    photos = os.environ.get("GENESI_DEPTH_PHOTOS", "").strip()
+    if photos and os.path.isdir(photos):
+        seen = 0
+        for name in sorted(os.listdir(photos)):
+            want = (True if name.startswith("subject-")
+                    else False if name.startswith("nosubject-") else None)
+            if want is None:
+                continue
+            seen += 1
+            r = run(os.path.join(photos, name))
+            got = r.returncode == 0
+            if got != want:
+                bad(f"{name} is {'a subject' if want else 'not a subject'}",
+                    (r.stderr.strip() or "it produced a cut-out")[:160])
+            else:
+                ok(f"{name}: {'cut' if got else 'refused'}, as named")
+        if seen == 0:
+            print(f"  note {photos} has no subject-* / nosubject-* pictures")
     else:
-        ok("a picture with no subject is refused rather than guessed at")
+        print("  note no GENESI_DEPTH_PHOTOS folder; the thresholds are "
+              "checked against the recorded table, not re-measured")
 
 print()
 if failures:

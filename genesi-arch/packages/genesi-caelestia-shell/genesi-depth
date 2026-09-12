@@ -197,13 +197,121 @@ def saliency(cv2, np, bgr):
     return norm(np, sal)
 
 
-def subject_mask(cv2, np, bgr, tier):
-    """A 0-255 alpha for the subject, at the working resolution.
+# ── What makes a candidate a subject ─────────────────────────────────────────
+#
+# The test this replaces was `inside_saliency > 4 * outside_saliency`,
+# calibrated on a disc on a gradient (ratio 25), a planet on a starfield (85)
+# and a plain gradient (2.3). On eight photographs it lands between 2.7 and
+# 6.0: it refused a cat on a lawn and a Porsche in daylight, and it accepted a
+# photograph of a concrete wall. The number was noise. The fixtures that
+# certified it were synthetic pictures whose background saliency is nearly
+# zero, which no wallpaper's is -- the suite could not have caught it.
+#
+# Three measures now, all taken on the FINAL mask, all of them chosen because
+# they still mean something on a photograph:
+#
+#   edge    how much stronger the image gradient is ALONG the mask's outline
+#           than over the picture as a whole. A subject's outline lies on an
+#           edge; an outline invented inside a texture does not. The frame's
+#           own border is excluded from the outline: a region that runs off
+#           the picture has no outline there, and counting the frame as a
+#           strong edge is how a lawn scores like a car.
+#
+#   colour  the mask's mean distance from the picture's mean colour, in Lab
+#           units and NOT normalised. Normalising is what hid the flat cases:
+#           after it a concrete wall and a portrait both peak at 1.0. In real
+#           units a subject sits 60-160 out and the wall's "subject" sits 1.4.
+#
+#   area    a subject is a thing in a picture, not half the picture. This is
+#           the one that catches the failure the user actually saw -- a cut-out
+#           that took the car AND the strip of track it was standing on.
+#
+# Measured over three synthetic fixtures and eight photographs: every picture
+# with a subject passes all three, and every picture without one fails at
+# least one by a factor of two. ci/depth-test.py holds those numbers.
+MIN_EDGE = 3.0
+MIN_COLOUR = 18.0
+MIN_AREA = 0.005
+MAX_AREA = 0.50
 
-    None when the picture has no subject to find, which is a real answer: a
-    texture, a gradient or an abstract has nothing to lift in front of the
-    clock, and cutting out a piece of one anyway is the failure that makes
-    this feature look broken rather than subtle.
+
+def fill_holes(cv2, np, mask):
+    """A subject is not see-through.
+
+    GrabCut leaves pinholes wherever the subject happens to match the
+    background -- a window, a highlight, the gap in a wheel. Drawn over the
+    clock those read as damage, and the digits show through them.
+    """
+    h, w = mask.shape
+    flood = mask.copy()
+    pad = np.zeros((h + 2, w + 2), np.uint8)
+    cv2.floodFill(flood, pad, (0, 0), 255)
+    return mask | cv2.bitwise_not(flood)
+
+
+def edge_agreement(cv2, np, bgr, mask):
+    """Gradient on the mask's outline, over gradient everywhere."""
+    g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    g = cv2.GaussianBlur(g, (5, 5), 0)
+    mag = cv2.magnitude(cv2.Scharr(g, cv2.CV_32F, 1, 0),
+                        cv2.Scharr(g, cv2.CV_32F, 0, 1))
+    # Divided by a high percentile rather than the maximum: one specular
+    # highlight otherwise sets the scale for the whole picture.
+    mag = mag / max(float(np.percentile(mag, 99)), 1e-6)
+
+    band = cv2.morphologyEx(mask, cv2.MORPH_GRADIENT,
+                            cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
+                                                      (5, 5)))
+    b = 3
+    band[:b, :] = 0
+    band[-b:, :] = 0
+    band[:, :b] = 0
+    band[:, -b:] = 0
+    if not band.any():
+        return 0.0
+    return float(mag[band > 0].mean()) / max(float(mag.mean()), 1e-6)
+
+
+def colour_distance(cv2, np, bgr, mask):
+    """Mean Lab distance from the picture's mean colour, inside the mask."""
+    ft = frequency_tuned(cv2, np, bgr)
+    return float(ft[mask > 0].mean()) if (mask > 0).any() else 0.0
+
+
+def judge(cv2, np, bgr, mask):
+    """(is it a subject, the three measures, why not).
+
+    Returned rather than logged, because `probe` prints exactly these numbers
+    for a picture somebody is holding and cannot show us. Two rounds of this
+    were diagnosed from screenshots and both diagnoses were wrong.
+    """
+    area = float((mask > 0).mean())
+    m = {"area": area,
+         "edge": edge_agreement(cv2, np, bgr, mask),
+         "colour": colour_distance(cv2, np, bgr, mask)}
+    if area > MAX_AREA:
+        return False, m, (f"it covers {area:.0%} of the picture, so it is the "
+                          "scene rather than something in it")
+    if area < MIN_AREA:
+        return False, m, f"it covers {area:.2%} of the picture — a speck"
+    if m["edge"] < MIN_EDGE:
+        return False, m, ("its outline does not lie on anything: the picture "
+                          f"is only {m['edge']:.1f}x as sharp along the cut "
+                          f"as it is everywhere (needs {MIN_EDGE})")
+    if m["colour"] < MIN_COLOUR:
+        return False, m, (f"it is {m['colour']:.0f} Lab units from the "
+                          "picture's average colour, which is not standing "
+                          f"out (needs {MIN_COLOUR:.0f})")
+    return True, m, ""
+
+
+def subject_mask(cv2, np, bgr, tier):
+    """(a 0-255 alpha for the subject, the measures behind the answer).
+
+    The mask is None when the picture has no subject to find, which is a real
+    answer: a texture, a gradient or an abstract has nothing to lift in front
+    of the clock, and cutting out a piece of one anyway is the failure that
+    makes this feature look broken rather than subtle.
     """
     h, w = bgr.shape[:2]
 
@@ -212,7 +320,7 @@ def subject_mask(cv2, np, bgr, tier):
     # Otsu rather than a fixed threshold: how salient the salient part is
     # varies enormously between a portrait and a landscape, and any constant
     # here is a constant that is wrong for one of them. Otsu always splits
-    # SOMETHING, which is why the contrast test below exists.
+    # SOMETHING, which is why everything is judged at the end.
     _, hard = cv2.threshold(sal8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
@@ -224,83 +332,65 @@ def subject_mask(cv2, np, bgr, tier):
     # scattered across the screen reads as damage rather than as depth.
     n, labels, stats, _ = cv2.connectedComponentsWithStats(hard, 8)
     if n <= 1:
-        return None
+        return None, {}
     biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    hard = np.where(labels == biggest, 255, 0).astype(np.uint8)
+    core = np.where(labels == biggest, 255, 0).astype(np.uint8)
 
-    # ── Is there a subject at all? ────────────────────────────────────────
+    # ── How far the subject could reach ───────────────────────────────────
     #
-    # By CONTRAST, not by area. Area cannot tell a subject from the brighter
-    # half of a gradient -- both are a large connected region -- and a flat
-    # picture split by Otsu produced a third of the frame. How much brighter
-    # the saliency map is inside the candidate than outside it separates them
-    # cleanly: measured over a disc on a gradient, a planet on a starfield and
-    # a plain gradient, the ratio is 25, 85 and 2.3.
-    hull = cv2.convexHull(cv2.findNonZero(hard))
-    probe = np.zeros_like(hard)
-    cv2.fillConvexPoly(probe, hull, 255)
-    inside = float(sal8[probe > 0].mean()) if (probe > 0).any() else 0.0
-    outside = float(sal8[probe == 0].mean()) if (probe == 0).any() else 0.0
-    if inside < max(outside, 1e-6) * 4:
-        return None
-    # ...and a candidate covering most of the frame is the scene, not a thing
-    # in it. Nothing is gained by lifting the whole wallpaper off itself.
-    if (probe > 0).mean() > 0.6:
-        return None
-
-    # ── The region GrabCut works in ───────────────────────────────────────
+    # GrabCut cannot grow past the region it is handed, and saliency does not
+    # hand it the subject: it hands it the subject's RIM. An evenly coloured
+    # disc lights up as an arc, and a box round that arc gives a cut-out of
+    # the top third of the disc, flat along the bottom.
     #
-    # A bounding BOX, which is GrabCut's own documented starting point
-    # (GC_INIT_WITH_RECT takes a rectangle somebody drew), because GrabCut
-    # cannot grow past the region it is handed and saliency does not hand it
-    # the subject. It hands it the subject's RIM: an evenly coloured disc
-    # lights up as an arc, and a box drawn round that arc produced a cut-out
-    # of the top third of the disc, flat along the bottom where the box ended.
-    #
-    # So the box is measured from a LOW threshold -- a fixed fraction of the
-    # map's own maximum rather than Otsu's split -- which reaches down the
-    # shoulders of the saliency peak and out to the subject's real extent. On
-    # a disc whose true bounds are x430..690 y170..430 it gives x423..698
-    # y162..440. Otsu on the same picture gives y163..266.
-    #
-    # Otsu's blob stays as the CERTAIN core below. One threshold says where
-    # the subject definitely is, the other says how far it could reach.
-    reach = (sal8 >= max(1, int(0.15 * int(sal8.max())))).astype(np.uint8) * 255
+    # So the reach comes from a LOWER threshold than Otsu's -- and from a
+    # PERCENTILE of the map rather than a fraction of its maximum, which is
+    # the change that fixed the Porsche. A fraction of the max is set by the
+    # single brightest pixel: one specular highlight on a wing mirror drops
+    # the threshold until the reach is most of the frame, the box round it is
+    # most of the frame, and the cut-out came back as the car plus the strip
+    # of track behind it. A percentile cannot be moved by one pixel.
+    lo = float(np.percentile(sal8, 70))
+    reach = (sal8 >= lo).astype(np.uint8) * 255
     reach = cv2.morphologyEx(reach, cv2.MORPH_CLOSE, k, iterations=2)
     rn, rlabels, rstats, _ = cv2.connectedComponentsWithStats(reach, 8)
     if rn > 1:
         rbig = 1 + int(np.argmax(rstats[1:, cv2.CC_STAT_AREA]))
-        reach = np.where(rlabels == rbig, 255, 0).astype(np.uint8)
+        cand = np.where(rlabels == rbig, 255, 0).astype(np.uint8)
         # Only if it still contains the certain core. A low threshold can
         # light a bigger region somewhere else in a busy picture, and a box
         # round THAT is a box round the wrong thing.
-        if not (reach[hard > 0] > 0).any():
-            reach = hard
+        reach = cand if (cand[core > 0] > 0).any() else core
     else:
-        reach = hard
+        reach = core
 
-    bx, by, bw_, bh_ = cv2.boundingRect(
-        cv2.convexHull(cv2.findNonZero(reach)))
-    px, py = int(bw_ * 0.1) + 8, int(bh_ * 0.1) + 8
+    bx, by, bw_, bh_ = cv2.boundingRect(reach)
+    px, py = int(bw_ * 0.06) + 6, int(bh_ * 0.06) + 6
     x0, y0 = max(0, bx - px), max(0, by - py)
     x1, y1 = min(w, bx + bw_ + px), min(h, by + bh_ + py)
 
-    # CERTAINLY subject: the brightest quarter of the saliency map inside the
+    # CERTAINLY subject: the brightest part of the saliency map inside the
     # blob. Not an erosion of the blob -- the blob's edge is a threshold on a
-    # smear, so eroding it gives a smaller smear, and every pixel of it would
-    # be put beyond GrabCut's reach. The brightest saliency really is the
-    # subject; everything else is offered rather than asserted.
-    lit = sal8[hard > 0]
+    # smear, so eroding it gives a smaller smear.
+    lit = sal8[core > 0]
     cut = np.percentile(lit, 60) if lit.size else 255
-    sure_fg = ((sal8 >= cut) & (hard > 0)).astype(np.uint8) * 255
+    sure_fg = ((sal8 >= cut) & (core > 0)).astype(np.uint8) * 255
     sure_fg = cv2.morphologyEx(sure_fg, cv2.MORPH_OPEN,
                                cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
                                                          (5, 5)))
     if not sure_fg.any():
-        sure_fg = hard
+        sure_fg = core
 
+    # Inside the box, the dim part is OFFERED AS BACKGROUND rather than as
+    # foreground. The previous version marked the whole box PR_FGD, so a box
+    # that reached a little too far handed GrabCut a strip of asphalt with
+    # nothing in the mask to suggest it was not the subject -- and GrabCut,
+    # asked whether a grey strip belongs with a grey car, said yes.
     gc = np.full((h, w), cv2.GC_BGD, np.uint8)
-    gc[y0:y1, x0:x1] = cv2.GC_PR_FGD
+    box = np.zeros((h, w), bool)
+    box[y0:y1, x0:x1] = True
+    gc[box] = cv2.GC_PR_BGD
+    gc[box & (reach > 0)] = cv2.GC_PR_FGD
     gc[sure_fg > 0] = cv2.GC_FGD
 
     bgd = np.zeros((1, 65), np.float64)
@@ -313,23 +403,21 @@ def subject_mask(cv2, np, bgr, tier):
         # a subject filling the frame, most likely. The thresholded blob is a
         # worse answer than the refined one and a much better answer than an
         # exception.
-        return hard
+        mask = core
+    else:
+        mask = np.where((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD),
+                        255, 0).astype(np.uint8)
 
-    mask = np.where((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD), 255, 0)
-    mask = mask.astype(np.uint8)
-
-    # One last look: GrabCut can decide the whole box is foreground, which on
-    # a subject against a similar background means the cut-out is a rectangle.
-    # A rectangle drawn over the clock is worse than no depth at all.
     n2, labels2, stats2, _ = cv2.connectedComponentsWithStats(mask, 8)
     if n2 <= 1:
-        return None
+        return None, {}
     keep = 1 + int(np.argmax(stats2[1:, cv2.CC_STAT_AREA]))
     mask = np.where(labels2 == keep, 255, 0).astype(np.uint8)
-    if (mask > 0).mean() > 0.6 or (mask > 0).mean() < 0.005:
-        return None
-    return mask
+    mask = fill_holes(cv2, np, mask)
 
+    ok, m, why = judge(cv2, np, bgr, mask)
+    m["why"] = why
+    return (mask if ok else None), m
 
 def rembg_mask(bgr):
     """rembg's alpha, when it is installed. None when it is not."""
@@ -370,11 +458,17 @@ def cutout(path, quality, out, fade):
         small = full
 
     mask = rembg_mask(small) if quality == "fine" else None
+    info = {}
     if mask is None:
-        mask = subject_mask(cv2, np, small, tier)
+        mask, info = subject_mask(cv2, np, small, tier)
     if mask is None:
-        die("genesi-depth: nothing in this picture stands out enough to be a "
-            "subject", 2)
+        # With the reason, always. "nothing stands out enough" sent somebody
+        # to look at their wallpaper when the answer was in the numbers.
+        # One sentence: the side panel puts this straight on screen under the
+        # preview, and a second line about a debugging command is not what
+        # somebody looking at their own wallpaper needs to read.
+        why = info.get("why") or "nothing in it stands out enough"
+        die("genesi-depth: no subject here — " + why, 2)
 
     mask = cv2.resize(mask, (fw, fh), interpolation=cv2.INTER_LINEAR)
     # Scaled with the picture: two pixels at a 720 working size is six on a
@@ -406,6 +500,39 @@ def cutout(path, quality, out, fade):
     return out
 
 
+def probe(path, quality):
+    """Every number the verdict is made of, for a picture we cannot see."""
+    cv2, np = load_cv()
+    tier = dict(TIERS[quality])
+    data = np.fromfile(path, dtype=np.uint8)
+    full = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    if full is None:
+        die(f"genesi-depth: {path} is not an image this can read")
+    fh, fw = full.shape[:2]
+    scale = tier["side"] / min(fh, fw)
+    small = (cv2.resize(full, (int(fw * scale), int(fh * scale)),
+                        interpolation=cv2.INTER_AREA)
+             if scale < 1 else full)
+
+    mask, m = subject_mask(cv2, np, small, tier)
+    print(f"picture   {fw}x{fh}, worked at {small.shape[1]}x{small.shape[0]}")
+    if not m:
+        print("candidate none — the saliency map had no connected region at "
+              "all, which is a picture with no structure in it")
+        return 2
+    print(f"area      {m['area']:.2%}   (wanted {MIN_AREA:.1%}"
+          f"–{MAX_AREA:.0%})")
+    print(f"edge      {m['edge']:.2f}     (wanted >= {MIN_EDGE}) "
+          f"— sharpness along the cut, over the picture's own")
+    print(f"colour    {m['colour']:.1f}     (wanted >= {MIN_COLOUR:.0f}) "
+          f"— Lab distance from the average colour")
+    if mask is None:
+        print("verdict   refused — " + m.get("why", ""))
+        return 2
+    print("verdict   subject")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(prog="genesi-depth", add_help=True)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -425,6 +552,10 @@ def main():
     p.add_argument("--edge-fade", choices=sorted(FADES), default=None,
                    dest="fade")
 
+    b = sub.add_parser("probe", help="the measurements behind the verdict")
+    b.add_argument("image")
+    b.add_argument("--quality", choices=sorted(TIERS), default="standard")
+
     sub.add_parser("status", help="what is installed and what is cached")
     sub.add_parser("clear", help="drop every cached cutout")
 
@@ -434,6 +565,9 @@ def main():
         shutil.rmtree(CACHE, ignore_errors=True)
         print(CACHE)
         return 0
+
+    if a.cmd == "probe":
+        return probe(a.image, a.quality)
 
     if a.cmd == "status":
         try:

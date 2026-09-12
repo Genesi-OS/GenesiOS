@@ -472,7 +472,41 @@ pkgver=2.0.3
 # directory both define a type and the file builds it, the build fails and
 # says which file, which type and which import. Reintroducing the bug was
 # tried, and it fails on it.
-pkgrel=39
+# 40: Depth found half a wallpaper, or nothing at all.
+#
+# The test for "is there a subject here" was `inside_saliency > 4 *
+# outside_saliency`, and the 4 came from three drawn pictures: a disc on a
+# gradient (25), a planet on a starfield (85), a plain gradient (2.3). A drawn
+# picture has a property no photograph has -- its background has almost no
+# saliency -- so that number separated those three and nothing else. Measured
+# on eight photographs it lands between 2.7 and 6.0: it refused a cat on a
+# lawn and a Porsche in daylight, and it accepted a photograph of a concrete
+# wall. Both of the user's reports, in one constant.
+#
+# Three measures now, each meaningful on a photograph, all taken on the final
+# mask: how much sharper the picture is ALONG the cut than everywhere (a
+# subject's outline lies on an edge; one invented inside a texture does not);
+# how far the mask is from the picture's average colour in real Lab units, NOT
+# normalised (normalising is what hid the flat cases -- after it a concrete
+# wall and a portrait both peak at 1.0); and how much of the frame it covers.
+#
+# Two fixes to the cut itself, from the same photographs. The reach that sets
+# GrabCut's box comes from a percentile of the saliency map instead of a
+# fraction of its maximum -- a fraction of the max is set by the single
+# brightest pixel, so one highlight on a wing mirror opened the box until the
+# cut-out was the car AND the strip of track behind it. And the dim part
+# inside the box is offered to GrabCut as background rather than as
+# foreground, because asked whether a grey strip belongs with a grey car with
+# nothing to suggest otherwise, GrabCut said yes.
+#
+# On the same eight photographs the shipped code gets two wrong; this gets
+# seven of seven. `genesi-depth probe <image>` prints every number behind the
+# verdict, and a refusal now says which measure failed -- the side panel
+# already shows that line. ci/depth-test.py pins the thresholds to the table
+# they were measured from, has the two negatives it never had (a busy texture
+# and a ground region, where its only negative was a flat gradient nothing has
+# ever accepted), and takes real photographs through GENESI_DEPTH_PHOTOS.
+pkgrel=40
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
