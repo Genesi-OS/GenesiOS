@@ -16,6 +16,11 @@ Item {
     property string body: ""
     property string stats: ""
     property bool thinking: false
+    // Only when there is something to speak WITH. The page asks
+    // genesi-ai-voice once and passes the answer down; without it the control
+    // is not drawn at all.
+    property bool canSpeak: false
+    signal speak(string text)
 
     readonly property bool isUser: role === "user"
     readonly property bool isError: role === "error"
@@ -124,6 +129,43 @@ Item {
                     color: b.isError ? "#F1B0A8" : b._txt
                     selectionColor: b._accent
                     selectedTextColor: "#ffffff"
+                }
+
+                // Hear it. Genesi's AI runs on this machine and so does the
+                // voice -- the answer is synthesised here and goes nowhere.
+                Row {
+                    visible: b.canSpeak && !b.thinking && !b.isUser
+                             && !b.isError && b.body.length > 0
+                    height: visible ? 20 : 0
+                    spacing: 6
+
+                    Rectangle {
+                        width: listenTxt.implicitWidth + 22
+                        height: 20
+                        radius: 10
+                        color: listenArea.containsMouse ? b._a(b._accent, 0.18)
+                                                        : "transparent"
+                        border.width: 1
+                        border.color: listenArea.containsMouse
+                                      ? b._a(b._accent, 0.55) : b._line
+
+                        QQC2.Label {
+                            id: listenTxt
+                            anchors.centerIn: parent
+                            text: "Listen"
+                            font.pixelSize: 10
+                            font.bold: true
+                            color: listenArea.containsMouse ? b._txt : b._txtMid
+                        }
+
+                        MouseArea {
+                            id: listenArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: b.speak(b.body)
+                        }
+                    }
                 }
 
                 Row {

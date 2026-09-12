@@ -52,9 +52,16 @@ Kirigami.Page {
         }
     }
 
+    // Whether there is a synthesiser to speak an answer with. Asked once: a
+    // machine without Kokoro shows no speaker at all, rather than one that
+    // silently does nothing -- which is the shape of every dead control this
+    // project has had to apologise for.
+    property bool voiceReady: false
+
     Component.onCompleted: {
         backend.loadModels()
         page.agentMode = backend.agentMode()
+        page.voiceReady = backend.voiceReady()
     }
 
     // Debounce for prefill-as-you-type: fires ~450ms after the user stops typing
@@ -692,6 +699,8 @@ Kirigami.Page {
                         body: model.body
                         stats: model.stats
                         thinking: page.busy && index === page.currentAi && model.body.length === 0
+                        canSpeak: page.voiceReady
+                        onSpeak: text => backend.speak(text)
                     }
 
                     // ── Genesi Find results, in the conversation ──

@@ -6,20 +6,32 @@
  * real state, models that take gigabytes, and a GPU that either helps or does
  * not. So this reports first and offers second.
  *
- * Speech and the cloud key are real now, and both are shaped so this page
- * cannot lie about them:
+ * Speech and the cloud key are real, and both are shaped so this page cannot
+ * lie about them:
  *
- *   Kokoro   a ~340 MB download, so the button opens a TERMINAL running
- *            `genesi-ai-voice install` rather than starting it invisibly
- *            behind a settings window with nowhere to show progress or to
- *            fail. The row reports what genesi-ai-voice says, including which
- *            dependency is missing.
+ *   Kokoro   a ~340 MB download AND a Python environment to build, so the
+ *            button opens a TERMINAL running `genesi-ai-voice install` rather
+ *            than starting it invisibly behind a settings window with nowhere
+ *            to show progress or to fail. The row reports what
+ *            genesi-ai-voice says, including which step is outstanding.
  *
- *   API key  the page shows WHETHER one is set and which provider, never the
- *            key, and offers no field to type one into. A secret typed into a
- *            settings window is a secret in a screenshot; `genesi-ai-key set`
- *            reads it from stdin so it never reaches a shell history or `ps`
- *            either. Clearing and testing are safe, so those are here.
+ *   API key  typed here, into a field that shows dots, and sent to
+ *            `genesi-ai-key set` on STDIN -- never as an argument, so it
+ *            never reaches a shell history or `ps`. The page never displays
+ *            it back: what it shows is which provider, which model, and the
+ *            last four characters, which is enough to tell two keys apart and
+ *            not enough to be one.
+ *
+ *            An earlier version had no field at all, on the reasoning that a
+ *            secret typed into a settings window is a secret in a screenshot.
+ *            That reasoning stops at the field: dots are not screenshottable,
+ *            and the alternative -- telling somebody to open a terminal and
+ *            redirect a file into a command -- is not privacy, it is an
+ *            unusable feature with a good excuse.
+ *
+ *   Usage    one request is one use, and local and hosted are counted apart.
+ *            That separation is the whole point of the local/hosted split, so
+ *            a single total would hide the only number worth watching.
  *
  * An earlier version of this page had both as buttons over nothing: one opened
  * the AI Monitor with a flag the Monitor ignores, the other reported on a
@@ -40,6 +52,35 @@ Item {
     readonly property var models: page.d.models || []
     readonly property var voice: page.d.voice || ({})
     readonly property var cloud: page.d.cloud || ({})
+    readonly property var usage: page.d.usage || ({})
+
+    // The providers this page offers, and the only place their display names
+    // live. ci/ai-cloud-test.py checks these ids against the table
+    // genesi-ai-key validates against -- a name in one and not the other is a
+    // button that reports an unknown provider, which is this project's oldest
+    // kind of bug.
+    readonly property var cloudProviders: [
+        { id: "openai", label: qsTr("OpenAI · ChatGPT") },
+        { id: "anthropic", label: qsTr("Anthropic · Claude") },
+        { id: "gemini", label: qsTr("Google · Gemini") },
+        { id: "groq", label: qsTr("Groq") },
+        { id: "openrouter", label: qsTr("OpenRouter") },
+        { id: "together", label: qsTr("Together") }
+    ]
+    // What the picker is on, before anything is saved. Follows whatever is
+    // configured, so opening the page on a machine with a key set shows that
+    // provider rather than an arbitrary first entry.
+    property string picked: page.cloud.provider || "gemini"
+
+    readonly property int localCalls:
+        (page.usage.local && page.usage.local.requests) || 0
+    readonly property int cloudCalls: {
+        const c = page.usage.cloud || {};
+        let n = 0;
+        for (const k in c)
+            n += (c[k] && c[k].requests) || 0;
+        return n;
+    }
 
     // What Kokoro is still waiting for, in one phrase. genesi-ai-voice
     // reports each missing piece with the command that installs it; the page
@@ -217,17 +258,27 @@ Item {
                     SettingRow {
                         width: parent.width
                         label: qsTr("Spoken answers")
+                        // Which STEP is outstanding, because there are two
+                        // of them and they fail differently: an environment
+                        // to build, and a model to fetch. The row used to say
+                        // "needs kokoro-onnx, espeak-ng" under a button whose
+                        // entire purpose is to provide those.
                         description: page.voice.ready
                             ? qsTr("Kokoro is installed and ready. Everything is "
                                    + "synthesised on this machine.")
-                            : (page.voice.installed
-                               ? qsTr("The model is here but something it needs "
-                                      + "is not: %1.").arg(page.voiceMissing)
-                               : (page.voiceMissing !== ""
-                                  ? qsTr("Needs %1 first — the installer says "
-                                         + "exactly how.").arg(page.voiceMissing)
-                                  : qsTr("About %1 MB, downloaded once and run "
-                                         + "locally like everything else.")
+                            : (page.voiceMissing !== ""
+                               ? qsTr("Needs %1 first — the installer says "
+                                      + "exactly how.").arg(page.voiceMissing)
+                               : (page.voice.installed === true
+                                  && page.voice.env_ready !== true
+                                  ? qsTr("The model is here; the synthesiser "
+                                         + "still has to be set up. The "
+                                         + "installer does that, in its own "
+                                         + "environment — nothing system-wide "
+                                         + "is touched.")
+                                  : qsTr("About %1 MB and a small Python "
+                                         + "environment, both set up once and "
+                                         + "run locally like everything else.")
                                     .arg(page.voice.download_mb || 340)))
 
                         Row {
@@ -270,8 +321,11 @@ Item {
 
                                 Text {
                                     anchors.centerIn: parent
-                                    text: page.voice.ready ? qsTr("INSTALLED")
-                                                           : qsTr("INSTALL KOKORO")
+                                    text: page.voice.ready
+                                        ? qsTr("INSTALLED")
+                                        : (page.voice.installed === true
+                                           ? qsTr("FINISH SETUP")
+                                           : qsTr("INSTALL KOKORO"))
                                     color: page.voice.ready ? Tokens.accent : Tokens.text
                                     font.family: Tokens.mono
                                     font.pixelSize: Tokens.fsMicro
@@ -311,11 +365,11 @@ Item {
                                           + "fire on their own")
                                    : qsTr("what you ask for; the automatic helpers "
                                           + "stay local"))
-                            : qsTr("Everything runs on this machine. A key is set "
-                                   + "in a terminal — this page will not ask you "
-                                   + "to type a secret into a window that can be "
-                                   + "screenshotted.")
-                        last: true
+                            : qsTr("Everything runs on this machine. Add a key "
+                                   + "below to send what you ask for to a "
+                                   + "hosted model instead; the local one stays "
+                                   + "the fallback for everything it cannot "
+                                   + "reach.")
 
                         Row {
                             spacing: 8
@@ -392,16 +446,169 @@ Item {
                             }
                         }
                     }
+
+                    SettingRow {
+                        width: parent.width
+                        label: qsTr("API key")
+                        description: qsTr("Pick who it is for, paste the key, "
+                                          + "save. It is sent to the tool on "
+                                          + "its standard input, so it never "
+                                          + "appears in a command line, in "
+                                          + "`ps`, or in a shell history — and "
+                                          + "this page never shows it back.")
+
+                        Row {
+                            spacing: 8
+
+                            Select {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 168
+                                options: page.cloudProviders
+                                current: page.picked
+                                onPicked: id => page.picked = id
+                            }
+
+                            Field {
+                                id: keyField
+
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 190
+                                height: 26
+                                secret: true
+                                placeholder: qsTr("paste key")
+                                onAccepted: saveKey.save()
+                            }
+
+                            Rectangle {
+                                id: saveKey
+                                objectName: "saveKey"
+
+                                function save() {
+                                    if (keyField.text.trim() === ""
+                                        || !page.backend)
+                                        return;
+                                    page.backend.setCloudKey(
+                                        page.picked, "",
+                                        page.cloud.use_for || "manual",
+                                        keyField.text);
+                                    // Cleared straight away. The field holds
+                                    // a secret for exactly as long as it takes
+                                    // to hand it over, and an app left open
+                                    // for a week should not still have it on
+                                    // screen behind the dots.
+                                    keyField.clear();
+                                }
+
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 60; height: 26; radius: Tokens.radiusSm
+                                color: saveHov.hovered ? Tokens.cardHi : "transparent"
+                                border.width: 1
+                                border.color: keyField.text !== ""
+                                              ? Tokens.accentDim : Tokens.line
+                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: qsTr("SAVE")
+                                    color: keyField.text !== "" ? Tokens.text
+                                                                : Tokens.textFaint
+                                    font.family: Tokens.mono
+                                    font.pixelSize: Tokens.fsMicro
+                                    font.letterSpacing: 1
+                                }
+                                HoverHandler { id: saveHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: saveKey.save() }
+                            }
+                        }
+                    }
+
+                    SettingRow {
+                        width: parent.width
+                        visible: page.cloud.configured === true
+                        height: visible ? implicitHeight : 0
+                        label: qsTr("What may use it")
+                        description: qsTr("The helpers that fire on their own — "
+                                          + "the fix offered after a failed "
+                                          + "command — run several times a "
+                                          + "minute in a busy terminal, and a "
+                                          + "hosted model bills per request. "
+                                          + "They stay on this machine unless "
+                                          + "you say otherwise.")
+                        last: true
+
+                        Segmented {
+                            options: [{ id: "manual", label: qsTr("What I ask for") },
+                                      { id: "all", label: qsTr("Everything") }]
+                            current: page.cloud.use_for || "manual"
+                            onPicked: id => page.act(["genesi-ai-key", "for", id])
+                        }
+                    }
                 }
             }
 
-            Text {
+            // ── What has actually been sent where ────────────────────────
+            //
+            // Two numbers, never one. The point of the local/hosted split is
+            // that the automatic helpers stay on the machine, and a single
+            // total would hide the only question worth asking.
+            Panel {
                 width: parent.width
-                visible: !page.cloud.configured
-                text: qsTr("genesi-ai-key set --provider openai < key.txt")
-                color: Tokens.accentDim
-                font.family: Tokens.mono
-                font.pixelSize: Tokens.fsMicro
+                height: 74
+
+                Row {
+                    anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                    anchors.leftMargin: 20
+                    spacing: 34
+
+                    Column {
+                        spacing: 3
+                        Text {
+                            text: qsTr("ON THIS MACHINE")
+                            color: Tokens.textFaint
+                            font.family: Tokens.mono
+                            font.pixelSize: Tokens.fsMicro
+                            font.letterSpacing: 1.4
+                        }
+                        Text {
+                            text: qsTr("%1 request(s)").arg(page.localCalls)
+                            color: Tokens.textHi
+                            font.family: Tokens.sans
+                            font.pixelSize: 17
+                            font.weight: Font.Light
+                        }
+                    }
+
+                    Column {
+                        spacing: 3
+                        Text {
+                            text: qsTr("SENT TO A PROVIDER")
+                            color: Tokens.textFaint
+                            font.family: Tokens.mono
+                            font.pixelSize: Tokens.fsMicro
+                            font.letterSpacing: 1.4
+                        }
+                        Text {
+                            text: qsTr("%1 request(s)").arg(page.cloudCalls)
+                            color: page.cloudCalls > 0 ? Tokens.accent
+                                                       : Tokens.textHi
+                            font.family: Tokens.sans
+                            font.pixelSize: 17
+                            font.weight: Font.Light
+                        }
+                    }
+                }
+
+                Text {
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    anchors.rightMargin: 20
+                    width: 210
+                    horizontalAlignment: Text.AlignRight
+                    wrapMode: Text.WordWrap
+                    text: qsTr("One request is one use. A request that never "
+                               + "landed is not counted as one.")
+                    color: Tokens.textDim
+                    font.family: Tokens.sans
+                    font.pixelSize: 11
+                }
             }
         }
 

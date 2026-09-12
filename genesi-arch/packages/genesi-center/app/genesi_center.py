@@ -241,6 +241,41 @@ class Backend(QObject):
             self.barPresets()
         threading.Thread(target=body, daemon=True).start()
 
+    @Slot(str, str, str, str)
+    def setCloudKey(self, provider, model, use_for, key):
+        """
+        Store an API key, without it ever appearing in argv.
+
+        `genesi-ai-key set` reads the key from stdin precisely so that it stays
+        out of shell history and out of `ps`, where every user on the machine
+        can read it. A settings window that ran `genesi-ai-key set sk-...`
+        would undo that in one line, so this pipes it the same way the shell
+        does -- which is also why it cannot go through act(): that builds a
+        command line, and this must not.
+
+        Everything else about it IS on the command line, because none of it is
+        secret: which provider, which model, and whether the helpers that fire
+        on their own may use it.
+        """
+        key = (key or "").strip()
+        if not key:
+            return
+        argv = ["genesi-ai-key", "set", "--provider", str(provider),
+                "--for", str(use_for or "manual")]
+        if model:
+            argv += ["--model", str(model)]
+
+        def body():
+            try:
+                subprocess.run(argv, input=key, capture_output=True, text=True,
+                               timeout=20, encoding="utf-8", errors="replace")
+            except (OSError, subprocess.SubprocessError):
+                pass
+            # Re-read, so the page shows what was actually stored -- including
+            # nothing at all, if the tool refused it.
+            self.sectionReady.emit("ai", self._read("ai") or "{}")
+        threading.Thread(target=body, daemon=True).start()
+
     @Slot(list)
     def launch(self, argv):
         """

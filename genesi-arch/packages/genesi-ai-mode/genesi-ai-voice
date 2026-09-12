@@ -6,24 +6,44 @@ Kokoro is a small text-to-speech model that runs locally, like everything else
 Genesi's AI does. Nothing is sent anywhere.
 
   genesi-ai-voice status [--json]   what is present and what is missing
-  genesi-ai-voice install           fetch the model (about 340 MB)
+  genesi-ai-voice install           set it up (about 340 MB of model)
   genesi-ai-voice say "text"        speak it
   genesi-ai-voice voices            the voices the model carries
-  genesi-ai-voice remove            delete the model files
+  genesi-ai-voice remove            delete the model and the environment
 
-── Why install checks BEFORE it downloads ───────────────────────────────────
+── Why there is a virtualenv ────────────────────────────────────────────────
 
-Synthesis needs three things: the model files, the `kokoro-onnx` Python
-package, and espeak-ng for turning letters into phonemes. Downloading 340 MB
-and only then discovering onnxruntime is missing wastes somebody's evening and
-their bandwidth, so the dependency check runs first and says exactly what to
-install.
+The first version told people to run `pip install --user kokoro-onnx` and
+refused to go on until they had. On Arch that command does not work at all:
+the system Python is marked externally-managed (PEP 668) and pip declines to
+touch it. So the button in the settings app opened a terminal that printed an
+instruction which could not be followed, and Kokoro was uninstallable by
+design. That is the bug this file exists to fix.
+
+`install` builds its own environment under the same directory as the model and
+installs into that, which needs no root, cannot break the system Python, and
+is deleted whole by `remove`. `--system-site-packages`, so a machine that
+already has python-numpy and python-onnxruntime from pacman reuses them rather
+than downloading a second numerical stack.
+
+`say` and `voices` then re-exec themselves with that environment's
+interpreter. Adding its site-packages to sys.path would half-work: native
+extension modules (onnxruntime is one) are loaded by the interpreter that
+started, and mixing two ABIs is how you get a segfault instead of an error.
+
+── Why espeak-ng is not a hard requirement any more ─────────────────────────
+
+Turning letters into phonemes used to mean the system espeak-ng, which needs
+root to install. Current kokoro-onnx pulls `espeakng-loader`, which carries
+espeak-ng's library and data in the wheel. So the installer prefers that, and
+only mentions pacman if neither is there.
 
 ── Why the audio goes through a pipe ────────────────────────────────────────
 
 The samples are written to a WAV on stdin of `pw-play` (or `aplay`), rather
 than to a temporary file. A settings app that leaves 40 MB of speech in /tmp
-after every sentence is a bug reported six months later as "the disk filled up".
+after every sentence is a bug reported six months later as "the disk filled
+up".
 """
 import argparse
 import io
@@ -39,6 +59,7 @@ import urllib.request
 DATA = os.path.join(
     os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")),
     "genesi-ai", "kokoro")
+VENV = os.path.join(DATA, "venv")
 
 # The upstream release these are published in. Pinned to a version rather than
 # "latest": a model that changes under a machine is a machine whose voice
@@ -53,6 +74,12 @@ FILES = (
 
 DEFAULT_VOICE = "af_heart"
 SAMPLE_RATE = 24000
+
+# What pip is asked for. kokoro-onnx brings onnxruntime and numpy itself; the
+# loader is named separately because the whole point of it is to remove the
+# root-only dependency, and a version of kokoro-onnx that stops depending on
+# it must not silently take espeak away with it.
+PIP_WANTS = ("kokoro-onnx", "espeakng-loader")
 
 
 def die(msg):
@@ -76,6 +103,15 @@ def have_files():
     return True
 
 
+def venv_python():
+    """The environment's interpreter, or None when there is no environment."""
+    for rel in ("bin/python3", "bin/python", "Scripts/python.exe"):
+        p = os.path.join(VENV, *rel.split("/"))
+        if os.path.exists(p):
+            return p
+    return None
+
+
 def have_module():
     try:
         import kokoro_onnx  # noqa: F401
@@ -84,8 +120,44 @@ def have_module():
         return False
 
 
-def have_espeak():
-    return shutil.which("espeak-ng") is not None or shutil.which("espeak") is not None
+def have_espeak_here():
+    try:
+        import espeakng_loader  # noqa: F401
+        return True
+    except Exception:
+        pass
+    return (shutil.which("espeak-ng") is not None
+            or shutil.which("espeak") is not None)
+
+
+# What one probe asks the environment, run there rather than guessed at here.
+# `status` is called from a settings page every few seconds, so it is ONE
+# subprocess answering everything rather than one per question.
+PROBE = (
+    "import json\n"
+    "def ok(m):\n"
+    "    try:\n"
+    "        __import__(m)\n"
+    "        return True\n"
+    "    except Exception:\n"
+    "        return False\n"
+    "print(json.dumps({'kokoro': ok('kokoro_onnx'),"
+    " 'espeak': ok('espeakng_loader'), 'numpy': ok('numpy'),"
+    " 'onnx': ok('onnxruntime')}))\n"
+)
+
+
+def probe_env():
+    """What the virtualenv can import. Empty dict when there is none."""
+    vp = venv_python()
+    if not vp:
+        return {}
+    try:
+        r = subprocess.run([vp, "-c", PROBE], capture_output=True, text=True,
+                           timeout=30)
+        return json.loads(r.stdout.strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {}
 
 
 def player():
@@ -99,13 +171,14 @@ def player():
 
 
 def missing():
+    """What is in the way, and how to get past it.
+
+    Only things `install` cannot do itself. The synthesiser and the phonemiser
+    are the installer's job now -- listing them here is what made the page say
+    "needs kokoro-onnx, espeak-ng" under a button whose whole purpose was to
+    provide them.
+    """
     out = []
-    if not have_module():
-        out.append(("kokoro-onnx", "pip install --user kokoro-onnx",
-                    "the synthesiser itself"))
-    if not have_espeak():
-        out.append(("espeak-ng", "sudo pacman -S espeak-ng",
-                    "turns letters into phonemes"))
     if player() is None:
         out.append(("pipewire / alsa-utils", "sudo pacman -S pipewire-audio",
                     "plays the samples"))
@@ -113,11 +186,19 @@ def missing():
 
 
 def cmd_status(as_json):
+    env = probe_env()
     need = missing()
+    # espeak either comes from the wheel in the environment or from the system
+    # binary; both are answers, and the page should not care which.
+    espeak = bool(env.get("espeak")) or have_espeak_here()
+    ready = have_files() and bool(env.get("kokoro")) and espeak and not need
     out = {
         "installed": have_files(),
-        "ready": have_files() and not need,
+        "env_ready": bool(env.get("kokoro")),
+        "espeak": espeak,
+        "ready": ready,
         "path": DATA,
+        "venv": VENV if venv_python() else None,
         "download_mb": round(sum(s for _n, _u, s in FILES) / 1_000_000),
         "missing": [{"name": n, "how": h, "why": w} for n, h, w in need],
         "voice": DEFAULT_VOICE,
@@ -130,10 +211,14 @@ def cmd_status(as_json):
         print(f"ready — {DATA}")
         return
     if not out["installed"]:
-        print(f"not installed. `genesi-ai-voice install` fetches about "
+        print(f"model not installed. `genesi-ai-voice install` fetches about "
               f"{out['download_mb']} MB into {DATA}")
     else:
         print(f"model present at {DATA}")
+    if not out["env_ready"]:
+        print("  the synthesiser is not set up yet — `genesi-ai-voice install`")
+    elif not espeak:
+        print("  no phonemiser: sudo pacman -S espeak-ng")
     for n, h, w in need:
         print(f"  missing {n:<22} {w}")
         print(f"          {h}")
@@ -174,28 +259,85 @@ def fetch(name, url, expected):
     os.replace(tmp, dest)
 
 
+def build_env():
+    """The virtualenv, and kokoro-onnx inside it. True when it is usable."""
+    vp = venv_python()
+    if vp is None:
+        print(f"Setting up the synthesiser in {VENV}")
+        os.makedirs(DATA, exist_ok=True)
+        r = subprocess.run(
+            [sys.executable, "-m", "venv", "--system-site-packages", VENV])
+        if r.returncode != 0:
+            die("could not create the environment. On Arch the venv module "
+                "comes with python itself:\n"
+                "                 sudo pacman -S --needed python")
+        vp = venv_python()
+        if vp is None:
+            die(f"the environment was created but has no interpreter in "
+                f"{VENV} — remove that directory and try again")
+
+    print("Installing " + ", ".join(PIP_WANTS)
+          + " (reusing anything pacman already provides)")
+    # Output goes to the terminal as it happens. This is the step that takes a
+    # minute and the step that fails, and a spinner over a silent pip is how
+    # somebody ends up killing an install that was working.
+    r = subprocess.run([vp, "-m", "pip", "install", "--upgrade"]
+                       + list(PIP_WANTS))
+    if r.returncode != 0:
+        die("pip could not install the synthesiser. The output above says why "
+            "— a network problem, or a wheel that has no build for this "
+            "Python.")
+
+    env = probe_env()
+    if not env.get("kokoro"):
+        die("pip reported success but kokoro_onnx still does not import. "
+            f"Try removing {VENV} and running this again.")
+    if not env.get("espeak") and not have_espeak_here():
+        print()
+        print("No phonemiser. espeakng-loader did not install and there is no "
+              "system espeak-ng.")
+        print("  sudo pacman -S --needed espeak-ng")
+        die("install espeak-ng, then run this again")
+    return True
+
+
 def cmd_install():
     need = missing()
     if need:
         # Refuse BEFORE spending the bandwidth.
-        print("Kokoro needs a few things this machine does not have yet:")
+        print("Kokoro needs something this machine does not have:")
         for n, h, w in need:
             print(f"  {n:<22} {w}")
             print(f"  {'':<22} {h}")
         print()
-        die("install those first, then run this again")
+        die("install that first, then run this again")
+
+    build_env()
 
     if have_files():
-        print(f"already installed — {DATA}")
-        return
+        print(f"model already here — {DATA}")
+    else:
+        mb = round(sum(s for _n, _u, s in FILES) / 1_000_000)
+        print(f"Fetching Kokoro (~{mb} MB) into {DATA}")
+        for name, url, size in FILES:
+            p = path_of(name)
+            if os.path.exists(p) and os.path.getsize(p) >= size * 0.8:
+                print(f"  {name}  already here")
+                continue
+            fetch(name, url, size)
 
-    mb = round(sum(s for _n, _u, s in FILES) / 1_000_000)
-    print(f"Fetching Kokoro (~{mb} MB) into {DATA}")
-    for name, url, size in FILES:
-        if os.path.exists(path_of(name)) and os.path.getsize(path_of(name)) >= size * 0.8:
-            print(f"  {name}  already here")
-            continue
-        fetch(name, url, size)
+    # ...and then prove it, here, rather than leaving the first real attempt
+    # to happen inside a settings window with nowhere to show an error. An
+    # install that reports success and cannot speak is the failure this whole
+    # file is a fix for.
+    print()
+    print("Checking it can actually speak…")
+    vp = venv_python()
+    r = subprocess.run([vp, os.path.abspath(__file__), "say", "--silent",
+                        "Genesi is ready."], capture_output=True, text=True)
+    if r.returncode != 0:
+        die("the model is installed but synthesis failed:\n"
+            + (r.stderr.strip() or "no error given"))
     print("done — try it with:  genesi-ai-voice say \"hello\"")
 
 
@@ -208,33 +350,75 @@ def wav_header(n_samples):
             + b"data" + struct.pack("<I", data_bytes))
 
 
-def cmd_say(text, voice):
+def in_the_env():
+    """Re-exec with the virtualenv's interpreter, when there is one to use.
+
+    onnxruntime is a native extension: it is loaded by the interpreter that
+    started, so putting the environment's site-packages on sys.path of the
+    system python gives a crash rather than an error. Being the other
+    interpreter is the only honest way to use it.
+    """
+    if have_module():
+        return
+    vp = venv_python()
+    if not vp:
+        die("the synthesiser is not set up. Run: genesi-ai-voice install")
+    if os.environ.get("GENESI_VOICE_REEXEC") == "1":
+        die("the environment at " + VENV + " cannot import kokoro_onnx. "
+            "Run `genesi-ai-voice install` again.")
+    if os.path.abspath(vp) == os.path.abspath(sys.executable):
+        die("kokoro_onnx does not import in " + VENV
+            + " — run `genesi-ai-voice install` again")
+    os.environ["GENESI_VOICE_REEXEC"] = "1"
+    os.execv(vp, [vp, os.path.abspath(__file__)] + sys.argv[1:])
+
+
+def synthesise(text, voice):
+    import numpy as np
+    from kokoro_onnx import Kokoro
+
+    # espeakng-loader carries espeak's library and data in the wheel, and
+    # kokoro's phonemiser finds them through these two variables. Set only
+    # when the loader is there and the user has not set them.
+    try:
+        import espeakng_loader
+        os.environ.setdefault("ESPEAK_DATA_PATH",
+                              str(espeakng_loader.get_data_path()))
+        os.environ.setdefault("PHONEMIZER_ESPEAK_LIBRARY",
+                              str(espeakng_loader.get_library_path()))
+    except Exception:
+        pass
+
+    k = Kokoro(path_of("kokoro-v1.0.onnx"), path_of("voices-v1.0.bin"))
+    samples, _rate = k.create(text, voice=voice or DEFAULT_VOICE, speed=1.0,
+                              lang="en-us")
+    return (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+
+
+def cmd_say(text, voice, silent=False):
     if not text.strip():
         return
     if not have_files():
         die("Kokoro is not installed. Run: genesi-ai-voice install")
-    need = missing()
-    if need:
-        die("missing " + ", ".join(n for n, _h, _w in need)
-            + " — run `genesi-ai-voice status` for how to get them")
-    play = player()
-    if play is None:
-        die("nothing on this machine can play audio")
+    in_the_env()
+
+    play = None
+    if not silent:
+        play = player()
+        if play is None:
+            die("nothing on this machine can play audio")
 
     try:
-        import numpy as np
-        from kokoro_onnx import Kokoro
-    except Exception as e:
-        die(f"could not load the synthesiser: {e}")
-
-    try:
-        k = Kokoro(path_of("kokoro-v1.0.onnx"), path_of("voices-v1.0.bin"))
-        samples, rate = k.create(text, voice=voice or DEFAULT_VOICE,
-                                 speed=1.0, lang="en-us")
+        pcm = synthesise(text, voice)
     except Exception as e:
         die(f"synthesis failed: {e}")
 
-    pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+    # --silent is the install's own check: it proves the model loads and
+    # produces samples without making a machine talk to itself at the end of
+    # an install.
+    if silent:
+        print(f"{len(pcm) // 2} samples")
+        return
     try:
         p = subprocess.Popen(play, stdin=subprocess.PIPE)
         p.communicate(wav_header(len(pcm) // 2) + pcm)
@@ -245,6 +429,7 @@ def cmd_say(text, voice):
 def cmd_voices():
     if not have_files():
         die("Kokoro is not installed. Run: genesi-ai-voice install")
+    in_the_env()
     try:
         from kokoro_onnx import Kokoro
         k = Kokoro(path_of("kokoro-v1.0.onnx"), path_of("voices-v1.0.bin"))
@@ -273,6 +458,7 @@ def main():
     y = sub.add_parser("say", add_help=False)
     y.add_argument("text", nargs="*")
     y.add_argument("--voice", default="")
+    y.add_argument("--silent", action="store_true")
 
     try:
         args = ap.parse_args()
@@ -289,7 +475,7 @@ def main():
     elif args.cmd == "remove":
         cmd_remove()
     elif args.cmd == "say":
-        cmd_say(" ".join(args.text), args.voice)
+        cmd_say(" ".join(args.text), args.voice, args.silent)
     else:
         print(__doc__.strip())
         return 2

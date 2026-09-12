@@ -513,6 +513,52 @@ class Backend(QObject):
             self.modelsLoaded.emit(json.dumps(names))
         threading.Thread(target=work, daemon=True).start()
 
+    # ── speech ───────────────────────────────────────────────────────────────
+
+    @Slot(result=bool)
+    def voiceReady(self):
+        """Is there a synthesiser to speak with?
+
+        Asked once when the chat opens, so a machine without Kokoro shows no
+        speaker button at all rather than one that does nothing. `--json`
+        rather than a look at the filesystem: genesi-ai-voice is what knows
+        that a model on disk with no environment built is not ready.
+        """
+        try:
+            r = subprocess.run(["genesi-ai-voice", "status", "--json"],
+                               capture_output=True, text=True, timeout=20)
+            return bool(json.loads(r.stdout or "{}").get("ready"))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return False
+
+    @Slot(str)
+    def speak(self, text):
+        """Say an answer out loud, on this machine.
+
+        Detached and fire-and-forget: synthesis takes a second or two and the
+        window must not freeze for it, and there is nothing to report back --
+        either the room hears it or genesi-ai-voice has already said why on
+        its own stderr.
+
+        Capped, because an agent answer can be two thousand words and nobody
+        asked to be read a book. The cut is at a sentence end when there is
+        one within reach, so it stops rather than trails off mid-word.
+        """
+        text = (text or "").strip()
+        if not text:
+            return
+        if len(text) > 900:
+            head = text[:900]
+            stop = max(head.rfind(". "), head.rfind("! "), head.rfind("? "))
+            text = head[:stop + 1] if stop > 300 else head
+        try:
+            subprocess.Popen(["genesi-ai-voice", "say", text],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError:
+            pass
+
     @Slot(str, result=str)
     def modelLabel(self, model):
         """Human-readable name for a model reference, for pickers and headers.

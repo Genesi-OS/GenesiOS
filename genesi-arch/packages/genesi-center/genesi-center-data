@@ -1172,6 +1172,10 @@ def ai():
         # be the wrong one.
         "voice": _tool_json(["genesi-ai-voice", "status", "--json"]),
         "cloud": _tool_json(["genesi-ai-key", "status", "--json"]),
+        # How many requests have gone where. Separate from `cloud` because it
+        # is about what has HAPPENED rather than what is configured, and
+        # because the local count is meaningful with no key set at all.
+        "usage": _tool_json(["genesi-ai-key", "usage", "--json"]),
         "turbo": bool(shutil.which("genesi-ai-turbo")),
     }
 

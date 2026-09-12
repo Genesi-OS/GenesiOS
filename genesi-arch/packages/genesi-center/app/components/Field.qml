@@ -18,6 +18,9 @@ Rectangle {
     property alias text: input.text
     property string placeholder: ""
     property bool mono: true
+    // Dots rather than characters. For the one thing typed into this app that
+    // must not be in a screenshot or read over a shoulder: an API key.
+    property bool secret: false
     signal accepted(string value)
 
     implicitHeight: 32
@@ -40,6 +43,7 @@ Rectangle {
             leftMargin: 10; rightMargin: 10
         }
         color: Tokens.textHi
+        echoMode: root.secret ? TextInput.Password : TextInput.Normal
         font.family: root.mono ? Tokens.mono : Tokens.sans
         font.pixelSize: Tokens.fsBody
         selectionColor: Tokens.accentDeep

@@ -1360,7 +1360,45 @@ pkgver=1.0.0
 # in an OS whose default is that its own six windows do not. The
 # emerald is one switch away, on the same switch, and it is what you
 # ask for now rather than what you get.
-pkgrel=194
+# 2026-09-11 (195): Kokoro could not be installed, and an Anthropic key had
+# never once worked.
+#
+# `genesi-ai-voice install` refused to start until `pip install --user
+# kokoro-onnx` had been run, and on Arch that command does not work at all --
+# the system Python is externally managed (PEP 668) and pip declines. So the
+# button in Genesi Center opened a terminal that printed an instruction which
+# could not be followed. Kokoro was uninstallable by design.
+#
+# It builds its own environment now, under the same directory as the model:
+# no root, nothing system-wide touched, deleted whole by `remove`, and
+# --system-site-packages so a machine with python-numpy and
+# python-onnxruntime from pacman reuses them. `say` and `voices` re-exec
+# themselves with that interpreter, because onnxruntime is a native extension
+# and putting another environment's site-packages on sys.path gives a segfault
+# rather than an error. espeak-ng stops being a hard requirement: current
+# kokoro-onnx pulls espeakng-loader, which carries the library and its data in
+# the wheel. And the install ends by synthesising one phrase, so an install
+# that reports success and cannot speak fails where somebody can read it.
+#
+# The hosted models: `anthropic` sat in the provider table under a comment
+# saying every endpoint in it speaks the OpenAI chat-completions shape. It
+# does not -- /v1/messages, an x-api-key header, an anthropic-version, and the
+# answer in content[0].text -- so an Anthropic key answered 404 to
+# `genesi-ai-key test` and fell back silently to the local model on every
+# ask(). Listed, documented, never working. There is a dialect per provider
+# now, gemini is there (OpenAI-compatible, at its own endpoint), and the table
+# lives in genesi_ai_assist beside the code that sends the request rather than
+# in the tool that writes the config.
+#
+# And counting: one request is one use, counted in the one function that sends
+# one, with local and hosted counted APART -- a single total would hide the
+# only question worth asking, which is how much of it left the machine. A
+# request that never landed is an error and not a use. `genesi-ai-key usage`
+# prints it; the AI page shows both numbers.
+#
+# The Monitor's chat can speak an answer: a Listen control on an assistant
+# bubble, drawn only when genesi-ai-voice says it is ready.
+pkgrel=195
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1394,6 +1432,11 @@ optdepends=(
     'genesi-llama-cpp: Genesi Turbo speculative decoding (llama-server, Vulkan — shipped by default)'
     'genesi-ttf-rubik-vf: Rubik brand UI font for the Monitor (shipped by default; falls back to the system sans if absent)'
     'libnotify: desktop notifications from Automations (notify-send)'
+    # Speech. Neither is required: `genesi-ai-voice install` builds what it needs
+    # in its own virtualenv. Having them from pacman makes that install smaller and
+    # faster, because the venv is created with --system-site-packages.
+    'python-onnxruntime: runs the Kokoro speech model without pip fetching its own copy'
+    'espeak-ng: turns letters into phonemes for Kokoro (the wheel carries a copy if this is absent)'
 )
 install="$pkgname.install"
 # Opt-in advanced tweaks config (all OFF by default). backup() so pacman writes

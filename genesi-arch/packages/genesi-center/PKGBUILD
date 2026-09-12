@@ -132,7 +132,22 @@ pkgver=0.1.0
 # plane has answered, and a missing key on a section that defaults to
 # {} is `undefined` -- which Qt refuses to assign to `visible` and
 # complains about, once per page, for ever. Compared against true now.
-pkgrel=30
+# 31: the AI page can set an API key, and says what has been sent where.
+#
+# It used to show whether a key was set and offer no way to set one, on the
+# reasoning that a secret typed into a settings window is a secret in a
+# screenshot. That reasoning stops at the field: dots are not screenshottable,
+# and the alternative -- telling somebody to open a terminal and redirect a
+# file into a command -- is not privacy, it is an unusable feature with a good
+# excuse. So there is a provider picker, a masked field, and a SAVE that hands
+# the key to `genesi-ai-key set` on STDIN. It never goes in argv, so it never
+# reaches a shell history or `ps`, which is the part that actually mattered.
+#
+# And two numbers: requests made on this machine, and requests sent to a
+# provider. Never one total -- the whole point of the split is that the
+# helpers which fire on their own stay local, and a combined figure would hide
+# exactly that.
+pkgrel=31
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

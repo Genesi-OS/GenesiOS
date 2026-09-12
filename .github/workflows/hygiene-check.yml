@@ -250,15 +250,34 @@ jobs:
         # in two of the three is a setting that saves, applies to nothing and
         # produces no error.
         #
-        # And the cut itself, on two pictures made for it: one with an obvious
-        # subject, which has to come back with a cut-out roughly the size and
-        # shape of that subject, and one with nothing in it, which has to come
-        # back with nothing. Otsu always splits SOMETHING -- a flat gradient
-        # once produced a "subject" covering a third of the frame, and the
-        # shell would have drawn it over the clock.
+        # And the cut itself, on pictures made for it: two with an obvious
+        # subject, the same two with a photograph's grain over the whole frame,
+        # and three with no subject -- a flat gradient, a busy texture and a
+        # ground region. Otsu always splits SOMETHING, so the judgement is the
+        # feature: a flat gradient once produced a "subject" covering a third
+        # of the frame and the shell would have drawn it over the clock.
+        #
+        # The thresholds are checked against the table of PHOTOGRAPHS they
+        # were measured on, which is the part a drawn fixture cannot stand in
+        # for: the accept/reject number was once fitted to three drawn
+        # pictures and turned out to separate nothing on a real one.
         run: |
           python -m pip install --quiet opencv-python-headless numpy
           python genesi-arch/ci/depth-test.py
+
+      - name: a hosted model is reached in the shape it actually speaks
+        # `anthropic` sat in the provider table under a comment saying every
+        # endpoint in it speaks the OpenAI chat-completions shape. It does
+        # not -- it takes /v1/messages with an x-api-key header -- so an
+        # Anthropic key answered 404 to `genesi-ai-key test` and fell back to
+        # the local model on every ask(). Listed, documented, never working,
+        # and invisible because no test had ever sent a request.
+        #
+        # This sends one, to a fake endpoint that knows which shape each
+        # provider really speaks and refuses the other. It also checks that
+        # one request counts as one use, that a request which never landed is
+        # not counted as one, and that local and hosted are counted apart.
+        run: python genesi-arch/ci/ai-cloud-test.py
 
       - name: every shebang script is pinned to LF
         # An extensionless script committed with CRLF is `bad interpreter: no
