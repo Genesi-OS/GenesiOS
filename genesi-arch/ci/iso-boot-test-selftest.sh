@@ -99,6 +99,64 @@ fi
 bash "${SRC}" /definitely/not/an.iso >/dev/null 2>&1
 ck "a missing ISO is 'untestable' (2), not 'does not boot' (1)" "$?" "2"
 
+# ── And the workflow has to ACT on that difference ───────────────────────────
+#
+# The contract above was kept for months and still did nothing, which is what
+# build #697 cost. The step in iso-pipeline.yml read the status on the line
+# AFTER the call:
+#
+#     bash genesi-arch/ci/iso-boot-test.sh ...
+#     rc=$?
+#     case "$rc" in ... 2) warning ;; *) exit 1 ;; esac
+#
+# and GitHub runs `shell: bash` as `bash --noprofile --norc -e -o pipefail`.
+# Under -e the script exiting 2 aborted the step right there: `rc=$?` never
+# ran, the `case` never ran, and "qemu could not be installed" became "the
+# publish is blocked" -- on a build whose ISO was fine.
+#
+# So the step's own script is pulled out of the workflow and run HERE, under
+# the same shell GitHub uses, against a fake boot test that exits with
+# whatever code we want to test. Nothing about this is a re-implementation:
+# the lines being run are the lines that will run in CI.
+step_script() { # -> the boot-test step's run: block, dedented
+    awk '
+        /Teste de boot da ISO/ { found = 1 }
+        found && /^ *run: \|/   { inrun = 1; next }
+        inrun {
+            if ($0 ~ /^ *$/) { print ""; next }
+            match($0, /^ */)
+            if (RLENGTH < 10) exit
+            print substr($0, 11)
+        }
+    ' "${ROOT}/.github/workflows/iso-pipeline.yml"
+}
+
+run_step() { # <exit code the boot test returns> -> the step's exit code
+    local want="$1" dir
+    dir="$(mktemp -d)"
+    printf '#!/bin/bash\necho "fake boot test"\nexit %s\n' "${want}" \
+        > "${dir}/iso-boot-test.sh"
+    step_script \
+        | sed "s|genesi-arch/ci/iso-boot-test.sh|${dir}/iso-boot-test.sh|" \
+        > "${dir}/step.sh"
+    # Exactly what `shell: bash` gives a step on GitHub's runners.
+    ISO_PATH=/dev/null bash --noprofile --norc -e -o pipefail "${dir}/step.sh" \
+        >/dev/null 2>&1
+    local rc=$?
+    rm -rf "${dir}"
+    return "${rc}"
+}
+
+lines="$(step_script | grep -c . || true)"
+if [ "${lines}" -lt 5 ]; then
+    printf '  FAIL  could not read the boot-test step out of iso-pipeline.yml\n'
+    fails=$((fails + 1))
+else
+    run_step 0; ck "the workflow step passes a boot that worked"        "$?" "0"
+    run_step 2; ck "the workflow step lets 'untestable' (2) publish"    "$?" "0"
+    run_step 1; ck "the workflow step BLOCKS an ISO that does not boot" "$?" "1"
+fi
+
 # ── The markers are the test ─────────────────────────────────────────────────
 #
 # These strings were not guessed; they were read off a real serial console on

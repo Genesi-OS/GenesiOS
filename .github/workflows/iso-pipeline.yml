@@ -392,17 +392,46 @@ jobs:
       # edk2 must be able to weaken the test, never to stop Genesi shipping.
       - name: 🧰 Instalar QEMU para o teste de boot
         continue-on-error: true
+        shell: bash
         run: |
-          pacman -Sy --noconfirm --needed qemu-system-x86 edk2-ovmf libarchive \
-            || echo "::warning::could not install QEMU/OVMF — the boot test will report itself untestable"
+          # Retried, because the sync is the flaky part and not the install.
+          # Build #697 died of `cachyos-extra-v3: signature from "CachyOS" is
+          # invalid` -- which is a truncated or stale database on the mirror,
+          # not a trust problem: -Syy re-downloads every db instead of reusing
+          # the broken one. Without the retry a mirror hiccup upstream left the
+          # runner with no qemu, and the boot test then reported itself
+          # untestable, which (see the next step) was taking the whole build
+          # down with it.
+          pkgs="qemu-system-x86 edk2-ovmf libarchive"
+          for attempt in 1 2 3; do
+            if pacman -Syy --noconfirm --needed $pkgs; then
+              echo "qemu ready (attempt $attempt)"
+              exit 0
+            fi
+            echo "::warning::pacman could not install QEMU/OVMF (attempt $attempt/3)"
+            # A genuinely rotated key needs the keyrings, and asking for them
+            # costs one download on a run that is already failing.
+            pacman -S --noconfirm --needed archlinux-keyring cachyos-keyring \
+              2>/dev/null || true
+            sleep 15
+          done
+          echo "::warning::could not install QEMU/OVMF — the boot test will report itself untestable"
 
       - name: 🔌 Teste de boot da ISO (QEMU)
-        # `shell: bash` is NOT optional here. Without it this job's steps run
-        # under `sh -e {0}`, where the script's exit status aborts the step
-        # immediately and the `case` below never executes -- making exit 2
-        # ("could not be tested") indistinguishable from exit 1 ("does not
-        # boot") and blocking the publish for a missing qemu. The whole point
-        # of having two failure codes is lost to the default shell.
+        # `shell: bash` is not enough on its own, which cost build #697.
+        #
+        # The comment that used to sit here said this line was what let exit 2
+        # ("could not be tested") stay a warning instead of blocking the
+        # publish. It is not: GitHub runs `shell: bash` as
+        # `bash --noprofile --norc -e -o pipefail`, so -e is still on, and the
+        # script exiting 2 aborted the step before `rc=$?` on the next line
+        # ever ran. The `case` below has therefore never executed on a
+        # non-zero exit. A CachyOS mirror served one bad database, qemu did
+        # not install, the test said "untestable" -- and a build whose ISO was
+        # fine stopped before it reached R2.
+        #
+        # `|| rc=$?` is what actually reads the status: a command whose
+        # failure is handled by `||` does not trip -e.
         shell: bash
         run: |
           set -uo pipefail
@@ -412,9 +441,9 @@ jobs:
           # only when something is wrong; a healthy boot matches its marker and
           # moves on.
           if [ -r /dev/kvm ]; then echo "KVM available"; else echo "No /dev/kvm — falling back to TCG"; fi
+          rc=0
           bash genesi-arch/ci/iso-boot-test.sh "$ISO_PATH" \
-            --timeout 600 --logs /tmp/bootlogs
-          rc=$?
+            --timeout 600 --logs /tmp/bootlogs || rc=$?
           case "$rc" in
             0) echo "✅ A ISO bootou." ;;
             2) echo "::warning::O teste de boot não pôde rodar — a ISO NÃO foi provada bootável, mas a publicação segue." ;;
@@ -765,23 +794,60 @@ jobs:
           } > CHANGELOG_BUILD.md
           echo "----- changelog build -----"; cat CHANGELOG_BUILD.md
 
+      # Uploaded one part at a time, with retries, and never fatal.
+      #
+      # Build #696 died here: "Error saving asset" thirteen minutes into a
+      # 1.9GB part, with the ISO already built, boot-tested and uploaded to R2.
+      # A GitHub-side upload hiccup on the ARCHIVE then skipped the three steps
+      # after it -- including the one that republishes the download page -- so
+      # a flake in the least important artefact of the run left the page dated
+      # two builds ago. The parts are ~1.9GB each and that upload will fail
+      # again sooner or later; the only question is what it takes down with it.
+      #
+      # So: `gh` instead of the action, because it can retry a single asset
+      # (--clobber makes a retry idempotent), the step is best-effort like the
+      # prune below it, and an archive that is STILL incomplete after three
+      # tries is deleted rather than left on the Releases page as a build whose
+      # ISO cannot be rejoined.
+      #
+      # --prerelease is what keeps `rolling` the repo's "Latest" and the
+      # Releases page readable -- without it a dozen CI builds compete with the
+      # actual download.
       - name: 🗃️ Create per-build archive release (main)
         if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.BUILD_TAG }}
-          name: ${{ env.BUILD_NAME }}
-          # Keep `rolling` as the repo's "Latest"; these are the browsable history.
-          # prerelease: true is what makes GitHub badge them "Pre-release" and keeps
-          # the Releases page readable — without it, 12 CI builds visually compete
-          # with the actual download and the page reads like build noise.
-          prerelease: true
-          make_latest: false
-          body_path: CHANGELOG_BUILD.md
-          files: |
-            parts/genesi-os.iso.part*
-            parts/genesi-os.iso.sha256
-            parts/REJOIN.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pacman -Sy --noconfirm --needed github-cli || true
+          R="$GITHUB_REPOSITORY"
+          gh release view "$BUILD_TAG" -R "$R" >/dev/null 2>&1 \
+            || gh release create "$BUILD_TAG" -R "$R" \
+                 --title "$BUILD_NAME" \
+                 --notes-file CHANGELOG_BUILD.md \
+                 --target "$GITHUB_SHA" \
+                 --prerelease \
+            || { echo "::warning::could not create $BUILD_TAG -- no archive for this build"; exit 0; }
+
+          missing=""
+          for f in parts/*; do
+            ok=""
+            for attempt in 1 2 3; do
+              if gh release upload "$BUILD_TAG" "$f" --clobber -R "$R"; then
+                ok=yes
+                break
+              fi
+              echo "::warning::upload of $(basename "$f") failed (attempt $attempt/3)"
+              sleep 30
+            done
+            [ -n "$ok" ] || missing="$missing $(basename "$f")"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::warning::archive $BUILD_TAG is incomplete (missing:$missing) -- dropping it"
+            gh release delete "$BUILD_TAG" -R "$R" --cleanup-tag -y || true
+          else
+            echo "archive $BUILD_TAG holds every part"
+          fi
 
       # ── Retention: prune old build-<sha> archive releases (main) ───────────
       # The per-build releases above accumulate forever otherwise. Keep the 12
