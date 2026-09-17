@@ -48,7 +48,8 @@ Item {
             "workspaces": qsTr("Workspaces"),
             "notifications": qsTr("Notifications"),
             "uptime": qsTr("Uptime"),
-            "greeting": qsTr("Greeting")
+            "greeting": qsTr("Greeting"),
+            "digitalClock": qsTr("Digital clock")
         })
 
     anchors.fill: parent
@@ -179,6 +180,68 @@ Item {
                         }
                     }
                 }
+            }
+
+            // caelestia's own clock, beside ours. It could only be switched on
+            // from Genesi Center, so the best-looking thing that can sit on the
+            // desktop was the one almost nobody found.
+            StyledRect {
+                id: clockEntry
+
+                readonly property bool on: Config.background.desktopClock.enabled
+
+                implicitWidth: col.width
+                implicitHeight: 26
+                radius: Tokens.rounding.small
+                color: clockHover.containsMouse ? Colours.palette.m3surfaceContainerHighest : "transparent"
+
+                Behavior on color {
+                    CAnim {}
+                }
+
+                MaterialIcon {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Tokens.padding.small
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: clockEntry.on ? "check_box" : "check_box_outline_blank"
+                    color: clockEntry.on ? Colours.palette.m3primary : Colours.palette.m3outline
+                    fontStyle: Tokens.font.icon.medium
+                }
+
+                StyledText {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 36
+                    anchors.right: parent.right
+                    anchors.rightMargin: Tokens.padding.small
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Caelestia clock")
+                    font: Tokens.font.body.medium
+                    color: clockEntry.on ? Colours.palette.m3onSurface : Colours.palette.m3onSurfaceVariant
+                    elide: Text.ElideRight
+                }
+
+                MouseArea {
+                    id: clockHover
+
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Quickshell.execDetached(["genesi-center-set", "caelestia", "background.desktopClock.enabled", clockEntry.on ? "false" : "true"]);
+                        root.close();
+                    }
+                }
+            }
+
+            StyledText {
+                x: Tokens.padding.medium
+                width: col.width - Tokens.padding.medium * 2
+                topPadding: 2
+                bottomPadding: 4
+                text: qsTr("Right-click a widget to change how it looks")
+                font: Tokens.font.label.small
+                color: Colours.palette.m3outline
+                wrapMode: Text.WordWrap
             }
 
             Rectangle {

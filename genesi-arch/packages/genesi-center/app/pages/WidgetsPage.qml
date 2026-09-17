@@ -68,7 +68,8 @@ Item {
         "workspaces": [qsTr("Workspaces"), qsTr("One pill each: filled when occupied, wide when active.")],
         "notifications": [qsTr("Notifications"), qsTr("The last three still open. A wallpaper is not an inbox.")],
         "uptime": [qsTr("Uptime"), qsTr("How long since the machine came up.")],
-        "greeting": [qsTr("Greeting"), qsTr("Your name, and the time of day. The one that is not a readout.")]
+        "greeting": [qsTr("Greeting"), qsTr("Your name, and the time of day. The one that is not a readout.")],
+        "digitalClock": [qsTr("Digital clock"), qsTr("The time, big, in the widget's colours -- a gradient if you like. Right-click it on the desktop to restyle it.")]
     })
 
     function widgetName(id) {
@@ -792,12 +793,12 @@ Item {
                                 Slider {
                                     width: parent.width - 56
                                     // Percent, not a multiplier: this Slider
-                                    // draws whole numbers, and 0.5 to 2.0 in
+                                    // draws whole numbers, and 0.5 to 2.5 in
                                     // steps of 0.1 would read "1x" at nearly
                                     // every stop. The shell wants the
                                     // multiplier, so the conversion happens on
                                     // the way out.
-                                    from: 50; to: 200; step: 10; unit: "%"
+                                    from: 50; to: 250; step: 10; unit: "%"
                                     value: Math.round(Number(wCard.modelData.scale || 1) * 100)
                                     onReleased: v => page.set("background.widgets."
                                                               + wCard.modelData.name

@@ -1,81 +1,81 @@
-// GENESI desktop widget: an analogue clock
+// GENESI desktop widget: an analogue clock.
 //
-// Hands, not digits -- the digital one upstream already ships is better at
-// being read, and this one is better at being looked at. The hour hand moves
-// with the minutes, because an hour hand that jumps is the tell that a clock
-// face was drawn by somebody who did not look at one.
+// A dial with sixty marks, the hours picked out, hands with rounded ends, and
+// the second hand in the widget's second colour. Drawn with shapes and
+// rectangles at its real size, so it is as sharp at twice the size as at once.
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Caelestia.Config
-import qs.components
 import qs.services
 
 GenesiWidgetCard {
-    id: root
+    id: w
 
-    readonly property int size: 132
+    readonly property real dial: 160 * w.s
 
     Item {
-        implicitWidth: root.size
-        implicitHeight: root.size
+        width: w.dial
+        height: w.dial
 
-        StyledRect {
+        Rectangle {
             anchors.fill: parent
             radius: width / 2
-            color: "transparent"
-            border.width: 2
-            border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.8)
+            color: Qt.alpha(w.ink, 0.03)
+            border.width: 2 * w.s
+            border.color: Qt.alpha(w.accent, 0.35)
         }
 
         Repeater {
-            model: 12
+            model: 60
 
             Item {
-                id: tick
+                id: mark
 
                 required property int index
+                readonly property bool hour: mark.index % 5 === 0
 
                 anchors.fill: parent
-                rotation: tick.index * 30
+                rotation: mark.index * 6
 
-                StyledRect {
+                Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.top: parent.top
-                    anchors.topMargin: 8
-                    implicitWidth: tick.index % 3 === 0 ? 3 : 2
-                    implicitHeight: tick.index % 3 === 0 ? 10 : 6
-                    radius: Tokens.rounding.full
-                    color: tick.index % 3 === 0 ? Colours.palette.m3primary : Colours.palette.m3outline
+                    y: 7 * w.s
+                    width: (mark.hour ? 3 : 1.5) * w.s
+                    height: (mark.hour ? 11 : 5) * w.s
+                    radius: width / 2
+                    color: mark.hour ? w.accent : Qt.alpha(w.inkFaint, 0.6)
                 }
             }
         }
 
         Hand {
-            length: root.size * 0.28
-            thickness: 4
-            colour: Colours.palette.m3onSurface
+            length: w.dial * 0.26
+            thickness: 6 * w.s
+            colour: w.ink
             angle: (Time.hours % 12) * 30 + Time.minutes * 0.5
         }
         Hand {
-            length: root.size * 0.38
-            thickness: 3
-            colour: Colours.palette.m3onSurface
-            angle: Time.minutes * 6
+            length: w.dial * 0.36
+            thickness: 4 * w.s
+            colour: w.ink
+            angle: Time.minutes * 6 + Time.seconds * 0.1
         }
         Hand {
-            length: root.size * 0.42
-            thickness: 2
-            colour: Colours.palette.m3primary
+            length: w.dial * 0.4
+            thickness: 2 * w.s
+            tail: w.dial * 0.08
+            colour: w.accent2
             angle: Time.seconds * 6
         }
 
-        StyledRect {
+        Rectangle {
             anchors.centerIn: parent
-            implicitWidth: 8
-            implicitHeight: 8
+            width: 12 * w.s
+            height: 12 * w.s
             radius: width / 2
-            color: Colours.palette.m3primary
+            color: w.accent2
+            border.width: 3 * w.s
+            border.color: Qt.alpha(Colours.palette.m3surface, 0.9)
         }
     }
 
@@ -86,21 +86,17 @@ GenesiWidgetCard {
         required property real thickness
         required property color colour
         required property real angle
+        property real tail: 0
 
         anchors.fill: parent
-        rotation: angle
+        rotation: hand.angle
 
-        StyledRect {
-            id: bar
-
+        Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
-            // Grown UPWARDS from the centre of the face, so rotating the item
-            // that holds it sweeps the hand around the dial rather than
-            // spinning it about its own middle.
-            y: parent.height / 2 - height
-            implicitWidth: hand.thickness
-            implicitHeight: hand.length
-            radius: Tokens.rounding.full
+            y: parent.height / 2 - hand.length
+            width: hand.thickness
+            height: hand.length + hand.tail
+            radius: width / 2
             color: hand.colour
         }
     }

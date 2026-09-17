@@ -25,6 +25,7 @@ import Quickshell
 import Caelestia.Config
 import qs.components
 import qs.services
+import qs.modules.launcher
 
 Item {
     id: host
@@ -39,13 +40,18 @@ Item {
     // off, and none of them while it is on.
     property Item dragTarget: null
 
+    // The wallpaper item, for the frosted style to blur.
+    property Item wallpaper: null
+
     signal dropped
+    // Right-click on the widget itself: the editor, not the desktop menu.
+    signal editRequested(real x, real y)
 
     readonly property var cfg: Config.background.widgets[host.widget]
-    readonly property real factor: Math.max(0.5, Math.min(2, host.cfg?.scale ?? 1))
+    readonly property real factor: Math.max(0.5, Math.min(2.5, GenesiWidgetEditState.valueOf(host.widget, "scale", host.cfg?.scale ?? 1)))
 
-    implicitWidth: body.implicitWidth * host.factor
-    implicitHeight: body.implicitHeight * host.factor
+    implicitWidth: body.item ? body.item.implicitWidth : 0
+    implicitHeight: body.item ? body.item.implicitHeight : 0
 
     Loader {
         id: body
@@ -56,14 +62,43 @@ Item {
         source: Qt.resolvedUrl("GenesiWidget" + host.widget.charAt(0).toUpperCase() + host.widget.slice(1) + ".qml")
         asynchronous: true
 
-        transformOrigin: Item.TopLeft
-        scale: host.factor
-
+        // NOT scaled. A `scale:` here stretched natively-rendered text to
+        // twice its pixels -- "the widgets get pixelated when they are made
+        // bigger". The widget is told its size instead and draws itself at it.
         opacity: status === Loader.Ready ? 1 : 0
 
         Behavior on opacity {
             Anim {}
         }
+    }
+
+    Binding {
+        target: body.item
+        property: "s"
+        value: host.factor
+        when: body.status === Loader.Ready
+    }
+    Binding {
+        target: body.item
+        property: "widgetName"
+        value: host.widget
+        when: body.status === Loader.Ready
+    }
+    Binding {
+        target: body.item
+        property: "wallpaper"
+        value: host.wallpaper
+        when: body.status === Loader.Ready
+    }
+
+    // Above the desktop's own right-click handler, so a right-click ON a widget
+    // edits that widget, and a right-click anywhere else still opens the
+    // desktop menu.
+    MouseArea {
+        anchors.fill: parent
+        enabled: !host.arranging
+        acceptedButtons: Qt.RightButton
+        onClicked: event => host.editRequested(event.x, event.y)
     }
 
     // ── Arrange mode ─────────────────────────────────────────────────────────

@@ -268,74 +268,154 @@ CAELESTIA_PATHS = {
     "background.widgets.cards": ("bool",),
     "background.widgets.weather.enabled": ("bool",),
     "background.widgets.weather.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.weather.scale": ("float", 0.5, 2.0),
+    "background.widgets.weather.scale": ("float", 0.5, 2.5),
     "background.widgets.weather.x": ("float", 0.0, 1.0),
     "background.widgets.weather.y": ("float", 0.0, 1.0),
+    "background.widgets.weather.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.weather.opacity": ("float", 0.15, 1.0),
+    "background.widgets.weather.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.weather.colour": ("hex",),
+    "background.widgets.weather.colour2": ("hex",),
     "background.widgets.forecast.enabled": ("bool",),
     "background.widgets.forecast.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.forecast.scale": ("float", 0.5, 2.0),
+    "background.widgets.forecast.scale": ("float", 0.5, 2.5),
     "background.widgets.forecast.x": ("float", 0.0, 1.0),
     "background.widgets.forecast.y": ("float", 0.0, 1.0),
+    "background.widgets.forecast.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.forecast.opacity": ("float", 0.15, 1.0),
+    "background.widgets.forecast.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.forecast.colour": ("hex",),
+    "background.widgets.forecast.colour2": ("hex",),
     "background.widgets.media.enabled": ("bool",),
     "background.widgets.media.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.media.scale": ("float", 0.5, 2.0),
+    "background.widgets.media.scale": ("float", 0.5, 2.5),
     "background.widgets.media.x": ("float", 0.0, 1.0),
     "background.widgets.media.y": ("float", 0.0, 1.0),
+    "background.widgets.media.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.media.opacity": ("float", 0.15, 1.0),
+    "background.widgets.media.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.media.colour": ("hex",),
+    "background.widgets.media.colour2": ("hex",),
     "background.widgets.cpu.enabled": ("bool",),
     "background.widgets.cpu.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.cpu.scale": ("float", 0.5, 2.0),
+    "background.widgets.cpu.scale": ("float", 0.5, 2.5),
     "background.widgets.cpu.x": ("float", 0.0, 1.0),
     "background.widgets.cpu.y": ("float", 0.0, 1.0),
+    "background.widgets.cpu.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.cpu.opacity": ("float", 0.15, 1.0),
+    "background.widgets.cpu.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.cpu.colour": ("hex",),
+    "background.widgets.cpu.colour2": ("hex",),
     "background.widgets.memory.enabled": ("bool",),
     "background.widgets.memory.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.memory.scale": ("float", 0.5, 2.0),
+    "background.widgets.memory.scale": ("float", 0.5, 2.5),
     "background.widgets.memory.x": ("float", 0.0, 1.0),
     "background.widgets.memory.y": ("float", 0.0, 1.0),
+    "background.widgets.memory.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.memory.opacity": ("float", 0.15, 1.0),
+    "background.widgets.memory.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.memory.colour": ("hex",),
+    "background.widgets.memory.colour2": ("hex",),
     "background.widgets.storage.enabled": ("bool",),
     "background.widgets.storage.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.storage.scale": ("float", 0.5, 2.0),
+    "background.widgets.storage.scale": ("float", 0.5, 2.5),
     "background.widgets.storage.x": ("float", 0.0, 1.0),
     "background.widgets.storage.y": ("float", 0.0, 1.0),
+    "background.widgets.storage.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.storage.opacity": ("float", 0.15, 1.0),
+    "background.widgets.storage.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.storage.colour": ("hex",),
+    "background.widgets.storage.colour2": ("hex",),
     "background.widgets.network.enabled": ("bool",),
     "background.widgets.network.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.network.scale": ("float", 0.5, 2.0),
+    "background.widgets.network.scale": ("float", 0.5, 2.5),
     "background.widgets.network.x": ("float", 0.0, 1.0),
     "background.widgets.network.y": ("float", 0.0, 1.0),
+    "background.widgets.network.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.network.opacity": ("float", 0.15, 1.0),
+    "background.widgets.network.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.network.colour": ("hex",),
+    "background.widgets.network.colour2": ("hex",),
     "background.widgets.battery.enabled": ("bool",),
     "background.widgets.battery.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.battery.scale": ("float", 0.5, 2.0),
+    "background.widgets.battery.scale": ("float", 0.5, 2.5),
     "background.widgets.battery.x": ("float", 0.0, 1.0),
     "background.widgets.battery.y": ("float", 0.0, 1.0),
+    "background.widgets.battery.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.battery.opacity": ("float", 0.15, 1.0),
+    "background.widgets.battery.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.battery.colour": ("hex",),
+    "background.widgets.battery.colour2": ("hex",),
     "background.widgets.calendar.enabled": ("bool",),
     "background.widgets.calendar.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.calendar.scale": ("float", 0.5, 2.0),
+    "background.widgets.calendar.scale": ("float", 0.5, 2.5),
     "background.widgets.calendar.x": ("float", 0.0, 1.0),
     "background.widgets.calendar.y": ("float", 0.0, 1.0),
+    "background.widgets.calendar.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.calendar.opacity": ("float", 0.15, 1.0),
+    "background.widgets.calendar.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.calendar.colour": ("hex",),
+    "background.widgets.calendar.colour2": ("hex",),
     "background.widgets.analogClock.enabled": ("bool",),
     "background.widgets.analogClock.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.analogClock.scale": ("float", 0.5, 2.0),
+    "background.widgets.analogClock.scale": ("float", 0.5, 2.5),
     "background.widgets.analogClock.x": ("float", 0.0, 1.0),
     "background.widgets.analogClock.y": ("float", 0.0, 1.0),
+    "background.widgets.analogClock.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.analogClock.opacity": ("float", 0.15, 1.0),
+    "background.widgets.analogClock.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.analogClock.colour": ("hex",),
+    "background.widgets.analogClock.colour2": ("hex",),
     "background.widgets.workspaces.enabled": ("bool",),
     "background.widgets.workspaces.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.workspaces.scale": ("float", 0.5, 2.0),
+    "background.widgets.workspaces.scale": ("float", 0.5, 2.5),
     "background.widgets.workspaces.x": ("float", 0.0, 1.0),
     "background.widgets.workspaces.y": ("float", 0.0, 1.0),
+    "background.widgets.workspaces.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.workspaces.opacity": ("float", 0.15, 1.0),
+    "background.widgets.workspaces.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.workspaces.colour": ("hex",),
+    "background.widgets.workspaces.colour2": ("hex",),
     "background.widgets.notifications.enabled": ("bool",),
     "background.widgets.notifications.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.notifications.scale": ("float", 0.5, 2.0),
+    "background.widgets.notifications.scale": ("float", 0.5, 2.5),
     "background.widgets.notifications.x": ("float", 0.0, 1.0),
     "background.widgets.notifications.y": ("float", 0.0, 1.0),
+    "background.widgets.notifications.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.notifications.opacity": ("float", 0.15, 1.0),
+    "background.widgets.notifications.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.notifications.colour": ("hex",),
+    "background.widgets.notifications.colour2": ("hex",),
     "background.widgets.uptime.enabled": ("bool",),
     "background.widgets.uptime.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.uptime.scale": ("float", 0.5, 2.0),
+    "background.widgets.uptime.scale": ("float", 0.5, 2.5),
     "background.widgets.uptime.x": ("float", 0.0, 1.0),
     "background.widgets.uptime.y": ("float", 0.0, 1.0),
+    "background.widgets.uptime.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.uptime.opacity": ("float", 0.15, 1.0),
+    "background.widgets.uptime.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.uptime.colour": ("hex",),
+    "background.widgets.uptime.colour2": ("hex",),
     "background.widgets.greeting.enabled": ("bool",),
     "background.widgets.greeting.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
-    "background.widgets.greeting.scale": ("float", 0.5, 2.0),
+    "background.widgets.greeting.scale": ("float", 0.5, 2.5),
     "background.widgets.greeting.x": ("float", 0.0, 1.0),
     "background.widgets.greeting.y": ("float", 0.0, 1.0),
+    "background.widgets.greeting.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.greeting.opacity": ("float", 0.15, 1.0),
+    "background.widgets.greeting.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.greeting.colour": ("hex",),
+    "background.widgets.greeting.colour2": ("hex",),
+    "background.widgets.digitalClock.enabled": ("bool",),
+    "background.widgets.digitalClock.position": ("enum", ('bottom-centre', 'bottom-left', 'bottom-right', 'centre', 'mid-left', 'mid-right', 'top-centre', 'top-left', 'top-right', 'free', '')),
+    "background.widgets.digitalClock.scale": ("float", 0.5, 2.5),
+    "background.widgets.digitalClock.x": ("float", 0.0, 1.0),
+    "background.widgets.digitalClock.y": ("float", 0.0, 1.0),
+    "background.widgets.digitalClock.style": ("enum", ("", "glass", "solid", "outline", "minimal")),
+    "background.widgets.digitalClock.opacity": ("float", 0.15, 1.0),
+    "background.widgets.digitalClock.colourMode": ("enum", ("auto", "solid", "gradient")),
+    "background.widgets.digitalClock.colour": ("hex",),
+    "background.widgets.digitalClock.colour2": ("hex",),
     # Genesi-only: the dock, from ci/caelestia-patches.py.
     "dock.enabled": ("bool",),
     "dock.iconSize": ("int", 24, 96),
@@ -452,6 +532,16 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
     "background.widgets.weather.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
+    "background.widgets.weather.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
+    "background.widgets.weather.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
+    "background.widgets.weather.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
+    "background.widgets.weather.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
+    "background.widgets.weather.colour2":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",
     "background.widgets.forecast.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
     "background.widgets.forecast.position":
@@ -461,6 +551,16 @@ GENESI_ONLY = {
     "background.widgets.forecast.x":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
     "background.widgets.forecast.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
+    "background.widgets.forecast.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
+    "background.widgets.forecast.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
+    "background.widgets.forecast.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
+    "background.widgets.forecast.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
+    "background.widgets.forecast.colour2":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, forecast)",
     "background.widgets.media.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
@@ -472,6 +572,16 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
     "background.widgets.media.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
+    "background.widgets.media.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
+    "background.widgets.media.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
+    "background.widgets.media.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
+    "background.widgets.media.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
+    "background.widgets.media.colour2":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, media)",
     "background.widgets.cpu.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
     "background.widgets.cpu.position":
@@ -481,6 +591,16 @@ GENESI_ONLY = {
     "background.widgets.cpu.x":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
     "background.widgets.cpu.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
+    "background.widgets.cpu.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
+    "background.widgets.cpu.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
+    "background.widgets.cpu.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
+    "background.widgets.cpu.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
+    "background.widgets.cpu.colour2":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, cpu)",
     "background.widgets.memory.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
@@ -492,6 +612,16 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
     "background.widgets.memory.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
+    "background.widgets.memory.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
+    "background.widgets.memory.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
+    "background.widgets.memory.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
+    "background.widgets.memory.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
+    "background.widgets.memory.colour2":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, memory)",
     "background.widgets.storage.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
     "background.widgets.storage.position":
@@ -501,6 +631,16 @@ GENESI_ONLY = {
     "background.widgets.storage.x":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
     "background.widgets.storage.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
+    "background.widgets.storage.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
+    "background.widgets.storage.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
+    "background.widgets.storage.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
+    "background.widgets.storage.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
+    "background.widgets.storage.colour2":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, storage)",
     "background.widgets.network.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
@@ -512,6 +652,16 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
     "background.widgets.network.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
+    "background.widgets.network.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
+    "background.widgets.network.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
+    "background.widgets.network.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
+    "background.widgets.network.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
+    "background.widgets.network.colour2":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, network)",
     "background.widgets.battery.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
     "background.widgets.battery.position":
@@ -521,6 +671,16 @@ GENESI_ONLY = {
     "background.widgets.battery.x":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
     "background.widgets.battery.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
+    "background.widgets.battery.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
+    "background.widgets.battery.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
+    "background.widgets.battery.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
+    "background.widgets.battery.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
+    "background.widgets.battery.colour2":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, battery)",
     "background.widgets.calendar.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
@@ -532,6 +692,16 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
     "background.widgets.calendar.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
+    "background.widgets.calendar.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
+    "background.widgets.calendar.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
+    "background.widgets.calendar.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
+    "background.widgets.calendar.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
+    "background.widgets.calendar.colour2":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, calendar)",
     "background.widgets.analogClock.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
     "background.widgets.analogClock.position":
@@ -541,6 +711,16 @@ GENESI_ONLY = {
     "background.widgets.analogClock.x":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
     "background.widgets.analogClock.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
+    "background.widgets.analogClock.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
+    "background.widgets.analogClock.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
+    "background.widgets.analogClock.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
+    "background.widgets.analogClock.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
+    "background.widgets.analogClock.colour2":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, analogClock)",
     "background.widgets.workspaces.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
@@ -552,6 +732,16 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
     "background.widgets.workspaces.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
+    "background.widgets.workspaces.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
+    "background.widgets.workspaces.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
+    "background.widgets.workspaces.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
+    "background.widgets.workspaces.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
+    "background.widgets.workspaces.colour2":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)",
     "background.widgets.notifications.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
     "background.widgets.notifications.position":
@@ -561,6 +751,16 @@ GENESI_ONLY = {
     "background.widgets.notifications.x":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
     "background.widgets.notifications.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
+    "background.widgets.notifications.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
+    "background.widgets.notifications.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
+    "background.widgets.notifications.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
+    "background.widgets.notifications.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
+    "background.widgets.notifications.colour2":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)",
     "background.widgets.uptime.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
@@ -572,6 +772,16 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
     "background.widgets.uptime.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
+    "background.widgets.uptime.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
+    "background.widgets.uptime.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
+    "background.widgets.uptime.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
+    "background.widgets.uptime.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
+    "background.widgets.uptime.colour2":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)",
     "background.widgets.greeting.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
     "background.widgets.greeting.position":
@@ -582,6 +792,36 @@ GENESI_ONLY = {
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
     "background.widgets.greeting.y":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
+    "background.widgets.greeting.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
+    "background.widgets.greeting.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
+    "background.widgets.greeting.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
+    "background.widgets.greeting.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
+    "background.widgets.greeting.colour2":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)",
+    "background.widgets.digitalClock.enabled":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
+    "background.widgets.digitalClock.position":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
+    "background.widgets.digitalClock.scale":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
+    "background.widgets.digitalClock.x":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
+    "background.widgets.digitalClock.y":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
+    "background.widgets.digitalClock.style":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
+    "background.widgets.digitalClock.opacity":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
+    "background.widgets.digitalClock.colourMode":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
+    "background.widgets.digitalClock.colour":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
+    "background.widgets.digitalClock.colour2":
+        "CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)",
     "dock.enabled": "CONFIG_PROPERTY(bool, enabled, false)",
     "dock.iconSize": "CONFIG_PROPERTY(int, iconSize, 44)",
     "dock.flow": "CONFIG_PROPERTY(bool, flow, true)",
@@ -638,6 +878,13 @@ def coerce(spec, raw, what):
         if str(raw) not in spec[1]:
             die(f"{what} must be one of: " + ", ".join(spec[1]))
         return str(raw)
+    if kind == "hex":
+        # A colour the widget editor picked: #rrggbb, or empty for "none
+        # chosen". Nothing else -- it lands in a QML colour binding, and a
+        # string that is not a colour there is black, not an error.
+        if not re.fullmatch(r"(#[0-9a-fA-F]{6})?", str(raw)):
+            die(f"{what} is a colour like #8fd6ab; got {raw!r}")
+        return str(raw).lower()
     if kind == "strlist":
         # A JSON ARRAY in shell.json, not a comma-joined string, because that
         # is what a QStringList config property parses. Written as one

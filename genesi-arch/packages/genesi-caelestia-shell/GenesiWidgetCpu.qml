@@ -1,55 +1,114 @@
-// GENESI desktop widget: processor load
+// GENESI desktop widget: processor.
 //
-// Load and temperature. The ring is the reading you catch out of the corner
-// of an eye; the number is the one you look at on purpose.
+// The number you look at on purpose, the ring you catch out of the corner of
+// an eye, and a line under both that says whether this is a spike or the way
+// the machine has been all afternoon.
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Caelestia.Config
 import Caelestia.Services
-import qs.components
-import qs.components.controls
-import qs.services
 
 GenesiWidgetCard {
-    Row {
-        spacing: Tokens.spacing.large
+    id: w
 
-        CircularProgress {
-            anchors.verticalCenter: parent.verticalCenter
-            implicitSize: 62
-            strokeWidth: 6
-            value: Cpu.percentage
-            fgColour: Colours.palette.m3primary
-            bgColour: Colours.palette.m3surfaceContainerHighest
+    property var hist: []
 
-            MaterialIcon {
-                anchors.centerIn: parent
-                text: "memory"
-                color: Colours.palette.m3primary
-                fontStyle: Tokens.font.icon.medium
+    Timer {
+        running: true
+        repeat: true
+        interval: 1500
+        triggeredOnStart: true
+        onTriggered: {
+            const h = w.hist.slice(-39);
+            h.push(Cpu.percentage);
+            w.hist = h;
+        }
+    }
+
+    Column {
+        spacing: 12 * w.s
+
+        Row {
+            spacing: 18 * w.s
+
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4 * w.s
+
+                Row {
+                    spacing: 8 * w.s
+
+                    GenesiWChip {
+                        s: w.s
+                        icon: "memory"
+                        tint: w.accent
+                    }
+                    GenesiWText {
+                        anchors.verticalCenter: parent.verticalCenter
+                        s: w.s
+                        size: 11
+                        tracking: 1.6
+                        font.weight: Font.DemiBold
+                        text: qsTr("PROCESSOR")
+                        color: w.inkFaint
+                    }
+                }
+
+                Row {
+                    spacing: 2 * w.s
+
+                    GenesiWGradText {
+                        s: w.s
+                        size: 46
+                        fontWeight: Font.Light
+                        text: Math.round(Cpu.percentage * 100)
+                        from: w.accent
+                        to: w.accent2
+                    }
+                    GenesiWText {
+                        y: 10 * w.s
+                        s: w.s
+                        size: 18
+                        text: "%"
+                        color: w.inkDim
+                    }
+                }
+
+                GenesiWText {
+                    s: w.s
+                    size: 12
+                    text: Cpu.temperature > 0 ? qsTr("%1 °C").arg(Math.round(Cpu.temperature)) : Cpu.name
+                    color: w.inkDim
+                }
+            }
+
+            GenesiWRing {
+                anchors.verticalCenter: parent.verticalCenter
+                s: w.s
+                size: 84
+                thickness: 8
+                value: Cpu.percentage
+                from: w.accent
+                to: w.accent2
+                track: w.track
+
+                GenesiWIcon {
+                    anchors.centerIn: parent
+                    s: w.s
+                    size: 26
+                    fill: 1
+                    text: "developer_board"
+                    color: w.accent
+                }
             }
         }
 
-        Column {
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 0
-
-            StyledText {
-                text: qsTr("CPU")
-                font: Tokens.font.label.small
-                color: Colours.palette.m3outline
-            }
-            StyledText {
-                text: Math.round(Cpu.percentage * 100) + "%"
-                font: Tokens.font.headline.medium
-                color: Colours.palette.m3onSurface
-            }
-            StyledText {
-                text: Cpu.temperature > 0 ? Math.round(Cpu.temperature) + "°C" : Cpu.name
-                font: Tokens.font.label.medium
-                color: Colours.palette.m3onSurfaceVariant
-            }
+        GenesiWSpark {
+            width: parent.width
+            height: 34 * w.s
+            s: w.s
+            values: w.hist
+            colour: w.accent
         }
     }
 }

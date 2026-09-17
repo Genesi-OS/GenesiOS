@@ -1,54 +1,82 @@
-// GENESI desktop widget: the forecast
-//
-// Four days, because five is a table and three is not a forecast. Each day is
-// its glyph and its high, which is the pair people plan around.
+// GENESI desktop widget: the next four days.
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Caelestia.Config
-import qs.components
 import qs.services
 
 GenesiWidgetCard {
-    Column {
-        spacing: Tokens.spacing.small
+    id: w
 
-        StyledText {
-            text: qsTr("FORECAST")
-            font: Tokens.font.label.small
-            color: Colours.palette.m3outline
+    Column {
+        spacing: 12 * w.s
+
+        Row {
+            spacing: 8 * w.s
+
+            GenesiWChip {
+                s: w.s
+                icon: "partly_cloudy_day"
+                tint: w.accent
+            }
+            GenesiWText {
+                anchors.verticalCenter: parent.verticalCenter
+                s: w.s
+                size: 11
+                tracking: 1.6
+                font.weight: Font.DemiBold
+                text: qsTr("FORECAST")
+                color: w.inkFaint
+            }
         }
 
         Row {
-            spacing: Tokens.spacing.large
+            spacing: 8 * w.s
 
             Repeater {
-                model: Weather.forecast.slice(0, 4)
+                model: (Weather.forecast || []).slice(0, 4)
 
-                Column {
+                Rectangle {
                     id: day
 
                     required property var modelData
+                    required property int index
 
-                    spacing: 2
+                    width: 70 * w.s
+                    height: col.implicitHeight + 20 * w.s
+                    radius: 16 * w.s
+                    color: day.index === 0 ? Qt.alpha(w.accent, 0.14) : Qt.alpha(w.ink, 0.04)
+                    border.width: day.index === 0 ? 1 : 0
+                    border.color: Qt.alpha(w.accent, 0.35)
 
-                    StyledText {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: day.modelData?.date ? Qt.formatDateTime(new Date(day.modelData.date), "ddd") : "--"
-                        font: Tokens.font.label.medium
-                        color: Colours.palette.m3onSurfaceVariant
-                    }
-                    MaterialIcon {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: day.modelData?.icon ?? "cloud"
-                        color: Colours.palette.m3primary
-                        fontStyle: Tokens.font.icon.large
-                    }
-                    StyledText {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: Weather.formatTemp(day.modelData?.maxTempC)
-                        font: Tokens.font.body.medium
-                        color: Colours.palette.m3onSurface
+                    Column {
+                        id: col
+
+                        anchors.centerIn: parent
+                        spacing: 4 * w.s
+
+                        GenesiWText {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            s: w.s
+                            size: 12
+                            font.weight: Font.Medium
+                            text: day.modelData?.date ? Qt.formatDateTime(new Date(day.modelData.date), "ddd") : "--"
+                            color: day.index === 0 ? w.ink : w.inkDim
+                        }
+                        GenesiWIcon {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            s: w.s
+                            size: 30
+                            fill: 1
+                            text: day.modelData?.icon ?? "cloud"
+                            color: day.index === 0 ? w.accent : w.accent2
+                        }
+                        GenesiWText {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            s: w.s
+                            size: 16
+                            text: Weather.formatTemp(day.modelData?.maxTempC)
+                            color: w.ink
+                        }
                     }
                 }
             }

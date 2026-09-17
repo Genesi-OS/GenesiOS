@@ -1,91 +1,157 @@
-// GENESI desktop widget: what is playing
+// GENESI desktop widget: what is playing.
 //
-// Art, title, artist and how far through it is. Hidden entirely when nothing
-// is playing: a media widget reading Nothing is a hole in the wallpaper,
-// and the wallpaper is what people wanted to look at.
+// The cover is the widget. It is shown large, and a blurred copy of it glows
+// through behind the whole card, so the widget takes on the colours of the
+// record instead of the wallpaper's.
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Caelestia.Config
+import QtQuick.Effects
 import Quickshell.Widgets
-import qs.components
 import qs.services
 
 GenesiWidgetCard {
-    id: root
+    id: w
 
     readonly property var player: Players.active
+    readonly property real progress: {
+        const len = w.player?.length ?? 0;
+        return len > 0 ? Math.max(0, Math.min(1, (w.player?.position ?? 0) / len)) : 0;
+    }
 
-    visible: !!root.player && !!root.player.trackTitle
-    // An invisible item still takes its place in the column that holds it, so
-    // the space has to go as well or the corner keeps a gap where the music was.
+    function clock(secs: real): string {
+        if (!secs || secs < 0)
+            return "0:00";
+        const m = Math.floor(secs / 60);
+        const s = Math.floor(secs % 60);
+        return m + ":" + (s < 10 ? "0" : "") + s;
+    }
+
+    visible: !!w.player && !!w.player.trackTitle
     height: visible ? implicitHeight : 0
 
-    Row {
-        spacing: Tokens.spacing.large
+    Item {
+        width: 330 * w.s
+        height: 96 * w.s
+
+        // The glow: the cover again, blurred and faint, bleeding past the art.
+        MultiEffect {
+            x: -40 * w.s
+            y: -30 * w.s
+            width: 200 * w.s
+            height: 160 * w.s
+            visible: art.status === Image.Ready
+            source: art
+            blurEnabled: true
+            blur: 1
+            blurMax: 64
+            opacity: 0.45
+            saturation: 0.3
+        }
 
         ClippingRectangle {
-            anchors.verticalCenter: parent.verticalCenter
-            implicitWidth: 56
-            implicitHeight: 56
-            radius: Tokens.rounding.small
-            color: Colours.palette.m3surfaceContainerHigh
+            id: cover
+
+            width: 96 * w.s
+            height: 96 * w.s
+            radius: 16 * w.s
+            color: Qt.alpha(w.accent, 0.15)
 
             Image {
+                id: art
+
                 anchors.fill: parent
-                source: root.player?.trackArtUrl ?? ""
+                source: w.player?.trackArtUrl ?? ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
-                visible: status === Image.Ready
+                sourceSize.width: 256
+                sourceSize.height: 256
             }
 
-            MaterialIcon {
+            GenesiWIcon {
                 anchors.centerIn: parent
-                visible: !parent.children[0].visible
+                visible: art.status !== Image.Ready
+                s: w.s
+                size: 40
+                fill: 1
                 text: "music_note"
-                color: Colours.palette.m3onSurfaceVariant
-                fontStyle: Tokens.font.icon.large
+                color: w.accent
             }
         }
 
         Column {
+            anchors.left: cover.right
+            anchors.leftMargin: 16 * w.s
+            anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 3
+            spacing: 4 * w.s
 
-            StyledText {
-                width: 200
-                text: root.player?.trackTitle ?? ""
-                font: Tokens.font.body.large
-                color: Colours.palette.m3onSurface
+            GenesiWText {
+                width: parent.width
+                s: w.s
+                size: 17
+                font.weight: Font.DemiBold
+                text: w.player?.trackTitle ?? ""
+                color: w.ink
                 elide: Text.ElideRight
             }
-            StyledText {
-                width: 200
-                text: root.player?.trackArtist ?? ""
-                font: Tokens.font.body.small
-                color: Colours.palette.m3onSurfaceVariant
+            GenesiWText {
+                width: parent.width
+                s: w.s
+                size: 13
+                text: w.player?.trackArtist ?? ""
+                color: w.inkDim
                 elide: Text.ElideRight
             }
 
-            StyledRect {
-                implicitWidth: 200
-                implicitHeight: 4
-                radius: Tokens.rounding.full
-                color: Colours.palette.m3surfaceContainerHighest
+            Item {
+                width: 1
+                height: 6 * w.s
+            }
 
-                StyledRect {
-                    // Guarded against a zero length: a track that has not
-                    // reported one yet would make this NaN, and a NaN width is
-                    // a bar that vanishes rather than one that is empty.
-                    width: {
-                        const len = root.player?.length ?? 0;
-                        if (len <= 0)
-                            return 0;
-                        return parent.width * Math.max(0, Math.min(1, (root.player?.position ?? 0) / len));
-                    }
+            Rectangle {
+                width: parent.width
+                height: 5 * w.s
+                radius: height / 2
+                color: w.track
+
+                Rectangle {
+                    width: Math.max(parent.height, parent.width * w.progress)
                     height: parent.height
                     radius: parent.radius
-                    color: Colours.palette.m3primary
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+
+                        GradientStop {
+                            position: 0
+                            color: w.accent
+                        }
+                        GradientStop {
+                            position: 1
+                            color: w.accent2
+                        }
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: pos.implicitHeight
+
+                GenesiWText {
+                    id: pos
+
+                    s: w.s
+                    size: 11
+                    text: w.clock(w.player?.position ?? 0)
+                    color: w.inkFaint
+                }
+                GenesiWText {
+                    anchors.right: parent.right
+                    s: w.s
+                    size: 11
+                    text: w.clock(w.player?.length ?? 0)
+                    color: w.inkFaint
                 }
             }
         }

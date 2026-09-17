@@ -1239,7 +1239,7 @@ def patch_ddc_timeout(services_dir):
 LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml",
                    "GenesiSchemeFlow.qml", "GenesiSchemeState.qml",
                    "GenesiTopBarState.qml", "GenesiEdges.qml",
-                   "GenesiSidePanelState.qml")
+                   "GenesiSidePanelState.qml", "GenesiWidgetEditState.qml")
 
 # The full-screen colour-scheme picker. Its WINDOW goes in modules/background,
 # which is the one Genesi directory shell.qml already imports -- so putting it
@@ -1399,12 +1399,17 @@ def patch_launcher_layout(release):
 # the id the host switches on -- one list, so adding a widget cannot half-happen.
 WIDGETS = ["weather", "forecast", "media", "cpu", "memory", "storage",
            "network", "battery", "calendar", "analogClock", "workspaces",
-           "notifications", "uptime", "greeting"]
+           "notifications", "uptime", "greeting", "digitalClock"]
 
 WIDGET_FILES = tuple(
     "GenesiWidget" + n[0].upper() + n[1:] + ".qml" for n in WIDGETS
 ) + ("GenesiWidgets.qml", "GenesiWidgetCard.qml", "GenesiWidgetHost.qml",
-     "GenesiDesktopMenu.qml")
+     "GenesiDesktopMenu.qml", "GenesiWidgetEditor.qml", "GenesiColourPicker.qml",
+     # The parts the widgets are drawn with: text and icons measured in the
+     # widget's size rather than stretched to it, a gradient ring, a
+     # sparkline, gradient text and a chip.
+     "GenesiWText.qml", "GenesiWIcon.qml", "GenesiWRing.qml", "GenesiWSpark.qml",
+     "GenesiWGradText.qml", "GenesiWChip.qml")
 
 
 def patch_desktop_widgets(release):
@@ -1414,7 +1419,7 @@ def patch_desktop_widgets(release):
         background.widgets.<name>.enabled   off by default, every one of them
         background.widgets.<name>.position  one of nine anchors, "" = the
                                             widget's own sensible corner
-        background.widgets.<name>.scale     0.5 - 2.0
+        background.widgets.<name>.scale     0.5 - 2.5
         background.widgets.cards            draw a card behind them, or not
 
     caelestia ships two -- a clock and an audio visualiser -- and both are good.
@@ -1496,6 +1501,16 @@ def patch_desktop_widgets(release):
         "    // the edge of a 1366 one. Only read when position is \"free\".\n"
         "    CONFIG_PROPERTY(qreal, x, 0.05)\n"
         "    CONFIG_PROPERTY(qreal, y, 0.05)\n"
+        "    // How it is drawn, from the right-click editor. An empty style\n"
+        "    // follows `cards` below, so the one global switch still means\n"
+        "    // what it did for anyone who never opened the editor.\n"
+        "    CONFIG_PROPERTY(QString, style, QStringLiteral(\"\"))\n"
+        "    CONFIG_PROPERTY(qreal, opacity, 1.0)\n"
+        "    // auto: the wallpaper's scheme. solid: `colour`. gradient:\n"
+        "    // `colour` into `colour2`. Hex strings, empty until picked.\n"
+        "    CONFIG_PROPERTY(QString, colourMode, QStringLiteral(\"auto\"))\n"
+        "    CONFIG_PROPERTY(QString, colour, QStringLiteral(\"\"))\n"
+        "    CONFIG_PROPERTY(QString, colour2, QStringLiteral(\"\"))\n"
         "\n"
         "public:\n"
         "    explicit GenesiWidgetConfig(QObject* parent = nullptr)\n"
@@ -1529,7 +1544,8 @@ def patch_desktop_widgets(release):
         "    CONFIG_SUBOBJECT(GenesiWidgetConfig, workspaces)\n"
         "    CONFIG_SUBOBJECT(GenesiWidgetConfig, notifications)\n"
         "    CONFIG_SUBOBJECT(GenesiWidgetConfig, uptime)\n"
-        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)\n")
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, greeting)\n"
+        "    CONFIG_SUBOBJECT(GenesiWidgetConfig, digitalClock)\n")
     for name in WIDGETS:
         if "CONFIG_SUBOBJECT(GenesiWidgetConfig, %s)" % name not in block:
             fail(f"WIDGETS lists {name!r} but the declaration block above does "
@@ -1574,12 +1590,91 @@ def patch_desktop_widgets(release):
            "            // Genesi: everything else drawn on the wallpaper.\n"
            "            GenesiWidgets {\n"
            "                anchors.fill: parent\n"
+           "                wallpaper: wallpaper\n"
            "            }\n")
     out[background] = s.replace(old, new, 1)
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
     print("background: %d Genesi desktop widgets" % len(WIDGETS))
+
+
+def patch_desktop_clock_edit(release):
+    """
+    Right-click caelestia's desktop clock and change it where it stands.
+
+    The clock's settings -- size, a plate behind it, the plate's opacity,
+    inverted colours, a shadow, one of nine corners -- existed only as rows in
+    Genesi Center, so the best-looking thing on the desktop was the one thing
+    on it you could not touch. The Genesi widgets open GenesiWidgetEditor on a
+    right-click; this makes the clock do the same, through the shared
+    GenesiWidgetEditState, since the clock's file cannot see the widget layer.
+
+    The values the editor PREVIEWS while a slider is dragged are read through
+    the same state, ahead of the config, so the clock follows the thumb instead
+    of trailing it by a write and a reload.
+
+    The import is qualified. modules/background and modules/launcher are two
+    directories; an unqualified import of one into a file of the other is how
+    a release once lost the dashboard (see verify_no_shadowed_types).
+    """
+    path = os.path.join(release, "modules", "background", "DesktopClock.qml")
+    if not os.path.exists(path):
+        fail(f"{path} is gone -- caelestia's desktop clock moved or was renamed.")
+    s = io.open(path, encoding="utf-8").read()
+    if "GenesiWidgetEditState" in s:
+        fail("DesktopClock.qml already opens the Genesi editor -- this ran "
+             "twice.")
+
+    def swap(old, new, what):
+        nonlocal s
+        n = s.count(old)
+        if n != 1:
+            fail(f"DesktopClock.qml has {n} of {what}, not 1 -- upstream "
+                 "changed the clock, and the editor would preview nothing.")
+        s = s.replace(old, new, 1)
+
+    state = "Launcher.GenesiWidgetEditState"
+    swap("import qs.services\n",
+         "import qs.services\n"
+         "import qs.modules.launcher as Launcher\n", "the services import")
+    swap("property real clockScale: Config.background.desktopClock.scale\n",
+         "property real clockScale: %s.valueOf(\"desktopClock\", \"scale\", "
+         "Config.background.desktopClock.scale)\n" % state, "clockScale")
+    swap("readonly property bool bgEnabled: "
+         "Config.background.desktopClock.background.enabled\n",
+         "readonly property bool bgEnabled: %s.valueOf(\"desktopClock\", "
+         "\"background.enabled\", "
+         "Config.background.desktopClock.background.enabled)\n" % state,
+         "bgEnabled")
+    swap("readonly property bool invertColors: "
+         "Config.background.desktopClock.invertColors\n",
+         "readonly property bool invertColors: %s.valueOf(\"desktopClock\", "
+         "\"invertColors\", Config.background.desktopClock.invertColors)\n"
+         % state, "invertColors")
+    swap("layer.enabled: Config.background.desktopClock.shadow.enabled\n",
+         "layer.enabled: %s.valueOf(\"desktopClock\", \"shadow.enabled\", "
+         "Config.background.desktopClock.shadow.enabled)\n" % state,
+         "the shadow switch")
+    swap("opacity: Config.background.desktopClock.background.opacity\n",
+         "opacity: %s.valueOf(\"desktopClock\", \"background.opacity\", "
+         "Config.background.desktopClock.background.opacity)\n" % state,
+         "the plate opacity")
+    swap("    Behavior on clockScale {\n",
+         "    // Genesi: right-click opens the widget editor. Right button only:\n"
+         "    // the clock sits on the desktop, and a left click there belongs\n"
+         "    // to the desktop.\n"
+         "    MouseArea {\n"
+         "        anchors.fill: parent\n"
+         "        acceptedButtons: Qt.RightButton\n"
+         "        onClicked: event => %s.request(\"desktopClock\", root, "
+         "event.x, event.y)\n"
+         "    }\n"
+         "\n"
+         "    Behavior on clockScale {\n" % state, "the scale Behavior")
+
+    io.open(path, "w", encoding="utf-8", newline="\n").write(s)
+    print("desktop clock: right-click opens the Genesi editor")
 
 
 
@@ -2605,7 +2700,7 @@ def patch_edge_layout(release):
 # lives in that same directory -- Quickshell exposes a directory's singletons
 # through its module, not by proximity.
 GENESI_SINGLETONS = ("GenesiEdges", "GenesiSchemeState", "GenesiTopBarState",
-                     "GenesiSidePanelState")
+                     "GenesiSidePanelState", "GenesiWidgetEditState")
 
 
 def verify_genesi_imports(release):
@@ -3013,6 +3108,7 @@ def main():
     patch_launcher_position(release)
     patch_launcher_layout(release)
     patch_desktop_widgets(release)
+    patch_desktop_clock_edit(release)
     patch_dock(release)
     patch_scheme_screen(release)
     patch_topbar(release)

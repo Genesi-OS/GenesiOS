@@ -1,44 +1,52 @@
-// GENESI desktop widget: the weather
+// GENESI desktop widget: weather.
 //
-// Conditions now: the glyph, the temperature at a size you can read across a
-// room, and what it actually feels like -- which is the number people
-// wanted when they looked.
+// The temperature is the headline, set big and light the way a weather app
+// sets it, with the condition's icon filled beside it. Everything else is one
+// quiet line underneath.
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Caelestia.Config
-import qs.components
 import qs.services
 
 GenesiWidgetCard {
-    Row {
-        spacing: Tokens.spacing.large
+    id: w
 
-        MaterialIcon {
+    Row {
+        spacing: 16 * w.s
+
+        GenesiWIcon {
             anchors.verticalCenter: parent.verticalCenter
+            s: w.s
+            size: 64
+            fill: 1
             text: Weather.icon
-            color: Colours.palette.m3primary
-            fontStyle: Tokens.font.icon.builders.extraLarge.scale(1.6).build()
+            color: w.accent
         }
 
         Column {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 0
 
-            StyledText {
+            GenesiWGradText {
+                s: w.s
+                size: 54
+                fontWeight: Font.Light
                 text: Weather.temp
-                font: Tokens.font.headline.large
-                color: Colours.palette.m3onSurface
+                from: w.accent
+                to: w.accent2
             }
-            StyledText {
+            GenesiWText {
+                s: w.s
+                size: 15
+                font.weight: Font.Medium
                 text: Weather.description
-                font: Tokens.font.body.medium
-                color: Colours.palette.m3onSurfaceVariant
+                color: w.ink
             }
-            StyledText {
+            GenesiWText {
+                s: w.s
+                size: 12
                 text: qsTr("Feels like %1").arg(Weather.feelsLike)
-                font: Tokens.font.label.medium
-                color: Colours.palette.m3outline
+                color: w.inkFaint
             }
         }
     }

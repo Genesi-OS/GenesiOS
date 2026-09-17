@@ -1,72 +1,143 @@
-// GENESI desktop widget: battery
+// GENESI desktop widget: battery.
 //
-// Charge, and how long it has left. Draws nothing at all on a desktop: a
-// battery widget reading 100% for ever is a widget that has never once been
-// worth looking at.
+// Drawn as a battery -- a cell with a terminal, filled with the charge -- and
+// the only widget whose colour overrides yours: low charge turns it red,
+// because a warning that follows the wallpaper's palette is a warning that
+// can be green.
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Caelestia.Config
 import Quickshell.Services.UPower
-import qs.components
-import qs.components.controls
 import qs.services
 
 GenesiWidgetCard {
-    id: root
+    id: w
 
     readonly property var dev: UPower.displayDevice
+    readonly property real perc: w.dev?.percentage ?? 0
+    readonly property bool charging: w.dev?.state === UPowerDeviceState.Charging
+    readonly property bool low: w.perc < 0.2 && !w.charging
+    readonly property color fillFrom: w.low ? Colours.palette.m3error : w.accent
+    readonly property color fillTo: w.low ? Colours.palette.m3error : w.accent2
 
-    visible: root.dev?.isLaptopBattery ?? false
+    visible: w.dev?.isLaptopBattery ?? false
     height: visible ? implicitHeight : 0
 
-    Row {
-        spacing: Tokens.spacing.large
+    Column {
+        spacing: 12 * w.s
 
-        CircularProgress {
-            anchors.verticalCenter: parent.verticalCenter
-            implicitSize: 62
-            strokeWidth: 6
-            value: root.dev?.percentage ?? 0
-            fgColour: (root.dev?.percentage ?? 1) < 0.2 ? Colours.palette.m3error : Colours.palette.m3primary
-            bgColour: Colours.palette.m3surfaceContainerHighest
+        Row {
+            spacing: 8 * w.s
 
-            MaterialIcon {
-                anchors.centerIn: parent
-                text: root.dev?.state === UPowerDeviceState.Charging ? "bolt" : "battery_full"
-                color: Colours.palette.m3onSurfaceVariant
-                fontStyle: Tokens.font.icon.medium
+            GenesiWChip {
+                s: w.s
+                icon: w.charging ? "bolt" : "battery_full"
+                tint: w.fillFrom
+            }
+            GenesiWText {
+                anchors.verticalCenter: parent.verticalCenter
+                s: w.s
+                size: 11
+                tracking: 1.6
+                font.weight: Font.DemiBold
+                text: w.charging ? qsTr("CHARGING") : qsTr("BATTERY")
+                color: w.inkFaint
             }
         }
 
-        Column {
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 0
+        Row {
+            spacing: 16 * w.s
 
-            StyledText {
-                text: qsTr("BATTERY")
-                font: Tokens.font.label.small
-                color: Colours.palette.m3outline
-            }
-            StyledText {
-                text: Math.round((root.dev?.percentage ?? 0) * 100) + "%"
-                font: Tokens.font.headline.medium
-                color: Colours.palette.m3onSurface
-            }
-            StyledText {
-                text: {
-                    const d = root.dev;
-                    if (!d)
-                        return "";
-                    const secs = d.state === UPowerDeviceState.Charging ? d.timeToFull : d.timeToEmpty;
-                    if (!secs || secs <= 0)
-                        return d.state === UPowerDeviceState.Charging ? qsTr("charging") : "";
-                    const h = Math.floor(secs / 3600);
-                    const m = Math.floor((secs % 3600) / 60);
-                    return h > 0 ? qsTr("%1h %2m left").arg(h).arg(m) : qsTr("%1m left").arg(m);
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2 * w.s
+
+                GenesiWGradText {
+                    s: w.s
+                    size: 46
+                    fontWeight: Font.Light
+                    text: Math.round(w.perc * 100)
+                    from: w.fillFrom
+                    to: w.fillTo
                 }
-                font: Tokens.font.label.medium
-                color: Colours.palette.m3onSurfaceVariant
+                GenesiWText {
+                    y: 10 * w.s
+                    s: w.s
+                    size: 18
+                    text: "%"
+                    color: w.inkDim
+                }
+            }
+
+            // The cell.
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 3 * w.s
+
+                Rectangle {
+                    width: 96 * w.s
+                    height: 42 * w.s
+                    radius: 11 * w.s
+                    color: "transparent"
+                    border.width: 2 * w.s
+                    border.color: Qt.alpha(w.ink, 0.35)
+
+                    Rectangle {
+                        x: 5 * w.s
+                        y: 5 * w.s
+                        width: Math.max(height * 0.5, (parent.width - 10 * w.s) * w.perc)
+                        height: parent.height - 10 * w.s
+                        radius: 6 * w.s
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+
+                            GradientStop {
+                                position: 0
+                                color: w.fillFrom
+                            }
+                            GradientStop {
+                                position: 1
+                                color: w.fillTo
+                            }
+                        }
+                    }
+
+                    GenesiWIcon {
+                        anchors.centerIn: parent
+                        visible: w.charging
+                        s: w.s
+                        size: 22
+                        fill: 1
+                        text: "bolt"
+                        color: w.ink
+                    }
+                }
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 5 * w.s
+                    height: 16 * w.s
+                    radius: 2.5 * w.s
+                    color: Qt.alpha(w.ink, 0.35)
+                }
+            }
+        }
+
+        GenesiWText {
+            s: w.s
+            size: 12
+            color: w.inkDim
+            text: {
+                const d = w.dev;
+                if (!d)
+                    return "";
+                const secs = w.charging ? d.timeToFull : d.timeToEmpty;
+                if (!secs || secs <= 0)
+                    return w.charging ? qsTr("charging") : "";
+                const h = Math.floor(secs / 3600);
+                const m = Math.floor((secs % 3600) / 60);
+                const t = h > 0 ? qsTr("%1h %2m").arg(h).arg(m) : qsTr("%1m").arg(m);
+                return w.charging ? qsTr("%1 until full").arg(t) : qsTr("%1 left").arg(t);
             }
         }
     }

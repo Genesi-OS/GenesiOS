@@ -539,7 +539,31 @@ pkgver=2.0.3
 # elsewhere.
 #
 # `genesi-depth probe <image>` names the engine and prints its numbers.
-pkgrel=41
+# 42: the desktop widgets, redrawn -- and right-click to edit any of them.
+#
+# Reported as "weak little cards with no customisation, no wow, and pixelated
+# when you make them bigger". All three were true.
+#
+# Pixelated: the widgets were scaled with `scale:`, and caelestia's text renders
+# natively, rasterised at its own size before the transform stretches it -- a 2x
+# widget was a 1x widget's pixels, doubled. Every measurement is multiplied by
+# the widget's size now (GenesiWText, GenesiWIcon), and large text switches to
+# curve rendering, so a widget at 250% is drawn at 250%.
+#
+# The look: frosted glass cut from the wallpaper behind each card, gradient
+# rings and sparklines, gradient headline numbers, and a big digital clock as a
+# fifteenth widget.
+#
+# The editor (GenesiWidgetEditor): right-click a widget for Design (glass,
+# solid, outline, minimal), Size, Opacity, Colour (auto from the wallpaper,
+# one colour, or a gradient, with a picker), Snap to nine places or Free, Hide
+# and Settings. Sliders preview through GenesiWidgetEditState and write once on
+# release. caelestia's own desktop clock, which only Genesi Center could
+# change, opens the same editor (patch_desktop_clock_edit) and is switched on
+# from the desktop menu.
+#
+# The middle row of anchors no longer draws over a tall corner stack.
+pkgrel=42
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -589,6 +613,16 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiWidgets.qml"
         "GenesiWidgetHost.qml"
         "GenesiDesktopMenu.qml"
+        "GenesiWidgetDigitalClock.qml"
+        "GenesiWidgetEditor.qml"
+        "GenesiWidgetEditState.qml"
+        "GenesiColourPicker.qml"
+        "GenesiWText.qml"
+        "GenesiWIcon.qml"
+        "GenesiWRing.qml"
+        "GenesiWSpark.qml"
+        "GenesiWGradText.qml"
+        "GenesiWChip.qml"
         "GenesiDock.qml"
         "GenesiSchemeState.qml"
         "GenesiSchemeScreen.qml"
@@ -603,6 +637,16 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

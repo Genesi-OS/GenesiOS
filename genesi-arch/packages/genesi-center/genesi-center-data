@@ -800,7 +800,7 @@ def _current_scheme():
 # setting this app writes and the shell does not declare.
 WIDGETS = ["weather", "forecast", "media", "cpu", "memory", "storage",
            "network", "battery", "calendar", "analogClock", "workspaces",
-           "notifications", "uptime", "greeting"]
+           "notifications", "uptime", "greeting", "digitalClock"]
 
 
 def appearance():

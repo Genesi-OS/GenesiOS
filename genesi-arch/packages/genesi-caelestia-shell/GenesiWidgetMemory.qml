@@ -1,55 +1,110 @@
-// GENESI desktop widget: memory in use
-//
-// Used against total. Reported in KiB by the service, which is why the
-// division by 1048576 is here rather than a formatter nobody can find.
+// GENESI desktop widget: memory.
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Caelestia.Config
 import Caelestia.Services
-import qs.components
-import qs.components.controls
-import qs.services
 
 GenesiWidgetCard {
-    Row {
-        spacing: Tokens.spacing.large
+    id: w
 
-        CircularProgress {
-            anchors.verticalCenter: parent.verticalCenter
-            implicitSize: 62
-            strokeWidth: 6
-            value: Memory.percentage
-            fgColour: Colours.palette.m3secondary
-            bgColour: Colours.palette.m3surfaceContainerHighest
+    property var hist: []
 
-            MaterialIcon {
-                anchors.centerIn: parent
-                text: "developer_board"
-                color: Colours.palette.m3secondary
-                fontStyle: Tokens.font.icon.medium
+    Timer {
+        running: true
+        repeat: true
+        interval: 1500
+        triggeredOnStart: true
+        onTriggered: {
+            const h = w.hist.slice(-39);
+            h.push(Memory.percentage);
+            w.hist = h;
+        }
+    }
+
+    Column {
+        spacing: 12 * w.s
+
+        Row {
+            spacing: 18 * w.s
+
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4 * w.s
+
+                Row {
+                    spacing: 8 * w.s
+
+                    GenesiWChip {
+                        s: w.s
+                        icon: "memory_alt"
+                        tint: w.accent
+                    }
+                    GenesiWText {
+                        anchors.verticalCenter: parent.verticalCenter
+                        s: w.s
+                        size: 11
+                        tracking: 1.6
+                        font.weight: Font.DemiBold
+                        text: qsTr("MEMORY")
+                        color: w.inkFaint
+                    }
+                }
+
+                Row {
+                    spacing: 2 * w.s
+
+                    GenesiWGradText {
+                        s: w.s
+                        size: 46
+                        fontWeight: Font.Light
+                        text: Math.round(Memory.percentage * 100)
+                        from: w.accent
+                        to: w.accent2
+                    }
+                    GenesiWText {
+                        y: 10 * w.s
+                        s: w.s
+                        size: 18
+                        text: "%"
+                        color: w.inkDim
+                    }
+                }
+
+                GenesiWText {
+                    s: w.s
+                    size: 12
+                    text: qsTr("%1 of %2 GiB").arg((Memory.used / 1048576).toFixed(1)).arg((Memory.total / 1048576).toFixed(0))
+                    color: w.inkDim
+                }
+            }
+
+            GenesiWRing {
+                anchors.verticalCenter: parent.verticalCenter
+                s: w.s
+                size: 84
+                thickness: 8
+                value: Memory.percentage
+                from: w.accent
+                to: w.accent2
+                track: w.track
+
+                GenesiWIcon {
+                    anchors.centerIn: parent
+                    s: w.s
+                    size: 26
+                    fill: 1
+                    text: "memory_alt"
+                    color: w.accent
+                }
             }
         }
 
-        Column {
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 0
-
-            StyledText {
-                text: qsTr("MEMORY")
-                font: Tokens.font.label.small
-                color: Colours.palette.m3outline
-            }
-            StyledText {
-                text: Math.round(Memory.percentage * 100) + "%"
-                font: Tokens.font.headline.medium
-                color: Colours.palette.m3onSurface
-            }
-            StyledText {
-                text: (Memory.used / 1048576).toFixed(1) + " / " + (Memory.total / 1048576).toFixed(0) + " GiB"
-                font: Tokens.font.label.medium
-                color: Colours.palette.m3onSurfaceVariant
-            }
+        GenesiWSpark {
+            width: parent.width
+            height: 34 * w.s
+            s: w.s
+            values: w.hist
+            colour: w.accent2
         }
     }
 }

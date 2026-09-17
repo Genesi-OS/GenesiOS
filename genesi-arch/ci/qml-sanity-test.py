@@ -169,6 +169,10 @@ def direct_bindings(body):
     declared = {m.group(1) for m in
                 re.finditer(r"\bproperty\s+(?:alias\s+|[\w.<>]+\s+)(\w+)", body)}
     declared |= {m.group(1) for m in re.finditer(r"\bsignal\s+(\w+)", body)}
+    # `component Hand: Item { ... }` declares an inline component; the name
+    # before the colon is not a binding.
+    declared |= {m.group(1) for m in
+                 re.finditer(r"\bcomponent\s+(\w+)\s*:", body)}
 
     out, depth = [], 0
     for m in re.finditer(r"[{}()\[\]]|(?<![\w.])([A-Za-z_]\w*)\s*:(?!:)", body):

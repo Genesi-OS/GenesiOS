@@ -42,6 +42,10 @@ import qs.modules.launcher
 Item {
     id: root
 
+    // The wallpaper, which the frosted style blurs behind each card. Handed
+    // down from Background.qml, where it is a sibling of this layer.
+    property Item wallpaper: null
+
     // name -> the corner it prefers when the config says nothing. Kept here
     // rather than in the C++ config because it is a layout decision, and
     // because CONFIG_PROPERTY puts its member behind `private:`, so a subclass
@@ -101,6 +105,10 @@ Item {
         },
         {
             name: "greeting",
+            home: "top-centre"
+        },
+        {
+            name: "digitalClock",
             home: "top-centre"
         }
     ]
@@ -217,6 +225,16 @@ Item {
         onClicked: event => menu.openAt(event.x, event.y)
     }
 
+    // The middle row is centred, but never ON the corners above and below it:
+    // a tall top-right stack pushes the mid-right one down rather than being
+    // drawn over. If there is no room either way, below the top one wins.
+    function between(above: Item, below: Item, h: real): real {
+        const gap = root.margin;
+        const lo = above.height > 0 ? above.y + above.height + gap : 0;
+        const hi = below.height > 0 ? below.y - gap - h : root.height - h;
+        return Math.max(lo, Math.min((root.height - h) / 2, hi));
+    }
+
     // ── The nine ─────────────────────────────────────────────────────────────
     Slot {
         id: tl
@@ -247,7 +265,7 @@ Item {
 
         anchorName: "mid-left"
         anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
+        y: root.between(tl, bl, height)
         anchors.leftMargin: root.margin
     }
     Slot {
@@ -255,14 +273,14 @@ Item {
 
         anchorName: "centre"
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.verticalCenter: parent.verticalCenter
+        y: root.between(tc, bc, height)
     }
     Slot {
         id: mr
 
         anchorName: "mid-right"
         anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
+        y: root.between(tr, br, height)
         anchors.rightMargin: root.margin
     }
     Slot {
@@ -301,8 +319,8 @@ Item {
 
             readonly property var cfg: root.cfgOf(floater.modelData)
 
-            width: body.implicitWidth * body.scale
-            height: body.implicitHeight * body.scale
+            width: body.implicitWidth
+            height: body.implicitHeight
 
             // Where it already was if arrange mode just moved it here, and its
             // stored fraction otherwise. Without the first case, entering
@@ -316,6 +334,8 @@ Item {
                 widget: floater.modelData
                 corner: "top-left"
                 arranging: root.arranging
+                wallpaper: root.wallpaper
+                onEditRequested: (x, y) => GenesiWidgetEditState.request(floater.modelData, body, x, y)
 
                 // Dropped, so remember where -- and that it is placed by hand
                 // now, which is what `free` means. A widget dragged out of a
@@ -358,6 +378,28 @@ Item {
         }
     }
 
+    // Right-click on a widget, or on caelestia's clock: the editor. The clock
+    // lives in caelestia's own file and cannot see this layer, so it asks
+    // through the shared state -- and every screen hears it, so each one checks
+    // the click happened on ITS window before opening.
+    Connections {
+        target: GenesiWidgetEditState
+
+        function onRequested(name: string, item: Item, x: real, y: real): void {
+            if (!item || item.Window.window !== root.Window.window)
+                return;
+            // caelestia's clock is drawn ABOVE this layer, so an editor opened
+            // at the pointer would be half under it. Beside the clock instead.
+            if (name === "desktopClock") {
+                const r = item.mapToItem(root, 0, 0, item.width, item.height);
+                editor.openBeside(name, r);
+                return;
+            }
+            const p = item.mapToItem(root, x, y);
+            editor.openFor(name, p.x, p.y);
+        }
+    }
+
     GenesiDesktopMenu {
         id: menu
 
@@ -373,6 +415,14 @@ Item {
         arranging: root.arranging
     }
 
+    GenesiWidgetEditor {
+        id: editor
+
+        labels: menu.labels
+        defs: root.defs
+        onArrangeRequested: root.beginArrange()
+    }
+
     component Slot: Column {
         id: slot
 
@@ -384,11 +434,15 @@ Item {
             model: root.at(slot.anchorName)
 
             GenesiWidgetHost {
+                id: slotHost
+
                 required property string modelData
 
                 widget: modelData
                 corner: slot.anchorName
                 arranging: root.arranging
+                wallpaper: root.wallpaper
+                onEditRequested: (x, y) => GenesiWidgetEditState.request(slotHost.modelData, slotHost, x, y)
 
             }
         }

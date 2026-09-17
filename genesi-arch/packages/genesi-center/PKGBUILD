@@ -168,7 +168,10 @@ pkgver=0.1.0
 # REMOVE. Adding another key keeps the ones already set. And a Voice language
 # row, with the voices that language has -- all of them run from the files the
 # install already fetched.
-pkgrel=33
+# 34: genesi-center-set takes what the desktop widget editor writes -- a style,
+# an opacity, a colour mode and two #rrggbb colours per widget, the new digital
+# clock, and sizes up to 250%.
+pkgrel=34
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

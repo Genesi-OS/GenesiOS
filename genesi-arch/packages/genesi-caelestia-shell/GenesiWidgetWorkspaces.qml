@@ -1,45 +1,60 @@
-// GENESI desktop widget: the workspaces
+// GENESI desktop widget: the workspaces, as a row of pills.
 //
-// One pill per workspace: filled when it holds windows, wide and bright when
-// it is the one you are on. Reads at a glance from across the desk, which is
-// the only thing a desktop widget is for.
+// The active one is wide and lit with the widget's colours, the occupied ones
+// are solid, the empty ones are rings -- readable at a glance from across the
+// room, which is the only distance a desktop widget is read from.
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Caelestia.Config
-import qs.components
 import qs.services
 
 GenesiWidgetCard {
+    id: w
+
+    basePadding: 14
+
     Row {
-        spacing: Tokens.spacing.small
+        spacing: 8 * w.s
 
         Repeater {
             model: Hypr.workspaces?.values ?? []
 
-            StyledRect {
+            Rectangle {
                 id: ws
 
                 required property var modelData
-
                 readonly property bool active: ws.modelData?.id === Hypr.activeWsId
                 readonly property bool occupied: (ws.modelData?.toplevels?.values?.length ?? 0) > 0
 
                 anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: ws.active ? 30 : 12
-                implicitHeight: 12
-                radius: Tokens.rounding.full
-                color: {
-                    if (ws.active)
-                        return Colours.palette.m3primary;
-                    return ws.occupied ? Colours.palette.m3onSurfaceVariant : Colours.palette.m3surfaceContainerHighest;
+                width: (ws.active ? 44 : 16) * w.s
+                height: 16 * w.s
+                radius: height / 2
+                color: ws.occupied && !ws.active ? Qt.alpha(w.ink, 0.55) : "transparent"
+                border.width: ws.active || ws.occupied ? 0 : 2 * w.s
+                border.color: Qt.alpha(w.inkFaint, 0.7)
+                gradient: ws.active ? active : null
+
+                Gradient {
+                    id: active
+
+                    orientation: Gradient.Horizontal
+
+                    GradientStop {
+                        position: 0
+                        color: w.accent
+                    }
+                    GradientStop {
+                        position: 1
+                        color: w.accent2
+                    }
                 }
 
-                Behavior on implicitWidth {
-                    Anim {}
-                }
-                Behavior on color {
-                    CAnim {}
+                Behavior on width {
+                    NumberAnimation {
+                        duration: 260
+                        easing.type: Easing.OutCubic
+                    }
                 }
             }
         }

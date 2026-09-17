@@ -1,52 +1,78 @@
-// GENESI desktop widget: the month
+// GENESI desktop widget: this month.
 //
-// A real month grid, built from the first of the month rather than from a
-// fixed six-by-seven of guesses. Today is the only marked cell, because a
-// calendar with nothing marked is a table.
+// The day is the headline -- the date is the thing a calendar on a desktop is
+// looked at for -- and the month sits under it as a grid, with today lit in the
+// widget's colours and the weekend a shade quieter.
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Caelestia.Config
-import qs.components
 import qs.services
 
 GenesiWidgetCard {
-    id: root
+    id: w
 
     readonly property date today: Time.date
-    // The Sunday on or before the first of the month: where the grid starts.
     readonly property date start: {
-        const first = new Date(root.today.getFullYear(), root.today.getMonth(), 1);
+        const first = new Date(w.today.getFullYear(), w.today.getMonth(), 1);
         return new Date(first.getFullYear(), first.getMonth(), 1 - first.getDay());
     }
+    readonly property real cell: 32 * w.s
 
     Column {
-        spacing: Tokens.spacing.small
+        spacing: 10 * w.s
 
-        StyledText {
-            text: Qt.formatDateTime(root.today, "MMMM yyyy")
-            font: Tokens.font.body.large
-            color: Colours.palette.m3onSurface
+        Row {
+            spacing: 12 * w.s
+
+            GenesiWGradText {
+                s: w.s
+                size: 48
+                fontWeight: Font.Light
+                text: String(w.today.getDate())
+                from: w.accent
+                to: w.accent2
+            }
+
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                GenesiWText {
+                    s: w.s
+                    size: 16
+                    font.weight: Font.DemiBold
+                    text: Qt.formatDateTime(w.today, "dddd")
+                    color: w.ink
+                }
+                GenesiWText {
+                    s: w.s
+                    size: 13
+                    text: Qt.formatDateTime(w.today, "MMMM yyyy")
+                    color: w.inkDim
+                }
+            }
         }
 
         Grid {
             columns: 7
-            columnSpacing: 4
-            rowSpacing: 3
+            columnSpacing: 0
+            rowSpacing: 0
 
             Repeater {
-                model: ["S", "M", "T", "W", "T", "F", "S"]
+                model: [0, 1, 2, 3, 4, 5, 6]
 
-                StyledText {
+                GenesiWText {
                     id: head
 
-                    required property string modelData
+                    required property int modelData
 
-                    width: 24
+                    width: w.cell
+                    height: 22 * w.s
                     horizontalAlignment: Text.AlignHCenter
-                    text: head.modelData
-                    font: Tokens.font.label.small
-                    color: Colours.palette.m3outline
+                    s: w.s
+                    size: 10
+                    tracking: 1
+                    font.weight: Font.DemiBold
+                    text: Qt.locale().dayName(head.modelData, Locale.NarrowFormat)
+                    color: w.inkFaint
                 }
             }
 
@@ -54,33 +80,47 @@ GenesiWidgetCard {
                 model: 42
 
                 Item {
-                    id: cell
+                    id: day
 
                     required property int index
+                    readonly property date date: new Date(w.start.getFullYear(), w.start.getMonth(), w.start.getDate() + day.index)
+                    readonly property bool thisMonth: day.date.getMonth() === w.today.getMonth()
+                    readonly property bool isToday: day.thisMonth && day.date.getDate() === w.today.getDate()
+                    readonly property bool weekend: day.date.getDay() === 0 || day.date.getDay() === 6
 
-                    readonly property date day: new Date(root.start.getFullYear(), root.start.getMonth(), root.start.getDate() + cell.index)
-                    readonly property bool thisMonth: cell.day.getMonth() === root.today.getMonth()
-                    readonly property bool isToday: cell.thisMonth && cell.day.getDate() === root.today.getDate()
+                    width: w.cell
+                    height: 28 * w.s
 
-                    implicitWidth: 24
-                    implicitHeight: 20
-
-                    StyledRect {
+                    Rectangle {
                         anchors.centerIn: parent
-                        implicitWidth: 22
-                        implicitHeight: 18
-                        radius: Tokens.rounding.small
-                        color: cell.isToday ? Colours.palette.m3primary : "transparent"
+                        width: 26 * w.s
+                        height: 26 * w.s
+                        radius: width / 2
+                        visible: day.isToday
+                        gradient: Gradient {
+                            GradientStop {
+                                position: 0
+                                color: w.accent
+                            }
+                            GradientStop {
+                                position: 1
+                                color: w.accent2
+                            }
+                        }
                     }
 
-                    StyledText {
+                    GenesiWText {
                         anchors.centerIn: parent
-                        text: cell.day.getDate()
-                        font: Tokens.font.label.medium
+                        s: w.s
+                        size: 12
+                        font.weight: day.isToday ? Font.Bold : Font.Normal
+                        text: day.date.getDate()
                         color: {
-                            if (cell.isToday)
-                                return Colours.palette.m3onPrimary;
-                            return cell.thisMonth ? Colours.palette.m3onSurface : Colours.palette.m3outline;
+                            if (day.isToday)
+                                return Colours.palette.m3surface;
+                            if (!day.thisMonth)
+                                return Qt.alpha(w.inkFaint, 0.5);
+                            return day.weekend ? w.inkDim : w.ink;
                         }
                     }
                 }
