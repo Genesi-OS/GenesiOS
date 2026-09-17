@@ -297,6 +297,28 @@ jobs:
         # it -- this reads both sides as text instead.
         run: python genesi-arch/ci/monitor-slots-test.py
 
+      - name: an API model runs the agent, and Stop stops a model that has said nothing
+        # The agent loop and the automations run on hosted models: a real
+        # automation drives a fake provider that asks for a tool, and the tool
+        # the provider asked for has to be the one that ran.
+        #
+        # Stop used to set a flag that was only read between lines of a reply,
+        # so a model still loading or thinking -- or any non-streaming agent
+        # step -- ran to the end regardless. The test holds a request open
+        # with nothing sent and requires Stop to cut it at once, AND the
+        # server to see the connection go, which is what makes it stop
+        # generating rather than merely stop being listened to.
+        run: |
+          python genesi-arch/ci/ai-agent-cloud-test.py
+          python genesi-arch/ci/ai-stop-test.py
+
+      - name: no QML object sets the same property twice
+        # "Property value set multiple times" is a load error: the file, and
+        # for a window the whole window, does not exist at run time. A second
+        # Component.onCompleted nearly shipped in Quick Chat, and qml-sanity
+        # had no check for it.
+        run: python genesi-arch/ci/qml-duplicates-test.py
+
       - name: every shebang script is pinned to LF
         # An extensionless script committed with CRLF is `bad interpreter: no
         # such file or directory` on the installed system and nowhere else.

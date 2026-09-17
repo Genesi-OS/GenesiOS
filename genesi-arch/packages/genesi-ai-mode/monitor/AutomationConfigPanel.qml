@@ -20,10 +20,14 @@ Item {
 
     readonly property bool isEvent: node && ("" + node.kind).indexOf("evt_") === 0
 
-    Component.onCompleted: backend.loadModels()
+    Component.onCompleted: backend.loadAllModels()
     Connections {
         target: backend
-        function onModelsLoaded(jsonStr) {
+        // Local and API models together: a block names one model and keeps
+        // it. The chat's Local | API switch is about a live conversation; a
+        // saved block needs no switch, only an honest label -- API entries
+        // read "(API)".
+        function onAllModelsLoaded(jsonStr) {
             try { root.models = JSON.parse(jsonStr) } catch (e) { root.models = [] }
         }
         function onHotkeyCaptured(combo) {

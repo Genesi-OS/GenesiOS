@@ -122,7 +122,9 @@ class Backend(QObject):
     chatToken = Signal(str)      # one streamed token
     chatDone = Signal(str)       # verbose stats line ("" if none)
     chatError = Signal(str)
+    chatStopped = Signal()       # Stop was pressed; the run is over, say nothing
     modelsLoaded = Signal(str)   # JSON array of model names
+    allModelsLoaded = Signal(str)  # local names AND cloud refs, for automations
     cloudLoaded = Signal(str)    # JSON {active, providers:[{provider, model}]}
     cloudModelsListed = Signal(str, str)  # provider, JSON array of model ids
     chatSourceChanged = Signal(str)       # "local" or "api"
@@ -158,6 +160,11 @@ class Backend(QObject):
     def __init__(self):
         super().__init__()
         self._stop = False
+        # Every HTTP response a generation is reading from right now, so Stop
+        # can cut them. See _abort_live for why that is a shutdown().
+        self._live = set()
+        self._live_lock = threading.Lock()
+        self._speech = None
         self._turbo = False          # route chat to the Turbo server?
         self._turbo_proc = None      # the genesi-ai-turbo serve subprocess
         self._turbo_model = None
@@ -650,7 +657,7 @@ class Backend(QObject):
             stop = max(head.rfind(". "), head.rfind("! "), head.rfind("? "))
             text = head[:stop + 1] if stop > 300 else head
         try:
-            subprocess.Popen(["genesi-ai-voice", "say", text],
+            self._speech = subprocess.Popen(["genesi-ai-voice", "say", text],
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL,
                              start_new_session=True)
@@ -673,6 +680,33 @@ class Backend(QObject):
             return r.returncode == 0, (r.stdout or r.stderr or "").strip()
         except (OSError, subprocess.SubprocessError) as e:
             return False, str(e)
+
+    @Slot()
+    def loadAllModels(self):
+        """Local models and every configured provider, in one list.
+
+        For the automations and the workflow builder, where the model is a
+        saved setting on a block rather than a live Local | API choice: the
+        chat keeps them apart, and a block just needs to name one. Cloud refs
+        come last and are labelled "(API)" -- a block that fires on a schedule
+        bills on every run, and that should be visible where it is chosen.
+        """
+        def work():
+            names = []
+            if self._ensure_ollama():
+                try:
+                    with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=4) as r:
+                        data = json.loads(r.read().decode())
+                    names = [m.get("name") for m in data.get("models", [])
+                             if m.get("name")]
+                except Exception:
+                    names = []
+            names += [g["ref"] for g in turbo_ctl.list_gguf_models()]
+            if assist is not None:
+                names += [CLOUD_PREFIX + p
+                          for p in sorted(assist.cloud_store()["providers"])]
+            self.allModelsLoaded.emit(json.dumps(names))
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot()
     def loadCloud(self):
@@ -767,7 +801,9 @@ class Backend(QObject):
             who = model[len(CLOUD_PREFIX):]
             c = self._cloud_config(who) or {}
             what = c.get("model") or ""
-            return f"{who} · {what}" if what else who
+            # "(API)" on the end: in a list that mixes both -- an automation's
+            # model picker -- a request that bills should say so.
+            return (f"{who} · {what} (API)" if what else f"{who} (API)")
         return turbo_ctl.model_label(model)
 
     @Slot(str, result=bool)
@@ -978,15 +1014,16 @@ class Backend(QObject):
             # llama-server before the tool loop can talk to it. Already on a
             # worker thread, so blocking here is safe.
             if str(model).startswith(CLOUD_PREFIX):
-                # The agent runs tools, reads files and asks for approval
-                # through a loop built on the local transports. Pointing it at
-                # a hosted model would need that whole loop ported; saying so
-                # is better than half-doing it and better than a silent
-                # nothing.
-                msg = ("Agent mode runs on a local model. Pick one, or switch "
-                       "off agent mode to use the hosted model.")
-                self._agent_status("error", error=msg)
-                self.chatError.emit(msg)
+                # A hosted model runs the SAME loop: the tools, the approval
+                # gate and the step limit are all on this machine, and only
+                # the "what should I do next" reply comes from the provider.
+                # Nothing to load, so no transport to prepare.
+                if not self._cloud_config(str(model)[len(CLOUD_PREFIX):]):
+                    msg = "No API key is set for that provider."
+                    self._agent_status("error", error=msg)
+                    self.chatError.emit(msg)
+                    return
+                self._agent_work(model, messages, mode)
                 return
             _, ok, err = self._prepare_transport(model)
             if not ok:
@@ -1039,8 +1076,21 @@ class Backend(QObject):
             self._agent_pending.pop(request_id, None)
         return bool(pending["approved"] and not self._stop)
 
+    def _cloud_reply(self, model, messages, max_tokens):
+        """One step's reply from a provider, stoppable, counted."""
+        provider = str(model)[len(CLOUD_PREFIX):]
+        cloud = self._cloud_config(provider)
+        if not cloud:
+            raise RuntimeError(f"No API key is set for {provider}.")
+        return assist.cloud_complete(
+            cloud, {"messages": messages, "max_tokens": max_tokens,
+                    "temperature": 0.2},
+            900, on_response=self._track)
+
     def _agent_model_reply(self, model, messages):
         payload_messages = [{"role": "system", "content": agent_system_prompt()}, *messages]
+        if str(model).startswith(CLOUD_PREFIX):
+            return self._cloud_reply(model, payload_messages, 1024)
         # A GGUF is served by llama-server, so the agent loop must use the Turbo
         # transport for it even when the Turbo switch is off (same rule as chat).
         if self._turbo or turbo_ctl.is_gguf_ref(model):
@@ -1083,12 +1133,14 @@ class Backend(QObject):
                 response.close()
                 raise RuntimeError("Agent request stopped.")
             self._agent_response = response
+        self._track(response)
         try:
             return response.read()
         finally:
             with self._agent_job_lock:
                 if self._agent_response is response:
                     self._agent_response = None
+            self._untrack(response)
             response.close()
 
     def _agent_work(self, model, messages, mode):
@@ -1099,7 +1151,6 @@ class Backend(QObject):
         try:
             for _step in range(8):
                 if self._stop:
-                    self.chatDone.emit("")
                     self._agent_status("stopped")
                     return
                 was_direct = bool(direct_action)
@@ -1110,7 +1161,6 @@ class Backend(QObject):
                 else:
                     response = self._agent_model_reply(model, messages).strip()
                     if self._stop:
-                        self.chatDone.emit("")
                         self._agent_status("stopped")
                         return
                     action = parse_agent_action(response)
@@ -1156,7 +1206,6 @@ class Backend(QObject):
                 presentation = action_presentation(action)
                 approved = mode != "approval" or self._wait_for_approval(action)
                 if self._stop:
-                    self.chatDone.emit("")
                     self._agent_status("stopped", id=action_id, tool=action["tool"],
                                        title=presentation["title"], icon=presentation["icon"])
                     return
@@ -1170,7 +1219,6 @@ class Backend(QObject):
                                        description=presentation["description"], icon=presentation["icon"])
                     result = self._tool_executor.execute(action["tool"], action["arguments"])
                     if self._stop:
-                        self.chatDone.emit("")
                         self._agent_status("stopped", id=action_id, tool=action["tool"],
                                            title=presentation["title"], icon=presentation["icon"])
                         return
@@ -1210,7 +1258,6 @@ class Backend(QObject):
             self._agent_status("limit-reached")
         except Exception as exc:
             if self._stop:
-                self.chatDone.emit("")
                 self._agent_status("stopped")
             else:
                 self.chatError.emit("Agent: " + str(exc))
@@ -1298,7 +1345,8 @@ class Backend(QObject):
             _text, tin, tout = assist.cloud_stream(
                 cloud, payload, 900,
                 on_token=lambda t: self.chatToken.emit(t),
-                stop=lambda: self._stop)
+                stop=lambda: self._stop,
+                on_response=self._track)
         except urllib.error.HTTPError as e:
             self.chatError.emit(
                 f"{cloud.get('provider')} answered {e.code} {e.reason}. "
@@ -1333,9 +1381,10 @@ class Backend(QObject):
                                      headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=600) as r:
+                self._track(r)
                 for raw in r:
                     if self._stop:
-                        break
+                        return
                     raw = raw.strip()
                     if not raw:
                         continue
@@ -1346,9 +1395,13 @@ class Backend(QObject):
                     if obj.get("done"):
                         self.chatDone.emit(self._stats(obj))
                         return
-            self.chatDone.emit("")
+            if not self._stop:
+                self.chatDone.emit("")
         except Exception as e:
-            self.chatError.emit(str(e))
+            if not self._stop:
+                self.chatError.emit(str(e))
+        finally:
+            self._untrack_all_closed()
 
     def _chat_turbo(self, model, messages):
         # Talk to llama-server's OpenAI-compatible /v1/chat/completions so the
@@ -1373,9 +1426,10 @@ class Backend(QObject):
         timings = {}
         try:
             with urllib.request.urlopen(req, timeout=900) as r:
+                self._track(r)
                 for raw in r:
                     if self._stop:
-                        break
+                        return
                     line = raw.decode().strip()
                     if not line or not line.startswith("data:"):
                         continue
@@ -1405,14 +1459,72 @@ class Backend(QObject):
                     "prompt_s": round(pms / 1000.0, 2),
                     "total_s": round((pms + gms) / 1000.0, 2),
                 }))
-            else:
+            elif not self._stop:
                 self.chatDone.emit("")
         except Exception as e:
-            self.chatError.emit("Turbo: " + str(e))
+            if not self._stop:
+                self.chatError.emit("Turbo: " + str(e))
+        finally:
+            self._untrack_all_closed()
+
+    def _track(self, response):
+        with self._live_lock:
+            self._live.add(response)
+            stopped = self._stop
+        if stopped:
+            self._abort_live()
+
+    def _untrack_all_closed(self):
+        """Forget responses that are finished; they have nothing left to cut."""
+        with self._live_lock:
+            self._live = {r for r in self._live
+                          if not getattr(r, "closed", True)}
+
+    def _untrack(self, response):
+        with self._live_lock:
+            self._live.discard(response)
+
+    def _abort_live(self):
+        """Cut every connection a generation is reading from.
+
+        shutdown(), not close(). The reader is another thread blocked in
+        recv(), and closing a socket under a blocked recv() on Linux does not
+        wake it -- the read sits there until the server sends the next byte,
+        which for a model still loading or thinking is tens of seconds away,
+        and for a non-streaming agent request is the end of the whole answer.
+        That is "the stop button does not stop it". shutdown() wakes the
+        reader immediately, and the server sees the client go and stops
+        generating: Ollama and llama-server both cancel a request whose
+        connection is gone.
+        """
+        import socket as _socket
+        with self._live_lock:
+            live = list(self._live)
+        for resp in live:
+            try:
+                sock = resp.fp.raw._sock
+                sock.shutdown(_socket.SHUT_RDWR)
+            except Exception:
+                pass
+            # No resp.close() here. The reader closes it in its own `with`
+            # once shutdown() has woken it, and close() from THIS thread waits
+            # on the reader's buffer lock -- which, before shutdown existed,
+            # froze the window for as long as the model took to answer.
 
     @Slot()
     def stopChat(self):
         self._stop = True
+        self._abort_live()
+        # And the voice, if an answer is being read out. Stop means stop.
+        speech = self._speech
+        if speech is not None and speech.poll() is None:
+            try:
+                os.killpg(speech.pid, signal.SIGTERM)
+            except Exception:
+                try:
+                    speech.terminate()
+                except Exception:
+                    pass
         self._tool_executor.cancel()
         with self._agent_job_lock:
             response = self._agent_response
@@ -1424,6 +1536,13 @@ class Backend(QObject):
         with self._agent_lock:
             for pending in self._agent_pending.values():
                 pending["event"].set()
+        # Release the window NOW. It used to wait for the worker to notice and
+        # emit chatDone, which for a request that had not produced its first
+        # token yet was never soon -- so the button looked like it did nothing.
+        # chatStopped rather than chatDone: a finished answer is read aloud,
+        # and one cut off by Stop should not be.
+        self.chatStopped.emit()
+        self._agent_status("stopped")
 
     # ── chat history (local sessions) + MemPalace long-term memory ───────────
     # Each conversation is one JSON file under SESSIONS_DIR. The HISTORY rail
@@ -2454,6 +2573,10 @@ class Backend(QObject):
         """
         messages = [{"role": "system", "content": system},
                     {"role": "user", "content": user}]
+        # The workflow builder, on a hosted model: a design request is exactly
+        # where a large model earns its fee.
+        if str(model).startswith(CLOUD_PREFIX):
+            return self._cloud_reply(model, messages, 1600)
         if self._turbo or turbo_ctl.is_gguf_ref(model):
             body = json.dumps({"messages": messages, "stream": False,
                                "max_tokens": 1600, "cache_prompt": True}).encode()

@@ -1484,7 +1484,31 @@ pkgver=1.0.0
 # because it is a login service that kept running the code it started with:
 # after the last release the Monitor had the new features and Quick Chat did
 # not.
-pkgrel=198
+# 2026-09-17 (199): API models act, Stop stops, Quick Chat's settings open.
+#
+# Agent mode on a hosted model: the same loop, with the tools, the approval
+# gate and the step limit on this machine and only the next-step reply from
+# the provider. Each step is one counted request. The automations run on them
+# too -- an AI block, its agent steps, its JSON repair turn, an AI condition and
+# the workflow builder all ask through one branch -- and a block's model picker
+# lists API models labelled "(API)", because a block that fires on a schedule
+# bills on every run. Quick Chat's API side goes through the agent again.
+#
+# Stop did not stop. It set a flag each transport read between lines of the
+# reply, and a model still loading or thinking, or any non-streaming agent
+# step, sends no lines -- so the read sat blocked until the model finished,
+# and the close() meant to end it waited on the same lock and froze the
+# window for as long. It shuts the socket down now, which wakes the reader at
+# once and makes Ollama and llama-server see the client leave and stop
+# generating; the window is released immediately, a stopped answer is not
+# read aloud, and the voice stops too.
+#
+# Quick Chat's settings would not open. Its height, minimum and maximum were
+# all bindings, and raising the height past a maximum that had not moved yet
+# clamped it straight back, locking the window at the size of the bare bar.
+# They move in order now: maximum first when growing, minimum first when
+# shrinking.
+pkgrel=199
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

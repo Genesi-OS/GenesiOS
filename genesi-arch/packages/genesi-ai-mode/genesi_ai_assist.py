@@ -444,7 +444,7 @@ def cloud_models(cloud, timeout=15):
     return sorted(set(ids))
 
 
-def cloud_request(cloud, payload, timeout):
+def cloud_request(cloud, payload, timeout, on_response=None):
     """The HTTP request itself, in whichever shape the provider speaks.
 
     Returns (text, prompt_tokens, completion_tokens). Raises whatever urllib
@@ -472,6 +472,8 @@ def cloud_request(cloud, payload, timeout):
                      "x-api-key": cloud["key"],
                      "anthropic-version": ANTHROPIC_VERSION})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if on_response:
+                on_response(resp)
             data = json.load(resp)
         text = "".join(b.get("text", "") for b in data.get("content", [])
                        if b.get("type") == "text").strip()
@@ -486,6 +488,8 @@ def cloud_request(cloud, payload, timeout):
         headers={"Content-Type": "application/json",
                  "Authorization": "Bearer " + cloud["key"]})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
+        if on_response:
+            on_response(resp)
         data = json.load(resp)
     # `.get`, not indexing. A thinking model given a small budget -- Gemini
     # 2.5 given the eight tokens `genesi-ai-key test` used to ask for -- spends
@@ -504,7 +508,8 @@ def cloud_request(cloud, payload, timeout):
         int(use.get("completion_tokens") or 0)
 
 
-def cloud_stream(cloud, payload, timeout, on_token, stop=None):
+def cloud_stream(cloud, payload, timeout, on_token, stop=None,
+                 on_response=None):
     """Stream a completion, token by token, in whichever shape it speaks.
 
     Returns (whole text, prompt tokens, completion tokens) and counts ONE
@@ -547,6 +552,11 @@ def cloud_stream(cloud, payload, timeout, on_token, stop=None):
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
+            # Handed out so a Stop button can cut the socket. Checking `stop`
+            # between lines is not enough on its own: nothing arrives while a
+            # provider is still thinking, so the check never runs.
+            if on_response:
+                on_response(resp)
             for raw in resp:
                 if stop and stop():
                     break
@@ -600,6 +610,31 @@ def cloud_stream(cloud, payload, timeout, on_token, stop=None):
     usage_note("cloud", cloud.get("provider"), cloud.get("model"), ok=True,
                tokens=(tin, tout))
     return "".join(out), tin, tout
+
+
+def cloud_complete(cloud, payload, timeout, on_response=None):
+    """One whole answer from a provider, counted as one request.
+
+    For everything that is not a chat bubble filling in token by token: the
+    agent's steps, an automation's AI block, an AI condition, the workflow
+    builder. Each step of an agent loop is its own request and is counted as
+    its own use -- an agent that took four steps to open a file made four
+    requests, and a count that said one would be the count lying.
+
+    Raises on failure, unlike _ask_cloud: an agent or an automation that
+    silently fell back to a local model would be answering from somewhere
+    other than the model it names.
+    """
+    try:
+        text, tin, tout = cloud_request(cloud, payload, timeout,
+                                        on_response=on_response)
+    except Exception:
+        usage_note("cloud", cloud.get("provider"), cloud.get("model"),
+                   ok=False)
+        raise
+    usage_note("cloud", cloud.get("provider"), cloud.get("model"), ok=True,
+               tokens=(tin, tout))
+    return text
 
 
 def _ask_cloud(cloud, payload, timeout):

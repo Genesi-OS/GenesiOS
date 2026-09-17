@@ -289,6 +289,16 @@ Kirigami.Page {
             chatList.positionViewAtEnd()
             page.persist()          // save the conversation into the HISTORY rail
         }
+        function onChatStopped() {
+            // Keep what was already written; drop an empty placeholder.
+            if (page.currentAi >= 0 && page.currentAi < chatModel.count
+                && chatModel.get(page.currentAi).body.length === 0)
+                chatModel.remove(page.currentAi)
+            statsLabel.text = i18n.t("chat.ready")
+            page.busy = false
+            page.currentAi = -1
+            page.persist()
+        }
         function onChatError(e) {
             if (page.currentAi >= 0 && chatModel.get(page.currentAi).body.length === 0)
                 chatModel.remove(page.currentAi)   // drop the empty AI placeholder

@@ -538,7 +538,7 @@ Item {
                 onClicked: { var id = backend.createAutomation("New automation"); root.refreshList(); root.switchTo(id) } }
             GButton { theme: root.theme; kind: "tonal"; text: root.tight ? "" : "Build with AI"; iconSource: "icons/bot.svg"
                 tooltip: "Describe an automation and have it built"
-                onClicked: { backend.loadModels(); genPopup.open() } }
+                onClicked: { backend.loadAllModels(); genPopup.open() } }
             GButton { theme: root.theme; kind: "tonal"; text: root.tight ? "" : "Template"; iconSource: "icons/layout-grid.svg"
                 tooltip: root.tight ? "Start from a template" : ""
                 onClicked: templatePopup.open() }
@@ -1040,7 +1040,7 @@ Item {
             root.genName = res.name || ""
         }
         function onNoticeToast(msg) { root.toast(msg) }
-        function onModelsLoaded(jsonStr) {
+        function onAllModelsLoaded(jsonStr) {
             try { root.genModels = JSON.parse(jsonStr) } catch (e) { root.genModels = [] }
         }
     }

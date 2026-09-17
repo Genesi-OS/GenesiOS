@@ -89,6 +89,22 @@ except ImportError:                       # resource/app events degrade if absen
 
 import genesi_turbo_ctl as turbo_ctl       # noqa: E402  (after sys.path tweak)
 
+# The hosted providers: keys, dialects, request counting. Next to the Monitor's
+# libs in the installed tree; one level up in a checkout.
+for _d in ("/usr/share/genesi-ai-mode",
+           os.path.dirname(os.path.abspath(__file__))):
+    if os.path.isdir(_d) and _d not in sys.path:
+        sys.path.insert(0, _d)
+try:
+    import genesi_ai_assist as assist      # noqa: E402
+except ImportError:                        # pragma: no cover
+    assist = None
+
+# A model named `cloud:<provider>` is that provider's API, the same reference
+# the Monitor saves. A block that names one runs its AI through the provider;
+# the tools, the approval gate and the step limit stay on this machine.
+CLOUD_PREFIX = "cloud:"
+
 try:
     from genesi_agent import (             # noqa: E402
         LocalToolExecutor,
@@ -2057,12 +2073,25 @@ class Engine:
             self.status.log(aid, "AI Mode → on", "out")
 
         use_turbo = False
+        # A hosted model: nothing to load and no local server to wake. Checked
+        # first, because a cloud ref handed to the GGUF / Ollama path below
+        # would be asked of a server that has never heard of it.
+        is_cloud = str(model).startswith(CLOUD_PREFIX)
+        if is_cloud:
+            provider = str(model)[len(CLOUD_PREFIX):]
+            if assist is None or not assist.cloud_config(provider):
+                self.status.log(aid, "no API key is set for %s" % provider, "err")
+                return "err", ""
+            self.status.log(aid, "using %s's API (each step is one request)"
+                            % provider, "out")
         # A local GGUF can only be loaded by llama-server, so it needs Turbo
         # whether or not the node asked for it — otherwise picking a local model
         # in an automation would silently post to Ollama, which has never heard
         # of that file. The node's Turbo checkbox still controls the extras.
-        needs_turbo = want_turbo or turbo_ctl.is_gguf_ref(model)
-        if needs_turbo:
+        needs_turbo = (not is_cloud) and (want_turbo or turbo_ctl.is_gguf_ref(model))
+        if is_cloud:
+            pass
+        elif needs_turbo:
             if want_turbo:
                 self.status.log(aid, "ensuring Turbo on %s…" % (model or "?"), "out")
             else:
@@ -2181,6 +2210,19 @@ class Engine:
 
     def _ai_chat(self, model, messages, use_turbo, system=None):
         msgs = ([{"role": "system", "content": system}] if system else []) + messages
+        if str(model).startswith(CLOUD_PREFIX):
+            # Every place an automation asks a model -- an AI block, its agent
+            # steps, its JSON-repair turn, an AI condition -- comes through
+            # here, so this one branch is the whole integration. Counted per
+            # request by the shared module, like everything else that calls a
+            # provider.
+            provider = str(model)[len(CLOUD_PREFIX):]
+            cloud = assist.cloud_config(provider) if assist else None
+            if not cloud:
+                raise RuntimeError("no API key is set for %s" % provider)
+            return assist.cloud_complete(
+                cloud, {"messages": msgs, "max_tokens": 1024,
+                        "temperature": 0.2}, 900)
         if use_turbo:
             body = json.dumps({"messages": msgs, "stream": False,
                                "max_tokens": 768, "cache_prompt": True}).encode()

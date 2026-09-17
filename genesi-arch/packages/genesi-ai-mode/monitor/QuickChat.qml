@@ -8,7 +8,10 @@ import org.kde.kirigami as Kirigami
 QQC2.ApplicationWindow {
     id: root
     width: 720
-    height: expanded ? Math.min(620, Math.max(182, body.implicitHeight + 42)) : 92
+    // What the content needs. Not bound to `height` directly -- see below.
+    readonly property int wantedHeight: expanded
+        ? Math.min(620, Math.max(182, body.implicitHeight + 48)) : 92
+    height: 92
     // Minimum and maximum are the SAME number, and that number is the height
     // the content needs.
     //
@@ -24,10 +27,35 @@ QQC2.ApplicationWindow {
     // xdg_toplevel min and max, and when they are equal the window is that
     // size -- and when the content grows they both move, so the window grows
     // with it rather than being told it may.
-    minimumWidth: width
-    maximumWidth: width
-    minimumHeight: height
-    maximumHeight: height
+    //
+    // ...and they have to move in the right ORDER, which the first version of
+    // this got wrong and which is why the settings stopped opening. All three
+    // were bindings: `height` to the content, and min and max to `height`.
+    // Opening the settings raised `height` from 92 to 400 while the maximum was
+    // still 92, so the window clamped it straight back to 92 -- and then min
+    // and max followed the clamped height. The window was locked at the size of
+    // the bare prompt bar, with the settings laid out below it, out of sight.
+    //
+    // So nothing here is a binding. Growing moves the maximum first, then the
+    // height, then the minimum; shrinking does the reverse. Whichever way it
+    // goes, the height being set is always inside the bounds at that moment.
+    minimumWidth: 720
+    maximumWidth: 720
+    minimumHeight: 92
+    maximumHeight: 92
+    function applyHeight() {
+        const h = wantedHeight
+        if (h > height) {
+            maximumHeight = h
+            height = h
+            minimumHeight = h
+        } else if (h < height) {
+            minimumHeight = h
+            height = h
+            maximumHeight = h
+        }
+    }
+    onWantedHeightChanged: applyHeight()
     visible: false
     color: "transparent"
     flags: Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -138,7 +166,6 @@ QQC2.ApplicationWindow {
         activityText = "Stopping"
         pendingApproval = null
         technicalOpen = false
-        thinking = true
         backend.stopChat()
     }
     function addMessage(role, content) {
@@ -213,10 +240,10 @@ QQC2.ApplicationWindow {
         // transport, so pointing it at a provider would need the whole loop
         // ported -- and Quick Chat sends everything through the agent by
         // default, which would make picking the cloud here an error message.
-        if (source === "api")
-            backend.sendPrompt(currentRef, JSON.stringify(conversation))
-        else
-            backend.sendAgentPrompt(currentRef, JSON.stringify(conversation), actionMode)
+        // The same path for both sources now: the agent loop runs on this
+        // machine and asks the chosen model -- local or a provider's -- what
+        // to do next, so an API model can open apps and run commands too.
+        backend.sendAgentPrompt(currentRef, JSON.stringify(conversation), actionMode)
     }
     function resolveApproval(approved) {
         if (!pendingApproval) return
@@ -244,6 +271,9 @@ QQC2.ApplicationWindow {
     }
     Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.pollState() }
     Component.onCompleted: {
+        // One onCompleted per object: a second one is a load error that
+        // takes the whole window with it.
+        applyHeight()
         backend.loadModels()
         backend.loadCloud()
         backend.loadVoiceLanguages()
@@ -1091,6 +1121,11 @@ QQC2.ApplicationWindow {
         }
         function onSpeakAnswersChanged(on) { root.speakAnswers = on }
         function onVoiceReadyChanged(ready) { root.voiceReady = ready }
+        function onChatStopped() {
+            root.thinking = false
+            root.activityText = "Stopped"
+            prompt.forceActiveFocus()
+        }
         function onChatError(message) {
             root.thinking = false
             root.addMessage("assistant", message)

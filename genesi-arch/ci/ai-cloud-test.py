@@ -416,9 +416,16 @@ for what, pattern, why in (
      r"startswith\(CLOUD_PREFIX\)[\s\S]{0,200}_chat_cloud\(messages, str\(model\)",
      "sendPrompt does not pass the provider, so every chat goes to whichever "
      "one happens to be active"),
-    ("the agent refuses it",
-     r"startswith\(CLOUD_PREFIX\)[\s\S]{0,400}_agent_status\(\"error\"",
-     "sendAgentPrompt would hand a provider to the tool loop"),
+    # It used to REFUSE; it runs the loop now. The loop's tools and approval
+    # gate stay local and only the next-step reply comes from the provider --
+    # ci/ai-agent-cloud-test.py drives that end to end through the automation
+    # daemon, and these two make sure the Monitor's path reaches the same place.
+    ("the agent runs on an API model",
+     r"startswith\(CLOUD_PREFIX\)[\s\S]{0,700}self\._agent_work\(model, messages, mode\)",
+     "sendAgentPrompt does not hand a cloud ref to the agent loop"),
+    ("each agent step asks the provider",
+     r"def _agent_model_reply[\s\S]{0,300}startswith\(CLOUD_PREFIX\)[\s\S]{0,80}_cloud_reply\(",
+     "_agent_model_reply sends a cloud ref to Ollama or Turbo"),
     ("the streaming goes through the shared module",
      r"assist\.cloud_stream\(",
      "the Monitor speaks to the provider itself, which is a second place "
@@ -430,12 +437,16 @@ for what, pattern, why in (
         bad(what, why)
 
 quick = re.sub(r"//[^\n]*", "", io.open(QUICK, encoding="utf-8").read())
-if not re.search(r'source\s*===\s*"api"\)\s*\n\s*backend\.sendPrompt\(', quick):
-    bad("Quick Chat sends an API question past the agent loop",
-        "it sends everything through sendAgentPrompt, which refuses a cloud "
-        "ref -- so choosing API there is an error message, not an answer")
+if re.search(r'backend\.sendPrompt\(\s*currentRef', quick):
+    bad("Quick Chat's API questions can act",
+        "Quick Chat sends an API question through the plain chat path, so an "
+        "API model there can talk but not do anything")
+elif not re.search(r'backend\.sendAgentPrompt\(\s*currentRef', quick):
+    bad("Quick Chat sends the chosen source's ref to the agent",
+        "no sendAgentPrompt(currentRef, ...) -- the Local | API choice does "
+        "not reach the request")
 else:
-    ok("Quick Chat sends an API question through the plain chat path")
+    ok("Quick Chat sends both sources through the agent loop")
 
 # ── The store of providers ─────────────────────────────────────────────────
 #
