@@ -89,6 +89,13 @@ jobs:
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh
 
+      # A gate that answers "false" skips the ISO and reports success, so the
+      # download page can go stale for a week while every build looks green.
+      # The step's own shell is executed here against a stubbed `gh`.
+      - name: The ISO pipeline's gate decides correctly
+        shell: bash
+        run: python genesi-arch/ci/iso-gate-test.py
+
       - name: genesi-report does not leak the reporter
         shell: bash
         run: bash genesi-arch/ci/report-redaction-test.sh
