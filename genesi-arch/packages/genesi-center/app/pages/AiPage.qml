@@ -70,7 +70,7 @@ Item {
     // What the picker is on, before anything is saved. Follows whatever is
     // configured, so opening the page on a machine with a key set shows that
     // provider rather than an arbitrary first entry.
-    property string picked: page.cloud.provider || "gemini"
+    property string picked: "gemini"
 
     // What the last TEST said. It used to go to a terminal, which ran the
     // command, printed one line and closed with it -- reported as "the test
@@ -79,6 +79,25 @@ Item {
     property string testResult: ""
     property bool testOk: false
     property bool testing: false
+    // Which provider the result belongs to -- there is a TEST per provider
+    // now, and a result drawn under the wrong one is worse than none.
+    property string testProvider: ""
+
+    readonly property var configured: page.cloud.providers || []
+    // The default model for a provider, for the add row's placeholder.
+    function defaultModel(id) {
+        const known = page.cloud.known || [];
+        for (const k of known)
+            if (k.id === id)
+                return k.model;
+        return "";
+    }
+    function labelOf(id) {
+        for (const p of page.cloudProviders)
+            if (p.id === id)
+                return p.label;
+        return id;
+    }
 
     readonly property int localCalls:
         (page.usage.local && page.usage.local.requests) || 0
@@ -374,140 +393,217 @@ Item {
 
                     SettingRow {
                         width: parent.width
-                        label: qsTr("Cloud model")
-                        description: page.cloud.configured
-                            ? qsTr("%1 · %2, key %3. Used for %4.")
-                              .arg(page.cloud.provider || "")
-                              .arg(page.cloud.model || "")
-                              .arg(page.cloud.key_tail || "")
-                              .arg(page.cloud.use_for === "all"
-                                   ? qsTr("everything, including the helpers that "
-                                          + "fire on their own")
-                                   : qsTr("what you ask for; the automatic helpers "
-                                          + "stay local"))
-                            : qsTr("Everything runs on this machine. Add a key "
-                                   + "below to send what you ask for to a "
-                                   + "hosted model instead; the local one stays "
-                                   + "the fallback for everything it cannot "
-                                   + "reach.")
+                        visible: page.voice.ready === true
+                        height: visible ? implicitHeight : 0
+                        label: qsTr("Voice language")
+                        description: qsTr("Every language here runs from the "
+                                          + "files already installed — "
+                                          + "choosing one downloads nothing "
+                                          + "and uses no more memory.")
 
                         Row {
                             spacing: 8
 
-                            Rectangle {
+                            Select {
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: page.cloud.configured === true
-                                width: 62; height: 26; radius: Tokens.radiusSm
-                                color: testHov.hovered ? Tokens.cardHi : "transparent"
-                                border.width: 1
-                                border.color: testHov.hovered ? Tokens.accentDim : Tokens.line
-                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: page.testing ? qsTr("…") : qsTr("TEST")
-                                    color: Tokens.text
-                                    font.family: Tokens.mono
-                                    font.pixelSize: Tokens.fsMicro
-                                    font.letterSpacing: 1
-                                }
-                                HoverHandler { id: testHov; cursorShape: Qt.PointingHandCursor }
-                                TapHandler {
-                                    // The useful part of a failed test is
-                                    // WHICH failure -- 401 is a wrong key,
-                                    // 404 a wrong model -- and that is a
-                                    // sentence. It goes under this row now.
-                                    // It used to go to a terminal, which
-                                    // closed the moment the command ended.
-                                    onTapped: {
-                                        if (!page.backend || page.testing)
-                                            return;
-                                        page.testResult = "";
-                                        page.testing = true;
-                                        page.backend.testCloudKey();
-                                    }
-                                }
+                                width: 190
+                                options: (page.voice.languages || [])
+                                         .map(l => ({ id: l.id, label: l.label }))
+                                current: page.voice.language || ""
+                                onPicked: id => page.act(["genesi-ai-voice", "set",
+                                                          "--language", id])
                             }
 
-                            Rectangle {
+                            Select {
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: page.cloud.configured === true
-                                width: 62; height: 26; radius: Tokens.radiusSm
-                                color: clearHov.hovered ? Tokens.cardHi : "transparent"
-                                border.width: 1
-                                border.color: clearHov.hovered ? Tokens.accentDim : Tokens.line
-                                Behavior on color { ColorAnimation { duration: Tokens.quick } }
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: qsTr("CLEAR")
-                                    color: Tokens.textDim
-                                    font.family: Tokens.mono
-                                    font.pixelSize: Tokens.fsMicro
-                                    font.letterSpacing: 1
+                                width: 150
+                                options: {
+                                    const ls = page.voice.languages || [];
+                                    for (const l of ls)
+                                        if (l.id === page.voice.language)
+                                            return l.voices.map(v => ({ id: v, label: v }));
+                                    return [];
                                 }
-                                HoverHandler { id: clearHov; cursorShape: Qt.PointingHandCursor }
-                                TapHandler {
-                                    onTapped: if (page.backend)
-                                        page.backend.act(["genesi-ai-key", "clear"],
-                                                         "ai")
-                                }
+                                current: page.voice.voice || ""
+                                onPicked: id => page.act(["genesi-ai-voice", "set",
+                                                          "--voice", id])
                             }
-
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 116; height: 26; radius: Tokens.radiusSm
-                                color: "transparent"
-                                border.width: 1
-                                border.color: page.cloud.configured ? Tokens.accentDim
-                                                                    : Tokens.lineSoft
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: page.cloud.configured ? qsTr("KEY SET")
-                                                                : qsTr("LOCAL ONLY")
-                                    color: page.cloud.configured ? Tokens.accent
-                                                                 : Tokens.textFaint
-                                    font.family: Tokens.mono
-                                    font.pixelSize: Tokens.fsMicro
-                                    font.letterSpacing: 1
-                                }
-                            }
-                        }
-                    }
-
-                    // What the test answered. Not a toast: a 404 naming a
-                    // model is worth reading twice, and something that fades
-                    // cannot be.
-                    Item {
-                        width: parent.width
-                        visible: page.testResult !== "" || page.testing
-                        height: visible ? resultText.implicitHeight + 16 : 0
-
-                        Text {
-                            id: resultText
-                            anchors {
-                                left: parent.left; right: parent.right
-                                verticalCenter: parent.verticalCenter
-                                leftMargin: 14; rightMargin: 14
-                            }
-                            wrapMode: Text.WordWrap
-                            text: page.testing
-                                  ? qsTr("asking the provider…")
-                                  : page.testResult
-                            color: page.testing ? Tokens.textDim
-                                 : (page.testOk ? Tokens.accent : "#E58A7B")
-                            font.family: Tokens.mono
-                            font.pixelSize: 11
                         }
                     }
 
                     SettingRow {
                         width: parent.width
-                        label: qsTr("API key")
-                        description: qsTr("Pick who it is for, paste the key, "
-                                          + "save. It is sent to the tool on "
-                                          + "its standard input, so it never "
-                                          + "appears in a command line, in "
-                                          + "`ps`, or in a shell history — and "
-                                          + "this page never shows it back.")
+                        label: qsTr("Hosted models")
+                        description: page.configured.length === 0
+                            ? qsTr("Everything runs on this machine. Add a key "
+                                   + "below to be able to switch a chat to a "
+                                   + "provider's API — the AI Mode Monitor and "
+                                   + "Quick Chat have a Local | API switch for it.")
+                            : qsTr("One key per provider. Type the model the "
+                                   + "way the provider names it. The one in use "
+                                   + "is what the API side of a chat starts on.")
+                    }
+
+                    // One row per provider with a key.
+                    Repeater {
+                        model: page.configured
+
+                        delegate: Column {
+                            id: prow
+                            required property var modelData
+                            width: extraCol.width
+                            spacing: 0
+
+                            Item {
+                                width: parent.width
+                                height: 48
+
+                                Column {
+                                    anchors { left: parent.left; leftMargin: 14
+                                              verticalCenter: parent.verticalCenter }
+                                    spacing: 2
+                                    Text {
+                                        text: page.labelOf(prow.modelData.provider)
+                                        color: Tokens.textHi
+                                        font.family: Tokens.sans
+                                        font.pixelSize: 13
+                                    }
+                                    Text {
+                                        text: qsTr("key %1").arg(prow.modelData.key_tail || "")
+                                        color: Tokens.textFaint
+                                        font.family: Tokens.mono
+                                        font.pixelSize: Tokens.fsMicro
+                                    }
+                                }
+
+                                Row {
+                                    anchors { right: parent.right; rightMargin: 14
+                                              verticalCenter: parent.verticalCenter }
+                                    spacing: 8
+
+                                    // The model, typed. Saved on Enter -- a
+                                    // half-typed name must not be written while
+                                    // somebody is still typing it.
+                                    Field {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 240
+                                        height: 26
+                                        text: prow.modelData.model || ""
+                                        placeholder: page.defaultModel(prow.modelData.provider)
+                                        onAccepted: value => page.act(
+                                            ["genesi-ai-key", "model",
+                                             prow.modelData.provider, value.trim()])
+                                    }
+
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 70; height: 26; radius: Tokens.radiusSm
+                                        color: useHov.hovered && !prow.modelData.active
+                                               ? Tokens.cardHi : "transparent"
+                                        border.width: 1
+                                        border.color: prow.modelData.active ? Tokens.accentDim
+                                                                            : Tokens.line
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: prow.modelData.active ? qsTr("IN USE")
+                                                                        : qsTr("USE")
+                                            color: prow.modelData.active ? Tokens.accent
+                                                                         : Tokens.text
+                                            font.family: Tokens.mono
+                                            font.pixelSize: Tokens.fsMicro
+                                            font.letterSpacing: 1
+                                        }
+                                        HoverHandler { id: useHov; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler {
+                                            onTapped: if (!prow.modelData.active)
+                                                page.act(["genesi-ai-key", "use",
+                                                          prow.modelData.provider])
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 62; height: 26; radius: Tokens.radiusSm
+                                        color: tHov.hovered ? Tokens.cardHi : "transparent"
+                                        border.width: 1
+                                        border.color: tHov.hovered ? Tokens.accentDim : Tokens.line
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: page.testing && page.testProvider === prow.modelData.provider
+                                                  ? qsTr("…") : qsTr("TEST")
+                                            color: Tokens.text
+                                            font.family: Tokens.mono
+                                            font.pixelSize: Tokens.fsMicro
+                                            font.letterSpacing: 1
+                                        }
+                                        HoverHandler { id: tHov; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler {
+                                            // On the page, not in a terminal:
+                                            // a terminal closed the moment the
+                                            // command ended.
+                                            onTapped: {
+                                                if (!page.backend || page.testing)
+                                                    return;
+                                                page.testProvider = prow.modelData.provider;
+                                                page.testResult = "";
+                                                page.testing = true;
+                                                page.backend.testCloudKey(prow.modelData.provider);
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 70; height: 26; radius: Tokens.radiusSm
+                                        color: rmHov.hovered ? Tokens.cardHi : "transparent"
+                                        border.width: 1
+                                        border.color: Tokens.line
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: qsTr("REMOVE")
+                                            color: Tokens.textDim
+                                            font.family: Tokens.mono
+                                            font.pixelSize: Tokens.fsMicro
+                                            font.letterSpacing: 1
+                                        }
+                                        HoverHandler { id: rmHov; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler {
+                                            onTapped: page.act(["genesi-ai-key", "remove",
+                                                                prow.modelData.provider])
+                                        }
+                                    }
+                                }
+                            }
+
+                            // What this provider's test answered.
+                            Text {
+                                width: parent.width - 28
+                                x: 14
+                                visible: page.testProvider === prow.modelData.provider
+                                         && (page.testResult !== "" || page.testing)
+                                height: visible ? implicitHeight + 10 : 0
+                                wrapMode: Text.WordWrap
+                                text: page.testing ? qsTr("asking the provider…")
+                                                   : page.testResult
+                                color: page.testing ? Tokens.textDim
+                                     : (page.testOk ? Tokens.accent : "#E58A7B")
+                                font.family: Tokens.mono
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+
+                    SettingRow {
+                        width: parent.width
+                        label: page.configured.length === 0 ? qsTr("Add an API key")
+                                                            : qsTr("Add another")
+                        description: qsTr("Pick the provider, type the model it "
+                                          + "should answer with, paste the key. "
+                                          + "The key goes to the tool on its "
+                                          + "standard input, so it never "
+                                          + "appears in a command line or a "
+                                          + "shell history, and this page never "
+                                          + "shows it back.")
 
                         Row {
                             spacing: 8
@@ -521,10 +617,17 @@ Item {
                             }
 
                             Field {
-                                id: keyField
-
+                                id: newModel
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 190
+                                height: 26
+                                placeholder: page.defaultModel(page.picked)
+                            }
+
+                            Field {
+                                id: keyField
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 170
                                 height: 26
                                 secret: true
                                 placeholder: qsTr("paste key")
@@ -536,33 +639,29 @@ Item {
                                 objectName: "saveKey"
 
                                 function save() {
-                                    if (keyField.text.trim() === ""
-                                        || !page.backend)
+                                    if (keyField.text.trim() === "" || !page.backend)
                                         return;
                                     page.backend.setCloudKey(
-                                        page.picked, "",
+                                        page.picked, newModel.text.trim(),
                                         page.cloud.use_for || "manual",
                                         keyField.text);
-                                    // Cleared straight away. The field holds
-                                    // a secret for exactly as long as it takes
-                                    // to hand it over, and an app left open
-                                    // for a week should not still have it on
-                                    // screen behind the dots.
+                                    // Cleared straight away: the field holds a
+                                    // secret only as long as it takes to hand
+                                    // it over.
                                     keyField.clear();
+                                    newModel.clear();
                                 }
 
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 60; height: 26; radius: Tokens.radiusSm
                                 color: saveHov.hovered ? Tokens.cardHi : "transparent"
                                 border.width: 1
-                                border.color: keyField.text !== ""
-                                              ? Tokens.accentDim : Tokens.line
+                                border.color: keyField.text !== "" ? Tokens.accentDim : Tokens.line
                                 Behavior on color { ColorAnimation { duration: Tokens.quick } }
                                 Text {
                                     anchors.centerIn: parent
                                     text: qsTr("SAVE")
-                                    color: keyField.text !== "" ? Tokens.text
-                                                                : Tokens.textFaint
+                                    color: keyField.text !== "" ? Tokens.text : Tokens.textFaint
                                     font.family: Tokens.mono
                                     font.pixelSize: Tokens.fsMicro
                                     font.letterSpacing: 1

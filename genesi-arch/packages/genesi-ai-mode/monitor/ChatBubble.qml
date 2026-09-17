@@ -250,6 +250,11 @@ Item {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
                                 readonly property bool turbo: b.statsData && b.statsData.mode === "turbo"
+                                // An answer from a provider said "Ollama" on
+                                // its badge, because the badge knew two
+                                // transports and called everything that was
+                                // not Turbo by the other name.
+                                readonly property bool cloud: b.statsData && b.statsData.mode === "cloud"
                                 radius: 7; height: 22
                                 width: badgeRow.implicitWidth + 16
                                 color: turbo ? Qt.rgba(230/255, 126/255, 34/255, 0.18)
@@ -267,7 +272,12 @@ Item {
                                     QQC2.Label {
                                         id: badgeLbl
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: modeBadge.turbo ? "Turbo" : "Ollama"
+                                        text: modeBadge.turbo ? "Turbo"
+                                            : (modeBadge.cloud
+                                               ? ((b.statsData.provider || "API")
+                                                  + (b.statsData.model
+                                                     ? " · " + b.statsData.model : ""))
+                                               : "Ollama")
                                         font.pixelSize: 10; font.bold: true
                                         color: modeBadge.turbo ? "#F8B24D" : b._accent
                                     }
@@ -277,6 +287,10 @@ Item {
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 4
+                                // No rate for a hosted answer: the provider
+                                // does not report one, and "undefined tok/s"
+                                // is what printing a missing number looks like.
+                                visible: b.statsData && b.statsData.rate !== undefined
                                 QQC2.Label {
                                     text: b.statsData ? b.statsData.rate : ""
                                     font.bold: true; font.pixelSize: 17

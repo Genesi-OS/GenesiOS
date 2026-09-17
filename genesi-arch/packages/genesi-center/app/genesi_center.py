@@ -245,8 +245,8 @@ class Backend(QObject):
 
     cloudTested = Signal(str, bool)
 
-    @Slot()
-    def testCloudKey(self):
+    @Slot(str)
+    def testCloudKey(self, provider):
         """One real request, and the answer on the page.
 
         This used to open a terminal, on the reasoning that the useful part of
@@ -261,7 +261,10 @@ class Backend(QObject):
         """
         def body():
             try:
-                r = subprocess.run(["genesi-ai-key", "test"],
+                # One provider at a time: with a key per provider, "test"
+                # has to say which one answered.
+                argv = ["genesi-ai-key", "test"] + ([str(provider)] if provider else [])
+                r = subprocess.run(argv,
                                    capture_output=True, text=True, timeout=40,
                                    encoding="utf-8", errors="replace")
             except (OSError, subprocess.SubprocessError) as e:

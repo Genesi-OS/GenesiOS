@@ -160,7 +160,15 @@ pkgver=0.1.0
 # terminal (the Kokoro install: a download plus a pip install) goes through
 # inTerminal, which uses whichever terminal is installed and keeps the window
 # open when the command ends.
-pkgrel=32
+# 33: a list of providers, and the voice's language.
+#
+# One key per provider now, so the AI page lists them: each with the model it
+# answers with (typed as the provider names it, saved on Enter), USE to make it
+# the one a chat starts on, its own TEST whose answer is drawn under it, and
+# REMOVE. Adding another key keeps the ones already set. And a Voice language
+# row, with the voices that language has -- all of them run from the files the
+# install already fetched.
+pkgrel=33
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

@@ -62,11 +62,34 @@ Kirigami.Page {
     // time is not a preference.
     property bool speakAnswers: false
 
+    // Where the question goes: a model on this machine, or a provider's API.
+    // Two questions that used to be one list -- a provider sat in the middle
+    // of the local models, which is the wrong shape for "my machine or
+    // somebody else's". Remembered by the backend, and shared with Quick Chat.
+    property string source: "local"
+    property var cloudProviders: []      // [{provider, model, ref}]
+    property string cloudProvider: ""
+    property var cloudSuggestions: []
+    property var voiceLanguages: []
+    property string voiceLanguage: ""
+    readonly property string cloudModel: {
+        for (var i = 0; i < page.cloudProviders.length; ++i)
+            if (page.cloudProviders[i].provider === page.cloudProvider)
+                return page.cloudProviders[i].model
+        return ""
+    }
+    readonly property string currentRef: page.source === "api"
+        ? (page.cloudProvider ? "cloud:" + page.cloudProvider : "")
+        : modelCombo.currentText
+
     Component.onCompleted: {
         backend.loadModels()
         page.agentMode = backend.agentMode()
         page.voiceReady = backend.voiceReady()
         page.speakAnswers = backend.speakAnswers()
+        page.source = backend.chatSource()
+        backend.loadCloud()
+        backend.loadVoiceLanguages()
         // The cached answer first, then ask again in the background: somebody
         // who has just installed Kokoro should not have to know that this
         // window caches it.
@@ -92,6 +115,8 @@ Kirigami.Page {
         if (!s || s.length === 0) return i18n.t("chat.ready")
         try {
             var d = JSON.parse(s)
+            if (d.mode === "cloud")
+                return (d.provider || "API") + "  ·  " + (d.eval || 0) + " tokens"
             return (d.mode === "turbo" ? "⚡ " : "") + d.rate + " tok/s  ·  " + d.eval + " tokens"
         } catch (e) {
             return s
@@ -103,7 +128,7 @@ Kirigami.Page {
         if (page.busy || q.length === 0)
             return
         // Find needs no model loaded; the chat does.
-        if (!page.findMode && modelCombo.currentText.length === 0)
+        if (!page.findMode && page.currentRef.length === 0)
             return
         if (page.findMode) {
             chatModel.append({ "role": "user", "body": q, "stats": "" })
@@ -132,9 +157,9 @@ Kirigami.Page {
         page.busy = true
         statsLabel.text = i18n.t("chat.generating")
         if (page.agentMode === "chat")
-            backend.sendPrompt(modelCombo.currentText, JSON.stringify(msgs))
+            backend.sendPrompt(page.currentRef, JSON.stringify(msgs))
         else
-            backend.sendAgentPrompt(modelCombo.currentText, JSON.stringify(msgs), page.agentMode)
+            backend.sendAgentPrompt(page.currentRef, JSON.stringify(msgs), page.agentMode)
         input.text = ""
         chatList.positionViewAtEnd()
     }
@@ -209,7 +234,33 @@ Kirigami.Page {
             modelCombo.model = arr
             if (arr.length > 0 && modelCombo.currentIndex < 0)
                 modelCombo.currentIndex = 0
-            noModels.visible = arr.length === 0
+            noModels.visible = arr.length === 0 && page.source === "local"
+        }
+        function onCloudLoaded(jsonStr) {
+            var d = {}
+            try { d = JSON.parse(jsonStr) } catch (e) {}
+            page.cloudProviders = d.providers || []
+            var keep = false
+            for (var i = 0; i < page.cloudProviders.length; ++i)
+                if (page.cloudProviders[i].provider === page.cloudProvider)
+                    keep = true
+            if (!keep)
+                page.cloudProvider = d.active || (page.cloudProviders.length
+                                                  ? page.cloudProviders[0].provider : "")
+        }
+        function onCloudModelsListed(provider, jsonStr) {
+            if (provider !== page.cloudProvider) return
+            try { page.cloudSuggestions = JSON.parse(jsonStr) } catch (e) {}
+        }
+        function onVoiceLanguagesLoaded(jsonStr) {
+            var d = {}
+            try { d = JSON.parse(jsonStr) } catch (e) {}
+            page.voiceLanguages = d.languages || []
+            page.voiceLanguage = d.language || ""
+        }
+        function onChatSourceChanged(src) {
+            page.source = src
+            noModels.visible = modelCombo.count === 0 && src === "local"
         }
         function onChatToken(t) {
             if (page.currentAi < 0) return
@@ -452,7 +503,7 @@ Kirigami.Page {
                     QQC2.Label {
                         id: localTag
                         anchors.centerIn: parent
-                        text: "Local"
+                        text: page.source === "api" ? "API" : "Local"
                         color: theme.accentText
                         font.pixelSize: theme.fsMicro
                         font.bold: true
@@ -965,11 +1016,135 @@ Kirigami.Page {
                             }
                         }
 
+                        // The language the answers are read out in, beside
+                        // the switch that turns reading on. Every one runs
+                        // from the files the install already fetched.
+                        QQC2.ComboBox {
+                            visible: page.voiceReady && page.speakAnswers
+                                     && page.voiceLanguages.length > 0
+                            width: 150
+                            height: 26
+                            font.pixelSize: theme.fsMicro
+                            textRole: "label"
+                            valueRole: "id"
+                            model: page.voiceLanguages
+                            currentIndex: {
+                                for (var i = 0; i < page.voiceLanguages.length; ++i)
+                                    if (page.voiceLanguages[i].id === page.voiceLanguage)
+                                        return i
+                                return -1
+                            }
+                            onActivated: backend.setVoiceLanguage(
+                                page.voiceLanguages[currentIndex].id)
+                        }
+
+                        // Local | API. One switch for where the question goes,
+                        // then the choices that belong to that answer -- a
+                        // model on this disk, or a provider and a model named
+                        // the way that provider names it.
+                        Rectangle {
+                            width: srcRow.implicitWidth + 4
+                            height: 26
+                            radius: theme.rPill
+                            color: "transparent"
+                            border.width: 1
+                            border.color: theme.hairline
+                            Row {
+                                id: srcRow
+                                anchors.centerIn: parent
+                                spacing: 2
+                                Repeater {
+                                    model: [{ "id": "local", "label": "Local" },
+                                            { "id": "api", "label": "API" }]
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        readonly property bool on: page.source === modelData.id
+                                        width: srcLbl.implicitWidth + theme.sp3
+                                        height: 22
+                                        radius: theme.rPill
+                                        color: on ? theme.a(theme.green, 0.22)
+                                                  : (srcMa.containsMouse ? theme.hover : "transparent")
+                                        QQC2.Label {
+                                            id: srcLbl
+                                            anchors.centerIn: parent
+                                            text: modelData.label
+                                            color: parent.on ? theme.textHi : theme.textMid
+                                            font.pixelSize: theme.fsMicro
+                                            font.bold: parent.on
+                                        }
+                                        MouseArea {
+                                            id: srcMa
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: backend.setChatSource(modelData.id)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // API, with nothing to use: say where a key goes,
+                        // rather than show an empty picker.
+                        Rectangle {
+                            visible: page.source === "api" && page.cloudProviders.length === 0
+                            width: noKeyLbl.implicitWidth + theme.sp3
+                            height: 26
+                            radius: theme.rPill
+                            color: theme.a(theme.red, 0.10)
+                            border.width: 1
+                            border.color: theme.a(theme.red, 0.35)
+                            QQC2.Label {
+                                id: noKeyLbl
+                                anchors.centerIn: parent
+                                text: "No API key — add one in Genesi Center › Local AI"
+                                color: theme.textMid
+                                font.pixelSize: theme.fsMicro
+                            }
+                        }
+
+                        // The provider.
+                        QQC2.ComboBox {
+                            id: providerCombo
+                            visible: page.source === "api" && page.cloudProviders.length > 0
+                            width: 130
+                            height: 26
+                            font.pixelSize: theme.fsMicro
+                            model: page.cloudProviders.map(function (p) { return p.provider })
+                            currentIndex: Math.max(0, model.indexOf(page.cloudProvider))
+                            onActivated: {
+                                page.cloudProvider = model[currentIndex]
+                                page.cloudSuggestions = []
+                                backend.useCloudProvider(page.cloudProvider)
+                            }
+                        }
+
+                        // The model, typed as the company names it -- with
+                        // the provider's own list offered, asked of it when
+                        // the list is opened rather than shipped in a package
+                        // that is out of date before anybody reads it.
+                        QQC2.ComboBox {
+                            id: cloudModelCombo
+                            visible: providerCombo.visible
+                            editable: true
+                            width: 230
+                            height: 26
+                            font.pixelSize: theme.fsMicro
+                            model: page.cloudSuggestions
+                            editText: page.cloudModel
+                            onPressedChanged: if (pressed && page.cloudSuggestions.length === 0)
+                                                  backend.listCloudModels(page.cloudProvider)
+                            onAccepted: backend.setCloudModel(page.cloudProvider, editText)
+                            onActivated: backend.setCloudModel(page.cloudProvider,
+                                                               page.cloudSuggestions[currentIndex])
+                        }
+
                         // The model chip. The combo underneath is invisible and
                         // does the work: writing a popup list from scratch to
                         // get a chip-shaped button would be a lot of surface
                         // area for a rounded corner.
                         Rectangle {
+                            visible: page.source === "local"
                             width: modelChipRow.implicitWidth + theme.sp3
                             height: 26
                             radius: theme.rPill

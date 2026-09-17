@@ -8,9 +8,10 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 import urllib.request
 
-from PySide6.QtCore import QUrl, Signal, Slot
+from PySide6.QtCore import QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -20,7 +21,7 @@ import genesi_turbo_ctl as turbo_ctl
 # moment of use. The constant this used to import was renamed to
 # LOCAL_TURBO when that landed, and Quick Chat was not updated with it —
 # so it has been dying on the import ever since, on every login.
-from genesi_ai_monitor import Backend, CLOUD_PREFIX, OLLAMA, _turbo_base
+from genesi_ai_monitor import Backend, OLLAMA, _turbo_base
 
 
 APP_ID = "org.genesi.aiquick"
@@ -108,14 +109,10 @@ class QuickBackend(Backend):
             local = turbo_ctl.list_gguf_models()
             if local:
                 model = local[0]["ref"]
-        # ...and last of all, the hosted model, when one is configured. Last
-        # because it bills per request and should be chosen rather than
-        # defaulted into -- but "no model available" on a machine that has a
-        # key set is Quick Chat refusing to use the thing it was given.
-        if not model:
-            cloud = self._cloud_config()
-            if cloud:
-                model = CLOUD_PREFIX + (cloud.get("provider") or "cloud")
+        # No hosted fallback here any more. A provider used to be slipped in
+        # when no local model existed; now "local or API" is a switch the
+        # person sets, and a local answer quietly coming from a paid API would
+        # be exactly the mixing of the two that switch exists to prevent.
         self.turboReady.emit(self._turbo)
         if model != self._quick_model:
             self._quick_model = model
@@ -225,6 +222,48 @@ def main():
     backend.showRequested.connect(root.showQuick)
     app.aboutToQuit.connect(backend.closeSocket)
     app.aboutToQuit.connect(backend.stopChat)
+
+    # Pick up an update without a logout.
+    #
+    # Quick Chat is a service started at login and left running, so an update
+    # installed afterwards reached everything EXCEPT it: after the release
+    # that added a voice setting and hosted models to Quick Chat, the Monitor
+    # had both and Quick Chat -- the same package, still running the code it
+    # started with -- had neither. It looked like the change had not shipped.
+    #
+    # So once a minute it compares the files it runs against the moment it
+    # started, and when one is newer and the window is not in use, it becomes
+    # a fresh copy of itself: same arguments, same PID, no systemd involved.
+    started = time.time()
+    watched = [os.path.join(here, f) for f in
+               ("genesi_ai_quick.py", "genesi_ai_monitor.py", "QuickChat.qml",
+                "genesi_turbo_ctl.py")]
+    watched.append("/usr/share/genesi-ai-mode/genesi_ai_assist.py")
+
+    def updated():
+        for path in watched:
+            try:
+                if os.path.getmtime(path) > started:
+                    return True
+            except OSError:
+                pass
+        return False
+
+    def maybe_reload():
+        if not updated() or root.property("visible"):
+            return
+        backend.closeSocket()
+        argv = [a for a in sys.argv if a != "--background"] + ["--background"]
+        try:
+            os.execv(sys.executable, [sys.executable] + argv)
+        except OSError:
+            pass
+
+    reload_timer = QTimer()
+    reload_timer.setInterval(60_000)
+    reload_timer.timeout.connect(maybe_reload)
+    reload_timer.start()
+
     if not args.background:
         root.showQuick()
     return app.exec()

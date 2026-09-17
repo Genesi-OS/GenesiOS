@@ -349,23 +349,99 @@ def usage_note(where, provider=None, model=None, ok=True, tokens=(0, 0)):
         pass
 
 
-def cloud_config():
-    """
-    The hosted model, if one is configured. None otherwise.
+def cloud_store():
+    """Every configured provider, in the current shape. Keys included.
 
-    Written by `genesi-ai-key`, which is also the only thing that should ever
-    create this file: it is 0600 and holds a secret. Read here rather than
-    passed in, because `ask()` is called from half a dozen helpers and none of
-    them should have to know a cloud exists.
+    The file used to hold ONE provider, flat:
+
+        {"provider", "base_url", "model", "dialect", "use_for", "key"}
+
+    which meant setting a Groq key forgot the Gemini one. It holds one entry
+    per provider now, plus which is active:
+
+        {"active": "gemini", "use_for": "manual",
+         "providers": {"gemini": {"base_url", "model", "dialect", "key"}}}
+
+    The old shape is read as a store with one provider in it, so a key set
+    before this change keeps working without anybody setting it again.
+    genesi-ai-key writes the new shape the next time it writes at all.
     """
     try:
         with open(CLOUD_CONF, encoding="utf-8") as fh:
             d = json.load(fh)
     except (OSError, json.JSONDecodeError):
+        return {"active": None, "use_for": "manual", "providers": {}}
+    if not isinstance(d, dict):
+        return {"active": None, "use_for": "manual", "providers": {}}
+    if "providers" not in d:
+        if d.get("key") and d.get("base_url"):
+            name = d.get("provider") or "custom"
+            return {"active": name, "use_for": d.get("use_for") or "manual",
+                    "providers": {name: {k: d[k] for k in
+                                         ("base_url", "model", "dialect",
+                                          "key") if k in d}}}
+        return {"active": None, "use_for": d.get("use_for") or "manual",
+                "providers": {}}
+    provs = {n: p for n, p in (d.get("providers") or {}).items()
+             if isinstance(p, dict) and p.get("key") and p.get("base_url")}
+    active = d.get("active") if d.get("active") in provs else (
+        sorted(provs)[0] if provs else None)
+    return {"active": active, "use_for": d.get("use_for") or "manual",
+            "providers": provs}
+
+
+def cloud_config(provider=None):
+    """
+    One provider's settings, ready to send with. None when it is not set up.
+
+    `provider` omitted means the active one, which is what ask() uses: the
+    passive helpers never choose, they get whatever was last picked. A chat
+    names its provider explicitly, because a person picked it.
+
+    Written by `genesi-ai-key`, which is also the only thing that should ever
+    create this file: it is 0600 and holds secrets. Read here rather than
+    passed in, because `ask()` is called from half a dozen helpers and none of
+    them should have to know a cloud exists.
+    """
+    store = cloud_store()
+    name = provider or store["active"]
+    p = store["providers"].get(name) if name else None
+    if not p:
         return None
-    if not isinstance(d, dict) or not d.get("key") or not d.get("base_url"):
-        return None
-    return d
+    out = dict(p)
+    out["provider"] = name
+    out["use_for"] = store["use_for"]
+    out.setdefault("dialect", (PROVIDERS.get(name) or ("", "", "openai"))[2])
+    return out
+
+
+def cloud_models(cloud, timeout=15):
+    """The model names the provider says this key can use.
+
+    Asked of the provider rather than kept in a list here, because model names
+    are the one part of this that goes stale every few months, and a list
+    shipped in a package is a list that is wrong by the time anybody reads it.
+    Every provider in the table answers GET {base}/models with `data[].id`;
+    Gemini's OpenAI-compatible endpoint prefixes each with "models/", which
+    its own chat endpoint does not want, so that is taken off.
+    """
+    base = cloud["base_url"].rstrip("/")
+    if (cloud.get("dialect") or "openai") == "anthropic":
+        headers = {"x-api-key": cloud["key"],
+                   "anthropic-version": ANTHROPIC_VERSION}
+    else:
+        headers = {"Authorization": "Bearer " + cloud["key"]}
+    req = urllib.request.Request(base + "/models", headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.load(resp)
+    ids = []
+    for item in data.get("data") or []:
+        mid = str(item.get("id") or "")
+        if mid.startswith("models/"):
+            mid = mid[len("models/"):]
+        if mid:
+            ids.append(mid)
+    return sorted(set(ids))
 
 
 def cloud_request(cloud, payload, timeout):
@@ -411,7 +487,18 @@ def cloud_request(cloud, payload, timeout):
                  "Authorization": "Bearer " + cloud["key"]})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         data = json.load(resp)
-    text = (data["choices"][0]["message"]["content"] or "").strip()
+    # `.get`, not indexing. A thinking model given a small budget -- Gemini
+    # 2.5 given the eight tokens `genesi-ai-key test` used to ask for -- spends
+    # all of it thinking and answers with a message that has NO content field.
+    # Indexing that raised KeyError, which was reported as "the endpoint
+    # answered, but not in the shape an openai provider answers in" -- for a
+    # key and a model that were both perfectly fine. A reply with a `choices`
+    # list IS the shape; an empty answer is still an answer.
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("no choices in the reply")
+    msg = choices[0].get("message") or {}
+    text = (msg.get("content") or "").strip()
     use = data.get("usage") or {}
     return text, int(use.get("prompt_tokens") or 0), \
         int(use.get("completion_tokens") or 0)

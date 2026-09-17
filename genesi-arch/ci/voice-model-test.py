@@ -93,6 +93,49 @@ for name, url, expected in voice.FILES:
         ok(f"{name}: {code}, {size // 1_000_000} MB "
            f"(expected about {expected // 1_000_000})")
 
+# ── The languages ──────────────────────────────────────────────────────────
+#
+# The voice ids as they are in voices-v1.0.bin, listed from the file itself
+# when the language picker was written -- kept here as a second opinion,
+# apart from genesi-ai-voice's own table, because a guard that reads its
+# answer out of the thing it checks is not a guard. A voice the file does not
+# have is a language picked in a settings page and a synthesis that fails the
+# first time anything is said.
+#
+# Downloading the 28 MB file on every CI run to re-list it would be the
+# honest way and a wasteful one; this list changes only with the pinned
+# release tag above, and a new tag means re-listing it.
+REAL_VOICES = set("""
+af_alloy af_aoede af_bella af_heart af_jessica af_kore af_nicole af_nova
+af_river af_sarah af_sky am_adam am_echo am_eric am_fenrir am_liam am_michael
+am_onyx am_puck am_santa bf_alice bf_emma bf_isabella bf_lily bm_daniel
+bm_fable bm_george bm_lewis ef_dora em_alex em_santa ff_siwis hf_alpha hf_beta
+hm_omega hm_psi if_sara im_nicola jf_alpha jf_gongitsune jf_nezumi
+jf_tebukuro jm_kumo pf_dora pm_alex pm_santa zf_xiaobei zf_xiaoni
+zf_xiaoxiao zf_xiaoyi zm_yunjian zm_yunxi zm_yunxia zm_yunyang
+""".split())
+
+if "model-files-v1.0" not in voice.RELEASE:
+    bad("the voice list below matches the pinned release",
+        f"RELEASE is now {voice.RELEASE}; re-list voices-v1.0.bin from that "
+        "release and update REAL_VOICES before trusting this check")
+
+for lid, (espeak, label, voices) in voice.LANGUAGES.items():
+    unknown = [v for v in voices if v not in REAL_VOICES]
+    wrong_prefix = [v for v in voices if voice.PREFIX.get(v[:1]) != lid]
+    if not voices:
+        bad(f"{lid} has a voice", "an empty list has no default to speak with")
+    elif unknown:
+        bad(f"{lid}'s voices are in the voices file",
+            f"{unknown} {'is' if len(unknown) == 1 else 'are'} not -- picking "
+            f"{label} would fail on the first sentence")
+    elif wrong_prefix:
+        bad(f"{lid}'s voices speak {lid}",
+            f"{wrong_prefix}: a voice's first letter is its language, and "
+            "`say --voice` works the language out from it")
+    else:
+        ok(f"{lid} ({espeak}): {len(voices)} voice(s), all in the file")
+
 print()
 if failures:
     print(f"{len(failures)} check(s) failed:")

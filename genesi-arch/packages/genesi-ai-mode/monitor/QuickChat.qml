@@ -9,15 +9,25 @@ QQC2.ApplicationWindow {
     id: root
     width: 720
     height: expanded ? Math.min(620, Math.max(182, body.implicitHeight + 42)) : 92
-    minimumWidth: 520
-    maximumWidth: 820
-    // Say the height bounds OUT LOUD. Qt forwards these as the xdg_toplevel
-    // min/max size, and a compositor that is free to pick a height will pick
-    // one -- on Hyprland the panel came up the full height of the screen. A
-    // `height:` binding is a request the client makes to itself; this is the
-    // constraint the compositor is actually told about.
-    minimumHeight: 92
-    maximumHeight: 620
+    // Minimum and maximum are the SAME number, and that number is the height
+    // the content needs.
+    //
+    // The first fix told the compositor a range -- 92 to 620 high, 520 to 820
+    // wide -- on the reasoning that a compositor given bounds stays inside
+    // them. It did: Hyprland picked the top of both, 820 by 620, and the card
+    // drew in the top 90 pixels of it. Everything below was transparent
+    // surface, and Hyprland blurs what is behind a transparent window, so what
+    // anyone saw was a small bar on top of a large frosted rectangle that ate
+    // every click. A range is a choice, and the compositor made it.
+    //
+    // A single legal size is not a choice. Qt forwards these as the
+    // xdg_toplevel min and max, and when they are equal the window is that
+    // size -- and when the content grows they both move, so the window grows
+    // with it rather than being told it may.
+    minimumWidth: width
+    maximumWidth: width
+    minimumHeight: height
+    maximumHeight: height
     visible: false
     color: "transparent"
     flags: Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -37,6 +47,23 @@ QQC2.ApplicationWindow {
     property bool aiActive: false
     property bool voiceReady: backend.voiceReady()
     property bool speakAnswers: backend.speakAnswers()
+    // Local or API -- the same switch, and the same remembered choice, as the
+    // Monitor's chat. The API side is a provider and a model typed the way
+    // that provider names it.
+    property string source: backend.chatSource()
+    property var cloudProviders: []
+    property string cloudProvider: ""
+    property var cloudSuggestions: []
+    readonly property string cloudModel: {
+        for (var i = 0; i < cloudProviders.length; ++i)
+            if (cloudProviders[i].provider === cloudProvider)
+                return cloudProviders[i].model
+        return ""
+    }
+    readonly property string currentRef: source === "api"
+        ? (cloudProvider ? "cloud:" + cloudProvider : "") : modelName
+    property var voiceLanguages: []
+    property string voiceLanguage: ""
     property string forceMode: "auto"
     property string profileMode: "auto"
     property bool turboRequested: backend.quickTurboActive()
@@ -170,8 +197,10 @@ QQC2.ApplicationWindow {
     function sendPrompt() {
         var text = prompt.text.trim()
         if (!text || thinking || pendingApproval !== null) return
-        if (!modelName) {
-            addMessage("assistant", "No local model is ready. Install a model in AI Mode first.")
+        if (!currentRef) {
+            addMessage("assistant", source === "api"
+                ? "No API key is set. Add one in Genesi Center › Local AI."
+                : "No local model is ready. Install a model in AI Mode first.")
             return
         }
         addMessage("user", text)
@@ -184,10 +213,10 @@ QQC2.ApplicationWindow {
         // transport, so pointing it at a provider would need the whole loop
         // ported -- and Quick Chat sends everything through the agent by
         // default, which would make picking the cloud here an error message.
-        if (backend.isCloudModel(modelName))
-            backend.sendPrompt(modelName, JSON.stringify(conversation))
+        if (source === "api")
+            backend.sendPrompt(currentRef, JSON.stringify(conversation))
         else
-            backend.sendAgentPrompt(modelName, JSON.stringify(conversation), actionMode)
+            backend.sendAgentPrompt(currentRef, JSON.stringify(conversation), actionMode)
     }
     function resolveApproval(approved) {
         if (!pendingApproval) return
@@ -216,6 +245,8 @@ QQC2.ApplicationWindow {
     Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.pollState() }
     Component.onCompleted: {
         backend.loadModels()
+        backend.loadCloud()
+        backend.loadVoiceLanguages()
         backend.backendInfo()
     }
 
@@ -234,6 +265,8 @@ QQC2.ApplicationWindow {
         anchors.top: parent.top
         anchors.margins: 8
         height: Math.min(parent.height - 16, body.implicitHeight + 32)
+        // (With the window now sized to this card, the 8 px margin is the only
+        // transparent surface left, and the card's own shadow sits in it.)
         radius: theme.rXl
         color: theme.bgTop
         border.width: 1
@@ -381,7 +414,14 @@ QQC2.ApplicationWindow {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             root.settingsOpen = !root.settingsOpen
-                            if (root.settingsOpen) backend.loadModels()
+                            if (root.settingsOpen) {
+                                backend.loadModels()
+                                backend.loadCloud()
+                                // Kokoro installed since this process started
+                                // should show up without restarting anything.
+                                backend.recheckVoice()
+                                backend.loadVoiceLanguages()
+                            }
                         }
                         QQC2.ToolTip.visible: containsMouse
                         QQC2.ToolTip.text: "AI controls"
@@ -473,9 +513,92 @@ QQC2.ApplicationWindow {
                     columns: 2
                     columnSpacing: 16; rowSpacing: 10
 
-                    QQC2.Label { text: "Model"; color: root.textMid; font.bold: true }
+                    QQC2.Label { text: "Source"; color: root.textMid; font.bold: true }
+                    RowLayout {
+                        spacing: 4
+                        Repeater {
+                            model: [{ "value": "local", "label": "Local" },
+                                    { "value": "api", "label": "API" }]
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool picked: root.source === modelData.value
+                                Layout.preferredHeight: 26
+                                implicitWidth: srcLbl.implicitWidth + 22
+                                radius: theme.rMd
+                                color: picked ? theme.a(theme.green, 0.18)
+                                              : theme.a(theme.textHi, 0.05)
+                                border.width: 1
+                                border.color: picked ? theme.a(theme.green, 0.5) : "transparent"
+                                QQC2.Label {
+                                    id: srcLbl
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    color: picked ? root.textHi : root.textMid
+                                    font.pixelSize: theme.fsSmall
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: backend.setChatSource(modelData.value)
+                                }
+                            }
+                        }
+                    }
+
+                    QQC2.Label {
+                        text: "Provider"
+                        color: root.textMid
+                        font.bold: true
+                        visible: root.source === "api"
+                    }
+                    RowLayout {
+                        visible: root.source === "api"
+                        Layout.fillWidth: true
+                        spacing: 6
+                        QQC2.Label {
+                            visible: root.cloudProviders.length === 0
+                            text: "No API key yet — add one in Genesi Center › Local AI"
+                            color: root.textLo
+                            font.pixelSize: theme.fsSmall
+                        }
+                        QQC2.ComboBox {
+                            id: quickProvider
+                            visible: root.cloudProviders.length > 0
+                            Layout.preferredWidth: 140
+                            model: root.cloudProviders.map(function (p) { return p.provider })
+                            currentIndex: Math.max(0, model.indexOf(root.cloudProvider))
+                            onActivated: {
+                                root.cloudProvider = model[currentIndex]
+                                root.cloudSuggestions = []
+                                backend.useCloudProvider(root.cloudProvider)
+                            }
+                        }
+                        // Typed as the company names it, with the provider's
+                        // own list offered when opened.
+                        QQC2.ComboBox {
+                            id: quickCloudModel
+                            visible: quickProvider.visible
+                            Layout.fillWidth: true
+                            editable: true
+                            model: root.cloudSuggestions
+                            editText: root.cloudModel
+                            onPressedChanged: if (pressed && root.cloudSuggestions.length === 0)
+                                                  backend.listCloudModels(root.cloudProvider)
+                            onAccepted: backend.setCloudModel(root.cloudProvider, editText)
+                            onActivated: backend.setCloudModel(root.cloudProvider,
+                                                               root.cloudSuggestions[currentIndex])
+                        }
+                    }
+
+                    QQC2.Label {
+                        text: "Model"
+                        color: root.textMid
+                        font.bold: true
+                        visible: root.source === "local"
+                    }
                     QQC2.ComboBox {
                         id: modelPicker
+                        visible: root.source === "local"
                         Layout.fillWidth: true
                         // The VALUE stays the raw reference (an Ollama tag or a
                         // `gguf:<stem>`); only the display is prettified, so
@@ -531,6 +654,24 @@ QQC2.ApplicationWindow {
                                         modelData.value)
                                 }
                             }
+                        }
+                        // The language it speaks in. All of them run from
+                        // the files already installed -- choosing one
+                        // downloads and loads nothing extra.
+                        QQC2.ComboBox {
+                            visible: root.voiceLanguages.length > 0
+                            Layout.preferredWidth: 170
+                            textRole: "label"
+                            valueRole: "id"
+                            model: root.voiceLanguages
+                            currentIndex: {
+                                for (var i = 0; i < root.voiceLanguages.length; ++i)
+                                    if (root.voiceLanguages[i].id === root.voiceLanguage)
+                                        return i
+                                return -1
+                            }
+                            onActivated: backend.setVoiceLanguage(
+                                root.voiceLanguages[currentIndex].id)
                         }
                     }
 
@@ -850,11 +991,11 @@ QQC2.ApplicationWindow {
                 visible: root.expanded
                 Layout.fillWidth: true
                 QQC2.Label {
-                    text: root.modelName
-                        ? (root.modelName === "turbo" ? "Turbo ready"
-                                                      : backend.modelLabel(root.modelName))
-                        : "No model available"
-                    color: root.modelName ? theme.greenBright : theme.red
+                    text: root.currentRef
+                        ? (root.currentRef === "turbo" ? "Turbo ready"
+                                                       : backend.modelLabel(root.currentRef))
+                        : (root.source === "api" ? "No API key set" : "No model available")
+                    color: root.currentRef ? theme.greenBright : theme.red
                     font.pixelSize: 10; elide: Text.ElideRight
                 }
                 Item { Layout.fillWidth: true }
@@ -877,6 +1018,28 @@ QQC2.ApplicationWindow {
         function onModelChanged(model) { if (!root.modelName) root.modelName = model }
         function onAgentModeChanged(mode) {
             if (mode === "approval" || mode === "automatic") root.actionMode = mode
+        }
+        function onCloudLoaded(payload) {
+            var d = {}
+            try { d = JSON.parse(payload) } catch (error) {}
+            root.cloudProviders = d.providers || []
+            var keep = false
+            for (var i = 0; i < root.cloudProviders.length; ++i)
+                if (root.cloudProviders[i].provider === root.cloudProvider) keep = true
+            if (!keep)
+                root.cloudProvider = d.active || (root.cloudProviders.length
+                                                  ? root.cloudProviders[0].provider : "")
+        }
+        function onCloudModelsListed(provider, payload) {
+            if (provider !== root.cloudProvider) return
+            try { root.cloudSuggestions = JSON.parse(payload) } catch (error) {}
+        }
+        function onChatSourceChanged(src) { root.source = src }
+        function onVoiceLanguagesLoaded(payload) {
+            var d = {}
+            try { d = JSON.parse(payload) } catch (error) {}
+            root.voiceLanguages = d.languages || []
+            root.voiceLanguage = d.language || ""
         }
         function onModelsLoaded(payload) {
             var models = []

@@ -1445,7 +1445,46 @@ pkgver=1.0.0
 # inert. `voiceReady` is cached, because answering it starts a second
 # interpreter to look inside a virtualenv, and `recheckVoice` is how it
 # changes after an install.
-pkgrel=197
+# 2026-09-17 (198): Local | API, a key per provider, a model you type, and a
+# voice that speaks your language.
+#
+# Kokoro said everything in American English, Portuguese answers included,
+# because `lang` was a constant. It speaks nine languages from the two files
+# the install already fetched -- one model and one voices file carrying all
+# 54 voices -- so the language is a setting now, chosen in Genesi Center, the
+# Monitor or Quick Chat, and it defaults to the desktop's own. Each language
+# was synthesised for real before it was offered, and choosing one downloads
+# nothing and loads nothing extra.
+#
+# Hosted models: one key per provider instead of one key in total (setting a
+# Groq key used to forget the Gemini one), each with a model typed the way the
+# company names it, and the provider's own model list offered when asked --
+# asked of the provider rather than shipped here, because model names are the
+# part that goes stale. An old single-key file reads as a store with that one
+# provider active, so nobody who set a key before this has to set it again.
+#
+# The chat's API side is a switch, not a list: a provider sat in the middle of
+# the local models, which is the wrong shape for "my machine or somebody's
+# API". Local | API in the Monitor's composer and in Quick Chat's settings,
+# remembered and shared between the two. The answer's badge names the
+# provider instead of saying "Ollama", and the header stops printing
+# "undefined tok/s" for an answer that has no rate.
+#
+# TEST failed on a working Gemini key. It asked for eight tokens, Gemini 2.5
+# spent them thinking and replied with a message that had no content field,
+# and indexing that raised KeyError -- reported as "the endpoint answered, but
+# not in the shape an openai provider answers in". A reply with choices IS the
+# shape; an empty answer is still an answer.
+#
+# Quick Chat was a large frosted rectangle with a small bar at the top. It
+# told the compositor a size RANGE and Hyprland picked the top of it, 820 by
+# 620, and blurred the transparent surface behind the card. Its minimum and
+# maximum are now the same number -- the size its content needs -- so there is
+# nothing left to choose. And it reloads itself when its files are updated,
+# because it is a login service that kept running the code it started with:
+# after the last release the Monitor had the new features and Quick Chat did
+# not.
+pkgrel=198
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -101,6 +101,10 @@ AGENT_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/agent.json")
 # wrong file is a setting that vanishes the next time the other one's shape
 # changes.
 VOICE_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/voice.json")
+# Local or API, remembered. The Monitor and Quick Chat share it, so choosing
+# the API in one is choosing it in both -- two switches that disagree about
+# where your question goes is worse than one.
+SOURCE_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/source.json")
 # Automations: this Backend only EDITS the graphs; genesi-automationd runs them.
 AUTOMATIONS_DIR = os.path.expanduser("~/.config/genesi-ai-monitor/automations")
 AUTOMATION_STATUS = os.path.join(
@@ -119,6 +123,10 @@ class Backend(QObject):
     chatDone = Signal(str)       # verbose stats line ("" if none)
     chatError = Signal(str)
     modelsLoaded = Signal(str)   # JSON array of model names
+    cloudLoaded = Signal(str)    # JSON {active, providers:[{provider, model}]}
+    cloudModelsListed = Signal(str, str)  # provider, JSON array of model ids
+    chatSourceChanged = Signal(str)       # "local" or "api"
+    voiceLanguagesLoaded = Signal(str)    # JSON from genesi-ai-voice languages
     pullStatus = Signal(str)     # human-readable download progress
     pullDone = Signal(bool)      # finished (ok?)
     turboStatus = Signal(str)    # Turbo (speculative decoding) state text
@@ -543,12 +551,11 @@ class Backend(QObject):
             except Exception:
                 names = []
             names += [g["ref"] for g in turbo_ctl.list_gguf_models()]
-            # ...and the hosted model, when a key is set. Last, so the local
-            # ones are what a fresh picker lands on: a hosted model bills per
-            # request and should be chosen rather than defaulted into.
-            cloud = self._cloud_config()
-            if cloud:
-                names.append(CLOUD_PREFIX + (cloud.get("provider") or "cloud"))
+            # Local models only. The hosted ones used to be appended here, and
+            # a provider sitting in the middle of a list of files on this disk
+            # is the wrong shape for the choice: "which model on my machine"
+            # and "my machine or somebody's API" are two questions. The second
+            # is the source switch, and loadCloud() feeds it.
             self.modelsLoaded.emit(json.dumps(names))
         threading.Thread(target=work, daemon=True).start()
 
@@ -590,6 +597,38 @@ class Backend(QObject):
         except (OSError, subprocess.SubprocessError, ValueError):
             return False
 
+    @Slot()
+    def loadVoiceLanguages(self):
+        """The languages Kokoro speaks and which one is set, from the tool.
+
+        From genesi-ai-voice rather than a list here, because that file is the
+        one that knows which voice ids are in the voices file -- and every one
+        of these languages runs from files the install already fetched, so
+        offering all of them costs nobody anything.
+        """
+        def work():
+            try:
+                r = subprocess.run(["genesi-ai-voice", "languages", "--json"],
+                                   capture_output=True, text=True, timeout=20)
+                payload = r.stdout.strip() or "{}"
+                json.loads(payload)
+            except (OSError, subprocess.SubprocessError, ValueError):
+                payload = "{}"
+            self.voiceLanguagesLoaded.emit(payload)
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    def setVoiceLanguage(self, language):
+        def work():
+            try:
+                subprocess.run(["genesi-ai-voice", "set", "--language",
+                                str(language)],
+                               capture_output=True, text=True, timeout=20)
+            except (OSError, subprocess.SubprocessError):
+                pass
+            self.loadVoiceLanguages()
+        threading.Thread(target=work, daemon=True).start()
+
     @Slot(str)
     def speak(self, text):
         """Say an answer out loud, on this machine.
@@ -618,12 +657,99 @@ class Backend(QObject):
         except OSError:
             pass
 
-    def _cloud_config(self):
-        """The hosted model, if one is configured and usable. None otherwise."""
+    def _cloud_config(self, provider=None):
+        """One provider's settings, or the active one's. None when not set."""
         if assist is None:
             return None
-        c = assist.cloud_config()
+        c = assist.cloud_config(provider or None)
         return c if c and c.get("key") and c.get("base_url") else None
+
+    @staticmethod
+    def _key_tool(argv):
+        """Run genesi-ai-key. It is the one thing that writes the key file."""
+        try:
+            r = subprocess.run(["genesi-ai-key"] + [str(a) for a in argv],
+                               capture_output=True, text=True, timeout=30)
+            return r.returncode == 0, (r.stdout or r.stderr or "").strip()
+        except (OSError, subprocess.SubprocessError) as e:
+            return False, str(e)
+
+    @Slot()
+    def loadCloud(self):
+        """Which providers have a key, and the model each is set to."""
+        def work():
+            out = {"active": None, "providers": []}
+            if assist is not None:
+                st = assist.cloud_store()
+                out["active"] = st.get("active")
+                for name in sorted(st["providers"]):
+                    p = st["providers"][name]
+                    out["providers"].append({
+                        "provider": name, "model": p.get("model") or "",
+                        "ref": CLOUD_PREFIX + name})
+            self.cloudLoaded.emit(json.dumps(out))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def setCloudModel(self, provider, model):
+        """Point a provider at another model -- typed, as the company names it."""
+        def work():
+            model_ = str(model).strip()
+            if model_:
+                ok, msg = self._key_tool(["model", provider, model_])
+                if not ok:
+                    self.chatError.emit(msg.replace("genesi-ai-key: ", ""))
+            self.loadCloud()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    def useCloudProvider(self, provider):
+        """Make it the active provider, which is also what ask() then uses."""
+        def work():
+            self._key_tool(["use", provider])
+            self.loadCloud()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    def listCloudModels(self, provider):
+        """Ask the provider which models the key can use. Nothing is kept."""
+        def work():
+            c = self._cloud_config(provider)
+            ids = []
+            if c:
+                try:
+                    ids = assist.cloud_models(c)
+                except Exception:                      # noqa: BLE001
+                    ids = []
+            self.cloudModelsListed.emit(str(provider), json.dumps(ids))
+        threading.Thread(target=work, daemon=True).start()
+
+    @staticmethod
+    def _load_source():
+        try:
+            with open(SOURCE_CONFIG) as handle:
+                v = json.load(handle).get("source", "local")
+        except Exception:
+            v = "local"
+        return v if v in ("local", "api") else "local"
+
+    @Slot(result=str)
+    def chatSource(self):
+        return self._load_source()
+
+    @Slot(str)
+    def setChatSource(self, source):
+        if source not in ("local", "api"):
+            return
+        try:
+            os.makedirs(os.path.dirname(SOURCE_CONFIG), exist_ok=True)
+            tmp = SOURCE_CONFIG + ".tmp"
+            with open(tmp, "w") as handle:
+                json.dump({"source": source}, handle)
+            os.replace(tmp, SOURCE_CONFIG)
+        except OSError:
+            pass
+        self.chatSourceChanged.emit(source)
 
     @Slot(str, result=bool)
     def isCloudModel(self, model):
@@ -639,7 +765,7 @@ class Backend(QObject):
         model = str(model)
         if model.startswith(CLOUD_PREFIX):
             who = model[len(CLOUD_PREFIX):]
-            c = self._cloud_config() or {}
+            c = self._cloud_config(who) or {}
             what = c.get("model") or ""
             return f"{who} · {what}" if what else who
         return turbo_ctl.model_label(model)
@@ -1139,7 +1265,7 @@ class Backend(QObject):
             # _prepare_transport rather than inside it, because that function
             # is about which local server to bring up and a cloud is neither.
             if str(model).startswith(CLOUD_PREFIX):
-                self._chat_cloud(messages)
+                self._chat_cloud(messages, str(model)[len(CLOUD_PREFIX):])
                 return
             use_turbo, ok, err = self._prepare_transport(model)
             if not ok:
@@ -1150,7 +1276,7 @@ class Backend(QObject):
             (self._chat_turbo if use_turbo else self._chat_ollama)(model, messages)
         threading.Thread(target=work, daemon=True).start()
 
-    def _chat_cloud(self, messages):
+    def _chat_cloud(self, messages, provider=None):
         """Stream an answer from the hosted provider.
 
         No fallback to the local model here, deliberately, and that is the
@@ -1159,10 +1285,11 @@ class Backend(QObject):
         different model than the one named in the picker is lying about where
         the answer came from. A failure is shown.
         """
-        cloud = self._cloud_config()
+        cloud = self._cloud_config(provider)
         if not cloud:
             self.chatError.emit(
-                "no API key is set — Genesi Center → Local AI, or "
+                f"no API key is set for {provider or 'a provider'} — "
+                "Genesi Center → Local AI, or "
                 "`genesi-ai-key set`")
             return
         payload = {"messages": messages, "max_tokens": 1024,
@@ -1189,6 +1316,8 @@ class Backend(QObject):
         # panel needs no idea where the answer came from.
         self.chatDone.emit(json.dumps({
             "mode": "cloud",
+            "provider": cloud.get("provider") or "",
+            "model": cloud.get("model") or "",
             "eval": tout,
             "prompt": tin,
         }))

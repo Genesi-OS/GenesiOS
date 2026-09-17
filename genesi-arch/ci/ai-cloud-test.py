@@ -191,7 +191,14 @@ class Fake(BaseHTTPRequestHandler):
         self.wfile.write(blob)
 
 
-srv = HTTPServer(("127.0.0.1", 0), Fake)
+class QuietServer(HTTPServer):
+    # A stream the client stops is aborted mid-write, on purpose, by the
+    # test that checks a stopped stream still counts. That is not an error.
+    def handle_error(self, request, client_address):
+        pass
+
+
+srv = QuietServer(("127.0.0.1", 0), Fake)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 HOST = f"http://127.0.0.1:{srv.server_address[1]}"
 
@@ -376,22 +383,39 @@ else:
 
 # ── Can the chat reach it? ─────────────────────────────────────────────────
 #
-# Three separate things have to line up for "you can choose to use the API key
-# in the Monitor" to be true, and each of them fails silently on its own: the
-# ref has to be in the list the picker reads, the send path has to recognise
-# it, and the AGENT path must refuse it rather than handing a provider to a
-# loop built on a local transport.
+# "Local or API" is a switch, not one list. A provider used to be appended to
+# the local models, and was reported sitting in the middle of them -- the
+# wrong shape for "my machine or somebody's API". So: the local list must NOT
+# carry a cloud ref, a separate loadCloud must, the send path must recognise
+# it, and the AGENT path must refuse it rather than hand a provider to a loop
+# built on a local transport.
 mon = io.open(MONITOR, encoding="utf-8").read()
 body = re.sub(r"#[^\n]*", "", mon)
+load_models = re.search(r"def loadModels\(self\):([\s\S]*?)\n    @Slot|"
+                        r"def loadModels\(self\):([\s\S]*?)\n    def ", body)
+lm = (load_models.group(1) or load_models.group(2)) if load_models else ""
+if not lm:
+    bad("loadModels is readable", "could not find its body")
+elif "CLOUD_PREFIX" in lm:
+    bad("the local model list is only local",
+        "loadModels still puts a hosted provider among the local models, "
+        "which is the mixing the Local | API switch exists to prevent")
+else:
+    ok("the local model list carries no hosted provider")
+
 for what, pattern, why in (
-    ("the model list offers it",
-     r"names\.append\(CLOUD_PREFIX",
-     "loadModels never appends it, so it is not in the picker and cannot be "
-     "chosen"),
-    ("the chat routes it",
-     r"startswith\(CLOUD_PREFIX\)[\s\S]{0,200}_chat_cloud",
-     "sendPrompt does not branch on it, so a cloud ref is handed to "
-     "_prepare_transport, which tries to load it as a local model"),
+    ("the providers are offered on their own",
+     r"def loadCloud\(self\)[\s\S]{0,900}\"ref\":\s*CLOUD_PREFIX",
+     "nothing emits the configured providers, so the API side of the switch "
+     "has nothing to pick from"),
+    ("a provider's model can be changed from the chat",
+     r"def setCloudModel\(self, provider, model\)[\s\S]{0,600}\"model\", provider",
+     "the model cannot be typed from the chat; it stays whatever was set "
+     "first"),
+    ("the chat routes a cloud ref, to the provider it names",
+     r"startswith\(CLOUD_PREFIX\)[\s\S]{0,200}_chat_cloud\(messages, str\(model\)",
+     "sendPrompt does not pass the provider, so every chat goes to whichever "
+     "one happens to be active"),
     ("the agent refuses it",
      r"startswith\(CLOUD_PREFIX\)[\s\S]{0,400}_agent_status\(\"error\"",
      "sendAgentPrompt would hand a provider to the tool loop"),
@@ -405,14 +429,114 @@ for what, pattern, why in (
     else:
         bad(what, why)
 
-quick = io.open(QUICK, encoding="utf-8").read()
-if "isCloudModel" not in quick:
-    bad("Quick Chat routes a hosted model past the agent loop",
+quick = re.sub(r"//[^\n]*", "", io.open(QUICK, encoding="utf-8").read())
+if not re.search(r'source\s*===\s*"api"\)\s*\n\s*backend\.sendPrompt\(', quick):
+    bad("Quick Chat sends an API question past the agent loop",
         "it sends everything through sendAgentPrompt, which refuses a cloud "
-        "ref -- so picking one there is an error message rather than an "
-        "answer")
+        "ref -- so choosing API there is an error message, not an answer")
 else:
-    ok("Quick Chat sends a hosted model through the plain chat path")
+    ok("Quick Chat sends an API question through the plain chat path")
+
+# ── The store of providers ─────────────────────────────────────────────────
+#
+# One key per provider. The file used to hold one provider, flat, so setting
+# a Groq key forgot the Gemini one -- and every machine that set a key before
+# this change has that flat file. It has to read as a store with that one
+# provider in it, or the update silently logs everyone out of their API.
+conf = os.path.join(TMP, "conf")
+os.makedirs(os.path.join(conf, "genesi", "ai"), exist_ok=True)
+flat = os.path.join(conf, "genesi", "ai", "cloud.json")
+json.dump({"provider": "gemini", "model": "gemini-2.5-flash",
+           "base_url": "https://g.example/v1beta/openai", "dialect": "openai",
+           "use_for": "all", "key": "OLDKEY"}, io.open(flat, "w"))
+assist.CLOUD_CONF = flat
+st = assist.cloud_store()
+if st.get("active") != "gemini" or "gemini" not in st.get("providers", {}):
+    bad("a key set before providers were separate still works",
+        f"the old flat file read as {st!r} -- that machine would find its key "
+        "gone after the update")
+elif st.get("use_for") != "all":
+    bad("the old file's scope survives", f"use_for came back {st.get('use_for')!r}")
+else:
+    ok("an old single-key file reads as a store with that provider active")
+
+json.dump({"active": "groq", "use_for": "manual", "providers": {
+    "gemini": {"base_url": "https://g/v1", "model": "gemini-2.5-pro",
+               "dialect": "openai", "key": "G"},
+    "groq": {"base_url": "https://q/v1", "model": "llama-3.3-70b-versatile",
+             "dialect": "openai", "key": "Q"}}}, io.open(flat, "w"))
+a_ = assist.cloud_config()
+g_ = assist.cloud_config("gemini")
+if not a_ or a_.get("provider") != "groq":
+    bad("the active provider is what ask() gets", f"got {a_!r}")
+elif not g_ or g_.get("model") != "gemini-2.5-pro" or g_.get("key") != "G":
+    bad("a named provider gets its OWN key and model",
+        f"asked for gemini, got {g_!r} -- a chat pointed at one provider "
+        "would send another provider's key")
+else:
+    ok("each provider answers with its own key and its own model")
+
+# ── What a provider says it has ────────────────────────────────────────────
+class Models(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        blob = json.dumps({"data": [{"id": "models/gemini-2.5-flash"},
+                                    {"id": "models/gemini-2.5-pro"},
+                                    {"id": "gpt-4.1-mini"}]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(blob)))
+        self.end_headers()
+        self.wfile.write(blob)
+
+
+msrv = HTTPServer(("127.0.0.1", 0), Models)
+threading.Thread(target=msrv.serve_forever, daemon=True).start()
+ids = assist.cloud_models({"base_url": f"http://127.0.0.1:{msrv.server_address[1]}/v1",
+                           "dialect": "openai", "key": "k"})
+msrv.shutdown()
+if ids != ["gemini-2.5-flash", "gemini-2.5-pro", "gpt-4.1-mini"]:
+    bad("a provider's model list is usable as typed names",
+        f"got {ids!r} -- Gemini lists `models/<name>` and its chat endpoint "
+        "wants `<name>`")
+else:
+    ok("a provider's model list comes back as names its chat accepts")
+
+# ── The TEST that failed on a working key ─────────────────────────────────
+#
+# Gemini 2.5, asked for eight tokens, spent them thinking and answered with a
+# message that had NO content field. That was reported as "not in the shape an
+# openai provider answers in" -- for a key and a model that both worked.
+class Thinker(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(n)
+        blob = json.dumps({"choices": [{"index": 0, "finish_reason": "length",
+                                        "message": {"role": "assistant"}}],
+                           "usage": {"prompt_tokens": 9,
+                                     "completion_tokens": 0}}).encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(blob)))
+        self.end_headers()
+        self.wfile.write(blob)
+
+
+tsrv = HTTPServer(("127.0.0.1", 0), Thinker)
+threading.Thread(target=tsrv.serve_forever, daemon=True).start()
+try:
+    text, _i, _o = assist.cloud_request(
+        {"base_url": f"http://127.0.0.1:{tsrv.server_address[1]}/v1",
+         "dialect": "openai", "model": "gemini-2.5-flash", "key": "k"},
+        dict(PAYLOAD), 10)
+    ok("a reply with no text is an empty answer, not a broken provider")
+except Exception as e:  # noqa: BLE001
+    bad("a reply with no text is an empty answer, not a broken provider",
+        f"{type(e).__name__}: {e} -- TEST reports a working key as broken")
+tsrv.shutdown()
 
 srv.shutdown()
 print()

@@ -8,6 +8,10 @@ Genesi's AI does. Nothing is sent anywhere.
   genesi-ai-voice status [--json]   what is present and what is missing
   genesi-ai-voice install           set it up (about 340 MB of model)
   genesi-ai-voice say "text"        speak it
+  genesi-ai-voice languages [--json]
+                                    the languages it speaks, and which is set
+  genesi-ai-voice set --language L [--voice V]
+                                    choose them
   genesi-ai-voice voices            the voices the model carries
   genesi-ai-voice remove            delete the model and the environment
 
@@ -82,6 +86,85 @@ FILES = (
 )
 
 DEFAULT_VOICE = "af_heart"
+
+# ── Languages ────────────────────────────────────────────────────────────────
+#
+# Every one of these runs from the two files the install already fetched: one
+# model, and one voices file that carries all 54 voices. Choosing Portuguese
+# instead of English downloads nothing and loads nothing extra -- the language
+# only decides which voice is used and how espeak turns letters into sounds,
+# and espeak's data for all of them ships inside espeakng-loader's wheel.
+#
+# Checked, not assumed: each language here was synthesised for real, and the
+# voice ids are the keys of voices-v1.0.bin as downloaded. The first letter of
+# a voice id is its language and the second its voice (f/m), which is how
+# `say --voice` works out the language on its own.
+#
+#   id      espeak   label                  voices in the file
+LANGUAGES = {
+    "en-us": ("en-us", "English (US)",
+              ["af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky",
+               "af_nova", "af_river", "af_alloy", "af_aoede", "af_jessica",
+               "af_kore", "am_michael", "am_adam", "am_echo", "am_eric",
+               "am_fenrir", "am_liam", "am_onyx", "am_puck", "am_santa"]),
+    "en-gb": ("en-gb", "English (UK)",
+              ["bf_emma", "bf_alice", "bf_isabella", "bf_lily", "bm_george",
+               "bm_daniel", "bm_fable", "bm_lewis"]),
+    "pt-br": ("pt-br", "Português (Brasil)", ["pf_dora", "pm_alex", "pm_santa"]),
+    "es": ("es", "Español", ["ef_dora", "em_alex", "em_santa"]),
+    "fr": ("fr-fr", "Français", ["ff_siwis"]),
+    "it": ("it", "Italiano", ["if_sara", "im_nicola"]),
+    "hi": ("hi", "हिन्दी", ["hf_alpha", "hf_beta", "hm_omega", "hm_psi"]),
+    "ja": ("ja", "日本語", ["jf_alpha", "jf_gongitsune", "jf_nezumi",
+                          "jf_tebukuro", "jm_kumo"]),
+    "zh": ("cmn", "中文", ["zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao",
+                         "zf_xiaoyi", "zm_yunjian", "zm_yunxi", "zm_yunxia",
+                         "zm_yunyang"]),
+}
+PREFIX = {"a": "en-us", "b": "en-gb", "p": "pt-br", "e": "es", "f": "fr",
+          "i": "it", "h": "hi", "j": "ja", "z": "zh"}
+
+CONF = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    "genesi", "ai", "voice.json")
+
+
+def system_language():
+    """The desktop's own language, when Kokoro speaks it; English otherwise.
+
+    So a machine set up in Portuguese is spoken to in Portuguese without
+    anybody opening a settings page -- which is what the first version
+    failed to do: it said everything in American English, including answers
+    written in Portuguese, because `lang` was a constant.
+    """
+    raw = (os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES")
+           or os.environ.get("LANG") or "").split(".")[0].lower()
+    raw = raw.replace("_", "-")
+    if raw in LANGUAGES:
+        return raw
+    base = raw.split("-")[0]
+    for lid in LANGUAGES:
+        if lid.split("-")[0] == base:
+            # pt_PT would land on Brazilian Portuguese, which is closer than
+            # English and the only Portuguese the voices file has.
+            return lid
+    return "en-us"
+
+
+def voice_choice():
+    """(language id, voice id) -- what is set, or what the desktop implies."""
+    try:
+        with io.open(CONF, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        d = {}
+    lang = d.get("language") if d.get("language") in LANGUAGES else None
+    lang = lang or system_language()
+    voices = LANGUAGES[lang][2]
+    voice = d.get("voice") if d.get("voice") in voices else voices[0]
+    return lang, voice
+
+
 SAMPLE_RATE = 24000
 
 # What pip is asked for. kokoro-onnx brings onnxruntime and numpy itself; the
@@ -210,7 +293,10 @@ def cmd_status(as_json):
         "venv": VENV if venv_python() else None,
         "download_mb": round(sum(s for _n, _u, s in FILES) / 1_000_000),
         "missing": [{"name": n, "how": h, "why": w} for n, h, w in need],
-        "voice": DEFAULT_VOICE,
+        "voice": voice_choice()[1],
+        "language": voice_choice()[0],
+        "languages": [{"id": lid, "label": LANGUAGES[lid][1],
+                       "voices": LANGUAGES[lid][2]} for lid in LANGUAGES],
     }
     if as_json:
         json.dump(out, sys.stdout, ensure_ascii=False)
@@ -382,6 +468,47 @@ def in_the_env():
     os.execv(vp, [vp, os.path.abspath(__file__)] + sys.argv[1:])
 
 
+def cmd_languages(as_json):
+    lang, voice = voice_choice()
+    if as_json:
+        json.dump({"language": lang, "voice": voice,
+                   "languages": [{"id": lid, "label": LANGUAGES[lid][1],
+                                  "voices": LANGUAGES[lid][2]}
+                                 for lid in LANGUAGES]},
+                  sys.stdout, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return
+    for lid, (_esp, label, voices) in LANGUAGES.items():
+        mark = "*" if lid == lang else " "
+        print(f"{mark} {lid:<6} {label:<20} {', '.join(voices)}")
+    print(f"\nspeaking {lang} with {voice}")
+
+
+def cmd_set(language, voice):
+    if language and language not in LANGUAGES:
+        die(f"unknown language {language!r}. Choose: "
+            + ", ".join(LANGUAGES))
+    if voice:
+        lang_of = PREFIX.get(voice[:1])
+        if not lang_of or voice not in LANGUAGES[lang_of][2]:
+            die(f"unknown voice {voice!r} — `genesi-ai-voice languages` "
+                "lists them")
+        if language and language != lang_of:
+            die(f"{voice} speaks {LANGUAGES[lang_of][1]}, not "
+                f"{LANGUAGES[language][1]}")
+        language = lang_of
+    if not language:
+        die("say which: --language pt-br, or --voice pf_dora")
+    voice = voice or LANGUAGES[language][2][0]
+    os.makedirs(os.path.dirname(CONF), exist_ok=True)
+    tmp = CONF + ".tmp"
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump({"language": language, "voice": voice}, fh)
+        fh.write("\n")
+    os.replace(tmp, CONF)
+    print(f"speaking {LANGUAGES[language][1]} with {voice}")
+
+
 def synthesise(text, voice):
     import numpy as np
     from kokoro_onnx import Kokoro
@@ -398,9 +525,17 @@ def synthesise(text, voice):
     except Exception:
         pass
 
+    # The language follows the VOICE when one is named, and the setting
+    # otherwise -- a Portuguese voice reading English phonemes, or the other
+    # way round, sounds like neither language.
+    lang, chosen = voice_choice()
+    if voice:
+        lang = PREFIX.get(voice[:1], lang)
+    else:
+        voice = chosen
     k = Kokoro(path_of("kokoro-v1.0.onnx"), path_of("voices-v1.0.bin"))
-    samples, _rate = k.create(text, voice=voice or DEFAULT_VOICE, speed=1.0,
-                              lang="en-us")
+    samples, _rate = k.create(text, voice=voice, speed=1.0,
+                              lang=LANGUAGES[lang][0])
     return (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
 
 
@@ -463,6 +598,11 @@ def main():
     s.add_argument("--json", action="store_true")
     sub.add_parser("install", add_help=False)
     sub.add_parser("voices", add_help=False)
+    lg = sub.add_parser("languages", add_help=False)
+    lg.add_argument("--json", action="store_true")
+    st = sub.add_parser("set", add_help=False)
+    st.add_argument("--language", default="")
+    st.add_argument("--voice", default="")
     sub.add_parser("remove", add_help=False)
     y = sub.add_parser("say", add_help=False)
     y.add_argument("text", nargs="*")
@@ -481,6 +621,10 @@ def main():
         cmd_install()
     elif args.cmd == "voices":
         cmd_voices()
+    elif args.cmd == "languages":
+        cmd_languages(args.json)
+    elif args.cmd == "set":
+        cmd_set(args.language, args.voice)
     elif args.cmd == "remove":
         cmd_remove()
     elif args.cmd == "say":

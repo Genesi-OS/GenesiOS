@@ -289,6 +289,14 @@ jobs:
         # to github.com must not go red about a URL that is fine.
         run: python genesi-arch/ci/voice-model-test.py
 
+      - name: every backend call in the AI Monitor names something that exists
+        # The Monitor's pages reach Python by NAME, both ways, and both fail
+        # silently: a call to a slot that is not there is a dead button, and a
+        # handler for a signal that is not emitted is simply never run. The
+        # Monitor needs Kirigami to load, so no offscreen harness here can load
+        # it -- this reads both sides as text instead.
+        run: python genesi-arch/ci/monitor-slots-test.py
+
       - name: every shebang script is pinned to LF
         # An extensionless script committed with CRLF is `bad interpreter: no
         # such file or directory` on the installed system and nowhere else.
