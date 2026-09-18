@@ -830,15 +830,28 @@ jobs:
       #
       # So: `gh` instead of the action, because it can retry a single asset
       # (--clobber makes a retry idempotent), the step is best-effort like the
-      # prune below it, and an archive that is STILL incomplete after three
-      # tries is deleted rather than left on the Releases page as a build whose
-      # ISO cannot be rejoined.
+      # prune below it, and an archive that is STILL incomplete is deleted
+      # rather than left on the Releases page as a build whose ISO cannot be
+      # rejoined.
+      #
+      # ── Every wait here is BOUNDED, which the first version was not ────────
+      #
+      # Retrying an upload that hangs instead of failing is just a longer hang:
+      # #698 spent 69 of the job's 90 minutes inside this step, was cancelled
+      # by the job timeout, and skipped the download-page republish exactly the
+      # way #696 had. A healthy upload of the whole set takes about a minute
+      # (measured on the builds before these), so five minutes for one part is
+      # a wedged connection, not a slow one, and the step gives up on the
+      # archive after twenty -- leaving the job's remaining hour to the steps
+      # that matter more than it does.
       #
       # --prerelease is what keeps `rolling` the repo's "Latest" and the
       # Releases page readable -- without it a dozen CI builds compete with the
       # actual download.
       - name: 🗃️ Create per-build archive release (main)
         if: github.ref == 'refs/heads/main'
+        # SECONDS, for the budget below, is a bash thing.
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -852,18 +865,31 @@ jobs:
                  --prerelease \
             || { echo "::warning::could not create $BUILD_TAG -- no archive for this build"; exit 0; }
 
-          missing=""
+          deadline=$(( SECONDS + ${ARCHIVE_BUDGET:-1200} ))
           for f in parts/*; do
-            ok=""
             for attempt in 1 2 3; do
-              if gh release upload "$BUILD_TAG" "$f" --clobber -R "$R"; then
-                ok=yes
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::warning::out of time for the archive — leaving the rest"
                 break
               fi
-              echo "::warning::upload of $(basename "$f") failed (attempt $attempt/3)"
-              sleep 30
+              timeout "${ARCHIVE_UPLOAD_TIMEOUT:-300}" \
+                gh release upload "$BUILD_TAG" "$f" --clobber -R "$R" && break
+              echo "::warning::upload of $(basename "$f") failed or stalled (attempt $attempt/3)"
+              sleep 15
             done
-            [ -n "$ok" ] || missing="$missing $(basename "$f")"
+          done
+
+          # The RELEASE is asked what it holds, rather than the exit codes
+          # being trusted: an upload killed by its timeout can leave a
+          # truncated asset behind, and an archive short of a byte is one
+          # nobody can rejoin. Name and size, against the files on disk.
+          have="$(gh release view "$BUILD_TAG" -R "$R" --json assets \
+                    --jq '.assets[] | "\(.name) \(.size)"' 2>/dev/null || true)"
+          missing=""
+          for f in parts/*; do
+            if ! printf '%s\n' "$have" | grep -qxF "$(basename "$f") $(stat -c%s "$f")"; then
+              missing="$missing $(basename "$f")"
+            fi
           done
 
           if [ -n "$missing" ]; then

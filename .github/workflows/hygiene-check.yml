@@ -96,6 +96,15 @@ jobs:
         shell: bash
         run: python genesi-arch/ci/iso-gate-test.py
 
+      # The per-build archive has taken the pipeline down twice -- once by
+      # failing, once by hanging -- and both times it skipped the step that
+      # republishes the download page. Its contract (exit 0 whatever the
+      # uploads do, inside a budget, never leave a half archive) is asserted
+      # here against a stubbed `gh`.
+      - name: A flaky archive upload cannot take the ISO down
+        shell: bash
+        run: python genesi-arch/ci/iso-archive-test.py
+
       - name: genesi-report does not leak the reporter
         shell: bash
         run: bash genesi-arch/ci/report-redaction-test.sh
