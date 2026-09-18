@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Store
+Name[pt_BR]=Genesi Store
+GenericName=Desktop looks
+GenericName[pt_BR]=Aparência do sistema
+Comment=Themes, wallpapers, bars and lock screens for your desktop
+Comment[pt_BR]=Temas, papéis de parede, barras e telas de bloqueio para o seu desktop
+Exec=genesi-store
+Icon=genesi-store
+Terminal=false
+Categories=Settings;DesktopSettings;Qt;
+Keywords=theme;wallpaper;rice;lockscreen;bar;fastfetch;store;tema;papel de parede;loja;
+StartupNotify=true
+StartupWMClass=org.genesi.store

@@ -274,21 +274,20 @@ Item {
             }
         }
 
-        // Vertical Japanese line, as in the design. Kept as ornament, off to
-        // the edge, where it reads as texture rather than as a label.
-        Column {
+        // A line of Genesi's own, set on its side where it reads as texture
+        // rather than as a label. It was a Japanese sentence, borrowed from
+        // the app this one was measured against; borrowed handwriting is the
+        // one thing a system's own face cannot be made of.
+        Text {
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-            anchors.rightMargin: 4
-            spacing: 1
-            Repeater {
-                model: ["創", "造", "は", "こ", "こ", "か", "ら", "始", "ま", "る"]
-                delegate: Text {
-                    required property string modelData
-                    text: modelData
-                    color: Tokens.textFaint
-                    font.pixelSize: 11
-                }
-            }
+            anchors.rightMargin: 10
+            rotation: 90
+            transformOrigin: Item.Center
+            text: qsTr("PEQUENAS MUDAN\u00c7AS, GRANDES HORIZONTES")
+            color: Tokens.textFaint
+            font.family: Tokens.mono
+            font.pixelSize: 10
+            font.letterSpacing: 3
         }
     }
 

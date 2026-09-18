@@ -81,10 +81,11 @@ Item {
 
     Text {
         anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-        text: Tokens.hasCjk ? root.tag : ""
+        text: root.tag
         color: root.current ? Tokens.accentDim : Tokens.textFaint
-        font.family: Tokens.cjk
-        font.pixelSize: 12
+        font.family: Tokens.mono
+        font.pixelSize: 10
+        font.letterSpacing: 0.8
         Behavior on color { ColorAnimation { duration: Tokens.quick } }
     }
 

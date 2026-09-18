@@ -90,34 +90,34 @@ Window {
     readonly property var groups: [
         {
             index: "01", title: qsTr("Overview"), items: [
-                { id: "overview", keywords: "dashboard home summary",  label: qsTr("Overview"),  tag: "概観" },
-                { id: "system", keywords: "about specs kernel cpu gpu version packages",    label: qsTr("System"),    tag: "系統" },
-                { id: "resources", keywords: "cpu ram memory processes disk monitor performance top", label: qsTr("Resources"), tag: "資源" }
+                { id: "overview", keywords: "dashboard home summary",  label: qsTr("Overview"),  tag: "raiz" },
+                { id: "system", keywords: "about specs kernel cpu gpu version packages",    label: qsTr("System"),    tag: "tronco" },
+                { id: "resources", keywords: "cpu ram memory processes disk monitor performance top", label: qsTr("Resources"), tag: "seiva" }
             ]
         },
         {
             index: "02", title: qsTr("Devices"), items: [
-                { id: "displays", keywords: "monitor screen resolution hz refresh scale rotate", label: qsTr("Displays"), tag: "画面", needs: "hyprland" },
-                { id: "input", keywords: "keyboard mouse pointer touchpad layout repeat sensitivity",    label: qsTr("Input"),    tag: "入力" },
-                { id: "audio", keywords: "sound volume speaker microphone mic output input mute",    label: qsTr("Audio"),    tag: "音響" }
+                { id: "displays", keywords: "monitor screen resolution hz refresh scale rotate", label: qsTr("Displays"), tag: "luz", needs: "hyprland" },
+                { id: "input", keywords: "keyboard mouse pointer touchpad layout repeat sensitivity",    label: qsTr("Input"),    tag: "toque" },
+                { id: "audio", keywords: "sound volume speaker microphone mic output input mute",    label: qsTr("Audio"),    tag: "eco" }
             ]
         },
         {
             index: "03", title: qsTr("Desktop"), items: [
-                { id: "appearance", keywords: "theme colour color scheme wallpaper shader frame border", label: qsTr("Appearance"), tag: "外観", needs: "caelestia" },
-                { id: "bar", keywords: "panel taskbar topbar workspaces tray clock",        label: qsTr("Bar"),        tag: "帯", needs: "caelestia" },
-                { id: "launcher", keywords: "menu run search spotlight",   label: qsTr("Launcher"),   tag: "起動", needs: "caelestia" },
-                { id: "windows", keywords: "gaps rounding border blur opacity animations tiling",    label: qsTr("Windows"),    tag: "窓", needs: "hyprland" },
-                { id: "widgets", keywords: "desktop clock visualiser wallpaper background", label: qsTr("Widgets"), tag: "部品", needs: "caelestia" },
-                { id: "shortcuts", keywords: "keybinds keys hotkeys bindings",  label: qsTr("Shortcuts"),  tag: "操作", needs: "hyprland" }
+                { id: "appearance", keywords: "theme colour color scheme wallpaper shader frame border", label: qsTr("Appearance"), tag: "flor", needs: "caelestia" },
+                { id: "bar", keywords: "panel taskbar topbar workspaces tray clock",        label: qsTr("Bar"),        tag: "galho", needs: "caelestia" },
+                { id: "launcher", keywords: "menu run search spotlight",   label: qsTr("Launcher"),   tag: "broto", needs: "caelestia" },
+                { id: "windows", keywords: "gaps rounding border blur opacity animations tiling",    label: qsTr("Windows"),    tag: "folhas", needs: "hyprland" },
+                { id: "widgets", keywords: "desktop clock visualiser wallpaper background", label: qsTr("Widgets"), tag: "frutos", needs: "caelestia" },
+                { id: "shortcuts", keywords: "keybinds keys hotkeys bindings",  label: qsTr("Shortcuts"),  tag: "trilha", needs: "hyprland" }
             ]
         },
         {
             index: "04", title: qsTr("System"), items: [
-                { id: "ai", keywords: "llm model kokoro voice tts api key gpu",        label: qsTr("Local AI"),  tag: "知能" },
-                { id: "snapshots", keywords: "backup restore rollback btrfs snapper undo", label: qsTr("Snapshots"), tag: "保存" },
-                { id: "console", keywords: "terminal shell alias command function fish bash zsh", label: qsTr("Console"), tag: "端末" },
-                { id: "settings", keywords: "about preferences",  label: qsTr("Settings"),  tag: "設定" }
+                { id: "ai", keywords: "llm model kokoro voice tts api key gpu",        label: qsTr("Local AI"),  tag: "mente" },
+                { id: "snapshots", keywords: "backup restore rollback btrfs snapper undo", label: qsTr("Snapshots"), tag: "anel" },
+                { id: "console", keywords: "terminal shell alias command function fish bash zsh", label: qsTr("Console"), tag: "solo" },
+                { id: "settings", keywords: "about preferences",  label: qsTr("Settings"),  tag: "semente" }
             ]
         }
     ]

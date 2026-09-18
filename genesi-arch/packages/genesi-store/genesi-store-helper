@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""
+genesi-store-helper — the two things Genesi Store cannot do as you.
+
+The login screen lives in /etc/sddm.conf.d and /usr/share/sddm/themes, and a
+package comes from pacman. Both need root, so both go through here, and here
+is deliberately small enough to read in a minute:
+
+    genesi-store-helper login-theme <name>
+    genesi-store-helper install <package>
+
+── Why it takes a NAME and not a path or a command ────────────────────────
+
+This runs as root, started by pkexec, with an argument that came from a
+catalogue entry. If that argument were a path, a catalogue could name
+/etc/shadow; if it were a command, a catalogue would be a root shell with a
+picture next to it. So it takes a name out of a fixed list -- checked here,
+in the file that has the privileges, never in the caller.
+
+── What it writes ─────────────────────────────────────────────────────────
+
+One file: /etc/sddm.conf.d/50-genesi-store.conf, which is the highest-numbered
+drop-in Genesi ships, so it wins over the default without editing it, and
+removing it puts the login screen back exactly as the install left it. That is
+what `login-theme breeze` does -- it deletes the drop-in rather than writing
+the old value back, because "back" means "whatever the system decides", not
+"what this tool happened to see".
+"""
+import os
+import re
+import subprocess
+import sys
+
+DROPIN = "/etc/sddm.conf.d/50-genesi-store.conf"
+THEME_DIR = "/usr/share/sddm/themes"
+
+# The store may only install packages a LOOK cannot work without, and only
+# ones that exist in the Arch repositories. Anything else is a decision for
+# the person and their package manager, not for a catalogue entry.
+INSTALLABLE = ("hyprlock", "hypridle", "swaylock")
+
+NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$")
+
+
+def die(msg):
+    sys.stderr.write("genesi-store-helper: %s\n" % msg)
+    raise SystemExit(1)
+
+
+def login_theme(name):
+    if not NAME.match(name):
+        die("%r is not a theme name" % name)
+    if name == "breeze":
+        # Back to the system's own answer.
+        if os.path.exists(DROPIN):
+            os.unlink(DROPIN)
+        print("login screen: back to the system default")
+        return
+    path = os.path.join(THEME_DIR, name)
+    # realpath, because a theme "name" that walks out of the themes directory
+    # with .. is the one way a name can behave like a path.
+    if os.path.realpath(path) != path or not os.path.isdir(path):
+        die("there is no login theme called %r installed" % name)
+    os.makedirs(os.path.dirname(DROPIN), exist_ok=True)
+    tmp = DROPIN + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Written by Genesi Store. Delete this file to go back to\n"
+                 "# the login screen the system shipped.\n"
+                 "[Theme]\n"
+                 "Current=%s\n" % name)
+    os.replace(tmp, DROPIN)
+    print("login screen: %s" % name)
+
+
+def install(package):
+    if package not in INSTALLABLE:
+        die("%r is not a package the store installs" % package)
+    proc = subprocess.run(["pacman", "-S", "--needed", "--noconfirm", package],
+                          capture_output=True, text=True, timeout=900)
+    sys.stdout.write(proc.stdout or "")
+    if proc.returncode:
+        sys.stderr.write(proc.stderr or "")
+        die("pacman could not install %s" % package)
+    print("installed %s" % package)
+
+
+def main():
+    if os.geteuid() != 0:
+        die("this is the part that needs root; run it through the store")
+    if len(sys.argv) != 3:
+        die("usage: genesi-store-helper login-theme <name> | install <package>")
+    what, value = sys.argv[1], sys.argv[2]
+    if what == "login-theme":
+        return login_theme(value)
+    if what == "install":
+        return install(value)
+    die("%r is not something this helper does" % what)
+    return None
+
+
+if __name__ == "__main__":
+    main()

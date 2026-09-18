@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  Genesi Store asks for a password twice in its life: to change the screen
+  that appears BEFORE anyone has logged in, and to install the locker a
+  session lock needs. Both are auth_admin_keep rather than auth_admin: somebody
+  trying two login screens in a row should be asked once, not once per card.
+
+  The message is written for the person who will read it at the prompt, in
+  their own language, and it says what will change (the login screen), not
+  how it is done (a helper under pkexec).
+-->
+<policyconfig>
+  <vendor>Genesi OS</vendor>
+  <vendor_url>https://github.com/Genesi-OS/GenesiOS</vendor_url>
+
+  <action id="org.genesi.store.helper">
+    <description>Change the login screen or install a lock screen</description>
+    <description xml:lang="pt_BR">Mudar a tela de login ou instalar uma tela de bloqueio</description>
+    <message>Genesi Store needs permission to change the screen you see before logging in.</message>
+    <message xml:lang="pt_BR">A Genesi Store precisa de permissão para mudar a tela que aparece antes de você entrar.</message>
+    <icon_name>genesi-store</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/genesi-store/genesi-store-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

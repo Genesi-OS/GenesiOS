@@ -1,0 +1,2236 @@
+{
+ "version": 1,
+ "updated": "2026-09-18",
+ "sections": [
+  {
+   "id": "discover",
+   "label": "Descobrir",
+   "label_en": "Discover",
+   "icon": "home",
+   "blurb": "O que vale a pena hoje."
+  },
+  {
+   "id": "rices",
+   "label": "Ambientes",
+   "label_en": "Rices",
+   "icon": "grid",
+   "blurb": "Um desktop inteiro, de uma vez."
+  },
+  {
+   "id": "themes",
+   "label": "Temas",
+   "label_en": "Themes",
+   "icon": "palette",
+   "blurb": "A cor de tudo, do topo ao terminal."
+  },
+  {
+   "id": "lockscreens",
+   "label": "Telas de bloqueio",
+   "label_en": "Lockscreens",
+   "icon": "lock",
+   "blurb": "A da sessão e a do login, que são duas."
+  },
+  {
+   "id": "bars",
+   "label": "Barras",
+   "label_en": "Bar styles",
+   "icon": "bar",
+   "blurb": "Quinze arranjos da barra."
+  },
+  {
+   "id": "fastfetch",
+   "label": "Fastfetch",
+   "label_en": "Fastfetch",
+   "icon": "terminal",
+   "blurb": "O cartão de visita do terminal."
+  },
+  {
+   "id": "decor",
+   "label": "Decoração",
+   "label_en": "Decor",
+   "icon": "image",
+   "blurb": "Papéis de parede e detalhes."
+  },
+  {
+   "id": "bundles",
+   "label": "Coleções",
+   "label_en": "Bundles",
+   "icon": "box",
+   "blurb": "Combinações que já vêm casadas."
+  },
+  {
+   "id": "plugins",
+   "label": "Plugins",
+   "label_en": "Plugins",
+   "icon": "plug",
+   "blurb": "Em breve."
+  }
+ ],
+ "items": [
+  {
+   "id": "theme-caelestia-default-dark",
+   "section": "themes",
+   "name": "Caelestia",
+   "blurb": "O tom da casa, no escuro.",
+   "author": "caelestia / caelestia",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "caelestia"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#0a0f0f",
+    "ink": "#dce8e6",
+    "colours": [
+     "#9bd0cc",
+     "#b0ccc9",
+     "#d5efff"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "caelestia",
+     "flavour": "default",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-caelestia-default-light",
+   "section": "themes",
+   "name": "Caelestia Claro",
+   "blurb": "O mesmo, na luz.",
+   "author": "caelestia / caelestia",
+   "mode": "light",
+   "tags": [
+    "claro",
+    "caelestia"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#f6faf9",
+    "ink": "#2a3433",
+    "colours": [
+     "#1c6a66",
+     "#4a6462",
+     "#37647b"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "caelestia",
+     "flavour": "default",
+     "mode": "light"
+    }
+   ]
+  },
+  {
+   "id": "theme-darkgreen-hard-dark",
+   "section": "themes",
+   "name": "Verde Profundo",
+   "blurb": "Quase preto, com seiva.",
+   "author": "caelestia / darkgreen",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "darkgreen"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#23262d",
+    "ink": "#f5f5f6",
+    "colours": [
+     "#24bd5c",
+     "#24bd5c",
+     "#32653e"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "darkgreen",
+     "flavour": "hard",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-darkgreen-medium-dark",
+   "section": "themes",
+   "name": "Verde Mata",
+   "blurb": "Verde sem gritar.",
+   "author": "caelestia / darkgreen",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "darkgreen"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#23262d",
+    "ink": "#f5f5f6",
+    "colours": [
+     "#24bd5c",
+     "#24bd5c",
+     "#32653e"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "darkgreen",
+     "flavour": "medium",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-everforest-medium-dark",
+   "section": "themes",
+   "name": "Everforest",
+   "blurb": "Musgo, pedra e madeira.",
+   "author": "caelestia / everforest",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "everforest"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#2d353b",
+    "ink": "#d3c6aa",
+    "colours": [
+     "#7fbbb3",
+     "#83c092",
+     "#a7c080"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "everforest",
+     "flavour": "medium",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-everforest-hard-dark",
+   "section": "themes",
+   "name": "Everforest Duro",
+   "blurb": "O mesmo, com mais contraste.",
+   "author": "caelestia / everforest",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "everforest"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#1e2326",
+    "ink": "#d3c6aa",
+    "colours": [
+     "#7fbbb3",
+     "#83c092",
+     "#a7c080"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "everforest",
+     "flavour": "hard",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-everforest-medium-light",
+   "section": "themes",
+   "name": "Everforest Claro",
+   "blurb": "Papel e folha.",
+   "author": "caelestia / everforest",
+   "mode": "light",
+   "tags": [
+    "claro",
+    "everforest"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#fdf6e3",
+    "ink": "#5c6a72",
+    "colours": [
+     "#3a94c5",
+     "#35a77c",
+     "#8da101"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "everforest",
+     "flavour": "medium",
+     "mode": "light"
+    }
+   ]
+  },
+  {
+   "id": "theme-everblush-medium-dark",
+   "section": "themes",
+   "name": "Everblush",
+   "blurb": "Escuro com um rubor.",
+   "author": "caelestia / everblush",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "everblush"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#141b1e",
+    "ink": "#e8e8e8",
+    "colours": [
+     "#8ccfb0",
+     "#e5c76b",
+     "#e5a5c5"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "everblush",
+     "flavour": "medium",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-catppuccin-mocha-dark",
+   "section": "themes",
+   "name": "Catppuccin Mocha",
+   "blurb": "O pastel que todo mundo conhece.",
+   "author": "caelestia / catppuccin",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "catppuccin"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#131317",
+    "ink": "#e5e1e7",
+    "colours": [
+     "#c2c1ff",
+     "#c6c4e0",
+     "#f5b2e0"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "catppuccin",
+     "flavour": "mocha",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-catppuccin-macchiato-dark",
+   "section": "themes",
+   "name": "Catppuccin Macchiato",
+   "blurb": "Um passo mais claro.",
+   "author": "caelestia / catppuccin",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "catppuccin"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#131317",
+    "ink": "#e4e1e7",
+    "colours": [
+     "#bac3ff",
+     "#c3c5e0",
+     "#f1b3e5"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "catppuccin",
+     "flavour": "macchiato",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-catppuccin-frappe-dark",
+   "section": "themes",
+   "name": "Catppuccin Frappe",
+   "blurb": "Meio do caminho.",
+   "author": "caelestia / catppuccin",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "catppuccin"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#131317",
+    "ink": "#e4e1e7",
+    "colours": [
+     "#b7c4ff",
+     "#c1c5e0",
+     "#f1b3e6"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "catppuccin",
+     "flavour": "frappe",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-catppuccin-latte-light",
+   "section": "themes",
+   "name": "Catppuccin Latte",
+   "blurb": "Claro, sem estourar.",
+   "author": "caelestia / catppuccin",
+   "mode": "light",
+   "tags": [
+    "claro",
+    "catppuccin"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#f8f9fc",
+    "ink": "#191c1e",
+    "colours": [
+     "#3e7b9f",
+     "#4c6170",
+     "#8f659a"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "catppuccin",
+     "flavour": "latte",
+     "mode": "light"
+    }
+   ]
+  },
+  {
+   "id": "theme-gruvbox-medium-dark",
+   "section": "themes",
+   "name": "Gruvbox",
+   "blurb": "Terra, mostarda e ferrugem.",
+   "author": "caelestia / gruvbox",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "gruvbox"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#101415",
+    "ink": "#e0e3e4",
+    "colours": [
+     "#81d3e0",
+     "#adccd1",
+     "#ddb9f7"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "gruvbox",
+     "flavour": "medium",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-gruvbox-hard-dark",
+   "section": "themes",
+   "name": "Gruvbox Duro",
+   "blurb": "Fundo mais fechado.",
+   "author": "caelestia / gruvbox",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "gruvbox"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#101415",
+    "ink": "#e0e3e4",
+    "colours": [
+     "#85d2e7",
+     "#aecbd4",
+     "#e1b7f5"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "gruvbox",
+     "flavour": "hard",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-gruvbox-soft-dark",
+   "section": "themes",
+   "name": "Gruvbox Macio",
+   "blurb": "Fundo mais aberto.",
+   "author": "caelestia / gruvbox",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "gruvbox"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#18120e",
+    "ink": "#ece0d9",
+    "colours": [
+     "#ffb878",
+     "#e5bfa1",
+     "#c6cc7a"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "gruvbox",
+     "flavour": "soft",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-gruvbox-medium-light",
+   "section": "themes",
+   "name": "Gruvbox Claro",
+   "blurb": "O mesmo, de dia.",
+   "author": "caelestia / gruvbox",
+   "mode": "light",
+   "tags": [
+    "claro",
+    "gruvbox"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#fef9ee",
+    "ink": "#1d1c15",
+    "colours": [
+     "#6b5f10",
+     "#655f3c",
+     "#5c7e43"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "gruvbox",
+     "flavour": "medium",
+     "mode": "light"
+    }
+   ]
+  },
+  {
+   "id": "theme-nord-medium-dark",
+   "section": "themes",
+   "name": "Nord",
+   "blurb": "Gelo e aço.",
+   "author": "caelestia / nord",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "nord"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#2e3440",
+    "ink": "#eceff4",
+    "colours": [
+     "#88c0d0",
+     "#81a1c1",
+     "#5e81ac"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "nord",
+     "flavour": "medium",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-tokyonight-medium-dark",
+   "section": "themes",
+   "name": "Tokyo Night",
+   "blurb": "Cidade às três da manhã.",
+   "author": "caelestia / tokyonight",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "tokyonight"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#1a1b26",
+    "ink": "#c0caf5",
+    "colours": [
+     "#7aa2f7",
+     "#9ece6a",
+     "#bb9af7"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "tokyonight",
+     "flavour": "medium",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-rosepine-main-dark",
+   "section": "themes",
+   "name": "Rose Pine",
+   "blurb": "Vinho e pinho.",
+   "author": "caelestia / rosepine",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "rosepine"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#141317",
+    "ink": "#e5e1e7",
+    "colours": [
+     "#c9bfff",
+     "#c9c3e0",
+     "#f9b1dc"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "rosepine",
+     "flavour": "main",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-rosepine-moon-dark",
+   "section": "themes",
+   "name": "Rose Pine Moon",
+   "blurb": "Um pouco mais alto.",
+   "author": "caelestia / rosepine",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "rosepine"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#141317",
+    "ink": "#e5e1e7",
+    "colours": [
+     "#c6bfff",
+     "#c8c3e0",
+     "#f9b1dd"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "rosepine",
+     "flavour": "moon",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-rosepine-dawn-light",
+   "section": "themes",
+   "name": "Rose Pine Dawn",
+   "blurb": "O amanhecer da mesma.",
+   "author": "caelestia / rosepine",
+   "mode": "light",
+   "tags": [
+    "claro",
+    "rosepine"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#fff8f0",
+    "ink": "#1e1b15",
+    "colours": [
+     "#897324",
+     "#695e3b",
+     "#647d3e"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "rosepine",
+     "flavour": "dawn",
+     "mode": "light"
+    }
+   ]
+  },
+  {
+   "id": "theme-dracula-medium-dark",
+   "section": "themes",
+   "name": "Dracula",
+   "blurb": "Roxo clássico.",
+   "author": "caelestia / dracula",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "dracula"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#282a36",
+    "ink": "#f8f8f2",
+    "colours": [
+     "#bd93f9",
+     "#50fa7b",
+     "#ff79c6"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "dracula",
+     "flavour": "medium",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-onedark-default-dark",
+   "section": "themes",
+   "name": "One Dark",
+   "blurb": "O tema de editor virou desktop.",
+   "author": "caelestia / onedark",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "onedark"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#121317",
+    "ink": "#e3e2e7",
+    "colours": [
+     "#a8c8ff",
+     "#bbc7df",
+     "#ebb5ec"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "onedark",
+     "flavour": "default",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-oldworld-default-dark",
+   "section": "themes",
+   "name": "Old World",
+   "blurb": "Sepia e quieto.",
+   "author": "caelestia / oldworld",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "oldworld"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#121317",
+    "ink": "#e3e2e7",
+    "colours": [
+     "#aac7ff",
+     "#bcc7df",
+     "#ecb4ed"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "oldworld",
+     "flavour": "default",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-solarized-medium-dark",
+   "section": "themes",
+   "name": "Solarized",
+   "blurb": "O mais estudado de todos.",
+   "author": "caelestia / solarized",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "solarized"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#002b36",
+    "ink": "#fdf6e3",
+    "colours": [
+     "#268bd2",
+     "#2aa198",
+     "#6c71c4"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "solarized",
+     "flavour": "medium",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "theme-shadotheme-default-dark",
+   "section": "themes",
+   "name": "Shado",
+   "blurb": "Cinza com um fio de cor.",
+   "author": "caelestia / shadotheme",
+   "mode": "dark",
+   "tags": [
+    "escuro",
+    "shadotheme"
+   ],
+   "preview": {
+    "kind": "swatches",
+    "background": "#131317",
+    "ink": "#e5e1e7",
+    "colours": [
+     "#bfc1ff",
+     "#c5c4e0",
+     "#f4b2e2"
+    ]
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "shadotheme",
+     "flavour": "default",
+     "mode": "dark"
+    }
+   ]
+  },
+  {
+   "id": "wall-forest-dark",
+   "section": "decor",
+   "name": "Floresta Escura",
+   "blurb": "Mata fechada ao anoitecer.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "natureza",
+    "escuro",
+    "verde"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/dark_forest.png",
+     "type": "image/png",
+     "bytes": 6123661,
+     "sha256": "687de5016d97c4fbdf71c8e4c1d1ba1f657747b322e249b69cd09c3503eeeedb"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-nature",
+   "section": "decor",
+   "name": "Natureza",
+   "blurb": "Verde aberto, sem pressa.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "natureza",
+    "verde"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/nature.jpg",
+     "type": "image/jpeg",
+     "bytes": 1729972,
+     "sha256": "dbf3881f5188e1851ce8edc9dd643fb0b01d3223f31bd053463f2fd0ad1c8083"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-everforest-robin",
+   "section": "decor",
+   "name": "Everforest",
+   "blurb": "A paleta everforest em desenho.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "natureza",
+    "verde",
+    "arte"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/everforest_robin.png",
+     "type": "image/png",
+     "bytes": 426822,
+     "sha256": "70c8d410c0e91aec2501fb653d633be6a70cf43b95b317526c7ecf0b97a75c3c"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-lake",
+   "section": "decor",
+   "name": "Lago",
+   "blurb": "Água parada e montanha.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "natureza",
+    "agua",
+    "calmo"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/lake.jpg",
+     "type": "image/jpeg",
+     "bytes": 130044,
+     "sha256": "9018cf019c71828ad9abab9c7b7aeb6edeeaccc985ad6152835794f3b6846329"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-art-lake",
+   "section": "decor",
+   "name": "Lago Ilustrado",
+   "blurb": "O mesmo silêncio, desenhado.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "arte",
+    "agua",
+    "calmo"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/art-lake.png",
+     "type": "image/png",
+     "bytes": 2834196,
+     "sha256": "486f7f4be4ceb3bc761c25961a80d9116d6afa614db50cc910934de64aa44097"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-mountains",
+   "section": "decor",
+   "name": "Montanhas",
+   "blurb": "Camadas até o horizonte.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "natureza",
+    "minimalista"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/mountains.png",
+     "type": "image/png",
+     "bytes": 3222979,
+     "sha256": "b130c92323e10122d6db5a850d83c4feb37c73e477df3c1e5d3c6763f368e583"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-golden-mountains",
+   "section": "decor",
+   "name": "Montanhas Douradas",
+   "blurb": "Fim de tarde nos picos.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "natureza",
+    "quente"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/golden-mountains.png",
+     "type": "image/png",
+     "bytes": 169422,
+     "sha256": "d91431b767cf218a646f2864141e3705ebe482a18d4b3aa200c5f5cb90fd6784"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-oled-mountains",
+   "section": "decor",
+   "name": "Montanhas OLED",
+   "blurb": "Preto real, para telas OLED.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "escuro",
+    "oled",
+    "minimalista"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/oled-mountains.jpg",
+     "type": "image/jpeg",
+     "bytes": 1607197,
+     "sha256": "0a8a17d82585f2562ddcc93cfa87cef5ccc29e481680142d8d21a9cd0ce337d8"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-moon",
+   "section": "decor",
+   "name": "Lua",
+   "blurb": "Uma lua e nada mais.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "escuro",
+    "minimalista",
+    "noite"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/moon.png",
+     "type": "image/png",
+     "bytes": 47853,
+     "sha256": "4ca7c1c7eadefc27f642248a329abec79e860dcadc8956e2e65100225d18bb38"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-falltree",
+   "section": "decor",
+   "name": "Outono",
+   "blurb": "Uma árvore em queda de folhas.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "natureza",
+    "quente"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/falltree.jpg",
+     "type": "image/jpeg",
+     "bytes": 2074377,
+     "sha256": "5fd05d173a15ab2feb0309fca3b1dff5d2a3de3d60f4bb5ccd0d6450e0486b61"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-green-sun",
+   "section": "decor",
+   "name": "Sol Verde",
+   "blurb": "Luz filtrada por folhas.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "verde",
+    "natureza"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/green-sun.jpg",
+     "type": "image/jpeg",
+     "bytes": 26453,
+     "sha256": "fc92b0b2de769ee0cdf18753af8bfe1cb7a0a6eca9d98ac4d40941c8f3f09487"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-tree-castle",
+   "section": "decor",
+   "name": "Castelo no Céu",
+   "blurb": "Árvore, castelo, nuvem.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "arte",
+    "natureza"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/tree-nature-castleinsky.png",
+     "type": "image/png",
+     "bytes": 3570681,
+     "sha256": "3dde1b73cdde3fed33f7a03fb3bd08af1f8c66d73bb0e11339dc380a175cb8e7"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-ink-wave",
+   "section": "decor",
+   "name": "Onda de Tinta",
+   "blurb": "Nanquim em movimento.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "arte",
+    "escuro",
+    "minimalista"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/ink_wave.png",
+     "type": "image/png",
+     "bytes": 314547,
+     "sha256": "8eb7a889292dd471099dd8e41169f879d60a3817c8d1050fca1229e6479268c9"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-blue-waves",
+   "section": "decor",
+   "name": "Ondas Azuis",
+   "blurb": "Curvas frias e limpas.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "minimalista",
+    "frio"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/blue-waves.png",
+     "type": "image/png",
+     "bytes": 235671,
+     "sha256": "8c25c1ec463e5f2a72bedd64cbc762dfd7c3d0db8d2c32660ba24a334060803f"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-minimal-c",
+   "section": "decor",
+   "name": "Minimal",
+   "blurb": "Quase nada, bem colocado.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "minimalista",
+    "escuro"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/minimal_c.png",
+     "type": "image/png",
+     "bytes": 55461,
+     "sha256": "3a5ac992d0ab14f164072edcf4e202a7c572c98835c585adc6eb809374245661"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-arch-nord",
+   "section": "decor",
+   "name": "Arch Nord",
+   "blurb": "O logo, em nord.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "escuro",
+    "frio",
+    "arch"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/arch-nord-dark.png",
+     "type": "image/png",
+     "bytes": 372990,
+     "sha256": "0cbdbc59ea0bfae3ee93f21588c9d1484f13de1b554f79b70107dadafa045acb"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-gruvbox-city",
+   "section": "decor",
+   "name": "Cidade Gruvbox",
+   "blurb": "Retro em terra e mostarda.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "quente",
+    "retro",
+    "cidade"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/gruvbox_retrocity.png",
+     "type": "image/png",
+     "bytes": 160289,
+     "sha256": "b07aff0455a146fcebd20543ef713b7d29461bcffd1b60f7fcce3a50d7feaaf5"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "wall-neocity",
+   "section": "decor",
+   "name": "Neocidade",
+   "blurb": "Neon e chuva.",
+   "author": "D3Ext/aesthetic-wallpapers",
+   "license": "MIT",
+   "source": "https://github.com/D3Ext/aesthetic-wallpapers",
+   "tags": [
+    "cidade",
+    "escuro",
+    "neon"
+   ],
+   "preview": {
+    "kind": "image",
+    "asset": "picture"
+   },
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/neocity.png",
+     "type": "image/png",
+     "bytes": 22255153,
+     "sha256": "f68427e2edfa84be645dbf90c601df4aa3cb36e077e8aceb65f77af376075e22"
+    }
+   },
+   "actions": [
+    {
+     "action": "wallpaper",
+     "asset": "picture"
+    }
+   ]
+  },
+  {
+   "id": "bar-padrao",
+   "section": "bars",
+   "name": "Padrão",
+   "blurb": "A barra como o caelestia entrega.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "10-padrao"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "10-padrao"
+    }
+   ]
+  },
+  {
+   "id": "bar-borda",
+   "section": "bars",
+   "name": "Rente",
+   "blurb": "Sem moldura: encostada na borda da tela.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "15-borda"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "15-borda"
+    }
+   ]
+  },
+  {
+   "id": "bar-centrado",
+   "section": "bars",
+   "name": "Centralizado",
+   "blurb": "Logo em cima, espaços no meio, o resto embaixo.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "20-centrado"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "20-centrado"
+    }
+   ]
+  },
+  {
+   "id": "bar-fio",
+   "section": "bars",
+   "name": "Fio",
+   "blurb": "O mais estreito que dá para acertar com o mouse.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "25-fio"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "25-fio"
+    }
+   ]
+  },
+  {
+   "id": "bar-ilha",
+   "section": "bars",
+   "name": "Ilha",
+   "blurb": "Cantos bem redondos, barra na beirada.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "30-ilha"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "30-ilha"
+    }
+   ]
+  },
+  {
+   "id": "bar-numeros",
+   "section": "bars",
+   "name": "Numeros",
+   "blurb": "Espaços de trabalho numerados.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "40-numeros"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "40-numeros"
+    }
+   ]
+  },
+  {
+   "id": "bar-arejado",
+   "section": "bars",
+   "name": "Arejado",
+   "blurb": "Mais espaço entre tudo.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "45-arejado"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "45-arejado"
+    }
+   ]
+  },
+  {
+   "id": "bar-janelas",
+   "section": "bars",
+   "name": "Janelas",
+   "blurb": "Mostra as janelas abertas.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "50-janelas"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "50-janelas"
+    }
+   ]
+  },
+  {
+   "id": "bar-painel",
+   "section": "bars",
+   "name": "Painel",
+   "blurb": "Denso, como um painel de controle.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "55-painel"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "55-painel"
+    }
+   ]
+  },
+  {
+   "id": "bar-informativo",
+   "section": "bars",
+   "name": "Informativo",
+   "blurb": "Tudo que dá para medir, medido.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "60-informativo"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "60-informativo"
+    }
+   ]
+  },
+  {
+   "id": "bar-compacto",
+   "section": "bars",
+   "name": "Compacto",
+   "blurb": "O essencial, junto.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "70-compacto"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "70-compacto"
+    }
+   ]
+  },
+  {
+   "id": "bar-limpo",
+   "section": "bars",
+   "name": "Limpo",
+   "blurb": "So o necessario.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "80-limpo"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "80-limpo"
+    }
+   ]
+  },
+  {
+   "id": "bar-relogio",
+   "section": "bars",
+   "name": "Relogio",
+   "blurb": "O relógio em primeiro lugar.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "85-relogio"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "85-relogio"
+    }
+   ]
+  },
+  {
+   "id": "bar-trilha",
+   "section": "bars",
+   "name": "Trilha",
+   "blurb": "Uma linha contínua.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "90-trilha"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "90-trilha"
+    }
+   ]
+  },
+  {
+   "id": "bar-oculta",
+   "section": "bars",
+   "name": "Oculta",
+   "blurb": "Some até você precisar.",
+   "author": "Genesi",
+   "tags": [
+    "barra"
+   ],
+   "preview": {
+    "kind": "bar",
+    "preset": "95-oculta"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "95-oculta"
+    }
+   ]
+  },
+  {
+   "id": "lock-wallpaper",
+   "section": "lockscreens",
+   "name": "Papel de parede",
+   "blurb": "O seu papel de parede, desfocado.",
+   "family": "session",
+   "author": "Genesi",
+   "tags": [
+    "sessão",
+    "desfoque"
+   ],
+   "preview": {
+    "kind": "lock",
+    "background": "#14241c",
+    "accent": "#8fd6ab"
+   },
+   "actions": [
+    {
+     "action": "package",
+     "name": "hyprlock",
+     "binary": "hyprlock"
+    },
+    {
+     "action": "file",
+     "path": "~/.config/hypr/hyprlock.conf",
+     "text": "# Papel de parede -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 3\n    blur_size = 8\n    brightness = 0.7\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 0.9)\n    inner_color = rgba(20, 28, 24, 0.75)\n    font_color = rgba(233, 245, 238, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>senha</i>\n    hide_input = false\n    rounding = 14\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 96\n    font_family = Rubik\n    color = rgba(233, 245, 238, 0.95)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $USER\n    font_size = 16\n    font_family = Rubik\n    color = rgba(143, 214, 171, 0.85)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "lock-clean",
+   "section": "lockscreens",
+   "name": "Limpa",
+   "blurb": "Fundo sólido, relógio grande, nada mais.",
+   "family": "session",
+   "author": "Genesi",
+   "tags": [
+    "sessão",
+    "minimalista"
+   ],
+   "preview": {
+    "kind": "lock",
+    "background": "#101412",
+    "accent": "#8fd6ab"
+   },
+   "actions": [
+    {
+     "action": "package",
+     "name": "hyprlock",
+     "binary": "hyprlock"
+    },
+    {
+     "action": "file",
+     "path": "~/.config/hypr/hyprlock.conf",
+     "text": "# Limpa -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = \n    blur_passes = 0\n    blur_size = 0\n    brightness = 1.0\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 0.8)\n    inner_color = rgba(16, 20, 18, 0.9)\n    font_color = rgba(240, 244, 241, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>digite a senha</i>\n    hide_input = false\n    rounding = 8\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 120\n    font_family = Rubik\n    color = rgba(240, 244, 241, 0.95)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = \n    font_size = 16\n    font_family = Rubik\n    color = rgba(143, 214, 171, 0.8)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "lock-night",
+   "section": "lockscreens",
+   "name": "Noite",
+   "blurb": "Escuro de verdade, para não acordar ninguém.",
+   "family": "session",
+   "author": "Genesi",
+   "tags": [
+    "sessão",
+    "escuro",
+    "oled"
+   ],
+   "preview": {
+    "kind": "lock",
+    "background": "#000000",
+    "accent": "#78a08c"
+   },
+   "actions": [
+    {
+     "action": "package",
+     "name": "hyprlock",
+     "binary": "hyprlock"
+    },
+    {
+     "action": "file",
+     "path": "~/.config/hypr/hyprlock.conf",
+     "text": "# Noite -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 4\n    blur_size = 10\n    brightness = 0.35\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(120, 160, 140, 0.7)\n    inner_color = rgba(0, 0, 0, 0.85)\n    font_color = rgba(200, 220, 208, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>senha</i>\n    hide_input = false\n    rounding = 20\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 84\n    font_family = Rubik\n    color = rgba(200, 220, 208, 0.9)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 16\n    font_family = Rubik\n    color = rgba(120, 160, 140, 0.7)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "lock-terminal",
+   "section": "lockscreens",
+   "name": "Terminal",
+   "blurb": "Monoespaçada, como um prompt.",
+   "family": "session",
+   "author": "Genesi",
+   "tags": [
+    "sessão",
+    "mono",
+    "retro"
+   ],
+   "preview": {
+    "kind": "lock",
+    "background": "#0a0e0c",
+    "accent": "#8fd6ab"
+   },
+   "actions": [
+    {
+     "action": "package",
+     "name": "hyprlock",
+     "binary": "hyprlock"
+    },
+    {
+     "action": "file",
+     "path": "~/.config/hypr/hyprlock.conf",
+     "text": "# Terminal -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 1\n    blur_size = 4\n    brightness = 0.5\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 1.0)\n    inner_color = rgba(10, 14, 12, 0.9)\n    font_color = rgba(143, 214, 171, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>login:</i>\n    hide_input = false\n    rounding = 2\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 72\n    font_family = CaskaydiaCove Nerd Font\n    color = rgba(143, 214, 171, 1.0)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $USER@$(hostname)\n    font_size = 16\n    font_family = CaskaydiaCove Nerd Font\n    color = rgba(143, 214, 171, 0.7)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "login-breeze",
+   "section": "lockscreens",
+   "name": "Breeze (padrão)",
+   "blurb": "A tela que o sistema instala.",
+   "family": "login",
+   "author": "SDDM",
+   "tags": [
+    "login",
+    "antes da sessão"
+   ],
+   "needs_root": true,
+   "preview": {
+    "kind": "login",
+    "theme": "breeze"
+   },
+   "actions": [
+    {
+     "action": "login",
+     "theme": "breeze"
+    }
+   ]
+  },
+  {
+   "id": "login-elarun",
+   "section": "lockscreens",
+   "name": "Elarun",
+   "blurb": "Enviada com o SDDM: sóbria, centralizada.",
+   "family": "login",
+   "author": "SDDM",
+   "tags": [
+    "login",
+    "antes da sessão"
+   ],
+   "needs_root": true,
+   "preview": {
+    "kind": "login",
+    "theme": "elarun"
+   },
+   "actions": [
+    {
+     "action": "login",
+     "theme": "elarun"
+    }
+   ]
+  },
+  {
+   "id": "login-maldives",
+   "section": "lockscreens",
+   "name": "Maldives",
+   "blurb": "Enviada com o SDDM: foto de fundo, campo ao centro.",
+   "family": "login",
+   "author": "SDDM",
+   "tags": [
+    "login",
+    "antes da sessão"
+   ],
+   "needs_root": true,
+   "preview": {
+    "kind": "login",
+    "theme": "maldives"
+   },
+   "actions": [
+    {
+     "action": "login",
+     "theme": "maldives"
+    }
+   ]
+  },
+  {
+   "id": "login-maya",
+   "section": "lockscreens",
+   "name": "Maya",
+   "blurb": "Enviada com o SDDM: escura e discreta.",
+   "family": "login",
+   "author": "SDDM",
+   "tags": [
+    "login",
+    "antes da sessão"
+   ],
+   "needs_root": true,
+   "preview": {
+    "kind": "login",
+    "theme": "maya"
+   },
+   "actions": [
+    {
+     "action": "login",
+     "theme": "maya"
+    }
+   ]
+  },
+  {
+   "id": "fetch-compact",
+   "section": "fastfetch",
+   "name": "Compacto",
+   "blurb": "Cinco linhas e o logo pequeno.",
+   "author": "Genesi",
+   "tags": [
+    "curto"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "matheus@genesi",
+     "sistema  Genesi OS",
+     "sessao   Hyprland",
+     "memoria  6.2 / 16 GiB"
+    ]
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"type\": \"small\", \"padding\": { \"top\": 1, \"right\": 2 } },\n  \"display\": { \"separator\": \"  \" },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name}@{host-name}\" },\n    \"separator\",\n    { \"type\": \"os\", \"key\": \"sistema\" },\n    { \"type\": \"kernel\", \"key\": \"kernel\" },\n    { \"type\": \"wm\", \"key\": \"sessão\" },\n    { \"type\": \"memory\", \"key\": \"memoria\" },\n    { \"type\": \"uptime\", \"key\": \"ligado ha\" }\n  ]\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "fetch-full",
+   "section": "fastfetch",
+   "name": "Completo",
+   "blurb": "Tudo que dá para contar sobre a máquina.",
+   "author": "Genesi",
+   "tags": [
+    "longo"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "sistema  Genesi OS x86_64",
+     "cpu      Ryzen 7 / 16 threads",
+     "gpu      RTX 3050",
+     "disco    712 / 954 GiB"
+    ]
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"padding\": { \"top\": 2, \"right\": 3 } },\n  \"display\": { \"separator\": \"  \", \"color\": { \"keys\": \"green\" } },\n  \"modules\": [\n    \"title\", \"separator\",\n    { \"type\": \"os\", \"key\": \"sistema\" },\n    { \"type\": \"host\", \"key\": \"maquina\" },\n    { \"type\": \"kernel\", \"key\": \"kernel\" },\n    { \"type\": \"packages\", \"key\": \"pacotes\" },\n    { \"type\": \"shell\", \"key\": \"shell\" },\n    { \"type\": \"wm\", \"key\": \"sessão\" },\n    { \"type\": \"terminal\", \"key\": \"terminal\" },\n    { \"type\": \"cpu\", \"key\": \"cpu\" },\n    { \"type\": \"gpu\", \"key\": \"gpu\" },\n    { \"type\": \"memory\", \"key\": \"memoria\" },\n    { \"type\": \"disk\", \"key\": \"disco\" },\n    { \"type\": \"uptime\", \"key\": \"ligado ha\" },\n    \"break\", \"colors\"\n  ]\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "fetch-bare",
+   "section": "fastfetch",
+   "name": "Sem logo",
+   "blurb": "Só texto, para quem abre muitos terminais.",
+   "author": "Genesi",
+   "tags": [
+    "minimalista"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "  genesi",
+     "  Genesi OS",
+     "  6.14.2",
+     "  1d 3h"
+    ]
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"type\": \"none\" },\n  \"display\": { \"separator\": \" \" },\n  \"modules\": [\n    { \"type\": \"custom\", \"format\": \"  genesi\" },\n    { \"type\": \"os\", \"key\": \" \" },\n    { \"type\": \"kernel\", \"key\": \" \" },\n    { \"type\": \"memory\", \"key\": \" \" },\n    { \"type\": \"uptime\", \"key\": \" \" }\n  ]\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "fetch-green",
+   "section": "fastfetch",
+   "name": "Verde",
+   "blurb": "As cores da casa no prompt.",
+   "author": "Genesi",
+   "tags": [
+    "verde"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "matheus em genesi",
+     "-----------------------------",
+     "sistema  Genesi OS",
+     "sessao   Hyprland"
+    ]
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"source\": \"arch\", \"color\": { \"1\": \"green\", \"2\": \"green\" } },\n  \"display\": { \"separator\": \"  \", \"color\": { \"keys\": \"green\", \"title\": \"green\" } },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} em {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"\\u001b[32m-----------------------------\\u001b[0m\" },\n    { \"type\": \"os\", \"key\": \"sistema\" },\n    { \"type\": \"wm\", \"key\": \"sessão\" },\n    { \"type\": \"cpu\", \"key\": \"cpu\" },\n    { \"type\": \"memory\", \"key\": \"memoria\" },\n    { \"type\": \"disk\", \"key\": \"disco\" },\n    { \"type\": \"uptime\", \"key\": \"ligado ha\" }\n  ]\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "rice-floresta-viva",
+   "section": "rices",
+   "name": "Floresta Viva",
+   "blurb": "Verde fechado, barra rente, bloqueio desfocado.",
+   "author": "Genesi",
+   "tags": [
+    "verde",
+    "natureza"
+   ],
+   "preview": {
+    "kind": "rice",
+    "accent": "#a7c080",
+    "wallpaper": "wall-forest-dark"
+   },
+   "includes": [
+    "theme-everforest-medium-dark",
+    "wall-forest-dark",
+    "bar-borda",
+    "lock-wallpaper"
+   ],
+   "actions": []
+  },
+  {
+   "id": "rice-orvalho",
+   "section": "rices",
+   "name": "Orvalho",
+   "blurb": "Verde claro da casa sobre água parada.",
+   "author": "Genesi",
+   "tags": [
+    "verde",
+    "calmo"
+   ],
+   "preview": {
+    "kind": "rice",
+    "accent": "#8fd6ab",
+    "wallpaper": "wall-lake"
+   },
+   "includes": [
+    "theme-caelestia-default-dark",
+    "wall-lake",
+    "bar-arejado",
+    "lock-clean"
+   ],
+   "actions": []
+  },
+  {
+   "id": "rice-noite-baixa",
+   "section": "rices",
+   "name": "Noite Baixa",
+   "blurb": "Preto real, barra fina, nada brilhando.",
+   "author": "Genesi",
+   "tags": [
+    "escuro",
+    "oled"
+   ],
+   "preview": {
+    "kind": "rice",
+    "accent": "#4f8f6a",
+    "wallpaper": "wall-oled-mountains"
+   },
+   "includes": [
+    "theme-darkgreen-hard-dark",
+    "wall-oled-mountains",
+    "bar-fio",
+    "lock-night"
+   ],
+   "actions": []
+  },
+  {
+   "id": "rice-terra",
+   "section": "rices",
+   "name": "Terra",
+   "blurb": "Gruvbox, cidade retrô e barra densa.",
+   "author": "Genesi",
+   "tags": [
+    "quente",
+    "retro"
+   ],
+   "preview": {
+    "kind": "rice",
+    "accent": "#d79921",
+    "wallpaper": "wall-gruvbox-city"
+   },
+   "includes": [
+    "theme-gruvbox-medium-dark",
+    "wall-gruvbox-city",
+    "bar-painel",
+    "lock-terminal"
+   ],
+   "actions": []
+  },
+  {
+   "id": "rice-meia-noite",
+   "section": "rices",
+   "name": "Meia-Noite",
+   "blurb": "Tokyo Night com neon e barra centralizada.",
+   "author": "Genesi",
+   "tags": [
+    "escuro",
+    "neon"
+   ],
+   "preview": {
+    "kind": "rice",
+    "accent": "#7aa2f7",
+    "wallpaper": "wall-neocity"
+   },
+   "includes": [
+    "theme-tokyonight-medium-dark",
+    "wall-neocity",
+    "bar-centrado",
+    "lock-night"
+   ],
+   "actions": []
+  },
+  {
+   "id": "rice-papel",
+   "section": "rices",
+   "name": "Papel",
+   "blurb": "Claro, quieto, para trabalhar de dia.",
+   "author": "Genesi",
+   "tags": [
+    "claro",
+    "minimalista"
+   ],
+   "preview": {
+    "kind": "rice",
+    "accent": "#8839ef",
+    "wallpaper": "wall-minimal-c"
+   },
+   "includes": [
+    "theme-catppuccin-latte-light",
+    "wall-minimal-c",
+    "bar-limpo",
+    "lock-clean"
+   ],
+   "actions": []
+  },
+  {
+   "id": "bundle-primeira-troca",
+   "section": "bundles",
+   "name": "Primeira Troca",
+   "blurb": "O básico para o desktop deixar de ser o padrão: cor, papel de parede e uma barra que respira.",
+   "author": "Genesi",
+   "tags": [
+    "comeco"
+   ],
+   "preview": {
+    "kind": "rice",
+    "accent": "#8fd6ab",
+    "wallpaper": "wall-nature"
+   },
+   "includes": [
+    "theme-caelestia-default-dark",
+    "wall-nature",
+    "bar-arejado"
+   ],
+   "actions": []
+  },
+  {
+   "id": "bundle-terminal",
+   "section": "bundles",
+   "name": "Vida no Terminal",
+   "blurb": "Fastfetch completo, bloqueio monoespaçado e uma barra densa: para quem vive no prompt.",
+   "author": "Genesi",
+   "tags": [
+    "terminal"
+   ],
+   "preview": {
+    "kind": "rice",
+    "accent": "#8fd6ab",
+    "wallpaper": "wall-ink-wave"
+   },
+   "includes": [
+    "fetch-full",
+    "lock-terminal",
+    "bar-informativo",
+    "wall-ink-wave"
+   ],
+   "actions": []
+  },
+  {
+   "id": "bundle-descanso",
+   "section": "bundles",
+   "name": "Descanso",
+   "blurb": "Claro de dia, sem barulho visual: tema claro, papel minimalista e barra limpa.",
+   "author": "Genesi",
+   "tags": [
+    "claro",
+    "calmo"
+   ],
+   "preview": {
+    "kind": "rice",
+    "accent": "#40a02b",
+    "wallpaper": "wall-minimal-c"
+   },
+   "includes": [
+    "theme-everforest-medium-light",
+    "wall-minimal-c",
+    "bar-limpo"
+   ],
+   "actions": []
+  }
+ ]
+}

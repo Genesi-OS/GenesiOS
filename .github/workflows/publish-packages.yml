@@ -520,6 +520,11 @@ jobs:
             # + grub-btrfs) + a branded manager app. Self-contained (its deps are
             # all real repo packages), so it slots in with the other dev tools.
             "genesi-snapshots"
+            # Genesi Store — the shop for looks: themes, wallpapers, bars,
+            # lock screens and whole desktops. Self-contained (a Python CLI, a
+            # PySide6 window and a JSON catalogue), and ci/store-test.py has
+            # already checked that catalogue offline before this runs.
+            "genesi-store"
             # Studio Mode — focus one app, freeze the rest, restore after.
             # Self-contained (Python + QML + a GNOME extension, no compiled
             # parts), and its check() runs the freeze-safety tests at build
@@ -701,9 +706,10 @@ jobs:
             # ci/package-reachability-test.py checks.
             #
             # genesi-center is the same case again: genesi-desktop lists it and
-            # it is new in this run, so nothing can resolve it yet.
+            # it is new in this run, so nothing can resolve it yet. genesi-store
+            # joined it on 2026-09-18 for exactly the same reason.
             case "$pkg" in
-              genesi-app2unit|genesi-libcava|genesi-materialyoucolor|genesi-ttf-rubik-vf|genesi-hyprshade|genesi-shaders|genesi-center|genesi-topbar)
+              genesi-app2unit|genesi-libcava|genesi-materialyoucolor|genesi-ttf-rubik-vf|genesi-hyprshade|genesi-shaders|genesi-center|genesi-store|genesi-topbar)
                 builtpkg=$(ls -1t "repo/$pkg"-*.pkg.tar.zst 2>/dev/null | grep -v -- '-debug-' | head -1)
                 if [ -n "$builtpkg" ]; then
                   echo "Installing $builtpkg into the build container (build-time dep for caelestia)"

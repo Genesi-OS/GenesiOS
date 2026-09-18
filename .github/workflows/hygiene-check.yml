@@ -335,6 +335,14 @@ jobs:
         # had no check for it.
         run: python genesi-arch/ci/qml-duplicates-test.py
 
+      # The store applies things to a desktop from a catalogue. This checks
+      # the catalogue offline -- no item may carry a command, every download
+      # is checksummed and allow-listed -- and then runs apply/revert to prove
+      # that undoing a look puts back exactly what was there.
+      - name: the store's catalogue is data, and revert really reverts
+        shell: bash
+        run: python genesi-arch/ci/store-test.py
+
       - name: every shebang script is pinned to LF
         # An extensionless script committed with CRLF is `bad interpreter: no
         # such file or directory` on the installed system and nowhere else.

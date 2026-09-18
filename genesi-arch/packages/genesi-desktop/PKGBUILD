@@ -62,7 +62,9 @@ pkgver=1.0.0
 # darkly were moved out in pkgrel 4. It belongs in the KDE-Desktop netinstall
 # group, which lives in the genesi-calamares-config submodule; until that lands
 # a Plasma user can install it by name.
-pkgrel=17
+# 18: genesi-store joins the meta. A package nothing installs reaches nobody,
+# which this repository has learned twice (see ci/package-reachability-test.py).
+pkgrel=18
 pkgdesc='Genesi OS desktop meta-package (AI Mode, installer, theming, updater)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -128,6 +130,12 @@ depends=(
     # "Indestructible OS": snapper + snap-pac + grub-btrfs, wired ENXUTO, with a
     # branded manager app. No-op on non-Btrfs roots.
     'genesi-snapshots'
+    # The shop for looks: themes, wallpapers, bar arrangements, lock screens
+    # (both of them -- the session's and the login screen's) and whole
+    # desktops. Desktop-agnostic in the same way genesi-center is: it applies
+    # what it can see, and a shelf whose tool is missing simply has nothing on
+    # it.
+    'genesi-store'
     # Studio Mode: hand the machine to one app (game, Genesi Code, DAW) and
     # freeze the rest. Inert until switched on; its widget follows the DE.
     'genesi-studio'

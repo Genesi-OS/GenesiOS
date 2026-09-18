@@ -1,0 +1,126 @@
+# Maintainer: Genesi OS Team
+#
+# genesi-store — where a Genesi desktop gets its looks.
+#
+# The measure was RyoStore: shelves (lockscreens, rices, themes, bar styles,
+# fastfetch, plugins, bundles, decor), a card per item, one click to wear it.
+# What Genesi does differently is the part underneath.
+#
+# ── An item is DATA ─────────────────────────────────────────────────────────
+#
+# Every item in the catalogue is a name, a picture and a list of ACTIONS out
+# of a vocabulary genesi-store implements: set a scheme, set a wallpaper,
+# write this config file, switch the bar, ask pacman for a locker, point the
+# login screen at a theme. There is no field an item can put a command in, and
+# ci/store-test.py fails the build if one appears. A store that runs scripts
+# from its catalogue is a root shell with a nice card around it -- and the day
+# that catalogue comes down from the network rather than out of this package,
+# it is a REMOTE root shell.
+#
+# ── Everything is reversible ────────────────────────────────────────────────
+#
+# Each action returns its own inverse, and `apply` records it. Revert is
+# therefore not "apply the previous thing", it is the undo of what was done --
+# including the case that catches people out, where a config file did not
+# exist before and putting it "back" means deleting it again. The old file is
+# kept under ~/.local/share/genesi/store/backups either way.
+#
+# ── What it may touch ───────────────────────────────────────────────────────
+#
+# Downloads land in ~/.local/share/genesi/store. Writes go to ~/.config,
+# through genesi-center-set where there is a key for it (it validates), or as
+# a whole file with a backup where there is not. Two things need root and both
+# say so before they happen, through genesi-store-helper under pkexec: the
+# login screen (SDDM lives in /etc and /usr/share) and installing a locker.
+# The helper takes a NAME from a fixed list, never a path and never a command.
+#
+# ── The wallpapers ──────────────────────────────────────────────────────────
+#
+# One MIT-licensed collection (D3Ext/aesthetic-wallpapers), so there is a
+# single licence to honour, and every file is recorded with the size and
+# SHA-256 it served at build time: build-catalog.py downloads each one to get
+# them, and the store refuses a file that no longer matches. A dead link is a
+# failed build here rather than a broken card on somebody's desktop.
+pkgname=genesi-store
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL-3.0-or-later')
+# python-pyside6 for the window; the rest are what the ACTIONS reach for, and
+# every one of them is already on a Genesi Hyprland install.
+depends=('python' 'pyside6' 'polkit')
+optdepends=(
+    'genesi-caelestia-cli: colour schemes and wallpapers'
+    'genesi-caelestia-settings: the fifteen bar arrangements'
+    'genesi-center: the settings writer the store applies keys through'
+    'hyprlock: session lock screens (the store offers to install it)'
+    'fastfetch: the terminal greeting the Fastfetch shelf configures'
+    'ttf-material-symbols-variable: the icons on the rail'
+)
+source=("genesi-store"
+        "genesi-store-helper"
+        "build-catalog.py"
+        "catalog/catalog.json"
+        "org.genesi.store.desktop"
+        "org.genesi.store.policy"
+        "app/Main.qml"
+        "app/Tokens.qml"
+        "app/qmldir"
+        "app/genesi_store_app.py"
+        "app/components/Chip.qml"
+        "app/components/Glyph.qml"
+        "app/components/ItemCard.qml"
+        "app/components/Leaf.qml"
+        "app/components/RailButton.qml")
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+package() {
+    cd "${srcdir}"
+
+    # The one command. With arguments it is the data plane; with none it opens
+    # the window, because that is what a person means when they type it.
+    install -Dm755 genesi-store "${pkgdir}/usr/bin/genesi-store"
+
+    # The privileged half, deliberately NOT on PATH: it is started by pkexec
+    # from the store and by nothing else.
+    install -Dm755 genesi-store-helper \
+        "${pkgdir}/usr/lib/genesi-store/genesi-store-helper"
+    install -Dm644 org.genesi.store.policy \
+        "${pkgdir}/usr/share/polkit-1/actions/org.genesi.store.policy"
+
+    # The catalogue, and the script that built it -- shipped so the provenance
+    # of every link travels with the data.
+    install -Dm644 catalog/catalog.json \
+        "${pkgdir}/usr/share/genesi-store/catalog.json"
+    install -Dm644 build-catalog.py \
+        "${pkgdir}/usr/share/genesi-store/build-catalog.py"
+
+    # The window.
+    install -Dm755 app/genesi_store_app.py \
+        "${pkgdir}/usr/share/genesi-store/app/genesi_store_app.py"
+    for f in app/Main.qml app/Tokens.qml app/qmldir; do
+        install -Dm644 "$f" "${pkgdir}/usr/share/genesi-store/${f}"
+    done
+    for f in app/components/*.qml; do
+        install -Dm644 "$f" "${pkgdir}/usr/share/genesi-store/${f}"
+    done
+
+    install -Dm644 org.genesi.store.desktop \
+        "${pkgdir}/usr/share/applications/org.genesi.store.desktop"
+}

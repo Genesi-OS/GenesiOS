@@ -1,0 +1,618 @@
+#!/usr/bin/env python3
+"""
+genesi-store — the catalogue behind Genesi Store, and the thing that applies it.
+
+One command, JSON on stdout, the same split every other Genesi tool uses: this
+knows what a look IS and how to put it on, the app only draws. So a look can be
+installed from a terminal, from the app, or from an automation, and all three
+do exactly the same thing.
+
+  genesi-store sections            the shelves, with how much is on each
+  genesi-store catalog [--section] every item, annotated with its state
+  genesi-store show <id>           one item, in full
+  genesi-store install <id>        fetch whatever it needs. Changes nothing.
+  genesi-store apply <id>          put it on
+  genesi-store revert <id>         put back what was there before
+  genesi-store state               what is applied right now
+  genesi-store remove <id>         delete what install fetched
+  genesi-store refresh             re-read the catalogue from disk
+
+── What this is allowed to touch ───────────────────────────────────────────
+
+Everything it downloads lands in ~/.local/share/genesi/store, and everything it
+applies is either a user config file (backed up first, restorable by `revert`)
+or a key handed to `genesi-center-set`, which validates it. Nothing here writes
+outside $HOME.
+
+Two things on a desktop cannot be changed from a user account -- the login
+screen, which lives in /etc and /usr/share, and installing a package -- and
+they are the two the store refuses to do quietly. They go through
+genesi-store-helper under pkexec: the system asks for a password, in its own
+dialog, and the helper accepts a fixed vocabulary of arguments rather than a
+path or a command from the catalogue.
+
+── Why an `actions` list and not a script per item ─────────────────────────
+
+An item is data: a list of actions out of a vocabulary this file implements.
+A store whose items carried shell would be a store that runs code somebody
+else wrote, on a machine that trusted it because it came from the catalogue --
+and the first time that catalogue is fetched from the network rather than read
+out of the package, that is a remote root hole with a friendly card around it.
+
+Each action knows how to undo itself. That is what makes Revert honest: it is
+not "apply the previous item", it is the inverse of what was done.
+"""
+import argparse
+import hashlib
+import io
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+APP = "genesi-store"
+CATALOG_DIRS = [
+    "/usr/share/genesi-store",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalog"),
+]
+
+
+def home(*parts):
+    base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return os.path.join(base, "genesi", "store", *parts)
+
+
+def conf(*parts):
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return os.path.join(base, *parts)
+
+
+STATE_PATH = home("state.json")
+BACKUP_DIR = home("backups")
+ASSET_DIR = home("assets")
+
+# Where an asset may come from. Not a formality: an item is data, and data
+# that can name any URL is data that can point the downloader at a LAN address
+# or a file:// path. Raw hosts only, https only, and the host list is here
+# rather than in the catalogue so that a catalogue cannot widen it.
+ALLOWED_HOSTS = (
+    "raw.githubusercontent.com",
+    "github.com",
+    "objects.githubusercontent.com",   # where GitHub redirects release assets
+    "codeberg.org",
+    "gitlab.com",
+    "w.wallhaven.cc",
+    "cdn.jsdelivr.net",
+)
+
+MAX_ASSET_BYTES = 40 * 1024 * 1024        # a wallpaper, not a distro image
+MAX_TEXT_BYTES = 512 * 1024
+
+# What a file has to start with to be the thing it claims to be. A "wallpaper"
+# that is really an HTML error page is the most common way a broken link ends
+# up on somebody's desktop.
+MAGIC = {
+    "image/png": [b"\x89PNG\r\n\x1a\n"],
+    "image/jpeg": [b"\xff\xd8\xff"],
+    "image/webp": [b"RIFF"],
+}
+
+
+def die(msg, code=1):
+    sys.stderr.write("%s: %s\n" % (APP, msg))
+    sys.exit(code)
+
+
+def note(msg):
+    sys.stderr.write("%s: %s\n" % (APP, msg))
+
+
+# ── The catalogue ───────────────────────────────────────────────────────────
+
+
+def catalog_path():
+    for d in CATALOG_DIRS:
+        p = os.path.join(d, "catalog.json")
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def load_catalog():
+    p = catalog_path()
+    if not p:
+        die("no catalogue found -- genesi-store is installed without its data")
+    try:
+        with io.open(p, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as exc:
+        die("the catalogue does not parse: %s" % exc)
+    items = data.get("items") or []
+    seen = set()
+    for item in items:
+        ident = item.get("id")
+        if not ident or ident in seen:
+            die("the catalogue has a missing or repeated id: %r" % ident)
+        seen.add(ident)
+    return data
+
+
+def item_by_id(cat, ident):
+    for item in cat.get("items", []):
+        if item.get("id") == ident:
+            return item
+    die("no item called %r" % ident)
+
+
+# ── What is applied, and what was there before ──────────────────────────────
+
+
+def read_state():
+    try:
+        with io.open(STATE_PATH, encoding="utf-8") as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        state = {}
+    state.setdefault("applied", {})     # id -> {"at": ..., "undo": [...]}
+    state.setdefault("installed", {})   # id -> {"assets": [...]}
+    return state
+
+
+def write_state(state):
+    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
+    tmp = STATE_PATH + ".tmp-%d" % os.getpid()
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(state, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    os.replace(tmp, STATE_PATH)
+
+
+# ── Fetching ────────────────────────────────────────────────────────────────
+
+
+def check_url(url):
+    if not url.startswith("https://"):
+        die("%s is not https -- the store only fetches over https" % url)
+    host = url.split("/", 3)[2].split("@")[-1].split(":")[0].lower()
+    if host not in ALLOWED_HOSTS:
+        die("%s is not a host the store fetches from" % host)
+    return host
+
+
+def fetch(url, dest, expect_type=None, sha256=None):
+    """Download one asset. Returns the path, or dies with a plain reason."""
+    check_url(url)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + ".part"
+    request = urllib.request.Request(url, headers={"User-Agent": "genesi-store"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            size = int(response.headers.get("Content-Length") or 0)
+            if size > MAX_ASSET_BYTES:
+                die("%s is %d MB; the store stops at %d MB"
+                    % (url, size // (1 << 20), MAX_ASSET_BYTES // (1 << 20)))
+            got = 0
+            digest = hashlib.sha256()
+            with io.open(tmp, "wb") as fh:
+                while True:
+                    chunk = response.read(64 * 1024)
+                    if not chunk:
+                        break
+                    got += len(chunk)
+                    if got > MAX_ASSET_BYTES:
+                        fh.close()
+                        os.unlink(tmp)
+                        die("%s is larger than the store's limit" % url)
+                    digest.update(chunk)
+                    fh.write(chunk)
+    except urllib.error.HTTPError as exc:
+        die("could not download %s: HTTP %s" % (url, exc.code))
+    except urllib.error.URLError as exc:
+        die("could not download %s: %s" % (url, exc.reason))
+    except OSError as exc:
+        die("could not write %s: %s" % (dest, exc))
+
+    if sha256 and digest.hexdigest() != sha256:
+        os.unlink(tmp)
+        die("%s did not match its checksum -- refusing it" % url)
+
+    if expect_type in MAGIC:
+        with io.open(tmp, "rb") as fh:
+            head = fh.read(16)
+        if not any(head.startswith(m) for m in MAGIC[expect_type]):
+            os.unlink(tmp)
+            die("%s is not %s -- the link is broken or it answered with a page"
+                % (url, expect_type))
+
+    os.replace(tmp, dest)
+    return dest
+
+
+# ── Running things ──────────────────────────────────────────────────────────
+
+
+def run(argv, check=True):
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+    except FileNotFoundError:
+        if check:
+            die("%s is not installed" % argv[0])
+        return 127, ""
+    except subprocess.TimeoutExpired:
+        if check:
+            die("%s did not finish" % argv[0])
+        return 124, ""
+    if proc.returncode and check:
+        detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+        die("%s failed: %s" % (argv[0], detail[-1] if detail else proc.returncode))
+    return proc.returncode, (proc.stdout or "")
+
+
+# ── The action vocabulary ───────────────────────────────────────────────────
+#
+# Every action takes the item, its own arguments and the asset paths, DOES the
+# thing, and returns the inverse action -- what `revert` will run to put things
+# back. An action that cannot describe its own inverse returns None, and the
+# item then reverts as far as it can and says which part it could not.
+
+
+def backup_file(path):
+    """Copy a file aside before it is replaced. Returns the copy, or None when
+    there was nothing there -- which is itself the thing to restore to."""
+    if not os.path.exists(path):
+        return None
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = os.path.join(BACKUP_DIR, "%s.%s" % (os.path.basename(path), stamp))
+    shutil.copy2(path, dest)
+    return dest
+
+
+def act_file(item, args, assets):
+    """Write a text file into a user path, keeping what was there."""
+    target = os.path.expanduser(args["path"])
+    if not target.startswith(os.path.expanduser("~")):
+        die("%s writes outside your home" % item["id"])
+    text = args.get("text")
+    if text is None and args.get("asset"):
+        with io.open(assets[args["asset"]], encoding="utf-8") as fh:
+            text = fh.read()
+    if text is None:
+        die("%s has a file action with nothing to write" % item["id"])
+    if len(text.encode("utf-8")) > MAX_TEXT_BYTES:
+        die("%s wants to write a file larger than the store allows" % item["id"])
+    kept = backup_file(target)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with io.open(target, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    return {"action": "restore", "path": args["path"], "from": kept}
+
+
+def act_restore(item, args, assets):
+    target = os.path.expanduser(args["path"])
+    kept = args.get("from")
+    if kept and os.path.exists(kept):
+        shutil.copy2(kept, target)
+    elif os.path.exists(target):
+        os.unlink(target)
+    return None
+
+
+def act_scheme(item, args, assets):
+    _, before = run(["caelestia", "scheme", "get"], check=False)
+    name = args["name"]
+    argv = ["caelestia", "scheme", "set", "-n", name]
+    if args.get("flavour"):
+        argv += ["-f", args["flavour"]]
+    if args.get("mode"):
+        argv += ["-m", args["mode"]]
+    run(argv)
+    previous = (before or "").strip().split()
+    if len(previous) >= 1 and previous[0]:
+        return {"action": "scheme", "name": previous[0],
+                "flavour": previous[1] if len(previous) > 1 else None}
+    return None
+
+
+def act_wallpaper(item, args, assets):
+    path = assets.get(args.get("asset")) if args.get("asset") else args.get("path")
+    if not path:
+        die("%s has a wallpaper action with no picture" % item["id"])
+    _, before = run(["caelestia", "wallpaper", "-p"], check=False)
+    run(["caelestia", "wallpaper", "-f", os.path.expanduser(path)])
+    before = (before or "").strip()
+    if before and os.path.exists(before):
+        return {"action": "wallpaper", "path": before}
+    return None
+
+
+def act_config(item, args, assets):
+    """Settings, through the writer that validates them."""
+    pairs = args.get("set") or {}
+    if not pairs:
+        return None
+    before = {}
+    for key in pairs:
+        code, value = run(["genesi-center-set", "caelestia", key], check=False)
+        if code == 0:
+            before[key] = value.strip().split("= ", 1)[-1].strip().strip('"')
+    argv = ["genesi-center-set", "caelestia"]
+    for key, value in pairs.items():
+        argv += [key, str(value)]
+    run(argv)
+    return {"action": "config", "set": before} if before else None
+
+
+def act_login(item, args, assets):
+    """The screen before the session. Root, and it says so."""
+    theme = args.get("theme")
+    if not theme or not re.fullmatch(r"[a-z0-9-]{1,48}", theme):
+        die("%s names a login theme the store does not recognise" % item["id"])
+    helper = helper_path()
+    code, _ = run(["pkexec", helper, "login-theme", theme], check=False)
+    if code != 0:
+        die("the login screen was not changed (the password prompt was refused "
+            "or the helper failed)")
+    return {"action": "login", "theme": "breeze"}
+
+
+def act_bar(item, args, assets):
+    """The bar's arrangement, through the tool that owns it."""
+    _, before = run(["genesi-bar", "current"], check=False)
+    run(["genesi-bar", "apply", args["preset"]])
+    before = (before or "").strip()
+    if before and before != "custom":
+        return {"action": "bar", "preset": before}
+    return None
+
+
+def act_package(item, args, assets):
+    """Something the desktop needs and pacman has.
+
+    The session lock is the honest example: `loginctl lock-session` does
+    nothing at all without a locker installed, so a lock screen that only
+    wrote a config file would be a card that promises a thing it cannot do.
+    The list of what may be installed is HERE, not in the catalogue.
+    """
+    name = args.get("name")
+    if name not in INSTALLABLE:
+        die("%s asks for the package %r, which the store does not install"
+            % (item["id"], name))
+    if shutil.which(args.get("binary") or name):
+        return None
+    helper = helper_path()
+    code, _ = run(["pkexec", helper, "install", name], check=False)
+    if code != 0:
+        die("%s was not installed (the password prompt was refused, or pacman "
+            "failed)" % name)
+    # Deliberately no inverse: removing a package somebody may now rely on,
+    # because a look was reverted, is not an undo -- it is a surprise.
+    return None
+
+
+# Packages the store may install, and nothing else. Every one of them is a
+# thing a LOOK needs to work at all, and each is in the Arch repositories.
+INSTALLABLE = ("hyprlock", "hypridle", "sddm-sugar-candy-git", "swaylock")
+
+
+def helper_path():
+    found = shutil.which("genesi-store-helper")
+    if found:
+        return found
+    fallback = "/usr/lib/genesi-store/genesi-store-helper"
+    if os.path.exists(fallback):
+        return fallback
+    die("the store's system helper is not installed")
+    return ""
+
+
+ACTIONS = {
+    "file": act_file,
+    "bar": act_bar,
+    "package": act_package,
+    "restore": act_restore,
+    "scheme": act_scheme,
+    "wallpaper": act_wallpaper,
+    "config": act_config,
+    "login": act_login,
+}
+
+
+# ── install / apply / revert ────────────────────────────────────────────────
+
+
+def assets_of(item):
+    return item.get("assets") or {}
+
+
+def do_install(cat, ident, state):
+    item = item_by_id(cat, ident)
+    paths = {}
+    for name, asset in assets_of(item).items():
+        dest = os.path.join(ASSET_DIR, ident, name)
+        if os.path.exists(dest) and not asset.get("always"):
+            paths[name] = dest
+            continue
+        note("fetching %s" % asset["url"])
+        paths[name] = fetch(asset["url"], dest, asset.get("type"),
+                            asset.get("sha256"))
+    state["installed"][ident] = {"assets": paths, "at": int(time.time())}
+    write_state(state)
+    return paths
+
+
+def do_apply(cat, ident, state):
+    item = item_by_id(cat, ident)
+    paths = state.get("installed", {}).get(ident, {}).get("assets") or {}
+    if set(assets_of(item)) - set(paths):
+        paths = do_install(cat, ident, state)
+
+    undo = []
+    for step in item.get("actions", []):
+        kind = step.get("action")
+        if kind not in ACTIONS:
+            die("%s asks for %r, which the store does not know how to do"
+                % (ident, kind))
+        inverse = ACTIONS[kind](item, step, paths)
+        if inverse:
+            undo.insert(0, inverse)
+
+    state["applied"][ident] = {"at": int(time.time()), "undo": undo}
+    write_state(state)
+    return undo
+
+
+def do_revert(cat, ident, state):
+    entry = state.get("applied", {}).get(ident)
+    if not entry:
+        die("%s is not applied" % ident)
+    item = item_by_id(cat, ident)
+    missed = 0
+    for step in entry.get("undo", []):
+        kind = step.get("action")
+        if kind not in ACTIONS:
+            missed += 1
+            continue
+        ACTIONS[kind](item, step, {})
+    del state["applied"][ident]
+    write_state(state)
+    return missed
+
+
+def do_remove(cat, ident, state):
+    if ident in state.get("applied", {}):
+        do_revert(cat, ident, state)
+    path = os.path.join(ASSET_DIR, ident)
+    if os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+    state.get("installed", {}).pop(ident, None)
+    write_state(state)
+
+
+# ── Reporting ───────────────────────────────────────────────────────────────
+
+
+def annotate(cat, state):
+    out = []
+    for item in cat.get("items", []):
+        ident = item["id"]
+        copy = dict(item)
+        copy["installed"] = ident in state.get("installed", {})
+        copy["applied"] = ident in state.get("applied", {})
+        copy["needs_download"] = bool(assets_of(item)) and not copy["installed"]
+        out.append(copy)
+    return out
+
+
+def cmd_sections(cat, state, args):
+    counts = {}
+    for item in cat.get("items", []):
+        counts[item.get("section", "discover")] = \
+            counts.get(item.get("section", "discover"), 0) + 1
+    sections = []
+    for section in cat.get("sections", []):
+        entry = dict(section)
+        entry["count"] = counts.get(section["id"], 0)
+        sections.append(entry)
+    print(json.dumps({"sections": sections}, ensure_ascii=False))
+
+
+def cmd_catalog(cat, state, args):
+    items = annotate(cat, state)
+    if args.section:
+        items = [i for i in items if i.get("section") == args.section]
+    if args.search:
+        needle = args.search.lower()
+        items = [i for i in items
+                 if needle in json.dumps(i, ensure_ascii=False).lower()]
+    print(json.dumps({"updated": cat.get("updated"),
+                      "count": len(items),
+                      "items": items}, ensure_ascii=False))
+
+
+def cmd_show(cat, state, args):
+    for item in annotate(cat, state):
+        if item["id"] == args.id:
+            print(json.dumps(item, ensure_ascii=False, indent=2))
+            return
+    die("no item called %r" % args.id)
+
+
+def cmd_state(cat, state, args):
+    print(json.dumps({"applied": state.get("applied", {}),
+                      "installed": sorted(state.get("installed", {}))},
+                     ensure_ascii=False))
+
+
+def open_window():
+    """`genesi-store` with nothing after it is what a person types when they
+    mean the shop, not the data plane."""
+    for app in ("/usr/share/genesi-store/app/genesi_store_app.py",
+                os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "app", "genesi_store_app.py")):
+        if os.path.exists(app):
+            os.execv(sys.executable, [sys.executable, app])
+    die("the store's window is not installed; the commands still work "
+        "(try `genesi-store sections`)")
+
+
+def main():
+    if len(sys.argv) == 1:
+        return open_window()
+    parser = argparse.ArgumentParser(prog=APP, add_help=True)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("sections")
+    p = sub.add_parser("catalog")
+    p.add_argument("--section")
+    p.add_argument("--search")
+    p = sub.add_parser("show")
+    p.add_argument("id")
+    for name in ("install", "apply", "revert", "remove"):
+        p = sub.add_parser(name)
+        p.add_argument("id")
+    sub.add_parser("state")
+    sub.add_parser("refresh")
+
+    args = parser.parse_args()
+    cat = load_catalog()
+    state = read_state()
+
+    if args.cmd == "sections":
+        return cmd_sections(cat, state, args)
+    if args.cmd == "catalog":
+        return cmd_catalog(cat, state, args)
+    if args.cmd == "show":
+        return cmd_show(cat, state, args)
+    if args.cmd == "state":
+        return cmd_state(cat, state, args)
+    if args.cmd == "refresh":
+        print(json.dumps({"updated": cat.get("updated"),
+                          "items": len(cat.get("items", []))}))
+        return None
+    if args.cmd == "install":
+        do_install(cat, args.id, state)
+        print(json.dumps({"installed": args.id}))
+        return None
+    if args.cmd == "apply":
+        do_apply(cat, args.id, state)
+        print(json.dumps({"applied": args.id}))
+        return None
+    if args.cmd == "revert":
+        missed = do_revert(cat, args.id, state)
+        print(json.dumps({"reverted": args.id, "not_undone": missed}))
+        return None
+    if args.cmd == "remove":
+        do_remove(cat, args.id, state)
+        print(json.dumps({"removed": args.id}))
+        return None
+    return None
+
+
+if __name__ == "__main__":
+    main()
