@@ -55,11 +55,16 @@ Item {
     anchors.fill: parent
     visible: card.opacity > 0
 
+    // Where a card of this size may go, given where it was asked for. Handed
+    // in rather than worked out here: "inside the screen" is not the answer --
+    // see GenesiDesktopOverlay, the last eighty pixels of the screen belong to
+    // caelestia's drawers and a menu drawn there takes no clicks.
+    required property var place
+
     function openAt(x: real, y: real): void {
-        // Kept inside the screen. A menu opened near the right edge that runs
-        // off it is a menu whose last three items do not exist.
-        card.x = Math.max(8, Math.min(x, root.width - card.width - 8));
-        card.y = Math.max(8, Math.min(y, root.height - card.height - 8));
+        const p = root.place(card.width, card.height, x, y);
+        card.x = p.x;
+        card.y = p.y;
         card.opacity = 1;
         card.forceActiveFocus();
     }

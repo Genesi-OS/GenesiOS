@@ -62,6 +62,50 @@ class QuickBackend(Backend):
     def quickModel(self):
         return self._quick_model
 
+    # ── When the compositor hands back a window we did not ask for ──────────
+    #
+    # The Quick Chat tells Qt one legal size, which Qt forwards as the
+    # xdg_toplevel minimum AND maximum. Hyprland honours that for a FLOATING
+    # window and ignores it for a tiled one: tiled, the window is the size of
+    # the workspace, the card stretches across the screen and the rest of the
+    # surface is transparent -- which Hyprland then blurs, so what a person
+    # sees is a bar across the top of a huge frosted rectangle.
+    #
+    # Three windowrules are supposed to prevent that. They live in Genesi's
+    # hyprland.conf, are re-applied at login by genesi_ai_quick_shortcuts, and
+    # they still only reach a window if that config is the one in use and the
+    # rule matched the app_id the window actually mapped with. A rule that
+    # silently did not match is exactly what this looks like, and the report
+    # ("it goes full screen when the AI asks to run something") is the one
+    # thing we can act on without knowing which of the two it was.
+    #
+    # So the window checks what it got. If the compositor gave it a size it
+    # never asked for, it asks Hyprland -- by class, the same one the rules
+    # name -- to float, resize and centre it. Best-effort and quiet: no
+    # Hyprland, no problem, and an error here must never take the chat down.
+    @Slot(int, int, float)
+    def fitWindow(self, width, height, ratio):
+        if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+            return
+        ratio = ratio if ratio and ratio > 0 else 1.0
+        # Hyprland speaks physical pixels; Qt's geometry is logical.
+        w = max(1, int(round(width * ratio)))
+        h = max(1, int(round(height * ratio)))
+        match = "class:^(%s)$" % APP_ID.replace(".", r"\.")
+        for args in (["setfloating", match],
+                     ["resizewindowpixel", "exact %d %d,%s" % (w, h, match)],
+                     ["centerwindow", match],
+                     ["pin", match]):
+            try:
+                subprocess.run(["hyprctl", "dispatch"] + args,
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=2)
+            except Exception:
+                return
+        sys.stderr.write(
+            "genesi-ai-quick: the compositor sized this window itself; "
+            "asked Hyprland to float it at %dx%d\n" % (w, h))
+
     @Slot(result=bool)
     def quickTurboActive(self):
         return self._turbo_alive()

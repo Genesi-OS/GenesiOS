@@ -31,6 +31,10 @@ Item {
     id: root
 
     required property var labels
+    // Where a card of this size may go. See GenesiDesktopOverlay: the screen
+    // is not the answer, because its last eighty pixels belong to caelestia's
+    // drawers window and a button drawn there is never clicked.
+    required property var place
     // For each widget's home anchor: a widget that was never moved has no
     // position in its config, and is still somewhere the grid should light.
     required property var defs
@@ -147,8 +151,10 @@ Item {
         property real wantX: 0
         property real wantY: 0
 
-        x: Math.max(8, Math.min(wantX, root.width - width - 8))
-        y: Math.max(8, Math.min(wantY, root.height - height - 8))
+        readonly property point spot: root.place(width, height, wantX, wantY)
+
+        x: spot.x
+        y: spot.y
         width: 268
         implicitHeight: col.implicitHeight + 24
         height: implicitHeight
@@ -432,14 +438,13 @@ Item {
                 }
 
                 Column {
-                    visible: !root.isClock
                     spacing: 6
 
                     Rectangle {
                         width: 88
                         height: 26
                         radius: 7
-                        readonly property bool on: root.current("position", "") === "free"
+                        readonly property bool on: root.current("position", root.home) === "free"
                         color: on ? Qt.alpha(Colours.palette.m3primary, 0.25) : Colours.palette.m3surfaceContainerHigh
                         border.width: on ? 1 : 0
                         border.color: Colours.palette.m3primary

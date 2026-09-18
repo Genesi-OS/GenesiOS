@@ -1508,7 +1508,22 @@ pkgver=1.0.0
 # clamped it straight back, locking the window at the size of the bare bar.
 # They move in order now: maximum first when growing, minimum first when
 # shrinking.
-pkgrel=199
+# pkgrel 200: the Quick Chat is its own size again when the AI asks to run
+# something.
+#
+# Qt sends one legal size as the window's xdg minimum AND maximum, and a
+# floating Hyprland window obeys it. A TILED one does not -- it is the size of
+# the workspace -- so the card stretched across the screen with a blurred void
+# under it, which is what "it goes full screen and breaks again" was. Three
+# windowrules exist to keep it floating; one that did not match is
+# indistinguishable from this end.
+#
+# So the card no longer takes the window's width (it is 704 wide and centred,
+# and looks right in a window of any size), and if the window is not the size
+# it asked for, it asks Hyprland by class to float, resize and centre it --
+# twice at most, because a window that argues with the compositor forever is
+# worse than a wide one.
+pkgrel=200
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -56,6 +56,33 @@ QQC2.ApplicationWindow {
         }
     }
     onWantedHeightChanged: applyHeight()
+
+    // What the compositor did with the size we asked for.
+    //
+    // Qt forwards minimumWidth/Height and maximumWidth/Height as the window's
+    // only legal size, and a floating Hyprland window obeys it. A TILED one
+    // does not -- it is workspace-sized, and the approval card is the moment
+    // that shows, because it is the one that arrives unasked. So: if the
+    // window is not the size it asked for, ask Hyprland to float it.
+    //
+    // Twice at most. If the compositor is going to refuse, it refuses the
+    // second time too, and a window that asks forever is a window fighting
+    // the compositor in a loop.
+    property int fitAttempts: 0
+    function checkSize() {
+        if (!visible || fitAttempts >= 2)
+            return;
+        if (Math.abs(width - 720) < 2)
+            return;
+        fitAttempts += 1;
+        backend.fitWindow(720, wantedHeight, Screen.devicePixelRatio);
+    }
+    onWidthChanged: fitTimer.restart()
+    Timer {
+        id: fitTimer
+        interval: 250
+        onTriggered: root.checkSize()
+    }
     visible: false
     color: "transparent"
     flags: Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -120,6 +147,7 @@ QQC2.ApplicationWindow {
         backend.refreshModel()
         reposition()
         show()
+        fitTimer.restart()
         raise()
         requestActivate()
         prompt.forceActiveFocus()
@@ -290,10 +318,18 @@ QQC2.ApplicationWindow {
         // something" looked like. Sized this way the panel is the right shape
         // even where the constraint above is ignored, and the surplus surface
         // is simply transparent.
-        anchors.left: parent.left
-        anchors.right: parent.right
+        // Its own width, not the window's.
+        //
+        // Anchoring both sides meant the card was as wide as whatever surface
+        // the compositor handed over -- and when a windowrule fails to match,
+        // that surface is the whole workspace: a chat card stretched across
+        // the screen with a blurred void under it. Sized and centred, the card
+        // looks right wherever it is put, and fitWindow() (see below) goes and
+        // asks Hyprland for the window back.
+        anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
-        anchors.margins: 8
+        anchors.topMargin: 8
+        width: Math.min(704, parent.width - 16)
         height: Math.min(parent.height - 16, body.implicitHeight + 32)
         // (With the window now sized to this card, the 8 px margin is the only
         // transparent surface left, and the card's own shadow sits in it.)

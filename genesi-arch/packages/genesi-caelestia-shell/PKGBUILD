@@ -563,7 +563,31 @@ pkgver=2.0.3
 # from the desktop menu.
 #
 # The middle row of anchors no longer draws over a tall corner stack.
-pkgrel=42
+# 43: four things about the desktop, all of them about where a click lands.
+#
+# The menu and the widget editor were drawn INSIDE the widget layer, which is
+# the layer the Depth cutout is drawn in front of -- so on a wallpaper with a
+# subject, right-clicking the desktop opened a menu with somebody's shoulder
+# across it. They are one item now (GenesiDesktopOverlay), added after the
+# cutout; the layer and the overlay ask each other for things through
+# GenesiWidgetEditState.
+#
+# The last eighty pixels of every edge belong to caelestia's drawers window
+# (its drag margin, which is exactly that wide on an empty desktop -- when
+# people right-click it). Genesi already gave the margin up on the edges its
+# own bar and dock stand on; the right edge is the one it never claims, so an
+# editor opened near it was drawn and then took no clicks. The third of the
+# three colour buttons simply did not respond. Both surfaces are placed inside
+# GenesiEdges' ring now, not inside the screen.
+#
+# caelestia's clock had nine corners and nothing else. It can be dropped
+# anywhere now: background.desktopClock.position takes "free", x and y are
+# fractions of the screen, and in arrange mode the clock drags like a Genesi
+# widget -- previewing through the same state, writing once on release.
+#
+# Also: gradient text no longer vanishes when a widget switches to a gradient
+# after it is built (a layer enabled on an invisible item is never rendered).
+pkgrel=43
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -613,6 +637,7 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiWidgets.qml"
         "GenesiWidgetHost.qml"
         "GenesiDesktopMenu.qml"
+        "GenesiDesktopOverlay.qml"
         "GenesiWidgetDigitalClock.qml"
         "GenesiWidgetEditor.qml"
         "GenesiWidgetEditState.qml"
@@ -637,6 +662,7 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

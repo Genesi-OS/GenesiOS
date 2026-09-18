@@ -1404,7 +1404,8 @@ WIDGETS = ["weather", "forecast", "media", "cpu", "memory", "storage",
 WIDGET_FILES = tuple(
     "GenesiWidget" + n[0].upper() + n[1:] + ".qml" for n in WIDGETS
 ) + ("GenesiWidgets.qml", "GenesiWidgetCard.qml", "GenesiWidgetHost.qml",
-     "GenesiDesktopMenu.qml", "GenesiWidgetEditor.qml", "GenesiColourPicker.qml",
+     "GenesiDesktopMenu.qml", "GenesiDesktopOverlay.qml",
+     "GenesiWidgetEditor.qml", "GenesiColourPicker.qml",
      # The parts the widgets are drawn with: text and icons measured in the
      # widget's size rather than stretched to it, a gradient ring, a
      # sparkline, gradient text and a chip.
@@ -1660,21 +1661,154 @@ def patch_desktop_clock_edit(release):
          "opacity: %s.valueOf(\"desktopClock\", \"background.opacity\", "
          "Config.background.desktopClock.background.opacity)\n" % state,
          "the plate opacity")
+    # Right-click, and -- in arrange mode -- drag.
+    #
+    # The clock had nine corners and nothing else, while every Genesi widget
+    # could be dropped anywhere; "it cannot be moved freely" was the first
+    # thing asked about it. Dragging writes a FRACTION of the screen, like the
+    # widgets do, because the config outlives the monitor.
+    #
+    # The drag shows through the same preview the sliders use, so the clock
+    # follows the pointer instead of trailing a write and a config reload, and
+    # one `genesi-center-set` call lands position, x and y together -- three
+    # calls would be three processes rewriting shell.json from three copies,
+    # which is how a drop used to spring back.
     swap("    Behavior on clockScale {\n",
          "    // Genesi: right-click opens the widget editor. Right button only:\n"
          "    // the clock sits on the desktop, and a left click there belongs\n"
-         "    // to the desktop.\n"
+         "    // to the desktop -- except while the desktop is being arranged,\n"
+         "    // when a left drag moves the clock.\n"
          "    MouseArea {\n"
+         "        id: genesiEdit\n"
+         "\n"
+         "        property real grabX: 0\n"
+         "        property real grabY: 0\n"
+         "\n"
+         "        readonly property bool arranging: %s.arranging\n"
+         "\n"
+         "        function span(): point {\n"
+         "            const w = root.Window.window;\n"
+         "            return Qt.point(Math.max(1, w.width - root.width), "
+         "Math.max(1, w.height - root.height));\n"
+         "        }\n"
+         "\n"
          "        anchors.fill: parent\n"
-         "        acceptedButtons: Qt.RightButton\n"
-         "        onClicked: event => %s.request(\"desktopClock\", root, "
-         "event.x, event.y)\n"
+         "        acceptedButtons: genesiEdit.arranging ? "
+         "(Qt.LeftButton | Qt.RightButton) : Qt.RightButton\n"
+         "        cursorShape: genesiEdit.arranging ? Qt.SizeAllCursor : "
+         "Qt.ArrowCursor\n"
+         "        onPressed: event => {\n"
+         "            if (event.button !== Qt.LeftButton)\n"
+         "                return;\n"
+         "            const p = root.mapToItem(null, event.x, event.y);\n"
+         "            genesiEdit.grabX = p.x - root.absX;\n"
+         "            genesiEdit.grabY = p.y - root.absY;\n"
+         "        }\n"
+         "        onPositionChanged: event => {\n"
+         "            if (!genesiEdit.pressedButtons || !genesiEdit.arranging)\n"
+         "                return;\n"
+         "            const p = root.mapToItem(null, event.x, event.y);\n"
+         "            const s = genesiEdit.span();\n"
+         "            %s.set(\"desktopClock\", \"position\", \"free\");\n"
+         "            %s.set(\"desktopClock\", \"x\", Math.max(0, Math.min(1, "
+         "(p.x - genesiEdit.grabX) / s.x)));\n"
+         "            %s.set(\"desktopClock\", \"y\", Math.max(0, Math.min(1, "
+         "(p.y - genesiEdit.grabY) / s.y)));\n"
+         "        }\n"
+         "        onReleased: event => {\n"
+         "            if (event.button !== Qt.LeftButton || "
+         "!genesiEdit.arranging)\n"
+         "                return;\n"
+         "            Quickshell.execDetached([\"genesi-center-set\", "
+         "\"caelestia\",\n"
+         "                \"background.desktopClock.position\", \"free\",\n"
+         "                \"background.desktopClock.x\", "
+         "String(%s.valueOf(\"desktopClock\", \"x\", 0.05).toFixed(4)),\n"
+         "                \"background.desktopClock.y\", "
+         "String(%s.valueOf(\"desktopClock\", \"y\", 0.05).toFixed(4))]);\n"
+         "        }\n"
+         "        onClicked: event => {\n"
+         "            if (event.button === Qt.RightButton)\n"
+         "                %s.request(\"desktopClock\", root, event.x, event.y);\n"
+         "        }\n"
          "    }\n"
          "\n"
-         "    Behavior on clockScale {\n" % state, "the scale Behavior")
+         "    Behavior on clockScale {\n" % ((state,) * 7), "the scale Behavior")
+
+    if "import Quickshell\n" not in s:
+        s = s.replace("import QtQuick\n", "import QtQuick\nimport Quickshell\n", 1)
 
     io.open(path, "w", encoding="utf-8", newline="\n").write(s)
-    print("desktop clock: right-click opens the Genesi editor")
+
+    # ── Where a freely placed clock goes ────────────────────────────────────
+    #
+    # Upstream's Loader picks one of nine anchor states from `position`. A
+    # tenth value, "free", matches no state -- every AnchorChanges is undone,
+    # the Loader has no anchors left, and these two Bindings put it where the
+    # drag left it. Bindings rather than an x:/y: on the Loader because the
+    # anchored states assign x and y themselves; a binding that is only active
+    # in free mode is the one shape that does not fight them.
+    background = os.path.join(release, "modules", "background", "Background.qml")
+    b = io.open(background, encoding="utf-8").read()
+    anchor = ("            sourceComponent: DesktopClock {\n"
+              "                wallpaper: behindClock\n"
+              "                absX: clockLoader.x\n"
+              "                absY: clockLoader.y\n"
+              "            }\n"
+              "        }\n")
+    if anchor not in b:
+        fail("Background.qml's clock Loader is not what the free-placement "
+             "patch expects -- the Bindings below have to go after it.")
+    b = b.replace(anchor, anchor + (
+        "\n"
+        "        // Genesi: dropped wherever it was dragged. The fraction is of\n"
+        "        // the room the clock has to move in, so the same config puts\n"
+        "        // it in the same place on a different monitor.\n"
+        "        Binding {\n"
+        "            target: clockLoader\n"
+        "            property: \"x\"\n"
+        "            when: Launcher.GenesiWidgetEditState.valueOf(\"desktopClock\","
+        " \"position\", Config.background.desktopClock.position) === \"free\"\n"
+        "            value: (win.width - clockLoader.width) *"
+        " Launcher.GenesiWidgetEditState.valueOf(\"desktopClock\", \"x\","
+        " Config.background.desktopClock.x)\n"
+        "        }\n"
+        "\n"
+        "        Binding {\n"
+        "            target: clockLoader\n"
+        "            property: \"y\"\n"
+        "            when: Launcher.GenesiWidgetEditState.valueOf(\"desktopClock\","
+        " \"position\", Config.background.desktopClock.position) === \"free\"\n"
+        "            value: (win.height - clockLoader.height) *"
+        " Launcher.GenesiWidgetEditState.valueOf(\"desktopClock\", \"y\","
+        " Config.background.desktopClock.y)\n"
+        "        }\n"), 1)
+    if "import qs.modules.launcher as Launcher\n" not in b:
+        b = b.replace("import qs.services\n",
+                      "import qs.services\n"
+                      "import qs.modules.launcher as Launcher\n", 1)
+    io.open(background, "w", encoding="utf-8", newline="\n").write(b)
+
+    # ── x and y for the clock's config ──────────────────────────────────────
+    hpp = os.path.join(release, "plugin", "src", "Caelestia", "Config",
+                       "backgroundconfig.hpp")
+    h = io.open(hpp, encoding="utf-8").read()
+    anchor = ("    CONFIG_PROPERTY(bool, invertColors, false)\n"
+              "    CONFIG_SUBOBJECT(DesktopClockBackground, background)\n")
+    if anchor not in h:
+        fail("DesktopClock's config is not what the free-placement patch "
+             "expects -- x and y go beside invertColors.")
+    h = h.replace(anchor, (
+        "    CONFIG_PROPERTY(bool, invertColors, false)\n"
+        "    // Genesi: where a dragged clock landed, as a fraction of the\n"
+        "    // screen. Read only when position is \"free\"; fractions and not\n"
+        "    // pixels, because the config outlives the monitor.\n"
+        "    CONFIG_PROPERTY(qreal, x, 0.05)\n"
+        "    CONFIG_PROPERTY(qreal, y, 0.05)\n"
+        "    CONFIG_SUBOBJECT(DesktopClockBackground, background)\n"), 1)
+    io.open(hpp, "w", encoding="utf-8", newline="\n").write(h)
+
+    print("desktop clock: right-click edits it, arrange mode moves it")
 
 
 
@@ -2383,6 +2517,41 @@ def patch_depth(release):
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
     print("depth: the wallpaper's subject, in front of the clock")
+
+
+def patch_desktop_overlay(release):
+    """
+    The desktop's menu and the widget editor, drawn after everything else.
+
+    They used to live inside the widget layer, which is inside the item the
+    Depth cutout is drawn in front of -- so on any wallpaper with a subject,
+    right-clicking the desktop opened a menu with a person's shoulder across
+    it, and the editor opened behind the same shoulder.
+
+    They are one item now (GenesiDesktopOverlay), added LAST, after
+    GenesiDepth: the stacking order is wallpaper, visualiser, widgets, clock,
+    subject, menu. The layer and the overlay talk through
+    GenesiWidgetEditState, because neither can see the other.
+
+    Runs after patch_depth for the obvious reason: `GenesiDepth {}` is the
+    landmark it goes after, and patch_depth is what writes it.
+    """
+    background = os.path.join(release, "modules", "background", "Background.qml")
+    src = io.open(background, encoding="utf-8").read()
+    anchor = "        GenesiDepth {}\n"
+    if anchor not in src:
+        fail("Background.qml has no GenesiDepth -- patch_depth did not run, "
+             "and the desktop overlay goes after it.")
+    if "GenesiDesktopOverlay" in src:
+        fail("Background.qml already builds the desktop overlay -- this ran "
+             "twice.")
+    src = src.replace(anchor, anchor + (
+        "\n"
+        "        // Genesi: the desktop menu and the widget editor. After the\n"
+        "        // subject, so a right-click is never answered behind it.\n"
+        "        GenesiDesktopOverlay {}\n"), 1)
+    io.open(background, "w", encoding="utf-8", newline="\n").write(src)
+    print("desktop overlay: the menu and the editor, above the cutout")
 
 
 def patch_side_panel(release):
@@ -3114,6 +3283,7 @@ def main():
     patch_topbar(release)
     patch_side_panel(release)
     patch_depth(release)
+    patch_desktop_overlay(release)
     patch_edge_regions(release)
     patch_edge_layout(release)
     patch_hidden_panels(release)

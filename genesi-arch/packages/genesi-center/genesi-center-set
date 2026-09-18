@@ -151,10 +151,16 @@ CAELESTIA_PATHS = {
     # does not exist.
     "background.desktopClock.enabled": ("bool",),
     "background.desktopClock.scale": ("float", 0.4, 2.5),
+    # "free" is where a dragged clock landed; the two fractions below say
+    # where. The nine names are caelestia's own, hyphenated its way
+    # ("center", not the "centre" the Genesi widgets use) because they are
+    # the states of ITS Loader.
     "background.desktopClock.position": ("enum", (
         "top-left", "top-center", "top-right",
         "middle-left", "middle-center", "middle-right",
-        "bottom-left", "bottom-center", "bottom-right")),
+        "bottom-left", "bottom-center", "bottom-right", "free")),
+    "background.desktopClock.x": ("float", 0.0, 1.0),
+    "background.desktopClock.y": ("float", 0.0, 1.0),
     "background.desktopClock.invertColors": ("bool",),
     "background.desktopClock.background.enabled": ("bool",),
     "background.desktopClock.background.opacity": ("float", 0.0, 1.0),
@@ -521,6 +527,8 @@ GENESI_ONLY = {
     "launcher.showWeather": "CONFIG_PROPERTY(bool, showWeather, true)",
     "launcher.showHero": "CONFIG_PROPERTY(bool, showHero, true)",
     "launcher.showChips": "CONFIG_PROPERTY(bool, showChips, true)",
+    "background.desktopClock.x": "CONFIG_PROPERTY(qreal, x, 0.05)",
+    "background.desktopClock.y": "CONFIG_PROPERTY(qreal, y, 0.05)",
     "background.widgets.cards": "CONFIG_PROPERTY(bool, cards, true)",
     "background.widgets.weather.enabled":
         "CONFIG_SUBOBJECT(GenesiWidgetConfig, weather)",

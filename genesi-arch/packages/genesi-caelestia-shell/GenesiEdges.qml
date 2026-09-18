@@ -102,4 +102,28 @@ Singleton {
     // without this the strip would never see a pointer.
     readonly property bool left: GlobalConfig.topbar.enabled
         && GlobalConfig.sidepanel.enabled && GlobalConfig.sidepanel.edgeHover
+
+    // How wide that drag margin actually is, computed the way ContentWindow
+    // computes it: the largest dragThreshold among the panels that are on.
+    //
+    // Everything above answers "does Genesi stand on this edge"; this answers
+    // "how much of the edge is caelestia's when it does not". Anything Genesi
+    // draws on the WALLPAPER needs the second question too, because the
+    // drawers window is above the background one: a menu or an editor opened
+    // under that margin is drawn, and then takes no clicks. The right edge is
+    // where it shows, since it is the one edge Genesi never claims.
+    readonly property real drawerRing: {
+        const c = GlobalConfig;
+        let ring = 0;
+        for (const p of ["dashboard", "launcher", "session", "sidebar"])
+            if (c[p].enabled)
+                ring = Math.max(ring, c[p].dragThreshold);
+        return ring;
+    }
+
+    // The margin to keep a wallpaper surface out of, per edge.
+    readonly property real ringTop: root.claimsTop ? 0 : root.drawerRing
+    readonly property real ringBottom: root.claimsBottom ? 0 : root.drawerRing
+    readonly property real ringLeft: root.left ? 0 : root.drawerRing
+    readonly property real ringRight: root.drawerRing
 }

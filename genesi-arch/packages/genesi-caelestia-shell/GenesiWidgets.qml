@@ -46,72 +46,10 @@ Item {
     // down from Background.qml, where it is a sibling of this layer.
     property Item wallpaper: null
 
-    // name -> the corner it prefers when the config says nothing. Kept here
-    // rather than in the C++ config because it is a layout decision, and
-    // because CONFIG_PROPERTY puts its member behind `private:`, so a subclass
-    // per widget could not have carried one anyway.
-    readonly property var defs: [
-        {
-            name: "weather",
-            home: "top-right"
-        },
-        {
-            name: "forecast",
-            home: "top-right"
-        },
-        {
-            name: "media",
-            home: "bottom-left"
-        },
-        {
-            name: "cpu",
-            home: "top-left"
-        },
-        {
-            name: "memory",
-            home: "top-left"
-        },
-        {
-            name: "storage",
-            home: "top-left"
-        },
-        {
-            name: "network",
-            home: "bottom-right"
-        },
-        {
-            name: "battery",
-            home: "top-right"
-        },
-        {
-            name: "calendar",
-            home: "bottom-right"
-        },
-        {
-            name: "analogClock",
-            home: "top-centre"
-        },
-        {
-            name: "workspaces",
-            home: "bottom-centre"
-        },
-        {
-            name: "notifications",
-            home: "bottom-right"
-        },
-        {
-            name: "uptime",
-            home: "bottom-left"
-        },
-        {
-            name: "greeting",
-            home: "top-centre"
-        },
-        {
-            name: "digitalClock",
-            home: "top-centre"
-        }
-    ]
+    // The widgets themselves live in GenesiWidgetEditState now: the menu and
+    // the editor are drawn in another item (GenesiDesktopOverlay, above the
+    // Depth cutout) and need the same list this does.
+    readonly property var defs: GenesiWidgetEditState.defs
 
     readonly property int margin: Tokens.padding.extraLargeIncreased + Config.border.thickness
     readonly property int gap: Tokens.spacing.large
@@ -222,7 +160,7 @@ Item {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.RightButton
-        onClicked: event => menu.openAt(event.x, event.y)
+        onClicked: event => GenesiWidgetEditState.askMenu(root, event.x, event.y)
     }
 
     // The middle row is centred, but never ON the corners above and below it:
@@ -378,50 +316,24 @@ Item {
         }
     }
 
-    // Right-click on a widget, or on caelestia's clock: the editor. The clock
-    // lives in caelestia's own file and cannot see this layer, so it asks
-    // through the shared state -- and every screen hears it, so each one checks
-    // the click happened on ITS window before opening.
+    // Arrange mode is asked for from the menu, which is drawn in the overlay
+    // above the Depth cutout and cannot see this item. Every screen hears the
+    // ask; the one whose window the menu belongs to answers it.
     Connections {
         target: GenesiWidgetEditState
 
-        function onRequested(name: string, item: Item, x: real, y: real): void {
+        function onArrangeAsked(item: Item): void {
             if (!item || item.Window.window !== root.Window.window)
                 return;
-            // caelestia's clock is drawn ABOVE this layer, so an editor opened
-            // at the pointer would be half under it. Beside the clock instead.
-            if (name === "desktopClock") {
-                const r = item.mapToItem(root, 0, 0, item.width, item.height);
-                editor.openBeside(name, r);
-                return;
-            }
-            const p = item.mapToItem(root, x, y);
-            editor.openFor(name, p.x, p.y);
+            if (root.arranging)
+                root.endArrange();
+            else
+                root.beginArrange();
         }
     }
 
-    GenesiDesktopMenu {
-        id: menu
-
-        defs: root.defs
-        onToggle: name => {
-            const c = root.cfgOf(name);
-            root.write(name, "enabled", c && c.enabled ? "false" : "true");
-        }
-        onArrange: root.arranging ? root.endArrange() : root.beginArrange()
-        // Opened from here rather than from the menu itself, because this is
-        // the file that already imports the launcher's side of the shell.
-        onSchemes: GenesiSchemeState.show()
-        arranging: root.arranging
-    }
-
-    GenesiWidgetEditor {
-        id: editor
-
-        labels: menu.labels
-        defs: root.defs
-        onArrangeRequested: root.beginArrange()
-    }
+    // ...and the menu reads it back from there, to say "Done arranging".
+    onArrangingChanged: GenesiWidgetEditState.arranging = root.arranging
 
     component Slot: Column {
         id: slot

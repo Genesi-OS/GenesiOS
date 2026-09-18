@@ -171,7 +171,9 @@ pkgver=0.1.0
 # 34: genesi-center-set takes what the desktop widget editor writes -- a style,
 # an opacity, a colour mode and two #rrggbb colours per widget, the new digital
 # clock, and sizes up to 250%.
-pkgrel=34
+# 35: the desktop clock can be dropped anywhere -- position takes "free" and
+# x/y are fractions of the screen, the same shape the widgets already used.
+pkgrel=35
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
