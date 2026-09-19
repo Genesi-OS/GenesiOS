@@ -1,9 +1,17 @@
 // GENESI STORE — the window.
 //
-// A spine on the left, a shelf in the middle, and one line at the bottom that
-// says what is happening. Everything it shows comes from `genesi-store
-// catalog`; everything it does goes back through `genesi-store apply`. The app
-// holds no opinion about what a theme IS -- it draws cards and presses buttons.
+// A spine on the left, a shelf in the middle, one line at the bottom saying
+// what is happening. Everything it shows comes from `genesi-store catalog`;
+// everything it does goes back through `genesi-store apply`.
+//
+// ── The mosaic ──────────────────────────────────────────────────────────────
+//
+// Cards are not all the same size, and the sizes are not decorative: a whole
+// desktop is a big picture and a colour scheme is a small one, so a rice gets
+// two columns and two rows, a wallpaper gets two columns, and everything else
+// gets one. The grid is laid out by hand into a fixed column count rather than
+// by a Flow, because a Flow with mixed sizes leaves holes, and a shop with
+// holes in the shelf looks broken rather than airy.
 //
 // ── Why Discover is a view and not a shelf ─────────────────────────────────
 //
@@ -15,7 +23,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls as QQC2
-import QtQuick.Layouts
 import "."
 import "components"
 
@@ -29,8 +36,23 @@ QQC2.ApplicationWindow {
     property string search: ""
     property var busy: ({})
     property string message: ""
+    property var sheetItem: null
+    property string railLabel: ""
+    property real railLabelY: 0
+    property string thumbDir: store.thumbDir()
 
     readonly property var featured: win.byId("rice-floresta-viva")
+
+    // What each shelf calls the things on it, for the line above a card's name.
+    readonly property var kindLabels: ({
+            "rices": qsTr("ambiente"),
+            "themes": qsTr("tema"),
+            "decor": qsTr("papel de parede"),
+            "lockscreens": qsTr("bloqueio"),
+            "bars": qsTr("barra"),
+            "fastfetch": qsTr("terminal"),
+            "bundles": qsTr("coleção")
+        })
 
     function byId(ident) {
         for (let i = 0; i < win.items.length; i++)
@@ -40,20 +62,15 @@ QQC2.ApplicationWindow {
     }
 
     function inSection(id) {
-        const out = [];
-        for (let i = 0; i < win.items.length; i++)
-            if (win.items[i].section === id)
-                out.push(win.items[i]);
-        return out;
+        return win.items.filter(i => i.section === id);
     }
 
-    // What the middle of the window is showing, after the shelf, the chips and
-    // the search box have all had their say.
     function shown() {
         let list = win.section === "discover" ? win.items : win.inSection(win.section);
+        if (win.filter === "applied")
+            return list.filter(i => i.applied);
         if (win.filter)
             list = list.filter(i => (i.tags ?? []).indexOf(win.filter) >= 0
-                               || i.section === win.filter
                                || i.family === win.filter);
         if (win.search) {
             const needle = win.search.toLowerCase();
@@ -62,17 +79,14 @@ QQC2.ApplicationWindow {
                                || (i.tags ?? []).join(" ").toLowerCase().indexOf(needle) >= 0);
         }
         if (win.section === "discover" && !win.filter && !win.search) {
-            // A handful of each, so the front page is a sample of the shop
-            // rather than eighty cards in catalogue order.
             const out = [];
             for (const shelf of ["rices", "themes", "decor", "lockscreens", "bars", "fastfetch", "bundles"])
-                out.push(...win.inSection(shelf).slice(0, shelf === "rices" ? 3 : 4));
+                out.push(...win.inSection(shelf).slice(0, shelf === "rices" ? 2 : 4));
             return out;
         }
         return list;
     }
 
-    // The chips above the shelf: what is actually on it, not a fixed list.
     function chips() {
         const seen = {};
         for (const item of (win.section === "discover" ? win.items : win.inSection(win.section)))
@@ -81,10 +95,64 @@ QQC2.ApplicationWindow {
         return Object.keys(seen).filter(t => seen[t] >= 2).sort((a, b) => seen[b] - seen[a]).slice(0, 7);
     }
 
+    // ── The mosaic ───────────────────────────────────────────────────────────
+    //
+    // Each item asks for a width and a height in CELLS; this walks a row of
+    // occupied columns and drops every card in the first place it fits, which
+    // is the smallest layout that never leaves a hole.
+    function span(item) {
+        if (item.section === "rices" || item.section === "bundles")
+            return {"w": 2, "h": 2};
+        if (item.section === "decor" || item.section === "lockscreens")
+            return {"w": 2, "h": 1};
+        return {"w": 1, "h": 1};
+    }
+
+    function layout(list, columns) {
+        const placed = [];
+        const filled = [];          // how many rows deep each column is taken
+        for (let c = 0; c < columns; c++)
+            filled.push(0);
+
+        for (const item of list) {
+            const want = win.span(item);
+            const w = Math.min(want.w, columns);
+            let best = -1;
+            let bestRow = Infinity;
+            for (let c = 0; c + w <= columns; c++) {
+                let row = 0;
+                for (let k = c; k < c + w; k++)
+                    row = Math.max(row, filled[k]);
+                if (row < bestRow) {
+                    bestRow = row;
+                    best = c;
+                }
+            }
+            placed.push({"item": item, "col": best, "row": bestRow,
+                         "w": w, "h": want.h});
+            for (let k = best; k < best + w; k++)
+                filled[k] = bestRow + want.h;
+        }
+        let rows = 0;
+        for (const f of filled)
+            rows = Math.max(rows, f);
+        return {"placed": placed, "rows": rows};
+    }
+
+    function applyItem(item) {
+        const parts = item.includes ?? [];
+        if (parts.length > 0) {
+            for (const ident of parts)
+                store.apply(ident);
+            return;
+        }
+        store.apply(item.id);
+    }
+
     width: 1280
     height: 820
-    minimumWidth: 940
-    minimumHeight: 640
+    minimumWidth: 980
+    minimumHeight: 660
     visible: true
     title: qsTr("Genesi Store")
     color: Tokens.bg
@@ -110,16 +178,16 @@ QQC2.ApplicationWindow {
         Leaf {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 22
-            width: 30
-            height: 30
+            anchors.topMargin: 20
+            width: 34
+            height: 34
             colour: Tokens.accent
         }
 
         Column {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 84
+            anchors.topMargin: 82
             spacing: 2
 
             Repeater {
@@ -134,6 +202,19 @@ QQC2.ApplicationWindow {
                     onActivated: {
                         win.section = modelData.id;
                         win.filter = "";
+                        win.search = "";
+                    }
+                    // The name floats OUTSIDE the rail, so it is drawn by the
+                    // window rather than by the button: a label drawn inside
+                    // the rail appears under the cards, which is what the
+                    // first version did.
+                    onHoveredChanged: {
+                        if (hovered) {
+                            win.railLabel = modelData.label;
+                            win.railLabelY = mapToItem(win.contentItem, 0, height / 2).y;
+                        } else if (win.railLabel === modelData.label) {
+                            win.railLabel = "";
+                        }
                     }
                 }
             }
@@ -142,10 +223,18 @@ QQC2.ApplicationWindow {
         RailButton {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 16
+            anchors.bottomMargin: 14
             icon: "settings"
             label: qsTr("Genesi Center")
-            onActivated: Qt.openUrlExternally("")
+            onActivated: store.openCenter()
+            onHoveredChanged: {
+                if (hovered) {
+                    win.railLabel = qsTr("Genesi Center");
+                    win.railLabelY = mapToItem(win.contentItem, 0, height / 2).y;
+                } else if (win.railLabel === qsTr("Genesi Center")) {
+                    win.railLabel = "";
+                }
+            }
         }
     }
 
@@ -156,37 +245,48 @@ QQC2.ApplicationWindow {
         anchors.left: rail.right
         anchors.right: parent.right
         anchors.top: parent.top
-        height: 74
+        height: 76
 
-        Column {
+        Row {
             anchors.left: parent.left
             anchors.leftMargin: 22
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 1
+            spacing: 11
 
-            Text {
-                text: qsTr("GENESI STORE")
-                color: Tokens.textHi
-                font.family: Tokens.sans
-                font.pixelSize: Tokens.fsCard
-                font.letterSpacing: 2.4
-                font.weight: Font.DemiBold
+            Leaf {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 26
+                height: 26
+                colour: Tokens.accent
             }
-            Text {
-                text: qsTr("personalize um amanhã mais tranquilo")
-                color: Tokens.textFaint
-                font.family: Tokens.mono
-                font.pixelSize: Tokens.fsMicro
-                font.letterSpacing: 1.1
+
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+
+                Text {
+                    text: qsTr("GENESI STORE")
+                    color: Tokens.textHi
+                    font.family: Tokens.sans
+                    font.pixelSize: Tokens.fsCard
+                    font.letterSpacing: 2.6
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    text: qsTr("personalize um amanhã mais tranquilo")
+                    color: Tokens.textFaint
+                    font.family: Tokens.mono
+                    font.pixelSize: Tokens.fsMicro
+                    font.letterSpacing: 1.1
+                }
             }
         }
 
-        // Search: the fastest route in a shop with eighty things in it.
         Rectangle {
             id: searchBox
 
             anchors.centerIn: parent
-            width: Math.min(460, header.width * 0.42)
+            width: Math.min(440, header.width * 0.4)
             height: 40
             radius: 20
             color: Tokens.card
@@ -225,6 +325,7 @@ QQC2.ApplicationWindow {
             spacing: 10
 
             Chip {
+                anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("Biblioteca")
                 selected: win.filter === "applied"
                 onActivated: {
@@ -234,6 +335,7 @@ QQC2.ApplicationWindow {
             }
 
             Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
                 width: 38
                 height: 38
                 radius: 19
@@ -259,19 +361,17 @@ QQC2.ApplicationWindow {
 
     // ── The shelf ────────────────────────────────────────────────────────────
     QQC2.ScrollView {
+        id: scroller
+
         anchors.left: rail.right
         anchors.right: parent.right
         anchors.top: header.bottom
         anchors.bottom: queue.top
         anchors.leftMargin: 22
-        // Wider on the right: the line of type down that edge is part of the
-        // page, and content sliding under it reads as a rendering fault.
         anchors.rightMargin: 40
         contentWidth: availableWidth
         clip: true
 
-        // The desktop style draws a light scrollbar on a dark app, which is
-        // the one piece of chrome nobody chose.
         QQC2.ScrollBar.vertical: QQC2.ScrollBar {
             width: 8
             policy: QQC2.ScrollBar.AsNeeded
@@ -288,128 +388,242 @@ QQC2.ApplicationWindow {
         Column {
             width: parent.width
             spacing: 18
-            bottomPadding: 24
+            bottomPadding: 26
 
-            // ── The week's collection ────────────────────────────────────────
-            Rectangle {
+            // ── The week's collection, and a preview beside it ───────────────
+            Item {
                 width: parent.width
-                height: 226
-                visible: win.section === "discover" && !win.search && win.featured
-                radius: Tokens.radiusLg
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
+                height: 250
+                visible: win.section === "discover" && !win.search && !win.filter && win.featured
 
-                    GradientStop {
-                        position: 0
-                        color: "#0f2418"
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Tokens.card
-                    }
-                }
-                border.width: 1
-                border.color: Tokens.line
-                clip: true
+                Rectangle {
+                    id: heroCard
 
-                Leaf {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 60
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 190
-                    height: 190
-                    colour: Tokens.a(Tokens.accent, 0.13)
-                    fill: 1
-                }
-
-                Column {
                     anchors.left: parent.left
-                    anchors.leftMargin: 30
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width * 0.55
-                    spacing: 8
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: parent.width * 0.62
+                    radius: Tokens.radiusLg
+                    color: Tokens.card
+                    border.width: 1
+                    border.color: Tokens.line
+                    clip: true
+
+                    Preview {
+                        anchors.fill: parent
+                        spec: win.featured ? win.featured.preview : ({})
+                        thumbDir: win.thumbDir
+                        detailed: true
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+
+                            GradientStop {
+                                position: 0
+                                color: Qt.rgba(0.02, 0.06, 0.04, 0.94)
+                            }
+                            GradientStop {
+                                position: 0.75
+                                color: Qt.rgba(0.02, 0.06, 0.04, 0.35)
+                            }
+                            GradientStop {
+                                position: 1
+                                color: "transparent"
+                            }
+                        }
+                    }
+
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 28
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width * 0.62
+                        spacing: 8
+
+                        Row {
+                            spacing: 8
+
+                            Leaf {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 13
+                                height: 13
+                                colour: Tokens.accent
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: qsTr("COLEÇÃO DA SEMANA")
+                                color: Tokens.accentSoft
+                                font.family: Tokens.mono
+                                font.pixelSize: Tokens.fsMicro
+                                font.letterSpacing: 2
+                            }
+                        }
+
+                        Text {
+                            text: win.featured ? win.featured.name : ""
+                            color: Tokens.textHi
+                            font.family: Tokens.sans
+                            font.pixelSize: 42
+                            font.weight: Font.Light
+                        }
+
+                        Text {
+                            width: parent.width
+                            text: win.featured ? win.featured.blurb : ""
+                            color: Tokens.text
+                            font.family: Tokens.sans
+                            font.pixelSize: Tokens.fsBody
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Item {
+                            width: 1
+                            height: 6
+                        }
+
+                        Row {
+                            spacing: 10
+
+                            Rectangle {
+                                width: 150
+                                height: 42
+                                radius: Tokens.radiusSm
+                                color: heroTap.pressed ? Tokens.accentDeep : Tokens.accent
+
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 8
+
+                                    Glyph {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        name: "play"
+                                        size: 16
+                                        colour: Tokens.bgDeep
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: qsTr("Aplicar")
+                                        color: Tokens.bgDeep
+                                        font.family: Tokens.sans
+                                        font.pixelSize: Tokens.fsBody
+                                        font.weight: Font.DemiBold
+                                    }
+                                }
+                                TapHandler {
+                                    id: heroTap
+
+                                    onTapped: if (win.featured) win.applyItem(win.featured)
+                                }
+                                HoverHandler {
+                                    cursorShape: Qt.PointingHandCursor
+                                }
+                            }
+
+                            Chip {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: qsTr("Ver o que vem junto")
+                                onActivated: win.sheetItem = win.featured
+                            }
+                        }
+                    }
+                }
+
+                // The live preview panel from the design: the same drawing,
+                // with the other collections stacked beside it.
+                Rectangle {
+                    anchors.left: heroCard.right
+                    anchors.leftMargin: 16
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    radius: Tokens.radiusLg
+                    color: Tokens.card
+                    border.width: 1
+                    border.color: Tokens.line
 
                     Row {
-                        spacing: 8
+                        anchors.left: parent.left
+                        anchors.leftMargin: 16
+                        anchors.top: parent.top
+                        anchors.topMargin: 14
+                        spacing: 7
 
                         Leaf {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 13
-                            height: 13
+                            width: 12
+                            height: 12
                             colour: Tokens.accent
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: qsTr("COLEÇÃO DA SEMANA")
-                            color: Tokens.accentSoft
-                            font.family: Tokens.mono
-                            font.pixelSize: Tokens.fsMicro
-                            font.letterSpacing: 2
+                            text: qsTr("Prévia ao vivo")
+                            color: Tokens.textHi
+                            font.family: Tokens.sans
+                            font.pixelSize: Tokens.fsBody
+                            font.weight: Font.Medium
                         }
-                    }
-
-                    Text {
-                        text: win.featured ? win.featured.name : ""
-                        color: Tokens.textHi
-                        font.family: Tokens.sans
-                        font.pixelSize: Tokens.fsHero
-                        font.weight: Font.Light
-                    }
-
-                    Text {
-                        width: parent.width
-                        text: win.featured ? win.featured.blurb : ""
-                        color: Tokens.text
-                        font.family: Tokens.sans
-                        font.pixelSize: Tokens.fsBody
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Item {
-                        width: 1
-                        height: 6
                     }
 
                     Row {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 16
+                        anchors.topMargin: 44
                         spacing: 10
 
                         Rectangle {
-                            width: 148
-                            height: 40
+                            width: parent.width - 86
+                            height: parent.height
                             radius: Tokens.radiusSm
-                            color: Tokens.accentDeep
+                            color: Tokens.bgDeep
+                            clip: true
 
-                            Row {
-                                anchors.centerIn: parent
-                                spacing: 8
-
-                                Glyph {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    name: "play"
-                                    size: 16
-                                    colour: Tokens.textHi
-                                }
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: qsTr("Aplicar coleção")
-                                    color: Tokens.textHi
-                                    font.family: Tokens.sans
-                                    font.pixelSize: Tokens.fsBody
-                                    font.weight: Font.Medium
-                                }
-                            }
-                            TapHandler {
-                                onTapped: if (win.featured) win.applyItem(win.featured)
-                            }
-                            HoverHandler {
-                                cursorShape: Qt.PointingHandCursor
+                            Preview {
+                                anchors.fill: parent
+                                spec: win.sheetItem ? win.sheetItem.preview
+                                                    : (win.featured ? win.featured.preview : ({}))
+                                thumbDir: win.thumbDir
+                                detailed: true
                             }
                         }
 
-                        Chip {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: qsTr("Ver o que vem junto")
-                            onActivated: win.section = "rices"
+                        Column {
+                            width: 76
+                            spacing: 8
+
+                            Repeater {
+                                model: win.inSection("rices").slice(1, 4)
+
+                                Rectangle {
+                                    required property var modelData
+
+                                    width: 76
+                                    height: 48
+                                    radius: 8
+                                    color: Tokens.bgDeep
+                                    border.width: 1
+                                    border.color: Tokens.line
+                                    clip: true
+
+                                    Preview {
+                                        anchors.fill: parent
+                                        spec: modelData.preview ?? ({})
+                                        thumbDir: win.thumbDir
+                                    }
+
+                                    TapHandler {
+                                        onTapped: win.sheetItem = modelData
+                                    }
+                                    HoverHandler {
+                                        cursorShape: Qt.PointingHandCursor
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -418,25 +632,31 @@ QQC2.ApplicationWindow {
             // ── Where you are, and what you can narrow it to ─────────────────
             Item {
                 width: parent.width
-                height: 34
+                height: 36
 
-                Text {
+                Column {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    text: {
-                        if (win.search)
-                            return qsTr("Resultados para “%1”").arg(win.search);
-                        if (win.section === "discover")
-                            return qsTr("Cultivado para você");
-                        for (const s of win.sections)
-                            if (s.id === win.section)
-                                return s.label;
-                        return "";
+                    spacing: 1
+
+                    Text {
+                        text: {
+                            if (win.search)
+                                return qsTr("Resultados para “%1”").arg(win.search);
+                            if (win.filter === "applied")
+                                return qsTr("Na sua biblioteca");
+                            if (win.section === "discover")
+                                return qsTr("Cultivado para você");
+                            for (const s of win.sections)
+                                if (s.id === win.section)
+                                    return s.label;
+                            return "";
+                        }
+                        color: Tokens.textHi
+                        font.family: Tokens.sans
+                        font.pixelSize: Tokens.fsTitle
+                        font.weight: Font.Medium
                     }
-                    color: Tokens.textHi
-                    font.family: Tokens.sans
-                    font.pixelSize: Tokens.fsTitle
-                    font.weight: Font.Medium
                 }
 
                 Row {
@@ -464,50 +684,61 @@ QQC2.ApplicationWindow {
                 }
             }
 
-            // ── The cards ────────────────────────────────────────────────────
-            Flow {
+            // ── The cards, in a mosaic ───────────────────────────────────────
+            Item {
+                id: mosaic
+
+                readonly property int columns: Math.max(2, Math.floor(width / 250))
+                readonly property real cell: (width - (columns - 1) * Tokens.gap) / columns
+                readonly property real rowHeight: 152
+                readonly property var plan: win.layout(win.shown(), columns)
+
                 width: parent.width
-                spacing: Tokens.gap
+                height: plan.rows * (rowHeight + Tokens.gap)
 
                 Repeater {
-                    model: win.shown()
+                    model: mosaic.plan.placed
 
                     ItemCard {
                         required property var modelData
 
-                        item: modelData
-                        wide: modelData.section === "rices" || modelData.section === "bundles"
-                        busy: win.busy[modelData.id] ?? ""
-                        onPrimary: win.applyItem(modelData)
-                        onSecondary: store.revert(modelData.id)
+                        x: modelData.col * (mosaic.cell + Tokens.gap)
+                        y: modelData.row * (mosaic.rowHeight + Tokens.gap)
+                        width: modelData.w * mosaic.cell + (modelData.w - 1) * Tokens.gap
+                        height: modelData.h * mosaic.rowHeight + (modelData.h - 1) * Tokens.gap
+                        item: modelData.item
+                        thumbDir: win.thumbDir
+                        large: modelData.h > 1
+                        busy: win.busy[modelData.item.id] ?? ""
+                        onPrimary: win.applyItem(modelData.item)
+                        onOpened: win.sheetItem = modelData.item
                     }
                 }
             }
 
-            // Plugins: announced, not pretended.
-            Rectangle {
+            // Nothing matched: say so, rather than showing an empty shelf.
+            Item {
                 width: parent.width
-                height: 96
-                visible: win.section === "plugins"
-                radius: Tokens.radius
-                color: Tokens.card
-                border.width: 1
-                border.color: Tokens.line
+                height: win.shown().length === 0 ? 120 : 0
+                visible: height > 0
 
                 Column {
                     anchors.centerIn: parent
-                    spacing: 6
+                    spacing: 8
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: qsTr("Plugins vêm depois")
+                        text: win.section === "plugins" ? qsTr("Plugins vêm depois")
+                                                        : qsTr("Nada por aqui")
                         color: Tokens.textHi
                         font.family: Tokens.sans
                         font.pixelSize: Tokens.fsCard
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: qsTr("Aqui vão entrar extensões que mudam o comportamento do sistema, não só a aparência.")
+                        text: win.section === "plugins"
+                              ? qsTr("Aqui vão entrar extensões que mudam o comportamento do sistema, não só a aparência.")
+                              : qsTr("Tente outro termo, ou tire os filtros.")
                         color: Tokens.textDim
                         font.family: Tokens.sans
                         font.pixelSize: Tokens.fsLabel
@@ -524,7 +755,7 @@ QQC2.ApplicationWindow {
         anchors.left: rail.right
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: win.message || Object.keys(win.busy).length > 0 ? 54 : 0
+        height: win.message || Object.keys(win.busy).length > 0 ? 56 : 0
         color: Tokens.rail
         clip: true
 
@@ -547,12 +778,12 @@ QQC2.ApplicationWindow {
             anchors.left: parent.left
             anchors.leftMargin: 22
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 10
+            spacing: 11
 
             Leaf {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 16
-                height: 16
+                width: 18
+                height: 18
                 colour: Tokens.accent
 
                 RotationAnimation on rotation {
@@ -574,12 +805,7 @@ QQC2.ApplicationWindow {
         }
     }
 
-    // The line down the right edge, the way the Center has one: texture, and
-    // Genesi's own voice rather than borrowed ornament.
-    // In its own narrow column, not anchored to the edge directly: a rotated
-    // Text still occupies its UNROTATED width for anchoring, so anchoring it
-    // to the right edge put the strip a whole line-length inside the window,
-    // across the chips.
+    // The line down the right edge: texture, in Genesi's own voice.
     Item {
         anchors.right: parent.right
         anchors.top: header.bottom
@@ -598,18 +824,41 @@ QQC2.ApplicationWindow {
         }
     }
 
-    // ── Doing things ─────────────────────────────────────────────────────────
-    function applyItem(item) {
-        // A collection is its parts: applying it applies each of them, in the
-        // order the catalogue lists them, so "one wallpaper and a theme" is
-        // not two buttons.
-        const parts = item.includes ?? [];
-        if (parts.length > 0) {
-            for (const ident of parts)
-                store.apply(ident);
-            return;
+    // ── The rail's hover label, drawn last so it is drawn on top ─────────────
+    Rectangle {
+        visible: win.railLabel !== ""
+        x: Tokens.railWidth - 6
+        y: win.railLabelY - height / 2
+        width: railText.implicitWidth + 20
+        height: 30
+        radius: 9
+        color: Tokens.cardHi
+        border.width: 1
+        border.color: Tokens.line
+        z: 50
+
+        Text {
+            id: railText
+
+            anchors.centerIn: parent
+            text: win.railLabel
+            color: Tokens.textHi
+            font.family: Tokens.sans
+            font.pixelSize: Tokens.fsBody
         }
-        store.apply(item.id);
+    }
+
+    // ── One thing, in full ───────────────────────────────────────────────────
+    ItemSheet {
+        z: 60
+        item: win.sheetItem
+        thumbDir: win.thumbDir
+        busy: win.sheetItem ? (win.busy[win.sheetItem.id] ?? "") : ""
+        resolve: ident => win.byId(ident)
+        onApply: if (win.sheetItem) win.applyItem(win.sheetItem)
+        onRevert: if (win.sheetItem) store.revert(win.sheetItem.id)
+        onClosed: win.sheetItem = null
+        onOpenItem: ident => win.sheetItem = win.byId(ident)
     }
 
     Connections {
@@ -618,11 +867,13 @@ QQC2.ApplicationWindow {
         function onCatalogLoaded(payload) {
             const data = JSON.parse(payload);
             const list = data.items ?? [];
-            // The picture of a wallpaper, once it is on disk.
             for (const item of list)
-                if (item.installed && item.preview && item.preview.kind === "image")
-                    item.localPreview = store.assetPath(item.id);
+                item.kindLabel = win.kindLabels[item.section] ?? "";
             win.items = list;
+            // The sheet holds a copy of an item; refresh it so its button
+            // stops saying "Aplicar" the moment the apply lands.
+            if (win.sheetItem)
+                win.sheetItem = win.byId(win.sheetItem.id);
         }
 
         function onSectionsLoaded(payload) {
@@ -639,12 +890,16 @@ QQC2.ApplicationWindow {
                 delete next[ident];
             win.busy = next;
             const names = Object.keys(next);
-            win.message = names.length ? qsTr("%1 %2…").arg(saying || qsTr("trabalhando")).arg(names.length > 1 ? qsTr("(%1 itens)").arg(names.length) : "") : win.message;
+            if (names.length)
+                win.message = names.length > 1
+                    ? qsTr("%1 %2 itens…").arg(saying).arg(names.length)
+                    : qsTr("%1 %2…").arg(saying).arg((win.byId(ident) ?? ({})).name ?? "");
         }
 
         function onFinished(ident, ok, detail) {
             if (!ok) {
                 win.message = detail;
+                messageTimer.restart();
                 return;
             }
             win.message = qsTr("Pronto.");
@@ -655,7 +910,7 @@ QQC2.ApplicationWindow {
     Timer {
         id: messageTimer
 
-        interval: 4000
+        interval: 5000
         onTriggered: win.message = ""
     }
 }

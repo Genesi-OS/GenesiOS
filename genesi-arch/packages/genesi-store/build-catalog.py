@@ -170,7 +170,8 @@ def get(url, binary=False):
 def scheme_colours(family, flavour, mode):
     """The five colours a theme card is painted in, from caelestia's own file."""
     url = "%s%s/%s/%s.txt" % (SCHEME_REPO, family, flavour, mode)
-    want = ("background", "onBackground", "primary", "secondary", "tertiary")
+    want = ("background", "onBackground", "primary", "secondary", "tertiary",
+            "surface")
     found = {}
     for line in get(url).splitlines():
         parts = line.split()
@@ -183,6 +184,35 @@ def scheme_colours(family, flavour, mode):
     return found
 
 
+def thumbnail(ident, data, filename):
+    """A small picture of the wallpaper, shipped IN the package.
+
+    Without this a decor card is a grey rectangle with a file size in it until
+    somebody downloads the wallpaper -- which is backwards, because the picture
+    is the reason to download it. 480px of JPEG is about 25 kB, so eighteen of
+    them cost less than half a megabyte and the shelf becomes a shelf of
+    pictures. They are also what the lock screens, the rices and the
+    collections are drawn over, so one download feeds four shelves.
+    """
+    from PySide6.QtGui import QGuiApplication, QImage
+    from PySide6.QtCore import Qt
+    global _APP
+    try:
+        _APP
+    except NameError:
+        _APP = QGuiApplication([])
+    image = QImage.fromData(data)
+    if image.isNull():
+        raise SystemExit("could not read %s as an image" % filename)
+    small = image.scaledToWidth(480, Qt.SmoothTransformation)
+    out = os.path.join(HERE, "catalog", "thumbs")
+    os.makedirs(out, exist_ok=True)
+    name = ident + ".jpg"
+    if not small.save(os.path.join(out, name), "JPG", 72):
+        raise SystemExit("could not write the thumbnail for " + ident)
+    return name
+
+
 def wallpaper_asset(filename):
     url = WALL_REPO + filename
     data = get(url, binary=True)
@@ -190,8 +220,10 @@ def wallpaper_asset(filename):
     head = {"image/png": b"\x89PNG", "image/jpeg": b"\xff\xd8\xff"}[kind]
     if not data.startswith(head):
         raise SystemExit("%s is not %s -- the link is broken" % (url, kind))
-    return {"url": url, "type": kind, "bytes": len(data),
-            "sha256": hashlib.sha256(data).hexdigest()}
+    # The bytes come back too: the thumbnail is made from the file we just
+    # verified, not from a second download of something that may differ.
+    return ({"url": url, "type": kind, "bytes": len(data),
+             "sha256": hashlib.sha256(data).hexdigest()}, data)
 
 
 def build():
@@ -212,6 +244,7 @@ def build():
         if OFFLINE and ident in previous:
             colours = {"background": previous[ident]["preview"]["background"],
                        "onBackground": previous[ident]["preview"]["ink"],
+                       "surface": previous[ident]["preview"].get("surface", previous[ident]["preview"]["background"]),
                        "primary": previous[ident]["preview"]["colours"][0],
                        "secondary": previous[ident]["preview"]["colours"][1],
                        "tertiary": previous[ident]["preview"]["colours"][2]}
@@ -225,8 +258,9 @@ def build():
             "author": "caelestia / %s" % family,
             "mode": mode,
             "tags": ["escuro" if mode == "dark" else "claro", family],
-            "preview": {"kind": "swatches",
+            "preview": {"kind": "scheme",
                         "background": colours["background"],
+                        "surface": colours.get("surface", colours["background"]),
                         "ink": colours["onBackground"],
                         "colours": [colours["primary"], colours["secondary"],
                                     colours["tertiary"]]},
@@ -237,10 +271,13 @@ def build():
     # ── Decor: wallpapers ──────────────────────────────────────────────────
     for ident, filename, name, blurb, tags in WALLS:
         full = "wall-" + ident
-        if OFFLINE and full in previous:
+        thumb = full + ".jpg"
+        have_thumb = os.path.exists(os.path.join(HERE, "catalog", "thumbs", thumb))
+        if OFFLINE and full in previous and have_thumb:
             asset = previous[full]["assets"]["picture"]
         else:
-            asset = wallpaper_asset(filename)
+            asset, raw = wallpaper_asset(filename)
+            thumb = thumbnail(full, raw, filename)
         items.append({
             "id": full,
             "section": "decor",
@@ -250,7 +287,7 @@ def build():
             "license": "MIT",
             "source": "https://github.com/D3Ext/aesthetic-wallpapers",
             "tags": tags,
-            "preview": {"kind": "image", "asset": "picture"},
+            "preview": {"kind": "image", "thumb": thumb, "asset": "picture"},
             "assets": {"picture": asset},
             "actions": [{"action": "wallpaper", "asset": "picture"}],
         })
@@ -381,7 +418,8 @@ def lockscreens():
                          "rgba(233, 245, 238, 1.0)", "senha", 14, 96,
                          "Rubik", "rgba(233, 245, 238, 0.95)",
                          "$USER", "Rubik", "rgba(143, 214, 171, 0.85)"),
-        {"kind": "lock", "background": "#14241c", "accent": "#8fd6ab"}))
+        {"kind": "lock", "background": "#14241c", "accent": "#8fd6ab",
+         "thumb": "wall-forest-dark.jpg", "blur": True}))
     out.append(lock_item(
         "clean", "Limpa", "Fundo sólido, relógio grande, nada mais.",
         ["minimalista"],
@@ -399,7 +437,8 @@ def lockscreens():
                          "rgba(200, 220, 208, 1.0)", "senha", 20, 84,
                          "Rubik", "rgba(200, 220, 208, 0.9)",
                          "$TIME", "Rubik", "rgba(120, 160, 140, 0.7)"),
-        {"kind": "lock", "background": "#000000", "accent": "#78a08c"}))
+        {"kind": "lock", "background": "#000000", "accent": "#78a08c",
+         "thumb": "wall-oled-mountains.jpg", "blur": True}))
     out.append(lock_item(
         "terminal", "Terminal", "Monoespaçada, como um prompt.",
         ["mono", "retro"],
@@ -409,7 +448,8 @@ def lockscreens():
                          "CaskaydiaCove Nerd Font", "rgba(143, 214, 171, 1.0)",
                          "$USER@$(hostname)", "CaskaydiaCove Nerd Font",
                          "rgba(143, 214, 171, 0.7)"),
-        {"kind": "lock", "background": "#0a0e0c", "accent": "#8fd6ab"}))
+        {"kind": "lock", "background": "#0a0e0c", "accent": "#8fd6ab",
+         "thumb": "wall-ink-wave.jpg", "blur": True, "mono": True}))
 
     # ── The other lock: the screen BEFORE the session ──────────────────────
     #
@@ -419,6 +459,8 @@ def lockscreens():
     # a theme that is not there is a login screen that does not come up, and
     # that is not a thing to find out by rebooting.
     for ident, theme, name, blurb in (
+            ("genesi", "genesi", "Genesi",
+             "A nossa: a marca, a hora e um campo só. Vem com a loja."),
             ("breeze", "breeze", "Breeze (padrão)",
              "A tela que o sistema instala."),
             ("elarun", "elarun", "Elarun",
@@ -436,7 +478,9 @@ def lockscreens():
             "author": "SDDM",
             "tags": ["login", "antes da sessão"],
             "needs_root": True,
-            "preview": {"kind": "login", "theme": theme},
+            "preview": {"kind": "login", "theme": theme,
+                        "background": "#070c09" if theme == "genesi" else "#1b1e20",
+                        "accent": "#39d98a" if theme == "genesi" else "#8ab4d8"},
             "actions": [{"action": "login", "theme": theme}],
         })
     return out
@@ -551,8 +595,9 @@ def rices(previous):
             "blurb": blurb,
             "author": "Genesi",
             "tags": tags,
-            "preview": {"kind": "rice", "accent": colour,
-                        "wallpaper": "wall-" + wall},
+            "preview": {"kind": "desktop", "accent": colour,
+                        "thumb": "wall-%s.jpg" % wall,
+                        "scheme": "theme-" + scheme},
             "includes": ["theme-" + scheme, "wall-" + wall, "bar-" + bar,
                          "lock-" + lock],
             "actions": [],
@@ -598,8 +643,8 @@ def bundles():
                      "papel de parede e uma barra que respira.",
             "author": "Genesi",
             "tags": ["comeco"],
-            "preview": {"kind": "rice", "accent": "#8fd6ab",
-                        "wallpaper": "wall-nature"},
+            "preview": {"kind": "desktop", "accent": "#8fd6ab",
+                        "thumb": "wall-nature.jpg"},
             "includes": ["theme-caelestia-default-dark", "wall-nature",
                          "bar-arejado"],
             "actions": [],
@@ -612,8 +657,8 @@ def bundles():
                      "densa: para quem vive no prompt.",
             "author": "Genesi",
             "tags": ["terminal"],
-            "preview": {"kind": "rice", "accent": "#8fd6ab",
-                        "wallpaper": "wall-ink-wave"},
+            "preview": {"kind": "desktop", "accent": "#8fd6ab",
+                        "thumb": "wall-ink-wave.jpg"},
             "includes": ["fetch-full", "lock-terminal", "bar-informativo",
                          "wall-ink-wave"],
             "actions": [],
@@ -626,8 +671,8 @@ def bundles():
                      "minimalista e barra limpa.",
             "author": "Genesi",
             "tags": ["claro", "calmo"],
-            "preview": {"kind": "rice", "accent": "#40a02b",
-                        "wallpaper": "wall-minimal-c"},
+            "preview": {"kind": "desktop", "accent": "#40a02b",
+                        "thumb": "wall-minimal-c.jpg"},
             "includes": ["theme-everforest-medium-light", "wall-minimal-c",
                          "bar-limpo"],
             "actions": [],

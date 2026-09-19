@@ -1,15 +1,19 @@
 // GENESI STORE — one icon.
 //
-// Material Symbols, which every Genesi desktop already has (the shell depends
-// on it), named by the store's own words rather than by the font's: the rail
-// asks for "rices" and "decor", not for "grid_view" and "wallpaper", so the
-// day an icon is chosen differently there is one line to change.
+// SVGs shipped with the package, not a font.
 //
-// The font can be missing -- somebody running this app on another desktop --
-// and Qt draws a missing glyph as a box without saying so. So there is a
-// check, and the fallback is a small leaf: a mark that means nothing in
-// particular is better than a row of tofu.
+// The first version asked for Material Symbols, on the reasoning that every
+// Genesi desktop has it (the shell depends on it). On a real machine it was
+// not found, and the fallback -- a small leaf -- was then drawn nine times
+// down the rail, so every shelf had the same icon. A dependency that is
+// "definitely there" is a dependency that decides what the app looks like,
+// and this one decided wrong.
+//
+// So the icons are files here, in the same feather hand as the rest of Genesi
+// (most come from the AI Mode set, five were drawn to match), and they are
+// recoloured rather than shipped in every colour: one file, any accent.
 import QtQuick
+import QtQuick.Effects
 import ".."
 
 Item {
@@ -18,60 +22,62 @@ Item {
     property string name: ""
     property int size: 18
     property color colour: Tokens.text
+    // Kept so callers that ask for a filled icon still work; the feather set
+    // is all strokes, so it only nudges the weight.
     property real fill: 0
 
-    readonly property string family: Tokens.pick(["Material Symbols Rounded", "Material Symbols Outlined", "Material Icons"], "")
-
-    readonly property var glyphs: ({
-            "home": "home",
-            "discover": "explore",
-            "rices": "grid_view",
+    // The store's own words on the left, the file on the right. The rail asks
+    // for "rices", not for "layout-grid", so choosing a different drawing is
+    // one line here instead of a hunt through the QML.
+    readonly property var files: ({
+            "discover": "compass",
+            "rices": "layout-grid",
             "themes": "palette",
             "lockscreens": "lock",
-            "bars": "web_asset",
+            "bars": "bar",
             "fastfetch": "terminal",
-            "decor": "wallpaper",
-            "bundles": "inventory_2",
-            "plugins": "extension",
-            "library": "book_2",
-            "settings": "tune",
-            "help": "help",
+            "decor": "image",
+            "bundles": "box",
+            "plugins": "puzzle",
+            "library": "book-open",
+            "settings": "sliders",
+            "help": "compass",
             "search": "search",
-            "refresh": "sync",
+            "refresh": "refresh-cw",
             "install": "download",
-            "applied": "check_circle",
-            "revert": "undo",
-            "play": "play_arrow",
-            "queue": "list",
-            "day": "light_mode",
-            "night": "dark_mode",
+            "applied": "check",
+            "revert": "rotate-ccw",
+            "play": "play",
+            "more": "more",
+            "close": "x",
+            "root": "shield",
             "star": "star",
-            "root": "shield_person",
-            "square": "square"
+            "square": "sliders"
         })
+
+    readonly property string file: root.files[root.name] ?? root.name
 
     implicitWidth: root.size
     implicitHeight: root.size
 
-    Text {
-        anchors.centerIn: parent
-        visible: root.family !== ""
-        text: root.glyphs[root.name] ?? root.name
-        color: root.colour
-        font.family: root.family
-        font.pixelSize: root.size
-        font.variableAxes: ({
-                "FILL": root.fill,
-                "wght": 420,
-                "opsz": root.size
-            })
+    Image {
+        id: art
+
+        anchors.fill: parent
+        source: Qt.resolvedUrl("../icons/" + root.file + ".svg")
+        sourceSize.width: root.size * 2
+        sourceSize.height: root.size * 2
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        visible: false
     }
 
-    Leaf {
-        anchors.centerIn: parent
-        visible: root.family === ""
-        width: root.size * 0.8
-        height: root.size * 0.8
-        colour: root.colour
+    MultiEffect {
+        anchors.fill: parent
+        source: art
+        colorization: 1.0
+        colorizationColor: root.colour
+        brightness: root.fill > 0.5 ? 0.15 : 0
+        visible: art.status === Image.Ready
     }
 }

@@ -53,21 +53,52 @@
 # it, so the next person meets the rule instead of the error.
 pkgname=genesi-store
 pkgver=0.1.0
-pkgrel=1
+# 2: the first version shipped looked wrong on a real machine, in four ways.
+#
+# No icon, because none was installed -- the launcher drew the "no icon"
+# circle. There is one now, and it is the Genesi mark itself (the same outline
+# and five veins as genesi-plymouth's logo and the hicolor icon), on a tile,
+# with a small download badge so a menu full of Genesi apps is not six
+# identical leaves. The leaf the app drew in its own rail was a shape I made
+# up; it is the real mark now as well.
+#
+# The rail's hover labels were drawn UNDER the cards: the rail is an earlier
+# sibling of the shelf, and no z on a child lifts it out of its parent's turn.
+# The window draws that label itself now.
+#
+# The icons were Material Symbols, on the reasoning that every Genesi desktop
+# has that font. A real machine did not find it, so the fallback -- a leaf --
+# was drawn nine times down the rail, one per shelf. They are SVGs shipped in
+# the package now, recoloured at draw time.
+#
+# And the cards were a thumbnail with three rows of form under it. A card is
+# the picture now: the wallpaper's own thumbnail (480px, shipped, so a shelf
+# is a shelf of pictures before anything is downloaded), with a small desktop
+# drawn ON it in the item's real colours. The shelf is a mosaic -- a whole
+# desktop takes four cells, a wallpaper two -- rather than a row of equal
+# rectangles.
+#
+# New with it: a detail sheet that lists what applying something will change,
+# read off the item's own actions, and the Genesi login screen (a real SDDM
+# theme, in sddm/, installed but never switched on by itself).
+pkgrel=2
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
 license=('AGPL-3.0-or-later')
 # python-pyside6 for the window; the rest are what the ACTIONS reach for, and
 # every one of them is already on a Genesi Hyprland install.
-depends=('python' 'pyside6' 'polkit')
+# qt6-svg because every icon in the window is an SVG (see Glyph.qml: a font
+# that turned out not to be installed is why they are files), and sddm because
+# the login screen this ships a theme for is the one it themes.
+depends=('python' 'pyside6' 'polkit' 'qt6-svg')
 optdepends=(
     'genesi-caelestia-cli: colour schemes and wallpapers'
     'genesi-caelestia-settings: the fifteen bar arrangements'
     'genesi-center: the settings writer the store applies keys through'
     'hyprlock: session lock screens (the store offers to install it)'
     'fastfetch: the terminal greeting the Fastfetch shelf configures'
-    'ttf-material-symbols-variable: the icons on the rail'
+    'sddm: the login screen the Genesi greeter replaces'
 )
 source=()
 sha256sums=()
@@ -86,7 +117,7 @@ check() {
     # and the vocabulary are checked here, at build time, against the CLI in
     # this same directory.
     python - "${startdir}" <<'CHECKCATALOG'
-import io, json, re, sys
+import io, json, os, re, sys
 root = sys.argv[1]
 catalog = json.load(io.open(root + "/catalog/catalog.json", encoding="utf-8"))
 cli = io.open(root + "/genesi-store", encoding="utf-8").read()
@@ -106,6 +137,22 @@ for item in items:
         if action["action"] not in vocab:
             raise SystemExit("%s asks for %r, which genesi-store cannot do"
                              % (item["id"], action["action"]))
+# A login item names a theme DIRECTORY. Genesi's own has to be in this
+# package; anything else has to be one SDDM itself ships. A name that is
+# neither is a login screen that does not come up, and that is not a thing to
+# find out by rebooting.
+for item in items:
+    for action in item.get("actions", []):
+        if action.get("action") != "login":
+            continue
+        theme = action.get("theme")
+        if theme == "genesi":
+            if not os.path.isdir(os.path.join(root, "sddm")):
+                raise SystemExit("the catalogue offers the Genesi login "
+                                 "screen and this package does not ship it")
+        elif theme not in ("breeze", "elarun", "maldives", "maya"):
+            raise SystemExit("unknown login theme: %r" % theme)
+
 print("catalogue: %d items, %d shelves, every action implemented"
       % (len(items), len(sections)))
 CHECKCATALOG
@@ -143,6 +190,33 @@ package() {
         install -Dm644 "$f" \
             "${pkgdir}/usr/share/genesi-store/app/components/$(basename "$f")"
     done
+    for f in "${startdir}"/app/icons/*.svg; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/app/icons/$(basename "$f")"
+    done
+
+    # The pictures the shelves are made of. Shipped, not downloaded: a store
+    # whose cards are grey rectangles until you press something is a list.
+    for f in "${startdir}"/catalog/thumbs/*.jpg; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/thumbs/$(basename "$f")"
+    done
+
+    # ── The login screen ────────────────────────────────────────────────────
+    #
+    # A theme for SDDM, the greeter every Genesi Hyprland install gets.
+    # Installing it changes NOTHING on its own: SDDM keeps using whatever
+    # /etc/sddm.conf.d says until somebody picks this one in the store, which
+    # is the only moment a password is asked for.
+    install -Dm644 "${startdir}/sddm/Main.qml" \
+        "${pkgdir}/usr/share/sddm/themes/genesi/Main.qml"
+    install -Dm644 "${startdir}/sddm/theme.conf" \
+        "${pkgdir}/usr/share/sddm/themes/genesi/theme.conf"
+    install -Dm644 "${startdir}/sddm/metadata.desktop" \
+        "${pkgdir}/usr/share/sddm/themes/genesi/metadata.desktop"
+
+    install -Dm644 "${startdir}/genesi-store.svg" \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/genesi-store.svg"
 
     install -Dm644 "${startdir}/org.genesi.store.desktop" \
         "${pkgdir}/usr/share/applications/org.genesi.store.desktop"

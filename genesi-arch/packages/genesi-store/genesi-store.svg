@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Genesi Store's icon: the Genesi mark on a tile.
+
+  The mark is the one the system already uses (genesi-plymouth/logo.svg and the
+  hicolor genesi.png): the leaf outline and its five veins, unchanged, in the
+  same mint. Nothing here is a new drawing: a store that invents its own
+  version of the logo is the one window on the desktop that looks like it came
+  from somewhere else.
+
+  The tile is what makes it an APP icon rather than the system mark. Genesi
+  green, the corner radius the rest of the desktop uses, and a small badge in
+  the lower right so a launcher full of Genesi apps does not show six identical
+  leaves. The badge is a download arrow, because that is what this one does.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a7d58"/>
+      <stop offset="1" stop-color="#0c3f2e"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#tile)"/>
+
+  <g transform="translate(128 132) scale(0.72) translate(-128 -132)">
+    <path d="M128 18C76 52 48 104 48 157c0 45 31 76 80 99 49-23 80-54 80-99 0-53-28-105-80-139Z"
+          fill="none" stroke="#8BE8C8" stroke-width="13" stroke-linejoin="round"/>
+    <path d="M128 69v151M128 112 87 138M128 151l-43 28M128 112l41 26M128 151l43 28"
+          fill="none" stroke="#8BE8C8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(186 186)">
+    <circle r="34" fill="#0c3f2e" stroke="#8BE8C8" stroke-width="6"/>
+    <path d="M0 -15V13M-13 0 0 13 13 0" fill="none" stroke="#8BE8C8" stroke-width="7"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,67 +1,142 @@
-// GENESI STORE — the leaf.
+// GENESI STORE — the Genesi mark.
 //
-// Genesi's mark, drawn rather than shipped as an image so it takes the colour
-// it is given and stays sharp at any size. Two arcs and a vein: a leaf is the
-// simplest shape that reads as "something alive", which is the whole idea the
-// store is built on.
+// THE mark, not a leaf somebody drew: the same outline and the same five veins
+// as genesi-plymouth's logo.svg and the 256px icon the system ships, scaled
+// out of their 256 viewBox. The first version of this file was a shape I made
+// up, and a store wearing an invented version of its own logo is the one thing
+// on the desktop that cannot be explained away.
+//
+// Drawn rather than loaded from the SVG so it takes whatever colour it is
+// given -- the rail wants it green, a card wants it in the item's accent, the
+// queue bar spins it -- and stays sharp at any size.
 import QtQuick
 import QtQuick.Shapes
 
 Item {
     id: root
 
-    property color colour: "#39d98a"
-    property real thickness: Math.max(1, width * 0.06)
-    // 0 draws only the outline, 1 fills it.
-    property real fill: 1
+    property color colour: "#8be8c8"
+    // The original is a 13px outline and 10px veins in a 256 box. Everything
+    // below is that, as a fraction, so the mark keeps its weight at any size.
+    readonly property real unit: Math.min(width, height) / 256
 
-    implicitWidth: 22
-    implicitHeight: 22
+    implicitWidth: 24
+    implicitHeight: 24
 
     Shape {
         anchors.fill: parent
         preferredRendererType: Shape.CurveRenderer
 
+        // The outline.
         ShapePath {
-            fillColor: root.fill > 0 ? Qt.rgba(root.colour.r, root.colour.g, root.colour.b, root.fill) : "transparent"
+            fillColor: "transparent"
             strokeColor: root.colour
-            strokeWidth: root.thickness
-            capStyle: ShapePath.RoundCap
+            strokeWidth: 13 * root.unit
             joinStyle: ShapePath.RoundJoin
+            capStyle: ShapePath.RoundCap
 
-            // A leaf is two arcs meeting at a point twice: up the left
-            // side to the tip, down the right side back to the base. Four
-            // cubics drew something rounder at both ends -- a pebble.
-            startX: root.width * 0.5
-            startY: root.height * 0.04
-            PathQuad {
-                x: root.width * 0.5
-                y: root.height * 0.96
-                controlX: root.width * -0.12
-                controlY: root.height * 0.34
+            startX: 128 * root.unit
+            startY: (18 - 9) * root.unit
+            PathCubic {
+                x: 48 * root.unit
+                y: (157 - 9) * root.unit
+                control1X: 76 * root.unit
+                control1Y: (52 - 9) * root.unit
+                control2X: 48 * root.unit
+                control2Y: (104 - 9) * root.unit
             }
-            PathQuad {
-                x: root.width * 0.5
-                y: root.height * 0.04
-                controlX: root.width * 1.12
-                controlY: root.height * 0.66
+            PathCubic {
+                x: 128 * root.unit
+                y: (256 - 9) * root.unit
+                control1X: 48 * root.unit
+                control1Y: (202 - 9) * root.unit
+                control2X: 79 * root.unit
+                control2Y: (233 - 9) * root.unit
+            }
+            PathCubic {
+                x: 208 * root.unit
+                y: (157 - 9) * root.unit
+                control1X: 177 * root.unit
+                control1Y: (233 - 9) * root.unit
+                control2X: 208 * root.unit
+                control2Y: (202 - 9) * root.unit
+            }
+            PathCubic {
+                x: 128 * root.unit
+                y: (18 - 9) * root.unit
+                control1X: 208 * root.unit
+                control1Y: (104 - 9) * root.unit
+                control2X: 180 * root.unit
+                control2Y: (52 - 9) * root.unit
             }
         }
 
-        // The vein, always a line so the leaf does not read as a pebble.
+        // The midrib.
         ShapePath {
             fillColor: "transparent"
-            strokeColor: root.fill > 0.5 ? Qt.rgba(0, 0, 0, 0.35) : root.colour
-            strokeWidth: root.thickness
+            strokeColor: root.colour
+            strokeWidth: 10 * root.unit
             capStyle: ShapePath.RoundCap
 
-            startX: root.width * 0.5
-            startY: root.height * 0.9
-            PathQuad {
-                x: root.width * 0.5
-                y: root.height * 0.12
-                controlX: root.width * 0.42
-                controlY: root.height * 0.5
+            startX: 128 * root.unit
+            startY: (69 - 9) * root.unit
+            PathLine {
+                x: 128 * root.unit
+                y: (220 - 9) * root.unit
+            }
+        }
+
+        // Four veins, two a side.
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.colour
+            strokeWidth: 10 * root.unit
+            capStyle: ShapePath.RoundCap
+
+            startX: 128 * root.unit
+            startY: (112 - 9) * root.unit
+            PathLine {
+                x: 87 * root.unit
+                y: (138 - 9) * root.unit
+            }
+        }
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.colour
+            strokeWidth: 10 * root.unit
+            capStyle: ShapePath.RoundCap
+
+            startX: 128 * root.unit
+            startY: (151 - 9) * root.unit
+            PathLine {
+                x: 85 * root.unit
+                y: (179 - 9) * root.unit
+            }
+        }
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.colour
+            strokeWidth: 10 * root.unit
+            capStyle: ShapePath.RoundCap
+
+            startX: 128 * root.unit
+            startY: (112 - 9) * root.unit
+            PathLine {
+                x: 169 * root.unit
+                y: (138 - 9) * root.unit
+            }
+        }
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.colour
+            strokeWidth: 10 * root.unit
+            capStyle: ShapePath.RoundCap
+
+            startX: 128 * root.unit
+            startY: (151 - 9) * root.unit
+            PathLine {
+                x: 171 * root.unit
+                y: (179 - 9) * root.unit
             }
         }
     }

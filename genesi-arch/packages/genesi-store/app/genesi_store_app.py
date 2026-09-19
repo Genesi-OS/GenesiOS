@@ -135,6 +135,30 @@ class Store(QObject):
         return ""
 
     @Slot(result=str)
+    def thumbDir(self):
+        """Where the shipped thumbnails live.
+
+        They are part of the package, not something downloaded: a shelf of
+        wallpapers has to be a shelf of PICTURES before anybody presses
+        anything, and the alternative is eighteen grey rectangles with file
+        sizes in them.
+        """
+        for folder in ("/usr/share/genesi-store/thumbs",
+                       os.path.join(os.path.dirname(HERE), "catalog", "thumbs")):
+            if os.path.isdir(folder):
+                # A url, not a path: "file://" + a Windows path is a hostname,
+                # and the harness that renders this runs there.
+                return QUrl.fromLocalFile(folder).toString()
+        return ""
+
+    @Slot()
+    def openCenter(self):
+        try:
+            subprocess.Popen(["genesi-center"], start_new_session=True)
+        except OSError:
+            pass
+
+    @Slot(result=str)
     def user(self):
         return os.environ.get("USER") or os.environ.get("USERNAME") or ""
 

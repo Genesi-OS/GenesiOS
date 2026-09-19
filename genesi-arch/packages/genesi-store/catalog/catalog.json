@@ -1,6 +1,6 @@
 {
  "version": 1,
- "updated": "2026-09-18",
+ "updated": "2026-09-19",
  "sections": [
   {
    "id": "discover",
@@ -79,8 +79,9 @@
     "caelestia"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#0a0f0f",
+    "surface": "#0a0f0f",
     "ink": "#dce8e6",
     "colours": [
      "#9bd0cc",
@@ -109,8 +110,9 @@
     "caelestia"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#f6faf9",
+    "surface": "#f6faf9",
     "ink": "#2a3433",
     "colours": [
      "#1c6a66",
@@ -139,8 +141,9 @@
     "darkgreen"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#23262d",
+    "surface": "#050505",
     "ink": "#f5f5f6",
     "colours": [
      "#24bd5c",
@@ -169,8 +172,9 @@
     "darkgreen"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#23262d",
+    "surface": "#1e1e24",
     "ink": "#f5f5f6",
     "colours": [
      "#24bd5c",
@@ -199,8 +203,9 @@
     "everforest"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#2d353b",
+    "surface": "#343f44",
     "ink": "#d3c6aa",
     "colours": [
      "#7fbbb3",
@@ -229,8 +234,9 @@
     "everforest"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#1e2326",
+    "surface": "#252b2e",
     "ink": "#d3c6aa",
     "colours": [
      "#7fbbb3",
@@ -259,8 +265,9 @@
     "everforest"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#fdf6e3",
+    "surface": "#f3ead3",
     "ink": "#5c6a72",
     "colours": [
      "#3a94c5",
@@ -289,8 +296,9 @@
     "everblush"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#141b1e",
+    "surface": "#232a2d",
     "ink": "#e8e8e8",
     "colours": [
      "#8ccfb0",
@@ -319,8 +327,9 @@
     "catppuccin"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#131317",
+    "surface": "#131317",
     "ink": "#e5e1e7",
     "colours": [
      "#c2c1ff",
@@ -349,8 +358,9 @@
     "catppuccin"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#131317",
+    "surface": "#131317",
     "ink": "#e4e1e7",
     "colours": [
      "#bac3ff",
@@ -379,8 +389,9 @@
     "catppuccin"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#131317",
+    "surface": "#131317",
     "ink": "#e4e1e7",
     "colours": [
      "#b7c4ff",
@@ -409,8 +420,9 @@
     "catppuccin"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#f8f9fc",
+    "surface": "#f8f9fc",
     "ink": "#191c1e",
     "colours": [
      "#3e7b9f",
@@ -439,8 +451,9 @@
     "gruvbox"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#101415",
+    "surface": "#101415",
     "ink": "#e0e3e4",
     "colours": [
      "#81d3e0",
@@ -469,8 +482,9 @@
     "gruvbox"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#101415",
+    "surface": "#101415",
     "ink": "#e0e3e4",
     "colours": [
      "#85d2e7",
@@ -499,8 +513,9 @@
     "gruvbox"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#18120e",
+    "surface": "#18120e",
     "ink": "#ece0d9",
     "colours": [
      "#ffb878",
@@ -529,8 +544,9 @@
     "gruvbox"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#fef9ee",
+    "surface": "#fef9ee",
     "ink": "#1d1c15",
     "colours": [
      "#6b5f10",
@@ -559,8 +575,9 @@
     "nord"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#2e3440",
+    "surface": "#3b4252",
     "ink": "#eceff4",
     "colours": [
      "#88c0d0",
@@ -589,8 +606,9 @@
     "tokyonight"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#1a1b26",
+    "surface": "#24283b",
     "ink": "#c0caf5",
     "colours": [
      "#7aa2f7",
@@ -619,8 +637,9 @@
     "rosepine"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#141317",
+    "surface": "#141317",
     "ink": "#e5e1e7",
     "colours": [
      "#c9bfff",
@@ -649,8 +668,9 @@
     "rosepine"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#141317",
+    "surface": "#141317",
     "ink": "#e5e1e7",
     "colours": [
      "#c6bfff",
@@ -679,8 +699,9 @@
     "rosepine"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#fff8f0",
+    "surface": "#fff8f0",
     "ink": "#1e1b15",
     "colours": [
      "#897324",
@@ -709,8 +730,9 @@
     "dracula"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#282a36",
+    "surface": "#343746",
     "ink": "#f8f8f2",
     "colours": [
      "#bd93f9",
@@ -739,8 +761,9 @@
     "onedark"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#121317",
+    "surface": "#121317",
     "ink": "#e3e2e7",
     "colours": [
      "#a8c8ff",
@@ -769,8 +792,9 @@
     "oldworld"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#121317",
+    "surface": "#121317",
     "ink": "#e3e2e7",
     "colours": [
      "#aac7ff",
@@ -799,8 +823,9 @@
     "solarized"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#002b36",
+    "surface": "#073642",
     "ink": "#fdf6e3",
     "colours": [
      "#268bd2",
@@ -829,8 +854,9 @@
     "shadotheme"
    ],
    "preview": {
-    "kind": "swatches",
+    "kind": "scheme",
     "background": "#131317",
+    "surface": "#131317",
     "ink": "#e5e1e7",
     "colours": [
      "#bfc1ff",
@@ -862,6 +888,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-forest-dark.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -893,6 +920,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-nature.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -925,6 +953,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-everforest-robin.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -957,6 +986,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-lake.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -989,6 +1019,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-art-lake.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1020,6 +1051,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-mountains.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1051,6 +1083,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-golden-mountains.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1083,6 +1116,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-oled-mountains.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1115,6 +1149,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-moon.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1146,6 +1181,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-falltree.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1177,6 +1213,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-green-sun.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1208,6 +1245,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-tree-castle.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1240,6 +1278,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-ink-wave.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1271,6 +1310,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-blue-waves.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1302,6 +1342,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-minimal-c.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1334,6 +1375,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-arch-nord.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1366,6 +1408,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-gruvbox-city.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1398,6 +1441,7 @@
    ],
    "preview": {
     "kind": "image",
+    "thumb": "wall-neocity.jpg",
     "asset": "picture"
    },
    "assets": {
@@ -1729,7 +1773,9 @@
    "preview": {
     "kind": "lock",
     "background": "#14241c",
-    "accent": "#8fd6ab"
+    "accent": "#8fd6ab",
+    "thumb": "wall-forest-dark.jpg",
+    "blur": true
    },
    "actions": [
     {
@@ -1788,7 +1834,9 @@
    "preview": {
     "kind": "lock",
     "background": "#000000",
-    "accent": "#78a08c"
+    "accent": "#78a08c",
+    "thumb": "wall-oled-mountains.jpg",
+    "blur": true
    },
    "actions": [
     {
@@ -1818,7 +1866,10 @@
    "preview": {
     "kind": "lock",
     "background": "#0a0e0c",
-    "accent": "#8fd6ab"
+    "accent": "#8fd6ab",
+    "thumb": "wall-ink-wave.jpg",
+    "blur": true,
+    "mono": true
    },
    "actions": [
     {
@@ -1830,6 +1881,31 @@
      "action": "file",
      "path": "~/.config/hypr/hyprlock.conf",
      "text": "# Terminal -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 1\n    blur_size = 4\n    brightness = 0.5\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 1.0)\n    inner_color = rgba(10, 14, 12, 0.9)\n    font_color = rgba(143, 214, 171, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>login:</i>\n    hide_input = false\n    rounding = 2\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 72\n    font_family = CaskaydiaCove Nerd Font\n    color = rgba(143, 214, 171, 1.0)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $USER@$(hostname)\n    font_size = 16\n    font_family = CaskaydiaCove Nerd Font\n    color = rgba(143, 214, 171, 0.7)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "login-genesi",
+   "section": "lockscreens",
+   "name": "Genesi",
+   "blurb": "A nossa: a marca, a hora e um campo só. Vem com a loja.",
+   "family": "login",
+   "author": "SDDM",
+   "tags": [
+    "login",
+    "antes da sessão"
+   ],
+   "needs_root": true,
+   "preview": {
+    "kind": "login",
+    "theme": "genesi",
+    "background": "#070c09",
+    "accent": "#39d98a"
+   },
+   "actions": [
+    {
+     "action": "login",
+     "theme": "genesi"
     }
    ]
   },
@@ -1847,7 +1923,9 @@
    "needs_root": true,
    "preview": {
     "kind": "login",
-    "theme": "breeze"
+    "theme": "breeze",
+    "background": "#1b1e20",
+    "accent": "#8ab4d8"
    },
    "actions": [
     {
@@ -1870,7 +1948,9 @@
    "needs_root": true,
    "preview": {
     "kind": "login",
-    "theme": "elarun"
+    "theme": "elarun",
+    "background": "#1b1e20",
+    "accent": "#8ab4d8"
    },
    "actions": [
     {
@@ -1893,7 +1973,9 @@
    "needs_root": true,
    "preview": {
     "kind": "login",
-    "theme": "maldives"
+    "theme": "maldives",
+    "background": "#1b1e20",
+    "accent": "#8ab4d8"
    },
    "actions": [
     {
@@ -1916,7 +1998,9 @@
    "needs_root": true,
    "preview": {
     "kind": "login",
-    "theme": "maya"
+    "theme": "maya",
+    "background": "#1b1e20",
+    "accent": "#8ab4d8"
    },
    "actions": [
     {
@@ -2040,9 +2124,10 @@
     "natureza"
    ],
    "preview": {
-    "kind": "rice",
+    "kind": "desktop",
     "accent": "#a7c080",
-    "wallpaper": "wall-forest-dark"
+    "thumb": "wall-forest-dark.jpg",
+    "scheme": "theme-everforest-medium-dark"
    },
    "includes": [
     "theme-everforest-medium-dark",
@@ -2063,9 +2148,10 @@
     "calmo"
    ],
    "preview": {
-    "kind": "rice",
+    "kind": "desktop",
     "accent": "#8fd6ab",
-    "wallpaper": "wall-lake"
+    "thumb": "wall-lake.jpg",
+    "scheme": "theme-caelestia-default-dark"
    },
    "includes": [
     "theme-caelestia-default-dark",
@@ -2086,9 +2172,10 @@
     "oled"
    ],
    "preview": {
-    "kind": "rice",
+    "kind": "desktop",
     "accent": "#4f8f6a",
-    "wallpaper": "wall-oled-mountains"
+    "thumb": "wall-oled-mountains.jpg",
+    "scheme": "theme-darkgreen-hard-dark"
    },
    "includes": [
     "theme-darkgreen-hard-dark",
@@ -2109,9 +2196,10 @@
     "retro"
    ],
    "preview": {
-    "kind": "rice",
+    "kind": "desktop",
     "accent": "#d79921",
-    "wallpaper": "wall-gruvbox-city"
+    "thumb": "wall-gruvbox-city.jpg",
+    "scheme": "theme-gruvbox-medium-dark"
    },
    "includes": [
     "theme-gruvbox-medium-dark",
@@ -2132,9 +2220,10 @@
     "neon"
    ],
    "preview": {
-    "kind": "rice",
+    "kind": "desktop",
     "accent": "#7aa2f7",
-    "wallpaper": "wall-neocity"
+    "thumb": "wall-neocity.jpg",
+    "scheme": "theme-tokyonight-medium-dark"
    },
    "includes": [
     "theme-tokyonight-medium-dark",
@@ -2155,9 +2244,10 @@
     "minimalista"
    ],
    "preview": {
-    "kind": "rice",
+    "kind": "desktop",
     "accent": "#8839ef",
-    "wallpaper": "wall-minimal-c"
+    "thumb": "wall-minimal-c.jpg",
+    "scheme": "theme-catppuccin-latte-light"
    },
    "includes": [
     "theme-catppuccin-latte-light",
@@ -2177,9 +2267,9 @@
     "comeco"
    ],
    "preview": {
-    "kind": "rice",
+    "kind": "desktop",
     "accent": "#8fd6ab",
-    "wallpaper": "wall-nature"
+    "thumb": "wall-nature.jpg"
    },
    "includes": [
     "theme-caelestia-default-dark",
@@ -2198,9 +2288,9 @@
     "terminal"
    ],
    "preview": {
-    "kind": "rice",
+    "kind": "desktop",
     "accent": "#8fd6ab",
-    "wallpaper": "wall-ink-wave"
+    "thumb": "wall-ink-wave.jpg"
    },
    "includes": [
     "fetch-full",
@@ -2221,9 +2311,9 @@
     "calmo"
    ],
    "preview": {
-    "kind": "rice",
+    "kind": "desktop",
     "accent": "#40a02b",
-    "wallpaper": "wall-minimal-c"
+    "thumb": "wall-minimal-c.jpg"
    },
    "includes": [
     "theme-everforest-medium-light",

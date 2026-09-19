@@ -1,0 +1,16 @@
+[SddmGreeterTheme]
+Name=Genesi
+Description=The Genesi login screen: the mark, the time, and one field
+Author=Genesi OS
+Copyright=Genesi OS
+License=AGPL-3.0-or-later
+Type=sddm-theme
+Version=1.0
+Website=https://github.com/Genesi-OS/GenesiOS
+Screenshot=preview.png
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=translations
+Theme-Id=genesi
+Theme-API=2.0
+QtVersion=6

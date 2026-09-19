@@ -12,6 +12,10 @@ Item {
     property string icon: "square"
     property string label: ""
     property bool current: false
+    // The window watches this and draws the name itself. Drawn HERE, inside
+    // the rail, it was painted under the cards: the rail is an earlier
+    // sibling, and no z on a child can lift it out of its parent's turn.
+    readonly property alias hovered: hover.hovered
     signal activated
 
     implicitWidth: Tokens.railWidth
@@ -58,31 +62,6 @@ Item {
                 duration: Tokens.normal
                 easing.type: Easing.OutCubic
             }
-        }
-    }
-
-    // The name, on hover, floating clear of the rail.
-    Rectangle {
-        visible: hover.hovered && root.label !== ""
-        anchors.left: parent.right
-        anchors.leftMargin: -6
-        anchors.verticalCenter: parent.verticalCenter
-        width: name.implicitWidth + 18
-        height: 28
-        radius: 8
-        color: Tokens.cardHi
-        border.width: 1
-        border.color: Tokens.line
-        z: 10
-
-        Text {
-            id: name
-
-            anchors.centerIn: parent
-            text: root.label
-            color: Tokens.textHi
-            font.family: Tokens.sans
-            font.pixelSize: Tokens.fsBody
         }
     }
 

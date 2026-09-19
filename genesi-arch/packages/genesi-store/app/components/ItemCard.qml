@@ -1,12 +1,14 @@
 // GENESI STORE — one thing you can put on your desktop.
 //
-// The card IS the preview. A store whose cards are all the same rectangle with
-// a different word in it is a list, and nobody browses a list: a theme shows
-// its colours, a wallpaper shows itself, a bar shows its own arrangement, a
-// lock screen shows a lock screen, a fastfetch config shows a terminal. Five
-// small drawings, one per `preview.kind`, and every one of them is drawn from
-// the item's own data rather than from a screenshot somebody has to remember
-// to retake.
+// The picture fills the card and the words sit ON it, in a gradient that
+// starts where the text starts. The first version stacked a picture, a title,
+// a line of description and a button in four horizontal bands, which is a form
+// with a thumbnail at the top: correct, and nothing anybody wants to look at.
+//
+// The card carries one action, and it is the one the item is in for: Apply,
+// or Download and apply when something has to come down first. Everything
+// else -- what it changes, what it comes with, reverting -- is in the sheet a
+// click away, because a card with four buttons on it is a settings row.
 import QtQuick
 import ".."
 
@@ -14,380 +16,302 @@ Rectangle {
     id: root
 
     required property var item
+    property string thumbDir: ""
     property string busy: ""
-    property bool wide: false
-    signal primary          // install / apply
-    signal secondary        // revert
+    // The mosaic hands this in: a tall card gets a bigger title and room for
+    // the blurb, a small one gets the name alone.
+    property bool large: false
+
+    signal primary
     signal opened
 
     readonly property var preview: item.preview ?? ({})
     readonly property bool applied: item.applied === true
     readonly property bool working: root.busy !== ""
+    readonly property bool needsDownload: root.item.needs_download === true
 
-    implicitWidth: root.wide ? 320 : 232
-    // Tall enough for two lines of blurb plus the button: at 214 the second
-    // line was being clipped, and a clipped sentence reads as a bug.
-    implicitHeight: root.wide ? 256 : 226
     radius: Tokens.radius
-    color: hover.hovered ? Tokens.cardHi : Tokens.card
+    color: Tokens.card
     border.width: 1
-    border.color: root.applied ? Tokens.a(Tokens.accent, 0.5) : Tokens.line
+    border.color: root.applied ? Tokens.a(Tokens.accent, 0.55)
+                               : (hover.hovered ? Tokens.a(Tokens.accentSoft, 0.25) : Tokens.line)
     clip: true
 
-    Behavior on color {
+    Behavior on border.color {
         ColorAnimation {
             duration: Tokens.quick
         }
     }
 
-    // ── The picture ──────────────────────────────────────────────────────────
-    Item {
+    // ── The picture, which is the card ───────────────────────────────────────
+    Preview {
         id: art
 
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        height: root.height * 0.52
-        clip: true
+        anchors.fill: parent
+        spec: root.preview
+        thumbDir: root.thumbDir
+        // A hair of zoom under the pointer: enough to feel alive, not enough
+        // to make the text move.
+        scale: hover.hovered ? 1.03 : 1.0
 
-        // A theme: its own surface, its own ink, its own three accents.
-        Rectangle {
-            anchors.fill: parent
-            visible: root.preview.kind === "swatches"
-            color: root.preview.background ?? Tokens.card
-
-            Row {
-                anchors.centerIn: parent
-                spacing: 10
-
-                Repeater {
-                    model: root.preview.colours ?? []
-
-                    Rectangle {
-                        required property string modelData
-
-                        width: 34
-                        height: 34
-                        radius: 17
-                        color: modelData
-                    }
-                }
-            }
-
-            Text {
-                anchors.left: parent.left
-                anchors.bottom: parent.bottom
-                anchors.margins: 10
-                text: "Aa"
-                color: root.preview.ink ?? Tokens.textHi
-                font.family: Tokens.sans
-                font.pixelSize: 17
-            }
-        }
-
-        // A wallpaper: itself once it is here, its own colours before that.
-        Rectangle {
-            anchors.fill: parent
-            visible: root.preview.kind === "image"
-            color: Tokens.bgDeep
-
-            Image {
-                id: shot
-
-                anchors.fill: parent
-                source: root.item.localPreview ?? ""
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                cache: true
-                visible: status === Image.Ready
-            }
-
-            // Not downloaded yet: say so, rather than showing a grey hole.
-            Column {
-                anchors.centerIn: parent
-                visible: !shot.visible
-                spacing: 6
-
-                Glyph {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    name: "decor"
-                    size: 22
-                    colour: Tokens.textFaint
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: {
-                        const bytes = root.item.assets?.picture?.bytes ?? 0;
-                        return bytes >= 1048576 ? (Math.round(bytes / 1048576 * 10) / 10 + " MB") : (Math.round(bytes / 1024) + " KB");
-                    }
-                    color: Tokens.textFaint
-                    font.family: Tokens.mono
-                    font.pixelSize: Tokens.fsMicro
-                }
-            }
-        }
-
-        // A bar arrangement: a bar, drawn.
-        Rectangle {
-            anchors.fill: parent
-            visible: root.preview.kind === "bar"
-            color: Tokens.bgDeep
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.leftMargin: 14
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                anchors.topMargin: 14
-                anchors.bottomMargin: 14
-                width: 26
-                radius: 8
-                color: Tokens.a(Tokens.accent, 0.1)
-                border.width: 1
-                border.color: Tokens.a(Tokens.accent, 0.3)
-
-                Column {
-                    anchors.centerIn: parent
-                    spacing: 7
-
-                    Repeater {
-                        model: 3
-
-                        Rectangle {
-                            required property int index
-
-                            width: index === 1 ? 12 : 7
-                            height: width
-                            radius: width / 2
-                            color: index === 1 ? Tokens.accent : Tokens.a(Tokens.accentSoft, 0.4)
-                        }
-                    }
-                }
-            }
-        }
-
-        // A lock screen: a field and a clock, in its colours.
-        Rectangle {
-            anchors.fill: parent
-            visible: root.preview.kind === "lock" || root.preview.kind === "login"
-            color: root.preview.background ?? "#0b120e"
-
-            Column {
-                anchors.centerIn: parent
-                spacing: 8
-
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "22:42"
-                    color: root.preview.accent ?? Tokens.accentSoft
-                    font.family: Tokens.sans
-                    font.pixelSize: 26
-                    font.weight: Font.Light
-                }
-                Rectangle {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 92
-                    height: 20
-                    radius: 10
-                    color: "transparent"
-                    border.width: 1
-                    border.color: root.preview.accent ?? Tokens.accentSoft
-
-                    Row {
-                        anchors.centerIn: parent
-                        spacing: 5
-
-                        Repeater {
-                            model: 4
-
-                            Rectangle {
-                                width: 5
-                                height: 5
-                                radius: 2.5
-                                color: root.preview.accent ?? Tokens.accentSoft
-                            }
-                        }
-                    }
-                }
-            }
-
-            // The login family says, on the card, that it will ask for a
-            // password -- not after you press it.
-            Chip {
-                visible: root.item.needs_root === true
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 8
-                text: "sistema"
-                tint: Tokens.warm
-                selected: true
-                interactive: false
-            }
-        }
-
-        // A fastfetch config: a terminal.
-        Rectangle {
-            anchors.fill: parent
-            visible: root.preview.kind === "terminal"
-            color: "#050907"
-
-            Column {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.margins: 12
-                spacing: 3
-
-                Repeater {
-                    model: root.preview.lines ?? []
-
-                    Text {
-                        required property string modelData
-
-                        text: modelData
-                        color: Tokens.accentSoft
-                        font.family: Tokens.mono
-                        font.pixelSize: Tokens.fsMicro
-                    }
-                }
-            }
-        }
-
-        // A whole desktop: the accent over the wallpaper it comes with.
-        Rectangle {
-            anchors.fill: parent
-            visible: root.preview.kind === "rice"
-            gradient: Gradient {
-                GradientStop {
-                    position: 0
-                    color: Qt.darker(root.preview.accent ?? Tokens.accent, 3.4)
-                }
-                GradientStop {
-                    position: 1
-                    color: Tokens.bgDeep
-                }
-            }
-
-            Leaf {
-                anchors.centerIn: parent
-                width: 54
-                height: 54
-                colour: root.preview.accent ?? Tokens.accent
-                fill: 0.85
-            }
-
-            Text {
-                anchors.left: parent.left
-                anchors.bottom: parent.bottom
-                anchors.margins: 10
-                text: (root.item.includes ?? []).length + " peças"
-                color: Tokens.a(Tokens.textHi, 0.8)
-                font.family: Tokens.mono
-                font.pixelSize: Tokens.fsMicro
-            }
-        }
-
-        // Applied: the one state worth a badge.
-        Rectangle {
-            visible: root.applied
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 8
-            width: 26
-            height: 26
-            radius: 13
-            color: Tokens.a(Tokens.bgDeep, 0.75)
-
-            Glyph {
-                anchors.centerIn: parent
-                name: "applied"
-                size: 16
-                fill: 1
-                colour: Tokens.accent
+        Behavior on scale {
+            NumberAnimation {
+                duration: 260
+                easing.type: Easing.OutCubic
             }
         }
     }
 
-    // ── The words ────────────────────────────────────────────────────────────
-    // Bounded at the bottom by the button, not only at the top by the picture:
-    // a two-line blurb was running under it.
-    Column {
+    // The words need a floor to stand on, and a gradient is the only one that
+    // does not cut the picture in half.
+    Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: art.bottom
-        anchors.bottom: act.top
-        anchors.margins: 12
-        anchors.bottomMargin: 6
-        spacing: 2
-        clip: true
+        anchors.bottom: parent.bottom
+        height: root.large ? parent.height * 0.62 : parent.height * 0.56
+        gradient: Gradient {
+            GradientStop {
+                position: 0
+                color: "transparent"
+            }
+            GradientStop {
+                position: 0.45
+                color: Qt.rgba(0.02, 0.05, 0.03, 0.78)
+            }
+            GradientStop {
+                position: 1
+                color: Qt.rgba(0.02, 0.05, 0.03, 0.96)
+            }
+        }
+    }
+
+    // ── What it is ───────────────────────────────────────────────────────────
+    Column {
+        id: words
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: root.large ? 16 : 12
+        anchors.bottomMargin: root.large ? 16 : 12
+        spacing: 3
+
+        Text {
+            text: (root.item.kindLabel ?? "").toUpperCase()
+            visible: text !== ""
+            color: Tokens.a(Tokens.accentSoft, 0.85)
+            font.family: Tokens.mono
+            font.pixelSize: Tokens.fsMicro
+            font.letterSpacing: 1.6
+        }
 
         Text {
             width: parent.width
             text: root.item.name ?? ""
             color: Tokens.textHi
             font.family: Tokens.sans
-            font.pixelSize: Tokens.fsCard
+            font.pixelSize: root.large ? Tokens.fsTitle : Tokens.fsCard
             font.weight: Font.DemiBold
             elide: Text.ElideRight
         }
+
         Text {
             width: parent.width
+            visible: root.large
             text: root.item.blurb ?? ""
-            color: Tokens.textDim
+            color: Tokens.a(Tokens.textHi, 0.72)
             font.family: Tokens.sans
             font.pixelSize: Tokens.fsLabel
             wrapMode: Text.WordWrap
             maximumLineCount: 2
             elide: Text.ElideRight
         }
-    }
 
-    // ── The button ───────────────────────────────────────────────────────────
-    Rectangle {
-        id: act
+        Item {
+            width: 1
+            height: 4
+        }
 
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: 10
-        height: 32
-        radius: Tokens.radiusSm
-        color: root.working ? Tokens.a(Tokens.accent, 0.12)
-                            : (root.applied ? "transparent"
-                                            : (press.pressed ? Tokens.accentDeep
-                                                             : Tokens.a(Tokens.accent, hover.hovered ? 0.24 : 0.14)))
-        border.width: root.applied ? 1 : 0
-        border.color: Tokens.line
-
+        // The one action, and what it will cost.
         Row {
-            anchors.centerIn: parent
-            spacing: 7
+            spacing: 8
 
-            Glyph {
-                anchors.verticalCenter: parent.verticalCenter
-                name: root.applied ? "revert" : (root.item.needs_download ? "install" : "play")
-                size: 15
-                colour: root.applied ? Tokens.textDim : Tokens.accent
+            Rectangle {
+                id: act
+
+                width: label.implicitWidth + (glyph.visible ? 46 : 28)
+                height: 32
+                radius: Tokens.radiusSm
+                color: {
+                    if (root.working)
+                        return Tokens.a(Tokens.accentSoft, 0.2);
+                    if (root.applied)
+                        return Tokens.a(Tokens.bgDeep, 0.6);
+                    return tap.pressed ? Tokens.accentDeep
+                                       : Tokens.a(Tokens.accent, hover.hovered ? 0.92 : 0.16);
+                }
+                border.width: root.applied ? 1 : 0
+                border.color: Tokens.a(Tokens.accentSoft, 0.4)
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: Tokens.quick
+                    }
+                }
+
+                Glyph {
+                    id: glyph
+
+                    anchors.left: parent.left
+                    anchors.leftMargin: 11
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: root.applied ? "applied" : (root.needsDownload ? "install" : "play")
+                    size: 15
+                    fill: root.applied ? 1 : 0
+                    colour: {
+                        if (root.applied)
+                            return Tokens.accent;
+                        return hover.hovered && !root.working ? Tokens.bgDeep : Tokens.accent;
+                    }
+                }
+
+                Text {
+                    id: label
+
+                    anchors.left: glyph.right
+                    anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: {
+                        if (root.working)
+                            return root.busy + "…";
+                        if (root.applied)
+                            return qsTr("Em uso");
+                        return root.needsDownload ? qsTr("Baixar") : qsTr("Aplicar");
+                    }
+                    color: root.applied ? Tokens.accentSoft
+                                        : (hover.hovered && !root.working ? Tokens.bgDeep : Tokens.textHi)
+                    font.family: Tokens.sans
+                    font.pixelSize: Tokens.fsLabel
+                    font.weight: Font.Medium
+                }
+
+                TapHandler {
+                    id: tap
+
+                    onTapped: root.primary()
+                }
+                HoverHandler {
+                    cursorShape: Qt.PointingHandCursor
+                }
             }
+
+            // What it weighs, when it weighs anything.
             Text {
                 anchors.verticalCenter: parent.verticalCenter
+                visible: root.needsDownload
                 text: {
-                    if (root.working)
-                        return root.busy + "…";
-                    if (root.applied)
-                        return qsTr("Remover");
-                    return root.item.needs_download ? qsTr("Baixar e aplicar") : qsTr("Aplicar");
+                    const bytes = root.item.assets?.picture?.bytes ?? 0;
+                    return bytes >= 1048576 ? (Math.round(bytes / 1048576 * 10) / 10 + " MB")
+                                            : (Math.round(bytes / 1024) + " KB");
                 }
-                color: root.applied ? Tokens.textDim : Tokens.textHi
-                font.family: Tokens.sans
-                font.pixelSize: Tokens.fsLabel
-                font.weight: Font.Medium
+                color: Tokens.a(Tokens.textHi, 0.55)
+                font.family: Tokens.mono
+                font.pixelSize: Tokens.fsMicro
             }
+        }
+    }
+
+    // ── Badges ───────────────────────────────────────────────────────────────
+    Rectangle {
+        visible: root.applied
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.margins: 10
+        width: applied.implicitWidth + 26
+        height: 24
+        radius: 12
+        color: Tokens.a(Tokens.accentDeep, 0.9)
+
+        Glyph {
+            id: appliedGlyph
+
+            anchors.left: parent.left
+            anchors.leftMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            name: "applied"
+            size: 12
+            fill: 1
+            colour: Tokens.textHi
+        }
+        Text {
+            id: applied
+
+            anchors.left: appliedGlyph.right
+            anchors.leftMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: qsTr("em uso")
+            color: Tokens.textHi
+            font.family: Tokens.sans
+            font.pixelSize: Tokens.fsMicro
+        }
+    }
+
+    // The ones that will ask for a password say so on the card.
+    Rectangle {
+        visible: root.item.needs_root === true
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 10
+        width: rootLabel.implicitWidth + 26
+        height: 24
+        radius: 12
+        color: Tokens.a(Tokens.warm, 0.22)
+        border.width: 1
+        border.color: Tokens.a(Tokens.warm, 0.5)
+
+        Glyph {
+            id: rootGlyph
+
+            anchors.left: parent.left
+            anchors.leftMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            name: "root"
+            size: 12
+            colour: Tokens.warm
+        }
+        Text {
+            id: rootLabel
+
+            anchors.left: rootGlyph.right
+            anchors.leftMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: qsTr("sistema")
+            color: Tokens.warm
+            font.family: Tokens.sans
+            font.pixelSize: Tokens.fsMicro
+        }
+    }
+
+    // ── Everything else is one click away ────────────────────────────────────
+    Rectangle {
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 10
+        visible: hover.hovered && root.item.needs_root !== true
+        width: 28
+        height: 28
+        radius: 14
+        color: Tokens.a(Tokens.bgDeep, 0.72)
+
+        Glyph {
+            anchors.centerIn: parent
+            name: "more"
+            size: 16
+            colour: Tokens.textHi
         }
 
         TapHandler {
-            id: press
-
-            onTapped: root.applied ? root.secondary() : root.primary()
+            onTapped: root.opened()
         }
         HoverHandler {
             cursorShape: Qt.PointingHandCursor
