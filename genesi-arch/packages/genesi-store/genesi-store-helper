@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-genesi-store-helper — the two things Genesi Store cannot do as you.
+genesi-store-helper — the things Genesi Store cannot do as you.
 
 The login screen lives in /etc/sddm.conf.d and /usr/share/sddm/themes, and a
 package comes from pacman. Both need root, so both go through here, and here
-is deliberately small enough to read in a minute:
+is deliberately small enough to read in one sitting:
 
     genesi-store-helper login-theme <name>
     genesi-store-helper install <package>
+    genesi-store-helper greeter <key> [config]
+    genesi-store-helper greeter-remove <key>
 
 ── Why it takes a NAME and not a path or a command ────────────────────────
 
@@ -17,29 +19,91 @@ catalogue entry. If that argument were a path, a catalogue could name
 picture next to it. So it takes a name out of a fixed list -- checked here,
 in the file that has the privileges, never in the caller.
 
+For the downloaded greeters the "fixed list" is the greeters map in
+/usr/share/genesi-store/catalog.json, which is installed by the package, owned
+by root, and writable by nobody else. The caller passes a KEY into that map.
+Every URL, every digest, every destination directory is read from there, so a
+compromised store running as you can ask for a different theme out of the
+catalogue and nothing else.
+
+── Why the archive's own checksum is not the authority ────────────────────
+
+The themes are GitHub tarballs generated on demand, and GitHub does not
+promise those are byte-for-byte stable forever -- it re-compressed them once
+already and broke every checksum in the world for a day. So what is recorded
+and checked here is a digest of the CONTENT: every file's path and bytes, in
+order, hashed. Recompress the archive and it is unchanged; alter one pixel of
+one background and it fails.
+
+That digest is computed AFTER extraction, on files this process has just
+written into a root-owned directory, so the answer cannot change between the
+check and the install. The archive itself is downloaded by the store, as you,
+over https -- root does no networking here.
+
 ── What it writes ─────────────────────────────────────────────────────────
 
-One file: /etc/sddm.conf.d/50-genesi-store.conf, which is the highest-numbered
-drop-in Genesi ships, so it wins over the default without editing it, and
-removing it puts the login screen back exactly as the install left it. That is
-what `login-theme breeze` does -- it deletes the drop-in rather than writing
-the old value back, because "back" means "whatever the system decides", not
-"what this tool happened to see".
+/etc/sddm.conf.d/50-genesi-store.conf, the highest-numbered drop-in Genesi
+ships, so it wins over the default without editing it, and deleting it puts
+the login screen back exactly as the install left it. That is what
+`login-theme breeze` does -- it deletes the drop-in rather than writing the
+old value back, because "back" means "whatever the system decides", not "what
+this tool happened to see".
+
+And, for a downloaded greeter, one directory under /usr/share/sddm/themes,
+named by the catalogue, replaced atomically so a half-written theme is never
+the one SDDM reads.
+
+── If the login screen does not come up ───────────────────────────────────
+
+Ctrl+Alt+F2 for a text console, log in, and:
+
+    sudo rm /etc/sddm.conf.d/50-genesi-store.conf && sudo systemctl restart sddm
+
+That is the whole undo, and it needs nothing from this package.
 """
+import io
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tarfile
 
 DROPIN = "/etc/sddm.conf.d/50-genesi-store.conf"
 THEME_DIR = "/usr/share/sddm/themes"
+CATALOG = "/usr/share/genesi-store/catalog.json"
 
 # The store may only install packages a LOOK cannot work without, and only
 # ones that exist in the Arch repositories. Anything else is a decision for
 # the person and their package manager, not for a catalogue entry.
-INSTALLABLE = ("hyprlock", "hypridle", "swaylock")
+#
+# The qt6-* entries are here because a downloaded greeter imports QML modules:
+# a theme that imports QtQuick.VirtualKeyboard on a machine without it is a
+# BLACK SCREEN at boot, not a missing keyboard. build-catalog.py reads the
+# imports out of each theme's own QML and records what it needs, and this is
+# the list those may be drawn from.
+INSTALLABLE = (
+    "hyprlock",
+    "hypridle",
+    "swaylock",
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia",
+    "qt6-svg",
+    "qt6-virtualkeyboard",
+)
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$")
+# A config file inside a theme: one or two path segments, no dots leading
+# anywhere. Checked even though it comes from the root-owned catalogue.
+CONFNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}"
+                      r"(/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$")
+
+# A greeter unpacks to a theme, not to a filesystem. Two hundred megabytes is
+# far above the largest of them and far below anything that could fill a disk.
+MAX_UNPACKED = 200 * 1024 * 1024
+MAX_ARCHIVE = 96 * 1024 * 1024
 
 
 def die(msg):
@@ -47,29 +111,49 @@ def die(msg):
     raise SystemExit(1)
 
 
-def login_theme(name):
+# ── The login screen ───────────────────────────────────────────────────────
+
+
+def write_dropin(name):
+    os.makedirs(os.path.dirname(DROPIN), exist_ok=True)
+    tmp = DROPIN + ".tmp"
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Written by Genesi Store. Delete this file to go back to\n"
+                 "# the login screen the system shipped.\n"
+                 "[Theme]\n"
+                 "Current=%s\n" % name)
+    os.replace(tmp, DROPIN)
+
+
+def theme_path(name):
+    """The directory of an INSTALLED theme, or a death.
+
+    realpath, because a theme "name" that walks out of the themes directory
+    with .. is the one way a name can behave like a path.
+    """
     if not NAME.match(name):
         die("%r is not a theme name" % name)
+    path = os.path.join(THEME_DIR, name)
+    if os.path.realpath(path) != path or not os.path.isdir(path):
+        die("there is no login theme called %r installed" % name)
+    return path
+
+
+def login_theme(name):
     if name == "breeze":
         # Back to the system's own answer.
         if os.path.exists(DROPIN):
             os.unlink(DROPIN)
         print("login screen: back to the system default")
         return
-    path = os.path.join(THEME_DIR, name)
-    # realpath, because a theme "name" that walks out of the themes directory
-    # with .. is the one way a name can behave like a path.
-    if os.path.realpath(path) != path or not os.path.isdir(path):
-        die("there is no login theme called %r installed" % name)
-    os.makedirs(os.path.dirname(DROPIN), exist_ok=True)
-    tmp = DROPIN + ".tmp"
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("# Written by Genesi Store. Delete this file to go back to\n"
-                 "# the login screen the system shipped.\n"
-                 "[Theme]\n"
-                 "Current=%s\n" % name)
-    os.replace(tmp, DROPIN)
+    theme_path(name)
+    write_dropin(name)
     print("login screen: %s" % name)
+
+
+def have(package):
+    return subprocess.run(["pacman", "-Qq", package],
+                          capture_output=True, text=True).returncode == 0
 
 
 def install(package):
@@ -84,16 +168,314 @@ def install(package):
     print("installed %s" % package)
 
 
+def install_modules(needs):
+    """The QML modules a downloaded greeter imports.
+
+    Done here rather than in a second pkexec call so that picking a login
+    screen asks for a password once. The list is read from the catalogue in
+    /usr/share -- root-owned, package-installed -- and every name in it still
+    has to be one of INSTALLABLE, so a catalogue cannot widen what pacman is
+    asked for.
+    """
+    missing = []
+    for package in needs:
+        if package not in INSTALLABLE:
+            die("the catalogue asks for the package %r, which the store does "
+                "not install" % package)
+        if not have(package):
+            missing.append(package)
+    if not missing:
+        return
+    print("installing what this login screen needs: %s" % ", ".join(missing))
+    for package in missing:
+        install(package)
+
+
+# ── Downloaded greeters ────────────────────────────────────────────────────
+
+
+def tree_digest(root):
+    """A digest of a directory's CONTENT.
+
+    Every regular file, by relative path in sorted order, path then bytes.
+    Nothing about the archive that carried them, nothing about the order they
+    happened to be stored in, nothing about timestamps -- so a tarball rebuilt
+    by GitHub next year still matches, and a single altered byte does not.
+
+    build-catalog.py computes this the same way; ci/store-test.py runs both
+    over the same tree and fails if they ever disagree.
+    """
+    import hashlib
+    digest = hashlib.sha256()
+    entries = []
+    for base, dirs, files in os.walk(root):
+        dirs.sort()
+        for name in sorted(files):
+            full = os.path.join(base, name)
+            rel = os.path.relpath(full, root).replace(os.sep, "/")
+            entries.append((rel, full))
+    for rel, full in sorted(entries):
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        with io.open(full, "rb") as fh:
+            while True:
+                chunk = fh.read(1 << 20)
+                if not chunk:
+                    break
+                digest.update(chunk)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def load_catalog():
+    try:
+        with io.open(CATALOG, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError) as exc:
+        die("the store's catalogue could not be read: %s" % exc)
+    return {}
+
+
+def caller_home():
+    """The home of whoever asked, found from the id pkexec hands us.
+
+    Not from $HOME: that is the environment of a process we do not control,
+    and it is the difference between reading the file the person downloaded
+    and reading a file somebody pointed us at.
+    """
+    import pwd    # imported here so the rest of this file loads anywhere,
+                     # which is what lets ci/store-test.py exercise it
+    for var in ("PKEXEC_UID", "SUDO_UID"):
+        raw = os.environ.get(var)
+        if not raw or not raw.isdigit():
+            continue
+        try:
+            return pwd.getpwuid(int(raw)).pw_dir
+        except KeyError:
+            die("the account that asked for this no longer exists")
+    die("this has to be started through the store, which runs it under pkexec")
+    return ""
+
+
+def staged_archive(key):
+    """Where the store put the download. Built here, never passed in."""
+    return os.path.join(caller_home(), ".local", "share", "genesi", "store",
+                        "assets", "greeter-%s.tar.gz" % key)
+
+
+def unpack(archive, prefix, dest):
+    """Extract one subtree of a tarball into an empty root-owned directory.
+
+    Plain files and directories only. No symlinks, no hard links, no devices,
+    no absolute paths, nothing that climbs out with '..' -- an SDDM theme is
+    pictures and QML, and every other kind of entry in one is somebody being
+    clever at root.
+    """
+    prefix = prefix.rstrip("/")
+    written = 0
+    found = False
+    # O_NOFOLLOW: the path is under the caller's home, so the last component
+    # is theirs to replace, and root should not follow it anywhere.
+    try:
+        fd = os.open(archive, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as exc:
+        die("the download is not where the store puts it (%s)" % exc)
+    with os.fdopen(fd, "rb") as raw:
+        size = os.fstat(raw.fileno()).st_size
+        if size > MAX_ARCHIVE:
+            die("the download is larger than the store allows")
+        try:
+            tar = tarfile.open(fileobj=raw, mode="r:gz")
+        except (tarfile.TarError, OSError) as exc:
+            die("the download is not a readable archive: %s" % exc)
+        with tar:
+            for member in tar:
+                name = member.name.replace("\\", "/")
+                if name.startswith("/") or ".." in name.split("/"):
+                    die("the archive holds a path that climbs out of itself")
+                if prefix and name != prefix and not name.startswith(prefix + "/"):
+                    continue
+                rel = name[len(prefix):].lstrip("/") if prefix else name
+                if not rel:
+                    found = True
+                    continue
+                target = os.path.join(dest, rel)
+                if member.isdir():
+                    os.makedirs(target, exist_ok=True)
+                    os.chmod(target, 0o755)
+                    continue
+                if not member.isfile():
+                    die("the archive holds %r, which is not a plain file" % name)
+                written += member.size
+                if written > MAX_UNPACKED:
+                    die("the archive unpacks to more than the store allows")
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                source = tar.extractfile(member)
+                if source is None:
+                    die("the archive holds %r, which is not a plain file" % name)
+                with io.open(target, "wb") as fh:
+                    shutil.copyfileobj(source, fh, 1 << 20)
+                os.chmod(target, 0o644)
+                found = True
+    if not found:
+        die("the archive does not hold %r" % (prefix or "anything"))
+
+
+def set_config_file(theme, conf):
+    """Point a theme's metadata.desktop at one of its own variants.
+
+    This is how every multi-variant SDDM theme selects one: astronaut's ten
+    looks, Silent's sixteen palettes. One line, rewritten -- the variant is a
+    NAME the catalogue offered, checked against that theme's own list before
+    we get here.
+    """
+    meta = os.path.join(theme, "metadata.desktop")
+    if not os.path.isfile(meta):
+        die("the theme has no metadata.desktop")
+    if not os.path.isfile(os.path.join(theme, conf)):
+        die("the theme has no %s" % conf)
+    with io.open(meta, encoding="utf-8", errors="replace") as fh:
+        lines = fh.read().splitlines()
+    out = []
+    done = False
+    for line in lines:
+        if line.strip().lower().startswith("configfile="):
+            if done:
+                continue
+            out.append("ConfigFile=" + conf)
+            done = True
+        else:
+            out.append(line)
+    if not done:
+        out.append("ConfigFile=" + conf)
+    with io.open(meta, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(out) + "\n")
+
+
+def greeter(key, conf):
+    if not NAME.match(key):
+        die("%r is not a greeter key" % key)
+    spec = (load_catalog().get("greeters") or {}).get(key)
+    if not isinstance(spec, dict):
+        die("%r is not a login screen this catalogue offers" % key)
+
+    name = spec.get("install_as") or ""
+    if not NAME.match(name):
+        die("the catalogue entry for %s has no usable directory name" % key)
+    want = spec.get("tree") or ""
+    if not re.fullmatch(r"[0-9a-f]{64}", want):
+        die("the catalogue entry for %s has no content digest" % key)
+    prefix = spec.get("subpath") or ""
+    if prefix.startswith("/") or ".." in prefix.split("/"):
+        die("the catalogue entry for %s has an unusable subpath" % key)
+
+    if conf:
+        if not CONFNAME.match(conf) or conf not in (spec.get("confs") or []):
+            die("%r is not one of %s's own configurations" % (conf, key))
+
+    install_modules(spec.get("needs") or [])
+
+    staging = os.path.join(THEME_DIR, ".genesi-store-staging")
+    previous = os.path.join(THEME_DIR, ".genesi-store-previous")
+    for path in (staging, previous):
+        shutil.rmtree(path, ignore_errors=True)
+    os.makedirs(staging, mode=0o755)
+
+    try:
+        unpack(staged_archive(key), prefix, staging)
+
+        got = tree_digest(staging)
+        if got != want:
+            die("what was downloaded is not what the catalogue describes -- "
+                "refusing to install it")
+
+        # A greeter without these does not draw. Better to find out here than
+        # on the next boot, with no way in but a text console.
+        for needed in ("Main.qml", "metadata.desktop"):
+            if not os.path.isfile(os.path.join(staging, needed)):
+                die("the theme has no %s, so it is not a login screen" % needed)
+        if conf:
+            set_config_file(staging, conf)
+
+        final = os.path.join(THEME_DIR, name)
+        if os.path.realpath(final) != final:
+            die("%r does not name a directory under the themes folder" % name)
+        # Swap, rather than write in place: SDDM reading a half-extracted
+        # theme is exactly the failure this whole file exists to avoid.
+        #
+        # And if the swap itself fails -- a full disk is the ordinary way --
+        # the old theme goes back where it was. Otherwise the drop-in would
+        # still name a directory that had just been moved aside, which is a
+        # login screen that does not come up because of a tidy-up.
+        moved = False
+        if os.path.exists(final):
+            os.rename(final, previous)
+            moved = True
+        try:
+            os.rename(staging, final)
+        except OSError as exc:
+            if moved:
+                os.rename(previous, final)
+            die("the login screen could not be put in place: %s" % exc)
+        shutil.rmtree(previous, ignore_errors=True)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    write_dropin(name)
+    print("login screen: %s" % name)
+
+
+def greeter_remove(key):
+    if not NAME.match(key):
+        die("%r is not a greeter key" % key)
+    spec = (load_catalog().get("greeters") or {}).get(key)
+    if not isinstance(spec, dict):
+        die("%r is not a login screen this catalogue offers" % key)
+    name = spec.get("install_as") or ""
+    if not NAME.match(name):
+        die("the catalogue entry for %s has no usable directory name" % key)
+    path = os.path.join(THEME_DIR, name)
+    if os.path.realpath(path) != path:
+        die("%r does not name a directory under the themes folder" % name)
+    if not os.path.isdir(path):
+        print("%s was not installed" % name)
+        return
+    # Deleting the theme the machine is about to boot into is how a person
+    # ends up at a black screen because they tidied up.
+    if current_theme() == name:
+        die("%s is the login screen in use; pick another one first" % name)
+    shutil.rmtree(path)
+    print("removed %s" % name)
+
+
+def current_theme():
+    try:
+        with io.open(DROPIN, encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip().lower().startswith("current="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
 def main():
     if os.geteuid() != 0:
         die("this is the part that needs root; run it through the store")
-    if len(sys.argv) != 3:
-        die("usage: genesi-store-helper login-theme <name> | install <package>")
-    what, value = sys.argv[1], sys.argv[2]
-    if what == "login-theme":
+    argv = sys.argv[1:]
+    if not 2 <= len(argv) <= 3:
+        die("usage: genesi-store-helper login-theme <name> | install <package>"
+            " | greeter <key> [config] | greeter-remove <key>")
+    what, value = argv[0], argv[1]
+    extra = argv[2] if len(argv) == 3 else ""
+    if what == "login-theme" and not extra:
         return login_theme(value)
-    if what == "install":
+    if what == "install" and not extra:
         return install(value)
+    if what == "greeter":
+        return greeter(value, extra)
+    if what == "greeter-remove" and not extra:
+        return greeter_remove(value)
     die("%r is not something this helper does" % what)
     return None
 

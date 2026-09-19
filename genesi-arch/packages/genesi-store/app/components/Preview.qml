@@ -296,9 +296,18 @@ Item {
     }
 
     // ── A lock screen ────────────────────────────────────────────────────────
+    //
+    // A clock and four dots, drawn. For a session lock that is right: the card
+    // is the wallpaper, blurred, with the shape of a lock screen on it.
+    //
+    // For a LOGIN screen it is right only when there is no photograph of the
+    // real thing. The downloaded greeters ship their own screenshots, and
+    // drawing Genesi's mock clock over somebody else's login screen would be
+    // covering the one honest thing on the card with a lie about it.
     Column {
         anchors.centerIn: parent
-        visible: root.kind === "lock" || root.kind === "login"
+        visible: root.kind === "lock"
+                 || (root.kind === "login" && !picture.visible)
         spacing: root.u * 4
 
         Text {

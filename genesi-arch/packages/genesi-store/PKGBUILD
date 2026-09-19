@@ -81,7 +81,42 @@ pkgver=0.1.0
 # New with it: a detail sheet that lists what applying something will change,
 # read off the item's own actions, and the Genesi login screen (a real SDDM
 # theme, in sddm/, installed but never switched on by itself).
-pkgrel=2
+#
+# 3: thirty-one login screens that are not ours.
+#
+# Genesi's own greeter is plain on purpose, and what people actually want is
+# the astronaut, the Catppuccin glass card, the caelestia lock screen that
+# matches the desktop they are logging into. Those live on GitHub, so the
+# store now downloads them -- which is a whole Qt application, unpacked into
+# /usr/share by root, drawn before anybody has logged in. Everything new in
+# this release is about that sentence being safe:
+#
+#   * The archives are pinned to a COMMIT and fetched as YOU. Root does no
+#     networking.
+#   * What is checked is a digest of the CONTENT, not of the tarball, because
+#     GitHub builds those on demand and re-compressed them once already. The
+#     helper computes it AFTER unpacking, on files it wrote itself, so the
+#     answer cannot change between the check and the install.
+#   * The helper still takes a NAME: a key into the greeters map in the
+#     catalogue under /usr/share, which only root can write. Every URL, digest
+#     and destination comes from there.
+#   * Only plain files and directories are unpacked -- no symlinks, no paths
+#     that climb out, a cap on what it may write.
+#   * build-catalog.py reads each theme's own QML imports and records the Qt
+#     modules it needs, so they are installed BEFORE the greeter is switched.
+#     A theme importing QtQuick.VirtualKeyboard on a machine without it is a
+#     black screen at boot, not a missing keyboard. A theme that turns out to
+#     be Qt5 fails the build here instead.
+#   * Every card carries a screenshot of the real thing, shipped, and the
+#     detail page carries the way back -- the console and the one command --
+#     where it can be read BEFORE the choice rather than after it.
+#
+# Also: genesi/preview.png, rendered from the greeter's own QML by
+# ci/sddm-shot.py, which is the Screenshot= its metadata always claimed; and
+# SDDM's stock elarun/maldives/maya are off the shelf, because they shipped no
+# picture and a grey card among thirty screenshots is exactly what pkgrel 2
+# set out to stop.
+pkgrel=3
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -153,8 +188,53 @@ for item in items:
         elif theme not in ("breeze", "elarun", "maldives", "maya"):
             raise SystemExit("unknown login theme: %r" % theme)
 
-print("catalogue: %d items, %d shelves, every action implemented"
-      % (len(items), len(sections)))
+# The downloaded login screens. These are the only items that fetch a whole
+# application and run it as root before anybody has logged in, so what the
+# catalogue claims about them is checked here as well as in
+# ci/store-test.py -- this one runs on the machine doing the building, with
+# the helper that will do the installing sitting next to it.
+greeters = catalog.get("greeters") or {}
+helper = io.open(root + "/genesi-store-helper", encoding="utf-8").read()
+allowed = set(re.findall(r'"([a-z0-9-]+)",',
+                         re.search(r"INSTALLABLE = \((.*?)\)", helper,
+                                   re.S).group(1)))
+for item in items:
+    for action in item.get("actions", []):
+        if action.get("action") != "greeter":
+            continue
+        spec = greeters.get(action.get("key"))
+        if not spec:
+            raise SystemExit("%s asks for the login screen %r, which the "
+                             "catalogue does not describe"
+                             % (item["id"], action.get("key")))
+        conf = action.get("conf")
+        if conf and conf not in spec.get("confs", []):
+            raise SystemExit("%s asks for %s, which %s does not ship"
+                             % (item["id"], conf, action["key"]))
+for key, spec in greeters.items():
+    if not re.fullmatch(r"[0-9a-f]{64}", spec.get("tree", "")):
+        raise SystemExit("%s has no content digest, so nothing would check "
+                         "what gets unpacked into /usr/share" % key)
+    if not re.search(r"^https://[a-z0-9.]+/.*/tar\.gz/[0-9a-f]{40}$",
+                     spec.get("url", "")):
+        raise SystemExit("%s is not pinned to a commit" % key)
+    unknown = set(spec.get("needs") or []) - allowed
+    if unknown:
+        raise SystemExit("%s needs %s, which the helper will not install"
+                         % (key, ", ".join(sorted(unknown))))
+
+# Every picture the catalogue names has to be a file this package installs.
+# A card whose preview is missing is the grey rectangle this shelf was rebuilt
+# to stop being.
+for item in items:
+    thumb = (item.get("preview") or {}).get("thumb")
+    if thumb and not os.path.isfile(os.path.join(root, "catalog", "thumbs",
+                                                 thumb)):
+        raise SystemExit("%s names the picture %s, which is not here"
+                         % (item["id"], thumb))
+
+print("catalogue: %d items, %d shelves, %d login screens, every action "
+      "implemented" % (len(items), len(sections), len(greeters)))
 CHECKCATALOG
 }
 
@@ -214,6 +294,11 @@ package() {
         "${pkgdir}/usr/share/sddm/themes/genesi/theme.conf"
     install -Dm644 "${startdir}/sddm/metadata.desktop" \
         "${pkgdir}/usr/share/sddm/themes/genesi/metadata.desktop"
+    # The Screenshot= its metadata has always declared. Rendered from this
+    # very QML by ci/sddm-shot.py, so the picture on its card in the store is
+    # the login screen this package installs rather than a drawing of it.
+    install -Dm644 "${startdir}/sddm/preview.png" \
+        "${pkgdir}/usr/share/sddm/themes/genesi/preview.png"
 
     install -Dm644 "${startdir}/genesi-store.svg" \
         "${pkgdir}/usr/share/icons/hicolor/scalable/apps/genesi-store.svg"

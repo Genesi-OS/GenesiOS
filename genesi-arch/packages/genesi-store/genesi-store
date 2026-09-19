@@ -84,6 +84,7 @@ ALLOWED_HOSTS = (
     "raw.githubusercontent.com",
     "github.com",
     "objects.githubusercontent.com",   # where GitHub redirects release assets
+    "codeload.github.com",             # where a repository's tarball comes from
     "codeberg.org",
     "gitlab.com",
     "w.wallhaven.cc",
@@ -91,7 +92,16 @@ ALLOWED_HOSTS = (
 )
 
 MAX_ASSET_BYTES = 40 * 1024 * 1024        # a wallpaper, not a distro image
+# A login screen is a whole theme -- QML, fonts, backgrounds, sometimes a short
+# video -- so it is allowed to be bigger than a picture. The largest in the
+# catalogue is about 20 MB; the helper refuses anything over 96 MB as well, so
+# raising this number here alone changes nothing.
+MAX_GREETER_BYTES = 96 * 1024 * 1024
 MAX_TEXT_BYTES = 512 * 1024
+
+# Long enough to read a password dialog, type into it, and let pacman fetch
+# a Qt module on a bad connection.
+PKEXEC_TIMEOUT = 1800
 
 # What a file has to start with to be the thing it claims to be. A "wallpaper"
 # that is really an HTML error page is the most common way a broken link ends
@@ -184,7 +194,8 @@ def check_url(url):
     return host
 
 
-def fetch(url, dest, expect_type=None, sha256=None):
+def fetch(url, dest, expect_type=None, sha256=None, cap=MAX_ASSET_BYTES,
+          advisory=False):
     """Download one asset. Returns the path, or dies with a plain reason."""
     check_url(url)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -193,9 +204,9 @@ def fetch(url, dest, expect_type=None, sha256=None):
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             size = int(response.headers.get("Content-Length") or 0)
-            if size > MAX_ASSET_BYTES:
+            if size > cap:
                 die("%s is %d MB; the store stops at %d MB"
-                    % (url, size // (1 << 20), MAX_ASSET_BYTES // (1 << 20)))
+                    % (url, size // (1 << 20), cap // (1 << 20)))
             got = 0
             digest = hashlib.sha256()
             with io.open(tmp, "wb") as fh:
@@ -204,7 +215,7 @@ def fetch(url, dest, expect_type=None, sha256=None):
                     if not chunk:
                         break
                     got += len(chunk)
-                    if got > MAX_ASSET_BYTES:
+                    if got > cap:
                         fh.close()
                         os.unlink(tmp)
                         die("%s is larger than the store's limit" % url)
@@ -218,8 +229,16 @@ def fetch(url, dest, expect_type=None, sha256=None):
         die("could not write %s: %s" % (dest, exc))
 
     if sha256 and digest.hexdigest() != sha256:
-        os.unlink(tmp)
-        die("%s did not match its checksum -- refusing it" % url)
+        if not advisory:
+            os.unlink(tmp)
+            die("%s did not match its checksum -- refusing it" % url)
+        # For a greeter the archive's checksum is a hint, not the guard:
+        # GitHub builds those tarballs on demand and has re-compressed them
+        # before, which changes every byte without changing a single file.
+        # What decides is the digest of the CONTENT, checked by the helper
+        # after extraction, on files it has just written itself.
+        note("%s was re-packed since this catalogue was built; the check that "
+             "matters happens after it is unpacked" % url)
 
     if expect_type in MAGIC:
         with io.open(tmp, "rb") as fh:
@@ -236,9 +255,18 @@ def fetch(url, dest, expect_type=None, sha256=None):
 # ── Running things ──────────────────────────────────────────────────────────
 
 
-def run(argv, check=True):
+def run(argv, check=True, timeout=120):
+    """Two minutes is right for asking caelestia what scheme is on.
+
+    It is NOT right for anything behind pkexec: the person has to read a
+    dialog and type a password, and on the other side of it pacman may be
+    downloading a Qt module over whatever connection they have. A timeout
+    there does not stop the work -- it only makes the store report a failure
+    while the install carries on without it, which is the worst of both.
+    """
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+        proc = subprocess.run(argv, capture_output=True, text=True,
+                              timeout=timeout)
     except FileNotFoundError:
         if check:
             die("%s is not installed" % argv[0])
@@ -354,10 +382,74 @@ def act_login(item, args, assets):
     if not theme or not re.fullmatch(r"[a-z0-9-]{1,48}", theme):
         die("%s names a login theme the store does not recognise" % item["id"])
     helper = helper_path()
-    code, _ = run(["pkexec", helper, "login-theme", theme], check=False)
+    code, _ = run(["pkexec", helper, "login-theme", theme], check=False,
+                  timeout=PKEXEC_TIMEOUT)
     if code != 0:
         die("the login screen was not changed (the password prompt was refused "
             "or the helper failed)")
+    return {"action": "login", "theme": "breeze"}
+
+
+def greeter_spec(key):
+    """One entry out of the catalogue's greeters map.
+
+    The map is the reason a downloaded login screen is still DATA: the item
+    carries a key, and the key resolves -- here, and again in the helper,
+    which reads the copy in /usr/share that only root can write -- to a URL,
+    a digest and a destination the catalogue decided. There is no field an
+    item can put a path or a command in.
+    """
+    spec = (CATALOG.get("greeters") or {}).get(key) if CATALOG else None
+    if not isinstance(spec, dict):
+        die("%r is not a login screen this catalogue offers" % key)
+    return spec
+
+
+def greeter_archive(key):
+    """Where a greeter's download lives. The helper builds this same path from
+    the key and the account that asked, so it is never passed to root."""
+    return os.path.join(ASSET_DIR, "greeter-%s.tar.gz" % key)
+
+
+def ensure_greeter(key):
+    spec = greeter_spec(key)
+    dest = greeter_archive(key)
+    if os.path.exists(dest):
+        return dest
+    note("fetching %s (%.0f MB)"
+         % (spec["url"], (spec.get("bytes") or 0) / float(1 << 20)))
+    return fetch(spec["url"], dest, sha256=spec.get("sha256"),
+                 cap=MAX_GREETER_BYTES, advisory=True)
+
+
+def act_greeter(item, args, assets):
+    """A login screen somebody else wrote, downloaded and put in /usr/share.
+
+    The archive is fetched as YOU -- root does no networking -- and then one
+    pkexec call does the privileged half: install the QML modules the theme's
+    own imports need (a greeter that imports QtQuick.VirtualKeyboard on a
+    machine without it is a black screen at boot, not a missing keyboard),
+    unpack it, check that what arrived hashes to what the catalogue describes,
+    and swap it in. One call, so one password, and the list of modules comes
+    out of the catalogue in /usr/share rather than off the command line.
+    """
+    key = args.get("key")
+    if not key or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,47}", key):
+        die("%s names a login screen the store does not recognise" % item["id"])
+    spec = greeter_spec(key)
+    conf = args.get("conf") or ""
+    if conf and conf not in (spec.get("confs") or []):
+        die("%s asks for a configuration %s does not have" % (item["id"], key))
+
+    ensure_greeter(key)
+    helper = helper_path()
+    argv = ["pkexec", helper, "greeter", key]
+    if conf:
+        argv.append(conf)
+    code, _ = run(argv, check=False, timeout=PKEXEC_TIMEOUT)
+    if code != 0:
+        die("the login screen was not changed (the password prompt was refused "
+            "or the theme did not pass its check)")
     return {"action": "login", "theme": "breeze"}
 
 
@@ -386,7 +478,8 @@ def act_package(item, args, assets):
     if shutil.which(args.get("binary") or name):
         return None
     helper = helper_path()
-    code, _ = run(["pkexec", helper, "install", name], check=False)
+    code, _ = run(["pkexec", helper, "install", name], check=False,
+                  timeout=PKEXEC_TIMEOUT)
     if code != 0:
         die("%s was not installed (the password prompt was refused, or pacman "
             "failed)" % name)
@@ -397,7 +490,21 @@ def act_package(item, args, assets):
 
 # Packages the store may install, and nothing else. Every one of them is a
 # thing a LOOK needs to work at all, and each is in the Arch repositories.
-INSTALLABLE = ("hyprlock", "hypridle", "sddm-sugar-candy-git", "swaylock")
+#
+# This list must not drift from the one in genesi-store-helper: a name that is
+# here and not there is a card that asks for a password and then fails, and a
+# name that is there and not here is a privilege nothing uses. ci/store-test.py
+# compares the two.
+INSTALLABLE = (
+    "hyprlock",
+    "hypridle",
+    "swaylock",
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia",
+    "qt6-svg",
+    "qt6-virtualkeyboard",
+)
 
 
 def helper_path():
@@ -420,7 +527,14 @@ ACTIONS = {
     "wallpaper": act_wallpaper,
     "config": act_config,
     "login": act_login,
+    "greeter": act_greeter,
 }
+
+# The catalogue the running command was started with. act_greeter needs it --
+# a greeter action carries a key, and the key means nothing without the map it
+# indexes -- and threading it through every action's signature to reach one of
+# them would be worse than saying so here.
+CATALOG = None
 
 
 # ── install / apply / revert ────────────────────────────────────────────────
@@ -428,6 +542,17 @@ ACTIONS = {
 
 def assets_of(item):
     return item.get("assets") or {}
+
+
+def greeters_of(item):
+    """The greeter archives an item will need, if any.
+
+    Kept apart from assets_of because one archive serves many items -- the ten
+    astronaut looks are ten cards over one download -- so it is stored under
+    the greeter's key rather than under the id of whichever card asked first.
+    """
+    return [step["key"] for step in item.get("actions", [])
+            if step.get("action") == "greeter" and step.get("key")]
 
 
 def do_install(cat, ident, state):
@@ -441,6 +566,8 @@ def do_install(cat, ident, state):
         note("fetching %s" % asset["url"])
         paths[name] = fetch(asset["url"], dest, asset.get("type"),
                             asset.get("sha256"))
+    for key in greeters_of(item):
+        ensure_greeter(key)
     state["installed"][ident] = {"assets": paths, "at": int(time.time())}
     write_state(state)
     return paths
@@ -490,8 +617,36 @@ def do_remove(cat, ident, state):
     path = os.path.join(ASSET_DIR, ident)
     if os.path.isdir(path):
         shutil.rmtree(path, ignore_errors=True)
+    item = item_by_id(cat, ident)
+    for key in greeters_of(item):
+        # The download is yours, so it goes without asking. The installed
+        # theme is in /usr/share, so it does not: the helper refuses to delete
+        # the one the machine is about to boot into, and asks for a password
+        # for the rest.
+        archive = greeter_archive(key)
+        if os.path.exists(archive):
+            os.unlink(archive)
+        if still_wanted(cat, state, key, ident):
+            continue
+        run(["pkexec", helper_path(), "greeter-remove", key], check=False,
+            timeout=PKEXEC_TIMEOUT)
     state.get("installed", {}).pop(ident, None)
     write_state(state)
+
+
+def still_wanted(cat, state, key, dropping):
+    """Is some OTHER applied card still wearing this greeter?
+
+    Ten astronaut looks share one installed theme directory. Removing one card
+    must not take the login screen out from under the other nine.
+    """
+    for other in state.get("applied", {}):
+        if other == dropping:
+            continue
+        for item in cat.get("items", []):
+            if item.get("id") == other and key in greeters_of(item):
+                return True
+    return False
 
 
 # ── Reporting ───────────────────────────────────────────────────────────────
@@ -504,7 +659,9 @@ def annotate(cat, state):
         copy = dict(item)
         copy["installed"] = ident in state.get("installed", {})
         copy["applied"] = ident in state.get("applied", {})
-        copy["needs_download"] = bool(assets_of(item)) and not copy["installed"]
+        copy["needs_download"] = ((bool(assets_of(item)) and not copy["installed"])
+                                  or any(not os.path.exists(greeter_archive(k))
+                                         for k in greeters_of(item)))
         out.append(copy)
     return out
 
@@ -580,7 +737,8 @@ def main():
     sub.add_parser("refresh")
 
     args = parser.parse_args()
-    cat = load_catalog()
+    global CATALOG
+    cat = CATALOG = load_catalog()
     state = read_state()
 
     if args.cmd == "sections":

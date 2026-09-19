@@ -66,6 +66,177 @@
    "blurb": "Em breve."
   }
  ],
+ "greeters": {
+  "astronaut": {
+   "name": "sddm-astronaut-theme",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "url": "https://codeload.github.com/Keyitdev/sddm-astronaut-theme/tar.gz/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "sha256": "3e7ccde7158b336bb7ea6c69a18cefe27a9c82d6c04c4bef03b5b1519d6ae11c",
+   "bytes": 17640027,
+   "subpath": "sddm-astronaut-theme-abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tree": "caac7e38a6dc5e89291b3edf3897263f6159659cc3a85dfc17926c6a7366b564",
+   "install_as": "genesi-astronaut",
+   "needs": [
+    "qt6-declarative",
+    "qt6-multimedia",
+    "qt6-svg",
+    "qt6-virtualkeyboard"
+   ],
+   "confs": [
+    "Themes/astronaut.conf",
+    "Themes/black_hole.conf",
+    "Themes/cyberpunk.conf",
+    "Themes/hyprland_kath.conf",
+    "Themes/jake_the_dog.conf",
+    "Themes/japanese_aesthetic.conf",
+    "Themes/pixel_sakura.conf",
+    "Themes/pixel_sakura_static.conf",
+    "Themes/post-apocalyptic_hacker.conf",
+    "Themes/purple_leaves.conf"
+   ]
+  },
+  "caelestia-locklike": {
+   "name": "caelestia-sddm",
+   "source": "https://github.com/ItsABigIgloo/caelestia-sddm/tree/7843c0f38de1e4f8606976ae0983536bf8ed4c76",
+   "author": "AkhiLeith",
+   "license": "GPL-3.0-or-later",
+   "url": "https://codeload.github.com/ItsABigIgloo/caelestia-sddm/tar.gz/7843c0f38de1e4f8606976ae0983536bf8ed4c76",
+   "sha256": "ff8bd639cfcd60a0e54e1a9616ab2eb5ef25e941d86c4d70a7b109a5a83582c5",
+   "bytes": 8132451,
+   "subpath": "caelestia-sddm-7843c0f38de1e4f8606976ae0983536bf8ed4c76/themes/locklike",
+   "tree": "c37ad79ff6ec74fcaee51dc4c9853d4499c1b13bda80e99f5b6ecd0b4f710e94",
+   "install_as": "genesi-caelestia-locklike",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "caelestia-minimalist": {
+   "name": "caelestia-sddm",
+   "source": "https://github.com/ItsABigIgloo/caelestia-sddm/tree/7843c0f38de1e4f8606976ae0983536bf8ed4c76",
+   "author": "Haikalllp",
+   "license": "GPL-3.0-or-later",
+   "url": "https://codeload.github.com/ItsABigIgloo/caelestia-sddm/tar.gz/7843c0f38de1e4f8606976ae0983536bf8ed4c76",
+   "sha256": "ff8bd639cfcd60a0e54e1a9616ab2eb5ef25e941d86c4d70a7b109a5a83582c5",
+   "bytes": 8132451,
+   "subpath": "caelestia-sddm-7843c0f38de1e4f8606976ae0983536bf8ed4c76/themes/minimalistV2",
+   "tree": "62acae667b9024927d1a3315ac38931a2ac2395a801c8fa78bfb1e9048ed03e7",
+   "install_as": "genesi-caelestia-minimalist",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "silent": {
+   "name": "SilentSDDM",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "url": "https://codeload.github.com/uiriansan/SilentSDDM/tar.gz/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "sha256": "c3979c47be1eb951c528fca341bfa91d41ae4e2818bd147ef3180aa00dad4317",
+   "bytes": 20807064,
+   "subpath": "SilentSDDM-73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tree": "2aef0282f22c3f92177e0cde0eca849118f2f7736bc1e33b05948a437d1b7d55",
+   "install_as": "genesi-silent",
+   "needs": [
+    "qt6-declarative",
+    "qt6-multimedia",
+    "qt6-svg",
+    "qt6-virtualkeyboard"
+   ],
+   "confs": [
+    "configs/catppuccin-frappe.conf",
+    "configs/catppuccin-latte.conf",
+    "configs/catppuccin-macchiato.conf",
+    "configs/catppuccin-mocha.conf",
+    "configs/default-left.conf",
+    "configs/default-right.conf",
+    "configs/default.conf",
+    "configs/eldritch-abyss.conf",
+    "configs/eldritch-cthulhu.conf",
+    "configs/eldritch-dusk.conf",
+    "configs/everforest.conf",
+    "configs/gruvbox.conf",
+    "configs/ken.conf",
+    "configs/nord.conf",
+    "configs/rei.conf",
+    "configs/silvia.conf"
+   ]
+  },
+  "echo": {
+   "name": "echo-sddm",
+   "source": "https://github.com/xCaptaiN09/echo-sddm/tree/e004121450ff71050d3d76a998b86eafdbb6bf47",
+   "author": "xCaptaiN09",
+   "license": "MIT",
+   "url": "https://codeload.github.com/xCaptaiN09/echo-sddm/tar.gz/e004121450ff71050d3d76a998b86eafdbb6bf47",
+   "sha256": "0346614ab150ff105a6be923098948b5d51b14bd0f8b8d76c5958db59011b446",
+   "bytes": 3610781,
+   "subpath": "echo-sddm-e004121450ff71050d3d76a998b86eafdbb6bf47",
+   "tree": "64668a92d6425b11a6526fc60c8aeabeedc3c1b91d702ef6cb2c65bd61cc1e28",
+   "install_as": "genesi-echo",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "pixie": {
+   "name": "pixie-sddm",
+   "source": "https://github.com/xCaptaiN09/pixie-sddm/tree/1e1a863761f742e8d509d569382b17c112e29fdc",
+   "author": "xCaptaiN09",
+   "license": "MIT",
+   "url": "https://codeload.github.com/xCaptaiN09/pixie-sddm/tar.gz/1e1a863761f742e8d509d569382b17c112e29fdc",
+   "sha256": "f7db547ff367f7cbd8c13b21fad67335a696a5b4935712726b392d0f5435aa2e",
+   "bytes": 10239099,
+   "subpath": "pixie-sddm-1e1a863761f742e8d509d569382b17c112e29fdc",
+   "tree": "c31b240de436fb7d8c782ce091bac1eec5d20a60f5f9188381cc33ffc40add8c",
+   "install_as": "genesi-pixie",
+   "needs": [
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "whereis": {
+   "name": "where-is-my-sddm-theme",
+   "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
+   "author": "stepanzubkov",
+   "license": "MIT",
+   "url": "https://codeload.github.com/stepanzubkov/where-is-my-sddm-theme/tar.gz/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
+   "sha256": "2c6d367ccb21382d12de83f67f42dbafdaa307c6ce57c73c3c068af888ed7b30",
+   "bytes": 2563899,
+   "subpath": "where-is-my-sddm-theme-2fddf85ec80ff02a8e20fdcba51a30b436d76e6c/where_is_my_sddm_theme",
+   "tree": "6386857f1d6d847451d2f56186fc27cb1544ff7502d43cf6019f8adbc45d1857",
+   "install_as": "genesi-whereis",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "example_configs/blue.conf",
+    "example_configs/classic_nocursor.conf",
+    "example_configs/grey.conf",
+    "example_configs/lightgrey.conf",
+    "example_configs/nord.conf",
+    "example_configs/rose-pine-moon.conf",
+    "example_configs/tree.conf",
+    "theme.conf"
+   ]
+  }
+ },
  "items": [
   {
    "id": "theme-caelestia-default-dark",
@@ -1890,7 +2061,7 @@
    "name": "Genesi",
    "blurb": "A nossa: a marca, a hora e um campo só. Vem com a loja.",
    "family": "login",
-   "author": "SDDM",
+   "author": "Genesi",
    "tags": [
     "login",
     "antes da sessão"
@@ -1900,7 +2071,8 @@
     "kind": "login",
     "theme": "genesi",
     "background": "#070c09",
-    "accent": "#39d98a"
+    "accent": "#39d98a",
+    "thumb": "greeter-genesi.jpg"
    },
    "actions": [
     {
@@ -1912,8 +2084,8 @@
   {
    "id": "login-breeze",
    "section": "lockscreens",
-   "name": "Breeze (padrão)",
-   "blurb": "A tela que o sistema instala.",
+   "name": "A padrão do sistema",
+   "blurb": "Volta para a tela que o Genesi instala. É o caminho de volta de qualquer uma das outras.",
    "family": "login",
    "author": "SDDM",
    "tags": [
@@ -1931,81 +2103,6 @@
     {
      "action": "login",
      "theme": "breeze"
-    }
-   ]
-  },
-  {
-   "id": "login-elarun",
-   "section": "lockscreens",
-   "name": "Elarun",
-   "blurb": "Enviada com o SDDM: sóbria, centralizada.",
-   "family": "login",
-   "author": "SDDM",
-   "tags": [
-    "login",
-    "antes da sessão"
-   ],
-   "needs_root": true,
-   "preview": {
-    "kind": "login",
-    "theme": "elarun",
-    "background": "#1b1e20",
-    "accent": "#8ab4d8"
-   },
-   "actions": [
-    {
-     "action": "login",
-     "theme": "elarun"
-    }
-   ]
-  },
-  {
-   "id": "login-maldives",
-   "section": "lockscreens",
-   "name": "Maldives",
-   "blurb": "Enviada com o SDDM: foto de fundo, campo ao centro.",
-   "family": "login",
-   "author": "SDDM",
-   "tags": [
-    "login",
-    "antes da sessão"
-   ],
-   "needs_root": true,
-   "preview": {
-    "kind": "login",
-    "theme": "maldives",
-    "background": "#1b1e20",
-    "accent": "#8ab4d8"
-   },
-   "actions": [
-    {
-     "action": "login",
-     "theme": "maldives"
-    }
-   ]
-  },
-  {
-   "id": "login-maya",
-   "section": "lockscreens",
-   "name": "Maya",
-   "blurb": "Enviada com o SDDM: escura e discreta.",
-   "family": "login",
-   "author": "SDDM",
-   "tags": [
-    "login",
-    "antes da sessão"
-   ],
-   "needs_root": true,
-   "preview": {
-    "kind": "login",
-    "theme": "maya",
-    "background": "#1b1e20",
-    "accent": "#8ab4d8"
-   },
-   "actions": [
-    {
-     "action": "login",
-     "theme": "maya"
     }
    ]
   },
@@ -2321,6 +2418,931 @@
     "bar-limpo"
    ],
    "actions": []
+  },
+  {
+   "id": "login-astronaut",
+   "section": "lockscreens",
+   "name": "Astronauta",
+   "blurb": "Um astronauta à deriva, e o campo de senha no meio do espaço.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "espaço",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/astronaut.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut-black-hole",
+   "section": "lockscreens",
+   "name": "Buraco Negro",
+   "blurb": "Fundo animado engolindo a luz. O mais pesado dos dez.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "espaço",
+    "animado",
+    "escuro"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut-black-hole.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/black_hole.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut-cyberpunk",
+   "section": "lockscreens",
+   "name": "Cyberpunk",
+   "blurb": "Neon rosa e ciano, chuva na cidade.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "neon",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut-cyberpunk.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/cyberpunk.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut-hyprland",
+   "section": "lockscreens",
+   "name": "Hyprland",
+   "blurb": "A garota do Hyprland, animada.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "anime",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut-hyprland.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/hyprland_kath.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut-jake",
+   "section": "lockscreens",
+   "name": "Jake",
+   "blurb": "Hora de aventura na tela de login.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "cartoon",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut-jake.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/jake_the_dog.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut-japanese",
+   "section": "lockscreens",
+   "name": "Japonesa",
+   "blurb": "Torii, montanha e um degradê de fim de tarde.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "paisagem"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut-japanese.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/japanese_aesthetic.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut-sakura",
+   "section": "lockscreens",
+   "name": "Sakura (animada)",
+   "blurb": "Pétalas caindo em pixel art, em movimento.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "pixel",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut-sakura.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/pixel_sakura.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut-sakura-still",
+   "section": "lockscreens",
+   "name": "Sakura (parada)",
+   "blurb": "A mesma cena em pixel art, sem animação -- mais leve.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "pixel",
+    "leve"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut-sakura-still.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/pixel_sakura_static.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut-hacker",
+   "section": "lockscreens",
+   "name": "Hacker",
+   "blurb": "Terminal verde sobre ruína. Mono e sujo, do jeito certo.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "terminal",
+    "verde"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut-hacker.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/post-apocalyptic_hacker.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut-purple-leaves",
+   "section": "lockscreens",
+   "name": "Folhas Roxas",
+   "blurb": "Folhagem roxa e um campo discreto embaixo.",
+   "family": "login",
+   "author": "keyitdev",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "natureza",
+    "roxo"
+   ],
+   "needs_root": true,
+   "download": 17640027,
+   "preview": {
+    "kind": "login",
+    "theme": "astronaut",
+    "thumb": "greeter-astronaut-purple-leaves.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "astronaut",
+     "conf": "Themes/purple_leaves.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-caelestia-locklike",
+   "section": "lockscreens",
+   "name": "Caelestia Locklike",
+   "blurb": "A tela de login igual ao bloqueio do caelestia: relógio enorme, citação, avatar. É o desktop do Genesi antes de entrar nele.",
+   "family": "login",
+   "author": "AkhiLeith",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/ItsABigIgloo/caelestia-sddm/tree/7843c0f38de1e4f8606976ae0983536bf8ed4c76",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "caelestia",
+    "combina"
+   ],
+   "needs_root": true,
+   "download": 8132451,
+   "preview": {
+    "kind": "login",
+    "theme": "caelestia-locklike",
+    "thumb": "greeter-caelestia-locklike.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "caelestia-locklike"
+    }
+   ]
+  },
+  {
+   "id": "login-caelestia-minimalist",
+   "section": "lockscreens",
+   "name": "Caelestia Minimalist",
+   "blurb": "A mesma família, reduzida ao relógio e ao campo.",
+   "family": "login",
+   "author": "Haikalllp",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/ItsABigIgloo/caelestia-sddm/tree/7843c0f38de1e4f8606976ae0983536bf8ed4c76",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "caelestia",
+    "minimalista"
+   ],
+   "needs_root": true,
+   "download": 8132451,
+   "preview": {
+    "kind": "login",
+    "theme": "caelestia-minimalist",
+    "thumb": "greeter-caelestia-minimalist.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "caelestia-minimalist"
+    }
+   ]
+  },
+  {
+   "id": "login-silent",
+   "section": "lockscreens",
+   "name": "Silent",
+   "blurb": "Um cartão de vidro no meio da tela. O mais bem acabado da lista.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "vidro",
+    "moderno"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/default.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-left",
+   "section": "lockscreens",
+   "name": "Silent (esquerda)",
+   "blurb": "O mesmo cartão, encostado à esquerda.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "vidro",
+    "moderno"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-left.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/default-left.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-right",
+   "section": "lockscreens",
+   "name": "Silent (direita)",
+   "blurb": "O mesmo cartão, encostado à direita.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "vidro",
+    "moderno"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-right.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/default-right.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-mocha",
+   "section": "lockscreens",
+   "name": "Silent Catppuccin Mocha",
+   "blurb": "Catppuccin escuro, o de sempre.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "catppuccin",
+    "escuro"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-mocha.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/catppuccin-mocha.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-macchiato",
+   "section": "lockscreens",
+   "name": "Silent Catppuccin Macchiato",
+   "blurb": "Catppuccin um tom acima do mocha.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "catppuccin",
+    "escuro"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-macchiato.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/catppuccin-macchiato.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-frappe",
+   "section": "lockscreens",
+   "name": "Silent Catppuccin Frappé",
+   "blurb": "Catppuccin morno.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "catppuccin"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-frappe.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/catppuccin-frappe.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-latte",
+   "section": "lockscreens",
+   "name": "Silent Catppuccin Latte",
+   "blurb": "Catppuccin claro, para quem usa tema claro.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "catppuccin",
+    "claro"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-latte.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/catppuccin-latte.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-everforest",
+   "section": "lockscreens",
+   "name": "Silent Everforest",
+   "blurb": "Verde de floresta, que é a cor da casa.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "everforest",
+    "verde"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-everforest.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/everforest.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-nord",
+   "section": "lockscreens",
+   "name": "Silent Nord",
+   "blurb": "Azul frio do Nord.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "nord",
+    "azul"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-nord.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/nord.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-ken",
+   "section": "lockscreens",
+   "name": "Silent Ken",
+   "blurb": "Com vídeo de fundo. Bonito, e o mais pesado da prateleira.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "vídeo",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-ken.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/ken.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-silent-rei",
+   "section": "lockscreens",
+   "name": "Silent Rei",
+   "blurb": "Também com vídeo de fundo.",
+   "family": "login",
+   "author": "uiriansan",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "vídeo",
+    "animado",
+    "anime"
+   ],
+   "needs_root": true,
+   "download": 20807064,
+   "preview": {
+    "kind": "login",
+    "theme": "silent",
+    "thumb": "greeter-silent-rei.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "silent",
+     "conf": "configs/rei.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-echo",
+   "section": "lockscreens",
+   "name": "Echo",
+   "blurb": "Um terminal do macOS com o log de boot correndo dentro. Você digita a senha no prompt.",
+   "family": "login",
+   "author": "xCaptaiN09",
+   "license": "MIT",
+   "source": "https://github.com/xCaptaiN09/echo-sddm/tree/e004121450ff71050d3d76a998b86eafdbb6bf47",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "terminal",
+    "mono"
+   ],
+   "needs_root": true,
+   "download": 3610781,
+   "preview": {
+    "kind": "login",
+    "theme": "echo",
+    "thumb": "greeter-echo.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "echo"
+    }
+   ]
+  },
+  {
+   "id": "login-pixie",
+   "section": "lockscreens",
+   "name": "Pixie",
+   "blurb": "Material You: relógio empilhado, cantos macios, cor de Pixel.",
+   "family": "login",
+   "author": "xCaptaiN09",
+   "license": "MIT",
+   "source": "https://github.com/xCaptaiN09/pixie-sddm/tree/1e1a863761f742e8d509d569382b17c112e29fdc",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "material",
+    "limpo"
+   ],
+   "needs_root": true,
+   "download": 10239099,
+   "preview": {
+    "kind": "login",
+    "theme": "pixie",
+    "thumb": "greeter-pixie.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "pixie"
+    }
+   ]
+  },
+  {
+   "id": "login-whereis",
+   "section": "lockscreens",
+   "name": "Cadê meu tema?",
+   "blurb": "Fundo preto e a senha em letras gigantes. Nada mais na tela.",
+   "family": "login",
+   "author": "stepanzubkov",
+   "license": "MIT",
+   "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "rápido"
+   ],
+   "needs_root": true,
+   "download": 2563899,
+   "preview": {
+    "kind": "login",
+    "theme": "whereis",
+    "thumb": "greeter-whereis.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "whereis",
+     "conf": "theme.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-whereis-blue",
+   "section": "lockscreens",
+   "name": "Cadê meu tema? (azul)",
+   "blurb": "O mesmo nada, em azul.",
+   "family": "login",
+   "author": "stepanzubkov",
+   "license": "MIT",
+   "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "azul"
+   ],
+   "needs_root": true,
+   "download": 2563899,
+   "preview": {
+    "kind": "login",
+    "theme": "whereis",
+    "thumb": "greeter-whereis-blue.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "whereis",
+     "conf": "example_configs/blue.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-whereis-grey",
+   "section": "lockscreens",
+   "name": "Cadê meu tema? (cinza)",
+   "blurb": "O mesmo nada, em cinza.",
+   "family": "login",
+   "author": "stepanzubkov",
+   "license": "MIT",
+   "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "minimalista"
+   ],
+   "needs_root": true,
+   "download": 2563899,
+   "preview": {
+    "kind": "login",
+    "theme": "whereis",
+    "thumb": "greeter-whereis-grey.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "whereis",
+     "conf": "example_configs/grey.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-whereis-nord",
+   "section": "lockscreens",
+   "name": "Cadê meu tema? (nord)",
+   "blurb": "O mesmo nada, com a paleta Nord.",
+   "family": "login",
+   "author": "stepanzubkov",
+   "license": "MIT",
+   "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "nord"
+   ],
+   "needs_root": true,
+   "download": 2563899,
+   "preview": {
+    "kind": "login",
+    "theme": "whereis",
+    "thumb": "greeter-whereis-nord.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "whereis",
+     "conf": "example_configs/nord.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-whereis-rose",
+   "section": "lockscreens",
+   "name": "Cadê meu tema? (rosé pine)",
+   "blurb": "O mesmo nada, em rosé pine moon.",
+   "family": "login",
+   "author": "stepanzubkov",
+   "license": "MIT",
+   "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "rosa"
+   ],
+   "needs_root": true,
+   "download": 2563899,
+   "preview": {
+    "kind": "login",
+    "theme": "whereis",
+    "thumb": "greeter-whereis-rose.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "whereis",
+     "conf": "example_configs/rose-pine-moon.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-whereis-tree",
+   "section": "lockscreens",
+   "name": "Cadê meu tema? (árvore)",
+   "blurb": "Com uma foto atrás, para provar que dá.",
+   "family": "login",
+   "author": "stepanzubkov",
+   "license": "MIT",
+   "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "foto"
+   ],
+   "needs_root": true,
+   "download": 2563899,
+   "preview": {
+    "kind": "login",
+    "theme": "whereis",
+    "thumb": "greeter-whereis-tree.jpg"
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "whereis",
+     "conf": "example_configs/tree.conf"
+    }
+   ]
   }
  ]
 }

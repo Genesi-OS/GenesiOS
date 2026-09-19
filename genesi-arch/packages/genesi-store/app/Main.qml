@@ -867,8 +867,17 @@ QQC2.ApplicationWindow {
         function onCatalogLoaded(payload) {
             const data = JSON.parse(payload);
             const list = data.items ?? [];
-            for (const item of list)
+            for (const item of list) {
                 item.kindLabel = win.kindLabels[item.section] ?? "";
+                // The lock shelf holds two different machines: hyprlock, in
+                // your session, and SDDM, before it. They are not variants of
+                // one thing, and a card that calls both "bloqueio" is the
+                // reason somebody picks the wrong one.
+                if (item.family === "login")
+                    item.kindLabel = qsTr("tela de login");
+                else if (item.family === "session")
+                    item.kindLabel = qsTr("bloqueio da sessão");
+            }
             win.items = list;
             // The sheet holds a copy of an item; refresh it so its button
             // stops saying "Aplicar" the moment the apply lands.

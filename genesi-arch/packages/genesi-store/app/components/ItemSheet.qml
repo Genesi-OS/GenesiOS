@@ -55,6 +55,13 @@ Item {
                 out.push(qsTr("Instala %1, que é o que trava a sessão — pede a sua senha.").arg(action.name));
             else if (action.action === "login")
                 out.push(qsTr("A tela de login do sistema — pede a sua senha."));
+            else if (action.action === "greeter") {
+                out.push(qsTr("A tela de login do sistema — pede a sua senha."));
+                if (root.item.download)
+                    out.push(qsTr("Baixa %1 MB e confere byte a byte antes de instalar.")
+                             .arg(Math.round(root.item.download / 1048576)));
+                out.push(qsTr("Instala em /usr/share/sddm/themes. Não mexe na sua sessão."));
+            }
             else if (action.action === "config")
                 out.push(qsTr("Algumas configurações do shell."));
         }
@@ -192,6 +199,30 @@ Item {
                     font.pixelSize: Tokens.fsBody
                     wrapMode: Text.WordWrap
                 }
+
+                // Where it came from. A store that does not say is a store
+                // asking to be trusted twice -- and this sits in the header,
+                // not at the end of the list, because at the end of the list
+                // it was below the fold on every item long enough to matter.
+                Text {
+                    width: parent.width
+                    visible: text !== ""
+                    topPadding: 2
+                    text: {
+                        if (!root.item || !root.item.author)
+                            return "";
+                        let line = qsTr("Por %1").arg(root.item.author);
+                        if (root.item.license)
+                            line += "  ·  " + root.item.license;
+                        if (root.item.source)
+                            line += "  ·  " + root.item.source;
+                        return line;
+                    }
+                    color: Tokens.textFaint
+                    font.family: Tokens.sans
+                    font.pixelSize: Tokens.fsLabel
+                    elide: Text.ElideRight
+                }
             }
 
             QQC2.ScrollView {
@@ -199,7 +230,7 @@ Item {
                 anchors.right: parent.right
                 anchors.top: head.bottom
                 anchors.topMargin: 16
-                anchors.bottom: actions.top
+                anchors.bottom: wayBack.visible ? wayBack.top : actions.top
                 anchors.bottomMargin: 14
                 contentWidth: availableWidth
                 clip: true
@@ -294,24 +325,67 @@ Item {
                             }
                         }
                     }
+                }
+            }
 
-                    // Where it came from. A store that does not say is a store
-                    // asking to be trusted twice.
+            // ── The way back ─────────────────────────────────────────────────
+            //
+            // A login screen is the only thing in this store that can leave
+            // somebody with a machine they cannot get into, and the moment
+            // they would need these two lines is the one moment they cannot
+            // read them. So they are here, before, on the page where the
+            // decision is made.
+            //
+            // Outside the scrolling column on purpose: in it, on a sheet this
+            // size, the command was the part that fell below the fold.
+            Rectangle {
+                id: wayBack
+
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: actions.top
+                anchors.bottomMargin: 14
+                height: visible ? wayOut.implicitHeight + 24 : 0
+                visible: !!(root.item && root.item.needs_root)
+                radius: Tokens.radiusSm
+                color: Tokens.a(Tokens.accent, 0.06)
+                border.width: 1
+                border.color: Tokens.a(Tokens.accent, 0.22)
+
+                Column {
+                    id: wayOut
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 5
+
                     Text {
-                        width: parent.width
-                        visible: !!(root.item && root.item.author)
-                        text: {
-                            if (!root.item)
-                                return "";
-                            let line = qsTr("Por %1").arg(root.item.author);
-                            if (root.item.license)
-                                line += " · " + root.item.license;
-                            return line;
-                        }
-                        color: Tokens.textFaint
+                        text: qsTr("SE ELA NÃO ABRIR")
+                        color: Tokens.a(Tokens.accent, 0.85)
+                        font.family: Tokens.mono
+                        font.pixelSize: Tokens.fsMicro
+                        font.letterSpacing: 1.6
+                    }
+                    Text {
+                        width: wayOut.width
+                        text: qsTr("Ctrl+Alt+F2 abre um terminal de texto. Entre com o "
+                                   + "seu usuário e rode a linha abaixo — ela apaga a "
+                                   + "escolha e devolve a tela que veio com o sistema.")
+                        color: Tokens.text
                         font.family: Tokens.sans
                         font.pixelSize: Tokens.fsLabel
                         wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        width: wayOut.width
+                        text: "sudo rm /etc/sddm.conf.d/50-genesi-store.conf"
+                        color: Tokens.textHi
+                        font.family: Tokens.mono
+                        font.pixelSize: Tokens.fsLabel
+                        wrapMode: Text.WrapAnywhere
                     }
                 }
             }

@@ -308,10 +308,29 @@ def build():
     for extra in (lockscreens(), fastfetch(), rices(previous), bundles()):
         items.extend(extra)
 
+    # The login screens that are downloaded rather than shipped. The map they
+    # point into is what makes them data: a card carries a key, and the key
+    # resolves -- in the store, and again in the helper, out of the copy under
+    # /usr/share that only root can write -- to a URL, a digest and a
+    # destination this build decided.
+    greeter_specs = {}
+    if OFFLINE:
+        if os.path.exists(OUT):
+            with io.open(OUT, encoding="utf-8") as fh:
+                old = json.load(fh)
+            greeter_specs = old.get("greeters") or {}
+            items.extend([i for i in old.get("items", [])
+                          if any(a.get("action") == "greeter"
+                                 for a in i.get("actions", []))])
+    else:
+        greeter_specs, greeter_items = greeters()
+        items.extend(greeter_items)
+
     data = {
         "version": 1,
         "updated": time.strftime("%Y-%m-%d"),
         "sections": SECTIONS,
+        "greeters": greeter_specs,
         "items": items,
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
@@ -458,29 +477,43 @@ def lockscreens():
     # themes that are already installed are offered: a login screen pointed at
     # a theme that is not there is a login screen that does not come up, and
     # that is not a thing to find out by rebooting.
-    for ident, theme, name, blurb in (
+    # Genesi's own, whose picture is a render of the very QML this package
+    # installs -- made by ci/sddm-shot, kept in sddm/preview.png, which is also
+    # the Screenshot= the theme's metadata has always claimed to have.
+    #
+    # And Breeze, which is not really a theme here: it is the way OUT. Picking
+    # it deletes the drop-in, so the login screen goes back to whatever the
+    # system decides rather than to whatever this tool last saw.
+    #
+    # SDDM's other stock themes used to be on this shelf and are not any more.
+    # They shipped no picture, so they were grey cards among thirty with real
+    # screenshots -- and a grey card is the thing this whole shelf was rebuilt
+    # to stop being.
+    genesi_shot = os.path.join(HERE, "sddm", "preview.png")
+    thumb = ""
+    if os.path.exists(genesi_shot):
+        with io.open(genesi_shot, "rb") as fh:
+            thumb = thumbnail("greeter-genesi", fh.read(), "preview.png")
+    for ident, theme, name, blurb, preview in (
             ("genesi", "genesi", "Genesi",
-             "A nossa: a marca, a hora e um campo só. Vem com a loja."),
-            ("breeze", "breeze", "Breeze (padrão)",
-             "A tela que o sistema instala."),
-            ("elarun", "elarun", "Elarun",
-             "Enviada com o SDDM: sóbria, centralizada."),
-            ("maldives", "maldives", "Maldives",
-             "Enviada com o SDDM: foto de fundo, campo ao centro."),
-            ("maya", "maya", "Maya",
-             "Enviada com o SDDM: escura e discreta.")):
+             "A nossa: a marca, a hora e um campo só. Vem com a loja.",
+             {"kind": "login", "theme": "genesi", "background": "#070c09",
+              "accent": "#39d98a", "thumb": thumb}),
+            ("breeze", "breeze", "A padrão do sistema",
+             "Volta para a tela que o Genesi instala. É o caminho de volta "
+             "de qualquer uma das outras.",
+             {"kind": "login", "theme": "breeze", "background": "#1b1e20",
+              "accent": "#8ab4d8"})):
         out.append({
             "id": "login-" + ident,
             "section": "lockscreens",
             "name": name,
             "blurb": blurb,
             "family": "login",
-            "author": "SDDM",
+            "author": "Genesi" if theme == "genesi" else "SDDM",
             "tags": ["login", "antes da sessão"],
             "needs_root": True,
-            "preview": {"kind": "login", "theme": theme,
-                        "background": "#070c09" if theme == "genesi" else "#1b1e20",
-                        "accent": "#39d98a" if theme == "genesi" else "#8ab4d8"},
+            "preview": preview,
             "actions": [{"action": "login", "theme": theme}],
         })
     return out
@@ -678,6 +711,373 @@ def bundles():
             "actions": [],
         },
     ]
+
+
+# ── The OTHER lock: login screens somebody else wrote ──────────────────────
+#
+# The session lock above is a config file. These are whole Qt applications
+# that run as root, before anybody has logged in, and if one of them fails to
+# draw the machine has no way in but a text console. So the rules here are
+# stricter than anywhere else in this file:
+#
+#   * Pinned to a COMMIT, never to a branch. "main" is whatever somebody
+#     pushed this morning.
+#   * Refused unless the theme's own metadata says QtVersion=6 and its QML
+#     imports are all Qt6. Half the beautiful SDDM themes on GitHub are Qt5
+#     and would be a black screen on Genesi -- that is a build failure here,
+#     not a discovery at 3am.
+#   * The QML modules each theme imports are read out of its own source and
+#     recorded, so the helper installs them BEFORE switching the greeter.
+#   * What is recorded is a digest of the CONTENT, not of the tarball. GitHub
+#     builds those archives on demand and re-compressed them once already,
+#     which changed every checksum in the world without changing one file.
+#
+# Every one of these is GPL-3.0 or MIT, credited by name and repository in the
+# card, and installed unmodified but for the one line that selects a variant.
+
+GREETER_REPOS = {
+    # key: (repository, the commit this catalogue was built against)
+    "astronaut": ("Keyitdev/sddm-astronaut-theme",
+                  "abb3163c724935af888ba5ea9ac0c4f22afd8048"),
+    "caelestia": ("ItsABigIgloo/caelestia-sddm",
+                  "7843c0f38de1e4f8606976ae0983536bf8ed4c76"),
+    "silent": ("uiriansan/SilentSDDM",
+               "73380d331fe0f8b8a3b17991bb917a0d438a4d34"),
+    "echo": ("xCaptaiN09/echo-sddm",
+             "e004121450ff71050d3d76a998b86eafdbb6bf47"),
+    "pixie": ("xCaptaiN09/pixie-sddm",
+              "1e1a863761f742e8d509d569382b17c112e29fdc"),
+    "whereis": ("stepanzubkov/where-is-my-sddm-theme",
+                "2fddf85ec80ff02a8e20fdcba51a30b436d76e6c"),
+}
+
+# key, repo, subpath inside the archive, directory it installs as,
+# who wrote it, licence
+GREETERS = [
+    ("astronaut", "astronaut", "", "genesi-astronaut",
+     "keyitdev", "GPL-3.0-or-later"),
+    ("caelestia-locklike", "caelestia", "themes/locklike",
+     "genesi-caelestia-locklike", "AkhiLeith", "GPL-3.0-or-later"),
+    ("caelestia-minimalist", "caelestia", "themes/minimalistV2",
+     "genesi-caelestia-minimalist", "Haikalllp", "GPL-3.0-or-later"),
+    ("silent", "silent", "", "genesi-silent", "uiriansan", "GPL-3.0-or-later"),
+    ("echo", "echo", "", "genesi-echo", "xCaptaiN09", "MIT"),
+    ("pixie", "pixie", "", "genesi-pixie", "xCaptaiN09", "MIT"),
+    ("whereis", "whereis", "where_is_my_sddm_theme", "genesi-whereis",
+     "stepanzubkov", "MIT"),
+]
+
+# What a QML import costs in packages. A theme that imports a module the
+# machine does not have does not fall back to something plainer -- it fails to
+# load, and SDDM shows nothing.
+MODULE_PACKAGES = {
+    "QtQuick.VirtualKeyboard": "qt6-virtualkeyboard",
+    "QtMultimedia": "qt6-multimedia",
+    "Qt5Compat.GraphicalEffects": "qt6-5compat",
+    "QtQuick.Shapes": "qt6-declarative",
+    "QtQuick.Effects": "qt6-declarative",
+    "QtQuick.Controls": "qt6-declarative",
+    "QtQuick.Layouts": "qt6-declarative",
+    "QtQuick.Window": "qt6-declarative",
+    "QtQuick": "qt6-declarative",
+    "QtQml": "qt6-declarative",
+    "SddmComponents": "",          # comes with sddm itself
+}
+
+# Imports that only exist in Qt5. Seeing one means the theme was never ported,
+# and installing it would be handing somebody a machine they cannot log into.
+QT5_ONLY = ("QtGraphicalEffects", "QtQuick.Controls.Styles")
+
+GREETER_ITEMS = [
+    # id, greeter key, config file inside the theme (or ""), name, blurb,
+    # tags, where the picture comes from
+    ("astronaut", "astronaut", "Themes/astronaut.conf", "Astronauta",
+     "Um astronauta à deriva, e o campo de senha no meio do espaço.",
+     ["espaço", "animado"], "url:astronaut.png"),
+    ("astronaut-black-hole", "astronaut", "Themes/black_hole.conf",
+     "Buraco Negro", "Fundo animado engolindo a luz. O mais pesado dos dez.",
+     ["espaço", "animado", "escuro"], "url:black_hole.png"),
+    ("astronaut-cyberpunk", "astronaut", "Themes/cyberpunk.conf", "Cyberpunk",
+     "Neon rosa e ciano, chuva na cidade.", ["neon", "animado"],
+     "url:cyberpunk.png"),
+    ("astronaut-hyprland", "astronaut", "Themes/hyprland_kath.conf",
+     "Hyprland", "A garota do Hyprland, animada.", ["anime", "animado"],
+     "url:frame_hyprland_kath.png"),
+    ("astronaut-jake", "astronaut", "Themes/jake_the_dog.conf", "Jake",
+     "Hora de aventura na tela de login.", ["cartoon", "animado"],
+     "url:frame_jake_the_dog.png"),
+    ("astronaut-japanese", "astronaut", "Themes/japanese_aesthetic.conf",
+     "Japonesa", "Torii, montanha e um degradê de fim de tarde.",
+     ["paisagem"], "url:japanese_aesthetic.png"),
+    ("astronaut-sakura", "astronaut", "Themes/pixel_sakura.conf",
+     "Sakura (animada)", "Pétalas caindo em pixel art, em movimento.",
+     ["pixel", "animado"], "url:frame_pixel_sakura.png"),
+    ("astronaut-sakura-still", "astronaut", "Themes/pixel_sakura_static.conf",
+     "Sakura (parada)", "A mesma cena em pixel art, sem animação -- mais leve.",
+     ["pixel", "leve"], "url:pixel_sakura_static.png"),
+    ("astronaut-hacker", "astronaut",
+     "Themes/post-apocalyptic_hacker.conf", "Hacker",
+     "Terminal verde sobre ruína. Mono e sujo, do jeito certo.",
+     ["terminal", "verde"], "url:post-apocalyptic_hacker.png"),
+    ("astronaut-purple-leaves", "astronaut", "Themes/purple_leaves.conf",
+     "Folhas Roxas", "Folhagem roxa e um campo discreto embaixo.",
+     ["natureza", "roxo"], "url:purple_leaves.png"),
+
+    ("caelestia-locklike", "caelestia-locklike", "", "Caelestia Locklike",
+     "A tela de login igual ao bloqueio do caelestia: relógio enorme, "
+     "citação, avatar. É o desktop do Genesi antes de entrar nele.",
+     ["caelestia", "combina"], "url:caelestia-locklike"),
+    ("caelestia-minimalist", "caelestia-minimalist", "",
+     "Caelestia Minimalist", "A mesma família, reduzida ao relógio e ao campo.",
+     ["caelestia", "minimalista"], "url:caelestia-minimalist"),
+
+    ("silent", "silent", "configs/default.conf", "Silent",
+     "Um cartão de vidro no meio da tela. O mais bem acabado da lista.",
+     ["vidro", "moderno"], "tar:docs/previews/default.png"),
+    ("silent-left", "silent", "configs/default-left.conf", "Silent (esquerda)",
+     "O mesmo cartão, encostado à esquerda.", ["vidro", "moderno"],
+     "tar:docs/previews/default-left.png"),
+    ("silent-right", "silent", "configs/default-right.conf",
+     "Silent (direita)", "O mesmo cartão, encostado à direita.",
+     ["vidro", "moderno"], "tar:docs/previews/default-right.png"),
+    ("silent-mocha", "silent", "configs/catppuccin-mocha.conf",
+     "Silent Catppuccin Mocha", "Catppuccin escuro, o de sempre.",
+     ["catppuccin", "escuro"], "tar:docs/previews/catppuccin-mocha.png"),
+    ("silent-macchiato", "silent", "configs/catppuccin-macchiato.conf",
+     "Silent Catppuccin Macchiato", "Catppuccin um tom acima do mocha.",
+     ["catppuccin", "escuro"], "tar:docs/previews/catppuccin-macchiato.png"),
+    ("silent-frappe", "silent", "configs/catppuccin-frappe.conf",
+     "Silent Catppuccin Frappé", "Catppuccin morno.", ["catppuccin"],
+     "tar:docs/previews/catppuccin-frappe.png"),
+    ("silent-latte", "silent", "configs/catppuccin-latte.conf",
+     "Silent Catppuccin Latte", "Catppuccin claro, para quem usa tema claro.",
+     ["catppuccin", "claro"], "tar:docs/previews/catppuccin-latte.png"),
+    ("silent-everforest", "silent", "configs/everforest.conf",
+     "Silent Everforest", "Verde de floresta, que é a cor da casa.",
+     ["everforest", "verde"], "tar:docs/previews/everforest.png"),
+    ("silent-nord", "silent", "configs/nord.conf", "Silent Nord",
+     "Azul frio do Nord.", ["nord", "azul"], "tar:docs/previews/nord.png"),
+    ("silent-ken", "silent", "configs/ken.conf", "Silent Ken",
+     "Com vídeo de fundo. Bonito, e o mais pesado da prateleira.",
+     ["vídeo", "animado"], "tar:docs/previews/ken.png"),
+    ("silent-rei", "silent", "configs/rei.conf", "Silent Rei",
+     "Também com vídeo de fundo.", ["vídeo", "animado", "anime"],
+     "tar:docs/previews/rei.png"),
+
+    ("echo", "echo", "", "Echo",
+     "Um terminal do macOS com o log de boot correndo dentro. "
+     "Você digita a senha no prompt.", ["terminal", "mono"],
+     "tar:assets/screenshots/Screenshot_1.png"),
+    ("pixie", "pixie", "", "Pixie",
+     "Material You: relógio empilhado, cantos macios, cor de Pixel.",
+     ["material", "limpo"], "tar:screenshots/login_screen.png"),
+
+    ("whereis", "whereis", "theme.conf", "Cadê meu tema?",
+     "Fundo preto e a senha em letras gigantes. Nada mais na tela.",
+     ["minimalista", "rápido"], "tar:screenshots/classic.png"),
+    ("whereis-blue", "whereis", "example_configs/blue.conf",
+     "Cadê meu tema? (azul)", "O mesmo nada, em azul.",
+     ["minimalista", "azul"], "tar:screenshots/blue.png"),
+    ("whereis-grey", "whereis", "example_configs/grey.conf",
+     "Cadê meu tema? (cinza)", "O mesmo nada, em cinza.",
+     ["minimalista"], "tar:screenshots/grey.png"),
+    ("whereis-nord", "whereis", "example_configs/nord.conf",
+     "Cadê meu tema? (nord)", "O mesmo nada, com a paleta Nord.",
+     ["minimalista", "nord"], "tar:screenshots/nord.png"),
+    ("whereis-rose", "whereis", "example_configs/rose-pine-moon.conf",
+     "Cadê meu tema? (rosé pine)", "O mesmo nada, em rosé pine moon.",
+     ["minimalista", "rosa"], "tar:screenshots/rose-pine-moon.png"),
+    ("whereis-tree", "whereis", "example_configs/tree.conf",
+     "Cadê meu tema? (árvore)", "Com uma foto atrás, para provar que dá.",
+     ["minimalista", "foto"], "tar:screenshots/tree.png"),
+]
+
+# The pictures that are not in the repository itself. The astronaut previews
+# live in the author's screenshots repository; the two caelestia ones are the
+# images from its README.
+GREETER_PICTURES = {
+    "caelestia-locklike":
+        "https://github.com/user-attachments/assets/"
+        "ef2c973d-c723-4a71-b535-04951a2c3130",
+    "caelestia-minimalist":
+        "https://github.com/user-attachments/assets/"
+        "02207bd5-fa7b-4312-9ff2-583f57fc5f18",
+}
+ASTRONAUT_SHOTS = ("https://raw.githubusercontent.com/Keyitdev/screenshots/"
+                   "master/sddm-astronaut-theme/master/")
+
+# Which greeter comes out of which archive: three of them share two downloads.
+REPO_OF = {key: repo for key, repo, _, _, _, _ in GREETERS}
+
+_ARCHIVES = {}
+
+
+def greeter_archive(repo_key):
+    """The tarball, downloaded once however many themes come out of it."""
+    if repo_key not in _ARCHIVES:
+        repo, ref = GREETER_REPOS[repo_key]
+        url = "https://codeload.github.com/%s/tar.gz/%s" % (repo, ref)
+        print("  fetching %s" % url)
+        data = get(url, binary=True)
+        if not data.startswith(b"\x1f\x8b"):
+            raise SystemExit("%s did not answer with a gzip archive" % url)
+        _ARCHIVES[repo_key] = (url, data)
+    return _ARCHIVES[repo_key]
+
+
+def archive_root(repo_key):
+    repo, ref = GREETER_REPOS[repo_key]
+    return "%s-%s" % (repo.split("/")[1], ref)
+
+
+def greeter_members(repo_key):
+    import tarfile
+    _, data = greeter_archive(repo_key)
+    return tarfile.open(fileobj=io.BytesIO(data), mode="r:gz")
+
+
+def tree_digest_of(repo_key, subpath):
+    """The same digest genesi-store-helper computes after it unpacks.
+
+    Every regular file under the subtree, by relative path in sorted order,
+    path then bytes. Not the archive's checksum: see the note at the top of
+    this section, and ci/store-test.py, which runs this function and the
+    helper's over the same tree and fails if they ever disagree.
+    """
+    prefix = "/".join(x for x in (archive_root(repo_key), subpath) if x)
+    files = {}
+    with greeter_members(repo_key) as tar:
+        for member in tar:
+            if not member.isfile():
+                continue
+            name = member.name
+            if name != prefix and not name.startswith(prefix + "/"):
+                continue
+            rel = name[len(prefix):].lstrip("/")
+            files[rel] = tar.extractfile(member).read()
+    if not files:
+        raise SystemExit("nothing under %s in the %s archive"
+                         % (prefix, repo_key))
+    digest = hashlib.sha256()
+    for rel in sorted(files):
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(files[rel])
+        digest.update(b"\0")
+    return digest.hexdigest(), files
+
+
+def greeter_needs(files):
+    """What this theme's own QML says it cannot run without."""
+    needs = set()
+    for rel, blob in files.items():
+        if not rel.endswith(".qml"):
+            continue
+        text = blob.decode("utf-8", "replace")
+        for line in text.splitlines():
+            line = line.strip()
+            if not line.startswith("import "):
+                continue
+            module = line.split()[1]
+            for bad in QT5_ONLY:
+                if module == bad or module.startswith(bad + "."):
+                    raise SystemExit(
+                        "%s imports %s, which is Qt5 only -- on Genesi that "
+                        "theme is a black screen at boot" % (rel, module))
+            for known, package in MODULE_PACKAGES.items():
+                if module == known or module.startswith(known + "."):
+                    if package:
+                        needs.add(package)
+                    break
+    if any(rel.endswith(".svg") for rel in files):
+        needs.add("qt6-svg")
+    return sorted(needs)
+
+
+def greeter_confs(files):
+    return sorted(rel for rel in files if rel.endswith(".conf"))
+
+
+def greeter_picture(item_id, key, where):
+    """480px of JPEG, shipped, so the shelf is a shelf of pictures.
+
+    A `tar:` path is relative to the root of the downloaded archive, not to
+    the theme's own subdirectory: the nice screenshots usually live beside the
+    themes rather than inside them.
+    """
+    kind, _, rest = where.partition(":")
+    if kind == "url":
+        url = GREETER_PICTURES.get(rest) or (ASTRONAUT_SHOTS + rest)
+        data = get(url, binary=True)
+    else:
+        repo_key = REPO_OF[key]
+        want = "%s/%s" % (archive_root(repo_key), rest)
+        found = None
+        with greeter_members(repo_key) as tar:
+            for member in tar:
+                if member.isfile() and member.name == want:
+                    found = tar.extractfile(member).read()
+                    break
+        if found is None:
+            raise SystemExit("the %s archive has no %s" % (repo_key, rest))
+        data = found
+    return thumbnail("greeter-" + item_id, data, item_id)
+
+
+def greeters():
+    """The greeters map and the cards that point into it."""
+    specs = {}
+    trees = {}
+    for key, repo_key, subpath, install_as, author, licence in GREETERS:
+        digest, files = tree_digest_of(repo_key, subpath)
+        trees[key] = files
+        repo, ref = GREETER_REPOS[repo_key]
+        url, data = greeter_archive(repo_key)
+        meta = files.get("metadata.desktop", b"").decode("utf-8", "replace")
+        if "QtVersion=6" not in meta.replace(" ", ""):
+            raise SystemExit("%s does not say QtVersion=6, so it is a Qt5 "
+                             "theme and would not come up" % key)
+        specs[key] = {
+            "name": repo.split("/")[1],
+            "source": "https://github.com/%s/tree/%s" % (repo, ref),
+            "author": author,
+            "license": licence,
+            "url": url,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "bytes": len(data),
+            "subpath": "/".join(x for x in (archive_root(repo_key), subpath) if x),
+            "tree": digest,
+            "install_as": install_as,
+            "needs": greeter_needs(files),
+            "confs": greeter_confs(files),
+        }
+
+    out = []
+    for (ident, key, conf, name, blurb, tags, picture) in GREETER_ITEMS:
+        spec = specs[key]
+        if conf and conf not in spec["confs"]:
+            raise SystemExit("%s asks for %s, which %s does not have"
+                             % (ident, conf, key))
+        action = {"action": "greeter", "key": key}
+        if conf:
+            action["conf"] = conf
+        out.append({
+            "id": "login-" + ident,
+            "section": "lockscreens",
+            "name": name,
+            "blurb": blurb,
+            "family": "login",
+            "author": spec["author"],
+            "license": spec["license"],
+            "source": spec["source"],
+            "tags": ["login", "antes da sessão"] + tags,
+            "needs_root": True,
+            "download": spec["bytes"],
+            "preview": {"kind": "login", "theme": key,
+                        "thumb": greeter_picture(ident, key, picture)},
+            "actions": [action],
+        })
+    return specs, out
 
 
 if __name__ == "__main__":

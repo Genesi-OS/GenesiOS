@@ -61,6 +61,26 @@ def read(path):
         return fh.read()
 
 
+def read_bytes(path):
+    with io.open(path, "rb") as fh:
+        return fh.read()
+
+
+def load(path, name):
+    """Import one of the store's scripts, extension or not, and run it here.
+
+    Reading a guard and agreeing with it is not the same as watching it
+    refuse, and the two files this imports -- the helper and the catalogue
+    builder -- are the ones where being wrong costs somebody a login.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_loader(
+        name, importlib.machinery.SourceFileLoader(name, path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 # ── Half one: the catalogue ────────────────────────────────────────────────
 print("== the catalogue ==")
 
@@ -171,6 +191,225 @@ ck("the components directory has the card, the rail and the leaf",
    and {"ItemCard.qml", "RailButton.qml", "Leaf.qml"} <= set(os.listdir(components)))
 
 
+
+# ── Half three: the downloaded login screens ───────────────────────────────
+#
+# These are the riskiest thing in the store by a wide margin. A wallpaper that
+# fails leaves a grey rectangle; a greeter that fails leaves a machine whose
+# only way in is Ctrl+Alt+F2, and it fails at boot, after the person has
+# already picked it and gone to bed. So the catalogue's claims are checked
+# here, and the helper's guards are RUN.
+print()
+print("== the downloaded login screens ==")
+
+greeters = data.get("greeters") or {}
+asked_keys = {a.get("key") for i in items for a in i.get("actions", [])
+              if a.get("action") == "greeter"}
+
+ck("every card names a login screen the catalogue describes",
+   asked_keys <= set(greeters), sorted(asked_keys - set(greeters)))
+ck("every login screen described is used by a card",
+   set(greeters) <= asked_keys, sorted(set(greeters) - asked_keys))
+
+bad_greeters = []
+for key, spec in greeters.items():
+    url = spec.get("url", "")
+    host = url.split("/")[2] if url.startswith("https://") else ""
+    if not url.startswith("https://"):
+        bad_greeters.append((key, "not https"))
+    elif host not in hosts:
+        bad_greeters.append((key, "host %s" % host))
+    if not re.fullmatch(r"[0-9a-f]{64}", spec.get("sha256", "")):
+        bad_greeters.append((key, "no archive checksum"))
+    if not re.fullmatch(r"[0-9a-f]{64}", spec.get("tree", "")):
+        bad_greeters.append((key, "no content digest"))
+    if not isinstance(spec.get("bytes"), int) or spec["bytes"] <= 0:
+        bad_greeters.append((key, "no size"))
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,47}",
+                        spec.get("install_as", "")):
+        bad_greeters.append((key, "install_as %r" % spec.get("install_as")))
+    sub = spec.get("subpath", "")
+    if sub.startswith("/") or ".." in sub.split("/"):
+        bad_greeters.append((key, "subpath %r" % sub))
+ck("every login screen is https, allow-listed, checksummed and digested",
+   not bad_greeters, bad_greeters)
+
+# A greeter is pinned to a COMMIT. A branch is whatever somebody pushed this
+# morning, and this one runs as root before anybody has logged in.
+unpinned = [k for k, s in greeters.items()
+            if not re.search(r"/tar\.gz/[0-9a-f]{40}$", s.get("url", ""))]
+ck("every login screen is pinned to a commit", not unpinned, unpinned)
+
+# Same list on both sides of pkexec. A package the CLI believes it may ask for
+# and the helper does not is a card that takes a password and then fails.
+cli_installable = set(re.findall(r'"([a-z0-9-]+)"', "".join(
+    re.findall(r'^INSTALLABLE = \((.*?)\)', cli_src, re.M | re.S))))
+ck("the store and its helper allow the same packages",
+   cli_installable == allowed_pkgs,
+   sorted(cli_installable ^ allowed_pkgs))
+
+needed = {p for s in greeters.values() for p in (s.get("needs") or [])}
+ck("every module a login screen needs is one the helper installs",
+   needed <= allowed_pkgs, sorted(needed - allowed_pkgs))
+
+conf_re = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}"
+                     r"(/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$")
+bad_confs = []
+for item in items:
+    for action in item.get("actions", []):
+        if action.get("action") != "greeter":
+            continue
+        conf = action.get("conf")
+        if conf is None:
+            continue
+        spec = greeters.get(action.get("key")) or {}
+        if conf not in (spec.get("confs") or []):
+            bad_confs.append((item["id"], conf, "not one of the theme's own"))
+        elif not conf_re.match(conf):
+            bad_confs.append((item["id"], conf, "the helper would refuse it"))
+ck("every variant is one the theme itself ships", not bad_confs, bad_confs)
+
+# Every call through pkexec has to carry the long timeout. The default is two
+# minutes, which is right for asking caelestia a question and wrong for a call
+# that waits on a person reading a password dialog and then on pacman fetching
+# a Qt module. A timeout there does not stop the work -- it makes the store
+# report a failure while the install carries on without it.
+# Per FUNCTION, not per call: act_greeter builds its argv in a variable and
+# passes `run(argv, ...)`, so a check that only looked for the literal
+# `run(["pkexec"` would have missed the one call that can take longest.
+hasty = []
+for chunk in re.split(r"^def ", cli_src, flags=re.M)[1:]:
+    name = chunk.split("(")[0]
+    if '"pkexec"' not in chunk:
+        continue
+    if "PKEXEC_TIMEOUT" not in chunk:
+        hasty.append(name)
+ck("every call through pkexec waits as long as a password takes",
+   not hasty, hasty)
+ck("...and that wait is longer than the ordinary one",
+   int(re.search(r"^PKEXEC_TIMEOUT = (\d+)", cli_src, re.M).group(1)) >= 900)
+
+
+# A card that needs root has to SAY so, because the one thing a person should
+# never meet unannounced is a password prompt.
+quiet = [i["id"] for i in items
+         if any(a.get("action") in ("greeter", "login")
+                for a in i.get("actions", []))
+         and not i.get("needs_root")]
+ck("every login card says it needs root", not quiet, quiet)
+
+# And it has to have a picture, because the whole point of a shelf of login
+# screens is seeing them before you are looking at one.
+blind = [i["id"] for i in items
+         if any(a.get("action") == "greeter" for a in i.get("actions", []))
+         and not (i.get("preview") or {}).get("thumb")]
+ck("every downloaded login screen has a preview", not blind, blind)
+
+thumbs = os.path.join(PKG, "catalog", "thumbs")
+absent = sorted({(i.get("preview") or {}).get("thumb") for i in items
+                 if (i.get("preview") or {}).get("thumb")}
+                - set(os.listdir(thumbs) if os.path.isdir(thumbs) else []))
+ck("every preview the catalogue names is shipped", not absent, absent)
+
+
+# ── ...and the helper's guards, run ────────────────────────────────────────
+#
+# The helper is imported and its unpacker driven over tarballs built here.
+# Reading the code and agreeing with it is not the same as watching it refuse.
+
+helper = load(HELPER, "genesi_store_helper")
+
+
+def tarball(entries, path):
+    """entries: list of (name, bytes) or (name, tarfile.TarInfo-mutator)."""
+    import tarfile as tf
+    with tf.open(path, "w:gz") as tar:
+        for name, payload in entries:
+            if callable(payload):
+                tar.addfile(payload(tf.TarInfo(name)))
+                continue
+            info = tf.TarInfo(name)
+            info.size = len(payload)
+            tar.addfile(info, io.BytesIO(payload))
+    return path
+
+
+def refuses(fn, *args):
+    try:
+        fn(*args)
+    except SystemExit:
+        return True
+    return False
+
+
+work = tempfile.mkdtemp(prefix="genesi-greeter-")
+try:
+    plain = tarball([("t/Main.qml", b"import QtQuick\nItem {}\n"),
+                     ("t/metadata.desktop", b"[SddmGreeterTheme]\nQtVersion=6\n"),
+                     ("t/assets/bg.png", b"\x89PNG not really"),
+                     ("elsewhere/ignored", b"x")],
+                    os.path.join(work, "plain.tar.gz"))
+
+    out = os.path.join(work, "out")
+    os.makedirs(out)
+    helper.unpack(plain, "t", out)
+    ck("the helper unpacks only the subtree it was told to",
+       sorted(os.listdir(out)) == ["Main.qml", "assets", "metadata.desktop"],
+       sorted(os.listdir(out)))
+
+    # THE check that matters: the digest recorded at build time and the digest
+    # computed by root after extraction have to be the same function. They are
+    # written twice, in two files, in two languages of comment -- so they are
+    # compared here over a real tree rather than trusted to stay in step.
+    sys.path.insert(0, PKG)
+    builder = load(os.path.join(PKG, "build-catalog.py"), "genesi_build_catalog")
+    sys.path.pop(0)
+    builder._ARCHIVES["fake"] = ("file://local", read_bytes(plain))
+    builder.GREETER_REPOS["fake"] = ("x/t", "0" * 40)
+    builder.archive_root = lambda key: "t"
+    by_build, _ = builder.tree_digest_of("fake", "")
+    by_helper = helper.tree_digest(out)
+    ck("the build and the helper compute the same content digest",
+       by_build == by_helper, (by_build[:16], by_helper[:16]))
+
+    # A file changed after the catalogue was built must not match.
+    with io.open(os.path.join(out, "Main.qml"), "a", encoding="utf-8") as fh:
+        fh.write("// one more line\n")
+    ck("one altered byte changes the digest",
+       helper.tree_digest(out) != by_helper)
+
+    # Paths that climb out, and entries that are not plain files. Both are how
+    # an archive turns an unpacker running as root into something else.
+    climbing = tarball([("t/../../etc/passwd", b"root:x:0:0")],
+                       os.path.join(work, "climb.tar.gz"))
+    ck("the helper refuses a path that climbs out of the archive",
+       refuses(helper.unpack, climbing, "t", os.path.join(work, "c")))
+
+    def as_symlink(info):
+        info.type = __import__("tarfile").SYMTYPE
+        info.linkname = "/etc/shadow"
+        return info
+
+    linked = tarball([("t/Main.qml", b"x"), ("t/evil", as_symlink)],
+                     os.path.join(work, "link.tar.gz"))
+    ck("the helper refuses a symlink",
+       refuses(helper.unpack, linked, "t", os.path.join(work, "l")))
+
+    # An archive that holds nothing under the subtree the catalogue named.
+    ck("the helper refuses an archive missing the theme",
+       refuses(helper.unpack, plain, "nothing-here", os.path.join(work, "n")))
+
+    # The variant line, which is the one thing the helper edits inside a theme.
+    helper.set_config_file(out, "metadata.desktop")
+    meta = read(os.path.join(out, "metadata.desktop"))
+    ck("the helper writes exactly one ConfigFile line",
+       meta.count("ConfigFile=") == 1, meta.strip().splitlines())
+    ck("the helper refuses a variant the theme does not have",
+       refuses(helper.set_config_file, out, "no-such.conf"))
+finally:
+    shutil.rmtree(work, ignore_errors=True)
+
+
 # ── Half two: apply and revert, for real ───────────────────────────────────
 #
 # In-process, not through the shell. The store's job here is not "did it call
@@ -208,7 +447,7 @@ ANSWERS = {
 }
 
 
-def fake_run(argv, check=True):
+def fake_run(argv, check=True, timeout=None):
     calls.append(list(argv))
     for prefix, answer in ANSWERS.items():
         if tuple(argv[:len(prefix)]) == prefix:
@@ -217,7 +456,7 @@ def fake_run(argv, check=True):
 
 
 store.run = fake_run
-cat = store.load_catalog()
+cat = store.CATALOG = store.load_catalog()
 
 
 def fresh_state():
@@ -279,7 +518,8 @@ calls.clear()
 state = fresh_state()
 store.shutil.which = lambda name: None          # nothing installed
 pkexec = []
-store.run = lambda argv, check=True: (pkexec.append(list(argv)) or (0, ""))
+store.run = lambda argv, check=True, timeout=None: (
+    pkexec.append(list(argv)) or (0, ""))
 store.helper_path = lambda: "/usr/lib/genesi-store/genesi-store-helper"
 store.do_apply(cat, "lock-night", state)
 ck("a session lock installs the locker first, under pkexec",
@@ -289,6 +529,43 @@ ck("...and then writes hyprlock's own config",
    os.path.exists(os.path.join(os.environ["XDG_CONFIG_HOME"], "hypr",
                                "hyprlock.conf")))
 store.run = fake_run
+
+# A downloaded login screen: what it asks root for, and in what order.
+# Nothing is fetched -- the archive is faked into place -- because what is
+# being checked is the CONVERSATION with the helper, which is the part that
+# decides whether a person can log in tomorrow.
+state = fresh_state()
+key = sorted(cat["greeters"])[0]
+card = next(i["id"] for i in cat["items"]
+            if any(a.get("action") == "greeter" and a.get("key") == key
+                   for a in i.get("actions", [])))
+conf = next(a.get("conf") for i in cat["items"] if i["id"] == card
+            for a in i["actions"] if a.get("action") == "greeter")
+archive = store.greeter_archive(key)
+os.makedirs(os.path.dirname(archive), exist_ok=True)
+io.open(archive, "wb").write(b"pretend this is the tarball")
+
+calls[:] = []
+undo = store.do_apply(cat, card, state)
+expected = ["pkexec", store.helper_path(), "greeter", key] + ([conf] if conf else [])
+ck("a downloaded login screen goes through the helper, by key",
+   calls and calls[-1] == expected, calls[-1:])
+ck("...and reverting puts the system's own screen back",
+   undo == [{"action": "login", "theme": "breeze"}], undo)
+
+# The key is a key. An item that tried to smuggle a path or a name that is not
+# in the map has to be refused before anybody types a password.
+try:
+    store.act_greeter({"id": "x"}, {"key": "../../etc"}, {})
+    ck("a login screen key that is not a key is refused", False, "it was allowed")
+except SystemExit:
+    ck("a login screen key that is not a key is refused", True)
+try:
+    store.act_greeter({"id": "x"}, {"key": key, "conf": "/etc/shadow"}, {})
+    ck("a variant the theme does not have is refused", False, "it was allowed")
+except SystemExit:
+    ck("a variant the theme does not have is refused", True)
+
 
 # A url the catalogue is not allowed to name.
 try:
