@@ -173,7 +173,12 @@ pkgver=0.1.0
 # clock, and sizes up to 250%.
 # 35: the desktop clock can be dropped anywhere -- position takes "free" and
 # x/y are fractions of the screen, the same shape the widgets already used.
-pkgrel=35
+# 36: the rail stops speaking Japanese. The tags down its side were borrowed
+# from the app this one was measured against; they are Genesi's own words now,
+# the desktop as something that grows -- raiz, tronco, seiva, flor, anel,
+# semente -- and the Overview's ornament is a line of ours, set on its side.
+# The CJK font hunt that existed to avoid a column of empty boxes goes too.
+pkgrel=36
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
