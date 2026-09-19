@@ -22,7 +22,9 @@ With `-O extglob`, because makepkg runs with it on and a vendored CachyOS
 PKGBUILD uses `rm -r !(test)`. Checking under stricter rules than the real
 build uses would fail a file that works.
 """
+import io
 import os
+import re
 import subprocess
 import sys
 
@@ -49,6 +51,38 @@ for path in targets:
     if r.returncode != 0:
         bad.append((os.path.relpath(path, ROOT), r.stderr.strip()))
 
+# ── ...and a source=() entry is a FILENAME, never a path ───────────────────
+#
+# makepkg strips the directory from every source entry: given
+# "catalog/catalog.json" it looks for `catalog.json` in the build directory,
+# does not find it, and stops with "catalog.json was not found in the build
+# directory and is not a URL". That is how genesi-store failed its first
+# build, thirty-three minutes in, after everything before it had been built.
+#
+# A local file in a subdirectory is installed from ${startdir} in package()
+# instead, which is what every other Genesi package does.
+SOURCE_BLOCK = re.compile(r"^source=\((.*?)\)\s*$", re.M | re.S)
+QUOTED = re.compile(r"""['"]([^'"]+)['"]""")
+
+slashed = []
+for path in targets:
+    if os.path.basename(path) != "PKGBUILD":
+        continue
+    text = io.open(path, encoding="utf-8", errors="replace").read()
+    block = SOURCE_BLOCK.search(text)
+    if not block:
+        continue
+    for entry in QUOTED.findall(block.group(1)):
+        # A url has a scheme, `name::url` renames one, and `$url/archive/...`
+        # is a url whose scheme is inside the variable -- all three are
+        # downloads, and makepkg is happy with a path in a download. What
+        # cannot work is a LOCAL file named with a directory, which is a
+        # literal string with a slash and no variable in it.
+        if "://" in entry or "::" in entry or "$" in entry:
+            continue
+        if "/" in entry:
+            slashed.append((os.path.relpath(path, ROOT), entry))
+
 print(f"== bash -n over {len(targets)} PKGBUILD/.install file(s) ==")
 if bad:
     print(f"\n{len(bad)} do(es) not parse:")
@@ -64,4 +98,18 @@ if bad:
     sys.exit(1)
 
 print("  PASS  every one of them parses")
+
+if slashed:
+    print(f"\n{len(slashed)} source entry/entries name a path:")
+    for rel, entry in slashed:
+        print(f"  FAIL {rel}: source=(... \"{entry}\" ...)")
+    print()
+    print("        makepkg takes the FILENAME out of a source entry and looks")
+    print("        for it in the build directory, so a path never resolves:")
+    print("        the build stops with \"<file> was not found in the build")
+    print("        directory and is not a URL\". Install it from ${startdir}")
+    print("        in package() instead, the way genesi-center does.")
+    sys.exit(1)
+
+print(f"  PASS  no source entry names a path")
 print("\npkgbuild syntax: OK")

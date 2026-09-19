@@ -153,6 +153,24 @@ empty = [s for s in sections
 ck("no shelf is empty except the two that are meant to be", not empty, empty)
 
 
+# Every file the PKGBUILD installs has to BE there. makepkg discovers this
+# thirty minutes into a run, after everything before it has been built, and
+# says only that a file was not found -- so it is answered here, in a second,
+# against the same paths package() names.
+missing = []
+for match in re.findall(r'\$\{startdir\}/([A-Za-z0-9_./-]+)', read(os.path.join(PKG, "PKGBUILD"))):
+    if "*" in match:
+        continue
+    if not os.path.exists(os.path.join(PKG, match)):
+        missing.append(match)
+ck("every file the PKGBUILD installs exists", not missing, missing)
+
+components = os.path.join(PKG, "app", "components")
+ck("the components directory has the card, the rail and the leaf",
+   os.path.isdir(components)
+   and {"ItemCard.qml", "RailButton.qml", "Leaf.qml"} <= set(os.listdir(components)))
+
+
 # ── Half two: apply and revert, for real ───────────────────────────────────
 #
 # In-process, not through the shell. The store's job here is not "did it call

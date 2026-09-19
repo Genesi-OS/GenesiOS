@@ -41,6 +41,16 @@
 # SHA-256 it served at build time: build-catalog.py downloads each one to get
 # them, and the store refuses a file that no longer matches. A dead link is a
 # failed build here rather than a broken card on somebody's desktop.
+#
+# ── Why source=() is empty ──────────────────────────────────────────────────
+#
+# Everything is installed from ${startdir}, the way genesi-center does it.
+# makepkg's source=() takes FILENAMES, not paths: given "catalog/catalog.json"
+# it looks for a file called catalog.json in the build directory, does not
+# find one, and stops with "catalog.json was not found in the build directory
+# and is not a URL" -- which is exactly how this package failed its first
+# build. ci/pkgbuild-syntax-test.py now refuses a source entry with a slash in
+# it, so the next person meets the rule instead of the error.
 pkgname=genesi-store
 pkgver=0.1.0
 pkgrel=1
@@ -59,68 +69,81 @@ optdepends=(
     'fastfetch: the terminal greeting the Fastfetch shelf configures'
     'ttf-material-symbols-variable: the icons on the rail'
 )
-source=("genesi-store"
-        "genesi-store-helper"
-        "build-catalog.py"
-        "catalog/catalog.json"
-        "org.genesi.store.desktop"
-        "org.genesi.store.policy"
-        "app/Main.qml"
-        "app/Tokens.qml"
-        "app/qmldir"
-        "app/genesi_store_app.py"
-        "app/components/Chip.qml"
-        "app/components/Glyph.qml"
-        "app/components/ItemCard.qml"
-        "app/components/Leaf.qml"
-        "app/components/RailButton.qml")
-sha256sums=('SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP')
+source=()
+sha256sums=()
+
+check() {
+    # The two halves that run as scripts. A syntax error in either is a store
+    # that opens and can do nothing, or a helper that fails under pkexec after
+    # the password has been typed.
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-store',encoding='utf-8').read())"
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-store-helper',encoding='utf-8').read())"
+    python -c "import ast,io;ast.parse(io.open('${startdir}/app/genesi_store_app.py',encoding='utf-8').read())"
+
+    # ...and the catalogue, which is the thing this package actually ships.
+    # Parsing is not enough: an item whose action the CLI does not implement
+    # is a card that fails when somebody presses it, so the shelves, the ids
+    # and the vocabulary are checked here, at build time, against the CLI in
+    # this same directory.
+    python - "${startdir}" <<'CHECKCATALOG'
+import io, json, re, sys
+root = sys.argv[1]
+catalog = json.load(io.open(root + "/catalog/catalog.json", encoding="utf-8"))
+cli = io.open(root + "/genesi-store", encoding="utf-8").read()
+vocab = set(re.findall(r'^\s+"(\w+)": act_\w+,', cli, re.M))
+sections = {s["id"] for s in catalog["sections"]}
+items = catalog["items"]
+if len(items) < 40:
+    raise SystemExit("the catalogue has only %d items" % len(items))
+seen = set()
+for item in items:
+    if item["id"] in seen:
+        raise SystemExit("repeated id: " + item["id"])
+    seen.add(item["id"])
+    if item["section"] not in sections:
+        raise SystemExit("%s is on a shelf that does not exist" % item["id"])
+    for action in item.get("actions", []):
+        if action["action"] not in vocab:
+            raise SystemExit("%s asks for %r, which genesi-store cannot do"
+                             % (item["id"], action["action"]))
+print("catalogue: %d items, %d shelves, every action implemented"
+      % (len(items), len(sections)))
+CHECKCATALOG
+}
 
 package() {
-    cd "${srcdir}"
-
     # The one command. With arguments it is the data plane; with none it opens
     # the window, because that is what a person means when they type it.
-    install -Dm755 genesi-store "${pkgdir}/usr/bin/genesi-store"
+    install -Dm755 "${startdir}/genesi-store" "${pkgdir}/usr/bin/genesi-store"
 
     # The privileged half, deliberately NOT on PATH: it is started by pkexec
     # from the store and by nothing else.
-    install -Dm755 genesi-store-helper \
+    install -Dm755 "${startdir}/genesi-store-helper" \
         "${pkgdir}/usr/lib/genesi-store/genesi-store-helper"
-    install -Dm644 org.genesi.store.policy \
+    install -Dm644 "${startdir}/org.genesi.store.policy" \
         "${pkgdir}/usr/share/polkit-1/actions/org.genesi.store.policy"
 
     # The catalogue, and the script that built it -- shipped so the provenance
     # of every link travels with the data.
-    install -Dm644 catalog/catalog.json \
+    install -Dm644 "${startdir}/catalog/catalog.json" \
         "${pkgdir}/usr/share/genesi-store/catalog.json"
-    install -Dm644 build-catalog.py \
+    install -Dm644 "${startdir}/build-catalog.py" \
         "${pkgdir}/usr/share/genesi-store/build-catalog.py"
 
     # The window.
-    install -Dm755 app/genesi_store_app.py \
+    install -Dm755 "${startdir}/app/genesi_store_app.py" \
         "${pkgdir}/usr/share/genesi-store/app/genesi_store_app.py"
-    for f in app/Main.qml app/Tokens.qml app/qmldir; do
-        install -Dm644 "$f" "${pkgdir}/usr/share/genesi-store/${f}"
-    done
-    for f in app/components/*.qml; do
-        install -Dm644 "$f" "${pkgdir}/usr/share/genesi-store/${f}"
+    install -Dm644 "${startdir}/app/Main.qml" \
+        "${pkgdir}/usr/share/genesi-store/app/Main.qml"
+    install -Dm644 "${startdir}/app/Tokens.qml" \
+        "${pkgdir}/usr/share/genesi-store/app/Tokens.qml"
+    install -Dm644 "${startdir}/app/qmldir" \
+        "${pkgdir}/usr/share/genesi-store/app/qmldir"
+    for f in "${startdir}"/app/components/*.qml; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/app/components/$(basename "$f")"
     done
 
-    install -Dm644 org.genesi.store.desktop \
+    install -Dm644 "${startdir}/org.genesi.store.desktop" \
         "${pkgdir}/usr/share/applications/org.genesi.store.desktop"
 }
