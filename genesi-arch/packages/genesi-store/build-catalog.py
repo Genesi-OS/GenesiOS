@@ -50,8 +50,14 @@ SECTIONS = [
      "blurb": "Um desktop inteiro, de uma vez."},
     {"id": "themes", "label": "Temas", "label_en": "Themes", "icon": "palette",
      "blurb": "A cor de tudo, do topo ao terminal."},
-    {"id": "lockscreens", "label": "Telas de bloqueio", "label_en": "Lockscreens",
-     "icon": "lock", "blurb": "A da sessão e a do login, que são duas."},
+    # These were one shelf, and the blurb on it said "the session one and the
+    # login one, which are two" -- a label apologising for the shelf it was
+    # on. They are two different programs, at two different moments, and only
+    # one of them can lock you out of the machine.
+    {"id": "login", "label": "Tela de login", "label_en": "Login screens",
+     "icon": "login", "blurb": "Antes de entrar: o que pede sua senha no boot."},
+    {"id": "lockscreens", "label": "Bloqueio da sessão", "label_en": "Lockscreens",
+     "icon": "lock", "blurb": "Já dentro: quando você tranca e volta."},
     {"id": "bars", "label": "Barras", "label_en": "Bar styles", "icon": "bar",
      "blurb": "Quinze arranjos da barra."},
     {"id": "fastfetch", "label": "Fastfetch", "label_en": "Fastfetch",
@@ -301,11 +307,13 @@ def build():
             "blurb": blurb,
             "author": "Genesi",
             "tags": ["barra"],
-            "preview": {"kind": "bar", "preset": preset},
+            "preview": dict({"kind": "bar", "preset": preset},
+                            **bar_shape(preset)),
             "actions": [{"action": "bar", "preset": preset}],
         })
 
-    for extra in (lockscreens(), fastfetch(), rices(previous), bundles()):
+    for extra in (lockscreens(), fastfetch(), rices(previous), bundles(),
+                  factory()):
         items.extend(extra)
 
     # The login screens that are downloaded rather than shipped. The map they
@@ -513,7 +521,7 @@ def lockscreens():
               "accent": "#8ab4d8"})):
         out.append({
             "id": "login-" + ident,
-            "section": "lockscreens",
+            "section": "login",
             "name": name,
             "blurb": blurb,
             "family": "login",
@@ -526,24 +534,156 @@ def lockscreens():
     return out
 
 
+IMAGE_BLURB = ("Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.")
+
+
 FASTFETCH_HEAD = ('{\n  "$schema": '
                   '"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",\n')
 
 
+BAR_PRESET_DIR = os.path.join(
+    os.path.dirname(HERE), "genesi-caelestia-settings", "bar-presets")
+
+
+def bar_shape(preset):
+    """What one bar preset actually looks like, read from the preset itself.
+
+    Fifteen cards drawn from one generic picture are fifteen identical cards,
+    which is what this shelf was: you could not tell the thin one from the
+    wide one, or the one with a clock at the top from the one with a logo.
+    Everything needed to tell them apart is already in the preset file --
+    which modules, in what order, how wide, how far apart, whether things sit
+    on pills -- so the picture is read from there rather than invented.
+
+    Read at BUILD time, not by the app: the app would have to go find the
+    settings package at runtime, and a card that cannot draw itself without
+    another package installed is a card that is blank on somebody's machine.
+    """
+    path = os.path.join(BAR_PRESET_DIR, preset + ".json")
+    if not os.path.exists(path):
+        raise SystemExit("the bar preset %s is not in %s" % (preset, BAR_PRESET_DIR))
+    with io.open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    bar = data.get("bar", data)
+    entries = [e.get("id") for e in (bar.get("entries") or []) if e.get("id")]
+    if not entries:
+        raise SystemExit("the bar preset %s lists no modules" % preset)
+
+    def opt(name, key):
+        block = bar.get(name)
+        return bool(isinstance(block, dict) and block.get(key))
+
+    return {
+        "entries": entries,
+        # The real numbers, so a thin bar draws thin. caelestia's own default
+        # when a preset does not say is 40 wide with 12 between things.
+        "width": bar.get("width", 40),
+        "spacing": bar.get("spacing", 12),
+        "pills": opt("clock", "background") or opt("tray", "background"),
+        "date": opt("clock", "showDate"),
+        "windows": opt("workspaces", "showWindows"),
+        "trail": opt("workspaces", "activeTrail"),
+        "compact": opt("activeWindow", "compact") or opt("tray", "compact"),
+        "hidden": bar.get("persistent") is False or bool(bar.get("showOnHover")),
+    }
+
+
+def factory():
+    """One card per shelf that puts it back the way the machine shipped.
+
+    Revert, on an item's page, undoes THAT item -- it needs to know what was
+    there before, so it only exists for something the store itself applied.
+    That is the wrong tool for "I have been clicking around for an hour and I
+    want my desktop back", which is the state somebody is actually in when
+    they go looking for this.
+
+    So these undo the CATEGORY, from whatever it is now, without needing to
+    remember how it got there. For the shelves that are a config file, factory
+    means deleting the file the store wrote: the packaged default is what gets
+    read once nothing is overriding it, which is the same thing a fresh
+    install has.
+
+    Deliberately not on Decoration: there is no single wallpaper the machine
+    ships with, so a card promising one would be making it up.
+    """
+    def card(ident, section, name, blurb, preview, actions, needs_root=False):
+        card = {
+            "id": "default-" + ident,
+            "section": section,
+            "name": name,
+            "blurb": blurb,
+            "family": "factory",
+            "author": "Genesi",
+            "tags": ["padrão", "de fábrica"],
+            "preview": preview,
+            "actions": actions,
+        }
+        # Putting the login screen back is still changing /etc, so it still
+        # asks for a password and the card still has to say so.
+        if needs_root:
+            card["needs_root"] = True
+        return card
+
+    plain = {"kind": "scheme", "colours": ["#39d98a", "#8fd6ab", "#1d2a22"],
+             "background": "#0c120f", "surface": "#16211b", "ink": "#e9f5ee"}
+
+    return [
+        card("themes", "themes", "Como vem de fábrica",
+             "A paleta que segue o seu papel de parede, que é a do Genesi novo.",
+             plain, [{"action": "scheme", "name": "dynamic"}]),
+
+        card("login", "login", "Como vem de fábrica",
+             "A tela de login do Genesi, sem nada baixado por cima.",
+             {"kind": "login", "theme": "genesi", "accent": "#39d98a"},
+             [{"action": "login", "theme": "genesi"}], needs_root=True),
+
+        # Deleting the file is the whole undo: with no hyprlock.conf of its
+        # own the machine is back to having no session lock configured, and
+        # `unlocker` stops the watcher the store started.
+        card("lockscreens", "lockscreens", "Como vem de fábrica",
+             "Tira o bloqueio que a loja configurou e para o vigia dele.",
+             {"kind": "lock", "accent": "#8fd6ab", "background": "#0c120f"},
+             [{"action": "restore", "path": "~/.config/hypr/hyprlock.conf"},
+              {"action": "unlocker"}]),
+
+        card("fastfetch", "fastfetch", "Como vem de fábrica",
+             "Volta para o cartão do Genesi que aparece ao abrir o terminal.",
+             {"kind": "terminal",
+              "lines": ["genesi@genesi", "sistema  Genesi OS",
+                        "sessão   Hyprland"]},
+             [{"action": "restore",
+               "path": "~/.config/fastfetch/config.jsonc"}]),
+
+        card("bars", "bars", "Como vem de fábrica",
+             "O arranjo de barra que vem no Genesi novo.",
+             {"kind": "bar", "background": "#0c120f", "surface": "#16211b",
+              "ink": "#e9f5ee", "accent": "#39d98a"},
+             [{"action": "bar", "preset": "10-padrao"}]),
+    ]
+
+
 def fastfetch():
     def item(ident, name, blurb, tags, body):
-        return {
+        out = {
             "id": "fetch-" + ident,
             "section": "fastfetch",
             "name": name,
             "blurb": blurb,
             "author": "Genesi",
             "tags": tags,
-            "preview": {"kind": "terminal", "lines": body["preview"]},
+            # The logo is the biggest difference between one fastfetch and the
+            # next, and the card was not drawing it at all -- so four options
+            # that look nothing alike in a terminal looked identical here.
+            "preview": {"kind": "terminal", "lines": body["preview"],
+                        "logo": body.get("logo", "full"),
+                        "keyed": body.get("keyed", True)},
             "actions": [{"action": "file",
                          "path": "~/.config/fastfetch/config.jsonc",
                          "text": body["text"]}],
         }
+        if body.get("asset"):
+            out["assets"] = {"picture": body["asset"]}
+        return out
 
     compact = FASTFETCH_HEAD + """  "logo": { "type": "small", "padding": { "top": 1, "right": 2 } },
   "display": { "separator": "  " },
@@ -603,25 +743,80 @@ def fastfetch():
   ]
 }
 """
+    # An image where the ASCII art goes. `sixel` is the protocol foot speaks --
+    # Genesi's default terminal, picked because it needs no OpenGL and so
+    # survives a VM -- and it is NOT kitty's, so a config copied from a kitty
+    # setup shows nothing here.
+    #
+    # The picture is downloaded with the card and its path is substituted in,
+    # rather than named as a fixed location: pointing at a file that may not
+    # be there prints an error where the logo should be.
+    shot_asset, _ = wallpaper_asset("dark_forest.png")
+
+    image_big = FASTFETCH_HEAD + """  "logo": {
+    "type": "sixel",
+    "source": "{{asset:picture}}",
+    "width": 34,
+    "padding": { "top": 1, "right": 3 }
+  },
+  "display": { "separator": "  ", "color": { "keys": "green" } },
+  "modules": [
+    { "type": "title", "format": "{user-name}@{host-name}" },
+    "separator",
+    { "type": "os", "key": "sistema" },
+    { "type": "kernel", "key": "kernel" },
+    { "type": "wm", "key": "sessão" },
+    { "type": "cpu", "key": "cpu" },
+    { "type": "gpu", "key": "gpu" },
+    { "type": "memory", "key": "memoria" },
+    { "type": "uptime", "key": "ligado ha" }
+  ]
+}
+"""
+
+    image_small = FASTFETCH_HEAD + """  "logo": {
+    "type": "sixel",
+    "source": "{{asset:picture}}",
+    "width": 18,
+    "padding": { "top": 1, "right": 2 }
+  },
+  "display": { "separator": "  " },
+  "modules": [
+    { "type": "title", "format": "{user-name}" },
+    { "type": "os", "format": "{name}" },
+    { "type": "wm", "format": "{name}" },
+    { "type": "uptime" }
+  ]
+}
+"""
+
     return [
         item("compact", "Compacto", "Cinco linhas e o logo pequeno.",
-             ["curto"], {"text": compact,
+             ["curto"], {"text": compact, "logo": "small",
                          "preview": ["matheus@genesi", "sistema  Genesi OS",
                                      "sessao   Hyprland", "memoria  6.2 / 16 GiB"]}),
         item("full", "Completo", "Tudo que dá para contar sobre a máquina.",
-             ["longo"], {"text": full,
+             ["longo"], {"text": full, "logo": "full",
                          "preview": ["sistema  Genesi OS x86_64",
                                      "cpu      Ryzen 7 / 16 threads",
                                      "gpu      RTX 3050", "disco    712 / 954 GiB"]}),
         item("bare", "Sem logo", "Só texto, para quem abre muitos terminais.",
-             ["minimalista"], {"text": bare,
+             ["minimalista"], {"text": bare, "logo": "none", "keyed": False,
                                "preview": ["  genesi", "  Genesi OS",
                                            "  6.14.2", "  1d 3h"]}),
         item("green", "Verde", "As cores da casa no prompt.",
-             ["verde"], {"text": green,
+             ["verde"], {"text": green, "logo": "full",
                          "preview": ["matheus em genesi",
                                      "-----------------------------",
                                      "sistema  Genesi OS", "sessao   Hyprland"]}),
+        item("image", "Com imagem", IMAGE_BLURB, ["imagem", "sixel"],
+             {"text": image_big, "logo": "image", "asset": shot_asset,
+              "preview": ["sistema  Genesi OS", "sessão   Hyprland",
+                          "cpu      Ryzen 7", "memoria  6.2 / 16 GiB"]}),
+        item("image-small", "Com imagem (pequena)", IMAGE_BLURB,
+             ["imagem", "sixel", "curto"],
+             {"text": image_small, "logo": "image", "asset": shot_asset,
+              "preview": ["genesi", "Genesi OS", "Hyprland", "1d 3h"]}),
     ]
 
 
@@ -1104,7 +1299,7 @@ def greeters():
             action["conf"] = conf
         out.append({
             "id": "login-" + ident,
-            "section": "lockscreens",
+            "section": "login",
             "name": name,
             "blurb": blurb,
             "family": "login",

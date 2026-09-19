@@ -351,6 +351,50 @@ absent = sorted({(i.get("preview") or {}).get("thumb") for i in items
 ck("every preview the catalogue names is shipped", not absent, absent)
 
 
+# A config that names a downloaded file writes {{asset:name}} and the store
+# substitutes the real path. An item that asks for an asset it does not
+# declare would write that placeholder into somebody's config verbatim --
+# fastfetch would then look for a file called "{{asset:picture}}".
+placeheld = []
+for item in items:
+    have = set((item.get("assets") or {}).keys())
+    for action in item.get("actions", []):
+        for want in re.findall(r"\{\{asset:([A-Za-z0-9_-]+)\}\}",
+                               action.get("text") or ""):
+            if want not in have:
+                placeheld.append((item["id"], want))
+ck("every {{asset}} an item writes is one it actually carries",
+   not placeheld, placeheld)
+
+
+# ── Somebody has to READ what the store writes ─────────────────────────────
+#
+# Twice now a shelf has shipped that applied perfectly and changed nothing:
+# the lock screens wrote a config for a program nobody started, and the
+# fastfetch cards wrote ~/.config/fastfetch/config.jsonc while both terminal
+# greetings ran `fastfetch --config /usr/share/...`, which never looks there.
+# Writing the file is the easy half. Being read is the half that shows.
+fetch_targets = {a.get("path") for i in items for a in i.get("actions", [])
+                 if a.get("action") == "file"
+                 and "fastfetch" in (a.get("path") or "")}
+ck("the fastfetch shelf writes one path", len(fetch_targets) == 1, fetch_targets)
+
+greetings = [os.path.join(ROOT, "genesi-arch", "packages", "genesi-fastfetch", n)
+             for n in ("genesi-fastfetch.fish", "genesi-greeting.sh")]
+target_tail = "fastfetch/config.jsonc"
+unread = [os.path.basename(g) for g in greetings
+          if not os.path.exists(g) or target_tail not in read(g)]
+ck("...and the terminal greeting actually reads it", not unread, unread)
+
+# The packaged default has to stay reachable too, for the machine where
+# nobody has ever opened the store.
+no_fallback = [os.path.basename(g) for g in greetings
+               if os.path.exists(g)
+               and "/usr/share/genesi/fastfetch/genesi.jsonc" not in read(g)]
+ck("...and still falls back to the one the package ships",
+   not no_fallback, no_fallback)
+
+
 # ── A lock screen has to be reachable, not merely written ──────────────────
 #
 # This shelf shipped broken and nothing caught it, because every part of it

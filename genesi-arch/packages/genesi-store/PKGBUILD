@@ -134,7 +134,17 @@ pkgver=0.1.0
 # service that runs it. Also: the detail sheet shows the fetched
 # screenshot (it was drawing the generic one), and a login card shows the
 # archive's size instead of "0 KB".
-pkgrel=5
+#
+# pkgrel 6: the login screens and the session locks are two shelves now --
+# they are two programs at two moments, and only one can lock you out of the
+# machine. Every shelf gains a "Como vem de fábrica" card, because Revert
+# undoes one item and the person looking for this has been clicking for an
+# hour. The bar cards are drawn from each preset's own module list, so the
+# thin one is thin and the one with the clock on top has the clock on top --
+# fifteen cards from one generic picture were fifteen identical cards. Same
+# for fastfetch, which now draws its logo, plus two options that put a real
+# picture there in sixel.
+pkgrel=6
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

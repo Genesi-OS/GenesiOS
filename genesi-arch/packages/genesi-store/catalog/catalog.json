@@ -24,11 +24,18 @@
    "blurb": "A cor de tudo, do topo ao terminal."
   },
   {
+   "id": "login",
+   "label": "Tela de login",
+   "label_en": "Login screens",
+   "icon": "login",
+   "blurb": "Antes de entrar: o que pede sua senha no boot."
+  },
+  {
    "id": "lockscreens",
-   "label": "Telas de bloqueio",
+   "label": "Bloqueio da sessão",
    "label_en": "Lockscreens",
    "icon": "lock",
-   "blurb": "A da sessão e a do login, que são duas."
+   "blurb": "Já dentro: quando você tranca e volta."
   },
   {
    "id": "bars",
@@ -1660,7 +1667,26 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "10-padrao"
+    "preset": "10-padrao",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "activeWindow",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 40,
+    "spacing": 12,
+    "pills": false,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1680,7 +1706,26 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "15-borda"
+    "preset": "15-borda",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "activeWindow",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 40,
+    "spacing": 10,
+    "pills": false,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1700,7 +1745,25 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "20-centrado"
+    "preset": "20-centrado",
+    "entries": [
+     "logo",
+     "spacer",
+     "workspaces",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 40,
+    "spacing": 12,
+    "pills": false,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1720,7 +1783,21 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "25-fio"
+    "preset": "25-fio",
+    "entries": [
+     "spacer",
+     "workspaces",
+     "spacer",
+     "clock"
+    ],
+    "width": 26,
+    "spacing": 6,
+    "pills": false,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1740,7 +1817,24 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "30-ilha"
+    "preset": "30-ilha",
+    "entries": [
+     "logo",
+     "spacer",
+     "workspaces",
+     "spacer",
+     "tray",
+     "clock",
+     "power"
+    ],
+    "width": 52,
+    "spacing": 18,
+    "pills": true,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1760,7 +1854,26 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "40-numeros"
+    "preset": "40-numeros",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "activeWindow",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 40,
+    "spacing": 12,
+    "pills": false,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1780,7 +1893,24 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "45-arejado"
+    "preset": "45-arejado",
+    "entries": [
+     "logo",
+     "spacer",
+     "workspaces",
+     "spacer",
+     "tray",
+     "clock",
+     "power"
+    ],
+    "width": 62,
+    "spacing": 22,
+    "pills": true,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1800,7 +1930,24 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "50-janelas"
+    "preset": "50-janelas",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 56,
+    "spacing": 12,
+    "pills": false,
+    "date": false,
+    "windows": true,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1820,7 +1967,26 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "55-painel"
+    "preset": "55-painel",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "activeWindow",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 76,
+    "spacing": 14,
+    "pills": true,
+    "date": true,
+    "windows": true,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1840,7 +2006,26 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "60-informativo"
+    "preset": "60-informativo",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "activeWindow",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 40,
+    "spacing": 8,
+    "pills": true,
+    "date": true,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1860,7 +2045,26 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "70-compacto"
+    "preset": "70-compacto",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "activeWindow",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 34,
+    "spacing": 6,
+    "pills": false,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": true,
+    "hidden": false
    },
    "actions": [
     {
@@ -1880,7 +2084,26 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "80-limpo"
+    "preset": "80-limpo",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "activeWindow",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 40,
+    "spacing": 16,
+    "pills": false,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1900,7 +2123,24 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "85-relogio"
+    "preset": "85-relogio",
+    "entries": [
+     "clock",
+     "spacer",
+     "workspaces",
+     "spacer",
+     "tray",
+     "statusIcons",
+     "power"
+    ],
+    "width": 58,
+    "spacing": 12,
+    "pills": true,
+    "date": true,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1920,7 +2160,26 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "90-trilha"
+    "preset": "90-trilha",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "activeWindow",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 46,
+    "spacing": 12,
+    "pills": false,
+    "date": false,
+    "windows": false,
+    "trail": true,
+    "compact": false,
+    "hidden": false
    },
    "actions": [
     {
@@ -1940,7 +2199,26 @@
    ],
    "preview": {
     "kind": "bar",
-    "preset": "95-oculta"
+    "preset": "95-oculta",
+    "entries": [
+     "logo",
+     "workspaces",
+     "spacer",
+     "activeWindow",
+     "spacer",
+     "tray",
+     "clock",
+     "statusIcons",
+     "power"
+    ],
+    "width": 40,
+    "spacing": 12,
+    "pills": false,
+    "date": false,
+    "windows": false,
+    "trail": false,
+    "compact": false,
+    "hidden": true
    },
    "actions": [
     {
@@ -2108,7 +2386,7 @@
   },
   {
    "id": "login-genesi",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Genesi",
    "blurb": "A nossa: a marca, a hora e um campo só. Vem com a loja.",
    "family": "login",
@@ -2134,7 +2412,7 @@
   },
   {
    "id": "login-breeze",
-   "section": "lockscreens",
+   "section": "login",
    "name": "A padrão do sistema",
    "blurb": "Volta para a tela que o Genesi instala. É o caminho de volta de qualquer uma das outras.",
    "family": "login",
@@ -2173,7 +2451,9 @@
      "sistema  Genesi OS",
      "sessao   Hyprland",
      "memoria  6.2 / 16 GiB"
-    ]
+    ],
+    "logo": "small",
+    "keyed": true
    },
    "actions": [
     {
@@ -2199,7 +2479,9 @@
      "cpu      Ryzen 7 / 16 threads",
      "gpu      RTX 3050",
      "disco    712 / 954 GiB"
-    ]
+    ],
+    "logo": "full",
+    "keyed": true
    },
    "actions": [
     {
@@ -2225,7 +2507,9 @@
      "  Genesi OS",
      "  6.14.2",
      "  1d 3h"
-    ]
+    ],
+    "logo": "none",
+    "keyed": false
    },
    "actions": [
     {
@@ -2251,7 +2535,9 @@
      "-----------------------------",
      "sistema  Genesi OS",
      "sessao   Hyprland"
-    ]
+    ],
+    "logo": "full",
+    "keyed": true
    },
    "actions": [
     {
@@ -2260,6 +2546,81 @@
      "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"source\": \"arch\", \"color\": { \"1\": \"green\", \"2\": \"green\" } },\n  \"display\": { \"separator\": \"  \", \"color\": { \"keys\": \"green\", \"title\": \"green\" } },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} em {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"\\u001b[32m-----------------------------\\u001b[0m\" },\n    { \"type\": \"os\", \"key\": \"sistema\" },\n    { \"type\": \"wm\", \"key\": \"sessão\" },\n    { \"type\": \"cpu\", \"key\": \"cpu\" },\n    { \"type\": \"memory\", \"key\": \"memoria\" },\n    { \"type\": \"disk\", \"key\": \"disco\" },\n    { \"type\": \"uptime\", \"key\": \"ligado ha\" }\n  ]\n}\n"
     }
    ]
+  },
+  {
+   "id": "fetch-image",
+   "section": "fastfetch",
+   "name": "Com imagem",
+   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "author": "Genesi",
+   "tags": [
+    "imagem",
+    "sixel"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "sistema  Genesi OS",
+     "sessão   Hyprland",
+     "cpu      Ryzen 7",
+     "memoria  6.2 / 16 GiB"
+    ],
+    "logo": "image",
+    "keyed": true
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": {\n    \"type\": \"sixel\",\n    \"source\": \"{{asset:picture}}\",\n    \"width\": 34,\n    \"padding\": { \"top\": 1, \"right\": 3 }\n  },\n  \"display\": { \"separator\": \"  \", \"color\": { \"keys\": \"green\" } },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name}@{host-name}\" },\n    \"separator\",\n    { \"type\": \"os\", \"key\": \"sistema\" },\n    { \"type\": \"kernel\", \"key\": \"kernel\" },\n    { \"type\": \"wm\", \"key\": \"sessão\" },\n    { \"type\": \"cpu\", \"key\": \"cpu\" },\n    { \"type\": \"gpu\", \"key\": \"gpu\" },\n    { \"type\": \"memory\", \"key\": \"memoria\" },\n    { \"type\": \"uptime\", \"key\": \"ligado ha\" }\n  ]\n}\n"
+    }
+   ],
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/dark_forest.png",
+     "type": "image/png",
+     "bytes": 6123661,
+     "sha256": "687de5016d97c4fbdf71c8e4c1d1ba1f657747b322e249b69cd09c3503eeeedb"
+    }
+   }
+  },
+  {
+   "id": "fetch-image-small",
+   "section": "fastfetch",
+   "name": "Com imagem (pequena)",
+   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "author": "Genesi",
+   "tags": [
+    "imagem",
+    "sixel",
+    "curto"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "genesi",
+     "Genesi OS",
+     "Hyprland",
+     "1d 3h"
+    ],
+    "logo": "image",
+    "keyed": true
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": {\n    \"type\": \"sixel\",\n    \"source\": \"{{asset:picture}}\",\n    \"width\": 18,\n    \"padding\": { \"top\": 1, \"right\": 2 }\n  },\n  \"display\": { \"separator\": \"  \" },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name}\" },\n    { \"type\": \"os\", \"format\": \"{name}\" },\n    { \"type\": \"wm\", \"format\": \"{name}\" },\n    { \"type\": \"uptime\" }\n  ]\n}\n"
+    }
+   ],
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/dark_forest.png",
+     "type": "image/png",
+     "bytes": 6123661,
+     "sha256": "687de5016d97c4fbdf71c8e4c1d1ba1f657747b322e249b69cd09c3503eeeedb"
+    }
+   }
   },
   {
    "id": "rice-floresta-viva",
@@ -2471,8 +2832,138 @@
    "actions": []
   },
   {
-   "id": "login-astronaut",
+   "id": "default-themes",
+   "section": "themes",
+   "name": "Como vem de fábrica",
+   "blurb": "A paleta que segue o seu papel de parede, que é a do Genesi novo.",
+   "family": "factory",
+   "author": "Genesi",
+   "tags": [
+    "padrão",
+    "de fábrica"
+   ],
+   "preview": {
+    "kind": "scheme",
+    "colours": [
+     "#39d98a",
+     "#8fd6ab",
+     "#1d2a22"
+    ],
+    "background": "#0c120f",
+    "surface": "#16211b",
+    "ink": "#e9f5ee"
+   },
+   "actions": [
+    {
+     "action": "scheme",
+     "name": "dynamic"
+    }
+   ]
+  },
+  {
+   "id": "default-login",
+   "section": "login",
+   "name": "Como vem de fábrica",
+   "blurb": "A tela de login do Genesi, sem nada baixado por cima.",
+   "family": "factory",
+   "author": "Genesi",
+   "tags": [
+    "padrão",
+    "de fábrica"
+   ],
+   "preview": {
+    "kind": "login",
+    "theme": "genesi",
+    "accent": "#39d98a"
+   },
+   "actions": [
+    {
+     "action": "login",
+     "theme": "genesi"
+    }
+   ],
+   "needs_root": true
+  },
+  {
+   "id": "default-lockscreens",
    "section": "lockscreens",
+   "name": "Como vem de fábrica",
+   "blurb": "Tira o bloqueio que a loja configurou e para o vigia dele.",
+   "family": "factory",
+   "author": "Genesi",
+   "tags": [
+    "padrão",
+    "de fábrica"
+   ],
+   "preview": {
+    "kind": "lock",
+    "accent": "#8fd6ab",
+    "background": "#0c120f"
+   },
+   "actions": [
+    {
+     "action": "restore",
+     "path": "~/.config/hypr/hyprlock.conf"
+    },
+    {
+     "action": "unlocker"
+    }
+   ]
+  },
+  {
+   "id": "default-fastfetch",
+   "section": "fastfetch",
+   "name": "Como vem de fábrica",
+   "blurb": "Volta para o cartão do Genesi que aparece ao abrir o terminal.",
+   "family": "factory",
+   "author": "Genesi",
+   "tags": [
+    "padrão",
+    "de fábrica"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "genesi@genesi",
+     "sistema  Genesi OS",
+     "sessão   Hyprland"
+    ]
+   },
+   "actions": [
+    {
+     "action": "restore",
+     "path": "~/.config/fastfetch/config.jsonc"
+    }
+   ]
+  },
+  {
+   "id": "default-bars",
+   "section": "bars",
+   "name": "Como vem de fábrica",
+   "blurb": "O arranjo de barra que vem no Genesi novo.",
+   "family": "factory",
+   "author": "Genesi",
+   "tags": [
+    "padrão",
+    "de fábrica"
+   ],
+   "preview": {
+    "kind": "bar",
+    "background": "#0c120f",
+    "surface": "#16211b",
+    "ink": "#e9f5ee",
+    "accent": "#39d98a"
+   },
+   "actions": [
+    {
+     "action": "bar",
+     "preset": "10-padrao"
+    }
+   ]
+  },
+  {
+   "id": "login-astronaut",
+   "section": "login",
    "name": "Astronauta",
    "blurb": "Um astronauta à deriva, e o campo de senha no meio do espaço.",
    "family": "login",
@@ -2507,7 +2998,7 @@
   },
   {
    "id": "login-astronaut-black-hole",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Buraco Negro",
    "blurb": "Fundo animado engolindo a luz. O mais pesado dos dez.",
    "family": "login",
@@ -2543,7 +3034,7 @@
   },
   {
    "id": "login-astronaut-cyberpunk",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Cyberpunk",
    "blurb": "Neon rosa e ciano, chuva na cidade.",
    "family": "login",
@@ -2578,7 +3069,7 @@
   },
   {
    "id": "login-astronaut-hyprland",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Hyprland",
    "blurb": "A garota do Hyprland, animada.",
    "family": "login",
@@ -2613,7 +3104,7 @@
   },
   {
    "id": "login-astronaut-jake",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Jake",
    "blurb": "Hora de aventura na tela de login.",
    "family": "login",
@@ -2648,7 +3139,7 @@
   },
   {
    "id": "login-astronaut-japanese",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Japonesa",
    "blurb": "Torii, montanha e um degradê de fim de tarde.",
    "family": "login",
@@ -2682,7 +3173,7 @@
   },
   {
    "id": "login-astronaut-sakura",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Sakura (animada)",
    "blurb": "Pétalas caindo em pixel art, em movimento.",
    "family": "login",
@@ -2717,7 +3208,7 @@
   },
   {
    "id": "login-astronaut-sakura-still",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Sakura (parada)",
    "blurb": "A mesma cena em pixel art, sem animação -- mais leve.",
    "family": "login",
@@ -2752,7 +3243,7 @@
   },
   {
    "id": "login-astronaut-hacker",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Hacker",
    "blurb": "Terminal verde sobre ruína. Mono e sujo, do jeito certo.",
    "family": "login",
@@ -2787,7 +3278,7 @@
   },
   {
    "id": "login-astronaut-purple-leaves",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Folhas Roxas",
    "blurb": "Folhagem roxa e um campo discreto embaixo.",
    "family": "login",
@@ -2822,7 +3313,7 @@
   },
   {
    "id": "login-caelestia-locklike",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Caelestia Locklike",
    "blurb": "A tela de login igual ao bloqueio do caelestia: relógio enorme, citação, avatar. É o desktop do Genesi antes de entrar nele.",
    "family": "login",
@@ -2856,7 +3347,7 @@
   },
   {
    "id": "login-caelestia-minimalist",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Caelestia Minimalist",
    "blurb": "A mesma família, reduzida ao relógio e ao campo.",
    "family": "login",
@@ -2890,7 +3381,7 @@
   },
   {
    "id": "login-silent",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent",
    "blurb": "Um cartão de vidro no meio da tela. O mais bem acabado da lista.",
    "family": "login",
@@ -2925,7 +3416,7 @@
   },
   {
    "id": "login-silent-left",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent (esquerda)",
    "blurb": "O mesmo cartão, encostado à esquerda.",
    "family": "login",
@@ -2960,7 +3451,7 @@
   },
   {
    "id": "login-silent-right",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent (direita)",
    "blurb": "O mesmo cartão, encostado à direita.",
    "family": "login",
@@ -2995,7 +3486,7 @@
   },
   {
    "id": "login-silent-mocha",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent Catppuccin Mocha",
    "blurb": "Catppuccin escuro, o de sempre.",
    "family": "login",
@@ -3030,7 +3521,7 @@
   },
   {
    "id": "login-silent-macchiato",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent Catppuccin Macchiato",
    "blurb": "Catppuccin um tom acima do mocha.",
    "family": "login",
@@ -3065,7 +3556,7 @@
   },
   {
    "id": "login-silent-frappe",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent Catppuccin Frappé",
    "blurb": "Catppuccin morno.",
    "family": "login",
@@ -3099,7 +3590,7 @@
   },
   {
    "id": "login-silent-latte",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent Catppuccin Latte",
    "blurb": "Catppuccin claro, para quem usa tema claro.",
    "family": "login",
@@ -3134,7 +3625,7 @@
   },
   {
    "id": "login-silent-everforest",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent Everforest",
    "blurb": "Verde de floresta, que é a cor da casa.",
    "family": "login",
@@ -3169,7 +3660,7 @@
   },
   {
    "id": "login-silent-nord",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent Nord",
    "blurb": "Azul frio do Nord.",
    "family": "login",
@@ -3204,7 +3695,7 @@
   },
   {
    "id": "login-silent-ken",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent Ken",
    "blurb": "Com vídeo de fundo. Bonito, e o mais pesado da prateleira.",
    "family": "login",
@@ -3239,7 +3730,7 @@
   },
   {
    "id": "login-silent-rei",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Silent Rei",
    "blurb": "Também com vídeo de fundo.",
    "family": "login",
@@ -3275,7 +3766,7 @@
   },
   {
    "id": "login-echo",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Echo",
    "blurb": "Um terminal do macOS com o log de boot correndo dentro. Você digita a senha no prompt.",
    "family": "login",
@@ -3309,7 +3800,7 @@
   },
   {
    "id": "login-pixie",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Pixie",
    "blurb": "Material You: relógio empilhado, cantos macios, cor de Pixel.",
    "family": "login",
@@ -3343,7 +3834,7 @@
   },
   {
    "id": "login-whereis",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Cadê meu tema?",
    "blurb": "Fundo preto e a senha em letras gigantes. Nada mais na tela.",
    "family": "login",
@@ -3378,7 +3869,7 @@
   },
   {
    "id": "login-whereis-blue",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Cadê meu tema? (azul)",
    "blurb": "O mesmo nada, em azul.",
    "family": "login",
@@ -3413,7 +3904,7 @@
   },
   {
    "id": "login-whereis-grey",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Cadê meu tema? (cinza)",
    "blurb": "O mesmo nada, em cinza.",
    "family": "login",
@@ -3447,7 +3938,7 @@
   },
   {
    "id": "login-whereis-nord",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Cadê meu tema? (nord)",
    "blurb": "O mesmo nada, com a paleta Nord.",
    "family": "login",
@@ -3482,7 +3973,7 @@
   },
   {
    "id": "login-whereis-rose",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Cadê meu tema? (rosé pine)",
    "blurb": "O mesmo nada, em rosé pine moon.",
    "family": "login",
@@ -3517,7 +4008,7 @@
   },
   {
    "id": "login-whereis-tree",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Cadê meu tema? (árvore)",
    "blurb": "Com uma foto atrás, para provar que dá.",
    "family": "login",
@@ -3552,7 +4043,7 @@
   },
   {
    "id": "login-hypr",
-   "section": "lockscreens",
+   "section": "login",
    "name": "Hypr",
    "blurb": "O jeitão do hyprlock na tela de login: relógio empilhado, cartão no meio, paleta fixa. Não segue o seu papel de parede.",
    "family": "login",

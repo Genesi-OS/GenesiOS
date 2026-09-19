@@ -33,6 +33,7 @@ Item {
             "discover": "compass",
             "rices": "layout-grid",
             "themes": "palette",
+            "login": "shield",
             "lockscreens": "lock",
             "bars": "bar",
             "fastfetch": "terminal",

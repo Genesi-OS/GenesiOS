@@ -315,6 +315,19 @@ def act_file(item, args, assets):
             text = fh.read()
     if text is None:
         die("%s has a file action with nothing to write" % item["id"])
+    # A config that needs to name a downloaded file -- a fastfetch logo, say --
+    # cannot know where it landed until it has landed. So the catalogue writes
+    # {{asset:picture}} and this puts the real path in.
+    #
+    # Substitution, not templating: the only thing that may be substituted is
+    # the path of an asset THIS item declared, which the store chose and
+    # checksummed. An item still cannot name a path of its own.
+    for name, path in (assets or {}).items():
+        text = text.replace("{{asset:%s}}" % name, path)
+    left = re.search(r"\{\{asset:([A-Za-z0-9_-]+)\}\}", text)
+    if left:
+        die("%s asks for the asset %r, which it does not have"
+            % (item["id"], left.group(1)))
     if len(text.encode("utf-8")) > MAX_TEXT_BYTES:
         die("%s wants to write a file larger than the store allows" % item["id"])
     kept = backup_file(target)

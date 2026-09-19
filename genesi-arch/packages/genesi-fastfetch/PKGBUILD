@@ -12,7 +12,7 @@ pkgver=1.0.0
 # 2026-06-01 (rel 3): new Braille-art Genesi leaf logo (user-provided).
 # 2026-06-04 (rel 4): drop the "GENESI OS" text line under the logo (the leaf
 #   art alone reads cleaner); user-approved tweak to genesi-logo.txt.
-pkgrel=4
+pkgrel=5
 pkgdesc="Branded fastfetch greeting (logo + system info) for Genesi OS terminals"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"
