@@ -427,6 +427,31 @@ ck("...and still falls back to the one the package ships",
    not no_fallback, no_fallback)
 
 
+# ── The PKGBUILD's own check() has to agree with this file ─────────────────
+#
+# package() carries a second copy of several of these rules, because makepkg
+# has to be able to refuse a bad catalogue on a builder with none of this
+# repository around it. Two copies of a rule is two things to update, and the
+# day one of them learns something the other has not, everything here passes
+# and the package build fails -- twenty minutes into CI, after every other
+# package has been built.
+#
+# That has now happened: store-test learned that a theme can be described
+# file by file, the PKGBUILD did not, and the build died on "qylock-minecraft
+# is not pinned to a commit". So the embedded check is extracted and RUN here,
+# against the real catalogue, in about a second.
+embedded = re.findall(r"<<'CHECKCATALOG'\n(.*?)\nCHECKCATALOG",
+                      read(os.path.join(PKG, "PKGBUILD")), re.S)
+ck("the PKGBUILD carries its own catalogue check", len(embedded) == 1,
+   len(embedded))
+if embedded:
+    proc = subprocess.run([sys.executable, "-", PKG], input=embedded[0],
+                          text=True, capture_output=True, cwd=PKG)
+    detail = ((proc.stderr or "") + (proc.stdout or "")).strip().splitlines()
+    ck("...and it passes on this catalogue, the same as makepkg will run it",
+       proc.returncode == 0, detail[-3:] if detail else "")
+
+
 # ── A fastfetch config runs on every terminal you open ─────────────────────
 #
 # Which makes a broken one uniquely annoying: not one error, an error every

@@ -152,7 +152,7 @@ pkgver=0.1.0
 # and checked again by the helper as root before a byte is written. Nineteen
 # of them have an MP4 for a background and no still image at all, so the cards
 # use the author's own animated previews and the shelf moves.
-pkgrel=7
+pkgrel=8
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -251,8 +251,24 @@ for key, spec in greeters.items():
     if not re.fullmatch(r"[0-9a-f]{64}", spec.get("tree", "")):
         raise SystemExit("%s has no content digest, so nothing would check "
                          "what gets unpacked into /usr/share" % key)
-    if not re.search(r"^https://[a-z0-9.]+/.*/tar\.gz/[0-9a-f]{40}$",
-                     spec.get("url", "")):
+    # Two shapes: a repository holding one theme arrives as an archive, and a
+    # repository holding forty is described file by file (qylock is 604 MB of
+    # tarball for a 200 KB login screen). Both have to be pinned to a commit,
+    # and in the second case every file has to carry its own digest, because
+    # there is no archive checksum standing in for them.
+    if spec.get("files"):
+        if not re.search(r"^https://[a-z0-9.]+/.*/[0-9a-f]{40}/",
+                         spec.get("base", "")):
+            raise SystemExit("%s is not pinned to a commit" % key)
+        for entry in spec["files"]:
+            path = entry.get("path", "")
+            if not path or path.startswith("/") or ".." in path.split("/"):
+                raise SystemExit("%s lists the path %r, which climbs out of "
+                                 "the theme" % (key, path))
+            if not re.fullmatch(r"[0-9a-f]{64}", entry.get("sha256", "")):
+                raise SystemExit("%s has no checksum for %s" % (key, path))
+    elif not re.search(r"^https://[a-z0-9.]+/.*/tar\.gz/[0-9a-f]{40}$",
+                       spec.get("url", "")):
         raise SystemExit("%s is not pinned to a commit" % key)
     unknown = set(spec.get("needs") or []) - allowed
     if unknown:
