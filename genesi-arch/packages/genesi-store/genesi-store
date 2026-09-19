@@ -427,22 +427,68 @@ def greeter_archive(key):
     return os.path.join(ASSET_DIR, "greeter-%s.tar.gz" % key)
 
 
+def greeter_files_dir(key):
+    """Where the per-file themes are staged, one directory per theme."""
+    return os.path.join(ASSET_DIR, "greeter-%s.d" % key)
+
+
 def ensure_greeter(key):
+    """Get the theme onto the disk, as you, before root is asked for anything.
+
+    Two shapes, because two kinds of repository exist.
+
+    A repository that holds ONE theme is downloaded as a tarball, which is one
+    request and one checksum. A repository that holds forty of them is not:
+    qylock is 604 MB of tarball for a theme that is 200 KB, and downloading
+    six hundred megabytes to install a Minecraft login screen is not a thing
+    to do to somebody's connection.
+
+    So the catalogue can instead list the theme's FILES -- five to fifteen of
+    them -- each pinned to the same commit and each with its own sha256. The
+    rules do not change: https, a host on the list, a digest per file, a cap
+    on the total, and the helper checking every one of them again as root.
+    """
     spec = greeter_spec(key)
-    dest = greeter_archive(key)
-    if os.path.exists(dest):
-        return dest
-    note("fetching %s (%.0f MB)"
-         % (spec["url"], (spec.get("bytes") or 0) / float(1 << 20)))
-    return fetch(spec["url"], dest, sha256=spec.get("sha256"),
-                 cap=MAX_GREETER_BYTES, advisory=True)
+    files = spec.get("files")
+    if not files:
+        dest = greeter_archive(key)
+        if os.path.exists(dest):
+            return dest
+        note("fetching %s (%.0f MB)"
+             % (spec["url"], (spec.get("bytes") or 0) / float(1 << 20)))
+        return fetch(spec["url"], dest, sha256=spec.get("sha256"),
+                     cap=MAX_GREETER_BYTES, advisory=True)
+
+    base = (spec.get("base") or "").rstrip("/")
+    check_url(base + "/")
+    total = sum(int(f.get("bytes") or 0) for f in files)
+    if total > MAX_GREETER_BYTES:
+        die("%s is %.0f MB; the store stops at %d MB"
+            % (key, total / float(1 << 20), MAX_GREETER_BYTES // (1 << 20)))
+    folder = greeter_files_dir(key)
+    todo = [f for f in files
+            if not os.path.exists(os.path.join(folder, f["path"]))]
+    if todo:
+        note("fetching %s (%d files, %.1f MB)"
+             % (key, len(files), total / float(1 << 20)))
+    for entry in files:
+        rel = entry.get("path") or ""
+        if rel.startswith("/") or ".." in rel.split("/") or "\\" in rel:
+            die("%s lists a file path that climbs out of itself" % key)
+        dest = os.path.join(folder, rel)
+        if os.path.exists(dest):
+            continue
+        fetch(base + "/" + rel, dest, sha256=entry.get("sha256"),
+              cap=MAX_GREETER_BYTES)
+    return folder
 
 
 def act_greeter(item, args, assets):
     """A login screen somebody else wrote, downloaded and put in /usr/share.
 
-    The archive is fetched as YOU -- root does no networking -- and then one
-    pkexec call does the privileged half: install the QML modules the theme's
+    The theme is fetched as YOU -- root does no networking -- either as one
+    archive or, for a repository too big to download whole, as its own files.
+    Then one pkexec call does the privileged half: install the QML modules the theme's
     own imports need (a greeter that imports QtQuick.VirtualKeyboard on a
     machine without it is a black screen at boot, not a missing keyboard),
     unpack it, check that what arrived hashes to what the catalogue describes,

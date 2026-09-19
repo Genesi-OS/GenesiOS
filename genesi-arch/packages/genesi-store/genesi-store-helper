@@ -66,6 +66,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -352,6 +353,66 @@ def set_config_file(theme, conf):
         fh.write("\n".join(out) + "\n")
 
 
+def staged_files_dir(key):
+    """Where the store put a per-file theme. Built here, never passed in."""
+    return os.path.join(caller_home(), ".local", "share", "genesi", "store",
+                        "assets", "greeter-%s.d" % key)
+
+
+def place_files(key, files, dest):
+    """Copy a theme the store downloaded file-by-file into the staging root.
+
+    The same job unpack() does for a tarball, and with the same suspicion.
+    These files sit in the caller's home, which means the caller can replace
+    any of them between the download and this moment -- with a symlink to
+    /etc/shadow, with a different picture, with a two-gigabyte file. So each
+    one is opened without following links, capped, hashed, and compared to
+    the digest in the ROOT-OWNED catalogue before it is written anywhere.
+
+    The tree digest at the end of greeter() then checks the whole result
+    again, exactly as it does for an archive.
+    """
+    import hashlib
+    written = 0
+    for entry in files:
+        rel = (entry.get("path") or "").replace("\\", "/")
+        if not rel or rel.startswith("/") or ".." in rel.split("/"):
+            die("the catalogue lists a path that climbs out of the theme")
+        want = entry.get("sha256") or ""
+        if not re.fullmatch(r"[0-9a-f]{64}", want):
+            die("the catalogue has no digest for %s" % rel)
+
+        source = os.path.join(staged_files_dir(key), rel)
+        try:
+            fd = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except OSError as exc:
+            die("%s was not downloaded where the store puts it (%s)"
+                % (rel, exc))
+        with os.fdopen(fd, "rb") as raw:
+            info = os.fstat(raw.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                die("%s is not a plain file" % rel)
+            written += info.st_size
+            if written > MAX_ARCHIVE:
+                die("the theme is larger than the store allows")
+            data = raw.read(MAX_ARCHIVE + 1)
+        if len(data) > MAX_ARCHIVE:
+            die("the theme is larger than the store allows")
+        if hashlib.sha256(data).hexdigest() != want:
+            die("%s is not what the catalogue describes -- refusing it" % rel)
+
+        target = os.path.join(dest, rel)
+        # Belt and braces: after joining, the result still has to be inside.
+        if os.path.relpath(target, dest).startswith(".."):
+            die("the catalogue lists a path that climbs out of the theme")
+        os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
+        with open(target, "wb") as out:
+            out.write(data)
+        os.chmod(target, 0o644)
+    if not written:
+        die("the catalogue lists no files for this theme")
+
+
 def greeter(key, conf):
     if not NAME.match(key):
         die("%r is not a greeter key" % key)
@@ -382,7 +443,13 @@ def greeter(key, conf):
     os.makedirs(staging, mode=0o755)
 
     try:
-        unpack(staged_archive(key), prefix, staging)
+        files = spec.get("files")
+        if files:
+            if not isinstance(files, list):
+                die("the catalogue entry for %s has an unusable file list" % key)
+            place_files(key, files, staging)
+        else:
+            unpack(staged_archive(key), prefix, staging)
 
         got = tree_digest(staging)
         if got != want:

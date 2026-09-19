@@ -261,6 +261,1734 @@
    "confs": [
     "theme.conf"
    ]
+  },
+  "qylock-minecraft": {
+   "name": "minecraft",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/minecraft",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/minecraft",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 16907,
+     "sha256": "02923fa3f7e449c7ecd1f213e5cc74d739cf9813975010a29ce49f69780461b4"
+    },
+    {
+     "path": "background.png",
+     "bytes": 99483,
+     "sha256": "c961a47b8cb6f941a8a83b688ce89116105a20ee38f68b70034f57909783cb6e"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 156,
+     "sha256": "30463697ddda577c8ca733ea5d1d87526a737b0d24ad4f30f12fae87850d7ff1"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 73,
+     "sha256": "55a858f8f1fcc50a6c1428cb67179e79c09a04390d6c8d438de1d2c2d1b805bb"
+    },
+    {
+     "path": "title.png",
+     "bytes": 119404,
+     "sha256": "416559556fbe3eae4fa2c9f12f43e409103d3cb5b785e38a036a1f2ad80c0af6"
+    }
+   ],
+   "bytes": 236023,
+   "tree": "c9d5ff3d04984108e973ffc0803f0206a306b22352138d90861d623332334308",
+   "install_as": "genesi-qylock-minecraft",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-terraria": {
+   "name": "terraria",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/terraria",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/terraria",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 36099,
+     "sha256": "a44970e8f2dfbe8ce0d0448be05ee149f4c036a4a2bfd80885a1cc5faf3509de"
+    },
+    {
+     "path": "TerraButton.qml",
+     "bytes": 1655,
+     "sha256": "ff13f3f8a787b2f46568f615a943033acb2360c6b0a72fb661195d123241c2d4"
+    },
+    {
+     "path": "avatar.png",
+     "bytes": 9049,
+     "sha256": "9bcc2f0361a622aab127b55111a5a45affdb9b0eedd15bc2581944dca4ed924b"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 154,
+     "sha256": "a3b42287828e0ea09687a6450194d9da4f8a0dbd78edd47379d5c256f9160c81"
+    },
+    {
+     "path": "ter1.png",
+     "bytes": 92262,
+     "sha256": "03857dbd6c6d2bea59e70b41db43815b85a0500038472f71933df466cb5d8f56"
+    },
+    {
+     "path": "ter2.png",
+     "bytes": 107595,
+     "sha256": "84cfa4c6bfa29a2b6072944e495016be3be802f2c4eb0c1658882aede9672ad3"
+    },
+    {
+     "path": "ter3.png",
+     "bytes": 116189,
+     "sha256": "929bd9b291734aa8750540fcbf57e2aea00e67e50fb651a8d95a3866fe0f544b"
+    },
+    {
+     "path": "ter4.png",
+     "bytes": 85345,
+     "sha256": "7c62878dc2c58b66a4bd5ed47a0b3fe28ed7be857d7575cc1c11ccc3fbfffadd"
+    },
+    {
+     "path": "ter5.png",
+     "bytes": 92888,
+     "sha256": "74e38c4acd0b50be4809dfb62770104b211e4dc2566780902273bedaa3d1b134"
+    },
+    {
+     "path": "terraria_logo.png",
+     "bytes": 12570,
+     "sha256": "7b8941dde02eaa5319d1a9c36e29da02fede94fcc63911d570d6d3d8e28732e9"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 164,
+     "sha256": "433778cd733c3b5e01c43b00fec44990c00f01552f42a3a7f5c76af84cf25251"
+    }
+   ],
+   "bytes": 553970,
+   "tree": "3d5195bc28d97b65c602737ed9a779905c9cc8b11963247a146102eb9e2d9462",
+   "install_as": "genesi-qylock-terraria",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-nier": {
+   "name": "nier-automata",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/nier-automata",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/nier-automata",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 55726,
+     "sha256": "68459f04f2b5cfea7e5fc7a03a16ca3c96074d7718a654c2e7de6034491253db"
+    },
+    {
+     "path": "NierButton.qml",
+     "bytes": 1652,
+     "sha256": "4bef0e9c0e0d13fda3dfcda93fcae18ed17e61219f83863f323eb5d3c3eca768"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 161561,
+     "sha256": "24c143cb85ca412ebab0f8013b5f0b2c224063ffdec7d4cf70d7d439117b9fd8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 164,
+     "sha256": "b72d1af5ac4869daeb2b08393bc38daa5154b0f14c7493de72a561070d15e512"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 28,
+     "sha256": "d3fbb08a80c8c6bf37e0068657ccb1b41af911349c7989d9ada1206457bae6a4"
+    }
+   ],
+   "bytes": 219131,
+   "tree": "12fbbb9faa6c90813f81da7fdc79cd3b372eb29a85c17c5ca9715a1e160c1caf",
+   "install_as": "genesi-qylock-nier",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-windows7": {
+   "name": "windows_7",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/windows_7",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/windows_7",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 18428,
+     "sha256": "6dfeb69446bbd992f8b8090b21e89b407534d0082747ce0b7e09109605bbdf10"
+    },
+    {
+     "path": "background.png",
+     "bytes": 603136,
+     "sha256": "a1ded79f81c1d262153b21f1638361af1ca6e21a3b1abb8ad74b4a568fe1c139"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 156,
+     "sha256": "b63d63f1c9bde6b05b346b85d5a7a6af8873bcdc107f6cf181889890ec68b2ce"
+    },
+    {
+     "path": "pfp.png",
+     "bytes": 345346,
+     "sha256": "0693daf311793d04535e485fe87ee64a15f39a707c95edd013cd4cb8f785b8cc"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 36,
+     "sha256": "4694ed888efd8e8f52f17c7dc63258c0cc3a619d0149bf9ec92be4d0c9ebdbf7"
+    }
+   ],
+   "bytes": 967102,
+   "tree": "b97140659acf97142906242a2e98f75bfbe78f3c58ec3de905c39b758ec11d99",
+   "install_as": "genesi-qylock-windows7",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-ninja-gaiden": {
+   "name": "ninja_gaiden",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninja_gaiden",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninja_gaiden",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 24750,
+     "sha256": "68489bb2847011d01c7c301ffc6ccf629d41b5a67cd37e9933c67a89cb7665e1"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 265063,
+     "sha256": "5bf876b930e4d006803e2de48911fc8526f354c221adafc3930a91c703a129ed"
+    },
+    {
+     "path": "font/Tektur-VariableFont_wdth,wght.ttf",
+     "bytes": 162656,
+     "sha256": "1ff1792ecc4728cf011d31e43a53a5c97e82f5c7cc7b9f23af24b209106e962c"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 162,
+     "sha256": "62aecdb623b3cbb65e4409601e93dde84cf6d59ed4d6b82b0237f964a14d50e2"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 39,
+     "sha256": "8680290ceb99c3697319253c5f848bfd6224f82e9bf2001945f303d4637af908"
+    }
+   ],
+   "bytes": 452670,
+   "tree": "28d2e83635bea4c3f7a36fdd2c7a0e763750c636d7867c9e43ad84906b343cb9",
+   "install_as": "genesi-qylock-ninja-gaiden",
+   "needs": [
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-field": {
+   "name": "field",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/field",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/field",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 9540,
+     "sha256": "55e45cef0c5ddc36c59dbac2f1c308e3e8370b4bb3575844bd78a9d4923ad939"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 1784920,
+     "sha256": "4e673009ca8421907a03360e992d934ebefc4d97bc763f6d4541be50329175a7"
+    },
+    {
+     "path": "font/Orbitron-VariableFont_wght.ttf",
+     "bytes": 38548,
+     "sha256": "46eefc7084fd9abffd87547c47f729b6071c7f7a8d5af281266bb09e5461c435"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 135,
+     "sha256": "27aa48e5afa6507c434eb169436abfb21a6d98d98d3207dcda7cc22ba694e7bc"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 43,
+     "sha256": "c750cee9a1b91f70678c2c026244f0ea70fa20a41e138eea0f212bc40e99b401"
+    }
+   ],
+   "bytes": 1833186,
+   "tree": "e3a00906bb3d84b088ace8fe5abc5b8a28735055f76e481ca6ccdf5996a65db9",
+   "install_as": "genesi-qylock-field",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-ninesols": {
+   "name": "ninesols",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninesols",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninesols",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 20449,
+     "sha256": "26215fa5f46bce4cbb4e3d367002564f564de751ef9907508e1eec0075602c6d"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 793159,
+     "sha256": "791cd6dc3b4451f6bbd5c3b1b309d7e540f157c60de98fc901c3b48c7720e9a0"
+    },
+    {
+     "path": "font/DejaVuSans.ttf",
+     "bytes": 741536,
+     "sha256": "08ca98e69d9d8fa1065584b4f9ab7d49b6205abea6572b90e171b254845bb990"
+    },
+    {
+     "path": "logo.png",
+     "bytes": 163776,
+     "sha256": "84329b73a9ee81e94a18e134132830f0e9c331fb3c5618a7a392fe64a8f95925"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 155,
+     "sha256": "f983a1dbd02ce8b6b9ef2d740fa7a8a9d9f5b6aeec903099db34a456ec9d99bc"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 81,
+     "sha256": "2393ea55a46e4b4c8bd23da2ef9a94d212dcc2356b7865552c912977ca0d4f7f"
+    }
+   ],
+   "bytes": 1719156,
+   "tree": "7678a7a560af1343e9fe41a49484c4e3b2b87d580cbd7f49aa6ac7072c048d81",
+   "install_as": "genesi-qylock-ninesols",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-girl-coffee": {
+   "name": "girl-coffee",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-coffee",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-coffee",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 23825,
+     "sha256": "9e9bf225515a35fec34a451f886960ba81d7acab681ad45c8705f17ffb6aaab4"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 1053098,
+     "sha256": "7019b5c5b6fb59aff1ad523ef8e980b48a751a79e0720686213d2743873c81ef"
+    },
+    {
+     "path": "font/Itim-Regular.ttf",
+     "bytes": 362640,
+     "sha256": "acdd351e7e72ab5e3d16cc26cda212c51482905cd83cc5bfb8c799c272e0e09a"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 161,
+     "sha256": "d1b1ab1a1553d048378d5084baeeb9f61792b90eb5867464cba10eab72bd40db"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 77,
+     "sha256": "162d8ef7af3cc4b18a7c019182f9db1e68c2f1f1575a7f90e359fcbde0a30c1a"
+    }
+   ],
+   "bytes": 1439801,
+   "tree": "e49824929b6143f3bd5af00fc2b2cd43312552a090db7316b2e61a1068329c1f",
+   "install_as": "genesi-qylock-girl-coffee",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-girl-pillow": {
+   "name": "girl-pillow",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-pillow",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-pillow",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 9237,
+     "sha256": "706d1c739de886b1935fd1a0415051f250fd94eea7f91bdc6c0bf777414cb23d"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 485309,
+     "sha256": "6fc76427616c2566a1d392ec05b2c066321a9fedc2e54abe5680a2cdf2d3739d"
+    },
+    {
+     "path": "font/Itim-Regular.ttf",
+     "bytes": 362640,
+     "sha256": "acdd351e7e72ab5e3d16cc26cda212c51482905cd83cc5bfb8c799c272e0e09a"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 147,
+     "sha256": "92bc4fd437b20b4db1df02b819b449805963a2812f9b71285af9ebabdf39ef82"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 54,
+     "sha256": "613c7c6ca8e9ef5362bc4538c37247ea22f52b3911d048f849f097fdf08a5eef"
+    }
+   ],
+   "bytes": 857387,
+   "tree": "bfc4a32847707be84b94fe0afd92c8a5a03397093c00c08ed8cedb5686fb68a5",
+   "install_as": "genesi-qylock-girl-pillow",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-coffee": {
+   "name": "pixel-coffee",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-coffee",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-coffee",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 436,
+     "sha256": "083db810e67fb833f79e0ba9e3845f4370b064e40e27f79d8eeb597c53513b73"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 9883,
+     "sha256": "5ec7cee4cc61f8b9d02da6447b0f8b31d5ee243d9f2b854e1810bba2c1d0690c"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 2350926,
+     "sha256": "4dae055f9a0bb80ce605b490dd146431b894cc134d189e421003a51454dae582"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 162,
+     "sha256": "f0d619d3ed8d69597bb2ab8c07764d83619c5f5114f5751b2cbe91c6b5104c68"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "60f0ee7d01e59874675994e34873795c43ca78aa57c365c2cbee258027d9b9f7"
+    }
+   ],
+   "bytes": 2412362,
+   "tree": "c4884f718eba7b883db9603d4d1a5bc7627f62e9efa270dad222b66463f9c61a",
+   "install_as": "genesi-qylock-pixel-coffee",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-dusk": {
+   "name": "pixel-dusk-city",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-dusk-city",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-dusk-city",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 474,
+     "sha256": "a6dbcafd6c6eab398788d338816d226269c1b2c5755f221bf6dad599df7b6cd0"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 18317,
+     "sha256": "9af89b15651904c0cb5776340d57da7cfab244a642615bc968a9f5e170c29d03"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 2865191,
+     "sha256": "265b90e56f811338e4dacc5b0e517a1d3a653ba3f7c4f4a8482b605e48f52cd9"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 168,
+     "sha256": "b4d0b7a10979bd4b56d4df496901cc99bf6ea087a57e0244366bcea42fca4f1b"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "60f0ee7d01e59874675994e34873795c43ca78aa57c365c2cbee258027d9b9f7"
+    }
+   ],
+   "bytes": 2935105,
+   "tree": "0588c79f60d5be7b29a08b05d79066909177bc2033451434212b95369f216026",
+   "install_as": "genesi-qylock-pixel-dusk",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-waterfall": {
+   "name": "pixel-waterfall",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-waterfall",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-waterfall",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 435,
+     "sha256": "05bf8b51cbddedd59c873968a84b95bfe81922867102f53eee46d8d8e8bbff9e"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 12926,
+     "sha256": "c6951fa666502dfbbe47e04821dd3ae7c4c05550cfb309f7b485fa6b7db2fc01"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 3062043,
+     "sha256": "5d4ee70254eccd271c5b23f6f3dddc69da8e41cccb4874d43198dd34a181949b"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 168,
+     "sha256": "7ad2b261e8fc4ac18ec21e0d1d24a8d7ba7277ca49ead70e97c63dec3c096cce"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "70c4932a637a4a50edc4e3afaf5804663825f867f0c643ae04e88ee9370e07bc"
+    }
+   ],
+   "bytes": 3126527,
+   "tree": "166de0e40c7f29ad9133466d444f0c5b7c37715462319e3c86b236e1f5a99406",
+   "install_as": "genesi-qylock-pixel-waterfall",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-munchlax": {
+   "name": "pixel-munchlax",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-munchlax",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-munchlax",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 436,
+     "sha256": "083db810e67fb833f79e0ba9e3845f4370b064e40e27f79d8eeb597c53513b73"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 10497,
+     "sha256": "c23dc64dfc530664e43f1671f7707b92a18b6619a6677d8f1e8305aea096d404"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 3473010,
+     "sha256": "896f121b73654c8b1eb9c910226ba1f9b0b660d697e1e98e2c7b1aa96194bf7d"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 166,
+     "sha256": "ed5c1ac3e5cfde6182b004146f15727cad6561b787202fc67d4e32182e167e9f"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "60f0ee7d01e59874675994e34873795c43ca78aa57c365c2cbee258027d9b9f7"
+    }
+   ],
+   "bytes": 3535064,
+   "tree": "71f209ed2c1ab55ee79ad07fa7bf7be7610f545234ed03321a2b11703862316a",
+   "install_as": "genesi-qylock-pixel-munchlax",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-women-umbrella": {
+   "name": "women-umbrella",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/women-umbrella",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/women-umbrella",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 8667,
+     "sha256": "9275ecac88f131a49be6b2023c12c8ecf55194244bc84c4051632d44eb611ccf"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 3025537,
+     "sha256": "8524ac4c367827143b3e2ef9e9abe5700b874ab39e81626878571b07d01c0513"
+    },
+    {
+     "path": "font/Itim-Regular.ttf",
+     "bytes": 362640,
+     "sha256": "acdd351e7e72ab5e3d16cc26cda212c51482905cd83cc5bfb8c799c272e0e09a"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 153,
+     "sha256": "e6eccab1537e00abc9611b946436384e908eaa2a89c5fcca60a76e98a23a780e"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 54,
+     "sha256": "613c7c6ca8e9ef5362bc4538c37247ea22f52b3911d048f849f097fdf08a5eef"
+    }
+   ],
+   "bytes": 3397051,
+   "tree": "a66bb6deeac6703d214fe9f30e04f9e71274ee9e32f7aea5fe30ca5b8c2c536c",
+   "install_as": "genesi-qylock-women-umbrella",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-material-you": {
+   "name": "material-you",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 33495,
+     "sha256": "93dc8aa7b43bc7b0c2cffe794d67a1aca23c9e680729e3de1ecacbefc0fc4561"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 735445,
+     "sha256": "a27c8408266933a145a4330d1267aa082831b589f29a155ed06b149638b4380f"
+    },
+    {
+     "path": "font/GoogleSans-VariableFont_GRAD,opsz,wght.ttf",
+     "bytes": 4712272,
+     "sha256": "08f022f46f30b5fb77368a1c7b7033e494f73aaac045ca2063e71d5f3fb0df4f"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 233,
+     "sha256": "067eda24e277d26168bf7f462c3e04243b40102be261024e6fa8f8946ea45b74"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 52,
+     "sha256": "c6ffced0619338ba7cdc05a76d041020ca11d85eabd20e3bfa40d8436b4539c3"
+    }
+   ],
+   "bytes": 5481497,
+   "tree": "d574341777d1345cf8c8637db81e6cf35a2adaa572da3d2a02638e6beb8a4eb4",
+   "install_as": "genesi-qylock-material-you",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-material-you-dark": {
+   "name": "material-you-dark",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you-dark",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you-dark",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 33515,
+     "sha256": "ecb8adf97466a3247b72398be80e84229f244db99f62dd0e2076de45fa74b850"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 354787,
+     "sha256": "5319cc79f5a46c3cabf013f1423f5d262cae3957867d026be54ecdd6961559d9"
+    },
+    {
+     "path": "font/GoogleSans-VariableFont_GRAD,opsz,wght.ttf",
+     "bytes": 4712272,
+     "sha256": "08f022f46f30b5fb77368a1c7b7033e494f73aaac045ca2063e71d5f3fb0df4f"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 246,
+     "sha256": "ef9a1829022b70df3210343e6ba1009d7569fc0227d8f685fc21fed0924bc2a6"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 52,
+     "sha256": "ecb3a6f75921cfc73032783cbfeb8c8bfb2005968145282b34f3bdcb01d82103"
+    }
+   ],
+   "bytes": 5100872,
+   "tree": "9ea70820fb2cd5874ce20afc89bc0f91e23ccb13a003a5cb4991db151946ab16",
+   "install_as": "genesi-qylock-material-you-dark",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-man-bicycle": {
+   "name": "man-bicycle",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/man-bicycle",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/man-bicycle",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 9391,
+     "sha256": "d60826bd97d36f65f36fa96a1ab452f5f55f53734ef90d05c9d64cb572cd4ff4"
+    },
+    {
+     "path": "bg.png",
+     "bytes": 5005352,
+     "sha256": "cced9213b0bd0437fc331216b841fc000c3e525ea00eade7fd19cdfc56a6947d"
+    },
+    {
+     "path": "font/Itim-Regular.ttf",
+     "bytes": 362640,
+     "sha256": "acdd351e7e72ab5e3d16cc26cda212c51482905cd83cc5bfb8c799c272e0e09a"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 147,
+     "sha256": "0511f63a119f099d1d9ffdd240cb2f234414ba92cd855ae10c60ed20e1cfc375"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 54,
+     "sha256": "613c7c6ca8e9ef5362bc4538c37247ea22f52b3911d048f849f097fdf08a5eef"
+    }
+   ],
+   "bytes": 5377584,
+   "tree": "7e45e157c1a945f56c2ed52556c8cd5cadf8143e7ed2bc6b9cb81e01be363c97",
+   "install_as": "genesi-qylock-man-bicycle",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-r1999": {
+   "name": "R1999_2",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/R1999_2",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/R1999_2",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 17577,
+     "sha256": "c64596f55ec2335954524fedc22f8ac285f4d15cf94261e80c529f199daa6d5d"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 6323204,
+     "sha256": "6a75da81c19749d280b7e7f02987a007eecfa89521661fa0d0290af8d9e7cc0e"
+    },
+    {
+     "path": "font/Cinzel-Bold.ttf",
+     "bytes": 77060,
+     "sha256": "f606ab3a8a0a75863022676ea496478bb0f4d520ae8c40b6050df3d6dbffad20"
+    },
+    {
+     "path": "logo.png",
+     "bytes": 61345,
+     "sha256": "c97d56f2272dcc03c848c9d43912b7a444dcfd976a2bded6f70df981cc4a9b22"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 157,
+     "sha256": "15b5c6531b5b466ddc0d5866e0711b03cc1bd2624ab2467265b0ca69f3364020"
+    }
+   ],
+   "bytes": 6479343,
+   "tree": "5876751ecad207eef115c7f7a67e92a091cdef07b9f908213894eea3142616c3",
+   "install_as": "genesi-qylock-r1999",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": []
+  },
+  "qylock-pixel-night-city": {
+   "name": "pixel-night-city",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-night-city",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-night-city",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 436,
+     "sha256": "083db810e67fb833f79e0ba9e3845f4370b064e40e27f79d8eeb597c53513b73"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 11756,
+     "sha256": "7500fbb68ab82322bf785fbd8d9eef87b6a49b82d162cdc55f1465682fe7d366"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 12037452,
+     "sha256": "e74465d4c4ded1168c1f3a0e00bf8c05998538a232fbdfc2d1bc5e0c87a8d2ee"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 170,
+     "sha256": "b18d3d232860bdd2df9a588b247d1bcc645e7fb60a4b36904a9e711966f9a2d8"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "38f927b2758915be771508c13c49cedeeeb4e9ab2cc3c10fd4431bc2cfbf1eaa"
+    }
+   ],
+   "bytes": 12100769,
+   "tree": "17e7c4277c873109362b6e420cea84d05c9c5d77da7139d2a3664d6e0c1db7e2",
+   "install_as": "genesi-qylock-pixel-night-city",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-sakura": {
+   "name": "pixel-sakura",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-sakura",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-sakura",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 435,
+     "sha256": "05bf8b51cbddedd59c873968a84b95bfe81922867102f53eee46d8d8e8bbff9e"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 15458,
+     "sha256": "e3e68135e00b27bba86d0a46104e2e992b1da7aa00744ba1db7fd22cbe68d51e"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 11450770,
+     "sha256": "c752929b3dcb2a57d4f35ee8272f231da9d2802209d87154b96e970bbe421b6a"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 162,
+     "sha256": "d3b018a07d36d54691113ea158cdf10d329a85501c20bf0db2b18482d81942a5"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "6c4042974c3201c95fc7173c4d1bcdd9f79a46072acda9149b2869b07ccad950"
+    }
+   ],
+   "bytes": 11517780,
+   "tree": "43465cd4fe74c14f80e5ae180f511040ee1160c4490a8a9c4e6a74760866aab7",
+   "install_as": "genesi-qylock-pixel-sakura",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-rainyroom": {
+   "name": "pixel-rainyroom",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-rainyroom",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-rainyroom",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 436,
+     "sha256": "083db810e67fb833f79e0ba9e3845f4370b064e40e27f79d8eeb597c53513b73"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 11247,
+     "sha256": "2631d752ffcc3d1aca2fc8490c0635f6bd15defb06b188e9aec4a3575805b190"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 14740048,
+     "sha256": "0c58010f246933296a21c370502927d4e4ac36690baa1671611fd41a98909e36"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 168,
+     "sha256": "1ba2964a2e868961ea0c5510f309de90790b342b8befc25dea196ea50f529c4a"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "60f0ee7d01e59874675994e34873795c43ca78aa57c365c2cbee258027d9b9f7"
+    }
+   ],
+   "bytes": 14802854,
+   "tree": "80d20c8b3fff2626cca4a0444f60ec5916be0c52e6f4a9366c2b3b41580f2fdb",
+   "install_as": "genesi-qylock-pixel-rainyroom",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-star-rail": {
+   "name": "star-rail",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/star-rail",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/star-rail",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 23901,
+     "sha256": "4f2634701f58fb59528084a4c5ce2369deefeac59d952bfa7f191da4529bd4d1"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 12489809,
+     "sha256": "0d470c88fff7252ef4cac3fea2a29a4305c0cc84fa3384f7af78f7764d20c961"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 156,
+     "sha256": "7501e42e17b7513a9ae7187f04a18513539c9cd921ef6555243ec33002b840eb"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 39,
+     "sha256": "009ef036f1f95efbe95f01f2f50f67aa391bcad883e524d4204140670fb1e8e4"
+    }
+   ],
+   "bytes": 12513905,
+   "tree": "e5251561367fb0b415c4c001e2d954d2459a505c7ee8a5caa457e7599b94c0b5",
+   "install_as": "genesi-qylock-star-rail",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-dog-samurai": {
+   "name": "dog-samurai",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/dog-samurai",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/dog-samurai",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 28606,
+     "sha256": "920aa3223ca2d18ef5fa97d5553f392fb3272f9ab5c2eb475c5304ccf43825db"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 15814471,
+     "sha256": "78e3b5227f9e8dd64164d445cdf9612e581bc6a34f77fb211efd6793a755ede8"
+    },
+    {
+     "path": "font/Orbitron-VariableFont_wght.ttf",
+     "bytes": 38548,
+     "sha256": "46eefc7084fd9abffd87547c47f729b6071c7f7a8d5af281266bb09e5461c435"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 136,
+     "sha256": "402e993a52ce459f4e257934d22d38647bf73f2ba476cb0908fd7f2484618c22"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 154,
+     "sha256": "6cc818f341750a814ab651cee53a97f67cb833105899fa94d2628e6cd94102c3"
+    }
+   ],
+   "bytes": 15881915,
+   "tree": "a39bd94ad33ad56c37d1af9d2ba642719e2eff46695e0dc25911cd8550a83545",
+   "install_as": "genesi-qylock-dog-samurai",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-emerald": {
+   "name": "pixel-emerald",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-emerald",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-emerald",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 435,
+     "sha256": "05bf8b51cbddedd59c873968a84b95bfe81922867102f53eee46d8d8e8bbff9e"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 22702,
+     "sha256": "3a612d7544a2ea810d07658d43805a93b91516640ccf631dbb0ebed07dee9eb7"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 15354720,
+     "sha256": "e904eb50757e5569e6666f3f41acf1f1fbe7427d9143783b923ed9e9a1c88cdb"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 164,
+     "sha256": "e45210be22d6716c9bccbeead36e1435e82b3c2d351f0aa6d4fe07b1b1c64865"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "491a64c2f9d2856f9858d95a2135995446736d5505f96d7ef8d1fb4103370c77"
+    }
+   ],
+   "bytes": 15428976,
+   "tree": "ebea412e5ed456935c71d33314eb8610c1b4be47dea6cdff6756dffbd6079707",
+   "install_as": "genesi-qylock-pixel-emerald",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-winter": {
+   "name": "winter",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/winter",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/winter",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 16603,
+     "sha256": "1c82fe0505c3391df12dc4ec3f871c49ff07487222599afdaae0817fdc4ca8c4"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 17692687,
+     "sha256": "47e61fa6ada109c1fb577ef43010289eb00a04f2577ebc61677ddc7c9be1e026"
+    },
+    {
+     "path": "font/Orbitron-VariableFont_wght.ttf",
+     "bytes": 38548,
+     "sha256": "46eefc7084fd9abffd87547c47f729b6071c7f7a8d5af281266bb09e5461c435"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 150,
+     "sha256": "7313aee4d9e89c4d9e165cc17b05fcf5b485f192c1a9d0f86115273fe6e371ff"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 150,
+     "sha256": "7313aee4d9e89c4d9e165cc17b05fcf5b485f192c1a9d0f86115273fe6e371ff"
+    }
+   ],
+   "bytes": 17748138,
+   "tree": "afa414c1ac5706ba4bd73abdf73f463eb5f4fe336fb181043b262f44f2cfc323",
+   "install_as": "genesi-qylock-winter",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-enfield": {
+   "name": "enfield",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/enfield",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/enfield",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 436,
+     "sha256": "083db810e67fb833f79e0ba9e3845f4370b064e40e27f79d8eeb597c53513b73"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 23045,
+     "sha256": "b834e4c141af89a128aac3e6103daa3ce59a27ad7910b537f02b4d94edc5e634"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 20439635,
+     "sha256": "d6a57ef404c08c5246029aa724b9ad9cb0294799696495c08dd15b8c044a47ae"
+    },
+    {
+     "path": "font/Orbitron-VariableFont_wght.ttf",
+     "bytes": 38548,
+     "sha256": "46eefc7084fd9abffd87547c47f729b6071c7f7a8d5af281266bb09e5461c435"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 152,
+     "sha256": "1782efa806ea21b05dead1c159d53fb9131a22c2043c8b82ce483205b8523604"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 79,
+     "sha256": "6bfd162512de0e4ce3d6ba522f9e5ad2568c65775858d1e007e9cc88a02f2642"
+    }
+   ],
+   "bytes": 20501895,
+   "tree": "79926ddd7bcf694829da144d992cd383319b2c0885165b29781b0c8e306d241d",
+   "install_as": "genesi-qylock-enfield",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-cyberpunk": {
+   "name": "pixel-cyberpunk",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-cyberpunk",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-cyberpunk",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 435,
+     "sha256": "05bf8b51cbddedd59c873968a84b95bfe81922867102f53eee46d8d8e8bbff9e"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 16607,
+     "sha256": "fef5eba714b74b8bfc18c0780b19eaded3dbab60aaa2a4899294d62967255941"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 9183955,
+     "sha256": "9c65f676144466ad7f64f7353c42deafc18f1cc3e1d2b48998ad0f5123ab122b"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 168,
+     "sha256": "c820418a5700eb9210f33a6c3ebee653ddef6cd63cf129ff9e00974bdc9a1bcf"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "45301e7d9295f5893ee437f82496ed3a057608063ae4c1f4e9d448dcc30e5917"
+    }
+   ],
+   "bytes": 9252120,
+   "tree": "7f42025a6ba222e4cf7948185d6d3201f46e253a195f37b974b1c4494d4ec256",
+   "install_as": "genesi-qylock-pixel-cyberpunk",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-wuwa": {
+   "name": "wuwa",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/wuwa",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/wuwa",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 22667,
+     "sha256": "be1b5e13279a606c31b277e9a516390c2660959179ad7aaff9c8feeebd8f4691"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 28229588,
+     "sha256": "a9db69711c6ff628000f86b4e33171c935d69909c225620637a6b59d4c83a698"
+    },
+    {
+     "path": "font/Orbitron-VariableFont_wght.ttf",
+     "bytes": 38548,
+     "sha256": "46eefc7084fd9abffd87547c47f729b6071c7f7a8d5af281266bb09e5461c435"
+    },
+    {
+     "path": "logo.png",
+     "bytes": 13208,
+     "sha256": "368b0aecc48bb864f308e65e72ab9036e0380eec89180e1c7f9d2176bdb1f54f"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 146,
+     "sha256": "8e6599d9e1fe338ebb383783f57d22f643914de182729e27ea7cc1ce7658c746"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 40,
+     "sha256": "8a36e451d6c121929c372cad32098a2dcc2597df2247f00156838d6d5d15385c"
+    }
+   ],
+   "bytes": 28304197,
+   "tree": "51e2733b4850d3f872880d04bc4544ca1825ea3a7b5d3b91660985a0fc23e523",
+   "install_as": "genesi-qylock-wuwa",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-skyscrapers": {
+   "name": "pixel-skyscrapers",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-skyscrapers",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-skyscrapers",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 436,
+     "sha256": "083db810e67fb833f79e0ba9e3845f4370b064e40e27f79d8eeb597c53513b73"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 10551,
+     "sha256": "e724ae7e0f146fbcf0aea62952dcdb2d9ccafd1717ecc4a29a150a0845c4bee4"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 21632174,
+     "sha256": "c56402cd9f5cad1c2f5d923a9677a3758ab152a6cf97a767a638b6aaed5cbedf"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 172,
+     "sha256": "498c582ce68e333505468ee6180d8ee7f1734f79bbb4514411451189f42348aa"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "7107b832e10dfea5c8f060e0c75fb38793c24a83d11df40e4824b4f8ae786b81"
+    }
+   ],
+   "bytes": 21694288,
+   "tree": "9cfa0bea951e1ba1cfbb3de93f737881960d55cdaba434f4bedafcbe36174613",
+   "install_as": "genesi-qylock-pixel-skyscrapers",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-sword": {
+   "name": "sword",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/sword",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/sword",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 436,
+     "sha256": "083db810e67fb833f79e0ba9e3845f4370b064e40e27f79d8eeb597c53513b73"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 13180,
+     "sha256": "47a063baaa6ce3f19e3bdd95fbe6cd94bc4f7d6c6f67f23be984cb7d4124f6a7"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 43826686,
+     "sha256": "6e8ee0f36d35d507d872ace3a12bf0813eb2db01b42831db2e8f825b2a630809"
+    },
+    {
+     "path": "font/The Last Shuriken.ttf",
+     "bytes": 28716,
+     "sha256": "9edd03523accde78f242620d44c450876b6450eb4dd0c7293bbc1bc821bf1f4e"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 148,
+     "sha256": "2f15a5ae20d065afb0b3c31496ecb0c372ec64f2d2a036592016310098c7e16a"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 77,
+     "sha256": "932ea1b41a705ba600bf943595ecbe32f922ba108b250096a9d98f35253988ce"
+    }
+   ],
+   "bytes": 43869243,
+   "tree": "998cdb3a8ae577c9502cc7fdbc80e351bdd1022c5cf1ed3d8a42f15cd692b18f",
+   "install_as": "genesi-qylock-sword",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-pixel-hollowknight": {
+   "name": "pixel-hollowknight",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-hollowknight",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-hollowknight",
+   "files": [
+    {
+     "path": "BackgroundVideo.qml",
+     "bytes": 436,
+     "sha256": "083db810e67fb833f79e0ba9e3845f4370b064e40e27f79d8eeb597c53513b73"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 10446,
+     "sha256": "54c3edc7ac1d33d91d563da9fa46e772df706951d9361080663a1dd6ab1d4e11"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 40617754,
+     "sha256": "6678f406a6af8b8a566a51fac6d2a96a86258f18b7707e6bcb990d0f247a043f"
+    },
+    {
+     "path": "font/PixelifySans-Bold.ttf",
+     "bytes": 50872,
+     "sha256": "7da4a657e842e0266b1f225acfe080756e2b20df064a16edc3733a42d4789ca8"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 174,
+     "sha256": "29fd1e37c0be42a92b3b53255e82ccbb3f0ef128d23965c0ce57c96615c542a5"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "60f0ee7d01e59874675994e34873795c43ca78aa57c365c2cbee258027d9b9f7"
+    }
+   ],
+   "bytes": 40679765,
+   "tree": "d765b63553f9605728ae1c9aaad99fb213dd801557e96bce4ed41d0ce54eed43",
+   "install_as": "genesi-qylock-pixel-hollowknight",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-osu": {
+   "name": "osu",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/osu",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/osu",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 76350,
+     "sha256": "33b859e64768eeacfd99256299511e4ff51c887e98c709e5c6e1c912b279212f"
+    },
+    {
+     "path": "avatars/achlys.png",
+     "bytes": 36043,
+     "sha256": "12f61d32a7dbe209491af55abd1cb746cc5430e9472bf8d5b29ed801e3b82963"
+    },
+    {
+     "path": "avatars/darkkal.png",
+     "bytes": 6962,
+     "sha256": "bca8664cdf773a9e80be2979368d4bbd2d0b03ba32602e89d491f847dc833fa5"
+    },
+    {
+     "path": "avatars/kaizky.png",
+     "bytes": 78041,
+     "sha256": "f594b146eb3a530369de2032f3b9ede8c249dfa379e97724e78128122a4f2e22"
+    },
+    {
+     "path": "background/A Glow.jpg",
+     "bytes": 5740575,
+     "sha256": "1c347ab1ad4a2814ec528f4367e120a8904a89bba7a5246195b55254988d8cb5"
+    },
+    {
+     "path": "background/B Glow.jpg",
+     "bytes": 6047194,
+     "sha256": "bfb324bd98e8a7a76e6718ee452706e3934ade9cd0f4ddcfb7eec1aa20e4ebdc"
+    },
+    {
+     "path": "background/C Glow.jpg",
+     "bytes": 5510504,
+     "sha256": "648ba25e116b31f4c6f7fb6574a7a20ae7734b375d013301efc29178d39c6a11"
+    },
+    {
+     "path": "background/D Glow.jpg",
+     "bytes": 5713927,
+     "sha256": "e09a5950a10035e205889a98f23a2d886595eba06f73399f1e780b86ff8710ba"
+    },
+    {
+     "path": "background/E Glow.jpg",
+     "bytes": 5763259,
+     "sha256": "bc5e6e60cc49e88d408151c92d3d7291ece1087509ba85194eaf77f98716ae91"
+    },
+    {
+     "path": "background/F Glow.jpg",
+     "bytes": 4714768,
+     "sha256": "52d9b38741855065690cc80eb811234af9df6f1848c39eef71e627f3e2f0deb7"
+    },
+    {
+     "path": "background/G Glow.jpg",
+     "bytes": 4738163,
+     "sha256": "1957c48de6b24d07b49637a73f529efe38815f2e1d71bc4faee91948a31dec72"
+    },
+    {
+     "path": "font/Torus Regular.otf",
+     "bytes": 64592,
+     "sha256": "f3d93e670686556a84db376aef90fee744cbc817aaac7e808dc0e49da0924b7e"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 154,
+     "sha256": "4e2d08f009a7130e7129f3e540f68f48edb926f88837b7c49f3b5ae9f3cc95d9"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 146,
+     "sha256": "241c731bcf0373ee849b8e29be28bb320d326a1e18a98f0471518a3f638bb2af"
+    }
+   ],
+   "bytes": 38490678,
+   "tree": "ee04e61bb40b65cb6dba437e7e518082abfcff0121ac419cf4e3421b63724475",
+   "install_as": "genesi-qylock-osu",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-forest": {
+   "name": "forest",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/forest",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/forest",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 23026,
+     "sha256": "2126062d181384b63bc76ceb05e4cb624dd3aeaaff78a49efefad452a74e7146"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 53320657,
+     "sha256": "97d54ce5e4cd06d1c0d53adb681b6809dda68334b5fcaff6f2ce2fe6bfdf0814"
+    },
+    {
+     "path": "font/Figtree-Bold.ttf",
+     "bytes": 40324,
+     "sha256": "183bf1a8523731738c72be9aa8236453a21d6a3ed70bd8e5266723b212331dc4"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 150,
+     "sha256": "c23350e4ffcae8466556a26a44c5a27353600bddf6361c3f4e04b3594081187d"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 85,
+     "sha256": "17634a3855c4134659c406d53ff696b9b3723f97d028def5db1dc2c03dec4aa8"
+    }
+   ],
+   "bytes": 53384242,
+   "tree": "6f80f1da2875a5c24fded1932f9cff79cb2a6c775e80538394a9b094f206790a",
+   "install_as": "genesi-qylock-forest",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-genshin": {
+   "name": "Genshin",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/Genshin",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/Genshin",
+   "files": [
+    {
+     "path": "GenshinButton.qml",
+     "bytes": 901,
+     "sha256": "edabdbf106002ed31d73d5404f663e80e3d714e2bbd16c29038755395c4b15af"
+    },
+    {
+     "path": "GenshinFrame.qml",
+     "bytes": 3448,
+     "sha256": "4f10af4635d0e01f9e77b89b67d4c06d7427bbca19817cb51ca361ed07cbf91e"
+    },
+    {
+     "path": "Main.qml",
+     "bytes": 26401,
+     "sha256": "0a4d92ed6bb18e0fb21824360e9597b9341c8083b87ad685de935d38b4c01f00"
+    },
+    {
+     "path": "dawn.mp4",
+     "bytes": 13783996,
+     "sha256": "eb552c2335662e73b1fecc5fad4c49c5a9673e6b43cad7c614b4dc76dd013509"
+    },
+    {
+     "path": "day.mp4",
+     "bytes": 11865025,
+     "sha256": "a0f83548bc7d265768bc72cc7973f737176ce4ec18ab2a6156338255aceb4fdc"
+    },
+    {
+     "path": "dusk.mp4",
+     "bytes": 12909349,
+     "sha256": "4ebab81ef76cff03f61f64570fbf7bdb7bc34ed64c0a07944f1c5094aa0edbb4"
+    },
+    {
+     "path": "logo.png",
+     "bytes": 72226,
+     "sha256": "bc4c163e761d5831abbf5e2edf6f6d5a24c09558b426951b95c992f29908bb49"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 152,
+     "sha256": "cb2bb2ed5cd0fb055a7c954e900c2a3f3696e7ede9bed81424b9055375e3c655"
+    },
+    {
+     "path": "night.mp4",
+     "bytes": 13188947,
+     "sha256": "511b6e735d4754abd38ae0125a4130dd8f8b26446bb33a449fd43787654977e1"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 83,
+     "sha256": "bd59cf01d8715012f0cf8ca21676c0a8036a2d1240a809c3887b8c4c54850f0b"
+    }
+   ],
+   "bytes": 51850528,
+   "tree": "c2fe0a9e1b090285a354cb22bd9a9324b59ea8f38957f33fba255f42a3ec70ae",
+   "install_as": "genesi-qylock-genshin",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
+  },
+  "qylock-last-of-us": {
+   "name": "last-of-us",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/last-of-us",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "base": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/last-of-us",
+   "files": [
+    {
+     "path": "Main.qml",
+     "bytes": 24164,
+     "sha256": "8a7774592f5323948a3848024ca36f7e6dfd77de27fac44c3e8316466928296f"
+    },
+    {
+     "path": "bg.mp4",
+     "bytes": 78248674,
+     "sha256": "da57a8e3ace0c78f862c252603998c730ed9289bbd5e7866fb6b930fcda7e639"
+    },
+    {
+     "path": "font/Outfit-Black.ttf",
+     "bytes": 55372,
+     "sha256": "f240e6128c31a75aa3f456ea1ff3b0fda382176681788ae3d244d08e3fa7d6cd"
+    },
+    {
+     "path": "metadata.desktop",
+     "bytes": 146,
+     "sha256": "1f088ba5b28c9f33833fff9b15d0b898a6973e55557845dab73c86b9d909562f"
+    },
+    {
+     "path": "theme.conf",
+     "bytes": 163,
+     "sha256": "3c54305003e4f18a9b5cb865ca2d66ea11a235cd248c47ef22e2e8dd9b94cc5d"
+    }
+   ],
+   "bytes": 78328519,
+   "tree": "4c222d10da97a3c34f4977067ab226015b43e0d41e3631ed3a27e9497277db38",
+   "install_as": "genesi-qylock-last-of-us",
+   "needs": [
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
   }
  },
  "items": [
@@ -2623,6 +4351,285 @@
    }
   },
   {
+   "id": "fetch-ficha",
+   "section": "fastfetch",
+   "name": "Ficha técnica",
+   "blurb": "Vitais, sistema e sessão separados, com a paleta embaixo. O jeitão que as pessoas montam à mão.",
+   "author": "Genesi",
+   "tags": [
+    "seções",
+    "completo"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "matheus @ genesi",
+     "Genesi OS",
+     "── VITAIS ──────",
+     "CPU      Ryzen 7",
+     "MEMORIA  6.2 / 16 GiB",
+     "── SISTEMA ─────",
+     "WM       Hyprland"
+    ],
+    "logo": "full",
+    "keyed": true
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": {\n    \"type\": \"file\",\n    \"source\": \"/usr/share/genesi/fastfetch/genesi-logo.txt\",\n    \"color\": { \"1\": \"38;2;29;158;117\", \"2\": \"38;2;225;245;238\" },\n    \"padding\": { \"top\": 1, \"right\": 3, \"left\": 2 }\n  },\n  \"display\": {\n    \"separator\": \"  \",\n    \"color\": { \"keys\": \"38;2;29;158;117\", \"title\": \"38;2;29;158;117\" }\n  },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} @ {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"Genesi OS · um amanhã mais tranquilo\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── VITAIS ────────────────────────────────────\" },\n    { \"type\": \"cpu\", \"key\": \"CPU\" },\n    { \"type\": \"gpu\", \"key\": \"GPU\" },\n    { \"type\": \"memory\", \"key\": \"MEMORIA\" },\n    { \"type\": \"disk\", \"key\": \"DISCO\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SISTEMA ───────────────────────────────────\" },\n    { \"type\": \"os\", \"key\": \"OS\" },\n    { \"type\": \"kernel\", \"key\": \"KERNEL\" },\n    { \"type\": \"wm\", \"key\": \"WM\" },\n    { \"type\": \"shell\", \"key\": \"SHELL\" },\n    { \"type\": \"packages\", \"key\": \"PACOTES\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SESSAO ────────────────────────────────────\" },\n    { \"type\": \"uptime\", \"key\": \"LIGADO HA\" },\n    { \"type\": \"terminal\", \"key\": \"TERMINAL\" },\n    \"break\",\n    { \"type\": \"colors\", \"symbol\": \"circle\", \"paddingLeft\": 2 }\n  ]\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "fetch-ficha-limpa",
+   "section": "fastfetch",
+   "name": "Ficha técnica (sem logo)",
+   "blurb": "A mesma ficha, sem desenho nenhum na frente.",
+   "author": "Genesi",
+   "tags": [
+    "seções",
+    "minimalista"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "matheus @ genesi",
+     "Genesi OS",
+     "── VITAIS ──────",
+     "CPU      Ryzen 7",
+     "MEMORIA  6.2 / 16 GiB",
+     "── SISTEMA ─────",
+     "WM       Hyprland"
+    ],
+    "logo": "none",
+    "keyed": true
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"type\": \"none\" },\n  \"display\": {\n    \"separator\": \"  \",\n    \"color\": { \"keys\": \"38;2;29;158;117\", \"title\": \"38;2;29;158;117\" }\n  },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} @ {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"Genesi OS · um amanhã mais tranquilo\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── VITAIS ────────────────────────────────────\" },\n    { \"type\": \"cpu\", \"key\": \"CPU\" },\n    { \"type\": \"gpu\", \"key\": \"GPU\" },\n    { \"type\": \"memory\", \"key\": \"MEMORIA\" },\n    { \"type\": \"disk\", \"key\": \"DISCO\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SISTEMA ───────────────────────────────────\" },\n    { \"type\": \"os\", \"key\": \"OS\" },\n    { \"type\": \"kernel\", \"key\": \"KERNEL\" },\n    { \"type\": \"wm\", \"key\": \"WM\" },\n    { \"type\": \"shell\", \"key\": \"SHELL\" },\n    { \"type\": \"packages\", \"key\": \"PACOTES\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SESSAO ────────────────────────────────────\" },\n    { \"type\": \"uptime\", \"key\": \"LIGADO HA\" },\n    { \"type\": \"terminal\", \"key\": \"TERMINAL\" },\n    \"break\",\n    { \"type\": \"colors\", \"symbol\": \"circle\", \"paddingLeft\": 2 }\n  ]\n}\n"
+    }
+   ]
+  },
+  {
+   "id": "fetch-ficha-neon",
+   "section": "fastfetch",
+   "name": "Ficha técnica (neon)",
+   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "author": "Genesi",
+   "tags": [
+    "seções",
+    "imagem",
+    "sixel",
+    "cidade",
+    "escuro"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "matheus @ genesi",
+     "Genesi OS",
+     "── VITAIS ──────",
+     "CPU      Ryzen 7",
+     "MEMORIA  6.2 / 16 GiB",
+     "── SISTEMA ─────",
+     "WM       Hyprland"
+    ],
+    "logo": "image",
+    "keyed": true
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": {\n    \"type\": \"sixel\",\n    \"source\": \"{{asset:picture}}\",\n    \"width\": 30,\n    \"padding\": { \"top\": 1, \"right\": 3 }\n  },\n  \"display\": {\n    \"separator\": \"  \",\n    \"color\": { \"keys\": \"38;2;29;158;117\", \"title\": \"38;2;29;158;117\" }\n  },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} @ {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"Genesi OS · um amanhã mais tranquilo\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── VITAIS ────────────────────────────────────\" },\n    { \"type\": \"cpu\", \"key\": \"CPU\" },\n    { \"type\": \"gpu\", \"key\": \"GPU\" },\n    { \"type\": \"memory\", \"key\": \"MEMORIA\" },\n    { \"type\": \"disk\", \"key\": \"DISCO\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SISTEMA ───────────────────────────────────\" },\n    { \"type\": \"os\", \"key\": \"OS\" },\n    { \"type\": \"kernel\", \"key\": \"KERNEL\" },\n    { \"type\": \"wm\", \"key\": \"WM\" },\n    { \"type\": \"shell\", \"key\": \"SHELL\" },\n    { \"type\": \"packages\", \"key\": \"PACOTES\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SESSAO ────────────────────────────────────\" },\n    { \"type\": \"uptime\", \"key\": \"LIGADO HA\" },\n    { \"type\": \"terminal\", \"key\": \"TERMINAL\" },\n    \"break\",\n    { \"type\": \"colors\", \"symbol\": \"circle\", \"paddingLeft\": 2 }\n  ]\n}\n"
+    }
+   ],
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/neocity.png",
+     "type": "image/png",
+     "bytes": 22255153,
+     "sha256": "f68427e2edfa84be645dbf90c601df4aa3cb36e077e8aceb65f77af376075e22"
+    }
+   }
+  },
+  {
+   "id": "fetch-ficha-tinta",
+   "section": "fastfetch",
+   "name": "Ficha técnica (tinta)",
+   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "author": "Genesi",
+   "tags": [
+    "seções",
+    "imagem",
+    "sixel",
+    "arte",
+    "minimalista"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "matheus @ genesi",
+     "Genesi OS",
+     "── VITAIS ──────",
+     "CPU      Ryzen 7",
+     "MEMORIA  6.2 / 16 GiB",
+     "── SISTEMA ─────",
+     "WM       Hyprland"
+    ],
+    "logo": "image",
+    "keyed": true
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": {\n    \"type\": \"sixel\",\n    \"source\": \"{{asset:picture}}\",\n    \"width\": 30,\n    \"padding\": { \"top\": 1, \"right\": 3 }\n  },\n  \"display\": {\n    \"separator\": \"  \",\n    \"color\": { \"keys\": \"38;2;29;158;117\", \"title\": \"38;2;29;158;117\" }\n  },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} @ {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"Genesi OS · um amanhã mais tranquilo\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── VITAIS ────────────────────────────────────\" },\n    { \"type\": \"cpu\", \"key\": \"CPU\" },\n    { \"type\": \"gpu\", \"key\": \"GPU\" },\n    { \"type\": \"memory\", \"key\": \"MEMORIA\" },\n    { \"type\": \"disk\", \"key\": \"DISCO\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SISTEMA ───────────────────────────────────\" },\n    { \"type\": \"os\", \"key\": \"OS\" },\n    { \"type\": \"kernel\", \"key\": \"KERNEL\" },\n    { \"type\": \"wm\", \"key\": \"WM\" },\n    { \"type\": \"shell\", \"key\": \"SHELL\" },\n    { \"type\": \"packages\", \"key\": \"PACOTES\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SESSAO ────────────────────────────────────\" },\n    { \"type\": \"uptime\", \"key\": \"LIGADO HA\" },\n    { \"type\": \"terminal\", \"key\": \"TERMINAL\" },\n    \"break\",\n    { \"type\": \"colors\", \"symbol\": \"circle\", \"paddingLeft\": 2 }\n  ]\n}\n"
+    }
+   ],
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/ink_wave.png",
+     "type": "image/png",
+     "bytes": 314547,
+     "sha256": "8eb7a889292dd471099dd8e41169f879d60a3817c8d1050fca1229e6479268c9"
+    }
+   }
+  },
+  {
+   "id": "fetch-ficha-castelo",
+   "section": "fastfetch",
+   "name": "Ficha técnica (castelo)",
+   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "author": "Genesi",
+   "tags": [
+    "seções",
+    "imagem",
+    "sixel",
+    "arte",
+    "natureza"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "matheus @ genesi",
+     "Genesi OS",
+     "── VITAIS ──────",
+     "CPU      Ryzen 7",
+     "MEMORIA  6.2 / 16 GiB",
+     "── SISTEMA ─────",
+     "WM       Hyprland"
+    ],
+    "logo": "image",
+    "keyed": true
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": {\n    \"type\": \"sixel\",\n    \"source\": \"{{asset:picture}}\",\n    \"width\": 30,\n    \"padding\": { \"top\": 1, \"right\": 3 }\n  },\n  \"display\": {\n    \"separator\": \"  \",\n    \"color\": { \"keys\": \"38;2;29;158;117\", \"title\": \"38;2;29;158;117\" }\n  },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} @ {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"Genesi OS · um amanhã mais tranquilo\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── VITAIS ────────────────────────────────────\" },\n    { \"type\": \"cpu\", \"key\": \"CPU\" },\n    { \"type\": \"gpu\", \"key\": \"GPU\" },\n    { \"type\": \"memory\", \"key\": \"MEMORIA\" },\n    { \"type\": \"disk\", \"key\": \"DISCO\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SISTEMA ───────────────────────────────────\" },\n    { \"type\": \"os\", \"key\": \"OS\" },\n    { \"type\": \"kernel\", \"key\": \"KERNEL\" },\n    { \"type\": \"wm\", \"key\": \"WM\" },\n    { \"type\": \"shell\", \"key\": \"SHELL\" },\n    { \"type\": \"packages\", \"key\": \"PACOTES\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SESSAO ────────────────────────────────────\" },\n    { \"type\": \"uptime\", \"key\": \"LIGADO HA\" },\n    { \"type\": \"terminal\", \"key\": \"TERMINAL\" },\n    \"break\",\n    { \"type\": \"colors\", \"symbol\": \"circle\", \"paddingLeft\": 2 }\n  ]\n}\n"
+    }
+   ],
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/tree-nature-castleinsky.png",
+     "type": "image/png",
+     "bytes": 3570681,
+     "sha256": "3dde1b73cdde3fed33f7a03fb3bd08af1f8c66d73bb0e11339dc380a175cb8e7"
+    }
+   }
+  },
+  {
+   "id": "fetch-ficha-lua",
+   "section": "fastfetch",
+   "name": "Ficha técnica (lua)",
+   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "author": "Genesi",
+   "tags": [
+    "seções",
+    "imagem",
+    "sixel",
+    "escuro",
+    "noite"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "matheus @ genesi",
+     "Genesi OS",
+     "── VITAIS ──────",
+     "CPU      Ryzen 7",
+     "MEMORIA  6.2 / 16 GiB",
+     "── SISTEMA ─────",
+     "WM       Hyprland"
+    ],
+    "logo": "image",
+    "keyed": true
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": {\n    \"type\": \"sixel\",\n    \"source\": \"{{asset:picture}}\",\n    \"width\": 30,\n    \"padding\": { \"top\": 1, \"right\": 3 }\n  },\n  \"display\": {\n    \"separator\": \"  \",\n    \"color\": { \"keys\": \"38;2;29;158;117\", \"title\": \"38;2;29;158;117\" }\n  },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} @ {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"Genesi OS · um amanhã mais tranquilo\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── VITAIS ────────────────────────────────────\" },\n    { \"type\": \"cpu\", \"key\": \"CPU\" },\n    { \"type\": \"gpu\", \"key\": \"GPU\" },\n    { \"type\": \"memory\", \"key\": \"MEMORIA\" },\n    { \"type\": \"disk\", \"key\": \"DISCO\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SISTEMA ───────────────────────────────────\" },\n    { \"type\": \"os\", \"key\": \"OS\" },\n    { \"type\": \"kernel\", \"key\": \"KERNEL\" },\n    { \"type\": \"wm\", \"key\": \"WM\" },\n    { \"type\": \"shell\", \"key\": \"SHELL\" },\n    { \"type\": \"packages\", \"key\": \"PACOTES\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SESSAO ────────────────────────────────────\" },\n    { \"type\": \"uptime\", \"key\": \"LIGADO HA\" },\n    { \"type\": \"terminal\", \"key\": \"TERMINAL\" },\n    \"break\",\n    { \"type\": \"colors\", \"symbol\": \"circle\", \"paddingLeft\": 2 }\n  ]\n}\n"
+    }
+   ],
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/moon.png",
+     "type": "image/png",
+     "bytes": 47853,
+     "sha256": "4ca7c1c7eadefc27f642248a329abec79e860dcadc8956e2e65100225d18bb38"
+    }
+   }
+  },
+  {
+   "id": "fetch-ficha-gruvbox",
+   "section": "fastfetch",
+   "name": "Ficha técnica (gruvbox)",
+   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "author": "Genesi",
+   "tags": [
+    "seções",
+    "imagem",
+    "sixel",
+    "retro",
+    "quente"
+   ],
+   "preview": {
+    "kind": "terminal",
+    "lines": [
+     "matheus @ genesi",
+     "Genesi OS",
+     "── VITAIS ──────",
+     "CPU      Ryzen 7",
+     "MEMORIA  6.2 / 16 GiB",
+     "── SISTEMA ─────",
+     "WM       Hyprland"
+    ],
+    "logo": "image",
+    "keyed": true
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/fastfetch/config.jsonc",
+     "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": {\n    \"type\": \"sixel\",\n    \"source\": \"{{asset:picture}}\",\n    \"width\": 30,\n    \"padding\": { \"top\": 1, \"right\": 3 }\n  },\n  \"display\": {\n    \"separator\": \"  \",\n    \"color\": { \"keys\": \"38;2;29;158;117\", \"title\": \"38;2;29;158;117\" }\n  },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} @ {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"Genesi OS · um amanhã mais tranquilo\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── VITAIS ────────────────────────────────────\" },\n    { \"type\": \"cpu\", \"key\": \"CPU\" },\n    { \"type\": \"gpu\", \"key\": \"GPU\" },\n    { \"type\": \"memory\", \"key\": \"MEMORIA\" },\n    { \"type\": \"disk\", \"key\": \"DISCO\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SISTEMA ───────────────────────────────────\" },\n    { \"type\": \"os\", \"key\": \"OS\" },\n    { \"type\": \"kernel\", \"key\": \"KERNEL\" },\n    { \"type\": \"wm\", \"key\": \"WM\" },\n    { \"type\": \"shell\", \"key\": \"SHELL\" },\n    { \"type\": \"packages\", \"key\": \"PACOTES\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SESSAO ────────────────────────────────────\" },\n    { \"type\": \"uptime\", \"key\": \"LIGADO HA\" },\n    { \"type\": \"terminal\", \"key\": \"TERMINAL\" },\n    \"break\",\n    { \"type\": \"colors\", \"symbol\": \"circle\", \"paddingLeft\": 2 }\n  ]\n}\n"
+    }
+   ],
+   "assets": {
+    "picture": {
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/gruvbox_retrocity.png",
+     "type": "image/png",
+     "bytes": 160289,
+     "sha256": "b07aff0455a146fcebd20543ef713b7d29461bcffd1b60f7fcce3a50d7feaaf5"
+    }
+   }
+  },
+  {
    "id": "rice-floresta-viva",
    "section": "rices",
    "name": "Floresta Viva",
@@ -2958,6 +4965,1240 @@
     {
      "action": "bar",
      "preset": "10-padrao"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-minecraft",
+   "section": "login",
+   "name": "Minecraft",
+   "blurb": "A tela de título, com a fonte e tudo.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/minecraft",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "pixel"
+   ],
+   "needs_root": true,
+   "download": 236023,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-minecraft",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/minecraft.gif",
+     "type": "image/gif",
+     "bytes": 194185,
+     "sha256": "cdaa9c01d98a2f88790616745e9819e9df92708da3e98d404f2bf16b6e966632"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-minecraft"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-terraria",
+   "section": "login",
+   "name": "Terraria",
+   "blurb": "Madeira, tochas e o menu do jogo.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/terraria",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "pixel"
+   ],
+   "needs_root": true,
+   "download": 553970,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-terraria",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/terraria.gif",
+     "type": "image/gif",
+     "bytes": 1356690,
+     "sha256": "ec94f8969c531a1428a5d8396c85764df6337b3ff890ca36ba6ca8b247eff950"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-terraria"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-nier",
+   "section": "login",
+   "name": "NieR: Automata",
+   "blurb": "Areia, serifa e o silêncio do jogo.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/nier-automata",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "minimalista"
+   ],
+   "needs_root": true,
+   "download": 219131,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-nier",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/nier_automata.gif",
+     "type": "image/gif",
+     "bytes": 366606,
+     "sha256": "387fca999889ca512b953f4e0096512ffb0b03a11c09dc14273a0208dd435ae1"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-nier"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-windows7",
+   "section": "login",
+   "name": "Windows 7",
+   "blurb": "Aquele azul. Sim, aquele mesmo.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/windows_7",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "retro",
+    "nostalgia"
+   ],
+   "needs_root": true,
+   "download": 967102,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-windows7",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/win7.gif",
+     "type": "image/gif",
+     "bytes": 158583,
+     "sha256": "d2a05fe958c7741e627d3214c272607f235b7e004bc0ad5ad513b9a5265df8e9"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-windows7"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-ninja-gaiden",
+   "section": "login",
+   "name": "Ninja Gaiden",
+   "blurb": "Oito bits e um ninja.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninja_gaiden",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "retro",
+    "pixel"
+   ],
+   "needs_root": true,
+   "download": 452670,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-ninja-gaiden",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/ninja_gaiden.gif",
+     "type": "image/gif",
+     "bytes": 106879,
+     "sha256": "ce91e66450b14f4381e09c90be0e455789f950fbe0f278f7018d812437367274"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-ninja-gaiden"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-field",
+   "section": "login",
+   "name": "Campo",
+   "blurb": "Um campo aberto e a luz baixa.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/field",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "natureza",
+    "calmo"
+   ],
+   "needs_root": true,
+   "download": 1833186,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-field",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/field.gif",
+     "type": "image/gif",
+     "bytes": 329011,
+     "sha256": "772ecc650d5d16a42f05b77bb2aa09f5d46eb1ff8686236724185b7db19dba0b"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-field"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-ninesols",
+   "section": "login",
+   "name": "Nine Sols",
+   "blurb": "Traço oriental em vermelho e osso.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninesols",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "arte"
+   ],
+   "needs_root": true,
+   "download": 1719156,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-ninesols",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninesols/bg.png",
+     "type": "image/png",
+     "bytes": 793159,
+     "sha256": "791cd6dc3b4451f6bbd5c3b1b309d7e540f157c60de98fc901c3b48c7720e9a0"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-ninesols"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-girl-coffee",
+   "section": "login",
+   "name": "Café",
+   "blurb": "Alguém tomando café, desenhado.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-coffee",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "calmo"
+   ],
+   "needs_root": true,
+   "download": 1439801,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-girl-coffee",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/girl_coffee.gif",
+     "type": "image/gif",
+     "bytes": 120481,
+     "sha256": "f458d6fa9da5a9252a3caa2a3b1d9ed57f55ad975ff89df20e1660aaaeccba48"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-girl-coffee"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-girl-pillow",
+   "section": "login",
+   "name": "Travesseiro",
+   "blurb": "O sono que você não teve.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-pillow",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "calmo"
+   ],
+   "needs_root": true,
+   "download": 857387,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-girl-pillow",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/girl_pillow.gif",
+     "type": "image/gif",
+     "bytes": 58676,
+     "sha256": "d375c9ddc976ecccda292421ea06d82e0190d3cb6afd7ef5866b67c56debdf10"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-girl-pillow"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-coffee",
+   "section": "login",
+   "name": "Café (pixel)",
+   "blurb": "O mesmo café, em pixel art animada.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-coffee",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 2412362,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-coffee",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_coffee.gif",
+     "type": "image/gif",
+     "bytes": 529965,
+     "sha256": "05b310d13d8fcb036a24b00128308e7fbfed8b2429f373a9d076cc31ce292510"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-coffee"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-dusk",
+   "section": "login",
+   "name": "Cidade ao Anoitecer",
+   "blurb": "Telhados e a última luz, em pixel.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-dusk-city",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "cidade",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 2935105,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-dusk",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_dusk_city.gif",
+     "type": "image/gif",
+     "bytes": 121966,
+     "sha256": "31f18ba0dbca61d17147079fdbe433ec5358725678dabba368cec31210bb7bbb"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-dusk"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-waterfall",
+   "section": "login",
+   "name": "Cachoeira",
+   "blurb": "Água caindo, quadro a quadro.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-waterfall",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "natureza",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 3126527,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-waterfall",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel-waterfall.gif",
+     "type": "image/gif",
+     "bytes": 1685709,
+     "sha256": "c148f984296d5c74f17392b9824a9d392a2389833bd5fa310e2efaa877036c54"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-waterfall"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-munchlax",
+   "section": "login",
+   "name": "Munchlax",
+   "blurb": "Um pokémon dormindo na sua tela de login.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-munchlax",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "jogo"
+   ],
+   "needs_root": true,
+   "download": 3535064,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-munchlax",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_munchlax.gif",
+     "type": "image/gif",
+     "bytes": 166234,
+     "sha256": "5f0d74fdb3162ec88ac4f7136bac9ca9d7a0bc82091e003bf00edd0ea10905bc"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-munchlax"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-women-umbrella",
+   "section": "login",
+   "name": "Guarda-chuva",
+   "blurb": "Chuva, um guarda-chuva e neon.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/women-umbrella",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "cidade"
+   ],
+   "needs_root": true,
+   "download": 3397051,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-women-umbrella",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/women_umbrella.gif",
+     "type": "image/gif",
+     "bytes": 517681,
+     "sha256": "a79f72ff56a6df96e158098a480046f0bb7c53ff0b4ba0e16429d034646afdc8"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-women-umbrella"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-material-you",
+   "section": "login",
+   "name": "Material You",
+   "blurb": "O desenho do Android, claro.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "material",
+    "claro"
+   ],
+   "needs_root": true,
+   "download": 5481497,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-material-you",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/material-you.gif",
+     "type": "image/gif",
+     "bytes": 213026,
+     "sha256": "671300d89853110055d614d80bcb7fba95da35f7c6218f916c50d0714040d505"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-material-you"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-material-you-dark",
+   "section": "login",
+   "name": "Material You (escuro)",
+   "blurb": "O mesmo, no escuro.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you-dark",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "material",
+    "escuro"
+   ],
+   "needs_root": true,
+   "download": 5100872,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-material-you-dark",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/material-you-dark.gif",
+     "type": "image/gif",
+     "bytes": 4201246,
+     "sha256": "b7c522da770c6f5cdbd9801517ebbd02c77b618799cbcc6291d36d5f7a0a4e7e"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-material-you-dark"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-man-bicycle",
+   "section": "login",
+   "name": "Bicicleta",
+   "blurb": "Uma estrada, uma bicicleta, fim de tarde.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/man-bicycle",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "calmo"
+   ],
+   "needs_root": true,
+   "download": 5377584,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-man-bicycle",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/man_bicycle.gif",
+     "type": "image/gif",
+     "bytes": 262143,
+     "sha256": "aeae54b707cacc65bf7c0823618489e5936c4d2995d3ab23d122803b1de4de91"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-man-bicycle"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-r1999",
+   "section": "login",
+   "name": "Reverse: 1999",
+   "blurb": "Art déco e um relógio parado.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/R1999_2",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "arte"
+   ],
+   "needs_root": true,
+   "download": 6479343,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-r1999",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/R1999_2.gif",
+     "type": "image/gif",
+     "bytes": 1765256,
+     "sha256": "11c2e844d83c6dc66c6d2e4e129a077de723df65afe0f0ff91ad581e0fa017f7"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-r1999"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-night-city",
+   "section": "login",
+   "name": "Cidade Noturna",
+   "blurb": "Neon em pixel, com chuva.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-night-city",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "cidade",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 12100769,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-night-city",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_night_city.gif",
+     "type": "image/gif",
+     "bytes": 473310,
+     "sha256": "965e296ea2120784404469dbf996b6e0255bb7bca08f4d221db26bc9ee50dfde"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-night-city"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-sakura",
+   "section": "login",
+   "name": "Sakura (pixel)",
+   "blurb": "Pétalas caindo, quadro a quadro.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-sakura",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "natureza",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 11517780,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-sakura",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel-sakura.gif",
+     "type": "image/gif",
+     "bytes": 1034380,
+     "sha256": "183c8fe699615686e972f521b5763a3309007a1b1defbd8663ec469c9c21a75a"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-sakura"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-rainyroom",
+   "section": "login",
+   "name": "Quarto na Chuva",
+   "blurb": "A janela, a chuva, a luminária.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-rainyroom",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "calmo",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 14802854,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-rainyroom",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_rainyroom.gif",
+     "type": "image/gif",
+     "bytes": 784188,
+     "sha256": "9f653f7c650170de3de4b852be18fcca4568ab45db4ab6bf8773e4ed96fe2393"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-rainyroom"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-star-rail",
+   "section": "login",
+   "name": "Star Rail",
+   "blurb": "O trem entre as estrelas.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/star-rail",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "espaço"
+   ],
+   "needs_root": true,
+   "download": 12513905,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-star-rail",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/star_rail.gif",
+     "type": "image/gif",
+     "bytes": 4611488,
+     "sha256": "9655a37d948245d748cf0bce366c3304c6535ad8c888d276a11e218b4ef46dea"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-star-rail"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-dog-samurai",
+   "section": "login",
+   "name": "Cão Samurai",
+   "blurb": "Exatamente o que está escrito.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/dog-samurai",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "jogo"
+   ],
+   "needs_root": true,
+   "download": 15881915,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-dog-samurai",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/dog_samurai.gif",
+     "type": "image/gif",
+     "bytes": 1463420,
+     "sha256": "d22208ff12afa2ad754291aba813fb5e7920fefd8b7386231c63c7ba39cbd0a0"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-dog-samurai"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-emerald",
+   "section": "login",
+   "name": "Esmeralda",
+   "blurb": "Verde em pixel, do jeito da casa.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-emerald",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "verde"
+   ],
+   "needs_root": true,
+   "download": 15428976,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-emerald",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel-emerald.gif",
+     "type": "image/gif",
+     "bytes": 5803294,
+     "sha256": "d6d8f6f60031d9bcff23d0a1ad81d85fcba6ee398bbb397b90d55c1cd8267ece"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-emerald"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-winter",
+   "section": "login",
+   "name": "Inverno",
+   "blurb": "Neve caindo devagar.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/winter",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "natureza",
+    "frio",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 17748138,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-winter",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/winter.gif",
+     "type": "image/gif",
+     "bytes": 2714735,
+     "sha256": "fd80eb6c48282aa95787e050339196b011002a30719ac4efa3018a21738c3b0e"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-winter"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-enfield",
+   "section": "login",
+   "name": "Enfield",
+   "blurb": "Uma moto antiga e poeira.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/enfield",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "retro"
+   ],
+   "needs_root": true,
+   "download": 20501895,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-enfield",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/enfield.gif",
+     "type": "image/gif",
+     "bytes": 2353555,
+     "sha256": "e3c299f2490021c321869b575ffd8711b083379ad990481a9bb907001495f7fe"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-enfield"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-cyberpunk",
+   "section": "login",
+   "name": "Cyberpunk (pixel)",
+   "blurb": "Neon, fumaça e oito bits.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-cyberpunk",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "cidade",
+    "animado"
+   ],
+   "needs_root": true,
+   "download": 9252120,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-cyberpunk",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel-cyberpunk.gif",
+     "type": "image/gif",
+     "bytes": 1414167,
+     "sha256": "5c17d2172496afd1937b02ab2f2ca757620df3ddca1cfa00a6ad4b42b48ee167"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-cyberpunk"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-wuwa",
+   "section": "login",
+   "name": "Wuthering Waves",
+   "blurb": "Vento, capa e horizonte.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/wuwa",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "arte"
+   ],
+   "needs_root": true,
+   "download": 28304197,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-wuwa",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/wuwa.gif",
+     "type": "image/gif",
+     "bytes": 3288388,
+     "sha256": "798f8c2327cfd1492bbb9f79fdc9f03f7372c2a34341ec408990afd2c856151d"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-wuwa"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-skyscrapers",
+   "section": "login",
+   "name": "Arranha-céus",
+   "blurb": "A cidade de cima, em pixel.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-skyscrapers",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "cidade"
+   ],
+   "needs_root": true,
+   "download": 21694288,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-skyscrapers",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_skyscrapers.gif",
+     "type": "image/gif",
+     "bytes": 658253,
+     "sha256": "03100afaa917d6d77e4580eceaa2e48c15df6d4ac0be6e2d35b0bb08b9af1326"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-skyscrapers"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-sword",
+   "section": "login",
+   "name": "Espada",
+   "blurb": "Uma lâmina e muito preto.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/sword",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "escuro"
+   ],
+   "needs_root": true,
+   "download": 43869243,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-sword",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/sword.gif",
+     "type": "image/gif",
+     "bytes": 3799816,
+     "sha256": "300ee9dfc3b87282e54ecb1abce5d3ad34b16ea8b959d4577b9f39801d9c7fc5"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-sword"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-pixel-hollowknight",
+   "section": "login",
+   "name": "Hollow Knight",
+   "blurb": "Hallownest, em pixel e azul.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-hollowknight",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "pixel",
+    "escuro"
+   ],
+   "needs_root": true,
+   "download": 40679765,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-pixel-hollowknight",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_hollowknight.gif",
+     "type": "image/gif",
+     "bytes": 668669,
+     "sha256": "84f2b8bd895fa5e94df31c04e06d93ec776e373e132c01f468b00e29e7b0e502"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-pixel-hollowknight"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-osu",
+   "section": "login",
+   "name": "osu!",
+   "blurb": "Cinco fundos e o rosa de sempre. O maior da prateleira.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/osu",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "rosa"
+   ],
+   "needs_root": true,
+   "download": 38490678,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-osu",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/osu.gif",
+     "type": "image/gif",
+     "bytes": 4485150,
+     "sha256": "e762e1c5e6d39d4dd01db2f5c3b4e38a52f5b67e6bb8075578487f4f1e2fa568"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-osu"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-forest",
+   "section": "login",
+   "name": "Floresta (qylock)",
+   "blurb": "Mata fechada, em altíssima resolução.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/forest",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "natureza",
+    "verde"
+   ],
+   "needs_root": true,
+   "download": 53384242,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-forest",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/forest.gif",
+     "type": "image/gif",
+     "bytes": 2483972,
+     "sha256": "d42fe55c1216489429138bd60442a06741b2d0880b1858a83a980f703df38fc2"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-forest"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-genshin",
+   "section": "login",
+   "name": "Genshin Impact",
+   "blurb": "Teyvat na tela de login.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/Genshin",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "arte"
+   ],
+   "needs_root": true,
+   "download": 51850528,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-genshin",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/genshin.gif",
+     "type": "image/gif",
+     "bytes": 3334417,
+     "sha256": "f0b2d3728f8a125114907a55140ea7580bc63f4c184a97abf37b1c05e6a6f721"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-genshin"
+    }
+   ]
+  },
+  {
+   "id": "login-qylock-last-of-us",
+   "section": "login",
+   "name": "The Last of Us",
+   "blurb": "O mundo depois. O mais pesado de todos.",
+   "family": "login",
+   "author": "Darkkal44",
+   "license": "GPL-3.0-or-later",
+   "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/last-of-us",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "escuro"
+   ],
+   "needs_root": true,
+   "download": 78328519,
+   "preview": {
+    "kind": "login",
+    "theme": "qylock-last-of-us",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/the_last_of_us.gif",
+     "type": "image/gif",
+     "bytes": 1944121,
+     "sha256": "bf9afca8540769078b55777e3c1f2a55ce4284ea9803e9f4fdb618e57db76507"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "qylock-last-of-us"
     }
    ]
   },

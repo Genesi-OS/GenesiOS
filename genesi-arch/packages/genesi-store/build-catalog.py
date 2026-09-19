@@ -31,8 +31,12 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
+import tempfile
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -166,10 +170,40 @@ BARS = [
 ]
 
 
+# Where build-time downloads are kept between runs. Outside the repository,
+# because it is scratch: describing the qylock collection means fetching ~570
+# MB of theme, and a build that pays that again to change one blurb is a build
+# nobody runs twice. Delete it to force a fresh fetch.
+CACHE = os.path.join(tempfile.gettempdir(), "genesi-store-build-cache")
+
+
 def get(url, binary=False):
+    cached = os.path.join(CACHE, hashlib.sha256(url.encode("utf-8")).hexdigest())
+    if os.path.exists(cached):
+        with open(cached, "rb") as fh:
+            data = fh.read()
+        return data if binary else data.decode("utf-8")
     request = urllib.request.Request(url, headers={"User-Agent": "genesi-store-build"})
-    with urllib.request.urlopen(request, timeout=45) as response:
-        data = response.read()
+    # Some of these are fourteen-megabyte backgrounds, and describing a whole
+    # collection is hundreds of requests -- at that volume a read timing out
+    # is not an error, it is Tuesday. Three tries, longer each time.
+    data = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=60 * (attempt + 1)) as response:
+                data = response.read()
+            break
+        except (urllib.error.URLError, OSError) as exc:
+            if attempt == 2:
+                raise SystemExit("could not fetch %s: %s" % (url, exc))
+            sys.stderr.write("  retrying %s (%s)\n"
+                             % (url.rsplit("/", 1)[-1], exc))
+            time.sleep(2 * (attempt + 1))
+    os.makedirs(CACHE, exist_ok=True)
+    tmp = cached + ".part"
+    with open(tmp, "wb") as fh:
+        fh.write(data)
+    os.replace(tmp, cached)
     return data if binary else data.decode("utf-8")
 
 
@@ -534,6 +568,35 @@ def lockscreens():
     return out
 
 
+# Pictures worth putting on a terminal. Chosen to be different from each
+# other rather than to be the prettiest: a neon city, an ink wave, a castle,
+# a moon. One card each.
+FETCH_PICTURES = [
+    ("neon", "neocity.png", "neon", ["cidade", "escuro"]),
+    ("tinta", "ink_wave.png", "tinta", ["arte", "minimalista"]),
+    ("castelo", "tree-nature-castleinsky.png", "castelo", ["arte", "natureza"]),
+    ("lua", "moon.png", "lua", ["escuro", "noite"]),
+    ("gruvbox", "gruvbox_retrocity.png", "gruvbox", ["retro", "quente"]),
+]
+
+# The Genesi leaf, the same file the packaged default uses, so the store's
+# fancy layout and the one the machine ships with draw the same logo.
+GENESI_LOGO_BLOCK = """  "logo": {
+    "type": "file",
+    "source": "/usr/share/genesi/fastfetch/genesi-logo.txt",
+    "color": { "1": "38;2;29;158;117", "2": "38;2;225;245;238" },
+    "padding": { "top": 1, "right": 3, "left": 2 }
+  },
+"""
+
+SIXEL_LOGO_BLOCK = """  "logo": {
+    "type": "sixel",
+    "source": "{{asset:picture}}",
+    "width": 30,
+    "padding": { "top": 1, "right": 3 }
+  },
+"""
+
 IMAGE_BLURB = ("Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.")
 
 
@@ -743,6 +806,49 @@ def fastfetch():
   ]
 }
 """
+    # A card laid out in SECTIONS rather than as one column of keys. This is
+    # the look people build by hand and post screenshots of: a tagline, then
+    # Vitals / System / Session with a rule over each, then the palette as a
+    # row of dots at the bottom.
+    #
+    # Written with only the module types every fastfetch has -- `custom` for
+    # the rules, `break` for the air, `colors` for the dots. No colour escapes
+    # inside the format strings: those are version-specific, and a card that
+    # prints "{#green}" at somebody is worse than a card that prints grey.
+    def sectioned(logo_block, width=46):
+        rule = lambda label: ('    { "type": "custom", "format": "── %s %s" },\n'
+                              % (label, "─" * max(3, width - len(label) - 4)))
+        return (FASTFETCH_HEAD + logo_block + """  "display": {
+    "separator": "  ",
+    "color": { "keys": "38;2;29;158;117", "title": "38;2;29;158;117" }
+  },
+  "modules": [
+    { "type": "title", "format": "{user-name} @ {host-name}" },
+    { "type": "custom", "format": "Genesi OS · um amanhã mais tranquilo" },
+    "break",
+""" + rule("VITAIS") + """    { "type": "cpu", "key": "CPU" },
+    { "type": "gpu", "key": "GPU" },
+    { "type": "memory", "key": "MEMORIA" },
+    { "type": "disk", "key": "DISCO" },
+    "break",
+""" + rule("SISTEMA") + """    { "type": "os", "key": "OS" },
+    { "type": "kernel", "key": "KERNEL" },
+    { "type": "wm", "key": "WM" },
+    { "type": "shell", "key": "SHELL" },
+    { "type": "packages", "key": "PACOTES" },
+    "break",
+""" + rule("SESSAO") + """    { "type": "uptime", "key": "LIGADO HA" },
+    { "type": "terminal", "key": "TERMINAL" },
+    "break",
+    { "type": "colors", "symbol": "circle", "paddingLeft": 2 }
+  ]
+}
+""")
+
+    SECTION_PREVIEW = ["matheus @ genesi", "Genesi OS", "── VITAIS ──────",
+                       "CPU      Ryzen 7", "MEMORIA  6.2 / 16 GiB",
+                       "── SISTEMA ─────", "WM       Hyprland"]
+
     # An image where the ASCII art goes. `sixel` is the protocol foot speaks --
     # Genesi's default terminal, picked because it needs no OpenGL and so
     # survives a VM -- and it is NOT kitty's, so a config copied from a kitty
@@ -817,6 +923,30 @@ def fastfetch():
              ["imagem", "sixel", "curto"],
              {"text": image_small, "logo": "image", "asset": shot_asset,
               "preview": ["genesi", "Genesi OS", "Hyprland", "1d 3h"]}),
+
+        # The sectioned one, with the Genesi leaf.
+        item("ficha", "Ficha técnica",
+             "Vitais, sistema e sessão separados, com a paleta embaixo. "
+             "O jeitão que as pessoas montam à mão.",
+             ["seções", "completo"],
+             {"text": sectioned(GENESI_LOGO_BLOCK), "logo": "full",
+              "preview": SECTION_PREVIEW}),
+        item("ficha-limpa", "Ficha técnica (sem logo)",
+             "A mesma ficha, sem desenho nenhum na frente.",
+             ["seções", "minimalista"],
+             {"text": sectioned('  "logo": { "type": "none" },\n'),
+              "logo": "none", "preview": SECTION_PREVIEW}),
+    ] + [
+        # ...and the same ficha with a real picture instead of the leaf. One
+        # card per picture, because "an image" is not a look -- WHICH image is
+        # the look, and picking one for everybody is how you get a shelf
+        # nobody uses.
+        item("ficha-" + ident, "Ficha técnica (%s)" % label, IMAGE_BLURB,
+             ["seções", "imagem", "sixel"] + tags,
+             {"text": sectioned(SIXEL_LOGO_BLOCK), "logo": "image",
+              "asset": wallpaper_asset(filename)[0],
+              "preview": SECTION_PREVIEW})
+        for ident, filename, label, tags in FETCH_PICTURES
     ]
 
 
@@ -1260,6 +1390,218 @@ def greeter_picture(item_id, key, where):
             "sha256": hashlib.sha256(data).hexdigest()}
 
 
+# Repositories that hold a COLLECTION rather than a theme. qylock is 604 MB
+# of tarball; the Minecraft login screen inside it is 200 KB. Downloading the
+# first to install the second is not a thing to do to somebody's connection,
+# so a theme out of one of these is described FILE BY FILE: its own files,
+# pinned to the same commit, each with its own sha256.
+# The qylock themes, each its own card. Skipped: clockwork, which does not
+# declare QtVersion=6 -- on Genesi that is a black screen at boot, and the
+# build refuses it for the same reason it refuses a Qt5 import.
+#
+# id, directory in the repo, name, blurb, tags
+QYLOCK_THEMES = [
+    ("minecraft", "minecraft", "Minecraft",
+     "A tela de título, com a fonte e tudo.", ["jogo", "pixel"]),
+    ("terraria", "terraria", "Terraria",
+     "Madeira, tochas e o menu do jogo.", ["jogo", "pixel"]),
+    ("nier", "nier-automata", "NieR: Automata",
+     "Areia, serifa e o silêncio do jogo.", ["jogo", "minimalista"]),
+    ("windows7", "windows_7", "Windows 7",
+     "Aquele azul. Sim, aquele mesmo.", ["retro", "nostalgia"]),
+    # Skipped: "nothing", which is QML and two fonts with no picture in it
+    # at all. There is nothing to put on its card, and a blank card among
+    # thirty-five photographs is what this shelf keeps being rebuilt to stop.
+    ("ninja-gaiden", "ninja_gaiden", "Ninja Gaiden",
+     "Oito bits e um ninja.", ["jogo", "retro", "pixel"]),
+    ("field", "field", "Campo",
+     "Um campo aberto e a luz baixa.", ["natureza", "calmo"]),
+    ("ninesols", "ninesols", "Nine Sols",
+     "Traço oriental em vermelho e osso.", ["jogo", "arte"]),
+    ("girl-coffee", "girl-coffee", "Café",
+     "Alguém tomando café, desenhado.", ["arte", "calmo"]),
+    ("girl-pillow", "girl-pillow", "Travesseiro",
+     "O sono que você não teve.", ["arte", "calmo"]),
+    ("pixel-coffee", "pixel-coffee", "Café (pixel)",
+     "O mesmo café, em pixel art animada.", ["pixel", "animado"]),
+    ("pixel-dusk", "pixel-dusk-city", "Cidade ao Anoitecer",
+     "Telhados e a última luz, em pixel.", ["pixel", "cidade", "animado"]),
+    ("pixel-waterfall", "pixel-waterfall", "Cachoeira",
+     "Água caindo, quadro a quadro.", ["pixel", "natureza", "animado"]),
+    ("pixel-munchlax", "pixel-munchlax", "Munchlax",
+     "Um pokémon dormindo na sua tela de login.", ["pixel", "jogo"]),
+    ("women-umbrella", "women-umbrella", "Guarda-chuva",
+     "Chuva, um guarda-chuva e neon.", ["arte", "cidade"]),
+    ("material-you", "material-you", "Material You",
+     "O desenho do Android, claro.", ["material", "claro"]),
+    ("material-you-dark", "material-you-dark", "Material You (escuro)",
+     "O mesmo, no escuro.", ["material", "escuro"]),
+    ("man-bicycle", "man-bicycle", "Bicicleta",
+     "Uma estrada, uma bicicleta, fim de tarde.", ["arte", "calmo"]),
+    ("r1999", "R1999_2", "Reverse: 1999",
+     "Art déco e um relógio parado.", ["jogo", "arte"]),
+    ("pixel-night-city", "pixel-night-city", "Cidade Noturna",
+     "Neon em pixel, com chuva.", ["pixel", "cidade", "animado"]),
+    ("pixel-sakura", "pixel-sakura", "Sakura (pixel)",
+     "Pétalas caindo, quadro a quadro.", ["pixel", "natureza", "animado"]),
+    ("pixel-rainyroom", "pixel-rainyroom", "Quarto na Chuva",
+     "A janela, a chuva, a luminária.", ["pixel", "calmo", "animado"]),
+    ("star-rail", "star-rail", "Star Rail",
+     "O trem entre as estrelas.", ["jogo", "espaço"]),
+    ("dog-samurai", "dog-samurai", "Cão Samurai",
+     "Exatamente o que está escrito.", ["arte", "jogo"]),
+    ("pixel-emerald", "pixel-emerald", "Esmeralda",
+     "Verde em pixel, do jeito da casa.", ["pixel", "verde"]),
+    ("winter", "winter", "Inverno",
+     "Neve caindo devagar.", ["natureza", "frio", "animado"]),
+    ("enfield", "enfield", "Enfield",
+     "Uma moto antiga e poeira.", ["arte", "retro"]),
+    ("pixel-cyberpunk", "pixel-cyberpunk", "Cyberpunk (pixel)",
+     "Neon, fumaça e oito bits.", ["pixel", "cidade", "animado"]),
+    ("wuwa", "wuwa", "Wuthering Waves",
+     "Vento, capa e horizonte.", ["jogo", "arte"]),
+    ("pixel-skyscrapers", "pixel-skyscrapers", "Arranha-céus",
+     "A cidade de cima, em pixel.", ["pixel", "cidade"]),
+    ("sword", "sword", "Espada",
+     "Uma lâmina e muito preto.", ["arte", "escuro"]),
+    ("pixel-hollowknight", "pixel-hollowknight", "Hollow Knight",
+     "Hallownest, em pixel e azul.", ["jogo", "pixel", "escuro"]),
+    ("osu", "osu", "osu!",
+     "Cinco fundos e o rosa de sempre. O maior da prateleira.",
+     ["jogo", "rosa"]),
+    ("forest", "forest", "Floresta (qylock)",
+     "Mata fechada, em altíssima resolução.", ["natureza", "verde"]),
+    ("genshin", "Genshin", "Genshin Impact",
+     "Teyvat na tela de login.", ["jogo", "arte"]),
+    ("last-of-us", "last-of-us", "The Last of Us",
+     "O mundo depois. O mais pesado de todos.", ["jogo", "escuro"]),
+]
+
+FILE_REPOS = {
+    "qylock": ("Darkkal44/qylock",
+               "f6561e2ceae33f26e5e660742a5df2f725cbe514"),
+}
+
+# The biggest theme in qylock is 75 MB (osu, which is five full-resolution
+# backgrounds); most are under one megabyte.
+MAX_THEME_BYTES = 96 * 1024 * 1024
+
+_TREES = {}
+
+
+def theme_backdrop(key, spec, subdir):
+    """The picture a collection theme shows on its card.
+
+    qylock ships an animated GIF of every theme in Assets/ -- made by the
+    author, for exactly this purpose, and far better than anything this build
+    could derive. Which matters more than it sounds: NINETEEN of these themes
+    have an MP4 for a background and no still image in them at all, so
+    "use the biggest picture in the theme" would have left half the shelf
+    blank. Extracting a frame was the other option, and that would have meant
+    Genesi generating and shipping a derivative of somebody else's art, which
+    is the thing this shelf stopped doing two versions ago.
+
+    The names in Assets/ do not match the directory names -- win7 vs
+    windows_7, nier_automata vs nier-automata -- so they are matched with the
+    separators removed, and a theme whose preview cannot be found is an error
+    rather than a blank card.
+    """
+    repo, ref = FILE_REPOS["qylock"]
+    flat = lambda name: re.sub(r"[^a-z0-9]", "", name.lower())
+    assets = {flat(os.path.splitext(os.path.basename(p))[0]): p
+              for p in repo_tree(repo, ref)
+              if p.startswith("Assets/") and p.lower().endswith((".gif", ".png"))}
+    want = flat(subdir)
+    path = assets.get(want) or assets.get(want.replace("the", "", 1))
+    if not path:
+        # A couple genuinely differ by more than punctuation.
+        aliases = {"windows7": "win7", "lastofus": "thelastofus"}
+        path = assets.get(flat(aliases.get(want, "")))
+    if not path:
+        # One theme (ninesols) has no GIF in Assets but does ship a still of
+        # its own, so fall back to that rather than losing the card. Both
+        # paths end in the same place: a picture the author published, at the
+        # pinned commit, with a digest.
+        own = [f for f in spec["files"]
+               if f["path"].lower().endswith((".png", ".jpg", ".jpeg"))]
+        if not own:
+            raise SystemExit("%s has no preview anywhere in the collection"
+                             % key)
+        best = max(own, key=lambda f: f["bytes"])
+        kind = ("image/png" if best["path"].lower().endswith(".png")
+                else "image/jpeg")
+        return {"url": spec["base"] + "/" + urllib.parse.quote(best["path"]),
+                "type": kind, "bytes": best["bytes"],
+                "sha256": best["sha256"]}
+
+    raw = get("https://raw.githubusercontent.com/%s/%s/%s"
+              % (repo, ref, urllib.parse.quote(path)), binary=True)
+    kind = "image/gif" if path.lower().endswith(".gif") else "image/png"
+    return {"url": "https://raw.githubusercontent.com/%s/%s/%s"
+                   % (repo, ref, urllib.parse.quote(path)),
+            "type": kind, "bytes": len(raw),
+            "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def repo_tree(repo, ref):
+    """Every file in a repository at one commit. One API call, not 604 MB."""
+    key = (repo, ref)
+    if key not in _TREES:
+        data = json.loads(get("https://api.github.com/repos/%s/git/trees/%s"
+                              "?recursive=1" % (repo, ref)))
+        if data.get("truncated"):
+            raise SystemExit("the file list for %s is truncated, so this build "
+                             "cannot describe it completely" % repo)
+        _TREES[key] = sorted(b["path"] for b in data.get("tree", [])
+                             if b.get("type") == "blob")
+    return _TREES[key]
+
+
+def theme_files(repo_key, subdir):
+    """One theme out of a collection: its files, their digests, and the bytes.
+
+    Everything is fetched here, at build time, to prove the links work and to
+    record what the bytes are. The bytes are returned so the rest of the build
+    can read the theme's QML imports and its config list out of them, exactly
+    as it does for a theme that arrived in a tarball -- and then they are
+    thrown away. What ships is paths and digests.
+    """
+    repo, ref = FILE_REPOS[repo_key]
+    prefix = subdir.rstrip("/") + "/"
+    paths = [p for p in repo_tree(repo, ref) if p.startswith(prefix)]
+    if not paths:
+        raise SystemExit("%s has no %s at %s" % (repo, subdir, ref[:8]))
+
+    files, fetched, total = [], {}, 0
+    for path in paths:
+        rel = path[len(prefix):]
+        # A .gitkeep holding an empty font directory is not part of the theme.
+        if not rel or os.path.basename(rel) == ".gitkeep":
+            continue
+        raw = get("https://raw.githubusercontent.com/%s/%s/%s"
+                  % (repo, ref, urllib.parse.quote(path)), binary=True)
+        total += len(raw)
+        if total > MAX_THEME_BYTES:
+            raise SystemExit("%s/%s is over %d MB"
+                             % (repo, subdir, MAX_THEME_BYTES // (1 << 20)))
+        files.append({"path": rel, "bytes": len(raw),
+                      "sha256": hashlib.sha256(raw).hexdigest()})
+        fetched[rel] = raw
+    if not files:
+        raise SystemExit("%s/%s has no files worth installing" % (repo, subdir))
+
+    # The same digest the helper will compute once it has written them: path,
+    # then bytes, sorted by path. ci/store-test.py runs the helper's own
+    # function over a real directory and compares the two.
+    digest = hashlib.sha256()
+    for entry in sorted(files, key=lambda f: f["path"]):
+        digest.update(entry["path"].encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(fetched[entry["path"]])
+        digest.update(b"\0")
+    return files, digest.hexdigest(), fetched
+
+
 def greeters():
     """The greeters map and the cards that point into it."""
     specs = {}
@@ -1288,7 +1630,58 @@ def greeters():
             "confs": greeter_confs(files),
         }
 
+    # The collection themes: same map, same checks, described file by file.
+    for ident, subdir, name, blurb, tags in QYLOCK_THEMES:
+        key = "qylock-" + ident
+        files, digest, fetched = theme_files("qylock", "themes/" + subdir)
+        meta = fetched.get("metadata.desktop", b"").decode("utf-8", "replace")
+        if "QtVersion=6" not in meta.replace(" ", ""):
+            raise SystemExit("%s does not say QtVersion=6, so it is a Qt5 "
+                             "theme and would not come up" % key)
+        repo, ref = FILE_REPOS["qylock"]
+        specs[key] = {
+            "name": subdir,
+            "source": "https://github.com/%s/tree/%s/themes/%s"
+                      % (repo, ref, subdir),
+            "author": "Darkkal44",
+            "license": "GPL-3.0-or-later",
+            # No `url`: there is no archive. `base` is what each file hangs
+            # off, and every one of them carries its own digest.
+            "base": "https://raw.githubusercontent.com/%s/%s/themes/%s"
+                    % (repo, ref, urllib.parse.quote(subdir)),
+            "files": files,
+            "bytes": sum(f["bytes"] for f in files),
+            "tree": digest,
+            "install_as": "genesi-" + key,
+            "needs": greeter_needs(fetched),
+            "confs": greeter_confs(fetched),
+        }
+        trees[key] = fetched
+
     out = []
+    for ident, subdir, name, blurb, tags in QYLOCK_THEMES:
+        key = "qylock-" + ident
+        spec = specs[key]
+        out.append({
+            "id": "login-" + key,
+            "section": "login",
+            "name": name,
+            "blurb": blurb,
+            "family": "login",
+            "author": spec["author"],
+            "license": spec["license"],
+            "source": spec["source"],
+            "tags": ["login", "antes da sessão", "qylock"] + tags,
+            "needs_root": True,
+            "download": spec["bytes"],
+            # The card's picture is the theme's OWN background: already
+            # fetched, already hashed, and the most honest preview there is,
+            # because it is literally what you will be looking at.
+            "preview": {"kind": "login", "theme": key,
+                        "shot": theme_backdrop(key, spec, subdir)},
+            "actions": [{"action": "greeter", "key": key}],
+        })
+
     for (ident, key, conf, name, blurb, tags, picture) in GREETER_ITEMS:
         spec = specs[key]
         if conf and conf not in spec["confs"]:

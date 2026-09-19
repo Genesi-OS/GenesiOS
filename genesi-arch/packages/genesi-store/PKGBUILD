@@ -144,7 +144,15 @@ pkgver=0.1.0
 # fifteen cards from one generic picture were fifteen identical cards. Same
 # for fastfetch, which now draws its logo, plus two options that put a real
 # picture there in sixel.
-pkgrel=6
+#
+# pkgrel 7: thirty-five more login screens, from Darkkal44/qylock. That
+# repository is 604 MB of tarball and the Minecraft theme inside it is 200 KB,
+# so a theme can now be described FILE BY FILE instead: its own files, pinned
+# to the same commit, each with its own sha256, fetched by the store as you
+# and checked again by the helper as root before a byte is written. Nineteen
+# of them have an MP4 for a background and no still image at all, so the cards
+# use the author's own animated previews and the shelf moves.
+pkgrel=7
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

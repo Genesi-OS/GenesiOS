@@ -213,14 +213,43 @@ ck("every login screen described is used by a card",
 
 bad_greeters = []
 for key, spec in greeters.items():
-    url = spec.get("url", "")
-    host = url.split("/")[2] if url.startswith("https://") else ""
-    if not url.startswith("https://"):
-        bad_greeters.append((key, "not https"))
-    elif host not in hosts:
-        bad_greeters.append((key, "host %s" % host))
-    if not re.fullmatch(r"[0-9a-f]{64}", spec.get("sha256", "")):
-        bad_greeters.append((key, "no archive checksum"))
+    # Two shapes. A repository holding ONE theme is an archive with one
+    # checksum. A repository holding forty is described file by file, because
+    # qylock is 604 MB of tarball for a 200 KB login screen. Both answer to
+    # the same rules -- https, a host on the list, a digest on every byte
+    # that will be written, and a content digest over the result.
+    if spec.get("files"):
+        base = spec.get("base", "")
+        host = base.split("/")[2] if base.startswith("https://") else ""
+        if not base.startswith("https://"):
+            bad_greeters.append((key, "base not https"))
+        elif host not in hosts:
+            bad_greeters.append((key, "base host %s" % host))
+        elif not re.search(r"/[0-9a-f]{40}/", base):
+            bad_greeters.append((key, "base not pinned to a commit"))
+        if spec.get("url"):
+            bad_greeters.append((key, "has both an archive and a file list"))
+        for entry in spec["files"]:
+            path = entry.get("path", "")
+            if not path or path.startswith("/") or ".." in path.split("/"):
+                bad_greeters.append((key, "path %r" % path))
+            if not re.fullmatch(r"[0-9a-f]{64}", entry.get("sha256", "")):
+                bad_greeters.append((key, "%s has no checksum" % path))
+            if not isinstance(entry.get("bytes"), int) or entry["bytes"] < 0:
+                bad_greeters.append((key, "%s has no size" % path))
+        # A theme is QML and pictures. If it lists no Main.qml the install
+        # would fail at the last moment, as root, after a password prompt.
+        if not any(e.get("path") == "Main.qml" for e in spec["files"]):
+            bad_greeters.append((key, "no Main.qml in the file list"))
+    else:
+        url = spec.get("url", "")
+        host = url.split("/")[2] if url.startswith("https://") else ""
+        if not url.startswith("https://"):
+            bad_greeters.append((key, "not https"))
+        elif host not in hosts:
+            bad_greeters.append((key, "host %s" % host))
+        if not re.fullmatch(r"[0-9a-f]{64}", spec.get("sha256", "")):
+            bad_greeters.append((key, "no archive checksum"))
     if not re.fullmatch(r"[0-9a-f]{64}", spec.get("tree", "")):
         bad_greeters.append((key, "no content digest"))
     if not isinstance(spec.get("bytes"), int) or spec["bytes"] <= 0:
@@ -236,8 +265,11 @@ ck("every login screen is https, allow-listed, checksummed and digested",
 
 # A greeter is pinned to a COMMIT. A branch is whatever somebody pushed this
 # morning, and this one runs as root before anybody has logged in.
+# A file-based theme pins its `base` instead, checked with the rest of its
+# shape above; this is the archive ones.
 unpinned = [k for k, s in greeters.items()
-            if not re.search(r"/tar\.gz/[0-9a-f]{40}$", s.get("url", ""))]
+            if not s.get("files")
+            and not re.search(r"/tar\.gz/[0-9a-f]{40}$", s.get("url", ""))]
 ck("every login screen is pinned to a commit", not unpinned, unpinned)
 
 # Same list on both sides of pkexec. A package the CLI believes it may ask for
@@ -395,6 +427,53 @@ ck("...and still falls back to the one the package ships",
    not no_fallback, no_fallback)
 
 
+# ── A fastfetch config runs on every terminal you open ─────────────────────
+#
+# Which makes a broken one uniquely annoying: not one error, an error every
+# single time, forever, until somebody works out where it came from. So every
+# config this shelf can write is parsed here.
+broken = []
+for item in items:
+    if item.get("section") != "fastfetch":
+        continue
+    for action in item.get("actions", []):
+        text = action.get("text")
+        if not text:
+            continue
+        try:
+            conf = json.loads(text)
+        except ValueError as exc:
+            broken.append((item["id"], str(exc)[:50]))
+            continue
+        if not conf.get("modules"):
+            broken.append((item["id"], "no modules"))
+        for mod in conf.get("modules", []):
+            # A module is either the name of one or an object saying which.
+            if not isinstance(mod, str) and not (isinstance(mod, dict)
+                                                 and mod.get("type")):
+                broken.append((item["id"], "a module with no type"))
+ck("every fastfetch config parses and has modules", not broken, broken)
+
+# The factory card has to leave the machine reading the packaged config, and
+# the packaged config has to be the one with the Genesi logo in it. That is
+# the whole promise of the words "como vem de fábrica".
+factory = [i for i in items if i["id"] == "default-fastfetch"]
+ck("the fastfetch shelf has a way back", len(factory) == 1)
+if factory:
+    acts = factory[0].get("actions", [])
+    ck("...and it clears the override rather than writing another one",
+       all(a.get("action") == "restore" and not a.get("from") for a in acts),
+       acts)
+
+packaged = os.path.join(ROOT, "genesi-arch", "packages", "genesi-fastfetch",
+                        "genesi.jsonc")
+logo = os.path.join(ROOT, "genesi-arch", "packages", "genesi-fastfetch",
+                    "genesi-logo.txt")
+ck("...and what it falls back to draws the Genesi logo",
+   os.path.exists(packaged) and os.path.exists(logo)
+   and "genesi-logo.txt" in read(packaged))
+
+
 # ── A lock screen has to be reachable, not merely written ──────────────────
 #
 # This shelf shipped broken and nothing caught it, because every part of it
@@ -526,6 +605,71 @@ try:
     by_helper = helper.tree_digest(out)
     ck("the build and the helper compute the same content digest",
        by_build == by_helper, (by_build[:16], by_helper[:16]))
+
+    # ...and the same question for the OTHER shape. A theme from a collection
+    # is described file by file, and the two digests are computed by two
+    # different code paths: build-catalog hashes bytes it downloaded, the
+    # helper hashes files it wrote. If those ever drift, every collection
+    # theme fails to install with a message about the catalogue lying.
+    per_file = [
+        ("Main.qml", b"import QtQuick\nItem {}\n"),
+        ("metadata.desktop", b"[SddmGreeterTheme]\nQtVersion=6\n"),
+        ("assets/bg.png", b"\x89PNG not really"),
+        ("font/Sans.ttf", b"\x00\x01ttf"),
+    ]
+    import hashlib
+    listed = [{"path": name, "bytes": len(data),
+               "sha256": hashlib.sha256(data).hexdigest()}
+              for name, data in per_file]
+
+    # What build-catalog would record, computed its way.
+    build_side = hashlib.sha256()
+    lookup = dict(per_file)
+    for entry in sorted(listed, key=lambda f: f["path"]):
+        build_side.update(entry["path"].encode("utf-8"))
+        build_side.update(b"\0")
+        build_side.update(lookup[entry["path"]])
+        build_side.update(b"\0")
+
+    # What the helper computes, after writing the same files itself.
+    staged = os.path.join(work, "staged")
+    for name, data in per_file:
+        full = os.path.join(staged, name)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as fh:
+            fh.write(data)
+    ck("...and they agree for a theme described file by file",
+       build_side.hexdigest() == helper.tree_digest(staged))
+
+    # place_files has to refuse a file whose bytes are not what was promised:
+    # those files sit in the caller's home and the caller can swap them.
+    swapped = os.path.join(work, "swapped")
+    caller = os.path.join(work, "callerhome")
+    for name, data in per_file:
+        full = os.path.join(caller, ".local", "share", "genesi", "store",
+                            "assets", "greeter-fake.d", name)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as fh:
+            fh.write(b"swapped" if name == "assets/bg.png" else data)
+    os.makedirs(swapped, exist_ok=True)
+    helper.caller_home = lambda: caller
+    refused = False
+    try:
+        helper.place_files("fake", listed, swapped)
+    except SystemExit:
+        refused = True
+    ck("the helper refuses a file that is not what the catalogue describes",
+       refused)
+
+    # ...and a path that climbs out is refused before anything is written.
+    climbed = False
+    try:
+        helper.place_files("fake", [{"path": "../escape", "bytes": 1,
+                                     "sha256": "0" * 64}], swapped)
+    except SystemExit:
+        climbed = True
+    ck("the helper refuses a file list that climbs out of the theme", climbed)
+
 
     # A file changed after the catalogue was built must not match.
     with io.open(os.path.join(out, "Main.qml"), "a", encoding="utf-8") as fh:

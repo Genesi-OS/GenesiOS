@@ -57,15 +57,36 @@ Item {
         color: root.bg
     }
 
+    // Image for a still, AnimatedImage for a GIF. Nineteen of the collection
+    // login screens have a VIDEO for a background and no still in them at
+    // all, and what their author publishes as a preview is an animated GIF --
+    // so a card drawing only the first frame would be showing a still of a
+    // thing whose whole point is that it moves.
+    readonly property bool moving: root.thumb.toLowerCase().endsWith(".gif")
+
     Image {
         id: picture
 
         anchors.fill: parent
-        source: root.thumb
+        source: root.moving ? "" : root.thumb
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true
-        visible: source !== "" && status === Image.Ready && !root.spec.blur
+        visible: !root.moving && source !== "" && status === Image.Ready
+                 && !root.spec.blur
+    }
+
+    AnimatedImage {
+        id: motion
+
+        anchors.fill: parent
+        source: root.moving ? root.thumb : ""
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        cache: false            // a shelf of cached GIFs is a shelf of memory
+        speed: 0.75
+        visible: root.moving && status === AnimatedImage.Ready
+                 && !root.spec.blur
     }
 
     // A lock screen shows the wallpaper the way a lock screen does: blurred.
@@ -83,7 +104,7 @@ Item {
     // Nothing to show yet: the palette is the picture.
     Rectangle {
         anchors.fill: parent
-        visible: !picture.visible && root.thumb === ""
+        visible: !picture.visible && !motion.visible && root.thumb === ""
         gradient: Gradient {
             GradientStop {
                 position: 0
@@ -475,7 +496,8 @@ Item {
     Column {
         anchors.centerIn: parent
         visible: root.kind === "lock"
-                 || (root.kind === "login" && !picture.visible)
+                 || (root.kind === "login" && !picture.visible
+                     && !motion.visible)
         spacing: root.u * 4
 
         Text {
@@ -668,7 +690,7 @@ Item {
     // the picture has not arrived.
     Column {
         anchors.centerIn: parent
-        visible: root.kind === "image" && !picture.visible
+        visible: root.kind === "image" && !picture.visible && !motion.visible
         spacing: root.u * 3
 
         Leaf {
