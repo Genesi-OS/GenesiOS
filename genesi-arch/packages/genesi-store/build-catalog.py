@@ -749,6 +749,8 @@ GREETER_REPOS = {
               "1e1a863761f742e8d509d569382b17c112e29fdc"),
     "whereis": ("stepanzubkov/where-is-my-sddm-theme",
                 "2fddf85ec80ff02a8e20fdcba51a30b436d76e6c"),
+    "hypr": ("ADIOR-enigma/hypr-sddm",
+             "52fd4a538fabea2331d9b9f956c2497ff5f9102c"),
 }
 
 # key, repo, subpath inside the archive, directory it installs as,
@@ -765,6 +767,13 @@ GREETERS = [
     ("pixie", "pixie", "", "genesi-pixie", "xCaptaiN09", "MIT"),
     ("whereis", "whereis", "where_is_my_sddm_theme", "genesi-whereis",
      "stepanzubkov", "MIT"),
+    # Note what this one is NOT: it does not read the running caelestia shell
+    # the way caelestia-sddm does. It is a standalone theme that looks like
+    # hyprlock, with its own wallpaper and its own palette in theme.conf. The
+    # repository also carries a matugen config for recolouring it from your
+    # wallpaper, which needs the install script in sudoers -- so the store
+    # does not use it, and the theme works without it.
+    ("hypr", "hypr", "", "genesi-hypr", "adior_enigmac", "MIT"),
 ]
 
 # What a QML import costs in packages. A theme that imports a module the
@@ -783,6 +792,10 @@ MODULE_PACKAGES = {
     "QtQml": "qt6-declarative",
     "SddmComponents": "",          # comes with sddm itself
 }
+
+# The biggest screenshot in the catalogue is 2.7 MB. Eight is room to grow
+# and still small enough that a card cannot be used to push a file at anybody.
+MAX_SHOT_BYTES = 8 * 1024 * 1024
 
 # Imports that only exist in Qt5. Seeing one means the theme was never ported,
 # and installing it would be handing somebody a machine they cannot log into.
@@ -890,6 +903,10 @@ GREETER_ITEMS = [
     ("whereis-tree", "whereis", "example_configs/tree.conf",
      "Cadê meu tema? (árvore)", "Com uma foto atrás, para provar que dá.",
      ["minimalista", "foto"], "tar:screenshots/tree.png"),
+    ("hypr", "hypr", "", "Hypr",
+     "O jeitão do hyprlock na tela de login: relógio empilhado, cartão "
+     "no meio, paleta fixa. Não segue o seu papel de parede.",
+     ["minimalista", "escuro"], "tar:screenshot.png"),
 ]
 
 # The pictures that are not in the repository itself. The astronaut previews
@@ -903,8 +920,13 @@ GREETER_PICTURES = {
         "https://github.com/user-attachments/assets/"
         "02207bd5-fa7b-4312-9ff2-583f57fc5f18",
 }
+# Pinned to a commit for the same reason the themes are: this URL is now in
+# the catalogue and fetched on the user's machine, so a branch here would mean
+# the picture on the card can change under us without the catalogue moving.
+# (The second "master" is a directory in that repository, not a ref.)
 ASTRONAUT_SHOTS = ("https://raw.githubusercontent.com/Keyitdev/screenshots/"
-                   "master/sddm-astronaut-theme/master/")
+                   "ebe29f1f9efbb055687cb918a284d7aee62921e3"
+                   "/sddm-astronaut-theme/master/")
 
 # Which greeter comes out of which archive: three of them share two downloads.
 REPO_OF = {key: repo for key, repo, _, _, _, _ in GREETERS}
@@ -999,29 +1021,41 @@ def greeter_confs(files):
 
 
 def greeter_picture(item_id, key, where):
-    """480px of JPEG, shipped, so the shelf is a shelf of pictures.
+    """Where the screenshot IS, verified now and fetched on the machine.
 
-    A `tar:` path is relative to the root of the downloaded archive, not to
-    the theme's own subdirectory: the nice screenshots usually live beside the
-    themes rather than inside them.
+    These pictures are not ours. They are the authors' screenshots, and some
+    of what is in them is not even theirs -- the astronaut wallpapers are
+    described by their own README as "copied from one user to another", and
+    two of them are frames of a cartoon and of a commercial game. Shipping
+    them inside a Genesi package would be Genesi redistributing that. Naming
+    them is not: the picture comes from the same place the theme does, pinned
+    to the same kind of commit, checked against the same kind of digest.
+
+    So this downloads the file ONCE, at build time, to prove the link works
+    and to record what the bytes are -- and then throws the bytes away.
+
+    A `tar:` path is relative to the root of the downloaded archive, which is
+    also its path in the repository, so it can be named directly rather than
+    making somebody fetch twenty megabytes of theme to see one screenshot.
     """
     kind, _, rest = where.partition(":")
     if kind == "url":
         url = GREETER_PICTURES.get(rest) or (ASTRONAUT_SHOTS + rest)
-        data = get(url, binary=True)
     else:
-        repo_key = REPO_OF[key]
-        want = "%s/%s" % (archive_root(repo_key), rest)
-        found = None
-        with greeter_members(repo_key) as tar:
-            for member in tar:
-                if member.isfile() and member.name == want:
-                    found = tar.extractfile(member).read()
-                    break
-        if found is None:
-            raise SystemExit("the %s archive has no %s" % (repo_key, rest))
-        data = found
-    return thumbnail("greeter-" + item_id, data, item_id)
+        repo, ref = GREETER_REPOS[REPO_OF[key]]
+        url = "https://raw.githubusercontent.com/%s/%s/%s" % (repo, ref, rest)
+    data = get(url, binary=True)
+    for mime, head in (("image/png", b"\x89PNG"), ("image/jpeg", b"\xff\xd8\xff")):
+        if data.startswith(head):
+            break
+    else:
+        raise SystemExit("%s is not a picture -- the link is broken" % url)
+    if len(data) > MAX_SHOT_BYTES:
+        raise SystemExit("%s is %.1f MB; a screenshot stops at %d MB"
+                         % (url, len(data) / 1048576.0,
+                            MAX_SHOT_BYTES // (1 << 20)))
+    return {"url": url, "type": mime, "bytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest()}
 
 
 def greeters():
@@ -1074,7 +1108,7 @@ def greeters():
             "needs_root": True,
             "download": spec["bytes"],
             "preview": {"kind": "login", "theme": key,
-                        "thumb": greeter_picture(ident, key, picture)},
+                        "shot": greeter_picture(ident, key, picture)},
             "actions": [action],
         })
     return specs, out

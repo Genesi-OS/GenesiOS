@@ -75,6 +75,7 @@ def conf(*parts):
 STATE_PATH = home("state.json")
 BACKUP_DIR = home("backups")
 ASSET_DIR = home("assets")
+SHOT_DIR = home("previews")
 
 # Where an asset may come from. Not a formality: an item is data, and data
 # that can name any URL is data that can point the downloader at a LAN address
@@ -98,6 +99,8 @@ MAX_ASSET_BYTES = 40 * 1024 * 1024        # a wallpaper, not a distro image
 # raising this number here alone changes nothing.
 MAX_GREETER_BYTES = 96 * 1024 * 1024
 MAX_TEXT_BYTES = 512 * 1024
+# A screenshot. The largest in the catalogue is 2.7 MB.
+MAX_SHOT_BYTES = 8 * 1024 * 1024
 
 # Long enough to read a password dialog, type into it, and let pacman fetch
 # a Qt module on a bad connection.
@@ -718,6 +721,32 @@ def open_window():
         "(try `genesi-store sections`)")
 
 
+def do_preview(cat, ident):
+    """Fetch an item's screenshot into the cache. Returns the path.
+
+    The screenshots of the downloaded login screens are not shipped in the
+    package -- they belong to the people who made those themes, and some of
+    what is IN them belongs to somebody else again. So the card names its
+    picture and this fetches it, once, from the same pinned commit the theme
+    comes from, checked against the same kind of digest.
+
+    Nothing here is required for the store to work. A card whose picture has
+    not arrived draws the plain login screen instead, which is what it did
+    before any of these existed.
+    """
+    item = item_by_id(cat, ident)
+    shot = (item.get("preview") or {}).get("shot")
+    if not shot:
+        die("%s does not have a picture to fetch" % ident)
+    ext = ".png" if shot.get("type") == "image/png" else ".jpg"
+    dest = os.path.join(SHOT_DIR, ident + ext)
+    if os.path.exists(dest):
+        return dest
+    fetch(shot["url"], dest, expect_type=shot.get("type"),
+          sha256=shot.get("sha256"), cap=MAX_SHOT_BYTES)
+    return dest
+
+
 def main():
     if len(sys.argv) == 1:
         return open_window()
@@ -733,6 +762,8 @@ def main():
     for name in ("install", "apply", "revert", "remove"):
         p = sub.add_parser(name)
         p.add_argument("id")
+    p = sub.add_parser("preview")
+    p.add_argument("id")
     sub.add_parser("state")
     sub.add_parser("refresh")
 
@@ -749,6 +780,9 @@ def main():
         return cmd_show(cat, state, args)
     if args.cmd == "state":
         return cmd_state(cat, state, args)
+    if args.cmd == "preview":
+        print(json.dumps({"path": do_preview(cat, args.id)}))
+        return None
     if args.cmd == "refresh":
         print(json.dumps({"updated": cat.get("updated"),
                           "items": len(cat.get("items", []))}))

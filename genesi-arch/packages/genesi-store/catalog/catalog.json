@@ -235,6 +235,25 @@
     "example_configs/tree.conf",
     "theme.conf"
    ]
+  },
+  "hypr": {
+   "name": "hypr-sddm",
+   "source": "https://github.com/ADIOR-enigma/hypr-sddm/tree/52fd4a538fabea2331d9b9f956c2497ff5f9102c",
+   "author": "adior_enigmac",
+   "license": "MIT",
+   "url": "https://codeload.github.com/ADIOR-enigma/hypr-sddm/tar.gz/52fd4a538fabea2331d9b9f956c2497ff5f9102c",
+   "sha256": "970befb0c84a3926dc4db006ac3edcf86f7fe6c8b841a7493e5e6a3899aa9cf6",
+   "bytes": 789167,
+   "subpath": "hypr-sddm-52fd4a538fabea2331d9b9f956c2497ff5f9102c",
+   "tree": "4f516e501ea0eee722f653c3821361936bc89b2d829faa660b471c31587be93f",
+   "install_as": "genesi-hypr",
+   "needs": [
+    "qt6-declarative",
+    "qt6-virtualkeyboard"
+   ],
+   "confs": [
+    "theme.conf"
+   ]
   }
  },
  "items": [
@@ -2439,7 +2458,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/astronaut.png",
+     "type": "image/png",
+     "bytes": 810082,
+     "sha256": "479969c9714da9db33dcf3f688b12e5b137f93c0d9b05b4a8a5fac9e94c9b4e2"
+    }
    },
    "actions": [
     {
@@ -2470,7 +2494,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut-black-hole.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/black_hole.png",
+     "type": "image/png",
+     "bytes": 2766021,
+     "sha256": "73ee11dc484259c07fea00c30fb20ec00ff55cfc78bc1e40ce94fdbfb400e1b2"
+    }
    },
    "actions": [
     {
@@ -2500,7 +2529,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut-cyberpunk.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/cyberpunk.png",
+     "type": "image/png",
+     "bytes": 833705,
+     "sha256": "77e9a51121c7748da25ebd4197de132790d912f22ea91a29d39b4e80957a487a"
+    }
    },
    "actions": [
     {
@@ -2530,7 +2564,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut-hyprland.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/frame_hyprland_kath.png",
+     "type": "image/png",
+     "bytes": 1247912,
+     "sha256": "0bfe309915ec5c06b80e6c5b900c182fddc786b88d2c8120fa822fe3e1946800"
+    }
    },
    "actions": [
     {
@@ -2560,7 +2599,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut-jake.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/frame_jake_the_dog.png",
+     "type": "image/png",
+     "bytes": 1166327,
+     "sha256": "fe3b2917cb0bf6321df446cc88d6a81b455015e574ba0ce7feb826e967824af1"
+    }
    },
    "actions": [
     {
@@ -2589,7 +2633,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut-japanese.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/japanese_aesthetic.png",
+     "type": "image/png",
+     "bytes": 127528,
+     "sha256": "b3753d1cf7a10d39ce34695a6d44cf395a82acf9ab1ce44cfaf6f3684c5d4c62"
+    }
    },
    "actions": [
     {
@@ -2619,7 +2668,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut-sakura.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/frame_pixel_sakura.png",
+     "type": "image/png",
+     "bytes": 100899,
+     "sha256": "fa07aec1bd3c65eda81914e3eb515066c6a2ddedc820ecdcd1a3028148ed74f2"
+    }
    },
    "actions": [
     {
@@ -2649,7 +2703,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut-sakura-still.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/pixel_sakura_static.png",
+     "type": "image/png",
+     "bytes": 717464,
+     "sha256": "94afe66c95d3f277d6521e8ae49b5151439628d290b49eadcc8999f28baaaa90"
+    }
    },
    "actions": [
     {
@@ -2679,7 +2738,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut-hacker.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/post-apocalyptic_hacker.png",
+     "type": "image/png",
+     "bytes": 2811834,
+     "sha256": "47cae3ff7b95e3e36015688ac0deea064f6c1a157cd91d9f03cc70127366631c"
+    }
    },
    "actions": [
     {
@@ -2709,7 +2773,12 @@
    "preview": {
     "kind": "login",
     "theme": "astronaut",
-    "thumb": "greeter-astronaut-purple-leaves.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/Keyitdev/screenshots/ebe29f1f9efbb055687cb918a284d7aee62921e3/sddm-astronaut-theme/master/purple_leaves.png",
+     "type": "image/png",
+     "bytes": 461029,
+     "sha256": "3e462257eda73640246d19d6ea42f0d6a02f43fce7bf9e76866cfdbb49e60c9d"
+    }
    },
    "actions": [
     {
@@ -2739,7 +2808,12 @@
    "preview": {
     "kind": "login",
     "theme": "caelestia-locklike",
-    "thumb": "greeter-caelestia-locklike.jpg"
+    "shot": {
+     "url": "https://github.com/user-attachments/assets/ef2c973d-c723-4a71-b535-04951a2c3130",
+     "type": "image/png",
+     "bytes": 448320,
+     "sha256": "56725734825bdfd0d80119bfd8d365bb967d7fcf239281da3807cb961b155253"
+    }
    },
    "actions": [
     {
@@ -2768,7 +2842,12 @@
    "preview": {
     "kind": "login",
     "theme": "caelestia-minimalist",
-    "thumb": "greeter-caelestia-minimalist.jpg"
+    "shot": {
+     "url": "https://github.com/user-attachments/assets/02207bd5-fa7b-4312-9ff2-583f57fc5f18",
+     "type": "image/png",
+     "bytes": 305305,
+     "sha256": "bd0dbf2a1e953753f87c950c49f29ffa6390ec37d77ee5dc2fceba6a9479fca1"
+    }
    },
    "actions": [
     {
@@ -2797,7 +2876,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/default.png",
+     "type": "image/png",
+     "bytes": 973012,
+     "sha256": "93d5cfa84e03f39de1ea3d4474cdb8219dd6420f47196d42f94514f8051e31fb"
+    }
    },
    "actions": [
     {
@@ -2827,7 +2911,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-left.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/default-left.png",
+     "type": "image/png",
+     "bytes": 969818,
+     "sha256": "6b6a6f6c9db35921cc1263f78b86e99a7bd81babab72573f2a95c3ec99c3d3ac"
+    }
    },
    "actions": [
     {
@@ -2857,7 +2946,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-right.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/default-right.png",
+     "type": "image/png",
+     "bytes": 988206,
+     "sha256": "f547ed0694966ecf348fa84bedf3df5139e2a48d476db41dea58dba024521fcd"
+    }
    },
    "actions": [
     {
@@ -2887,7 +2981,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-mocha.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/catppuccin-mocha.png",
+     "type": "image/png",
+     "bytes": 50149,
+     "sha256": "1388e8379bb59c55a7eecfe816b191d9b429c63fb0ffdd51412f8c1cb38df038"
+    }
    },
    "actions": [
     {
@@ -2917,7 +3016,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-macchiato.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/catppuccin-macchiato.png",
+     "type": "image/png",
+     "bytes": 57184,
+     "sha256": "85fc2f98d69eec3c1f5813cd602a7111fc35ce84558e54dd55855b4328490b0b"
+    }
    },
    "actions": [
     {
@@ -2946,7 +3050,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-frappe.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/catppuccin-frappe.png",
+     "type": "image/png",
+     "bytes": 48964,
+     "sha256": "470becb817747b9a8bcf0b2851b32b792ed27f7c7556cbd897bcf964e2ea926a"
+    }
    },
    "actions": [
     {
@@ -2976,7 +3085,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-latte.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/catppuccin-latte.png",
+     "type": "image/png",
+     "bytes": 48711,
+     "sha256": "e9b88553be3e1deb77f3a855486a7ac24009b1fa4f4a510968b014e0e6f0aa61"
+    }
    },
    "actions": [
     {
@@ -3006,7 +3120,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-everforest.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/everforest.png",
+     "type": "image/png",
+     "bytes": 26555,
+     "sha256": "60a880f399187ce6c8ef83f23a234b9ad982da0939106143546597b93722dd88"
+    }
    },
    "actions": [
     {
@@ -3036,7 +3155,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-nord.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/nord.png",
+     "type": "image/png",
+     "bytes": 25598,
+     "sha256": "809aa8a5d99eef0e1772f535047c2c51751ceef4b12d6c722e4280b2ef437fcd"
+    }
    },
    "actions": [
     {
@@ -3066,7 +3190,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-ken.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/ken.png",
+     "type": "image/png",
+     "bytes": 706744,
+     "sha256": "824c29c05858311e5b214ce309e09dfa5a0ba781a4eb5a7b703177bb6ea653d4"
+    }
    },
    "actions": [
     {
@@ -3097,7 +3226,12 @@
    "preview": {
     "kind": "login",
     "theme": "silent",
-    "thumb": "greeter-silent-rei.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/uiriansan/SilentSDDM/73380d331fe0f8b8a3b17991bb917a0d438a4d34/docs/previews/rei.png",
+     "type": "image/png",
+     "bytes": 831073,
+     "sha256": "c7d35c4073f07ddc11ed4668951ae2b12e3b27b1402e0c1c5354730ec8e85921"
+    }
    },
    "actions": [
     {
@@ -3127,7 +3261,12 @@
    "preview": {
     "kind": "login",
     "theme": "echo",
-    "thumb": "greeter-echo.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/xCaptaiN09/echo-sddm/e004121450ff71050d3d76a998b86eafdbb6bf47/assets/screenshots/Screenshot_1.png",
+     "type": "image/png",
+     "bytes": 83325,
+     "sha256": "5aa683529fa77f08d5d756c301ca23b97e72d3f27d32289c40da6f3c0f3db5ca"
+    }
    },
    "actions": [
     {
@@ -3156,7 +3295,12 @@
    "preview": {
     "kind": "login",
     "theme": "pixie",
-    "thumb": "greeter-pixie.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/xCaptaiN09/pixie-sddm/1e1a863761f742e8d509d569382b17c112e29fdc/screenshots/login_screen.png",
+     "type": "image/png",
+     "bytes": 294224,
+     "sha256": "85f8c1524801b6474960aa56ce50c507e1b102ad1111939acef840c08effc6ca"
+    }
    },
    "actions": [
     {
@@ -3185,7 +3329,12 @@
    "preview": {
     "kind": "login",
     "theme": "whereis",
-    "thumb": "greeter-whereis.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/stepanzubkov/where-is-my-sddm-theme/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c/screenshots/classic.png",
+     "type": "image/png",
+     "bytes": 14100,
+     "sha256": "18b0a1f178d43ef033b2ebddf66df71947a5afe8133f612c250fdd9be4943c14"
+    }
    },
    "actions": [
     {
@@ -3215,7 +3364,12 @@
    "preview": {
     "kind": "login",
     "theme": "whereis",
-    "thumb": "greeter-whereis-blue.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/stepanzubkov/where-is-my-sddm-theme/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c/screenshots/blue.png",
+     "type": "image/png",
+     "bytes": 21945,
+     "sha256": "68fc2e19c6e6d974eb83be3b8a6f5aca90860860bd64e48ed6b453724f67fd20"
+    }
    },
    "actions": [
     {
@@ -3244,7 +3398,12 @@
    "preview": {
     "kind": "login",
     "theme": "whereis",
-    "thumb": "greeter-whereis-grey.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/stepanzubkov/where-is-my-sddm-theme/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c/screenshots/grey.png",
+     "type": "image/png",
+     "bytes": 26074,
+     "sha256": "8f1664d775fe0ad99bd1d654c1dc266d9ca7b29313ae3e11f51dc53f72da395a"
+    }
    },
    "actions": [
     {
@@ -3274,7 +3433,12 @@
    "preview": {
     "kind": "login",
     "theme": "whereis",
-    "thumb": "greeter-whereis-nord.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/stepanzubkov/where-is-my-sddm-theme/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c/screenshots/nord.png",
+     "type": "image/png",
+     "bytes": 18899,
+     "sha256": "62bcc2c87603d15f7fcfe75fc02554ff33fca1a381377fcbb010c365c7b0e664"
+    }
    },
    "actions": [
     {
@@ -3304,7 +3468,12 @@
    "preview": {
     "kind": "login",
     "theme": "whereis",
-    "thumb": "greeter-whereis-rose.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/stepanzubkov/where-is-my-sddm-theme/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c/screenshots/rose-pine-moon.png",
+     "type": "image/png",
+     "bytes": 62853,
+     "sha256": "b5f99679a0d3b10797ee70abeb87daf4aab05f8612b943742d0cdb5aa5fd23ab"
+    }
    },
    "actions": [
     {
@@ -3334,13 +3503,52 @@
    "preview": {
     "kind": "login",
     "theme": "whereis",
-    "thumb": "greeter-whereis-tree.jpg"
+    "shot": {
+     "url": "https://raw.githubusercontent.com/stepanzubkov/where-is-my-sddm-theme/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c/screenshots/tree.png",
+     "type": "image/png",
+     "bytes": 902921,
+     "sha256": "6d908c4a83cf9721697487db8ebebd5557b3dd557f956ecb0a3a54f04da8f742"
+    }
    },
    "actions": [
     {
      "action": "greeter",
      "key": "whereis",
      "conf": "example_configs/tree.conf"
+    }
+   ]
+  },
+  {
+   "id": "login-hypr",
+   "section": "lockscreens",
+   "name": "Hypr",
+   "blurb": "O jeitão do hyprlock na tela de login: relógio empilhado, cartão no meio, paleta fixa. Não segue o seu papel de parede.",
+   "family": "login",
+   "author": "adior_enigmac",
+   "license": "MIT",
+   "source": "https://github.com/ADIOR-enigma/hypr-sddm/tree/52fd4a538fabea2331d9b9f956c2497ff5f9102c",
+   "tags": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "escuro"
+   ],
+   "needs_root": true,
+   "download": 789167,
+   "preview": {
+    "kind": "login",
+    "theme": "hypr",
+    "shot": {
+     "url": "https://raw.githubusercontent.com/ADIOR-enigma/hypr-sddm/52fd4a538fabea2331d9b9f956c2497ff5f9102c/screenshot.png",
+     "type": "image/png",
+     "bytes": 512206,
+     "sha256": "030020661c266f6891795b0fd7ed5bce0821c7695828a7a0b5f7a8af0dcb0df7"
+    }
+   },
+   "actions": [
+    {
+     "action": "greeter",
+     "key": "hypr"
     }
    ]
   }

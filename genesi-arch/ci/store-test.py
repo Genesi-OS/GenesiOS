@@ -298,18 +298,101 @@ quiet = [i["id"] for i in items
          and not i.get("needs_root")]
 ck("every login card says it needs root", not quiet, quiet)
 
+# The host list, read from the CLI rather than copied, so this cannot pass
+# while the store allows something else.
+ALLOWED_HOSTS = tuple(
+    re.findall(r'"([a-z0-9.\-]+)"',
+               re.search(r"ALLOWED_HOSTS = \((.*?)\)", cli_src, re.S).group(1)))
+
 # And it has to have a picture, because the whole point of a shelf of login
-# screens is seeing them before you are looking at one.
-blind = [i["id"] for i in items
-         if any(a.get("action") == "greeter" for a in i.get("actions", []))
-         and not (i.get("preview") or {}).get("thumb")]
+# screens is seeing them before you are looking at one. Not a SHIPPED picture:
+# those screenshots belong to the people who made the themes, and some of what
+# is inside them -- a cartoon frame, a still from a commercial game, wallpapers
+# the upstream README itself says it cannot trace -- was never theirs to
+# license onward. So the card names its picture and the store fetches it, and
+# what is checked here is that every card names one.
+greeter_items = [i for i in items
+                 if any(a.get("action") == "greeter"
+                        for a in i.get("actions", []))]
+blind = [i["id"] for i in greeter_items
+         if not (i.get("preview") or {}).get("shot")]
 ck("every downloaded login screen has a preview", not blind, blind)
 
+# A fetched picture is a download like any other download, so it answers to
+# the same rules: https, a host on the list, pinned to a commit rather than a
+# branch, and a digest to check the bytes against. A screenshot URL on a
+# branch would be a picture that can change under the catalogue.
+loose = []
+for i in greeter_items:
+    shot = i["preview"]["shot"]
+    url = shot.get("url", "")
+    host = url.split("/", 3)[2].lower() if url.startswith("https://") else ""
+    if not url.startswith("https://"):
+        loose.append(i["id"] + ": not https")
+    elif host not in ALLOWED_HOSTS:
+        loose.append(i["id"] + ": " + host)
+    elif not re.search(r"/[0-9a-f]{40}/", url) and "user-attachments" not in url:
+        loose.append(i["id"] + ": not pinned to a commit")
+    elif len(shot.get("sha256", "")) != 64 or not shot.get("bytes"):
+        loose.append(i["id"] + ": no digest")
+ck("every login screen's picture is pinned and checksummed", not loose, loose)
+
+# Nothing third-party is left in the package. greeter-genesi is ours -- it is
+# rendered from our own greeter's QML by ci/sddm-shot.py.
 thumbs = os.path.join(PKG, "catalog", "thumbs")
+shipped = set(os.listdir(thumbs) if os.path.isdir(thumbs) else [])
+strays = sorted(n for n in shipped
+                if n.startswith("greeter-") and n != "greeter-genesi.jpg")
+ck("no downloaded theme's screenshot is shipped in the package",
+   not strays, strays)
+
 absent = sorted({(i.get("preview") or {}).get("thumb") for i in items
-                 if (i.get("preview") or {}).get("thumb")}
-                - set(os.listdir(thumbs) if os.path.isdir(thumbs) else []))
+                 if (i.get("preview") or {}).get("thumb")} - shipped)
 ck("every preview the catalogue names is shipped", not absent, absent)
+
+
+# ── The window and its backend have to agree ───────────────────────────────
+#
+# QML does not fail when it calls something that is not there. A `store.foo()`
+# that does not exist throws at the moment of the click, into a log nobody is
+# reading; a `Connections { target: store; function onBar() }` whose signal
+# does not exist is worse, because it warns once at load and then simply never
+# fires -- which is a feature that silently does nothing, the exact shape of
+# bug that has cost this project a day more than once.
+#
+# So: every name the QML reaches for on `store` has to exist on the Python
+# object that gets handed to it.
+app_dir = os.path.join(PKG, "app")
+qml_files = []
+for base, _dirs, names in os.walk(app_dir):
+    qml_files += [os.path.join(base, n) for n in names if n.endswith(".qml")]
+
+backend = read(os.path.join(app_dir, "genesi_store_app.py"))
+slots = set(re.findall(r"@Slot\([^)]*\)\s*\n\s*def (\w+)", backend))
+signals = set(re.findall(r"^\s{4}(\w+) = Signal\(", backend, re.M))
+
+called, handled = set(), set()
+for path in qml_files:
+    text = read(path)
+    called |= set(re.findall(r"\bstore\.(\w+)\s*\(", text))
+    # Handlers only count when the Connections block they are in targets store.
+    for chunk in text.split("Connections")[1:]:
+        head = chunk[:400]
+        if re.search(r"target:\s*store\b", head):
+            body = chunk[:chunk.find("\n    }")] if "\n    }" in chunk else chunk
+            for name in re.findall(r"function on([A-Z]\w*)\s*\(", body):
+                handled.add(name[0].lower() + name[1:])
+
+ck("the window calls only slots its backend has",
+   called <= slots, sorted(called - slots))
+ck("the window listens only for signals its backend emits",
+   handled <= signals, sorted(handled - signals))
+# And it is worth knowing the parsing found anything at all, because a guard
+# that silently matches nothing passes forever.
+ck("...and that check actually looked at something",
+   len(called) >= 5 and len(handled) >= 1,
+   "%d calls, %d handlers, %d qml files" % (len(called), len(handled),
+                                            len(qml_files)))
 
 
 # ── ...and the helper's guards, run ────────────────────────────────────────

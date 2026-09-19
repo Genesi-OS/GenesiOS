@@ -23,6 +23,7 @@ Item {
 
     required property var spec          // the item's `preview` object
     property string thumbDir: ""        // where the shipped thumbnails live
+    property string shotUrl: ""         // a screenshot fetched into the cache
     property bool detailed: false       // the sheet wants more furniture
 
     readonly property string kind: root.spec.kind ?? ""
@@ -40,8 +41,13 @@ Item {
 
     // thumbDir is already a url (see the backend), so this is a join and not
     // a guess about what a path looks like.
-    readonly property string thumb: root.spec.thumb && root.thumbDir
-        ? root.thumbDir + "/" + root.spec.thumb : ""
+    // A fetched screenshot wins over a shipped thumbnail. The login screens
+    // have no shipped thumbnail at all -- theirs is downloaded, because the
+    // picture belongs to whoever made the theme -- so until it arrives this
+    // is "" and the drawn login screen below stands in for it.
+    readonly property string thumb: root.shotUrl !== "" ? root.shotUrl
+        : (root.spec.thumb && root.thumbDir
+           ? root.thumbDir + "/" + root.spec.thumb : "")
 
     clip: true
 

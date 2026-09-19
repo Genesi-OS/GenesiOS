@@ -50,6 +50,11 @@ def cli(*args, timeout=180):
         return True, text
 
 
+def _shot_dir():
+    base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return os.path.join(base, "genesi", "store", "previews")
+
+
 def _on_path(name):
     for part in (os.environ.get("PATH") or "").split(os.pathsep):
         if part and os.path.exists(os.path.join(part, name)):
@@ -63,10 +68,13 @@ class Store(QObject):
     stateChanged = Signal(str)
     busyChanged = Signal(str, str)      # item id, what is happening
     finished = Signal(str, bool, str)   # item id, ok, message
+    previewReady = Signal(str, str)     # item id, file:// url of its screenshot
 
     def __init__(self):
         super().__init__()
         self._busy = set()
+        self._shots = set()             # ids already asked for, so a card
+                                        # scrolled past twice fetches once
 
     # ── Reading ────────────────────────────────────────────────────────────
     @Slot()
@@ -133,6 +141,46 @@ class Store(QObject):
             if os.path.isfile(path):
                 return QUrl.fromLocalFile(path).toString()
         return ""
+
+    # ── The screenshots that are not ours ──────────────────────────────────
+    #
+    # The downloaded login screens' pictures are fetched, not packaged: they
+    # are their authors' screenshots. So a card asks for its picture when it
+    # is first scrolled into view, and gets it -- or does not, and draws the
+    # plain login screen it drew before, which is a preview too.
+    #
+    # Lazily, one card at a time, because the whole shelf is about 16 MB of
+    # full-resolution PNG and almost nobody scrolls all of it.
+    @Slot(str, result=str)
+    def previewPath(self, ident):
+        """The cached screenshot, if it is already here. No network."""
+        for ext in (".png", ".jpg"):
+            path = os.path.join(_shot_dir(), ident + ext)
+            if os.path.exists(path):
+                return QUrl.fromLocalFile(path).toString()
+        return ""
+
+    @Slot(str)
+    def fetchPreview(self, ident):
+        """Ask for one card's screenshot, off the GUI thread."""
+        if not ident or ident in self._shots:
+            return
+        self._shots.add(ident)
+        have = self.previewPath(ident)
+        if have:
+            self.previewReady.emit(ident, have)
+            return
+
+        def work():
+            ok, result = cli("preview", ident, timeout=120)
+            path = result.get("path") if ok and isinstance(result, dict) else ""
+            if path and os.path.exists(path):
+                self.previewReady.emit(ident, QUrl.fromLocalFile(path).toString())
+            else:
+                # Let it be asked again later: a card whose picture failed
+                # because the wifi was off should get one when it is back.
+                self._shots.discard(ident)
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot(result=str)
     def thumbDir(self):

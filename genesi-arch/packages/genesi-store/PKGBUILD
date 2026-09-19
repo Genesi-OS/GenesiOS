@@ -107,16 +107,26 @@ pkgver=0.1.0
 #     A theme importing QtQuick.VirtualKeyboard on a machine without it is a
 #     black screen at boot, not a missing keyboard. A theme that turns out to
 #     be Qt5 fails the build here instead.
-#   * Every card carries a screenshot of the real thing, shipped, and the
-#     detail page carries the way back -- the console and the one command --
-#     where it can be read BEFORE the choice rather than after it.
+#   * Every card carries a screenshot of the real thing, and the detail page
+#     carries the way back -- the console and the one command -- where it can
+#     be read BEFORE the choice rather than after it.
 #
 # Also: genesi/preview.png, rendered from the greeter's own QML by
 # ci/sddm-shot.py, which is the Screenshot= its metadata always claimed; and
 # SDDM's stock elarun/maldives/maya are off the shelf, because they shipped no
 # picture and a grey card among thirty screenshots is exactly what pkgrel 2
 # set out to stop.
-pkgrel=3
+#
+# pkgrel 4: those screenshots are no longer IN this package. They belong to
+# the people who made the themes, and some of what is inside them was never
+# theirs to license onward -- the astronaut wallpapers are described by their
+# own README as "copied from one user to another", and two are frames of a
+# cartoon and of a commercial game. So a card names its picture and the store
+# fetches it, from the same pinned commit the theme comes from, checked
+# against a digest, cached in ~/.local/share and asked for only when the card
+# is scrolled into view. Genesi now redistributes none of it. Plus a seventh
+# theme, ADIOR-enigma/hypr-sddm, and the author's name on the card itself.
+pkgrel=4
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -232,6 +242,19 @@ for item in items:
                                                  thumb)):
         raise SystemExit("%s names the picture %s, which is not here"
                          % (item["id"], thumb))
+
+# ...and a downloaded login screen names its picture instead of carrying it,
+# with the checksum that makes fetching it safe. A card that names neither is
+# a grey rectangle; a card that carries one is this package redistributing
+# somebody else's screenshot.
+for item in items:
+    if not any(a.get("action") == "greeter" for a in item.get("actions", [])):
+        continue
+    shot = (item.get("preview") or {}).get("shot") or {}
+    if len(shot.get("sha256", "")) != 64 or not shot.get("url", "").startswith("https://"):
+        raise SystemExit("%s has no checksummed picture to fetch" % item["id"])
+    if (item.get("preview") or {}).get("thumb"):
+        raise SystemExit("%s ships a screenshot that is not ours" % item["id"])
 
 print("catalogue: %d items, %d shelves, %d login screens, every action "
       "implemented" % (len(items), len(sections), len(greeters)))

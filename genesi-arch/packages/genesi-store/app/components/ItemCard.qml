@@ -26,6 +26,25 @@ Rectangle {
     signal opened
 
     readonly property var preview: item.preview ?? ({})
+    // Filled in when the screenshot lands. The delegate only exists while the
+    // card is near the viewport, so asking here IS asking lazily.
+    property string shot: ""
+
+    Component.onCompleted: {
+        if (root.preview.shot) {
+            root.shot = store.previewPath(root.item.id);
+            store.fetchPreview(root.item.id);
+        }
+    }
+
+    Connections {
+        target: store
+
+        function onPreviewReady(ident, url) {
+            if (ident === root.item.id)
+                root.shot = url;
+        }
+    }
     readonly property bool applied: item.applied === true
     readonly property bool working: root.busy !== ""
     readonly property bool needsDownload: root.item.needs_download === true
@@ -50,6 +69,7 @@ Rectangle {
         anchors.fill: parent
         spec: root.preview
         thumbDir: root.thumbDir
+        shotUrl: root.shot
         // A hair of zoom under the pointer: enough to feel alive, not enough
         // to make the text move.
         scale: hover.hovered ? 1.03 : 1.0
@@ -112,6 +132,21 @@ Rectangle {
             font.family: Tokens.sans
             font.pixelSize: root.large ? Tokens.fsTitle : Tokens.fsCard
             font.weight: Font.DemiBold
+            elide: Text.ElideRight
+        }
+
+        // Whose it is. Only for what came from outside Genesi -- putting
+        // "por Genesi" on Genesi's own cards is noise, and the point of this
+        // line is that somebody else's work is labelled as theirs without
+        // having to open the sheet to find out.
+        Text {
+            width: parent.width
+            visible: text !== ""
+            text: root.item.author && root.item.author !== "Genesi"
+                  ? qsTr("por %1").arg(root.item.author) : ""
+            color: Tokens.a(Tokens.textHi, 0.62)
+            font.family: Tokens.sans
+            font.pixelSize: Tokens.fsMicro
             elide: Text.ElideRight
         }
 
