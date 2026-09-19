@@ -351,6 +351,34 @@ absent = sorted({(i.get("preview") or {}).get("thumb") for i in items
 ck("every preview the catalogue names is shipped", not absent, absent)
 
 
+# ── A lock screen has to be reachable, not merely written ──────────────────
+#
+# This shelf shipped broken and nothing caught it, because every part of it
+# was individually correct: hyprlock was installed, hyprlock.conf was written,
+# apply returned success. What was missing was the thing that RUNS hyprlock --
+# the Lock button emits a logind signal, hyprlock is not a daemon and does not
+# hear it, and hypridle, which does, was never started. A config file for a
+# program nobody runs is the quietest kind of broken there is.
+#
+# So: a card that writes hyprlock.conf must also set up the listener.
+lock_cards = [i for i in items
+              if any(a.get("action") == "file"
+                     and "hyprlock.conf" in (a.get("path") or "")
+                     for a in i.get("actions", []))]
+deaf = [i["id"] for i in lock_cards
+        if not any(a.get("action") == "locker" for a in i.get("actions", []))]
+ck("every lock screen also sets up what listens for the lock signal",
+   not deaf, deaf)
+
+unstarted = [i["id"] for i in lock_cards
+             if not any(a.get("action") == "package" and a.get("name") == "hypridle"
+                        for a in i.get("actions", []))]
+ck("...and installs it", not unstarted, unstarted)
+
+ck("...and there are lock screens to check at all", len(lock_cards) >= 3,
+   len(lock_cards))
+
+
 # ── The window and its backend have to agree ───────────────────────────────
 #
 # QML does not fail when it calls something that is not there. A `store.foo()`

@@ -19,6 +19,28 @@ Item {
     property string busy: ""
     property var resolve: null        // id -> item, for a collection's parts
 
+    // The screenshot, asked for when the sheet opens. The card usually got
+    // there first and this is a cache hit, but a sheet can be reached from
+    // search without its card ever having been drawn.
+    property string shot: ""
+
+    onItemChanged: {
+        root.shot = "";
+        if (root.item && (root.item.preview ?? ({})).shot) {
+            root.shot = store.previewPath(root.item.id);
+            store.fetchPreview(root.item.id);
+        }
+    }
+
+    Connections {
+        target: store
+
+        function onPreviewReady(ident, url) {
+            if (root.item && ident === root.item.id)
+                root.shot = url;
+        }
+    }
+
     signal apply
     signal revert
     signal closed
@@ -116,6 +138,10 @@ Item {
             height: parent.height * 0.46
             spec: root.item ? (root.item.preview ?? ({})) : ({})
             thumbDir: root.thumbDir
+            // Without this the sheet draws the generic login screen over a
+            // theme whose photograph is already in the cache -- the card got
+            // it right and the page you open to LOOK at the thing did not.
+            shotUrl: root.shot
             detailed: true
         }
 
@@ -295,6 +321,8 @@ Item {
                                     anchors.fill: parent
                                     spec: modelData.preview ?? ({})
                                     thumbDir: root.thumbDir
+                                    shotUrl: modelData.preview && modelData.preview.shot
+                                             ? store.previewPath(modelData.id) : ""
                                 }
 
                                 Rectangle {

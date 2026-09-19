@@ -421,8 +421,15 @@ def lock_item(ident, name, blurb, tags, text, preview):
         "preview": preview,
         "actions": [
             {"action": "package", "name": "hyprlock", "binary": "hyprlock"},
+            # The one that was missing. hyprlock is not a daemon -- it is run
+            # once, to lock the screen now -- and the Lock button emits a
+            # logind signal rather than running anything. hypridle is what
+            # listens for the signal and runs the locker, and without it every
+            # card on this shelf applied cleanly and changed nothing visible.
+            {"action": "package", "name": "hypridle", "binary": "hypridle"},
             {"action": "file", "path": "~/.config/hypr/hyprlock.conf",
              "text": text},
+            {"action": "locker"},
         ],
     }
 

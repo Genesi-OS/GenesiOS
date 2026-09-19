@@ -244,8 +244,14 @@ Rectangle {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.needsDownload
+                       && (root.item.assets?.picture?.bytes ?? root.item.download ?? 0) > 0
                 text: {
-                    const bytes = root.item.assets?.picture?.bytes ?? 0;
+                    // A wallpaper's weight is its asset; a login screen's
+                    // is the theme archive, which is `download`. Reading only
+                    // the first made every login card say "0 KB" beside a
+                    // button about to fetch seventeen megabytes.
+                    const bytes = root.item.assets?.picture?.bytes
+                                ?? root.item.download ?? 0;
                     return bytes >= 1048576 ? (Math.round(bytes / 1048576 * 10) / 10 + " MB")
                                             : (Math.round(bytes / 1024) + " KB");
                 }

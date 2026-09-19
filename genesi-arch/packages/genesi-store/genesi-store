@@ -466,6 +466,110 @@ def act_bar(item, args, assets):
     return None
 
 
+def act_locker(item, args, assets):
+    """Make `loginctl lock-session` actually lock the screen.
+
+    This exists because the lock screens did not work, at all, and the reason
+    is a missing link nobody would guess from either end:
+
+        the side panel's Lock button runs `loginctl lock-session`
+          -> logind emits a Lock signal on D-Bus
+            -> ...and on a Genesi desktop NOTHING was listening for it.
+
+    hyprlock is not a daemon. It is a program you run, once, to lock the
+    screen now. Something has to run it when logind says to, and that
+    something is hypridle -- which the helper has been allowed to install
+    since the day this shelf was written, and which nothing ever asked for.
+
+    So a lock screen that only wrote hyprlock.conf was writing a config file
+    for a program no one was going to start. Every card on that shelf applied
+    successfully and changed nothing anybody could see.
+
+    Persisted as a user service rather than an exec-once in hyprland.conf:
+    that file belongs to the settings package, reaches existing installs only
+    through a migration that has silently failed twice, and is the user's to
+    edit. A unit in ~/.config is ours, survives a reboot, and reverts cleanly.
+    """
+    conf = os.path.expanduser("~/.config/hypr/hypridle.conf")
+    unit_dir = os.path.expanduser("~/.config/systemd/user")
+    unit = os.path.join(unit_dir, "genesi-lock.service")
+
+    kept_conf = backup_file(conf)
+    kept_unit = backup_file(unit)
+
+    os.makedirs(os.path.dirname(conf), exist_ok=True)
+    with io.open(conf, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(HYPRIDLE_CONF)
+    os.makedirs(unit_dir, exist_ok=True)
+    with io.open(unit, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(LOCK_UNIT)
+
+    # Not fatal if this fails: the config is written either way, and a
+    # machine that is not running systemd --user is not a machine where a
+    # refusal here helps anybody.
+    run(["systemctl", "--user", "daemon-reload"], check=False)
+    code, _ = run(["systemctl", "--user", "enable", "--now", "genesi-lock.service"],
+                  check=False)
+    if code != 0:
+        note("the lock watcher was written but not started; it will come up "
+             "at the next login")
+    return {"action": "unlocker", "conf_from": kept_conf, "unit_from": kept_unit}
+
+
+def act_unlocker(item, args, assets):
+    """Put back whatever was watching for the lock signal before, if anything."""
+    run(["systemctl", "--user", "disable", "--now", "genesi-lock.service"],
+        check=False)
+    for path, kept in ((os.path.expanduser("~/.config/hypr/hypridle.conf"),
+                        args.get("conf_from")),
+                       (os.path.expanduser("~/.config/systemd/user/genesi-lock.service"),
+                        args.get("unit_from"))):
+        if kept and os.path.exists(kept):
+            shutil.copy2(kept, path)
+        elif os.path.exists(path):
+            os.remove(path)
+    run(["systemctl", "--user", "daemon-reload"], check=False)
+    return None
+
+
+# hypridle's own format. Deliberately thin: this is here to answer the lock
+# SIGNAL, not to decide when somebody's screen should turn off. Adding idle
+# timeouts here would be the store quietly taking over power management.
+HYPRIDLE_CONF = """# Written by Genesi Store, so that locking the session locks the screen.
+#
+# `loginctl lock-session` -- what the side panel's Lock button runs -- only
+# emits a signal. hypridle is what listens for it and runs the locker. Without
+# this file, and the service that starts hypridle, pressing Lock does nothing.
+#
+# No idle timeouts on purpose: when your screen sleeps is yours to decide.
+# Add listener blocks here if you want them; the store will not touch them
+# again unless you apply another lock screen.
+
+general {
+    lock_cmd = pidof hyprlock || hyprlock
+    unlock_cmd = pkill -USR1 hyprlock
+    before_sleep_cmd = loginctl lock-session
+    after_sleep_cmd = hyprctl dispatch dpms on
+}
+"""
+
+LOCK_UNIT = """[Unit]
+Description=Genesi — run the lock screen when the session is locked
+Documentation=man:hypridle(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/hypridle
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
+"""
+
+
 def act_package(item, args, assets):
     """Something the desktop needs and pacman has.
 
@@ -525,6 +629,8 @@ ACTIONS = {
     "file": act_file,
     "bar": act_bar,
     "package": act_package,
+    "locker": act_locker,
+    "unlocker": act_unlocker,
     "restore": act_restore,
     "scheme": act_scheme,
     "wallpaper": act_wallpaper,

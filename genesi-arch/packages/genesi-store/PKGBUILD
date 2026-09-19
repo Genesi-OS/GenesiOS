@@ -126,7 +126,15 @@ pkgver=0.1.0
 # against a digest, cached in ~/.local/share and asked for only when the card
 # is scrolled into view. Genesi now redistributes none of it. Plus a seventh
 # theme, ADIOR-enigma/hypr-sddm, and the author's name on the card itself.
-pkgrel=4
+#
+# pkgrel 5: the session-lock shelf never worked. The Lock button emits a
+# logind signal; hyprlock is not a daemon and does not hear it; hypridle,
+# which does, was never installed or started. Every card applied cleanly
+# and changed nothing. The cards now install hypridle and write a user
+# service that runs it. Also: the detail sheet shows the fetched
+# screenshot (it was drawing the generic one), and a login card shows the
+# archive's size instead of "0 KB".
+pkgrel=5
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
