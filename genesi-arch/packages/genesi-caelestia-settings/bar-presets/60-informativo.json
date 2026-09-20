@@ -40,7 +40,6 @@
         "enabled": true
       }
     ],
-    "spacing": 8,
     "clock": {
       "showDate": true,
       "background": true

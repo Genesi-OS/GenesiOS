@@ -363,12 +363,59 @@ def act_scheme(item, args, assets):
     return None
 
 
+def pictures_dir():
+    """Where caelestia looks for wallpapers: <Pictures>/Wallpapers.
+
+    Read from xdg-user-dirs when it is there, because Pictures is "Imagens" on
+    a machine installed in Portuguese and hardcoding the English name would
+    quietly put every wallpaper somewhere nothing looks.
+    """
+    base = ""
+    code, out = run(["xdg-user-dir", "PICTURES"], check=False)
+    if code == 0:
+        base = (out or "").strip()
+    if not base or not os.path.isdir(base):
+        base = os.path.expanduser("~/Pictures")
+    return os.path.join(base, "Wallpapers")
+
+
+def shelve_wallpaper(item, path):
+    """Put a downloaded wallpaper where caelestia will offer it again.
+
+    Applying one used to point caelestia straight at the store's own asset
+    directory, which works once and then the picture is invisible: it is not
+    under <Pictures>/Wallpapers, so it never appears in `>wallpapers` and
+    there is no way back to it except through the store.
+
+    A subdirectory, because caelestia reads the folder under Wallpapers as a
+    CATEGORY -- so everything the store fetched arrives grouped instead of
+    loose among whatever else is in there.
+    """
+    folder = os.path.join(pictures_dir(), "Genesi Store")
+    name = item.get("name") or item["id"]
+    safe = re.sub(r"[^\w .()-]", "", name).strip() or item["id"]
+    dest = os.path.join(folder, safe + os.path.splitext(path)[1])
+    try:
+        os.makedirs(folder, exist_ok=True)
+        if not os.path.exists(dest) or os.path.getsize(dest) != os.path.getsize(path):
+            shutil.copy2(path, dest)
+        return dest
+    except OSError as exc:
+        # Not fatal: the wallpaper still applies from where it was
+        # downloaded. It just will not be in the list afterwards.
+        note("could not add this to your wallpapers folder (%s)" % exc)
+        return path
+
+
 def act_wallpaper(item, args, assets):
     path = assets.get(args.get("asset")) if args.get("asset") else args.get("path")
     if not path:
         die("%s has a wallpaper action with no picture" % item["id"])
+    path = os.path.expanduser(path)
+    if args.get("asset"):
+        path = shelve_wallpaper(item, path)
     _, before = run(["caelestia", "wallpaper", "-p"], check=False)
-    run(["caelestia", "wallpaper", "-f", os.path.expanduser(path)])
+    run(["caelestia", "wallpaper", "-f", path])
     before = (before or "").strip()
     if before and os.path.exists(before):
         return {"action": "wallpaper", "path": before}
@@ -600,13 +647,16 @@ HYPRIDLE_CONF = """# Written by Genesi Store, so that locking the session locks 
 # emits a signal. hypridle is what listens for it and runs the locker. Without
 # this file, and the service that starts hypridle, pressing Lock does nothing.
 #
+# No unlock_cmd either. hyprlock exits by itself when the password is
+# right, and signalling a process that is already on its way out is a good
+# way to have something else notice the session changed twice.
+#
 # No idle timeouts on purpose: when your screen sleeps is yours to decide.
 # Add listener blocks here if you want them; the store will not touch them
 # again unless you apply another lock screen.
 
 general {
     lock_cmd = pidof hyprlock || hyprlock
-    unlock_cmd = pkill -USR1 hyprlock
     before_sleep_cmd = loginctl lock-session
     after_sleep_cmd = hyprctl dispatch dpms on
 }
@@ -615,8 +665,13 @@ general {
 LOCK_UNIT = """[Unit]
 Description=Genesi — run the lock screen when the session is locked
 Documentation=man:hypridle(1)
-PartOf=graphical-session.target
-After=graphical-session.target
+
+# NOT graphical-session.target. Hyprland on Genesi is started from a display
+# manager rather than through uwsm, so nothing ever reaches that target and a
+# unit wanted by it is a unit that never runs -- which is why the first
+# version of this needed a logout before the lock screen appeared. default.
+# target is active in every user session.
+After=default.target
 
 [Service]
 Type=simple
@@ -625,7 +680,7 @@ Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=default.target
 """
 
 
@@ -723,11 +778,44 @@ def greeters_of(item):
             if step.get("action") == "greeter" and step.get("key")]
 
 
+# What a downloaded asset is called on disk. The name in the catalogue is a
+# ROLE -- "picture" -- and a file called "picture" with no extension is a file
+# that several things refuse to open:
+#
+#     caelestia failed: ValueError: ".../assets/wall-golden-mountains/picture"
+#     is not a valid image
+#
+# caelestia decides what it will accept by the extension, so every wallpaper
+# in the store failed to apply, with an error from a program that was doing
+# exactly the right thing.
+SUFFIX = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
+          "image/gif": ".gif"}
+
+
+def asset_filename(name, asset):
+    kind = asset.get("type") or ""
+    ext = SUFFIX.get(kind)
+    if not ext:
+        # Fall back to what the URL says, and only to something short and
+        # plainly an extension -- a URL is not ours to trust for a filename.
+        tail = os.path.splitext(asset.get("url", "").split("?")[0])[1].lower()
+        ext = tail if re.fullmatch(r"\.[a-z0-9]{2,5}", tail) else ""
+    return name + ext
+
+
 def do_install(cat, ident, state):
     item = item_by_id(cat, ident)
     paths = {}
     for name, asset in assets_of(item).items():
-        dest = os.path.join(ASSET_DIR, ident, name)
+        dest = os.path.join(ASSET_DIR, ident, asset_filename(name, asset))
+        stale = os.path.join(ASSET_DIR, ident, name)
+        if stale != dest and os.path.exists(stale):
+            # Downloaded before the store knew to keep the extension. Move it
+            # rather than fetch it again.
+            try:
+                os.replace(stale, dest)
+            except OSError:
+                pass
         if os.path.exists(dest) and not asset.get("always"):
             paths[name] = dest
             continue
@@ -739,6 +827,58 @@ def do_install(cat, ident, state):
     state["installed"][ident] = {"assets": paths, "at": int(time.time())}
     write_state(state)
     return paths
+
+
+def slots_of(item):
+    """What an item OCCUPIES, so the store knows what it replaces.
+
+    "Applied" was a list of ids that only ever grew. Put on the Terminal bar,
+    then put back the default, and both said "em uso" -- because applying the
+    second never retired the first. Same on every shelf: two login screens in
+    use, two lock screens, two fastfetch cards.
+
+    A slot is the thing an action changes, named coarsely enough that two
+    items which cannot both be true share one. Two cards that write the same
+    config file, or both set the bar, or both set the login screen, are the
+    same slot; a card that only downloads a wallpaper occupies nothing and
+    retires nobody.
+    """
+    out = set()
+    for action in item.get("actions", []):
+        kind = action.get("action")
+        if kind in ("file", "restore"):
+            out.add("file:" + (action.get("path") or ""))
+        elif kind in ("login", "greeter"):
+            out.add("login")
+        elif kind in ("locker", "unlocker"):
+            out.add("locker")
+        elif kind in ("bar", "scheme", "wallpaper"):
+            out.add(kind)
+        elif kind == "config":
+            for key in (action.get("set") or {}):
+                out.add("config:" + str(key))
+    return out
+
+
+def retire_superseded(cat, ident, state):
+    """Drop anything the item being applied has just taken over from.
+
+    Deliberately not "clear the whole shelf": a collection applies a theme, a
+    wallpaper and a bar at once, and each of those has to retire its own
+    predecessor without touching the other two.
+    """
+    taking = slots_of(item_by_id(cat, ident))
+    if not taking:
+        return
+    for other in list(state.get("applied", {})):
+        if other == ident:
+            continue
+        try:
+            if slots_of(item_by_id(cat, other)) & taking:
+                del state["applied"][other]
+        except SystemExit:
+            # An id that is no longer in the catalogue cannot be in use.
+            del state["applied"][other]
 
 
 def do_apply(cat, ident, state):
@@ -757,6 +897,7 @@ def do_apply(cat, ident, state):
         if inverse:
             undo.insert(0, inverse)
 
+    retire_superseded(cat, ident, state)
     state["applied"][ident] = {"at": int(time.time()), "undo": undo}
     write_state(state)
     return undo

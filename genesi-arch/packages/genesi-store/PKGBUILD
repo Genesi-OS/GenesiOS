@@ -152,7 +152,27 @@ pkgver=0.1.0
 # and checked again by the helper as root before a byte is written. Nineteen
 # of them have an MP4 for a background and no still image at all, so the cards
 # use the author's own animated previews and the shelf moves.
-pkgrel=8
+#
+# pkgrel 9, all of it from one round of testing on a real machine:
+#   * the drop-in is zz-genesi-store.conf now. SDDM reads that directory
+#     alphabetically and the LAST file wins, so "50-" lost to
+#     "genesi-theme.conf" -- which Genesi installs itself -- and to
+#     "kde_settings.conf". Every login screen ever picked in this store was
+#     overruled by a file further down the alphabet.
+#   * a downloaded picture keeps its extension. A file called "picture" with
+#     no suffix is not an image as far as caelestia is concerned, so every
+#     wallpaper failed to apply with an error from a program doing the right
+#     thing.
+#   * applying something now retires what it replaced, instead of both cards
+#     saying "em uso" forever.
+#   * an applied wallpaper is copied into <Pictures>/Wallpapers/Genesi Store,
+#     so it shows up in caelestia's own list afterwards instead of being
+#     reachable only through the store.
+#   * the bar presets no longer set `width` and `spacing`, which are not
+#     caelestia bar properties at all -- so the cards stop promising a
+#     difference that could never appear -- and the factory preset states
+#     every value rather than leaving them out and hoping.
+pkgrel=9
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

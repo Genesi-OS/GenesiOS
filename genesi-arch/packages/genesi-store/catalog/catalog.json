@@ -1,6 +1,6 @@
 {
  "version": 1,
- "updated": "2026-09-19",
+ "updated": "2026-09-20",
  "sections": [
   {
    "id": "discover",
@@ -2821,6 +2821,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/dark_forest.png",
      "type": "image/png",
      "bytes": 6123661,
+     "width": 3840,
+     "height": 2160,
      "sha256": "687de5016d97c4fbdf71c8e4c1d1ba1f657747b322e249b69cd09c3503eeeedb"
     }
    },
@@ -2853,6 +2855,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/nature.jpg",
      "type": "image/jpeg",
      "bytes": 1729972,
+     "width": 1920,
+     "height": 1080,
      "sha256": "dbf3881f5188e1851ce8edc9dd643fb0b01d3223f31bd053463f2fd0ad1c8083"
     }
    },
@@ -2886,6 +2890,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/everforest_robin.png",
      "type": "image/png",
      "bytes": 426822,
+     "width": 1920,
+     "height": 1200,
      "sha256": "70c8d410c0e91aec2501fb653d633be6a70cf43b95b317526c7ecf0b97a75c3c"
     }
    },
@@ -2919,6 +2925,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/lake.jpg",
      "type": "image/jpeg",
      "bytes": 130044,
+     "width": 3840,
+     "height": 2160,
      "sha256": "9018cf019c71828ad9abab9c7b7aeb6edeeaccc985ad6152835794f3b6846329"
     }
    },
@@ -2952,6 +2960,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/art-lake.png",
      "type": "image/png",
      "bytes": 2834196,
+     "width": 2400,
+     "height": 1334,
      "sha256": "486f7f4be4ceb3bc761c25961a80d9116d6afa614db50cc910934de64aa44097"
     }
    },
@@ -2984,6 +2994,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/mountains.png",
      "type": "image/png",
      "bytes": 3222979,
+     "width": 1920,
+     "height": 1080,
      "sha256": "b130c92323e10122d6db5a850d83c4feb37c73e477df3c1e5d3c6763f368e583"
     }
    },
@@ -2995,28 +3007,31 @@
    ]
   },
   {
-   "id": "wall-golden-mountains",
+   "id": "wall-nord-city",
    "section": "decor",
-   "name": "Montanhas Douradas",
-   "blurb": "Fim de tarde nos picos.",
+   "name": "Cidade Nord",
+   "blurb": "A cidade em nord, bem larga.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "natureza",
-    "quente"
+    "cidade",
+    "escuro",
+    "frio"
    ],
    "preview": {
     "kind": "image",
-    "thumb": "wall-golden-mountains.jpg",
+    "thumb": "wall-nord-city.jpg",
     "asset": "picture"
    },
    "assets": {
     "picture": {
-     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/golden-mountains.png",
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/nord_dark_city.png",
      "type": "image/png",
-     "bytes": 169422,
-     "sha256": "d91431b767cf218a646f2864141e3705ebe482a18d4b3aa200c5f5cb90fd6784"
+     "bytes": 858628,
+     "width": 5579,
+     "height": 2956,
+     "sha256": "cc58d4ec006f549bae4deb242d96a74f7e5fce1c1c6872915353246bd3d7957a"
     }
    },
    "actions": [
@@ -3049,6 +3064,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/oled-mountains.jpg",
      "type": "image/jpeg",
      "bytes": 1607197,
+     "width": 3840,
+     "height": 2160,
      "sha256": "0a8a17d82585f2562ddcc93cfa87cef5ccc29e481680142d8d21a9cd0ce337d8"
     }
    },
@@ -3082,6 +3099,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/moon.png",
      "type": "image/png",
      "bytes": 47853,
+     "width": 2560,
+     "height": 1500,
      "sha256": "4ca7c1c7eadefc27f642248a329abec79e860dcadc8956e2e65100225d18bb38"
     }
    },
@@ -3114,6 +3133,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/falltree.jpg",
      "type": "image/jpeg",
      "bytes": 2074377,
+     "width": 5120,
+     "height": 2880,
      "sha256": "5fd05d173a15ab2feb0309fca3b1dff5d2a3de3d60f4bb5ccd0d6450e0486b61"
     }
    },
@@ -3146,6 +3167,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/green-sun.jpg",
      "type": "image/jpeg",
      "bytes": 26453,
+     "width": 2880,
+     "height": 1800,
      "sha256": "fc92b0b2de769ee0cdf18753af8bfe1cb7a0a6eca9d98ac4d40941c8f3f09487"
     }
    },
@@ -3178,6 +3201,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/tree-nature-castleinsky.png",
      "type": "image/png",
      "bytes": 3570681,
+     "width": 1920,
+     "height": 1080,
      "sha256": "3dde1b73cdde3fed33f7a03fb3bd08af1f8c66d73bb0e11339dc380a175cb8e7"
     }
    },
@@ -3211,6 +3236,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/ink_wave.png",
      "type": "image/png",
      "bytes": 314547,
+     "width": 1920,
+     "height": 1080,
      "sha256": "8eb7a889292dd471099dd8e41169f879d60a3817c8d1050fca1229e6479268c9"
     }
    },
@@ -3222,28 +3249,31 @@
    ]
   },
   {
-   "id": "wall-blue-waves",
+   "id": "wall-aurora",
    "section": "decor",
-   "name": "Ondas Azuis",
-   "blurb": "Curvas frias e limpas.",
+   "name": "Aurora",
+   "blurb": "Luz fria sobre o horizonte.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
     "minimalista",
-    "frio"
+    "frio",
+    "noite"
    ],
    "preview": {
     "kind": "image",
-    "thumb": "wall-blue-waves.jpg",
+    "thumb": "wall-aurora.jpg",
     "asset": "picture"
    },
    "assets": {
     "picture": {
-     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/blue-waves.png",
+     "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/aurora_v02.png",
      "type": "image/png",
-     "bytes": 235671,
-     "sha256": "8c25c1ec463e5f2a72bedd64cbc762dfd7c3d0db8d2c32660ba24a334060803f"
+     "bytes": 9593682,
+     "width": 5120,
+     "height": 2880,
+     "sha256": "5852968fba485a01c4793a7a5f2628380f563df308df74f0c34688910d1fcc8a"
     }
    },
    "actions": [
@@ -3275,6 +3305,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/minimal_c.png",
      "type": "image/png",
      "bytes": 55461,
+     "width": 3840,
+     "height": 2160,
      "sha256": "3a5ac992d0ab14f164072edcf4e202a7c572c98835c585adc6eb809374245661"
     }
    },
@@ -3308,6 +3340,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/arch-nord-dark.png",
      "type": "image/png",
      "bytes": 372990,
+     "width": 2992,
+     "height": 1680,
      "sha256": "0cbdbc59ea0bfae3ee93f21588c9d1484f13de1b554f79b70107dadafa045acb"
     }
    },
@@ -3341,6 +3375,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/gruvbox_retrocity.png",
      "type": "image/png",
      "bytes": 160289,
+     "width": 1920,
+     "height": 1080,
      "sha256": "b07aff0455a146fcebd20543ef713b7d29461bcffd1b60f7fcce3a50d7feaaf5"
     }
    },
@@ -3374,6 +3410,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/neocity.png",
      "type": "image/png",
      "bytes": 22255153,
+     "width": 3840,
+     "height": 2160,
      "sha256": "f68427e2edfa84be645dbf90c601df4aa3cb36e077e8aceb65f77af376075e22"
     }
    },
@@ -3407,12 +3445,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 40,
-    "spacing": 12,
     "pills": false,
     "date": false,
-    "windows": false,
+    "windows": true,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3446,12 +3484,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 40,
-    "spacing": 10,
     "pills": false,
     "date": false,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3484,12 +3522,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 40,
-    "spacing": 12,
     "pills": false,
     "date": false,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3518,12 +3556,12 @@
      "spacer",
      "clock"
     ],
-    "width": 26,
-    "spacing": 6,
     "pills": false,
     "date": false,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3555,12 +3593,12 @@
      "clock",
      "power"
     ],
-    "width": 52,
-    "spacing": 18,
     "pills": true,
     "date": false,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3594,12 +3632,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 40,
-    "spacing": 12,
     "pills": false,
     "date": false,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3631,12 +3669,12 @@
      "clock",
      "power"
     ],
-    "width": 62,
-    "spacing": 22,
     "pills": true,
     "date": false,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3668,12 +3706,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 56,
-    "spacing": 12,
     "pills": false,
     "date": false,
     "windows": true,
     "trail": false,
+    "occupied": true,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3707,12 +3745,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 76,
-    "spacing": 14,
     "pills": true,
     "date": true,
     "windows": true,
     "trail": false,
+    "occupied": true,
+    "audio": true,
     "compact": false,
     "hidden": false
    },
@@ -3746,12 +3784,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 40,
-    "spacing": 8,
     "pills": true,
     "date": true,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": true,
     "compact": false,
     "hidden": false
    },
@@ -3785,12 +3823,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 34,
-    "spacing": 6,
     "pills": false,
     "date": false,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": true,
     "hidden": false
    },
@@ -3824,12 +3862,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 40,
-    "spacing": 16,
     "pills": false,
     "date": false,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3861,12 +3899,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 58,
-    "spacing": 12,
     "pills": true,
     "date": true,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3900,12 +3938,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 46,
-    "spacing": 12,
     "pills": false,
     "date": false,
     "windows": false,
     "trail": true,
+    "occupied": true,
+    "audio": false,
     "compact": false,
     "hidden": false
    },
@@ -3939,12 +3977,12 @@
      "statusIcons",
      "power"
     ],
-    "width": 40,
-    "spacing": 12,
     "pills": false,
     "date": false,
     "windows": false,
     "trail": false,
+    "occupied": false,
+    "audio": false,
     "compact": false,
     "hidden": true
    },
@@ -4308,6 +4346,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/dark_forest.png",
      "type": "image/png",
      "bytes": 6123661,
+     "width": 3840,
+     "height": 2160,
      "sha256": "687de5016d97c4fbdf71c8e4c1d1ba1f657747b322e249b69cd09c3503eeeedb"
     }
    }
@@ -4346,6 +4386,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/dark_forest.png",
      "type": "image/png",
      "bytes": 6123661,
+     "width": 3840,
+     "height": 2160,
      "sha256": "687de5016d97c4fbdf71c8e4c1d1ba1f657747b322e249b69cd09c3503eeeedb"
     }
    }
@@ -4453,6 +4495,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/neocity.png",
      "type": "image/png",
      "bytes": 22255153,
+     "width": 3840,
+     "height": 2160,
      "sha256": "f68427e2edfa84be645dbf90c601df4aa3cb36e077e8aceb65f77af376075e22"
     }
    }
@@ -4496,6 +4540,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/ink_wave.png",
      "type": "image/png",
      "bytes": 314547,
+     "width": 1920,
+     "height": 1080,
      "sha256": "8eb7a889292dd471099dd8e41169f879d60a3817c8d1050fca1229e6479268c9"
     }
    }
@@ -4539,6 +4585,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/tree-nature-castleinsky.png",
      "type": "image/png",
      "bytes": 3570681,
+     "width": 1920,
+     "height": 1080,
      "sha256": "3dde1b73cdde3fed33f7a03fb3bd08af1f8c66d73bb0e11339dc380a175cb8e7"
     }
    }
@@ -4582,6 +4630,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/moon.png",
      "type": "image/png",
      "bytes": 47853,
+     "width": 2560,
+     "height": 1500,
      "sha256": "4ca7c1c7eadefc27f642248a329abec79e860dcadc8956e2e65100225d18bb38"
     }
    }
@@ -4625,6 +4675,8 @@
      "url": "https://raw.githubusercontent.com/D3Ext/aesthetic-wallpapers/main/images/gruvbox_retrocity.png",
      "type": "image/png",
      "bytes": 160289,
+     "width": 1920,
+     "height": 1080,
      "sha256": "b07aff0455a146fcebd20543ef713b7d29461bcffd1b60f7fcce3a50d7feaaf5"
     }
    }

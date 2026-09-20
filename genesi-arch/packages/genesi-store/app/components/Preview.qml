@@ -324,7 +324,10 @@ Item {
         }
         // The preset's width is in real pixels on a real screen; the
         // card is a small drawing of one, so it scales with it.
-        readonly property real w: root.u * ((root.spec.width ?? 40) / 3.4)
+        // One width for all of them, because caelestia has one width: the
+        // bar's thickness is not a bar setting. What tells these cards apart
+        // is what is IN the bar and how it is drawn.
+        readonly property real w: root.u * 12
 
         visible: root.kind === "bar" && realBar.entries.length > 0
         // Left, and stopping well above the words: the card's name and its
@@ -348,7 +351,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.topMargin: root.u * 3
             anchors.bottomMargin: root.u * 3
-            spacing: root.u * ((root.spec.spacing ?? 12) / 3.4)
+            spacing: root.u * (root.spec.compact === true ? 2.2 : 3.5)
 
             Repeater {
                 model: realBar.entries

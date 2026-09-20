@@ -32,8 +32,6 @@
         "enabled": true
       }
     ],
-    "width": 62,
-    "spacing": 22,
     "workspaces": {
       "shown": 5,
       "showWindows": false

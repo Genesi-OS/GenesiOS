@@ -42,9 +42,18 @@ over https -- root does no networking here.
 
 ── What it writes ─────────────────────────────────────────────────────────
 
-/etc/sddm.conf.d/50-genesi-store.conf, the highest-numbered drop-in Genesi
-ships, so it wins over the default without editing it, and deleting it puts
-the login screen back exactly as the install left it. That is what
+/etc/sddm.conf.d/zz-genesi-store.conf, and the name is the whole point.
+
+SDDM reads that directory in ALPHABETICAL order and the last file wins.
+The old name, "50-genesi-store.conf", looked like the highest-numbered
+drop-in, and it was -- but numbers sort before letters, so it lost to
+"genesi-theme.conf", which
+Genesi installs itself, and to "kde_settings.conf" on any machine that has
+ever had Plasma near it. Every login screen picked in the store applied
+cleanly, wrote its drop-in, and was then overruled by a file further down the
+alphabet. "zz-" sorts after anything either of them will ever be called.
+
+Deleting it puts the login screen back exactly as the install left it. That is what
 `login-theme breeze` does -- it deletes the drop-in rather than writing the
 old value back, because "back" means "whatever the system decides", not "what
 this tool happened to see".
@@ -57,7 +66,7 @@ the one SDDM reads.
 
 Ctrl+Alt+F2 for a text console, log in, and:
 
-    sudo rm /etc/sddm.conf.d/50-genesi-store.conf && sudo systemctl restart sddm
+    sudo rm /etc/sddm.conf.d/zz-genesi-store.conf && sudo systemctl restart sddm
 
 That is the whole undo, and it needs nothing from this package.
 """
@@ -71,7 +80,7 @@ import subprocess
 import sys
 import tarfile
 
-DROPIN = "/etc/sddm.conf.d/50-genesi-store.conf"
+DROPIN = "/etc/sddm.conf.d/zz-genesi-store.conf"
 THEME_DIR = "/usr/share/sddm/themes"
 CATALOG = "/usr/share/genesi-store/catalog.json"
 

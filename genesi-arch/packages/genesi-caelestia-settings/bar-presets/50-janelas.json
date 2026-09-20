@@ -32,8 +32,6 @@
         "enabled": true
       }
     ],
-    "width": 56,
-    "spacing": 12,
     "workspaces": {
       "showWindows": true,
       "maxWindowIcons": 8,

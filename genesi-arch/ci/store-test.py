@@ -499,6 +499,62 @@ ck("...and what it falls back to draws the Genesi logo",
    and "genesi-logo.txt" in read(packaged))
 
 
+# ── A bar preset may only set keys the bar actually has ────────────────────
+#
+# The presets carried `width` and `spacing` for months. caelestia has neither
+# -- there is no such key in BarConfig and the bar's thickness comes from the
+# appearance tokens -- so two presets that differed only in those produced an
+# identical bar, and the cards drawn from them drew a difference that could
+# never appear on screen.
+#
+# This is the same failure as writing a config nobody reads, one level down:
+# a key nobody reads.
+BAR_KEYS = {
+    "entries", "persistent", "showOnHover", "dragThreshold",
+    "scrollActions", "popouts", "workspaces", "activeWindow", "tray",
+    "status", "clock",
+}
+BORDER_KEYS = {"thickness", "rounding", "smoothing", "opacity"}
+
+preset_dir = os.path.join(ROOT, "genesi-arch", "packages",
+                          "genesi-caelestia-settings", "bar-presets")
+invented = []
+presets_seen = 0
+if os.path.isdir(preset_dir):
+    for name in sorted(os.listdir(preset_dir)):
+        if not name.endswith(".json"):
+            continue
+        presets_seen += 1
+        data = json.loads(read(os.path.join(preset_dir, name)))
+        for key in (data.get("bar") or {}):
+            if key not in BAR_KEYS:
+                invented.append("%s: bar.%s" % (name, key))
+        for key in (data.get("border") or {}):
+            if key not in BORDER_KEYS:
+                invented.append("%s: border.%s" % (name, key))
+ck("every bar preset sets only keys caelestia has", not invented, invented)
+ck("...and there were presets to check", presets_seen >= 10, presets_seen)
+
+# The factory preset is the one that has to be complete: it is what "como vem
+# de fábrica" applies, and if it leaves a key out, whatever the last preset
+# set stays behind. That is what happened -- the auto-hiding bar stayed
+# hidden, and the borders it had flattened did not come back.
+factory_path = os.path.join(preset_dir, "10-padrao.json")
+if os.path.exists(factory_path):
+    factory = json.loads(read(factory_path))
+    others = set()
+    for name in sorted(os.listdir(preset_dir)):
+        if not name.endswith(".json") or name == "10-padrao.json":
+            continue
+        data = json.loads(read(os.path.join(preset_dir, name)))
+        others |= {"bar." + k for k in (data.get("bar") or {})}
+        others |= {"border." + k for k in (data.get("border") or {})}
+    have = {"bar." + k for k in (factory.get("bar") or {})}
+    have |= {"border." + k for k in (factory.get("border") or {})}
+    ck("the factory preset states everything the others can change",
+       others <= have, sorted(others - have))
+
+
 # ── A lock screen has to be reachable, not merely written ──────────────────
 #
 # This shelf shipped broken and nothing caught it, because every part of it

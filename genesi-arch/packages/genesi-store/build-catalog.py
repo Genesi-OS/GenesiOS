@@ -91,8 +91,8 @@ WALLS = [
      "O mesmo silêncio, desenhado.", ["arte", "agua", "calmo"]),
     ("mountains", "mountains.png", "Montanhas",
      "Camadas até o horizonte.", ["natureza", "minimalista"]),
-    ("golden-mountains", "golden-mountains.png", "Montanhas Douradas",
-     "Fim de tarde nos picos.", ["natureza", "quente"]),
+    ("nord-city", "nord_dark_city.png", "Cidade Nord",
+     "A cidade em nord, bem larga.", ["cidade", "escuro", "frio"]),
     ("oled-mountains", "oled-mountains.jpg", "Montanhas OLED",
      "Preto real, para telas OLED.", ["escuro", "oled", "minimalista"]),
     ("moon", "moon.png", "Lua",
@@ -105,8 +105,8 @@ WALLS = [
      "Árvore, castelo, nuvem.", ["arte", "natureza"]),
     ("ink-wave", "ink_wave.png", "Onda de Tinta",
      "Nanquim em movimento.", ["arte", "escuro", "minimalista"]),
-    ("blue-waves", "blue-waves.png", "Ondas Azuis",
-     "Curvas frias e limpas.", ["minimalista", "frio"]),
+    ("aurora", "aurora_v02.png", "Aurora",
+     "Luz fria sobre o horizonte.", ["minimalista", "frio", "noite"]),
     ("minimal-c", "minimal_c.png", "Minimal",
      "Quase nada, bem colocado.", ["minimalista", "escuro"]),
     ("arch-nord", "arch-nord-dark.png", "Arch Nord",
@@ -253,6 +253,21 @@ def thumbnail(ident, data, filename):
     return name
 
 
+MIN_WALL_WIDTH = 1920
+
+
+def wallpaper_size(data):
+    """The pixel size of a downloaded wallpaper, or (0, 0) if unreadable."""
+    from PySide6.QtGui import QGuiApplication, QImage
+    global _APP
+    try:
+        _APP
+    except NameError:
+        _APP = QGuiApplication([])
+    image = QImage.fromData(data)
+    return image.width(), image.height()
+
+
 def wallpaper_asset(filename):
     url = WALL_REPO + filename
     data = get(url, binary=True)
@@ -260,9 +275,16 @@ def wallpaper_asset(filename):
     head = {"image/png": b"\x89PNG", "image/jpeg": b"\xff\xd8\xff"}[kind]
     if not data.startswith(head):
         raise SystemExit("%s is not %s -- the link is broken" % (url, kind))
+    width, height = wallpaper_size(data)
+    if width and width < MIN_WALL_WIDTH:
+        raise SystemExit("%s is only %dx%d; a wallpaper this shelf offers has "
+                         "to be at least %d wide or it is scaled up on every "
+                         "machine Genesi installs on"
+                         % (filename, width, height, MIN_WALL_WIDTH))
     # The bytes come back too: the thumbnail is made from the file we just
     # verified, not from a second download of something that may differ.
     return ({"url": url, "type": kind, "bytes": len(data),
+             "width": width, "height": height,
              "sha256": hashlib.sha256(data).hexdigest()}, data)
 
 
@@ -636,18 +658,24 @@ def bar_shape(preset):
         block = bar.get(name)
         return bool(isinstance(block, dict) and block.get(key))
 
+    # Deliberately NOT width or spacing. Those were in the presets and are not
+    # caelestia bar properties at all -- there is no such key in BarConfig,
+    # and the bar's thickness comes from the appearance tokens. So the cards
+    # were drawing a thin bar and a wide bar for two presets that produce
+    # exactly the same bar, which is a picture telling a lie about what the
+    # button does. What is left is what genuinely differs.
     return {
         "entries": entries,
-        # The real numbers, so a thin bar draws thin. caelestia's own default
-        # when a preset does not say is 40 wide with 12 between things.
-        "width": bar.get("width", 40),
-        "spacing": bar.get("spacing", 12),
         "pills": opt("clock", "background") or opt("tray", "background"),
         "date": opt("clock", "showDate"),
         "windows": opt("workspaces", "showWindows"),
         "trail": opt("workspaces", "activeTrail"),
+        "occupied": opt("workspaces", "occupiedBg"),
+        "audio": opt("status", "showAudio"),
         "compact": opt("activeWindow", "compact") or opt("tray", "compact"),
-        "hidden": bar.get("persistent") is False or bool(bar.get("showOnHover")),
+        # persistent:false is the auto-hiding one. showOnHover alone is the
+        # default and does not hide anything.
+        "hidden": bar.get("persistent") is False,
     }
 
 

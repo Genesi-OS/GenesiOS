@@ -1,7 +1,37 @@
 {
   "name": "Default · Padrão",
-  "description": "The bar as caelestia ships it",
+  "description": "The bar exactly as caelestia ships it, every value stated",
   "bar": {
+    "persistent": true,
+    "showOnHover": true,
+    "dragThreshold": 20,
+    "workspaces": {
+      "shown": 5,
+      "activeIndicator": true,
+      "occupiedBg": false,
+      "showWindows": true,
+      "showWindowsOnSpecialWorkspaces": true,
+      "maxWindowIcons": 5,
+      "activeTrail": false
+    },
+    "activeWindow": {
+      "compact": false,
+      "inverted": false,
+      "showOnHover": true
+    },
+    "tray": {
+      "background": false,
+      "recolour": false,
+      "compact": false
+    },
+    "status": {
+      "showAudio": false
+    },
+    "clock": {
+      "background": false,
+      "showDate": false,
+      "showIcon": true
+    },
     "entries": [
       {
         "id": "logo",
@@ -40,5 +70,10 @@
         "enabled": true
       }
     ]
+  },
+  "border": {
+    "thickness": 10,
+    "rounding": 25,
+    "smoothing": 20
   }
 }

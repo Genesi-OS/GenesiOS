@@ -409,7 +409,7 @@ Item {
                     }
                     Text {
                         width: wayOut.width
-                        text: "sudo rm /etc/sddm.conf.d/50-genesi-store.conf"
+                        text: "sudo rm /etc/sddm.conf.d/zz-genesi-store.conf"
                         color: Tokens.textHi
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsLabel

@@ -40,7 +40,6 @@
         "enabled": true
       }
     ],
-    "width": 46,
     "workspaces": {
       "activeTrail": true,
       "occupiedBg": true,

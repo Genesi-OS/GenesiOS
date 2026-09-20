@@ -39,8 +39,7 @@
         "id": "power",
         "enabled": true
       }
-    ],
-    "spacing": 16
+    ]
   },
   "border": {
     "thickness": 12,
