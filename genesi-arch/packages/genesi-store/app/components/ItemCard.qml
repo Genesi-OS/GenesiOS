@@ -29,11 +29,15 @@ Rectangle {
     // Filled in when the screenshot lands. The delegate only exists while the
     // card is near the viewport, so asking here IS asking lazily.
     property string shot: ""
+    property string motion: ""
 
     Component.onCompleted: {
         if (root.preview.shot) {
             root.shot = store.previewPath(root.item.id);
             store.fetchPreview(root.item.id);
+        }
+        if (root.preview.shot && root.preview.shot.motion) {
+            root.motion = store.motionPath(root.item.id);
         }
     }
 
@@ -43,6 +47,11 @@ Rectangle {
         function onPreviewReady(ident, url) {
             if (ident === root.item.id)
                 root.shot = url;
+        }
+
+        function onMotionReady(ident, url) {
+            if (ident === root.item.id)
+                root.motion = url;
         }
     }
     readonly property bool applied: item.applied === true
@@ -70,6 +79,10 @@ Rectangle {
         spec: root.preview
         thumbDir: root.thumbDir
         shotUrl: root.shot
+        motionSrc: root.motion
+        // Only the card under the pointer plays. Thirty-five running GIFs is
+        // a shelf that sounds like a laptop taking off.
+        animate: hover.hovered
         // A hair of zoom under the pointer: enough to feel alive, not enough
         // to make the text move.
         scale: hover.hovered ? 1.03 : 1.0
@@ -361,6 +374,12 @@ Rectangle {
 
     HoverHandler {
         id: hover
+
+        onHoveredChanged: {
+            if (hover.hovered && root.motion === ""
+                && root.preview.shot && root.preview.shot.motion)
+                store.fetchMotion(root.item.id);
+        }
     }
     TapHandler {
         onTapped: root.opened()

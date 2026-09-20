@@ -1529,22 +1529,50 @@ MAX_THEME_BYTES = 96 * 1024 * 1024
 _TREES = {}
 
 
-def theme_backdrop(key, spec, subdir):
-    """The picture a collection theme shows on its card.
+# A preview picture the card can actually fill itself with.
+MIN_SHOT_WIDTH = 1280
 
-    qylock ships an animated GIF of every theme in Assets/ -- made by the
-    author, for exactly this purpose, and far better than anything this build
-    could derive. Which matters more than it sounds: NINETEEN of these themes
-    have an MP4 for a background and no still image in them at all, so
-    "use the biggest picture in the theme" would have left half the shelf
-    blank. Extracting a frame was the other option, and that would have meant
-    Genesi generating and shipping a derivative of somebody else's art, which
-    is the thing this shelf stopped doing two versions ago.
+# Files that are a MARK, not a picture of the screen. qylock's Genshin theme
+# ships a 2000x2000 logo, which is the highest-resolution image in it and the
+# worst possible preview: a card showing a logo tells you nothing about the
+# login screen it installs.
+LOGO_NAMES = ("logo", "title", "avatar", "pfp", "mark")
 
-    The names in Assets/ do not match the directory names -- win7 vs
-    windows_7, nier_automata vs nier-automata -- so they are matched with the
-    separators removed, and a theme whose preview cannot be found is an error
-    rather than a blank card.
+
+def theme_still(spec):
+    """The sharpest picture of the theme ITSELF, or None.
+
+    Backgrounds only. The largest file is often a logo or an avatar, and
+    "biggest image" would have put a 2000x2000 Genshin wordmark on a card
+    whose job is to show what the screen looks like.
+    """
+    best = None
+    for entry in spec["files"]:
+        path = entry["path"].lower()
+        if not path.endswith((".png", ".jpg", ".jpeg")):
+            continue
+        stem = os.path.splitext(os.path.basename(path))[0]
+        if any(word in stem for word in LOGO_NAMES):
+            continue
+        if best is None or entry["bytes"] > best["bytes"]:
+            best = entry
+    if not best:
+        return None
+    raw = get(spec["base"] + "/" + urllib.parse.quote(best["path"]), binary=True)
+    width, _height = wallpaper_size(raw)
+    kind = "image/png" if best["path"].lower().endswith(".png") else "image/jpeg"
+    return {"url": spec["base"] + "/" + urllib.parse.quote(best["path"]),
+            "type": kind, "bytes": best["bytes"], "sha256": best["sha256"],
+            "width": width}
+
+
+def theme_motion(key, subdir):
+    """The author's animated preview of the theme, or None.
+
+    qylock ships one per theme in Assets/, which matters because nineteen of
+    these have an MP4 for a background and no still image at all. They are
+    400x225 every one of them, though -- fine as the thing that MOVES when
+    you point at a card, far too small to BE the card.
     """
     repo, ref = FILE_REPOS["qylock"]
     flat = lambda name: re.sub(r"[^a-z0-9]", "", name.lower())
@@ -1552,35 +1580,53 @@ def theme_backdrop(key, spec, subdir):
               for p in repo_tree(repo, ref)
               if p.startswith("Assets/") and p.lower().endswith((".gif", ".png"))}
     want = flat(subdir)
-    path = assets.get(want) or assets.get(want.replace("the", "", 1))
+    aliases = {"windows7": "win7", "lastofus": "thelastofus"}
+    path = (assets.get(want) or assets.get(want.replace("the", "", 1))
+            or assets.get(flat(aliases.get(want, ""))))
     if not path:
-        # A couple genuinely differ by more than punctuation.
-        aliases = {"windows7": "win7", "lastofus": "thelastofus"}
-        path = assets.get(flat(aliases.get(want, "")))
-    if not path:
-        # One theme (ninesols) has no GIF in Assets but does ship a still of
-        # its own, so fall back to that rather than losing the card. Both
-        # paths end in the same place: a picture the author published, at the
-        # pinned commit, with a digest.
-        own = [f for f in spec["files"]
-               if f["path"].lower().endswith((".png", ".jpg", ".jpeg"))]
-        if not own:
-            raise SystemExit("%s has no preview anywhere in the collection"
-                             % key)
-        best = max(own, key=lambda f: f["bytes"])
-        kind = ("image/png" if best["path"].lower().endswith(".png")
-                else "image/jpeg")
-        return {"url": spec["base"] + "/" + urllib.parse.quote(best["path"]),
-                "type": kind, "bytes": best["bytes"],
-                "sha256": best["sha256"]}
+        return None
+    url = ("https://raw.githubusercontent.com/%s/%s/%s"
+           % (repo, ref, urllib.parse.quote(path)))
+    raw = get(url, binary=True)
+    width, _height = wallpaper_size(raw)
+    return {"url": url,
+            "type": "image/gif" if path.lower().endswith(".gif") else "image/png",
+            "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
+            "width": width}
 
-    raw = get("https://raw.githubusercontent.com/%s/%s/%s"
-              % (repo, ref, urllib.parse.quote(path)), binary=True)
-    kind = "image/gif" if path.lower().endswith(".gif") else "image/png"
-    return {"url": "https://raw.githubusercontent.com/%s/%s/%s"
-                   % (repo, ref, urllib.parse.quote(path)),
-            "type": kind, "bytes": len(raw),
-            "sha256": hashlib.sha256(raw).hexdigest()}
+
+def theme_backdrop(key, spec, subdir):
+    """What a collection theme shows on its card: a still, and maybe motion.
+
+    The still is the theme's own background where it has one big enough --
+    two and a half thousand pixels wide in places, against the 400x225 the
+    author's GIF is. The GIF is kept as the thing that plays when you point
+    at the card, so the sharp picture is what you see and the motion is there
+    when you want it.
+
+    Eighteen of these are video-backgrounded and have no still at all. For
+    those the GIF IS the card, and the drawing fills the rest of it with a
+    blurred copy rather than stretching 400 pixels across a window.
+    """
+    still = theme_still(spec)
+    motion = theme_motion(key, subdir)
+    if not still and not motion:
+        raise SystemExit("%s has no preview anywhere in the collection" % key)
+    # A sharp still wins. Below that the author's animation is the better
+    # picture, because it is at least of the whole screen. A small still is
+    # still better than nothing -- MIN_SHOT_WIDTH is a preference, not a bar
+    # to clear, and one theme (ninesols) has only a 1080px background and no
+    # animation at all.
+    if still and still["width"] >= MIN_SHOT_WIDTH:
+        shot = still
+    elif motion:
+        shot = motion
+    else:
+        shot = still
+    out = dict(shot)
+    if motion and motion is not shot:
+        out["motion"] = motion
+    return out
 
 
 def repo_tree(repo, ref):

@@ -5054,7 +5054,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/minecraft.gif",
      "type": "image/gif",
      "bytes": 194185,
-     "sha256": "cdaa9c01d98a2f88790616745e9819e9df92708da3e98d404f2bf16b6e966632"
+     "sha256": "cdaa9c01d98a2f88790616745e9819e9df92708da3e98d404f2bf16b6e966632",
+     "width": 400
     }
    },
    "actions": [
@@ -5086,10 +5087,18 @@
     "kind": "login",
     "theme": "qylock-terraria",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/terraria.gif",
-     "type": "image/gif",
-     "bytes": 1356690,
-     "sha256": "ec94f8969c531a1428a5d8396c85764df6337b3ff890ca36ba6ca8b247eff950"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/terraria/ter3.png",
+     "type": "image/png",
+     "bytes": 116189,
+     "sha256": "929bd9b291734aa8750540fcbf57e2aea00e67e50fb651a8d95a3866fe0f544b",
+     "width": 1324,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/terraria.gif",
+      "type": "image/gif",
+      "bytes": 1356690,
+      "sha256": "ec94f8969c531a1428a5d8396c85764df6337b3ff890ca36ba6ca8b247eff950",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -5121,10 +5130,18 @@
     "kind": "login",
     "theme": "qylock-nier",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/nier_automata.gif",
-     "type": "image/gif",
-     "bytes": 366606,
-     "sha256": "387fca999889ca512b953f4e0096512ffb0b03a11c09dc14273a0208dd435ae1"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/nier-automata/bg.png",
+     "type": "image/png",
+     "bytes": 161561,
+     "sha256": "24c143cb85ca412ebab0f8013b5f0b2c224063ffdec7d4cf70d7d439117b9fd8",
+     "width": 2560,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/nier_automata.gif",
+      "type": "image/gif",
+      "bytes": 366606,
+      "sha256": "387fca999889ca512b953f4e0096512ffb0b03a11c09dc14273a0208dd435ae1",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -5156,10 +5173,18 @@
     "kind": "login",
     "theme": "qylock-windows7",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/win7.gif",
-     "type": "image/gif",
-     "bytes": 158583,
-     "sha256": "d2a05fe958c7741e627d3214c272607f235b7e004bc0ad5ad513b9a5265df8e9"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/windows_7/background.png",
+     "type": "image/png",
+     "bytes": 603136,
+     "sha256": "a1ded79f81c1d262153b21f1638361af1ca6e21a3b1abb8ad74b4a568fe1c139",
+     "width": 1920,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/win7.gif",
+      "type": "image/gif",
+      "bytes": 158583,
+      "sha256": "d2a05fe958c7741e627d3214c272607f235b7e004bc0ad5ad513b9a5265df8e9",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -5195,7 +5220,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/ninja_gaiden.gif",
      "type": "image/gif",
      "bytes": 106879,
-     "sha256": "ce91e66450b14f4381e09c90be0e455789f950fbe0f278f7018d812437367274"
+     "sha256": "ce91e66450b14f4381e09c90be0e455789f950fbe0f278f7018d812437367274",
+     "width": 400
     }
    },
    "actions": [
@@ -5227,10 +5253,18 @@
     "kind": "login",
     "theme": "qylock-field",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/field.gif",
-     "type": "image/gif",
-     "bytes": 329011,
-     "sha256": "772ecc650d5d16a42f05b77bb2aa09f5d46eb1ff8686236724185b7db19dba0b"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/field/bg.png",
+     "type": "image/png",
+     "bytes": 1784920,
+     "sha256": "4e673009ca8421907a03360e992d934ebefc4d97bc763f6d4541be50329175a7",
+     "width": 1920,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/field.gif",
+      "type": "image/gif",
+      "bytes": 329011,
+      "sha256": "772ecc650d5d16a42f05b77bb2aa09f5d46eb1ff8686236724185b7db19dba0b",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -5265,7 +5299,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninesols/bg.png",
      "type": "image/png",
      "bytes": 793159,
-     "sha256": "791cd6dc3b4451f6bbd5c3b1b309d7e540f157c60de98fc901c3b48c7720e9a0"
+     "sha256": "791cd6dc3b4451f6bbd5c3b1b309d7e540f157c60de98fc901c3b48c7720e9a0",
+     "width": 1080
     }
    },
    "actions": [
@@ -5297,10 +5332,18 @@
     "kind": "login",
     "theme": "qylock-girl-coffee",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/girl_coffee.gif",
-     "type": "image/gif",
-     "bytes": 120481,
-     "sha256": "f458d6fa9da5a9252a3caa2a3b1d9ed57f55ad975ff89df20e1660aaaeccba48"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-coffee/bg.png",
+     "type": "image/png",
+     "bytes": 1053098,
+     "sha256": "7019b5c5b6fb59aff1ad523ef8e980b48a751a79e0720686213d2743873c81ef",
+     "width": 2560,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/girl_coffee.gif",
+      "type": "image/gif",
+      "bytes": 120481,
+      "sha256": "f458d6fa9da5a9252a3caa2a3b1d9ed57f55ad975ff89df20e1660aaaeccba48",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -5332,10 +5375,18 @@
     "kind": "login",
     "theme": "qylock-girl-pillow",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/girl_pillow.gif",
-     "type": "image/gif",
-     "bytes": 58676,
-     "sha256": "d375c9ddc976ecccda292421ea06d82e0190d3cb6afd7ef5866b67c56debdf10"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-pillow/bg.png",
+     "type": "image/png",
+     "bytes": 485309,
+     "sha256": "6fc76427616c2566a1d392ec05b2c066321a9fedc2e54abe5680a2cdf2d3739d",
+     "width": 4444,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/girl_pillow.gif",
+      "type": "image/gif",
+      "bytes": 58676,
+      "sha256": "d375c9ddc976ecccda292421ea06d82e0190d3cb6afd7ef5866b67c56debdf10",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -5370,7 +5421,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_coffee.gif",
      "type": "image/gif",
      "bytes": 529965,
-     "sha256": "05b310d13d8fcb036a24b00128308e7fbfed8b2429f373a9d076cc31ce292510"
+     "sha256": "05b310d13d8fcb036a24b00128308e7fbfed8b2429f373a9d076cc31ce292510",
+     "width": 400
     }
    },
    "actions": [
@@ -5406,7 +5458,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_dusk_city.gif",
      "type": "image/gif",
      "bytes": 121966,
-     "sha256": "31f18ba0dbca61d17147079fdbe433ec5358725678dabba368cec31210bb7bbb"
+     "sha256": "31f18ba0dbca61d17147079fdbe433ec5358725678dabba368cec31210bb7bbb",
+     "width": 400
     }
    },
    "actions": [
@@ -5442,7 +5495,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel-waterfall.gif",
      "type": "image/gif",
      "bytes": 1685709,
-     "sha256": "c148f984296d5c74f17392b9824a9d392a2389833bd5fa310e2efaa877036c54"
+     "sha256": "c148f984296d5c74f17392b9824a9d392a2389833bd5fa310e2efaa877036c54",
+     "width": 400
     }
    },
    "actions": [
@@ -5477,7 +5531,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_munchlax.gif",
      "type": "image/gif",
      "bytes": 166234,
-     "sha256": "5f0d74fdb3162ec88ac4f7136bac9ca9d7a0bc82091e003bf00edd0ea10905bc"
+     "sha256": "5f0d74fdb3162ec88ac4f7136bac9ca9d7a0bc82091e003bf00edd0ea10905bc",
+     "width": 400
     }
    },
    "actions": [
@@ -5509,10 +5564,18 @@
     "kind": "login",
     "theme": "qylock-women-umbrella",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/women_umbrella.gif",
-     "type": "image/gif",
-     "bytes": 517681,
-     "sha256": "a79f72ff56a6df96e158098a480046f0bb7c53ff0b4ba0e16429d034646afdc8"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/women-umbrella/bg.png",
+     "type": "image/png",
+     "bytes": 3025537,
+     "sha256": "8524ac4c367827143b3e2ef9e9abe5700b874ab39e81626878571b07d01c0513",
+     "width": 2064,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/women_umbrella.gif",
+      "type": "image/gif",
+      "bytes": 517681,
+      "sha256": "a79f72ff56a6df96e158098a480046f0bb7c53ff0b4ba0e16429d034646afdc8",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -5544,10 +5607,18 @@
     "kind": "login",
     "theme": "qylock-material-you",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/material-you.gif",
-     "type": "image/gif",
-     "bytes": 213026,
-     "sha256": "671300d89853110055d614d80bcb7fba95da35f7c6218f916c50d0714040d505"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you/bg.png",
+     "type": "image/png",
+     "bytes": 735445,
+     "sha256": "a27c8408266933a145a4330d1267aa082831b589f29a155ed06b149638b4380f",
+     "width": 3840,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/material-you.gif",
+      "type": "image/gif",
+      "bytes": 213026,
+      "sha256": "671300d89853110055d614d80bcb7fba95da35f7c6218f916c50d0714040d505",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -5579,10 +5650,18 @@
     "kind": "login",
     "theme": "qylock-material-you-dark",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/material-you-dark.gif",
-     "type": "image/gif",
-     "bytes": 4201246,
-     "sha256": "b7c522da770c6f5cdbd9801517ebbd02c77b618799cbcc6291d36d5f7a0a4e7e"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you-dark/bg.png",
+     "type": "image/png",
+     "bytes": 354787,
+     "sha256": "5319cc79f5a46c3cabf013f1423f5d262cae3957867d026be54ecdd6961559d9",
+     "width": 1920,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/material-you-dark.gif",
+      "type": "image/gif",
+      "bytes": 4201246,
+      "sha256": "b7c522da770c6f5cdbd9801517ebbd02c77b618799cbcc6291d36d5f7a0a4e7e",
+      "width": 1024
+     }
     }
    },
    "actions": [
@@ -5614,10 +5693,18 @@
     "kind": "login",
     "theme": "qylock-man-bicycle",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/man_bicycle.gif",
-     "type": "image/gif",
-     "bytes": 262143,
-     "sha256": "aeae54b707cacc65bf7c0823618489e5936c4d2995d3ab23d122803b1de4de91"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/man-bicycle/bg.png",
+     "type": "image/png",
+     "bytes": 5005352,
+     "sha256": "cced9213b0bd0437fc331216b841fc000c3e525ea00eade7fd19cdfc56a6947d",
+     "width": 3840,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/man_bicycle.gif",
+      "type": "image/gif",
+      "bytes": 262143,
+      "sha256": "aeae54b707cacc65bf7c0823618489e5936c4d2995d3ab23d122803b1de4de91",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -5652,7 +5739,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/R1999_2.gif",
      "type": "image/gif",
      "bytes": 1765256,
-     "sha256": "11c2e844d83c6dc66c6d2e4e129a077de723df65afe0f0ff91ad581e0fa017f7"
+     "sha256": "11c2e844d83c6dc66c6d2e4e129a077de723df65afe0f0ff91ad581e0fa017f7",
+     "width": 400
     }
    },
    "actions": [
@@ -5688,7 +5776,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_night_city.gif",
      "type": "image/gif",
      "bytes": 473310,
-     "sha256": "965e296ea2120784404469dbf996b6e0255bb7bca08f4d221db26bc9ee50dfde"
+     "sha256": "965e296ea2120784404469dbf996b6e0255bb7bca08f4d221db26bc9ee50dfde",
+     "width": 400
     }
    },
    "actions": [
@@ -5724,7 +5813,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel-sakura.gif",
      "type": "image/gif",
      "bytes": 1034380,
-     "sha256": "183c8fe699615686e972f521b5763a3309007a1b1defbd8663ec469c9c21a75a"
+     "sha256": "183c8fe699615686e972f521b5763a3309007a1b1defbd8663ec469c9c21a75a",
+     "width": 400
     }
    },
    "actions": [
@@ -5760,7 +5850,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_rainyroom.gif",
      "type": "image/gif",
      "bytes": 784188,
-     "sha256": "9f653f7c650170de3de4b852be18fcca4568ab45db4ab6bf8773e4ed96fe2393"
+     "sha256": "9f653f7c650170de3de4b852be18fcca4568ab45db4ab6bf8773e4ed96fe2393",
+     "width": 400
     }
    },
    "actions": [
@@ -5795,7 +5886,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/star_rail.gif",
      "type": "image/gif",
      "bytes": 4611488,
-     "sha256": "9655a37d948245d748cf0bce366c3304c6535ad8c888d276a11e218b4ef46dea"
+     "sha256": "9655a37d948245d748cf0bce366c3304c6535ad8c888d276a11e218b4ef46dea",
+     "width": 400
     }
    },
    "actions": [
@@ -5830,7 +5922,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/dog_samurai.gif",
      "type": "image/gif",
      "bytes": 1463420,
-     "sha256": "d22208ff12afa2ad754291aba813fb5e7920fefd8b7386231c63c7ba39cbd0a0"
+     "sha256": "d22208ff12afa2ad754291aba813fb5e7920fefd8b7386231c63c7ba39cbd0a0",
+     "width": 400
     }
    },
    "actions": [
@@ -5865,7 +5958,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel-emerald.gif",
      "type": "image/gif",
      "bytes": 5803294,
-     "sha256": "d6d8f6f60031d9bcff23d0a1ad81d85fcba6ee398bbb397b90d55c1cd8267ece"
+     "sha256": "d6d8f6f60031d9bcff23d0a1ad81d85fcba6ee398bbb397b90d55c1cd8267ece",
+     "width": 400
     }
    },
    "actions": [
@@ -5901,7 +5995,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/winter.gif",
      "type": "image/gif",
      "bytes": 2714735,
-     "sha256": "fd80eb6c48282aa95787e050339196b011002a30719ac4efa3018a21738c3b0e"
+     "sha256": "fd80eb6c48282aa95787e050339196b011002a30719ac4efa3018a21738c3b0e",
+     "width": 400
     }
    },
    "actions": [
@@ -5936,7 +6031,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/enfield.gif",
      "type": "image/gif",
      "bytes": 2353555,
-     "sha256": "e3c299f2490021c321869b575ffd8711b083379ad990481a9bb907001495f7fe"
+     "sha256": "e3c299f2490021c321869b575ffd8711b083379ad990481a9bb907001495f7fe",
+     "width": 400
     }
    },
    "actions": [
@@ -5972,7 +6068,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel-cyberpunk.gif",
      "type": "image/gif",
      "bytes": 1414167,
-     "sha256": "5c17d2172496afd1937b02ab2f2ca757620df3ddca1cfa00a6ad4b42b48ee167"
+     "sha256": "5c17d2172496afd1937b02ab2f2ca757620df3ddca1cfa00a6ad4b42b48ee167",
+     "width": 400
     }
    },
    "actions": [
@@ -6007,7 +6104,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/wuwa.gif",
      "type": "image/gif",
      "bytes": 3288388,
-     "sha256": "798f8c2327cfd1492bbb9f79fdc9f03f7372c2a34341ec408990afd2c856151d"
+     "sha256": "798f8c2327cfd1492bbb9f79fdc9f03f7372c2a34341ec408990afd2c856151d",
+     "width": 400
     }
    },
    "actions": [
@@ -6042,7 +6140,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_skyscrapers.gif",
      "type": "image/gif",
      "bytes": 658253,
-     "sha256": "03100afaa917d6d77e4580eceaa2e48c15df6d4ac0be6e2d35b0bb08b9af1326"
+     "sha256": "03100afaa917d6d77e4580eceaa2e48c15df6d4ac0be6e2d35b0bb08b9af1326",
+     "width": 400
     }
    },
    "actions": [
@@ -6077,7 +6176,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/sword.gif",
      "type": "image/gif",
      "bytes": 3799816,
-     "sha256": "300ee9dfc3b87282e54ecb1abce5d3ad34b16ea8b959d4577b9f39801d9c7fc5"
+     "sha256": "300ee9dfc3b87282e54ecb1abce5d3ad34b16ea8b959d4577b9f39801d9c7fc5",
+     "width": 400
     }
    },
    "actions": [
@@ -6113,7 +6213,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/pixel_hollowknight.gif",
      "type": "image/gif",
      "bytes": 668669,
-     "sha256": "84f2b8bd895fa5e94df31c04e06d93ec776e373e132c01f468b00e29e7b0e502"
+     "sha256": "84f2b8bd895fa5e94df31c04e06d93ec776e373e132c01f468b00e29e7b0e502",
+     "width": 400
     }
    },
    "actions": [
@@ -6145,10 +6246,18 @@
     "kind": "login",
     "theme": "qylock-osu",
     "shot": {
-     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/osu.gif",
-     "type": "image/gif",
-     "bytes": 4485150,
-     "sha256": "e762e1c5e6d39d4dd01db2f5c3b4e38a52f5b67e6bb8075578487f4f1e2fa568"
+     "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/osu/background/B%20Glow.jpg",
+     "type": "image/jpeg",
+     "bytes": 6047194,
+     "sha256": "bfb324bd98e8a7a76e6718ee452706e3934ade9cd0f4ddcfb7eec1aa20e4ebdc",
+     "width": 3840,
+     "motion": {
+      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/osu.gif",
+      "type": "image/gif",
+      "bytes": 4485150,
+      "sha256": "e762e1c5e6d39d4dd01db2f5c3b4e38a52f5b67e6bb8075578487f4f1e2fa568",
+      "width": 400
+     }
     }
    },
    "actions": [
@@ -6183,7 +6292,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/forest.gif",
      "type": "image/gif",
      "bytes": 2483972,
-     "sha256": "d42fe55c1216489429138bd60442a06741b2d0880b1858a83a980f703df38fc2"
+     "sha256": "d42fe55c1216489429138bd60442a06741b2d0880b1858a83a980f703df38fc2",
+     "width": 400
     }
    },
    "actions": [
@@ -6218,7 +6328,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/genshin.gif",
      "type": "image/gif",
      "bytes": 3334417,
-     "sha256": "f0b2d3728f8a125114907a55140ea7580bc63f4c184a97abf37b1c05e6a6f721"
+     "sha256": "f0b2d3728f8a125114907a55140ea7580bc63f4c184a97abf37b1c05e6a6f721",
+     "width": 400
     }
    },
    "actions": [
@@ -6253,7 +6364,8 @@
      "url": "https://raw.githubusercontent.com/Darkkal44/qylock/f6561e2ceae33f26e5e660742a5df2f725cbe514/Assets/the_last_of_us.gif",
      "type": "image/gif",
      "bytes": 1944121,
-     "sha256": "bf9afca8540769078b55777e3c1f2a55ce4284ea9803e9f4fdb618e57db76507"
+     "sha256": "bf9afca8540769078b55777e3c1f2a55ce4284ea9803e9f4fdb618e57db76507",
+     "width": 400
     }
    },
    "actions": [

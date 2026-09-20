@@ -69,10 +69,12 @@ class Store(QObject):
     busyChanged = Signal(str, str)      # item id, what is happening
     finished = Signal(str, bool, str)   # item id, ok, message
     previewReady = Signal(str, str)     # item id, file:// url of its screenshot
+    motionReady = Signal(str, str)      # item id, file:// url of its animation
 
     def __init__(self):
         super().__init__()
         self._busy = set()
+        self._motions = set()
         self._shots = set()             # ids already asked for, so a card
                                         # scrolled past twice fetches once
 
@@ -180,6 +182,41 @@ class Store(QObject):
                 # Let it be asked again later: a card whose picture failed
                 # because the wifi was off should get one when it is back.
                 self._shots.discard(ident)
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, result=str)
+    def motionPath(self, ident):
+        """The cached animation, if it is already here. No network."""
+        for ext in (".gif", ".png"):
+            path = os.path.join(_shot_dir(), ident + "-motion" + ext)
+            if os.path.exists(path):
+                return QUrl.fromLocalFile(path).toString()
+        return ""
+
+    @Slot(str)
+    def fetchMotion(self, ident):
+        """Ask for one card's animation -- only when it is pointed at.
+
+        The still comes down as soon as a card is drawn; this does not. These
+        are the author's preview GIFs and they run to five megabytes each, so
+        fetching all of them to browse a shelf would be seventy megabytes of
+        animation nobody watched.
+        """
+        if not ident or ident in self._motions:
+            return
+        self._motions.add(ident)
+        have = self.motionPath(ident)
+        if have:
+            self.motionReady.emit(ident, have)
+            return
+
+        def work():
+            ok, result = cli("motion", ident, timeout=180)
+            path = result.get("path") if ok and isinstance(result, dict) else ""
+            if path and os.path.exists(path):
+                self.motionReady.emit(ident, QUrl.fromLocalFile(path).toString())
+            else:
+                self._motions.discard(ident)
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(result=str)

@@ -57,35 +57,82 @@ Item {
         color: root.bg
     }
 
-    // Image for a still, AnimatedImage for a GIF. Nineteen of the collection
-    // login screens have a VIDEO for a background and no still in them at
-    // all, and what their author publishes as a preview is an animated GIF --
-    // so a card drawing only the first frame would be showing a still of a
-    // thing whose whole point is that it moves.
-    readonly property bool moving: root.thumb.toLowerCase().endsWith(".gif")
+    // Whether the card should be playing. The shelf hands this down from
+    // hover: a wall of running GIFs is a wall of noise and a warm laptop.
+    property bool animate: false
+
+    // The animated preview, when there is one. For the eighteen themes whose
+    // background is a video and which ship no still at all, this IS the
+    // picture; for the rest it is what plays when you point at the card.
+    readonly property string motionUrl: root.motionSrc !== "" ? root.motionSrc
+        : (root.thumb.toLowerCase().endsWith(".gif") ? root.thumb : "")
+    property string motionSrc: ""
+
+    readonly property bool onlyMoving: root.motionUrl !== ""
+        && root.thumb.toLowerCase().endsWith(".gif")
+
+    // A source narrower than the card it fills. The authors' preview GIFs are
+    // 400x225 -- every one of them -- and a card is most of the window on
+    // this shelf, so stretching it across is the blur people complained
+    // about. Filling the card with a blurred copy and floating the sharp
+    // picture on top is what every video app does with the same problem.
+    readonly property bool small: (root.spec.width ?? 0) > 0
+                                  && root.spec.width < 1280
+
+    Image {
+        id: backdrop
+
+        anchors.fill: parent
+        source: root.small && !root.spec.blur ? root.thumb : ""
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        visible: false
+    }
+
+    MultiEffect {
+        anchors.fill: parent
+        source: backdrop
+        visible: backdrop.status === Image.Ready && root.small && !root.spec.blur
+        blurEnabled: true
+        blur: 1
+        blurMax: 48
+        brightness: -0.35
+        saturation: -0.2
+        autoPaddingEnabled: false
+    }
 
     Image {
         id: picture
 
         anchors.fill: parent
-        source: root.moving ? "" : root.thumb
-        fillMode: Image.PreserveAspectCrop
+        anchors.margins: root.small ? Math.round(root.height * 0.06) : 0
+        source: root.onlyMoving ? "" : root.thumb
+        fillMode: root.small ? Image.PreserveAspectFit : Image.PreserveAspectCrop
         asynchronous: true
         cache: true
-        visible: !root.moving && source !== "" && status === Image.Ready
-                 && !root.spec.blur
+        smooth: true
+        mipmap: root.small
+        visible: !root.onlyMoving && !motion.visible && source !== ""
+                 && status === Image.Ready && !root.spec.blur
     }
 
     AnimatedImage {
         id: motion
 
         anchors.fill: parent
-        source: root.moving ? root.thumb : ""
-        fillMode: Image.PreserveAspectCrop
+        anchors.margins: root.small ? Math.round(root.height * 0.06) : 0
+        // Loaded only while it is wanted. A GIF whose source is "" is a GIF
+        // that is not decoding forty frames a second behind a card nobody is
+        // looking at.
+        source: root.motionUrl !== "" && (root.animate || root.onlyMoving)
+                ? root.motionUrl : ""
+        fillMode: root.small ? Image.PreserveAspectFit : Image.PreserveAspectCrop
         asynchronous: true
-        cache: false            // a shelf of cached GIFs is a shelf of memory
+        cache: false
+        smooth: true
         speed: 0.75
-        visible: root.moving && status === AnimatedImage.Ready
+        playing: root.animate || root.onlyMoving
+        visible: source !== "" && status === AnimatedImage.Ready
                  && !root.spec.blur
     }
 

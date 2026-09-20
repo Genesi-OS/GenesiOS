@@ -101,7 +101,7 @@ MAX_ASSET_BYTES = 40 * 1024 * 1024        # a wallpaper, not a distro image
 MAX_GREETER_BYTES = 96 * 1024 * 1024
 MAX_TEXT_BYTES = 512 * 1024
 # A screenshot. The largest in the catalogue is 2.7 MB.
-MAX_SHOT_BYTES = 8 * 1024 * 1024
+MAX_SHOT_BYTES = 16 * 1024 * 1024
 
 # Long enough to read a password dialog, type into it, and let pacman fetch
 # a Qt module on a bad connection.
@@ -1054,6 +1054,27 @@ def open_window():
         "(try `genesi-store sections`)")
 
 
+def do_motion(cat, ident):
+    """Fetch an item's ANIMATED preview, which is a separate, larger file.
+
+    Kept apart from the still on purpose: the still is what a card shows and
+    is worth fetching as soon as the card is drawn, while the animation is
+    only worth fetching for the one card somebody is pointing at. Thirty-five
+    of these is seventy megabytes of GIF nobody asked to watch.
+    """
+    item = item_by_id(cat, ident)
+    motion = ((item.get("preview") or {}).get("shot") or {}).get("motion")
+    if not motion:
+        die("%s has no animation to fetch" % ident)
+    ext = ".gif" if motion.get("type") == "image/gif" else ".png"
+    dest = os.path.join(SHOT_DIR, ident + "-motion" + ext)
+    if os.path.exists(dest):
+        return dest
+    fetch(motion["url"], dest, expect_type=motion.get("type"),
+          sha256=motion.get("sha256"), cap=MAX_SHOT_BYTES)
+    return dest
+
+
 def do_preview(cat, ident):
     """Fetch an item's screenshot into the cache. Returns the path.
 
@@ -1097,6 +1118,8 @@ def main():
         p.add_argument("id")
     p = sub.add_parser("preview")
     p.add_argument("id")
+    p = sub.add_parser("motion")
+    p.add_argument("id")
     sub.add_parser("state")
     sub.add_parser("refresh")
 
@@ -1115,6 +1138,9 @@ def main():
         return cmd_state(cat, state, args)
     if args.cmd == "preview":
         print(json.dumps({"path": do_preview(cat, args.id)}))
+        return None
+    if args.cmd == "motion":
+        print(json.dumps({"path": do_motion(cat, args.id)}))
         return None
     if args.cmd == "refresh":
         print(json.dumps({"updated": cat.get("updated"),
