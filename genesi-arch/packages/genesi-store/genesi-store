@@ -53,6 +53,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 APP = "genesi-store"
@@ -525,8 +526,14 @@ def ensure_greeter(key):
         dest = os.path.join(folder, rel)
         if os.path.exists(dest):
             continue
-        fetch(base + "/" + rel, dest, sha256=entry.get("sha256"),
-              cap=MAX_GREETER_BYTES)
+        # The path has to be escaped for the URL and NOT for the disk. One of
+        # these themes ships "font/The Last Shuriken.ttf", and a space in a
+        # request line is not a URL at all -- Python refuses it outright, so
+        # the whole theme failed on its fourth file. build-catalog quoted it
+        # when it recorded the digest; this did not, which is exactly the kind
+        # of disagreement that only shows up on somebody's machine.
+        fetch(base + "/" + urllib.parse.quote(rel), dest,
+              sha256=entry.get("sha256"), cap=MAX_GREETER_BYTES)
     return folder
 
 
@@ -573,29 +580,36 @@ def act_bar(item, args, assets):
 
 
 def act_locker(item, args, assets):
-    """Make `loginctl lock-session` actually lock the screen.
+    """Make `loginctl lock-session` actually lock the screen, with WHICH lock.
 
-    This exists because the lock screens did not work, at all, and the reason
-    is a missing link nobody would guess from either end:
+    Two things had to be learned the hard way here.
 
-        the side panel's Lock button runs `loginctl lock-session`
-          -> logind emits a Lock signal on D-Bus
-            -> ...and on a Genesi desktop NOTHING was listening for it.
+    First: the side panel's Lock button runs `loginctl lock-session`, which
+    only emits a signal on D-Bus, and on a Genesi desktop nothing was
+    listening for it. hyprlock is not a daemon -- it is a program you run once
+    to lock the screen now -- so something has to run it when logind says to,
+    and that something is hypridle.
 
-    hyprlock is not a daemon. It is a program you run, once, to lock the
-    screen now. Something has to run it when logind says to, and that
-    something is hypridle -- which the helper has been allowed to install
-    since the day this shelf was written, and which nothing ever asked for.
+    Second, and this is the one that crashed people's desktops: caelestia has
+    a lock screen OF ITS OWN, and it is a `WlSessionLock` -- the Wayland
+    ext-session-lock protocol, which exactly one client may hold. Wiring
+    hyprlock in as the session lock on a desktop that already has one is two
+    programs reaching for the same single-holder protocol, and the shell is
+    what falls over.
 
-    So a lock screen that only wrote hyprlock.conf was writing a config file
-    for a program no one was going to start. Every card on that shelf applied
-    successfully and changed nothing anybody could see.
+    So the locker is a CHOICE. The default is caelestia's own, which cannot
+    conflict with itself and is already themed like everything else. Picking
+    one of the hyprlock looks replaces it, deliberately, and putting the
+    factory back puts caelestia's back.
 
     Persisted as a user service rather than an exec-once in hyprland.conf:
     that file belongs to the settings package, reaches existing installs only
     through a migration that has silently failed twice, and is the user's to
     edit. A unit in ~/.config is ours, survives a reboot, and reverts cleanly.
     """
+    which = args.get("use") or "caelestia"
+    if which not in LOCKERS:
+        die("%s asks for a lock screen the store does not know" % item["id"])
     conf = os.path.expanduser("~/.config/hypr/hypridle.conf")
     unit_dir = os.path.expanduser("~/.config/systemd/user")
     unit = os.path.join(unit_dir, "genesi-lock.service")
@@ -605,7 +619,7 @@ def act_locker(item, args, assets):
 
     os.makedirs(os.path.dirname(conf), exist_ok=True)
     with io.open(conf, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(HYPRIDLE_CONF)
+        fh.write(HYPRIDLE_CONF % LOCKERS[which])
     os.makedirs(unit_dir, exist_ok=True)
     with io.open(unit, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(LOCK_UNIT)
@@ -641,6 +655,19 @@ def act_unlocker(item, args, assets):
 # hypridle's own format. Deliberately thin: this is here to answer the lock
 # SIGNAL, not to decide when somebody's screen should turn off. Adding idle
 # timeouts here would be the store quietly taking over power management.
+# What actually locks the screen. caelestia's own lock is the default: it is
+# the desktop's, it is themed with everything else, and -- the part that
+# matters -- it cannot collide with itself over the Wayland session-lock
+# protocol, which only one client may hold.
+#
+# `|| hyprlock` on the caelestia line is not a second lock screen. It is what
+# happens on a machine where the shell is not running, which would otherwise
+# be a Lock button that does nothing at all.
+LOCKERS = {
+    "caelestia": "caelestia shell -m lock lock || (pidof hyprlock || hyprlock)",
+    "hyprlock": "pidof hyprlock || hyprlock",
+}
+
 HYPRIDLE_CONF = """# Written by Genesi Store, so that locking the session locks the screen.
 #
 # `loginctl lock-session` -- what the side panel's Lock button runs -- only
@@ -656,7 +683,7 @@ HYPRIDLE_CONF = """# Written by Genesi Store, so that locking the session locks 
 # again unless you apply another lock screen.
 
 general {
-    lock_cmd = pidof hyprlock || hyprlock
+    lock_cmd = %s
     before_sleep_cmd = loginctl lock-session
     after_sleep_cmd = hyprctl dispatch dpms on
 }

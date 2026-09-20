@@ -38,6 +38,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 PKG = os.path.join(ROOT, "genesi-arch", "packages", "genesi-store")
@@ -499,6 +500,39 @@ ck("...and what it falls back to draws the Genesi logo",
    and "genesi-logo.txt" in read(packaged))
 
 
+# ── The URL the store builds has to BE a URL ───────────────────────────────
+#
+# build-catalog escaped these paths when it recorded them and the store did
+# not when it fetched them, and five themes shipped broken because of it --
+# one of them carries "font/The Last Shuriken.ttf", and a space in a request
+# line is not a URL at all. Python refuses it before the request is sent, so
+# the theme died on its fourth file after the first three had downloaded.
+#
+# Checked by building exactly what the store builds and handing it to the
+# same parser that rejected it.
+import http.client as _http  # noqa: E402
+
+unfetchable = []
+for key, spec in greeters.items():
+    base = spec.get("base")
+    if not base:
+        continue
+    for entry in spec.get("files", []):
+        url = base + "/" + urllib.parse.quote(entry["path"])
+        try:
+            _http.HTTPConnection("x")._validate_path(url.split("//", 1)[-1])
+        except Exception as exc:
+            unfetchable.append("%s: %s (%s)" % (key, entry["path"], exc))
+ck("every per-file URL the store builds is a legal URL",
+   not unfetchable, unfetchable[:4])
+
+# ...and the two sides have to agree about the escaping, not merely both be
+# legal: the digest was recorded against one spelling of the path.
+build_src = read(os.path.join(PKG, "build-catalog.py"))
+ck("...and the builder and the store escape it the same way",
+   "urllib.parse.quote" in build_src and "urllib.parse.quote" in cli_src)
+
+
 # ── A bar preset may only set keys the bar actually has ────────────────────
 #
 # The presets carried `width` and `spacing` for months. caelestia has neither
@@ -578,6 +612,36 @@ unstarted = [i["id"] for i in lock_cards
              if not any(a.get("action") == "package" and a.get("name") == "hypridle"
                         for a in i.get("actions", []))]
 ck("...and installs it", not unstarted, unstarted)
+
+# Which lock, not just "a lock". caelestia's own lock is a WlSessionLock --
+# the Wayland ext-session-lock protocol, which exactly one client may hold --
+# so wiring hyprlock in as the session lock on a desktop that already has one
+# is two programs reaching for the same single-holder protocol, and the shell
+# is what falls over. Every card that sets a locker has to say which.
+lockers = set(re.findall(r'^LOCKERS = \{(.*?)\}', cli_src, re.M | re.S))
+known_lockers = set(re.findall(r'"([a-z]+)":', "".join(lockers)))
+ck("the CLI names the lockers it can wire up", len(known_lockers) >= 2,
+   sorted(known_lockers))
+
+vague = []
+for item in items:
+    for action in item.get("actions", []):
+        if action.get("action") != "locker":
+            continue
+        use = action.get("use")
+        if use not in known_lockers:
+            vague.append((item["id"], use))
+ck("every lock card says WHICH lock it is wiring up", not vague, vague)
+
+# ...and putting the factory back has to leave caelestia's own lock in place,
+# not leave the machine with nothing listening at all.
+back = [i for i in items if i["id"] == "default-lockscreens"]
+ck("the lock shelf has a way back", len(back) == 1)
+if back:
+    uses = [a.get("use") for a in back[0]["actions"]
+            if a.get("action") == "locker"]
+    ck("...and it goes back to the shell's own lock", uses == ["caelestia"],
+       uses)
 
 ck("...and there are lock screens to check at all", len(lock_cards) >= 3,
    len(lock_cards))

@@ -172,7 +172,25 @@ pkgver=0.1.0
 #     caelestia bar properties at all -- so the cards stop promising a
 #     difference that could never appear -- and the factory preset states
 #     every value rather than leaving them out and hoping.
-pkgrel=9
+#
+# pkgrel 10:
+#   * five themes could not be downloaded at all. The store built its
+#     per-file URLs without escaping them, and one of these ships
+#     "font/The Last Shuriken.ttf" -- a space is not legal in a request
+#     line, so Python refused it and the theme died on its fourth file.
+#     build-catalog escaped it when recording the digest and the store did
+#     not when fetching, which is the kind of disagreement that only ever
+#     shows up on somebody else's machine.
+#   * the session lock crashed the shell, and the reason is that caelestia
+#     HAS a lock of its own -- a WlSessionLock, the Wayland protocol exactly
+#     one client may hold. Putting hyprlock in as the session lock on a
+#     desktop that already has one is two programs reaching for the same
+#     single-holder protocol. The locker is a choice now, and it defaults to
+#     caelestia's own.
+#   * thumbnails are 1280px instead of 480. A card is most of the window on
+#     the mosaic shelf, and a 480px JPEG stretched four times looks exactly
+#     as bad as it sounds.
+pkgrel=10
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

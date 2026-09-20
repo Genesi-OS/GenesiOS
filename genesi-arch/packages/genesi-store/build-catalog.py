@@ -61,7 +61,9 @@ SECTIONS = [
     {"id": "login", "label": "Tela de login", "label_en": "Login screens",
      "icon": "login", "blurb": "Antes de entrar: o que pede sua senha no boot."},
     {"id": "lockscreens", "label": "Bloqueio da sessão", "label_en": "Lockscreens",
-     "icon": "lock", "blurb": "Já dentro: quando você tranca e volta."},
+     "icon": "lock",
+     "blurb": "Já dentro: quando você tranca e volta. O padrão é a tranca do "
+              "caelestia; estas a substituem."},
     {"id": "bars", "label": "Barras", "label_en": "Bar styles", "icon": "bar",
      "blurb": "Quinze arranjos da barra."},
     {"id": "fastfetch", "label": "Fastfetch", "label_en": "Fastfetch",
@@ -244,11 +246,19 @@ def thumbnail(ident, data, filename):
     image = QImage.fromData(data)
     if image.isNull():
         raise SystemExit("could not read %s as an image" % filename)
-    small = image.scaledToWidth(480, Qt.SmoothTransformation)
+    # 480 was chosen when a card was a small tile in a grid. The shelf is a
+    # mosaic now: a wide card is most of the window, and the detail sheet
+    # draws the same picture across the top of it. On a 1900px window that was
+    # a 480px JPEG stretched nearly four times, which looks exactly as bad as
+    # it sounds.
+    #
+    # 1280 covers the widest card on a 4K screen without being a second copy
+    # of the wallpaper: these stay around 120 kB each.
+    small = image.scaledToWidth(1280, Qt.SmoothTransformation)
     out = os.path.join(HERE, "catalog", "thumbs")
     os.makedirs(out, exist_ok=True)
     name = ident + ".jpg"
-    if not small.save(os.path.join(out, name), "JPG", 72):
+    if not small.save(os.path.join(out, name), "JPG", 82):
         raise SystemExit("could not write the thumbnail for " + ident)
     return name
 
@@ -480,6 +490,7 @@ def lock_item(ident, name, blurb, tags, text, preview):
         "name": name,
         "blurb": blurb,
         "family": "session",
+        "replaces": "caelestia",
         "author": "Genesi",
         "tags": ["sessão"] + tags,
         "preview": preview,
@@ -493,7 +504,7 @@ def lock_item(ident, name, blurb, tags, text, preview):
             {"action": "package", "name": "hypridle", "binary": "hypridle"},
             {"action": "file", "path": "~/.config/hypr/hyprlock.conf",
              "text": text},
-            {"action": "locker"},
+            {"action": "locker", "use": "hyprlock"},
         ],
     }
 
@@ -732,10 +743,11 @@ def factory():
         # own the machine is back to having no session lock configured, and
         # `unlocker` stops the watcher the store started.
         card("lockscreens", "lockscreens", "Como vem de fábrica",
-             "Tira o bloqueio que a loja configurou e para o vigia dele.",
+             "A tranca do próprio caelestia, que segue o seu tema e o seu "
+             "papel de parede.",
              {"kind": "lock", "accent": "#8fd6ab", "background": "#0c120f"},
              [{"action": "restore", "path": "~/.config/hypr/hyprlock.conf"},
-              {"action": "unlocker"}]),
+              {"action": "locker", "use": "caelestia"}]),
 
         card("fastfetch", "fastfetch", "Como vem de fábrica",
              "Volta para o cartão do Genesi que aparece ao abrir o terminal.",

@@ -35,7 +35,7 @@
    "label": "Bloqueio da sessão",
    "label_en": "Lockscreens",
    "icon": "lock",
-   "blurb": "Já dentro: quando você tranca e volta."
+   "blurb": "Já dentro: quando você tranca e volta. O padrão é a tranca do caelestia; estas a substituem."
   },
   {
    "id": "bars",
@@ -3999,6 +3999,7 @@
    "name": "Papel de parede",
    "blurb": "O seu papel de parede, desfocado.",
    "family": "session",
+   "replaces": "caelestia",
    "author": "Genesi",
    "tags": [
     "sessão",
@@ -4028,7 +4029,8 @@
      "text": "# Papel de parede -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 3\n    blur_size = 8\n    brightness = 0.7\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 0.9)\n    inner_color = rgba(20, 28, 24, 0.75)\n    font_color = rgba(233, 245, 238, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>senha</i>\n    hide_input = false\n    rounding = 14\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 96\n    font_family = Rubik\n    color = rgba(233, 245, 238, 0.95)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $USER\n    font_size = 16\n    font_family = Rubik\n    color = rgba(143, 214, 171, 0.85)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
     },
     {
-     "action": "locker"
+     "action": "locker",
+     "use": "hyprlock"
     }
    ]
   },
@@ -4038,6 +4040,7 @@
    "name": "Limpa",
    "blurb": "Fundo sólido, relógio grande, nada mais.",
    "family": "session",
+   "replaces": "caelestia",
    "author": "Genesi",
    "tags": [
     "sessão",
@@ -4065,7 +4068,8 @@
      "text": "# Limpa -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = \n    blur_passes = 0\n    blur_size = 0\n    brightness = 1.0\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 0.8)\n    inner_color = rgba(16, 20, 18, 0.9)\n    font_color = rgba(240, 244, 241, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>digite a senha</i>\n    hide_input = false\n    rounding = 8\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 120\n    font_family = Rubik\n    color = rgba(240, 244, 241, 0.95)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = \n    font_size = 16\n    font_family = Rubik\n    color = rgba(143, 214, 171, 0.8)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
     },
     {
-     "action": "locker"
+     "action": "locker",
+     "use": "hyprlock"
     }
    ]
   },
@@ -4075,6 +4079,7 @@
    "name": "Noite",
    "blurb": "Escuro de verdade, para não acordar ninguém.",
    "family": "session",
+   "replaces": "caelestia",
    "author": "Genesi",
    "tags": [
     "sessão",
@@ -4105,7 +4110,8 @@
      "text": "# Noite -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 4\n    blur_size = 10\n    brightness = 0.35\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(120, 160, 140, 0.7)\n    inner_color = rgba(0, 0, 0, 0.85)\n    font_color = rgba(200, 220, 208, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>senha</i>\n    hide_input = false\n    rounding = 20\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 84\n    font_family = Rubik\n    color = rgba(200, 220, 208, 0.9)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 16\n    font_family = Rubik\n    color = rgba(120, 160, 140, 0.7)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
     },
     {
-     "action": "locker"
+     "action": "locker",
+     "use": "hyprlock"
     }
    ]
   },
@@ -4115,6 +4121,7 @@
    "name": "Terminal",
    "blurb": "Monoespaçada, como um prompt.",
    "family": "session",
+   "replaces": "caelestia",
    "author": "Genesi",
    "tags": [
     "sessão",
@@ -4146,7 +4153,8 @@
      "text": "# Terminal -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 1\n    blur_size = 4\n    brightness = 0.5\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 1.0)\n    inner_color = rgba(10, 14, 12, 0.9)\n    font_color = rgba(143, 214, 171, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>login:</i>\n    hide_input = false\n    rounding = 2\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 72\n    font_family = CaskaydiaCove Nerd Font\n    color = rgba(143, 214, 171, 1.0)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $USER@$(hostname)\n    font_size = 16\n    font_family = CaskaydiaCove Nerd Font\n    color = rgba(143, 214, 171, 0.7)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
     },
     {
-     "action": "locker"
+     "action": "locker",
+     "use": "hyprlock"
     }
    ]
   },
@@ -4947,7 +4955,7 @@
    "id": "default-lockscreens",
    "section": "lockscreens",
    "name": "Como vem de fábrica",
-   "blurb": "Tira o bloqueio que a loja configurou e para o vigia dele.",
+   "blurb": "A tranca do próprio caelestia, que segue o seu tema e o seu papel de parede.",
    "family": "factory",
    "author": "Genesi",
    "tags": [
@@ -4965,7 +4973,8 @@
      "path": "~/.config/hypr/hyprlock.conf"
     },
     {
-     "action": "unlocker"
+     "action": "locker",
+     "use": "caelestia"
     }
    ]
   },
