@@ -500,6 +500,52 @@ ck("...and what it falls back to draws the Genesi logo",
    and "genesi-logo.txt" in read(packaged))
 
 
+# ── Two languages, and neither of them half-done ───────────────────────────
+#
+# The store leads with English because Genesi is installed from anywhere, and
+# follows the machine's own language when it has one. The failure mode worth
+# guarding is not "a wrong translation" -- it is a shelf that is half one
+# language and half the other, which is where every half-internationalised
+# app permanently lives.
+untranslated = []
+for item in items:
+    for field in ("name", "blurb"):
+        if not item.get(field):
+            untranslated.append("%s: no %s" % (item["id"], field))
+        elif field + "_pt" not in item:
+            untranslated.append("%s: no %s_pt" % (item["id"], field))
+    if item.get("tags") and "tags_pt" not in item:
+        untranslated.append("%s: no tags_pt" % item["id"])
+    if len(item.get("tags", [])) != len(item.get("tags_pt", [])):
+        untranslated.append("%s: tags and tags_pt differ in length" % item["id"])
+ck("every card carries both languages", not untranslated, untranslated[:6])
+
+half_shelf = [s_["id"] for s_ in data.get("sections", [])
+              if not s_.get("label") or not s_.get("label_pt")]
+ck("every shelf carries both languages", not half_shelf, half_shelf)
+
+# The app's own words live in Lang.t(english, portuguese). A qsTr() left
+# behind is a string that will show in whatever language it was typed in,
+# whatever the machine asked for.
+app_dir = os.path.join(PKG, "app")
+stragglers = []
+for base, _dirs, names in os.walk(app_dir):
+    for name in names:
+        if not name.endswith(".qml"):
+            continue
+        path = os.path.join(base, name)
+        for hit in re.findall(r'qsTr\(\s*"((?:[^"\\]|\\.)*)"', read(path)):
+            stragglers.append("%s: %s" % (name, hit[:40]))
+ck("no window text is left outside the two-language helper",
+   not stragglers, stragglers[:6])
+
+# ...and the helper has to exist and be registered, or every string in the
+# window resolves to undefined.
+ck("the window has its language helper",
+   os.path.exists(os.path.join(app_dir, "Lang.qml"))
+   and "singleton Lang" in read(os.path.join(app_dir, "qmldir")))
+
+
 # ── The URL the store builds has to BE a URL ───────────────────────────────
 #
 # build-catalog escaped these paths when it recorded them and the store did

@@ -50,6 +50,22 @@ def cli(*args, timeout=180):
         return True, text
 
 
+def _portuguese():
+    """Whether to show the Portuguese side of the catalogue.
+
+    The store leads with English because Genesi is installed from anywhere,
+    and follows the machine when the machine has an opinion. Read from the
+    environment rather than from Qt's locale, because LANGUAGE/LC_ALL/LANG is
+    what the rest of a Linux desktop answers to and a user who set it expects
+    everything to notice.
+    """
+    for name in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(name)
+        if value:
+            return value.split(":")[0].lower().startswith("pt")
+    return False
+
+
 def _shot_dir():
     base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     return os.path.join(base, "genesi", "store", "previews")
@@ -276,6 +292,7 @@ def main():
     engine = QQmlApplicationEngine()
     store = Store()
     engine.rootContext().setContextProperty("store", store)
+    engine.rootContext().setContextProperty("isPortuguese", _portuguese())
     # The singleton lives in this directory's qmldir; Main.qml reaches it
     # with `import "."`, the same way Genesi Center does.
     engine.addImportPath(HERE)

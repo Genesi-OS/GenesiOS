@@ -140,7 +140,7 @@ Rectangle {
 
         Text {
             width: parent.width
-            text: root.item.name ?? ""
+            text: Lang.of(root.item, "name")
             color: Tokens.textHi
             font.family: Tokens.sans
             font.pixelSize: root.large ? Tokens.fsTitle : Tokens.fsCard
@@ -156,7 +156,7 @@ Rectangle {
             width: parent.width
             visible: text !== ""
             text: root.item.author && root.item.author !== "Genesi"
-                  ? qsTr("por %1").arg(root.item.author) : ""
+                  ? Lang.t("by %1", "por %1").arg(root.item.author) : ""
             color: Tokens.a(Tokens.textHi, 0.62)
             font.family: Tokens.sans
             font.pixelSize: Tokens.fsMicro
@@ -166,7 +166,7 @@ Rectangle {
         Text {
             width: parent.width
             visible: root.large
-            text: root.item.blurb ?? ""
+            text: Lang.of(root.item, "blurb")
             color: Tokens.a(Tokens.textHi, 0.72)
             font.family: Tokens.sans
             font.pixelSize: Tokens.fsLabel
@@ -233,8 +233,8 @@ Rectangle {
                         if (root.working)
                             return root.busy + "…";
                         if (root.applied)
-                            return qsTr("Em uso");
-                        return root.needsDownload ? qsTr("Baixar") : qsTr("Aplicar");
+                            return Lang.t("In use", "Em uso");
+                        return root.needsDownload ? Lang.t("Download", "Baixar") : Lang.t("Apply", "Aplicar");
                     }
                     color: root.applied ? Tokens.accentSoft
                                         : (hover.hovered && !root.working ? Tokens.bgDeep : Tokens.textHi)
@@ -303,7 +303,7 @@ Rectangle {
             anchors.left: appliedGlyph.right
             anchors.leftMargin: 4
             anchors.verticalCenter: parent.verticalCenter
-            text: qsTr("em uso")
+            text: Lang.t("in use", "em uso")
             color: Tokens.textHi
             font.family: Tokens.sans
             font.pixelSize: Tokens.fsMicro
@@ -339,7 +339,7 @@ Rectangle {
             anchors.left: rootGlyph.right
             anchors.leftMargin: 4
             anchors.verticalCenter: parent.verticalCenter
-            text: qsTr("sistema")
+            text: Lang.t("system", "sistema")
             color: Tokens.warm
             font.family: Tokens.sans
             font.pixelSize: Tokens.fsMicro

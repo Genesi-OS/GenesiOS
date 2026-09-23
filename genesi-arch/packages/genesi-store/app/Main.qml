@@ -45,13 +45,13 @@ QQC2.ApplicationWindow {
 
     // What each shelf calls the things on it, for the line above a card's name.
     readonly property var kindLabels: ({
-            "rices": qsTr("ambiente"),
-            "themes": qsTr("tema"),
-            "decor": qsTr("papel de parede"),
-            "lockscreens": qsTr("bloqueio"),
-            "bars": qsTr("barra"),
-            "fastfetch": qsTr("terminal"),
-            "bundles": qsTr("coleção")
+            "rices": Lang.t("desktop", "ambiente"),
+            "themes": Lang.t("theme", "tema"),
+            "decor": Lang.t("wallpaper", "papel de parede"),
+            "lockscreens": Lang.t("lock screen", "bloqueio"),
+            "bars": Lang.t("bar", "barra"),
+            "fastfetch": Lang.t("terminal", "terminal"),
+            "bundles": Lang.t("collection", "coleção")
         })
 
     function byId(ident) {
@@ -70,13 +70,13 @@ QQC2.ApplicationWindow {
         if (win.filter === "applied")
             return list.filter(i => i.applied);
         if (win.filter)
-            list = list.filter(i => (i.tags ?? []).indexOf(win.filter) >= 0
+            list = list.filter(i => Lang.listOf(i, "tags").indexOf(win.filter) >= 0
                                || i.family === win.filter);
         if (win.search) {
             const needle = win.search.toLowerCase();
-            list = list.filter(i => (i.name ?? "").toLowerCase().indexOf(needle) >= 0
-                               || (i.blurb ?? "").toLowerCase().indexOf(needle) >= 0
-                               || (i.tags ?? []).join(" ").toLowerCase().indexOf(needle) >= 0);
+            list = list.filter(i => Lang.of(i, "name").toLowerCase().indexOf(needle) >= 0
+                               || Lang.of(i, "blurb").toLowerCase().indexOf(needle) >= 0
+                               || Lang.listOf(i, "tags").join(" ").toLowerCase().indexOf(needle) >= 0);
         }
         if (win.section === "discover" && !win.filter && !win.search) {
             const out = [];
@@ -90,7 +90,7 @@ QQC2.ApplicationWindow {
     function chips() {
         const seen = {};
         for (const item of (win.section === "discover" ? win.items : win.inSection(win.section)))
-            for (const tag of (item.tags ?? []))
+            for (const tag of Lang.listOf(item, "tags"))
                 seen[tag] = (seen[tag] ?? 0) + 1;
         return Object.keys(seen).filter(t => seen[t] >= 2).sort((a, b) => seen[b] - seen[a]).slice(0, 7);
     }
@@ -154,7 +154,7 @@ QQC2.ApplicationWindow {
     minimumWidth: 980
     minimumHeight: 660
     visible: true
-    title: qsTr("Genesi Store")
+    title: Lang.t("Genesi Store", "Genesi Store")
     color: Tokens.bg
 
     // ── The spine ────────────────────────────────────────────────────────────
@@ -197,7 +197,7 @@ QQC2.ApplicationWindow {
                     required property var modelData
 
                     icon: modelData.id
-                    label: modelData.label
+                    label: Lang.of(modelData, "label")
                     current: win.section === modelData.id
                     onActivated: {
                         win.section = modelData.id;
@@ -210,9 +210,9 @@ QQC2.ApplicationWindow {
                     // first version did.
                     onHoveredChanged: {
                         if (hovered) {
-                            win.railLabel = modelData.label;
+                            win.railLabel = Lang.of(modelData, "label");
                             win.railLabelY = mapToItem(win.contentItem, 0, height / 2).y;
-                        } else if (win.railLabel === modelData.label) {
+                        } else if (win.railLabel === Lang.of(modelData, "label")) {
                             win.railLabel = "";
                         }
                     }
@@ -225,13 +225,13 @@ QQC2.ApplicationWindow {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 14
             icon: "settings"
-            label: qsTr("Genesi Center")
+            label: Lang.t("Genesi Center", "Genesi Center")
             onActivated: store.openCenter()
             onHoveredChanged: {
                 if (hovered) {
-                    win.railLabel = qsTr("Genesi Center");
+                    win.railLabel = Lang.t("Genesi Center", "Genesi Center");
                     win.railLabelY = mapToItem(win.contentItem, 0, height / 2).y;
-                } else if (win.railLabel === qsTr("Genesi Center")) {
+                } else if (win.railLabel === Lang.t("Genesi Center", "Genesi Center")) {
                     win.railLabel = "";
                 }
             }
@@ -265,7 +265,7 @@ QQC2.ApplicationWindow {
                 spacing: 2
 
                 Text {
-                    text: qsTr("GENESI STORE")
+                    text: Lang.t("GENESI STORE", "GENESI STORE")
                     color: Tokens.textHi
                     font.family: Tokens.sans
                     font.pixelSize: Tokens.fsCard
@@ -273,7 +273,7 @@ QQC2.ApplicationWindow {
                     font.weight: Font.DemiBold
                 }
                 Text {
-                    text: qsTr("personalize um amanhã mais tranquilo")
+                    text: Lang.t("make tomorrow a calmer one", "personalize um amanhã mais tranquilo")
                     color: Tokens.textFaint
                     font.family: Tokens.mono
                     font.pixelSize: Tokens.fsMicro
@@ -310,7 +310,7 @@ QQC2.ApplicationWindow {
                 anchors.rightMargin: 14
                 background: null
                 color: Tokens.textHi
-                placeholderText: qsTr("O que você quer transformar hoje?")
+                placeholderText: Lang.t("What would you like to change today?", "O que você quer transformar hoje?")
                 placeholderTextColor: Tokens.textFaint
                 font.family: Tokens.sans
                 font.pixelSize: Tokens.fsBody
@@ -326,7 +326,7 @@ QQC2.ApplicationWindow {
 
             Chip {
                 anchors.verticalCenter: parent.verticalCenter
-                text: qsTr("Biblioteca")
+                text: Lang.t("Library", "Biblioteca")
                 selected: win.filter === "applied"
                 onActivated: {
                     win.section = "discover";
@@ -454,7 +454,7 @@ QQC2.ApplicationWindow {
                             }
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: qsTr("COLEÇÃO DA SEMANA")
+                                text: Lang.t("COLLECTION OF THE WEEK", "COLEÇÃO DA SEMANA")
                                 color: Tokens.accentSoft
                                 font.family: Tokens.mono
                                 font.pixelSize: Tokens.fsMicro
@@ -463,7 +463,7 @@ QQC2.ApplicationWindow {
                         }
 
                         Text {
-                            text: win.featured ? win.featured.name : ""
+                            text: win.featured ? Lang.of(win.featured, "name") : ""
                             color: Tokens.textHi
                             font.family: Tokens.sans
                             font.pixelSize: 42
@@ -472,7 +472,7 @@ QQC2.ApplicationWindow {
 
                         Text {
                             width: parent.width
-                            text: win.featured ? win.featured.blurb : ""
+                            text: win.featured ? Lang.of(win.featured, "blurb") : ""
                             color: Tokens.text
                             font.family: Tokens.sans
                             font.pixelSize: Tokens.fsBody
@@ -505,7 +505,7 @@ QQC2.ApplicationWindow {
                                     }
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: qsTr("Aplicar")
+                                        text: Lang.t("Apply", "Aplicar")
                                         color: Tokens.bgDeep
                                         font.family: Tokens.sans
                                         font.pixelSize: Tokens.fsBody
@@ -524,7 +524,7 @@ QQC2.ApplicationWindow {
 
                             Chip {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: qsTr("Ver o que vem junto")
+                                text: Lang.t("See what comes with it", "Ver o que vem junto")
                                 onActivated: win.sheetItem = win.featured
                             }
                         }
@@ -559,7 +559,7 @@ QQC2.ApplicationWindow {
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: qsTr("Prévia ao vivo")
+                            text: Lang.t("Live preview", "Prévia ao vivo")
                             color: Tokens.textHi
                             font.family: Tokens.sans
                             font.pixelSize: Tokens.fsBody
@@ -642,14 +642,14 @@ QQC2.ApplicationWindow {
                     Text {
                         text: {
                             if (win.search)
-                                return qsTr("Resultados para “%1”").arg(win.search);
+                                return Lang.t("Results for “%1”", "Resultados para “%1”").arg(win.search);
                             if (win.filter === "applied")
-                                return qsTr("Na sua biblioteca");
+                                return Lang.t("In your library", "Na sua biblioteca");
                             if (win.section === "discover")
-                                return qsTr("Cultivado para você");
+                                return Lang.t("Grown for you", "Cultivado para você");
                             for (const s of win.sections)
                                 if (s.id === win.section)
-                                    return s.label;
+                                    return Lang.of(s, "label");
                             return "";
                         }
                         color: Tokens.textHi
@@ -665,7 +665,7 @@ QQC2.ApplicationWindow {
                     spacing: 7
 
                     Chip {
-                        text: qsTr("Tudo")
+                        text: Lang.t("All", "Tudo")
                         selected: win.filter === ""
                         onActivated: win.filter = ""
                     }
@@ -728,8 +728,8 @@ QQC2.ApplicationWindow {
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: win.section === "plugins" ? qsTr("Plugins vêm depois")
-                                                        : qsTr("Nada por aqui")
+                        text: win.section === "plugins" ? Lang.t("Plugins come later", "Plugins vêm depois")
+                                                        : Lang.t("Nothing here", "Nada por aqui")
                         color: Tokens.textHi
                         font.family: Tokens.sans
                         font.pixelSize: Tokens.fsCard
@@ -737,8 +737,8 @@ QQC2.ApplicationWindow {
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: win.section === "plugins"
-                              ? qsTr("Aqui vão entrar extensões que mudam o comportamento do sistema, não só a aparência.")
-                              : qsTr("Tente outro termo, ou tire os filtros.")
+                              ? Lang.t("This is where extensions will go: things that change how the system behaves, not only how it looks.", "Aqui vão entrar extensões que mudam o comportamento do sistema, não só a aparência.")
+                              : Lang.t("Try another word, or clear the filters.", "Tente outro termo, ou tire os filtros.")
                         color: Tokens.textDim
                         font.family: Tokens.sans
                         font.pixelSize: Tokens.fsLabel
@@ -816,7 +816,7 @@ QQC2.ApplicationWindow {
             anchors.centerIn: parent
             rotation: 90
             transformOrigin: Item.Center
-            text: qsTr("NATUREZA INSPIRA SISTEMAS MELHORES")
+            text: Lang.t("NATURE MAKES BETTER SYSTEMS", "NATUREZA INSPIRA SISTEMAS MELHORES")
             color: Tokens.textFaint
             font.family: Tokens.mono
             font.pixelSize: Tokens.fsMicro
@@ -874,9 +874,9 @@ QQC2.ApplicationWindow {
                 // one thing, and a card that calls both "bloqueio" is the
                 // reason somebody picks the wrong one.
                 if (item.family === "login")
-                    item.kindLabel = qsTr("tela de login");
+                    item.kindLabel = Lang.t("login screen", "tela de login");
                 else if (item.family === "session")
-                    item.kindLabel = qsTr("bloqueio da sessão");
+                    item.kindLabel = Lang.t("session lock", "bloqueio da sessão");
             }
             win.items = list;
             // The sheet holds a copy of an item; refresh it so its button
@@ -901,8 +901,8 @@ QQC2.ApplicationWindow {
             const names = Object.keys(next);
             if (names.length)
                 win.message = names.length > 1
-                    ? qsTr("%1 %2 itens…").arg(saying).arg(names.length)
-                    : qsTr("%1 %2…").arg(saying).arg((win.byId(ident) ?? ({})).name ?? "");
+                    ? Lang.t("%1 %2 items…", "%1 %2 itens…").arg(saying).arg(names.length)
+                    : Lang.t("%1 %2…", "%1 %2…").arg(saying).arg(Lang.of(win.byId(ident) ?? ({}), "name"));
         }
 
         function onFinished(ident, ok, detail) {
@@ -911,7 +911,7 @@ QQC2.ApplicationWindow {
                 messageTimer.restart();
                 return;
             }
-            win.message = qsTr("Pronto.");
+            win.message = Lang.t("Done.", "Pronto.");
             messageTimer.restart();
         }
     }

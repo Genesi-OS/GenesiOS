@@ -298,6 +298,63 @@ def wallpaper_asset(filename):
              "sha256": hashlib.sha256(data).hexdigest()}, data)
 
 
+# ── Two languages, English first ───────────────────────────────────────────
+#
+# The tables in this file are written in Portuguese because that is the
+# language the shelf was designed in and the one the copy was tuned in. What
+# SHIPS leads with English, because the store is part of an operating system
+# people install from anywhere, and falls back to the machine's own language
+# when it has one.
+#
+# So every card carries both: `name` and `blurb` are English, `name_pt` and
+# `blurb_pt` are what is written below. The app picks by locale.
+#
+# The translations live in one file rather than inline in each table so that
+# adding a card does not mean editing two places -- and so that the check
+# below can be exhaustive: a string with no translation FAILS THE BUILD
+# rather than shipping half-translated, which is the state every
+# half-internationalised app is permanently stuck in.
+from catalog_en import ENGLISH, SAME  # noqa: E402
+
+
+def englished(text, what):
+    if text is None or text == "":
+        return text
+    if text in SAME:
+        return text
+    if text not in ENGLISH:
+        MISSING.add("%s: %r" % (what, text))
+        return text
+    return ENGLISH[text]
+
+
+MISSING = set()
+
+
+def bilingual(item):
+    """Return the item with English up front and Portuguese beside it."""
+    out = dict(item)
+    for field in ("name", "blurb"):
+        if field in out:
+            out[field + "_pt"] = out[field]
+            out[field] = englished(out[field], field)
+    if out.get("tags"):
+        out["tags_pt"] = list(out["tags"])
+        out["tags"] = [englished(t, "tag") for t in out["tags"]]
+    return out
+
+
+def bilingual_section(section):
+    out = dict(section)
+    out["label_pt"] = out["label"]
+    # These already carried an English label; use it and drop the duplicate.
+    out["label"] = out.pop("label_en", None) or englished(out["label"], "label")
+    if "blurb" in out:
+        out["blurb_pt"] = out["blurb"]
+        out["blurb"] = englished(out["blurb"], "section blurb")
+    return out
+
+
 def build():
     previous = {}
     if os.path.exists(OUT):
@@ -400,13 +457,21 @@ def build():
         greeter_specs, greeter_items = greeters()
         items.extend(greeter_items)
 
+    # English up front, Portuguese beside it. A string with no translation
+    # stops the build rather than shipping a shelf that is half one language
+    # and half the other.
     data = {
         "version": 1,
         "updated": time.strftime("%Y-%m-%d"),
-        "sections": SECTIONS,
+        "sections": [bilingual_section(x) for x in SECTIONS],
         "greeters": greeter_specs,
-        "items": items,
+        "items": [bilingual(i) for i in items],
     }
+    if MISSING:
+        raise SystemExit("no English for %d string(s):\n  %s"
+                         % (len(MISSING),
+                            "\n  ".join(sorted(MISSING)[:12])))
+
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with io.open(OUT, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(data, fh, indent=1, ensure_ascii=False, sort_keys=False)
@@ -630,7 +695,9 @@ SIXEL_LOGO_BLOCK = """  "logo": {
   },
 """
 
-IMAGE_BLURB = ("Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.")
+IMAGE_BLURB = ("Uma foto no lugar do desenho, em sixel. Precisa de um "
+               "terminal que desenhe imagens: o foot, que é o padrão "
+               "do Genesi, desenha.")
 
 
 FASTFETCH_HEAD = ('{\n  "$schema": '

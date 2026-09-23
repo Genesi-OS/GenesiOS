@@ -66,29 +66,29 @@ Item {
             return out;
         for (const action of (root.item.actions ?? [])) {
             if (action.action === "scheme")
-                out.push(qsTr("As cores de tudo: barra, janelas, terminal e apps."));
+                out.push(Lang.t("The colour of everything: the bar, windows, the terminal and apps.", "As cores de tudo: barra, janelas, terminal e apps."));
             else if (action.action === "wallpaper")
-                out.push(qsTr("O papel de parede."));
+                out.push(Lang.t("The wallpaper.", "O papel de parede."));
             else if (action.action === "bar")
-                out.push(qsTr("O arranjo da barra."));
+                out.push(Lang.t("How the bar is arranged.", "O arranjo da barra."));
             else if (action.action === "file")
-                out.push(qsTr("O arquivo %1 (o anterior é guardado).").arg(action.path));
+                out.push(Lang.t("The file %1 (the old one is kept).", "O arquivo %1 (o anterior é guardado).").arg(action.path));
             else if (action.action === "package")
-                out.push(qsTr("Instala %1, que é o que trava a sessão — pede a sua senha.").arg(action.name));
+                out.push(Lang.t("Installs %1, which is what locks the session — it asks for your password.", "Instala %1, que é o que trava a sessão — pede a sua senha.").arg(action.name));
             else if (action.action === "login")
-                out.push(qsTr("A tela de login do sistema — pede a sua senha."));
+                out.push(Lang.t("The system's login screen — it asks for your password.", "A tela de login do sistema — pede a sua senha."));
             else if (action.action === "greeter") {
-                out.push(qsTr("A tela de login do sistema — pede a sua senha."));
+                out.push(Lang.t("The system's login screen — it asks for your password.", "A tela de login do sistema — pede a sua senha."));
                 if (root.item.download)
-                    out.push(qsTr("Baixa %1 MB e confere byte a byte antes de instalar.")
+                    out.push(Lang.t("Downloads %1 MB and checks every byte before installing it.", "Baixa %1 MB e confere byte a byte antes de instalar.")
                              .arg(Math.round(root.item.download / 1048576)));
-                out.push(qsTr("Instala em /usr/share/sddm/themes. Não mexe na sua sessão."));
+                out.push(Lang.t("Installs into /usr/share/sddm/themes. It does not touch your session.", "Instala em /usr/share/sddm/themes. Não mexe na sua sessão."));
             }
             else if (action.action === "config")
-                out.push(qsTr("Algumas configurações do shell."));
+                out.push(Lang.t("A few shell settings.", "Algumas configurações do shell."));
         }
         for (const part of root.parts)
-            out.push(qsTr("Inclui: %1").arg(part.name));
+            out.push(Lang.t("Includes: %1", "Inclui: %1").arg(Lang.of(part, "name")));
         return out;
     }
 
@@ -210,7 +210,7 @@ Item {
                 }
                 Text {
                     width: parent.width
-                    text: root.item ? root.item.name : ""
+                    text: root.item ? Lang.of(root.item, "name") : ""
                     color: Tokens.textHi
                     font.family: Tokens.sans
                     font.pixelSize: 26
@@ -219,7 +219,7 @@ Item {
                 }
                 Text {
                     width: parent.width
-                    text: root.item ? root.item.blurb : ""
+                    text: root.item ? Lang.of(root.item, "blurb") : ""
                     color: Tokens.text
                     font.family: Tokens.sans
                     font.pixelSize: Tokens.fsBody
@@ -237,7 +237,7 @@ Item {
                     text: {
                         if (!root.item || !root.item.author)
                             return "";
-                        let line = qsTr("Por %1").arg(root.item.author);
+                        let line = Lang.t("By %1", "Por %1").arg(root.item.author);
                         if (root.item.license)
                             line += "  ·  " + root.item.license;
                         if (root.item.source)
@@ -266,7 +266,7 @@ Item {
                     spacing: 10
 
                     Text {
-                        text: qsTr("O QUE ISSO MUDA")
+                        text: Lang.t("WHAT THIS CHANGES", "O QUE ISSO MUDA")
                         color: Tokens.textFaint
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsMicro
@@ -336,7 +336,7 @@ Item {
                                         anchors.fill: parent
                                         anchors.margins: 8
                                         verticalAlignment: Text.AlignVCenter
-                                        text: modelData.name
+                                        text: Lang.of(modelData, "name")
                                         color: Tokens.textHi
                                         font.family: Tokens.sans
                                         font.pixelSize: Tokens.fsLabel
@@ -391,7 +391,7 @@ Item {
                     spacing: 5
 
                     Text {
-                        text: qsTr("SE ELA NÃO ABRIR")
+                        text: Lang.t("IF IT DOES NOT COME UP", "SE ELA NÃO ABRIR")
                         color: Tokens.a(Tokens.accent, 0.85)
                         font.family: Tokens.mono
                         font.pixelSize: Tokens.fsMicro
@@ -399,9 +399,13 @@ Item {
                     }
                     Text {
                         width: wayOut.width
-                        text: qsTr("Ctrl+Alt+F2 abre um terminal de texto. Entre com o "
-                                   + "seu usuário e rode a linha abaixo — ela apaga a "
-                                   + "escolha e devolve a tela que veio com o sistema.")
+                        text: Lang.t("Ctrl+Alt+F2 opens a text console. Log in with your own "
+                                      + "user and run the line below — it clears the "
+                                      + "choice and gives back the screen the system "
+                                      + "came with.",
+                                      "Ctrl+Alt+F2 abre um terminal de texto. Entre com o "
+                                      + "seu usuário e rode a linha abaixo — ela apaga a "
+                                      + "escolha e devolve a tela que veio com o sistema.")
                         color: Tokens.text
                         font.family: Tokens.sans
                         font.pixelSize: Tokens.fsLabel
@@ -449,8 +453,8 @@ Item {
                                 if (root.busy !== "")
                                     return root.busy + "…";
                                 if (root.item && root.item.needs_download)
-                                    return qsTr("Baixar e aplicar");
-                                return root.applied ? qsTr("Aplicar de novo") : qsTr("Aplicar");
+                                    return Lang.t("Download and apply", "Baixar e aplicar");
+                                return root.applied ? Lang.t("Apply again", "Aplicar de novo") : Lang.t("Apply", "Aplicar");
                             }
                             color: Tokens.bgDeep
                             font.family: Tokens.sans
@@ -490,7 +494,7 @@ Item {
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: qsTr("Desfazer")
+                            text: Lang.t("Undo", "Desfazer")
                             color: Tokens.text
                             font.family: Tokens.sans
                             font.pixelSize: Tokens.fsBody

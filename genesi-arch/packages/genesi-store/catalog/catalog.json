@@ -4,73 +4,83 @@
  "sections": [
   {
    "id": "discover",
-   "label": "Descobrir",
-   "label_en": "Discover",
+   "label": "Discover",
    "icon": "home",
-   "blurb": "O que vale a pena hoje."
+   "blurb": "Worth a look today.",
+   "label_pt": "Descobrir",
+   "blurb_pt": "O que vale a pena hoje."
   },
   {
    "id": "rices",
-   "label": "Ambientes",
-   "label_en": "Rices",
+   "label": "Rices",
    "icon": "grid",
-   "blurb": "Um desktop inteiro, de uma vez."
+   "blurb": "A whole desktop, in one go.",
+   "label_pt": "Ambientes",
+   "blurb_pt": "Um desktop inteiro, de uma vez."
   },
   {
    "id": "themes",
-   "label": "Temas",
-   "label_en": "Themes",
+   "label": "Themes",
    "icon": "palette",
-   "blurb": "A cor de tudo, do topo ao terminal."
+   "blurb": "The colour of everything, from the bar to the terminal.",
+   "label_pt": "Temas",
+   "blurb_pt": "A cor de tudo, do topo ao terminal."
   },
   {
    "id": "login",
-   "label": "Tela de login",
-   "label_en": "Login screens",
+   "label": "Login screens",
    "icon": "login",
-   "blurb": "Antes de entrar: o que pede sua senha no boot."
+   "blurb": "Before you are in: what asks for your password at boot.",
+   "label_pt": "Tela de login",
+   "blurb_pt": "Antes de entrar: o que pede sua senha no boot."
   },
   {
    "id": "lockscreens",
-   "label": "Bloqueio da sessão",
-   "label_en": "Lockscreens",
+   "label": "Lockscreens",
    "icon": "lock",
-   "blurb": "Já dentro: quando você tranca e volta. O padrão é a tranca do caelestia; estas a substituem."
+   "blurb": "Once you are in: when you lock and come back. The default is caelestia's own lock; these replace it.",
+   "label_pt": "Bloqueio da sessão",
+   "blurb_pt": "Já dentro: quando você tranca e volta. O padrão é a tranca do caelestia; estas a substituem."
   },
   {
    "id": "bars",
-   "label": "Barras",
-   "label_en": "Bar styles",
+   "label": "Bar styles",
    "icon": "bar",
-   "blurb": "Quinze arranjos da barra."
+   "blurb": "Fifteen arrangements of the bar.",
+   "label_pt": "Barras",
+   "blurb_pt": "Quinze arranjos da barra."
   },
   {
    "id": "fastfetch",
    "label": "Fastfetch",
-   "label_en": "Fastfetch",
    "icon": "terminal",
-   "blurb": "O cartão de visita do terminal."
+   "blurb": "What your terminal says hello with.",
+   "label_pt": "Fastfetch",
+   "blurb_pt": "O cartão de visita do terminal."
   },
   {
    "id": "decor",
-   "label": "Decoração",
-   "label_en": "Decor",
+   "label": "Decor",
    "icon": "image",
-   "blurb": "Papéis de parede e detalhes."
+   "blurb": "Wallpapers and small things.",
+   "label_pt": "Decoração",
+   "blurb_pt": "Papéis de parede e detalhes."
   },
   {
    "id": "bundles",
-   "label": "Coleções",
-   "label_en": "Bundles",
+   "label": "Bundles",
    "icon": "box",
-   "blurb": "Combinações que já vêm casadas."
+   "blurb": "Combinations that already match.",
+   "label_pt": "Coleções",
+   "blurb_pt": "Combinações que já vêm casadas."
   },
   {
    "id": "plugins",
    "label": "Plugins",
-   "label_en": "Plugins",
    "icon": "plug",
-   "blurb": "Em breve."
+   "blurb": "Coming soon.",
+   "label_pt": "Plugins",
+   "blurb_pt": "Em breve."
   }
  ],
  "greeters": {
@@ -1996,11 +2006,11 @@
    "id": "theme-caelestia-default-dark",
    "section": "themes",
    "name": "Caelestia",
-   "blurb": "O tom da casa, no escuro.",
+   "blurb": "The house colour, in the dark.",
    "author": "caelestia / caelestia",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "caelestia"
    ],
    "preview": {
@@ -2021,17 +2031,23 @@
      "flavour": "default",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Caelestia",
+   "blurb_pt": "O tom da casa, no escuro.",
+   "tags_pt": [
+    "escuro",
+    "caelestia"
    ]
   },
   {
    "id": "theme-caelestia-default-light",
    "section": "themes",
-   "name": "Caelestia Claro",
-   "blurb": "O mesmo, na luz.",
+   "name": "Caelestia Light",
+   "blurb": "The same, in the light.",
    "author": "caelestia / caelestia",
    "mode": "light",
    "tags": [
-    "claro",
+    "light",
     "caelestia"
    ],
    "preview": {
@@ -2052,17 +2068,23 @@
      "flavour": "default",
      "mode": "light"
     }
+   ],
+   "name_pt": "Caelestia Claro",
+   "blurb_pt": "O mesmo, na luz.",
+   "tags_pt": [
+    "claro",
+    "caelestia"
    ]
   },
   {
    "id": "theme-darkgreen-hard-dark",
    "section": "themes",
-   "name": "Verde Profundo",
-   "blurb": "Quase preto, com seiva.",
+   "name": "Deep Green",
+   "blurb": "Almost black, with sap in it.",
    "author": "caelestia / darkgreen",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "darkgreen"
    ],
    "preview": {
@@ -2083,17 +2105,23 @@
      "flavour": "hard",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Verde Profundo",
+   "blurb_pt": "Quase preto, com seiva.",
+   "tags_pt": [
+    "escuro",
+    "darkgreen"
    ]
   },
   {
    "id": "theme-darkgreen-medium-dark",
    "section": "themes",
-   "name": "Verde Mata",
-   "blurb": "Verde sem gritar.",
+   "name": "Forest Green",
+   "blurb": "Green without shouting.",
    "author": "caelestia / darkgreen",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "darkgreen"
    ],
    "preview": {
@@ -2114,17 +2142,23 @@
      "flavour": "medium",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Verde Mata",
+   "blurb_pt": "Verde sem gritar.",
+   "tags_pt": [
+    "escuro",
+    "darkgreen"
    ]
   },
   {
    "id": "theme-everforest-medium-dark",
    "section": "themes",
    "name": "Everforest",
-   "blurb": "Musgo, pedra e madeira.",
+   "blurb": "Moss, stone and wood.",
    "author": "caelestia / everforest",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "everforest"
    ],
    "preview": {
@@ -2145,17 +2179,23 @@
      "flavour": "medium",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Everforest",
+   "blurb_pt": "Musgo, pedra e madeira.",
+   "tags_pt": [
+    "escuro",
+    "everforest"
    ]
   },
   {
    "id": "theme-everforest-hard-dark",
    "section": "themes",
-   "name": "Everforest Duro",
-   "blurb": "O mesmo, com mais contraste.",
+   "name": "Everforest Hard",
+   "blurb": "The same, with more contrast.",
    "author": "caelestia / everforest",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "everforest"
    ],
    "preview": {
@@ -2176,17 +2216,23 @@
      "flavour": "hard",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Everforest Duro",
+   "blurb_pt": "O mesmo, com mais contraste.",
+   "tags_pt": [
+    "escuro",
+    "everforest"
    ]
   },
   {
    "id": "theme-everforest-medium-light",
    "section": "themes",
-   "name": "Everforest Claro",
-   "blurb": "Papel e folha.",
+   "name": "Everforest Light",
+   "blurb": "Paper and leaf.",
    "author": "caelestia / everforest",
    "mode": "light",
    "tags": [
-    "claro",
+    "light",
     "everforest"
    ],
    "preview": {
@@ -2207,17 +2253,23 @@
      "flavour": "medium",
      "mode": "light"
     }
+   ],
+   "name_pt": "Everforest Claro",
+   "blurb_pt": "Papel e folha.",
+   "tags_pt": [
+    "claro",
+    "everforest"
    ]
   },
   {
    "id": "theme-everblush-medium-dark",
    "section": "themes",
    "name": "Everblush",
-   "blurb": "Escuro com um rubor.",
+   "blurb": "Dark with a blush.",
    "author": "caelestia / everblush",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "everblush"
    ],
    "preview": {
@@ -2238,17 +2290,23 @@
      "flavour": "medium",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Everblush",
+   "blurb_pt": "Escuro com um rubor.",
+   "tags_pt": [
+    "escuro",
+    "everblush"
    ]
   },
   {
    "id": "theme-catppuccin-mocha-dark",
    "section": "themes",
    "name": "Catppuccin Mocha",
-   "blurb": "O pastel que todo mundo conhece.",
+   "blurb": "The pastel everybody knows.",
    "author": "caelestia / catppuccin",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "catppuccin"
    ],
    "preview": {
@@ -2269,17 +2327,23 @@
      "flavour": "mocha",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Catppuccin Mocha",
+   "blurb_pt": "O pastel que todo mundo conhece.",
+   "tags_pt": [
+    "escuro",
+    "catppuccin"
    ]
   },
   {
    "id": "theme-catppuccin-macchiato-dark",
    "section": "themes",
    "name": "Catppuccin Macchiato",
-   "blurb": "Um passo mais claro.",
+   "blurb": "One step lighter.",
    "author": "caelestia / catppuccin",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "catppuccin"
    ],
    "preview": {
@@ -2300,17 +2364,23 @@
      "flavour": "macchiato",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Catppuccin Macchiato",
+   "blurb_pt": "Um passo mais claro.",
+   "tags_pt": [
+    "escuro",
+    "catppuccin"
    ]
   },
   {
    "id": "theme-catppuccin-frappe-dark",
    "section": "themes",
    "name": "Catppuccin Frappe",
-   "blurb": "Meio do caminho.",
+   "blurb": "Halfway between.",
    "author": "caelestia / catppuccin",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "catppuccin"
    ],
    "preview": {
@@ -2331,17 +2401,23 @@
      "flavour": "frappe",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Catppuccin Frappe",
+   "blurb_pt": "Meio do caminho.",
+   "tags_pt": [
+    "escuro",
+    "catppuccin"
    ]
   },
   {
    "id": "theme-catppuccin-latte-light",
    "section": "themes",
    "name": "Catppuccin Latte",
-   "blurb": "Claro, sem estourar.",
+   "blurb": "Light, without glaring.",
    "author": "caelestia / catppuccin",
    "mode": "light",
    "tags": [
-    "claro",
+    "light",
     "catppuccin"
    ],
    "preview": {
@@ -2362,17 +2438,23 @@
      "flavour": "latte",
      "mode": "light"
     }
+   ],
+   "name_pt": "Catppuccin Latte",
+   "blurb_pt": "Claro, sem estourar.",
+   "tags_pt": [
+    "claro",
+    "catppuccin"
    ]
   },
   {
    "id": "theme-gruvbox-medium-dark",
    "section": "themes",
    "name": "Gruvbox",
-   "blurb": "Terra, mostarda e ferrugem.",
+   "blurb": "Earth, mustard and rust.",
    "author": "caelestia / gruvbox",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "gruvbox"
    ],
    "preview": {
@@ -2393,17 +2475,23 @@
      "flavour": "medium",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Gruvbox",
+   "blurb_pt": "Terra, mostarda e ferrugem.",
+   "tags_pt": [
+    "escuro",
+    "gruvbox"
    ]
   },
   {
    "id": "theme-gruvbox-hard-dark",
    "section": "themes",
-   "name": "Gruvbox Duro",
-   "blurb": "Fundo mais fechado.",
+   "name": "Gruvbox Hard",
+   "blurb": "A deeper background.",
    "author": "caelestia / gruvbox",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "gruvbox"
    ],
    "preview": {
@@ -2424,17 +2512,23 @@
      "flavour": "hard",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Gruvbox Duro",
+   "blurb_pt": "Fundo mais fechado.",
+   "tags_pt": [
+    "escuro",
+    "gruvbox"
    ]
   },
   {
    "id": "theme-gruvbox-soft-dark",
    "section": "themes",
-   "name": "Gruvbox Macio",
-   "blurb": "Fundo mais aberto.",
+   "name": "Gruvbox Soft",
+   "blurb": "A lighter background.",
    "author": "caelestia / gruvbox",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "gruvbox"
    ],
    "preview": {
@@ -2455,17 +2549,23 @@
      "flavour": "soft",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Gruvbox Macio",
+   "blurb_pt": "Fundo mais aberto.",
+   "tags_pt": [
+    "escuro",
+    "gruvbox"
    ]
   },
   {
    "id": "theme-gruvbox-medium-light",
    "section": "themes",
-   "name": "Gruvbox Claro",
-   "blurb": "O mesmo, de dia.",
+   "name": "Gruvbox Light",
+   "blurb": "The same, by day.",
    "author": "caelestia / gruvbox",
    "mode": "light",
    "tags": [
-    "claro",
+    "light",
     "gruvbox"
    ],
    "preview": {
@@ -2486,17 +2586,23 @@
      "flavour": "medium",
      "mode": "light"
     }
+   ],
+   "name_pt": "Gruvbox Claro",
+   "blurb_pt": "O mesmo, de dia.",
+   "tags_pt": [
+    "claro",
+    "gruvbox"
    ]
   },
   {
    "id": "theme-nord-medium-dark",
    "section": "themes",
    "name": "Nord",
-   "blurb": "Gelo e aço.",
+   "blurb": "Ice and steel.",
    "author": "caelestia / nord",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "nord"
    ],
    "preview": {
@@ -2517,17 +2623,23 @@
      "flavour": "medium",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Nord",
+   "blurb_pt": "Gelo e aço.",
+   "tags_pt": [
+    "escuro",
+    "nord"
    ]
   },
   {
    "id": "theme-tokyonight-medium-dark",
    "section": "themes",
    "name": "Tokyo Night",
-   "blurb": "Cidade às três da manhã.",
+   "blurb": "A city at three in the morning.",
    "author": "caelestia / tokyonight",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "tokyonight"
    ],
    "preview": {
@@ -2548,17 +2660,23 @@
      "flavour": "medium",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Tokyo Night",
+   "blurb_pt": "Cidade às três da manhã.",
+   "tags_pt": [
+    "escuro",
+    "tokyonight"
    ]
   },
   {
    "id": "theme-rosepine-main-dark",
    "section": "themes",
    "name": "Rose Pine",
-   "blurb": "Vinho e pinho.",
+   "blurb": "Wine and pine.",
    "author": "caelestia / rosepine",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "rosepine"
    ],
    "preview": {
@@ -2579,17 +2697,23 @@
      "flavour": "main",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Rose Pine",
+   "blurb_pt": "Vinho e pinho.",
+   "tags_pt": [
+    "escuro",
+    "rosepine"
    ]
   },
   {
    "id": "theme-rosepine-moon-dark",
    "section": "themes",
    "name": "Rose Pine Moon",
-   "blurb": "Um pouco mais alto.",
+   "blurb": "A little higher.",
    "author": "caelestia / rosepine",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "rosepine"
    ],
    "preview": {
@@ -2610,17 +2734,23 @@
      "flavour": "moon",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Rose Pine Moon",
+   "blurb_pt": "Um pouco mais alto.",
+   "tags_pt": [
+    "escuro",
+    "rosepine"
    ]
   },
   {
    "id": "theme-rosepine-dawn-light",
    "section": "themes",
    "name": "Rose Pine Dawn",
-   "blurb": "O amanhecer da mesma.",
+   "blurb": "The same one at dawn.",
    "author": "caelestia / rosepine",
    "mode": "light",
    "tags": [
-    "claro",
+    "light",
     "rosepine"
    ],
    "preview": {
@@ -2641,17 +2771,23 @@
      "flavour": "dawn",
      "mode": "light"
     }
+   ],
+   "name_pt": "Rose Pine Dawn",
+   "blurb_pt": "O amanhecer da mesma.",
+   "tags_pt": [
+    "claro",
+    "rosepine"
    ]
   },
   {
    "id": "theme-dracula-medium-dark",
    "section": "themes",
    "name": "Dracula",
-   "blurb": "Roxo clássico.",
+   "blurb": "Classic purple.",
    "author": "caelestia / dracula",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "dracula"
    ],
    "preview": {
@@ -2672,17 +2808,23 @@
      "flavour": "medium",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Dracula",
+   "blurb_pt": "Roxo clássico.",
+   "tags_pt": [
+    "escuro",
+    "dracula"
    ]
   },
   {
    "id": "theme-onedark-default-dark",
    "section": "themes",
    "name": "One Dark",
-   "blurb": "O tema de editor virou desktop.",
+   "blurb": "The editor theme, grown into a desktop.",
    "author": "caelestia / onedark",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "onedark"
    ],
    "preview": {
@@ -2703,17 +2845,23 @@
      "flavour": "default",
      "mode": "dark"
     }
+   ],
+   "name_pt": "One Dark",
+   "blurb_pt": "O tema de editor virou desktop.",
+   "tags_pt": [
+    "escuro",
+    "onedark"
    ]
   },
   {
    "id": "theme-oldworld-default-dark",
    "section": "themes",
    "name": "Old World",
-   "blurb": "Sepia e quieto.",
+   "blurb": "Sepia and quiet.",
    "author": "caelestia / oldworld",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "oldworld"
    ],
    "preview": {
@@ -2734,17 +2882,23 @@
      "flavour": "default",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Old World",
+   "blurb_pt": "Sepia e quieto.",
+   "tags_pt": [
+    "escuro",
+    "oldworld"
    ]
   },
   {
    "id": "theme-solarized-medium-dark",
    "section": "themes",
    "name": "Solarized",
-   "blurb": "O mais estudado de todos.",
+   "blurb": "The most studied of them all.",
    "author": "caelestia / solarized",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "solarized"
    ],
    "preview": {
@@ -2765,17 +2919,23 @@
      "flavour": "medium",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Solarized",
+   "blurb_pt": "O mais estudado de todos.",
+   "tags_pt": [
+    "escuro",
+    "solarized"
    ]
   },
   {
    "id": "theme-shadotheme-default-dark",
    "section": "themes",
    "name": "Shado",
-   "blurb": "Cinza com um fio de cor.",
+   "blurb": "Grey with a thread of colour.",
    "author": "caelestia / shadotheme",
    "mode": "dark",
    "tags": [
-    "escuro",
+    "dark",
     "shadotheme"
    ],
    "preview": {
@@ -2796,20 +2956,26 @@
      "flavour": "default",
      "mode": "dark"
     }
+   ],
+   "name_pt": "Shado",
+   "blurb_pt": "Cinza com um fio de cor.",
+   "tags_pt": [
+    "escuro",
+    "shadotheme"
    ]
   },
   {
    "id": "wall-forest-dark",
    "section": "decor",
-   "name": "Floresta Escura",
-   "blurb": "Mata fechada ao anoitecer.",
+   "name": "Dark Forest",
+   "blurb": "Deep woods at nightfall.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "natureza",
-    "escuro",
-    "verde"
+    "nature",
+    "dark",
+    "green"
    ],
    "preview": {
     "kind": "image",
@@ -2831,19 +2997,26 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Floresta Escura",
+   "blurb_pt": "Mata fechada ao anoitecer.",
+   "tags_pt": [
+    "natureza",
+    "escuro",
+    "verde"
    ]
   },
   {
    "id": "wall-nature",
    "section": "decor",
-   "name": "Natureza",
-   "blurb": "Verde aberto, sem pressa.",
+   "name": "Nature",
+   "blurb": "Open green, in no hurry.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "natureza",
-    "verde"
+    "nature",
+    "green"
    ],
    "preview": {
     "kind": "image",
@@ -2865,20 +3038,26 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Natureza",
+   "blurb_pt": "Verde aberto, sem pressa.",
+   "tags_pt": [
+    "natureza",
+    "verde"
    ]
   },
   {
    "id": "wall-everforest-robin",
    "section": "decor",
    "name": "Everforest",
-   "blurb": "A paleta everforest em desenho.",
+   "blurb": "The everforest palette, drawn.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "natureza",
-    "verde",
-    "arte"
+    "nature",
+    "green",
+    "art"
    ],
    "preview": {
     "kind": "image",
@@ -2900,20 +3079,27 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Everforest",
+   "blurb_pt": "A paleta everforest em desenho.",
+   "tags_pt": [
+    "natureza",
+    "verde",
+    "arte"
    ]
   },
   {
    "id": "wall-lake",
    "section": "decor",
-   "name": "Lago",
-   "blurb": "Água parada e montanha.",
+   "name": "Lake",
+   "blurb": "Still water and a mountain.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "natureza",
-    "agua",
-    "calmo"
+    "nature",
+    "water",
+    "calm"
    ],
    "preview": {
     "kind": "image",
@@ -2935,20 +3121,27 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Lago",
+   "blurb_pt": "Água parada e montanha.",
+   "tags_pt": [
+    "natureza",
+    "agua",
+    "calmo"
    ]
   },
   {
    "id": "wall-art-lake",
    "section": "decor",
-   "name": "Lago Ilustrado",
-   "blurb": "O mesmo silêncio, desenhado.",
+   "name": "Lake, Illustrated",
+   "blurb": "The same silence, drawn.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "arte",
-    "agua",
-    "calmo"
+    "art",
+    "water",
+    "calm"
    ],
    "preview": {
     "kind": "image",
@@ -2970,19 +3163,26 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Lago Ilustrado",
+   "blurb_pt": "O mesmo silêncio, desenhado.",
+   "tags_pt": [
+    "arte",
+    "agua",
+    "calmo"
    ]
   },
   {
    "id": "wall-mountains",
    "section": "decor",
-   "name": "Montanhas",
-   "blurb": "Camadas até o horizonte.",
+   "name": "Mountains",
+   "blurb": "Layers to the horizon.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "natureza",
-    "minimalista"
+    "nature",
+    "minimal"
    ],
    "preview": {
     "kind": "image",
@@ -3004,20 +3204,26 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Montanhas",
+   "blurb_pt": "Camadas até o horizonte.",
+   "tags_pt": [
+    "natureza",
+    "minimalista"
    ]
   },
   {
    "id": "wall-nord-city",
    "section": "decor",
-   "name": "Cidade Nord",
-   "blurb": "A cidade em nord, bem larga.",
+   "name": "Nord City",
+   "blurb": "The city in nord, and very wide.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "cidade",
-    "escuro",
-    "frio"
+    "city",
+    "dark",
+    "cold"
    ],
    "preview": {
     "kind": "image",
@@ -3039,20 +3245,27 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Cidade Nord",
+   "blurb_pt": "A cidade em nord, bem larga.",
+   "tags_pt": [
+    "cidade",
+    "escuro",
+    "frio"
    ]
   },
   {
    "id": "wall-oled-mountains",
    "section": "decor",
-   "name": "Montanhas OLED",
-   "blurb": "Preto real, para telas OLED.",
+   "name": "OLED Mountains",
+   "blurb": "True black, for OLED screens.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "escuro",
+    "dark",
     "oled",
-    "minimalista"
+    "minimal"
    ],
    "preview": {
     "kind": "image",
@@ -3074,20 +3287,27 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Montanhas OLED",
+   "blurb_pt": "Preto real, para telas OLED.",
+   "tags_pt": [
+    "escuro",
+    "oled",
+    "minimalista"
    ]
   },
   {
    "id": "wall-moon",
    "section": "decor",
-   "name": "Lua",
-   "blurb": "Uma lua e nada mais.",
+   "name": "Moon",
+   "blurb": "A moon and nothing else.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "escuro",
-    "minimalista",
-    "noite"
+    "dark",
+    "minimal",
+    "night"
    ],
    "preview": {
     "kind": "image",
@@ -3109,19 +3329,26 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Lua",
+   "blurb_pt": "Uma lua e nada mais.",
+   "tags_pt": [
+    "escuro",
+    "minimalista",
+    "noite"
    ]
   },
   {
    "id": "wall-falltree",
    "section": "decor",
-   "name": "Outono",
-   "blurb": "Uma árvore em queda de folhas.",
+   "name": "Autumn",
+   "blurb": "A tree letting go of its leaves.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "natureza",
-    "quente"
+    "nature",
+    "warm"
    ],
    "preview": {
     "kind": "image",
@@ -3143,19 +3370,25 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Outono",
+   "blurb_pt": "Uma árvore em queda de folhas.",
+   "tags_pt": [
+    "natureza",
+    "quente"
    ]
   },
   {
    "id": "wall-green-sun",
    "section": "decor",
-   "name": "Sol Verde",
-   "blurb": "Luz filtrada por folhas.",
+   "name": "Green Sun",
+   "blurb": "Light coming through leaves.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "verde",
-    "natureza"
+    "green",
+    "nature"
    ],
    "preview": {
     "kind": "image",
@@ -3177,19 +3410,25 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Sol Verde",
+   "blurb_pt": "Luz filtrada por folhas.",
+   "tags_pt": [
+    "verde",
+    "natureza"
    ]
   },
   {
    "id": "wall-tree-castle",
    "section": "decor",
-   "name": "Castelo no Céu",
-   "blurb": "Árvore, castelo, nuvem.",
+   "name": "Castle in the Sky",
+   "blurb": "Tree, castle, cloud.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "arte",
-    "natureza"
+    "art",
+    "nature"
    ],
    "preview": {
     "kind": "image",
@@ -3211,20 +3450,26 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Castelo no Céu",
+   "blurb_pt": "Árvore, castelo, nuvem.",
+   "tags_pt": [
+    "arte",
+    "natureza"
    ]
   },
   {
    "id": "wall-ink-wave",
    "section": "decor",
-   "name": "Onda de Tinta",
-   "blurb": "Nanquim em movimento.",
+   "name": "Ink Wave",
+   "blurb": "Ink in motion.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "arte",
-    "escuro",
-    "minimalista"
+    "art",
+    "dark",
+    "minimal"
    ],
    "preview": {
     "kind": "image",
@@ -3246,20 +3491,27 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Onda de Tinta",
+   "blurb_pt": "Nanquim em movimento.",
+   "tags_pt": [
+    "arte",
+    "escuro",
+    "minimalista"
    ]
   },
   {
    "id": "wall-aurora",
    "section": "decor",
    "name": "Aurora",
-   "blurb": "Luz fria sobre o horizonte.",
+   "blurb": "Cold light over the horizon.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "minimalista",
-    "frio",
-    "noite"
+    "minimal",
+    "cold",
+    "night"
    ],
    "preview": {
     "kind": "image",
@@ -3281,19 +3533,26 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Aurora",
+   "blurb_pt": "Luz fria sobre o horizonte.",
+   "tags_pt": [
+    "minimalista",
+    "frio",
+    "noite"
    ]
   },
   {
    "id": "wall-minimal-c",
    "section": "decor",
    "name": "Minimal",
-   "blurb": "Quase nada, bem colocado.",
+   "blurb": "Almost nothing, well placed.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "minimalista",
-    "escuro"
+    "minimal",
+    "dark"
    ],
    "preview": {
     "kind": "image",
@@ -3315,19 +3574,25 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Minimal",
+   "blurb_pt": "Quase nada, bem colocado.",
+   "tags_pt": [
+    "minimalista",
+    "escuro"
    ]
   },
   {
    "id": "wall-arch-nord",
    "section": "decor",
    "name": "Arch Nord",
-   "blurb": "O logo, em nord.",
+   "blurb": "The logo, in nord.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "escuro",
-    "frio",
+    "dark",
+    "cold",
     "arch"
    ],
    "preview": {
@@ -3350,20 +3615,27 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Arch Nord",
+   "blurb_pt": "O logo, em nord.",
+   "tags_pt": [
+    "escuro",
+    "frio",
+    "arch"
    ]
   },
   {
    "id": "wall-gruvbox-city",
    "section": "decor",
-   "name": "Cidade Gruvbox",
-   "blurb": "Retro em terra e mostarda.",
+   "name": "Gruvbox City",
+   "blurb": "Retro in earth and mustard.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "quente",
+    "warm",
     "retro",
-    "cidade"
+    "city"
    ],
    "preview": {
     "kind": "image",
@@ -3385,19 +3657,26 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Cidade Gruvbox",
+   "blurb_pt": "Retro em terra e mostarda.",
+   "tags_pt": [
+    "quente",
+    "retro",
+    "cidade"
    ]
   },
   {
    "id": "wall-neocity",
    "section": "decor",
-   "name": "Neocidade",
-   "blurb": "Neon e chuva.",
+   "name": "Neo City",
+   "blurb": "Neon and rain.",
    "author": "D3Ext/aesthetic-wallpapers",
    "license": "MIT",
    "source": "https://github.com/D3Ext/aesthetic-wallpapers",
    "tags": [
-    "cidade",
-    "escuro",
+    "city",
+    "dark",
     "neon"
    ],
    "preview": {
@@ -3420,16 +3699,23 @@
      "action": "wallpaper",
      "asset": "picture"
     }
+   ],
+   "name_pt": "Neocidade",
+   "blurb_pt": "Neon e chuva.",
+   "tags_pt": [
+    "cidade",
+    "escuro",
+    "neon"
    ]
   },
   {
    "id": "bar-padrao",
    "section": "bars",
-   "name": "Padrão",
-   "blurb": "A barra como o caelestia entrega.",
+   "name": "Default",
+   "blurb": "The bar as caelestia ships it.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3459,16 +3745,21 @@
      "action": "bar",
      "preset": "10-padrao"
     }
+   ],
+   "name_pt": "Padrão",
+   "blurb_pt": "A barra como o caelestia entrega.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-borda",
    "section": "bars",
-   "name": "Rente",
-   "blurb": "Sem moldura: encostada na borda da tela.",
+   "name": "Flush",
+   "blurb": "No frame: right against the edge of the screen.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3498,16 +3789,21 @@
      "action": "bar",
      "preset": "15-borda"
     }
+   ],
+   "name_pt": "Rente",
+   "blurb_pt": "Sem moldura: encostada na borda da tela.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-centrado",
    "section": "bars",
-   "name": "Centralizado",
-   "blurb": "Logo em cima, espaços no meio, o resto embaixo.",
+   "name": "Centred",
+   "blurb": "Logo at the top, workspaces in the middle, the rest below.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3536,16 +3832,21 @@
      "action": "bar",
      "preset": "20-centrado"
     }
+   ],
+   "name_pt": "Centralizado",
+   "blurb_pt": "Logo em cima, espaços no meio, o resto embaixo.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-fio",
    "section": "bars",
-   "name": "Fio",
-   "blurb": "O mais estreito que dá para acertar com o mouse.",
+   "name": "Thread",
+   "blurb": "As narrow as you can still hit with a pointer.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3570,16 +3871,21 @@
      "action": "bar",
      "preset": "25-fio"
     }
+   ],
+   "name_pt": "Fio",
+   "blurb_pt": "O mais estreito que dá para acertar com o mouse.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-ilha",
    "section": "bars",
-   "name": "Ilha",
-   "blurb": "Cantos bem redondos, barra na beirada.",
+   "name": "Island",
+   "blurb": "Round corners, floating off the edge.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3607,16 +3913,21 @@
      "action": "bar",
      "preset": "30-ilha"
     }
+   ],
+   "name_pt": "Ilha",
+   "blurb_pt": "Cantos bem redondos, barra na beirada.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-numeros",
    "section": "bars",
-   "name": "Numeros",
-   "blurb": "Espaços de trabalho numerados.",
+   "name": "Numbers",
+   "blurb": "Numbered workspaces.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3646,16 +3957,21 @@
      "action": "bar",
      "preset": "40-numeros"
     }
+   ],
+   "name_pt": "Numeros",
+   "blurb_pt": "Espaços de trabalho numerados.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-arejado",
    "section": "bars",
-   "name": "Arejado",
-   "blurb": "Mais espaço entre tudo.",
+   "name": "Airy",
+   "blurb": "More room between everything.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3683,16 +3999,21 @@
      "action": "bar",
      "preset": "45-arejado"
     }
+   ],
+   "name_pt": "Arejado",
+   "blurb_pt": "Mais espaço entre tudo.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-janelas",
    "section": "bars",
-   "name": "Janelas",
-   "blurb": "Mostra as janelas abertas.",
+   "name": "Windows",
+   "blurb": "Shows the windows you have open.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3720,16 +4041,21 @@
      "action": "bar",
      "preset": "50-janelas"
     }
+   ],
+   "name_pt": "Janelas",
+   "blurb_pt": "Mostra as janelas abertas.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-painel",
    "section": "bars",
-   "name": "Painel",
-   "blurb": "Denso, como um painel de controle.",
+   "name": "Panel",
+   "blurb": "Dense, like a control panel.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3759,16 +4085,21 @@
      "action": "bar",
      "preset": "55-painel"
     }
+   ],
+   "name_pt": "Painel",
+   "blurb_pt": "Denso, como um painel de controle.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-informativo",
    "section": "bars",
-   "name": "Informativo",
-   "blurb": "Tudo que dá para medir, medido.",
+   "name": "Informative",
+   "blurb": "Everything measurable, measured.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3798,16 +4129,21 @@
      "action": "bar",
      "preset": "60-informativo"
     }
+   ],
+   "name_pt": "Informativo",
+   "blurb_pt": "Tudo que dá para medir, medido.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-compacto",
    "section": "bars",
-   "name": "Compacto",
-   "blurb": "O essencial, junto.",
+   "name": "Compact",
+   "blurb": "The essentials, close together.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3837,16 +4173,21 @@
      "action": "bar",
      "preset": "70-compacto"
     }
+   ],
+   "name_pt": "Compacto",
+   "blurb_pt": "O essencial, junto.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-limpo",
    "section": "bars",
-   "name": "Limpo",
-   "blurb": "So o necessario.",
+   "name": "Clean",
+   "blurb": "Only what is needed.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3876,16 +4217,21 @@
      "action": "bar",
      "preset": "80-limpo"
     }
+   ],
+   "name_pt": "Limpo",
+   "blurb_pt": "So o necessario.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-relogio",
    "section": "bars",
-   "name": "Relogio",
-   "blurb": "O relógio em primeiro lugar.",
+   "name": "Clock",
+   "blurb": "The clock first.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3913,16 +4259,21 @@
      "action": "bar",
      "preset": "85-relogio"
     }
+   ],
+   "name_pt": "Relogio",
+   "blurb_pt": "O relógio em primeiro lugar.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-trilha",
    "section": "bars",
-   "name": "Trilha",
-   "blurb": "Uma linha contínua.",
+   "name": "Trail",
+   "blurb": "One continuous line.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3952,16 +4303,21 @@
      "action": "bar",
      "preset": "90-trilha"
     }
+   ],
+   "name_pt": "Trilha",
+   "blurb_pt": "Uma linha contínua.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "bar-oculta",
    "section": "bars",
-   "name": "Oculta",
-   "blurb": "Some até você precisar.",
+   "name": "Hidden",
+   "blurb": "Gone until you reach for it.",
    "author": "Genesi",
    "tags": [
-    "barra"
+    "bar"
    ],
    "preview": {
     "kind": "bar",
@@ -3991,19 +4347,24 @@
      "action": "bar",
      "preset": "95-oculta"
     }
+   ],
+   "name_pt": "Oculta",
+   "blurb_pt": "Some até você precisar.",
+   "tags_pt": [
+    "barra"
    ]
   },
   {
    "id": "lock-wallpaper",
    "section": "lockscreens",
-   "name": "Papel de parede",
-   "blurb": "O seu papel de parede, desfocado.",
+   "name": "Wallpaper",
+   "blurb": "Your wallpaper, blurred.",
    "family": "session",
    "replaces": "caelestia",
    "author": "Genesi",
    "tags": [
-    "sessão",
-    "desfoque"
+    "session",
+    "blur"
    ],
    "preview": {
     "kind": "lock",
@@ -4032,19 +4393,25 @@
      "action": "locker",
      "use": "hyprlock"
     }
+   ],
+   "name_pt": "Papel de parede",
+   "blurb_pt": "O seu papel de parede, desfocado.",
+   "tags_pt": [
+    "sessão",
+    "desfoque"
    ]
   },
   {
    "id": "lock-clean",
    "section": "lockscreens",
-   "name": "Limpa",
-   "blurb": "Fundo sólido, relógio grande, nada mais.",
+   "name": "Plain",
+   "blurb": "A solid background, a big clock, nothing else.",
    "family": "session",
    "replaces": "caelestia",
    "author": "Genesi",
    "tags": [
-    "sessão",
-    "minimalista"
+    "session",
+    "minimal"
    ],
    "preview": {
     "kind": "lock",
@@ -4071,19 +4438,25 @@
      "action": "locker",
      "use": "hyprlock"
     }
+   ],
+   "name_pt": "Limpa",
+   "blurb_pt": "Fundo sólido, relógio grande, nada mais.",
+   "tags_pt": [
+    "sessão",
+    "minimalista"
    ]
   },
   {
    "id": "lock-night",
    "section": "lockscreens",
-   "name": "Noite",
-   "blurb": "Escuro de verdade, para não acordar ninguém.",
+   "name": "Night",
+   "blurb": "Properly dark, so as not to wake anybody.",
    "family": "session",
    "replaces": "caelestia",
    "author": "Genesi",
    "tags": [
-    "sessão",
-    "escuro",
+    "session",
+    "dark",
     "oled"
    ],
    "preview": {
@@ -4113,18 +4486,25 @@
      "action": "locker",
      "use": "hyprlock"
     }
+   ],
+   "name_pt": "Noite",
+   "blurb_pt": "Escuro de verdade, para não acordar ninguém.",
+   "tags_pt": [
+    "sessão",
+    "escuro",
+    "oled"
    ]
   },
   {
    "id": "lock-terminal",
    "section": "lockscreens",
    "name": "Terminal",
-   "blurb": "Monoespaçada, como um prompt.",
+   "blurb": "Monospaced, like a prompt.",
    "family": "session",
    "replaces": "caelestia",
    "author": "Genesi",
    "tags": [
-    "sessão",
+    "session",
     "mono",
     "retro"
    ],
@@ -4156,18 +4536,25 @@
      "action": "locker",
      "use": "hyprlock"
     }
+   ],
+   "name_pt": "Terminal",
+   "blurb_pt": "Monoespaçada, como um prompt.",
+   "tags_pt": [
+    "sessão",
+    "mono",
+    "retro"
    ]
   },
   {
    "id": "login-genesi",
    "section": "login",
    "name": "Genesi",
-   "blurb": "A nossa: a marca, a hora e um campo só. Vem com a loja.",
+   "blurb": "Ours: the mark, the time and one field. It comes with the store.",
    "family": "login",
    "author": "Genesi",
    "tags": [
     "login",
-    "antes da sessão"
+    "before the session"
    ],
    "needs_root": true,
    "preview": {
@@ -4182,18 +4569,24 @@
      "action": "login",
      "theme": "genesi"
     }
+   ],
+   "name_pt": "Genesi",
+   "blurb_pt": "A nossa: a marca, a hora e um campo só. Vem com a loja.",
+   "tags_pt": [
+    "login",
+    "antes da sessão"
    ]
   },
   {
    "id": "login-breeze",
    "section": "login",
-   "name": "A padrão do sistema",
-   "blurb": "Volta para a tela que o Genesi instala. É o caminho de volta de qualquer uma das outras.",
+   "name": "The system's own",
+   "blurb": "Back to the screen Genesi installs. It is the way back from any of the others.",
    "family": "login",
    "author": "SDDM",
    "tags": [
     "login",
-    "antes da sessão"
+    "before the session"
    ],
    "needs_root": true,
    "preview": {
@@ -4207,16 +4600,22 @@
      "action": "login",
      "theme": "breeze"
     }
+   ],
+   "name_pt": "A padrão do sistema",
+   "blurb_pt": "Volta para a tela que o Genesi instala. É o caminho de volta de qualquer uma das outras.",
+   "tags_pt": [
+    "login",
+    "antes da sessão"
    ]
   },
   {
    "id": "fetch-compact",
    "section": "fastfetch",
-   "name": "Compacto",
-   "blurb": "Cinco linhas e o logo pequeno.",
+   "name": "Compact",
+   "blurb": "Five lines and the small logo.",
    "author": "Genesi",
    "tags": [
-    "curto"
+    "short"
    ],
    "preview": {
     "kind": "terminal",
@@ -4235,16 +4634,21 @@
      "path": "~/.config/fastfetch/config.jsonc",
      "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"type\": \"small\", \"padding\": { \"top\": 1, \"right\": 2 } },\n  \"display\": { \"separator\": \"  \" },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name}@{host-name}\" },\n    \"separator\",\n    { \"type\": \"os\", \"key\": \"sistema\" },\n    { \"type\": \"kernel\", \"key\": \"kernel\" },\n    { \"type\": \"wm\", \"key\": \"sessão\" },\n    { \"type\": \"memory\", \"key\": \"memoria\" },\n    { \"type\": \"uptime\", \"key\": \"ligado ha\" }\n  ]\n}\n"
     }
+   ],
+   "name_pt": "Compacto",
+   "blurb_pt": "Cinco linhas e o logo pequeno.",
+   "tags_pt": [
+    "curto"
    ]
   },
   {
    "id": "fetch-full",
    "section": "fastfetch",
-   "name": "Completo",
-   "blurb": "Tudo que dá para contar sobre a máquina.",
+   "name": "Full",
+   "blurb": "Everything there is to say about the machine.",
    "author": "Genesi",
    "tags": [
-    "longo"
+    "long"
    ],
    "preview": {
     "kind": "terminal",
@@ -4263,16 +4667,21 @@
      "path": "~/.config/fastfetch/config.jsonc",
      "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"padding\": { \"top\": 2, \"right\": 3 } },\n  \"display\": { \"separator\": \"  \", \"color\": { \"keys\": \"green\" } },\n  \"modules\": [\n    \"title\", \"separator\",\n    { \"type\": \"os\", \"key\": \"sistema\" },\n    { \"type\": \"host\", \"key\": \"maquina\" },\n    { \"type\": \"kernel\", \"key\": \"kernel\" },\n    { \"type\": \"packages\", \"key\": \"pacotes\" },\n    { \"type\": \"shell\", \"key\": \"shell\" },\n    { \"type\": \"wm\", \"key\": \"sessão\" },\n    { \"type\": \"terminal\", \"key\": \"terminal\" },\n    { \"type\": \"cpu\", \"key\": \"cpu\" },\n    { \"type\": \"gpu\", \"key\": \"gpu\" },\n    { \"type\": \"memory\", \"key\": \"memoria\" },\n    { \"type\": \"disk\", \"key\": \"disco\" },\n    { \"type\": \"uptime\", \"key\": \"ligado ha\" },\n    \"break\", \"colors\"\n  ]\n}\n"
     }
+   ],
+   "name_pt": "Completo",
+   "blurb_pt": "Tudo que dá para contar sobre a máquina.",
+   "tags_pt": [
+    "longo"
    ]
   },
   {
    "id": "fetch-bare",
    "section": "fastfetch",
-   "name": "Sem logo",
-   "blurb": "Só texto, para quem abre muitos terminais.",
+   "name": "No logo",
+   "blurb": "Text only, for anybody who opens a lot of terminals.",
    "author": "Genesi",
    "tags": [
-    "minimalista"
+    "minimal"
    ],
    "preview": {
     "kind": "terminal",
@@ -4291,16 +4700,21 @@
      "path": "~/.config/fastfetch/config.jsonc",
      "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"type\": \"none\" },\n  \"display\": { \"separator\": \" \" },\n  \"modules\": [\n    { \"type\": \"custom\", \"format\": \"  genesi\" },\n    { \"type\": \"os\", \"key\": \" \" },\n    { \"type\": \"kernel\", \"key\": \" \" },\n    { \"type\": \"memory\", \"key\": \" \" },\n    { \"type\": \"uptime\", \"key\": \" \" }\n  ]\n}\n"
     }
+   ],
+   "name_pt": "Sem logo",
+   "blurb_pt": "Só texto, para quem abre muitos terminais.",
+   "tags_pt": [
+    "minimalista"
    ]
   },
   {
    "id": "fetch-green",
    "section": "fastfetch",
-   "name": "Verde",
-   "blurb": "As cores da casa no prompt.",
+   "name": "Green",
+   "blurb": "The house colours at the prompt.",
    "author": "Genesi",
    "tags": [
-    "verde"
+    "green"
    ],
    "preview": {
     "kind": "terminal",
@@ -4319,16 +4733,21 @@
      "path": "~/.config/fastfetch/config.jsonc",
      "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"source\": \"arch\", \"color\": { \"1\": \"green\", \"2\": \"green\" } },\n  \"display\": { \"separator\": \"  \", \"color\": { \"keys\": \"green\", \"title\": \"green\" } },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} em {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"\\u001b[32m-----------------------------\\u001b[0m\" },\n    { \"type\": \"os\", \"key\": \"sistema\" },\n    { \"type\": \"wm\", \"key\": \"sessão\" },\n    { \"type\": \"cpu\", \"key\": \"cpu\" },\n    { \"type\": \"memory\", \"key\": \"memoria\" },\n    { \"type\": \"disk\", \"key\": \"disco\" },\n    { \"type\": \"uptime\", \"key\": \"ligado ha\" }\n  ]\n}\n"
     }
+   ],
+   "name_pt": "Verde",
+   "blurb_pt": "As cores da casa no prompt.",
+   "tags_pt": [
+    "verde"
    ]
   },
   {
    "id": "fetch-image",
    "section": "fastfetch",
-   "name": "Com imagem",
-   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "name": "With a picture",
+   "blurb": "A photograph where the ASCII goes, in sixel. Needs a terminal that draws images: foot, which is Genesi's default, does.",
    "author": "Genesi",
    "tags": [
-    "imagem",
+    "image",
     "sixel"
    ],
    "preview": {
@@ -4358,18 +4777,24 @@
      "height": 2160,
      "sha256": "687de5016d97c4fbdf71c8e4c1d1ba1f657747b322e249b69cd09c3503eeeedb"
     }
-   }
+   },
+   "name_pt": "Com imagem",
+   "blurb_pt": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que desenhe imagens: o foot, que é o padrão do Genesi, desenha.",
+   "tags_pt": [
+    "imagem",
+    "sixel"
+   ]
   },
   {
    "id": "fetch-image-small",
    "section": "fastfetch",
-   "name": "Com imagem (pequena)",
-   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "name": "With a picture (small)",
+   "blurb": "A photograph where the ASCII goes, in sixel. Needs a terminal that draws images: foot, which is Genesi's default, does.",
    "author": "Genesi",
    "tags": [
-    "imagem",
+    "image",
     "sixel",
-    "curto"
+    "short"
    ],
    "preview": {
     "kind": "terminal",
@@ -4398,17 +4823,24 @@
      "height": 2160,
      "sha256": "687de5016d97c4fbdf71c8e4c1d1ba1f657747b322e249b69cd09c3503eeeedb"
     }
-   }
+   },
+   "name_pt": "Com imagem (pequena)",
+   "blurb_pt": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que desenhe imagens: o foot, que é o padrão do Genesi, desenha.",
+   "tags_pt": [
+    "imagem",
+    "sixel",
+    "curto"
+   ]
   },
   {
    "id": "fetch-ficha",
    "section": "fastfetch",
-   "name": "Ficha técnica",
-   "blurb": "Vitais, sistema e sessão separados, com a paleta embaixo. O jeitão que as pessoas montam à mão.",
+   "name": "Spec sheet",
+   "blurb": "Vitals, system and session in their own sections, with the palette underneath. The look people build by hand.",
    "author": "Genesi",
    "tags": [
-    "seções",
-    "completo"
+    "sections",
+    "complete"
    ],
    "preview": {
     "kind": "terminal",
@@ -4430,17 +4862,23 @@
      "path": "~/.config/fastfetch/config.jsonc",
      "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": {\n    \"type\": \"file\",\n    \"source\": \"/usr/share/genesi/fastfetch/genesi-logo.txt\",\n    \"color\": { \"1\": \"38;2;29;158;117\", \"2\": \"38;2;225;245;238\" },\n    \"padding\": { \"top\": 1, \"right\": 3, \"left\": 2 }\n  },\n  \"display\": {\n    \"separator\": \"  \",\n    \"color\": { \"keys\": \"38;2;29;158;117\", \"title\": \"38;2;29;158;117\" }\n  },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} @ {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"Genesi OS · um amanhã mais tranquilo\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── VITAIS ────────────────────────────────────\" },\n    { \"type\": \"cpu\", \"key\": \"CPU\" },\n    { \"type\": \"gpu\", \"key\": \"GPU\" },\n    { \"type\": \"memory\", \"key\": \"MEMORIA\" },\n    { \"type\": \"disk\", \"key\": \"DISCO\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SISTEMA ───────────────────────────────────\" },\n    { \"type\": \"os\", \"key\": \"OS\" },\n    { \"type\": \"kernel\", \"key\": \"KERNEL\" },\n    { \"type\": \"wm\", \"key\": \"WM\" },\n    { \"type\": \"shell\", \"key\": \"SHELL\" },\n    { \"type\": \"packages\", \"key\": \"PACOTES\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SESSAO ────────────────────────────────────\" },\n    { \"type\": \"uptime\", \"key\": \"LIGADO HA\" },\n    { \"type\": \"terminal\", \"key\": \"TERMINAL\" },\n    \"break\",\n    { \"type\": \"colors\", \"symbol\": \"circle\", \"paddingLeft\": 2 }\n  ]\n}\n"
     }
+   ],
+   "name_pt": "Ficha técnica",
+   "blurb_pt": "Vitais, sistema e sessão separados, com a paleta embaixo. O jeitão que as pessoas montam à mão.",
+   "tags_pt": [
+    "seções",
+    "completo"
    ]
   },
   {
    "id": "fetch-ficha-limpa",
    "section": "fastfetch",
-   "name": "Ficha técnica (sem logo)",
-   "blurb": "A mesma ficha, sem desenho nenhum na frente.",
+   "name": "Spec sheet (no logo)",
+   "blurb": "The same sheet, with no drawing in front of it.",
    "author": "Genesi",
    "tags": [
-    "seções",
-    "minimalista"
+    "sections",
+    "minimal"
    ],
    "preview": {
     "kind": "terminal",
@@ -4462,20 +4900,26 @@
      "path": "~/.config/fastfetch/config.jsonc",
      "text": "{\n  \"$schema\": \"https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json\",\n  \"logo\": { \"type\": \"none\" },\n  \"display\": {\n    \"separator\": \"  \",\n    \"color\": { \"keys\": \"38;2;29;158;117\", \"title\": \"38;2;29;158;117\" }\n  },\n  \"modules\": [\n    { \"type\": \"title\", \"format\": \"{user-name} @ {host-name}\" },\n    { \"type\": \"custom\", \"format\": \"Genesi OS · um amanhã mais tranquilo\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── VITAIS ────────────────────────────────────\" },\n    { \"type\": \"cpu\", \"key\": \"CPU\" },\n    { \"type\": \"gpu\", \"key\": \"GPU\" },\n    { \"type\": \"memory\", \"key\": \"MEMORIA\" },\n    { \"type\": \"disk\", \"key\": \"DISCO\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SISTEMA ───────────────────────────────────\" },\n    { \"type\": \"os\", \"key\": \"OS\" },\n    { \"type\": \"kernel\", \"key\": \"KERNEL\" },\n    { \"type\": \"wm\", \"key\": \"WM\" },\n    { \"type\": \"shell\", \"key\": \"SHELL\" },\n    { \"type\": \"packages\", \"key\": \"PACOTES\" },\n    \"break\",\n    { \"type\": \"custom\", \"format\": \"── SESSAO ────────────────────────────────────\" },\n    { \"type\": \"uptime\", \"key\": \"LIGADO HA\" },\n    { \"type\": \"terminal\", \"key\": \"TERMINAL\" },\n    \"break\",\n    { \"type\": \"colors\", \"symbol\": \"circle\", \"paddingLeft\": 2 }\n  ]\n}\n"
     }
+   ],
+   "name_pt": "Ficha técnica (sem logo)",
+   "blurb_pt": "A mesma ficha, sem desenho nenhum na frente.",
+   "tags_pt": [
+    "seções",
+    "minimalista"
    ]
   },
   {
    "id": "fetch-ficha-neon",
    "section": "fastfetch",
-   "name": "Ficha técnica (neon)",
-   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "name": "Spec sheet (neon)",
+   "blurb": "A photograph where the ASCII goes, in sixel. Needs a terminal that draws images: foot, which is Genesi's default, does.",
    "author": "Genesi",
    "tags": [
-    "seções",
-    "imagem",
+    "sections",
+    "image",
     "sixel",
-    "cidade",
-    "escuro"
+    "city",
+    "dark"
    ],
    "preview": {
     "kind": "terminal",
@@ -4507,20 +4951,29 @@
      "height": 2160,
      "sha256": "f68427e2edfa84be645dbf90c601df4aa3cb36e077e8aceb65f77af376075e22"
     }
-   }
+   },
+   "name_pt": "Ficha técnica (neon)",
+   "blurb_pt": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que desenhe imagens: o foot, que é o padrão do Genesi, desenha.",
+   "tags_pt": [
+    "seções",
+    "imagem",
+    "sixel",
+    "cidade",
+    "escuro"
+   ]
   },
   {
    "id": "fetch-ficha-tinta",
    "section": "fastfetch",
-   "name": "Ficha técnica (tinta)",
-   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "name": "Spec sheet (ink)",
+   "blurb": "A photograph where the ASCII goes, in sixel. Needs a terminal that draws images: foot, which is Genesi's default, does.",
    "author": "Genesi",
    "tags": [
-    "seções",
-    "imagem",
+    "sections",
+    "image",
     "sixel",
-    "arte",
-    "minimalista"
+    "art",
+    "minimal"
    ],
    "preview": {
     "kind": "terminal",
@@ -4552,20 +5005,29 @@
      "height": 1080,
      "sha256": "8eb7a889292dd471099dd8e41169f879d60a3817c8d1050fca1229e6479268c9"
     }
-   }
-  },
-  {
-   "id": "fetch-ficha-castelo",
-   "section": "fastfetch",
-   "name": "Ficha técnica (castelo)",
-   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
-   "author": "Genesi",
-   "tags": [
+   },
+   "name_pt": "Ficha técnica (tinta)",
+   "blurb_pt": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que desenhe imagens: o foot, que é o padrão do Genesi, desenha.",
+   "tags_pt": [
     "seções",
     "imagem",
     "sixel",
     "arte",
-    "natureza"
+    "minimalista"
+   ]
+  },
+  {
+   "id": "fetch-ficha-castelo",
+   "section": "fastfetch",
+   "name": "Spec sheet (castle)",
+   "blurb": "A photograph where the ASCII goes, in sixel. Needs a terminal that draws images: foot, which is Genesi's default, does.",
+   "author": "Genesi",
+   "tags": [
+    "sections",
+    "image",
+    "sixel",
+    "art",
+    "nature"
    ],
    "preview": {
     "kind": "terminal",
@@ -4597,20 +5059,29 @@
      "height": 1080,
      "sha256": "3dde1b73cdde3fed33f7a03fb3bd08af1f8c66d73bb0e11339dc380a175cb8e7"
     }
-   }
+   },
+   "name_pt": "Ficha técnica (castelo)",
+   "blurb_pt": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que desenhe imagens: o foot, que é o padrão do Genesi, desenha.",
+   "tags_pt": [
+    "seções",
+    "imagem",
+    "sixel",
+    "arte",
+    "natureza"
+   ]
   },
   {
    "id": "fetch-ficha-lua",
    "section": "fastfetch",
-   "name": "Ficha técnica (lua)",
-   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "name": "Spec sheet (moon)",
+   "blurb": "A photograph where the ASCII goes, in sixel. Needs a terminal that draws images: foot, which is Genesi's default, does.",
    "author": "Genesi",
    "tags": [
-    "seções",
-    "imagem",
+    "sections",
+    "image",
     "sixel",
-    "escuro",
-    "noite"
+    "dark",
+    "night"
    ],
    "preview": {
     "kind": "terminal",
@@ -4642,20 +5113,29 @@
      "height": 1500,
      "sha256": "4ca7c1c7eadefc27f642248a329abec79e860dcadc8956e2e65100225d18bb38"
     }
-   }
+   },
+   "name_pt": "Ficha técnica (lua)",
+   "blurb_pt": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que desenhe imagens: o foot, que é o padrão do Genesi, desenha.",
+   "tags_pt": [
+    "seções",
+    "imagem",
+    "sixel",
+    "escuro",
+    "noite"
+   ]
   },
   {
    "id": "fetch-ficha-gruvbox",
    "section": "fastfetch",
-   "name": "Ficha técnica (gruvbox)",
-   "blurb": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que\n               desenhe imagens: o foot, que e o padrao do Genesi, desenha.",
+   "name": "Spec sheet (gruvbox)",
+   "blurb": "A photograph where the ASCII goes, in sixel. Needs a terminal that draws images: foot, which is Genesi's default, does.",
    "author": "Genesi",
    "tags": [
-    "seções",
-    "imagem",
+    "sections",
+    "image",
     "sixel",
     "retro",
-    "quente"
+    "warm"
    ],
    "preview": {
     "kind": "terminal",
@@ -4687,17 +5167,26 @@
      "height": 1080,
      "sha256": "b07aff0455a146fcebd20543ef713b7d29461bcffd1b60f7fcce3a50d7feaaf5"
     }
-   }
+   },
+   "name_pt": "Ficha técnica (gruvbox)",
+   "blurb_pt": "Uma foto no lugar do desenho, em sixel. Precisa de um terminal que desenhe imagens: o foot, que é o padrão do Genesi, desenha.",
+   "tags_pt": [
+    "seções",
+    "imagem",
+    "sixel",
+    "retro",
+    "quente"
+   ]
   },
   {
    "id": "rice-floresta-viva",
    "section": "rices",
-   "name": "Floresta Viva",
-   "blurb": "Verde fechado, barra rente, bloqueio desfocado.",
+   "name": "Living Forest",
+   "blurb": "Deep green, a flush bar, a blurred lock screen.",
    "author": "Genesi",
    "tags": [
-    "verde",
-    "natureza"
+    "green",
+    "nature"
    ],
    "preview": {
     "kind": "desktop",
@@ -4711,17 +5200,23 @@
     "bar-borda",
     "lock-wallpaper"
    ],
-   "actions": []
+   "actions": [],
+   "name_pt": "Floresta Viva",
+   "blurb_pt": "Verde fechado, barra rente, bloqueio desfocado.",
+   "tags_pt": [
+    "verde",
+    "natureza"
+   ]
   },
   {
    "id": "rice-orvalho",
    "section": "rices",
-   "name": "Orvalho",
-   "blurb": "Verde claro da casa sobre água parada.",
+   "name": "Dew",
+   "blurb": "The house's lighter green over still water.",
    "author": "Genesi",
    "tags": [
-    "verde",
-    "calmo"
+    "green",
+    "calm"
    ],
    "preview": {
     "kind": "desktop",
@@ -4735,16 +5230,22 @@
     "bar-arejado",
     "lock-clean"
    ],
-   "actions": []
+   "actions": [],
+   "name_pt": "Orvalho",
+   "blurb_pt": "Verde claro da casa sobre água parada.",
+   "tags_pt": [
+    "verde",
+    "calmo"
+   ]
   },
   {
    "id": "rice-noite-baixa",
    "section": "rices",
-   "name": "Noite Baixa",
-   "blurb": "Preto real, barra fina, nada brilhando.",
+   "name": "Low Night",
+   "blurb": "True black, a thin bar, nothing glowing.",
    "author": "Genesi",
    "tags": [
-    "escuro",
+    "dark",
     "oled"
    ],
    "preview": {
@@ -4759,16 +5260,22 @@
     "bar-fio",
     "lock-night"
    ],
-   "actions": []
+   "actions": [],
+   "name_pt": "Noite Baixa",
+   "blurb_pt": "Preto real, barra fina, nada brilhando.",
+   "tags_pt": [
+    "escuro",
+    "oled"
+   ]
   },
   {
    "id": "rice-terra",
    "section": "rices",
-   "name": "Terra",
-   "blurb": "Gruvbox, cidade retrô e barra densa.",
+   "name": "Earth",
+   "blurb": "Gruvbox, a retro city and a dense bar.",
    "author": "Genesi",
    "tags": [
-    "quente",
+    "warm",
     "retro"
    ],
    "preview": {
@@ -4783,16 +5290,22 @@
     "bar-painel",
     "lock-terminal"
    ],
-   "actions": []
+   "actions": [],
+   "name_pt": "Terra",
+   "blurb_pt": "Gruvbox, cidade retrô e barra densa.",
+   "tags_pt": [
+    "quente",
+    "retro"
+   ]
   },
   {
    "id": "rice-meia-noite",
    "section": "rices",
-   "name": "Meia-Noite",
-   "blurb": "Tokyo Night com neon e barra centralizada.",
+   "name": "Midnight",
+   "blurb": "Tokyo Night with neon and a centred bar.",
    "author": "Genesi",
    "tags": [
-    "escuro",
+    "dark",
     "neon"
    ],
    "preview": {
@@ -4807,17 +5320,23 @@
     "bar-centrado",
     "lock-night"
    ],
-   "actions": []
+   "actions": [],
+   "name_pt": "Meia-Noite",
+   "blurb_pt": "Tokyo Night com neon e barra centralizada.",
+   "tags_pt": [
+    "escuro",
+    "neon"
+   ]
   },
   {
    "id": "rice-papel",
    "section": "rices",
-   "name": "Papel",
-   "blurb": "Claro, quieto, para trabalhar de dia.",
+   "name": "Paper",
+   "blurb": "Light and quiet, for working in daylight.",
    "author": "Genesi",
    "tags": [
-    "claro",
-    "minimalista"
+    "light",
+    "minimal"
    ],
    "preview": {
     "kind": "desktop",
@@ -4831,16 +5350,22 @@
     "bar-limpo",
     "lock-clean"
    ],
-   "actions": []
+   "actions": [],
+   "name_pt": "Papel",
+   "blurb_pt": "Claro, quieto, para trabalhar de dia.",
+   "tags_pt": [
+    "claro",
+    "minimalista"
+   ]
   },
   {
    "id": "bundle-primeira-troca",
    "section": "bundles",
-   "name": "Primeira Troca",
-   "blurb": "O básico para o desktop deixar de ser o padrão: cor, papel de parede e uma barra que respira.",
+   "name": "First Change",
+   "blurb": "The basics for a desktop that is no longer the default one: colour, a wallpaper, and a bar with room to breathe.",
    "author": "Genesi",
    "tags": [
-    "comeco"
+    "to start with"
    ],
    "preview": {
     "kind": "desktop",
@@ -4852,13 +5377,18 @@
     "wall-nature",
     "bar-arejado"
    ],
-   "actions": []
+   "actions": [],
+   "name_pt": "Primeira Troca",
+   "blurb_pt": "O básico para o desktop deixar de ser o padrão: cor, papel de parede e uma barra que respira.",
+   "tags_pt": [
+    "comeco"
+   ]
   },
   {
    "id": "bundle-terminal",
    "section": "bundles",
-   "name": "Vida no Terminal",
-   "blurb": "Fastfetch completo, bloqueio monoespaçado e uma barra densa: para quem vive no prompt.",
+   "name": "Life at the Terminal",
+   "blurb": "Full fastfetch, a monospaced lock screen and a dense bar: for anybody who lives at the prompt.",
    "author": "Genesi",
    "tags": [
     "terminal"
@@ -4874,17 +5404,22 @@
     "bar-informativo",
     "wall-ink-wave"
    ],
-   "actions": []
+   "actions": [],
+   "name_pt": "Vida no Terminal",
+   "blurb_pt": "Fastfetch completo, bloqueio monoespaçado e uma barra densa: para quem vive no prompt.",
+   "tags_pt": [
+    "terminal"
+   ]
   },
   {
    "id": "bundle-descanso",
    "section": "bundles",
-   "name": "Descanso",
-   "blurb": "Claro de dia, sem barulho visual: tema claro, papel minimalista e barra limpa.",
+   "name": "Rest",
+   "blurb": "Light by day and visually quiet: a light theme, a minimal wallpaper and a clean bar.",
    "author": "Genesi",
    "tags": [
-    "claro",
-    "calmo"
+    "light",
+    "calm"
    ],
    "preview": {
     "kind": "desktop",
@@ -4896,18 +5431,24 @@
     "wall-minimal-c",
     "bar-limpo"
    ],
-   "actions": []
+   "actions": [],
+   "name_pt": "Descanso",
+   "blurb_pt": "Claro de dia, sem barulho visual: tema claro, papel minimalista e barra limpa.",
+   "tags_pt": [
+    "claro",
+    "calmo"
+   ]
   },
   {
    "id": "default-themes",
    "section": "themes",
-   "name": "Como vem de fábrica",
-   "blurb": "A paleta que segue o seu papel de parede, que é a do Genesi novo.",
+   "name": "The way it ships",
+   "blurb": "The palette that follows your wallpaper, which is what a new Genesi has.",
    "family": "factory",
    "author": "Genesi",
    "tags": [
-    "padrão",
-    "de fábrica"
+    "default",
+    "factory"
    ],
    "preview": {
     "kind": "scheme",
@@ -4925,18 +5466,24 @@
      "action": "scheme",
      "name": "dynamic"
     }
+   ],
+   "name_pt": "Como vem de fábrica",
+   "blurb_pt": "A paleta que segue o seu papel de parede, que é a do Genesi novo.",
+   "tags_pt": [
+    "padrão",
+    "de fábrica"
    ]
   },
   {
    "id": "default-login",
    "section": "login",
-   "name": "Como vem de fábrica",
-   "blurb": "A tela de login do Genesi, sem nada baixado por cima.",
+   "name": "The way it ships",
+   "blurb": "Genesi's own login screen, with nothing downloaded over it.",
    "family": "factory",
    "author": "Genesi",
    "tags": [
-    "padrão",
-    "de fábrica"
+    "default",
+    "factory"
    ],
    "preview": {
     "kind": "login",
@@ -4949,18 +5496,24 @@
      "theme": "genesi"
     }
    ],
-   "needs_root": true
+   "needs_root": true,
+   "name_pt": "Como vem de fábrica",
+   "blurb_pt": "A tela de login do Genesi, sem nada baixado por cima.",
+   "tags_pt": [
+    "padrão",
+    "de fábrica"
+   ]
   },
   {
    "id": "default-lockscreens",
    "section": "lockscreens",
-   "name": "Como vem de fábrica",
-   "blurb": "A tranca do próprio caelestia, que segue o seu tema e o seu papel de parede.",
+   "name": "The way it ships",
+   "blurb": "caelestia's own lock, which follows your theme and your wallpaper.",
    "family": "factory",
    "author": "Genesi",
    "tags": [
-    "padrão",
-    "de fábrica"
+    "default",
+    "factory"
    ],
    "preview": {
     "kind": "lock",
@@ -4976,18 +5529,24 @@
      "action": "locker",
      "use": "caelestia"
     }
+   ],
+   "name_pt": "Como vem de fábrica",
+   "blurb_pt": "A tranca do próprio caelestia, que segue o seu tema e o seu papel de parede.",
+   "tags_pt": [
+    "padrão",
+    "de fábrica"
    ]
   },
   {
    "id": "default-fastfetch",
    "section": "fastfetch",
-   "name": "Como vem de fábrica",
-   "blurb": "Volta para o cartão do Genesi que aparece ao abrir o terminal.",
+   "name": "The way it ships",
+   "blurb": "Back to the Genesi card your terminal opens with.",
    "family": "factory",
    "author": "Genesi",
    "tags": [
-    "padrão",
-    "de fábrica"
+    "default",
+    "factory"
    ],
    "preview": {
     "kind": "terminal",
@@ -5002,18 +5561,24 @@
      "action": "restore",
      "path": "~/.config/fastfetch/config.jsonc"
     }
+   ],
+   "name_pt": "Como vem de fábrica",
+   "blurb_pt": "Volta para o cartão do Genesi que aparece ao abrir o terminal.",
+   "tags_pt": [
+    "padrão",
+    "de fábrica"
    ]
   },
   {
    "id": "default-bars",
    "section": "bars",
-   "name": "Como vem de fábrica",
-   "blurb": "O arranjo de barra que vem no Genesi novo.",
+   "name": "The way it ships",
+   "blurb": "The bar arrangement a new Genesi has.",
    "family": "factory",
    "author": "Genesi",
    "tags": [
-    "padrão",
-    "de fábrica"
+    "default",
+    "factory"
    ],
    "preview": {
     "kind": "bar",
@@ -5027,22 +5592,28 @@
      "action": "bar",
      "preset": "10-padrao"
     }
+   ],
+   "name_pt": "Como vem de fábrica",
+   "blurb_pt": "O arranjo de barra que vem no Genesi novo.",
+   "tags_pt": [
+    "padrão",
+    "de fábrica"
    ]
   },
   {
    "id": "login-qylock-minecraft",
    "section": "login",
    "name": "Minecraft",
-   "blurb": "A tela de título, com a fonte e tudo.",
+   "blurb": "The title screen, font and all.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/minecraft",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
+    "game",
     "pixel"
    ],
    "needs_root": true,
@@ -5063,22 +5634,31 @@
      "action": "greeter",
      "key": "qylock-minecraft"
     }
+   ],
+   "name_pt": "Minecraft",
+   "blurb_pt": "A tela de título, com a fonte e tudo.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "pixel"
    ]
   },
   {
    "id": "login-qylock-terraria",
    "section": "login",
    "name": "Terraria",
-   "blurb": "Madeira, tochas e o menu do jogo.",
+   "blurb": "Wood, torches and the game's own menu.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/terraria",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
+    "game",
     "pixel"
    ],
    "needs_root": true,
@@ -5106,23 +5686,32 @@
      "action": "greeter",
      "key": "qylock-terraria"
     }
+   ],
+   "name_pt": "Terraria",
+   "blurb_pt": "Madeira, tochas e o menu do jogo.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "pixel"
    ]
   },
   {
    "id": "login-qylock-nier",
    "section": "login",
    "name": "NieR: Automata",
-   "blurb": "Areia, serifa e o silêncio do jogo.",
+   "blurb": "Sand, serif and the quiet of the game.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/nier-automata",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
-    "minimalista"
+    "game",
+    "minimal"
    ],
    "needs_root": true,
    "download": 219131,
@@ -5149,20 +5738,29 @@
      "action": "greeter",
      "key": "qylock-nier"
     }
+   ],
+   "name_pt": "NieR: Automata",
+   "blurb_pt": "Areia, serifa e o silêncio do jogo.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "minimalista"
    ]
   },
   {
    "id": "login-qylock-windows7",
    "section": "login",
    "name": "Windows 7",
-   "blurb": "Aquele azul. Sim, aquele mesmo.",
+   "blurb": "That blue. Yes, that one.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/windows_7",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "retro",
     "nostalgia"
@@ -5192,22 +5790,31 @@
      "action": "greeter",
      "key": "qylock-windows7"
     }
+   ],
+   "name_pt": "Windows 7",
+   "blurb_pt": "Aquele azul. Sim, aquele mesmo.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "retro",
+    "nostalgia"
    ]
   },
   {
    "id": "login-qylock-ninja-gaiden",
    "section": "login",
    "name": "Ninja Gaiden",
-   "blurb": "Oito bits e um ninja.",
+   "blurb": "Eight bits and a ninja.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninja_gaiden",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
+    "game",
     "retro",
     "pixel"
    ],
@@ -5229,23 +5836,33 @@
      "action": "greeter",
      "key": "qylock-ninja-gaiden"
     }
+   ],
+   "name_pt": "Ninja Gaiden",
+   "blurb_pt": "Oito bits e um ninja.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "retro",
+    "pixel"
    ]
   },
   {
    "id": "login-qylock-field",
    "section": "login",
-   "name": "Campo",
-   "blurb": "Um campo aberto e a luz baixa.",
+   "name": "Field",
+   "blurb": "An open field and low light.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/field",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "natureza",
-    "calmo"
+    "nature",
+    "calm"
    ],
    "needs_root": true,
    "download": 1833186,
@@ -5272,23 +5889,32 @@
      "action": "greeter",
      "key": "qylock-field"
     }
+   ],
+   "name_pt": "Campo",
+   "blurb_pt": "Um campo aberto e a luz baixa.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "natureza",
+    "calmo"
    ]
   },
   {
    "id": "login-qylock-ninesols",
    "section": "login",
    "name": "Nine Sols",
-   "blurb": "Traço oriental em vermelho e osso.",
+   "blurb": "Eastern linework in red and bone.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/ninesols",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
-    "arte"
+    "game",
+    "art"
    ],
    "needs_root": true,
    "download": 1719156,
@@ -5308,23 +5934,32 @@
      "action": "greeter",
      "key": "qylock-ninesols"
     }
+   ],
+   "name_pt": "Nine Sols",
+   "blurb_pt": "Traço oriental em vermelho e osso.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "arte"
    ]
   },
   {
    "id": "login-qylock-girl-coffee",
    "section": "login",
-   "name": "Café",
-   "blurb": "Alguém tomando café, desenhado.",
+   "name": "Coffee",
+   "blurb": "Somebody having coffee, drawn.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-coffee",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "arte",
-    "calmo"
+    "art",
+    "calm"
    ],
    "needs_root": true,
    "download": 1439801,
@@ -5351,23 +5986,32 @@
      "action": "greeter",
      "key": "qylock-girl-coffee"
     }
+   ],
+   "name_pt": "Café",
+   "blurb_pt": "Alguém tomando café, desenhado.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "calmo"
    ]
   },
   {
    "id": "login-qylock-girl-pillow",
    "section": "login",
-   "name": "Travesseiro",
-   "blurb": "O sono que você não teve.",
+   "name": "Pillow",
+   "blurb": "The sleep you did not get.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/girl-pillow",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "arte",
-    "calmo"
+    "art",
+    "calm"
    ],
    "needs_root": true,
    "download": 857387,
@@ -5394,23 +6038,32 @@
      "action": "greeter",
      "key": "qylock-girl-pillow"
     }
+   ],
+   "name_pt": "Travesseiro",
+   "blurb_pt": "O sono que você não teve.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "calmo"
    ]
   },
   {
    "id": "login-qylock-pixel-coffee",
    "section": "login",
-   "name": "Café (pixel)",
-   "blurb": "O mesmo café, em pixel art animada.",
+   "name": "Coffee (pixel)",
+   "blurb": "The same coffee, in animated pixel art.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-coffee",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "animado"
+    "animated"
    ],
    "needs_root": true,
    "download": 2412362,
@@ -5430,24 +6083,33 @@
      "action": "greeter",
      "key": "qylock-pixel-coffee"
     }
+   ],
+   "name_pt": "Café (pixel)",
+   "blurb_pt": "O mesmo café, em pixel art animada.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "animado"
    ]
   },
   {
    "id": "login-qylock-pixel-dusk",
    "section": "login",
-   "name": "Cidade ao Anoitecer",
-   "blurb": "Telhados e a última luz, em pixel.",
+   "name": "City at Dusk",
+   "blurb": "Rooftops and the last of the light, in pixel art.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-dusk-city",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "cidade",
-    "animado"
+    "city",
+    "animated"
    ],
    "needs_root": true,
    "download": 2935105,
@@ -5467,24 +6129,34 @@
      "action": "greeter",
      "key": "qylock-pixel-dusk"
     }
+   ],
+   "name_pt": "Cidade ao Anoitecer",
+   "blurb_pt": "Telhados e a última luz, em pixel.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "cidade",
+    "animado"
    ]
   },
   {
    "id": "login-qylock-pixel-waterfall",
    "section": "login",
-   "name": "Cachoeira",
-   "blurb": "Água caindo, quadro a quadro.",
+   "name": "Waterfall",
+   "blurb": "Falling water, frame by frame.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-waterfall",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "natureza",
-    "animado"
+    "nature",
+    "animated"
    ],
    "needs_root": true,
    "download": 3126527,
@@ -5504,23 +6176,33 @@
      "action": "greeter",
      "key": "qylock-pixel-waterfall"
     }
+   ],
+   "name_pt": "Cachoeira",
+   "blurb_pt": "Água caindo, quadro a quadro.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "natureza",
+    "animado"
    ]
   },
   {
    "id": "login-qylock-pixel-munchlax",
    "section": "login",
    "name": "Munchlax",
-   "blurb": "Um pokémon dormindo na sua tela de login.",
+   "blurb": "A sleeping pokémon on your login screen.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-munchlax",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "jogo"
+    "game"
    ],
    "needs_root": true,
    "download": 3535064,
@@ -5540,23 +6222,32 @@
      "action": "greeter",
      "key": "qylock-pixel-munchlax"
     }
+   ],
+   "name_pt": "Munchlax",
+   "blurb_pt": "Um pokémon dormindo na sua tela de login.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "jogo"
    ]
   },
   {
    "id": "login-qylock-women-umbrella",
    "section": "login",
-   "name": "Guarda-chuva",
-   "blurb": "Chuva, um guarda-chuva e neon.",
+   "name": "Umbrella",
+   "blurb": "Rain, an umbrella and neon.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/women-umbrella",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "arte",
-    "cidade"
+    "art",
+    "city"
    ],
    "needs_root": true,
    "download": 3397051,
@@ -5583,23 +6274,32 @@
      "action": "greeter",
      "key": "qylock-women-umbrella"
     }
+   ],
+   "name_pt": "Guarda-chuva",
+   "blurb_pt": "Chuva, um guarda-chuva e neon.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "cidade"
    ]
   },
   {
    "id": "login-qylock-material-you",
    "section": "login",
    "name": "Material You",
-   "blurb": "O desenho do Android, claro.",
+   "blurb": "Android's own look, in light.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "material",
-    "claro"
+    "light"
    ],
    "needs_root": true,
    "download": 5481497,
@@ -5626,23 +6326,32 @@
      "action": "greeter",
      "key": "qylock-material-you"
     }
+   ],
+   "name_pt": "Material You",
+   "blurb_pt": "O desenho do Android, claro.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "material",
+    "claro"
    ]
   },
   {
    "id": "login-qylock-material-you-dark",
    "section": "login",
-   "name": "Material You (escuro)",
-   "blurb": "O mesmo, no escuro.",
+   "name": "Material You (dark)",
+   "blurb": "The same, in the dark.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/material-you-dark",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "material",
-    "escuro"
+    "dark"
    ],
    "needs_root": true,
    "download": 5100872,
@@ -5669,23 +6378,32 @@
      "action": "greeter",
      "key": "qylock-material-you-dark"
     }
+   ],
+   "name_pt": "Material You (escuro)",
+   "blurb_pt": "O mesmo, no escuro.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "material",
+    "escuro"
    ]
   },
   {
    "id": "login-qylock-man-bicycle",
    "section": "login",
-   "name": "Bicicleta",
-   "blurb": "Uma estrada, uma bicicleta, fim de tarde.",
+   "name": "Bicycle",
+   "blurb": "A road, a bicycle, late afternoon.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/man-bicycle",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "arte",
-    "calmo"
+    "art",
+    "calm"
    ],
    "needs_root": true,
    "download": 5377584,
@@ -5712,23 +6430,32 @@
      "action": "greeter",
      "key": "qylock-man-bicycle"
     }
+   ],
+   "name_pt": "Bicicleta",
+   "blurb_pt": "Uma estrada, uma bicicleta, fim de tarde.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "calmo"
    ]
   },
   {
    "id": "login-qylock-r1999",
    "section": "login",
    "name": "Reverse: 1999",
-   "blurb": "Art déco e um relógio parado.",
+   "blurb": "Art deco and a stopped clock.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/R1999_2",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
-    "arte"
+    "game",
+    "art"
    ],
    "needs_root": true,
    "download": 6479343,
@@ -5748,24 +6475,33 @@
      "action": "greeter",
      "key": "qylock-r1999"
     }
+   ],
+   "name_pt": "Reverse: 1999",
+   "blurb_pt": "Art déco e um relógio parado.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "arte"
    ]
   },
   {
    "id": "login-qylock-pixel-night-city",
    "section": "login",
-   "name": "Cidade Noturna",
-   "blurb": "Neon em pixel, com chuva.",
+   "name": "Night City",
+   "blurb": "Pixel neon, with rain.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-night-city",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "cidade",
-    "animado"
+    "city",
+    "animated"
    ],
    "needs_root": true,
    "download": 12100769,
@@ -5785,24 +6521,34 @@
      "action": "greeter",
      "key": "qylock-pixel-night-city"
     }
+   ],
+   "name_pt": "Cidade Noturna",
+   "blurb_pt": "Neon em pixel, com chuva.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "cidade",
+    "animado"
    ]
   },
   {
    "id": "login-qylock-pixel-sakura",
    "section": "login",
    "name": "Sakura (pixel)",
-   "blurb": "Pétalas caindo, quadro a quadro.",
+   "blurb": "Falling petals, frame by frame.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-sakura",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "natureza",
-    "animado"
+    "nature",
+    "animated"
    ],
    "needs_root": true,
    "download": 11517780,
@@ -5822,24 +6568,34 @@
      "action": "greeter",
      "key": "qylock-pixel-sakura"
     }
+   ],
+   "name_pt": "Sakura (pixel)",
+   "blurb_pt": "Pétalas caindo, quadro a quadro.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "natureza",
+    "animado"
    ]
   },
   {
    "id": "login-qylock-pixel-rainyroom",
    "section": "login",
-   "name": "Quarto na Chuva",
-   "blurb": "A janela, a chuva, a luminária.",
+   "name": "Rainy Room",
+   "blurb": "The window, the rain, the lamp.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-rainyroom",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "calmo",
-    "animado"
+    "calm",
+    "animated"
    ],
    "needs_root": true,
    "download": 14802854,
@@ -5859,23 +6615,33 @@
      "action": "greeter",
      "key": "qylock-pixel-rainyroom"
     }
+   ],
+   "name_pt": "Quarto na Chuva",
+   "blurb_pt": "A janela, a chuva, a luminária.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "calmo",
+    "animado"
    ]
   },
   {
    "id": "login-qylock-star-rail",
    "section": "login",
    "name": "Star Rail",
-   "blurb": "O trem entre as estrelas.",
+   "blurb": "The train between the stars.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/star-rail",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
-    "espaço"
+    "game",
+    "space"
    ],
    "needs_root": true,
    "download": 12513905,
@@ -5895,23 +6661,32 @@
      "action": "greeter",
      "key": "qylock-star-rail"
     }
+   ],
+   "name_pt": "Star Rail",
+   "blurb_pt": "O trem entre as estrelas.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "espaço"
    ]
   },
   {
    "id": "login-qylock-dog-samurai",
    "section": "login",
-   "name": "Cão Samurai",
-   "blurb": "Exatamente o que está escrito.",
+   "name": "Samurai Dog",
+   "blurb": "Exactly what it says.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/dog-samurai",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "arte",
-    "jogo"
+    "art",
+    "game"
    ],
    "needs_root": true,
    "download": 15881915,
@@ -5931,23 +6706,32 @@
      "action": "greeter",
      "key": "qylock-dog-samurai"
     }
+   ],
+   "name_pt": "Cão Samurai",
+   "blurb_pt": "Exatamente o que está escrito.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "jogo"
    ]
   },
   {
    "id": "login-qylock-pixel-emerald",
    "section": "login",
-   "name": "Esmeralda",
-   "blurb": "Verde em pixel, do jeito da casa.",
+   "name": "Emerald",
+   "blurb": "Pixel green, in the house's own shade.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-emerald",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "verde"
+    "green"
    ],
    "needs_root": true,
    "download": 15428976,
@@ -5967,24 +6751,33 @@
      "action": "greeter",
      "key": "qylock-pixel-emerald"
     }
+   ],
+   "name_pt": "Esmeralda",
+   "blurb_pt": "Verde em pixel, do jeito da casa.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "verde"
    ]
   },
   {
    "id": "login-qylock-winter",
    "section": "login",
-   "name": "Inverno",
-   "blurb": "Neve caindo devagar.",
+   "name": "Winter",
+   "blurb": "Snow coming down slowly.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/winter",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "natureza",
-    "frio",
-    "animado"
+    "nature",
+    "cold",
+    "animated"
    ],
    "needs_root": true,
    "download": 17748138,
@@ -6004,22 +6797,32 @@
      "action": "greeter",
      "key": "qylock-winter"
     }
+   ],
+   "name_pt": "Inverno",
+   "blurb_pt": "Neve caindo devagar.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "natureza",
+    "frio",
+    "animado"
    ]
   },
   {
    "id": "login-qylock-enfield",
    "section": "login",
    "name": "Enfield",
-   "blurb": "Uma moto antiga e poeira.",
+   "blurb": "An old motorcycle and dust.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/enfield",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "arte",
+    "art",
     "retro"
    ],
    "needs_root": true,
@@ -6040,24 +6843,33 @@
      "action": "greeter",
      "key": "qylock-enfield"
     }
+   ],
+   "name_pt": "Enfield",
+   "blurb_pt": "Uma moto antiga e poeira.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "retro"
    ]
   },
   {
    "id": "login-qylock-pixel-cyberpunk",
    "section": "login",
    "name": "Cyberpunk (pixel)",
-   "blurb": "Neon, fumaça e oito bits.",
+   "blurb": "Neon, smoke and eight bits.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-cyberpunk",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "cidade",
-    "animado"
+    "city",
+    "animated"
    ],
    "needs_root": true,
    "download": 9252120,
@@ -6077,23 +6889,33 @@
      "action": "greeter",
      "key": "qylock-pixel-cyberpunk"
     }
+   ],
+   "name_pt": "Cyberpunk (pixel)",
+   "blurb_pt": "Neon, fumaça e oito bits.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "cidade",
+    "animado"
    ]
   },
   {
    "id": "login-qylock-wuwa",
    "section": "login",
    "name": "Wuthering Waves",
-   "blurb": "Vento, capa e horizonte.",
+   "blurb": "Wind, a cloak and the horizon.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/wuwa",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
-    "arte"
+    "game",
+    "art"
    ],
    "needs_root": true,
    "download": 28304197,
@@ -6113,23 +6935,32 @@
      "action": "greeter",
      "key": "qylock-wuwa"
     }
+   ],
+   "name_pt": "Wuthering Waves",
+   "blurb_pt": "Vento, capa e horizonte.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "arte"
    ]
   },
   {
    "id": "login-qylock-pixel-skyscrapers",
    "section": "login",
-   "name": "Arranha-céus",
-   "blurb": "A cidade de cima, em pixel.",
+   "name": "Skyscrapers",
+   "blurb": "The city from above, in pixel art.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-skyscrapers",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
     "pixel",
-    "cidade"
+    "city"
    ],
    "needs_root": true,
    "download": 21694288,
@@ -6149,23 +6980,32 @@
      "action": "greeter",
      "key": "qylock-pixel-skyscrapers"
     }
+   ],
+   "name_pt": "Arranha-céus",
+   "blurb_pt": "A cidade de cima, em pixel.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "pixel",
+    "cidade"
    ]
   },
   {
    "id": "login-qylock-sword",
    "section": "login",
-   "name": "Espada",
-   "blurb": "Uma lâmina e muito preto.",
+   "name": "Sword",
+   "blurb": "A blade and a great deal of black.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/sword",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "arte",
-    "escuro"
+    "art",
+    "dark"
    ],
    "needs_root": true,
    "download": 43869243,
@@ -6185,24 +7025,33 @@
      "action": "greeter",
      "key": "qylock-sword"
     }
+   ],
+   "name_pt": "Espada",
+   "blurb_pt": "Uma lâmina e muito preto.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "arte",
+    "escuro"
    ]
   },
   {
    "id": "login-qylock-pixel-hollowknight",
    "section": "login",
    "name": "Hollow Knight",
-   "blurb": "Hallownest, em pixel e azul.",
+   "blurb": "Hallownest, in pixel art and blue.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/pixel-hollowknight",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
+    "game",
     "pixel",
-    "escuro"
+    "dark"
    ],
    "needs_root": true,
    "download": 40679765,
@@ -6222,23 +7071,33 @@
      "action": "greeter",
      "key": "qylock-pixel-hollowknight"
     }
+   ],
+   "name_pt": "Hollow Knight",
+   "blurb_pt": "Hallownest, em pixel e azul.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "pixel",
+    "escuro"
    ]
   },
   {
    "id": "login-qylock-osu",
    "section": "login",
    "name": "osu!",
-   "blurb": "Cinco fundos e o rosa de sempre. O maior da prateleira.",
+   "blurb": "Five backgrounds and the usual pink. The largest on the shelf.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/osu",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
-    "rosa"
+    "game",
+    "pink"
    ],
    "needs_root": true,
    "download": 38490678,
@@ -6265,23 +7124,32 @@
      "action": "greeter",
      "key": "qylock-osu"
     }
+   ],
+   "name_pt": "osu!",
+   "blurb_pt": "Cinco fundos e o rosa de sempre. O maior da prateleira.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "rosa"
    ]
   },
   {
    "id": "login-qylock-forest",
    "section": "login",
-   "name": "Floresta (qylock)",
-   "blurb": "Mata fechada, em altíssima resolução.",
+   "name": "Forest (qylock)",
+   "blurb": "Deep woods, at very high resolution.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/forest",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "natureza",
-    "verde"
+    "nature",
+    "green"
    ],
    "needs_root": true,
    "download": 53384242,
@@ -6301,23 +7169,32 @@
      "action": "greeter",
      "key": "qylock-forest"
     }
+   ],
+   "name_pt": "Floresta (qylock)",
+   "blurb_pt": "Mata fechada, em altíssima resolução.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "natureza",
+    "verde"
    ]
   },
   {
    "id": "login-qylock-genshin",
    "section": "login",
    "name": "Genshin Impact",
-   "blurb": "Teyvat na tela de login.",
+   "blurb": "Teyvat on your login screen.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/Genshin",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
-    "arte"
+    "game",
+    "art"
    ],
    "needs_root": true,
    "download": 51850528,
@@ -6337,23 +7214,32 @@
      "action": "greeter",
      "key": "qylock-genshin"
     }
+   ],
+   "name_pt": "Genshin Impact",
+   "blurb_pt": "Teyvat na tela de login.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "arte"
    ]
   },
   {
    "id": "login-qylock-last-of-us",
    "section": "login",
    "name": "The Last of Us",
-   "blurb": "O mundo depois. O mais pesado de todos.",
+   "blurb": "The world after. The heaviest of them all.",
    "family": "login",
    "author": "Darkkal44",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Darkkal44/qylock/tree/f6561e2ceae33f26e5e660742a5df2f725cbe514/themes/last-of-us",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "qylock",
-    "jogo",
-    "escuro"
+    "game",
+    "dark"
    ],
    "needs_root": true,
    "download": 78328519,
@@ -6373,22 +7259,31 @@
      "action": "greeter",
      "key": "qylock-last-of-us"
     }
+   ],
+   "name_pt": "The Last of Us",
+   "blurb_pt": "O mundo depois. O mais pesado de todos.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "qylock",
+    "jogo",
+    "escuro"
    ]
   },
   {
    "id": "login-astronaut",
    "section": "login",
-   "name": "Astronauta",
-   "blurb": "Um astronauta à deriva, e o campo de senha no meio do espaço.",
+   "name": "Astronaut",
+   "blurb": "An astronaut adrift, and the password field out in space.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
-    "espaço",
-    "animado"
+    "before the session",
+    "space",
+    "animated"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6408,23 +7303,31 @@
      "key": "astronaut",
      "conf": "Themes/astronaut.conf"
     }
+   ],
+   "name_pt": "Astronauta",
+   "blurb_pt": "Um astronauta à deriva, e o campo de senha no meio do espaço.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "espaço",
+    "animado"
    ]
   },
   {
    "id": "login-astronaut-black-hole",
    "section": "login",
-   "name": "Buraco Negro",
-   "blurb": "Fundo animado engolindo a luz. O mais pesado dos dez.",
+   "name": "Black Hole",
+   "blurb": "An animated background swallowing the light. The heaviest of the ten.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
-    "espaço",
-    "animado",
-    "escuro"
+    "before the session",
+    "space",
+    "animated",
+    "dark"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6444,22 +7347,31 @@
      "key": "astronaut",
      "conf": "Themes/black_hole.conf"
     }
+   ],
+   "name_pt": "Buraco Negro",
+   "blurb_pt": "Fundo animado engolindo a luz. O mais pesado dos dez.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "espaço",
+    "animado",
+    "escuro"
    ]
   },
   {
    "id": "login-astronaut-cyberpunk",
    "section": "login",
    "name": "Cyberpunk",
-   "blurb": "Neon rosa e ciano, chuva na cidade.",
+   "blurb": "Pink and cyan neon, rain over the city.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "neon",
-    "animado"
+    "animated"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6479,22 +7391,30 @@
      "key": "astronaut",
      "conf": "Themes/cyberpunk.conf"
     }
+   ],
+   "name_pt": "Cyberpunk",
+   "blurb_pt": "Neon rosa e ciano, chuva na cidade.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "neon",
+    "animado"
    ]
   },
   {
    "id": "login-astronaut-hyprland",
    "section": "login",
    "name": "Hyprland",
-   "blurb": "A garota do Hyprland, animada.",
+   "blurb": "The Hyprland girl, animated.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "anime",
-    "animado"
+    "animated"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6514,22 +7434,30 @@
      "key": "astronaut",
      "conf": "Themes/hyprland_kath.conf"
     }
+   ],
+   "name_pt": "Hyprland",
+   "blurb_pt": "A garota do Hyprland, animada.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "anime",
+    "animado"
    ]
   },
   {
    "id": "login-astronaut-jake",
    "section": "login",
    "name": "Jake",
-   "blurb": "Hora de aventura na tela de login.",
+   "blurb": "Adventure Time on your login screen.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "cartoon",
-    "animado"
+    "animated"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6549,21 +7477,29 @@
      "key": "astronaut",
      "conf": "Themes/jake_the_dog.conf"
     }
+   ],
+   "name_pt": "Jake",
+   "blurb_pt": "Hora de aventura na tela de login.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "cartoon",
+    "animado"
    ]
   },
   {
    "id": "login-astronaut-japanese",
    "section": "login",
-   "name": "Japonesa",
-   "blurb": "Torii, montanha e um degradê de fim de tarde.",
+   "name": "Japanese",
+   "blurb": "A torii, a mountain and a late-afternoon gradient.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
-    "paisagem"
+    "before the session",
+    "landscape"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6583,22 +7519,29 @@
      "key": "astronaut",
      "conf": "Themes/japanese_aesthetic.conf"
     }
+   ],
+   "name_pt": "Japonesa",
+   "blurb_pt": "Torii, montanha e um degradê de fim de tarde.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "paisagem"
    ]
   },
   {
    "id": "login-astronaut-sakura",
    "section": "login",
-   "name": "Sakura (animada)",
-   "blurb": "Pétalas caindo em pixel art, em movimento.",
+   "name": "Sakura (animated)",
+   "blurb": "Falling petals in pixel art, moving.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "pixel",
-    "animado"
+    "animated"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6618,22 +7561,30 @@
      "key": "astronaut",
      "conf": "Themes/pixel_sakura.conf"
     }
+   ],
+   "name_pt": "Sakura (animada)",
+   "blurb_pt": "Pétalas caindo em pixel art, em movimento.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "pixel",
+    "animado"
    ]
   },
   {
    "id": "login-astronaut-sakura-still",
    "section": "login",
-   "name": "Sakura (parada)",
-   "blurb": "A mesma cena em pixel art, sem animação -- mais leve.",
+   "name": "Sakura (still)",
+   "blurb": "The same scene in pixel art, without the animation -- lighter.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "pixel",
-    "leve"
+    "light-weight"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6653,22 +7604,30 @@
      "key": "astronaut",
      "conf": "Themes/pixel_sakura_static.conf"
     }
+   ],
+   "name_pt": "Sakura (parada)",
+   "blurb_pt": "A mesma cena em pixel art, sem animação -- mais leve.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "pixel",
+    "leve"
    ]
   },
   {
    "id": "login-astronaut-hacker",
    "section": "login",
    "name": "Hacker",
-   "blurb": "Terminal verde sobre ruína. Mono e sujo, do jeito certo.",
+   "blurb": "A green terminal over ruin. Monospaced and grimy, in the right way.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "terminal",
-    "verde"
+    "green"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6688,22 +7647,30 @@
      "key": "astronaut",
      "conf": "Themes/post-apocalyptic_hacker.conf"
     }
+   ],
+   "name_pt": "Hacker",
+   "blurb_pt": "Terminal verde sobre ruína. Mono e sujo, do jeito certo.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "terminal",
+    "verde"
    ]
   },
   {
    "id": "login-astronaut-purple-leaves",
    "section": "login",
-   "name": "Folhas Roxas",
-   "blurb": "Folhagem roxa e um campo discreto embaixo.",
+   "name": "Purple Leaves",
+   "blurb": "Purple foliage and a discreet field below it.",
    "family": "login",
    "author": "keyitdev",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/Keyitdev/sddm-astronaut-theme/tree/abb3163c724935af888ba5ea9ac0c4f22afd8048",
    "tags": [
     "login",
-    "antes da sessão",
-    "natureza",
-    "roxo"
+    "before the session",
+    "nature",
+    "purple"
    ],
    "needs_root": true,
    "download": 17640027,
@@ -6723,22 +7690,30 @@
      "key": "astronaut",
      "conf": "Themes/purple_leaves.conf"
     }
+   ],
+   "name_pt": "Folhas Roxas",
+   "blurb_pt": "Folhagem roxa e um campo discreto embaixo.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "natureza",
+    "roxo"
    ]
   },
   {
    "id": "login-caelestia-locklike",
    "section": "login",
    "name": "Caelestia Locklike",
-   "blurb": "A tela de login igual ao bloqueio do caelestia: relógio enorme, citação, avatar. É o desktop do Genesi antes de entrar nele.",
+   "blurb": "The login screen as caelestia's own lock: a huge clock, a quote, an avatar. It is the Genesi desktop, before you are in it.",
    "family": "login",
    "author": "AkhiLeith",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/ItsABigIgloo/caelestia-sddm/tree/7843c0f38de1e4f8606976ae0983536bf8ed4c76",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "caelestia",
-    "combina"
+    "matching"
    ],
    "needs_root": true,
    "download": 8132451,
@@ -6757,22 +7732,30 @@
      "action": "greeter",
      "key": "caelestia-locklike"
     }
+   ],
+   "name_pt": "Caelestia Locklike",
+   "blurb_pt": "A tela de login igual ao bloqueio do caelestia: relógio enorme, citação, avatar. É o desktop do Genesi antes de entrar nele.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "caelestia",
+    "combina"
    ]
   },
   {
    "id": "login-caelestia-minimalist",
    "section": "login",
    "name": "Caelestia Minimalist",
-   "blurb": "A mesma família, reduzida ao relógio e ao campo.",
+   "blurb": "The same family, cut down to the clock and the field.",
    "family": "login",
    "author": "Haikalllp",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/ItsABigIgloo/caelestia-sddm/tree/7843c0f38de1e4f8606976ae0983536bf8ed4c76",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "caelestia",
-    "minimalista"
+    "minimal"
    ],
    "needs_root": true,
    "download": 8132451,
@@ -6791,22 +7774,30 @@
      "action": "greeter",
      "key": "caelestia-minimalist"
     }
+   ],
+   "name_pt": "Caelestia Minimalist",
+   "blurb_pt": "A mesma família, reduzida ao relógio e ao campo.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "caelestia",
+    "minimalista"
    ]
   },
   {
    "id": "login-silent",
    "section": "login",
    "name": "Silent",
-   "blurb": "Um cartão de vidro no meio da tela. O mais bem acabado da lista.",
+   "blurb": "A glass card in the middle of the screen. The most finished of the lot.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
-    "vidro",
-    "moderno"
+    "before the session",
+    "glass",
+    "modern"
    ],
    "needs_root": true,
    "download": 20807064,
@@ -6826,22 +7817,30 @@
      "key": "silent",
      "conf": "configs/default.conf"
     }
+   ],
+   "name_pt": "Silent",
+   "blurb_pt": "Um cartão de vidro no meio da tela. O mais bem acabado da lista.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "vidro",
+    "moderno"
    ]
   },
   {
    "id": "login-silent-left",
    "section": "login",
-   "name": "Silent (esquerda)",
-   "blurb": "O mesmo cartão, encostado à esquerda.",
+   "name": "Silent (left)",
+   "blurb": "The same card, against the left.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
-    "vidro",
-    "moderno"
+    "before the session",
+    "glass",
+    "modern"
    ],
    "needs_root": true,
    "download": 20807064,
@@ -6861,22 +7860,30 @@
      "key": "silent",
      "conf": "configs/default-left.conf"
     }
+   ],
+   "name_pt": "Silent (esquerda)",
+   "blurb_pt": "O mesmo cartão, encostado à esquerda.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "vidro",
+    "moderno"
    ]
   },
   {
    "id": "login-silent-right",
    "section": "login",
-   "name": "Silent (direita)",
-   "blurb": "O mesmo cartão, encostado à direita.",
+   "name": "Silent (right)",
+   "blurb": "The same card, against the right.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
-    "vidro",
-    "moderno"
+    "before the session",
+    "glass",
+    "modern"
    ],
    "needs_root": true,
    "download": 20807064,
@@ -6896,22 +7903,30 @@
      "key": "silent",
      "conf": "configs/default-right.conf"
     }
+   ],
+   "name_pt": "Silent (direita)",
+   "blurb_pt": "O mesmo cartão, encostado à direita.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "vidro",
+    "moderno"
    ]
   },
   {
    "id": "login-silent-mocha",
    "section": "login",
    "name": "Silent Catppuccin Mocha",
-   "blurb": "Catppuccin escuro, o de sempre.",
+   "blurb": "Catppuccin dark, the usual one.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "catppuccin",
-    "escuro"
+    "dark"
    ],
    "needs_root": true,
    "download": 20807064,
@@ -6931,22 +7946,30 @@
      "key": "silent",
      "conf": "configs/catppuccin-mocha.conf"
     }
+   ],
+   "name_pt": "Silent Catppuccin Mocha",
+   "blurb_pt": "Catppuccin escuro, o de sempre.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "catppuccin",
+    "escuro"
    ]
   },
   {
    "id": "login-silent-macchiato",
    "section": "login",
    "name": "Silent Catppuccin Macchiato",
-   "blurb": "Catppuccin um tom acima do mocha.",
+   "blurb": "Catppuccin a shade above mocha.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "catppuccin",
-    "escuro"
+    "dark"
    ],
    "needs_root": true,
    "download": 20807064,
@@ -6966,20 +7989,28 @@
      "key": "silent",
      "conf": "configs/catppuccin-macchiato.conf"
     }
+   ],
+   "name_pt": "Silent Catppuccin Macchiato",
+   "blurb_pt": "Catppuccin um tom acima do mocha.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "catppuccin",
+    "escuro"
    ]
   },
   {
    "id": "login-silent-frappe",
    "section": "login",
    "name": "Silent Catppuccin Frappé",
-   "blurb": "Catppuccin morno.",
+   "blurb": "Catppuccin, lukewarm.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "catppuccin"
    ],
    "needs_root": true,
@@ -7000,22 +8031,29 @@
      "key": "silent",
      "conf": "configs/catppuccin-frappe.conf"
     }
+   ],
+   "name_pt": "Silent Catppuccin Frappé",
+   "blurb_pt": "Catppuccin morno.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "catppuccin"
    ]
   },
   {
    "id": "login-silent-latte",
    "section": "login",
    "name": "Silent Catppuccin Latte",
-   "blurb": "Catppuccin claro, para quem usa tema claro.",
+   "blurb": "Catppuccin light, for anybody on a light theme.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "catppuccin",
-    "claro"
+    "light"
    ],
    "needs_root": true,
    "download": 20807064,
@@ -7035,22 +8073,30 @@
      "key": "silent",
      "conf": "configs/catppuccin-latte.conf"
     }
+   ],
+   "name_pt": "Silent Catppuccin Latte",
+   "blurb_pt": "Catppuccin claro, para quem usa tema claro.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "catppuccin",
+    "claro"
    ]
   },
   {
    "id": "login-silent-everforest",
    "section": "login",
    "name": "Silent Everforest",
-   "blurb": "Verde de floresta, que é a cor da casa.",
+   "blurb": "Forest green, which is the house colour.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "everforest",
-    "verde"
+    "green"
    ],
    "needs_root": true,
    "download": 20807064,
@@ -7070,22 +8116,30 @@
      "key": "silent",
      "conf": "configs/everforest.conf"
     }
+   ],
+   "name_pt": "Silent Everforest",
+   "blurb_pt": "Verde de floresta, que é a cor da casa.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "everforest",
+    "verde"
    ]
   },
   {
    "id": "login-silent-nord",
    "section": "login",
    "name": "Silent Nord",
-   "blurb": "Azul frio do Nord.",
+   "blurb": "Nord's cold blue.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "nord",
-    "azul"
+    "blue"
    ],
    "needs_root": true,
    "download": 20807064,
@@ -7105,22 +8159,30 @@
      "key": "silent",
      "conf": "configs/nord.conf"
     }
+   ],
+   "name_pt": "Silent Nord",
+   "blurb_pt": "Azul frio do Nord.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "nord",
+    "azul"
    ]
   },
   {
    "id": "login-silent-ken",
    "section": "login",
    "name": "Silent Ken",
-   "blurb": "Com vídeo de fundo. Bonito, e o mais pesado da prateleira.",
+   "blurb": "With a video background. Handsome, and the heaviest on the shelf.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
-    "vídeo",
-    "animado"
+    "before the session",
+    "video",
+    "animated"
    ],
    "needs_root": true,
    "download": 20807064,
@@ -7140,22 +8202,30 @@
      "key": "silent",
      "conf": "configs/ken.conf"
     }
+   ],
+   "name_pt": "Silent Ken",
+   "blurb_pt": "Com vídeo de fundo. Bonito, e o mais pesado da prateleira.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "vídeo",
+    "animado"
    ]
   },
   {
    "id": "login-silent-rei",
    "section": "login",
    "name": "Silent Rei",
-   "blurb": "Também com vídeo de fundo.",
+   "blurb": "Also with a video background.",
    "family": "login",
    "author": "uiriansan",
    "license": "GPL-3.0-or-later",
    "source": "https://github.com/uiriansan/SilentSDDM/tree/73380d331fe0f8b8a3b17991bb917a0d438a4d34",
    "tags": [
     "login",
-    "antes da sessão",
-    "vídeo",
-    "animado",
+    "before the session",
+    "video",
+    "animated",
     "anime"
    ],
    "needs_root": true,
@@ -7176,20 +8246,29 @@
      "key": "silent",
      "conf": "configs/rei.conf"
     }
+   ],
+   "name_pt": "Silent Rei",
+   "blurb_pt": "Também com vídeo de fundo.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "vídeo",
+    "animado",
+    "anime"
    ]
   },
   {
    "id": "login-echo",
    "section": "login",
    "name": "Echo",
-   "blurb": "Um terminal do macOS com o log de boot correndo dentro. Você digita a senha no prompt.",
+   "blurb": "A macOS terminal with the boot log running inside it. You type your password at the prompt.",
    "family": "login",
    "author": "xCaptaiN09",
    "license": "MIT",
    "source": "https://github.com/xCaptaiN09/echo-sddm/tree/e004121450ff71050d3d76a998b86eafdbb6bf47",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "terminal",
     "mono"
    ],
@@ -7210,22 +8289,30 @@
      "action": "greeter",
      "key": "echo"
     }
+   ],
+   "name_pt": "Echo",
+   "blurb_pt": "Um terminal do macOS com o log de boot correndo dentro. Você digita a senha no prompt.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "terminal",
+    "mono"
    ]
   },
   {
    "id": "login-pixie",
    "section": "login",
    "name": "Pixie",
-   "blurb": "Material You: relógio empilhado, cantos macios, cor de Pixel.",
+   "blurb": "Material You: a stacked clock, soft corners, Pixel colour.",
    "family": "login",
    "author": "xCaptaiN09",
    "license": "MIT",
    "source": "https://github.com/xCaptaiN09/pixie-sddm/tree/1e1a863761f742e8d509d569382b17c112e29fdc",
    "tags": [
     "login",
-    "antes da sessão",
+    "before the session",
     "material",
-    "limpo"
+    "clean"
    ],
    "needs_root": true,
    "download": 10239099,
@@ -7244,22 +8331,30 @@
      "action": "greeter",
      "key": "pixie"
     }
+   ],
+   "name_pt": "Pixie",
+   "blurb_pt": "Material You: relógio empilhado, cantos macios, cor de Pixel.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "material",
+    "limpo"
    ]
   },
   {
    "id": "login-whereis",
    "section": "login",
-   "name": "Cadê meu tema?",
-   "blurb": "Fundo preto e a senha em letras gigantes. Nada mais na tela.",
+   "name": "Where's my theme?",
+   "blurb": "A black background and the password in enormous letters. Nothing else on the screen.",
    "family": "login",
    "author": "stepanzubkov",
    "license": "MIT",
    "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
    "tags": [
     "login",
-    "antes da sessão",
-    "minimalista",
-    "rápido"
+    "before the session",
+    "minimal",
+    "quick"
    ],
    "needs_root": true,
    "download": 2563899,
@@ -7279,22 +8374,30 @@
      "key": "whereis",
      "conf": "theme.conf"
     }
+   ],
+   "name_pt": "Cadê meu tema?",
+   "blurb_pt": "Fundo preto e a senha em letras gigantes. Nada mais na tela.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "rápido"
    ]
   },
   {
    "id": "login-whereis-blue",
    "section": "login",
-   "name": "Cadê meu tema? (azul)",
-   "blurb": "O mesmo nada, em azul.",
+   "name": "Where's my theme? (blue)",
+   "blurb": "The same nothing, in blue.",
    "family": "login",
    "author": "stepanzubkov",
    "license": "MIT",
    "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
    "tags": [
     "login",
-    "antes da sessão",
-    "minimalista",
-    "azul"
+    "before the session",
+    "minimal",
+    "blue"
    ],
    "needs_root": true,
    "download": 2563899,
@@ -7314,21 +8417,29 @@
      "key": "whereis",
      "conf": "example_configs/blue.conf"
     }
+   ],
+   "name_pt": "Cadê meu tema? (azul)",
+   "blurb_pt": "O mesmo nada, em azul.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "azul"
    ]
   },
   {
    "id": "login-whereis-grey",
    "section": "login",
-   "name": "Cadê meu tema? (cinza)",
-   "blurb": "O mesmo nada, em cinza.",
+   "name": "Where's my theme? (grey)",
+   "blurb": "The same nothing, in grey.",
    "family": "login",
    "author": "stepanzubkov",
    "license": "MIT",
    "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
    "tags": [
     "login",
-    "antes da sessão",
-    "minimalista"
+    "before the session",
+    "minimal"
    ],
    "needs_root": true,
    "download": 2563899,
@@ -7348,21 +8459,28 @@
      "key": "whereis",
      "conf": "example_configs/grey.conf"
     }
+   ],
+   "name_pt": "Cadê meu tema? (cinza)",
+   "blurb_pt": "O mesmo nada, em cinza.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "minimalista"
    ]
   },
   {
    "id": "login-whereis-nord",
    "section": "login",
-   "name": "Cadê meu tema? (nord)",
-   "blurb": "O mesmo nada, com a paleta Nord.",
+   "name": "Where's my theme? (nord)",
+   "blurb": "The same nothing, in Nord.",
    "family": "login",
    "author": "stepanzubkov",
    "license": "MIT",
    "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
    "tags": [
     "login",
-    "antes da sessão",
-    "minimalista",
+    "before the session",
+    "minimal",
     "nord"
    ],
    "needs_root": true,
@@ -7383,22 +8501,30 @@
      "key": "whereis",
      "conf": "example_configs/nord.conf"
     }
+   ],
+   "name_pt": "Cadê meu tema? (nord)",
+   "blurb_pt": "O mesmo nada, com a paleta Nord.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "nord"
    ]
   },
   {
    "id": "login-whereis-rose",
    "section": "login",
-   "name": "Cadê meu tema? (rosé pine)",
-   "blurb": "O mesmo nada, em rosé pine moon.",
+   "name": "Where's my theme? (rosé pine)",
+   "blurb": "The same nothing, in rosé pine moon.",
    "family": "login",
    "author": "stepanzubkov",
    "license": "MIT",
    "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
    "tags": [
     "login",
-    "antes da sessão",
-    "minimalista",
-    "rosa"
+    "before the session",
+    "minimal",
+    "pink"
    ],
    "needs_root": true,
    "download": 2563899,
@@ -7418,22 +8544,30 @@
      "key": "whereis",
      "conf": "example_configs/rose-pine-moon.conf"
     }
+   ],
+   "name_pt": "Cadê meu tema? (rosé pine)",
+   "blurb_pt": "O mesmo nada, em rosé pine moon.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "rosa"
    ]
   },
   {
    "id": "login-whereis-tree",
    "section": "login",
-   "name": "Cadê meu tema? (árvore)",
-   "blurb": "Com uma foto atrás, para provar que dá.",
+   "name": "Where's my theme? (tree)",
+   "blurb": "With a photograph behind it, to prove it can be done.",
    "family": "login",
    "author": "stepanzubkov",
    "license": "MIT",
    "source": "https://github.com/stepanzubkov/where-is-my-sddm-theme/tree/2fddf85ec80ff02a8e20fdcba51a30b436d76e6c",
    "tags": [
     "login",
-    "antes da sessão",
-    "minimalista",
-    "foto"
+    "before the session",
+    "minimal",
+    "photo"
    ],
    "needs_root": true,
    "download": 2563899,
@@ -7453,22 +8587,30 @@
      "key": "whereis",
      "conf": "example_configs/tree.conf"
     }
+   ],
+   "name_pt": "Cadê meu tema? (árvore)",
+   "blurb_pt": "Com uma foto atrás, para provar que dá.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "foto"
    ]
   },
   {
    "id": "login-hypr",
    "section": "login",
    "name": "Hypr",
-   "blurb": "O jeitão do hyprlock na tela de login: relógio empilhado, cartão no meio, paleta fixa. Não segue o seu papel de parede.",
+   "blurb": "hyprlock's look on the login screen: a stacked clock, a card in the middle, a fixed palette. It does not follow your wallpaper.",
    "family": "login",
    "author": "adior_enigmac",
    "license": "MIT",
    "source": "https://github.com/ADIOR-enigma/hypr-sddm/tree/52fd4a538fabea2331d9b9f956c2497ff5f9102c",
    "tags": [
     "login",
-    "antes da sessão",
-    "minimalista",
-    "escuro"
+    "before the session",
+    "minimal",
+    "dark"
    ],
    "needs_root": true,
    "download": 789167,
@@ -7487,6 +8629,14 @@
      "action": "greeter",
      "key": "hypr"
     }
+   ],
+   "name_pt": "Hypr",
+   "blurb_pt": "O jeitão do hyprlock na tela de login: relógio empilhado, cartão no meio, paleta fixa. Não segue o seu papel de parede.",
+   "tags_pt": [
+    "login",
+    "antes da sessão",
+    "minimalista",
+    "escuro"
    ]
   }
  ]

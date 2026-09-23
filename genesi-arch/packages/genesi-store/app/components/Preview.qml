@@ -588,7 +588,7 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             visible: root.detailed
-            text: root.kind === "login" ? qsTr("antes da sessão") : qsTr("na sessão")
+            text: root.kind === "login" ? Lang.t("before the session", "antes da sessão") : Lang.t("in the session", "na sessão")
             color: Qt.alpha(root.spec.accent ?? Tokens.accentSoft, 0.7)
             font.family: Tokens.mono
             font.pixelSize: root.u * 4
