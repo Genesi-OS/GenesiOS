@@ -45,10 +45,10 @@ ENGLISH = {
         "The colour of everything, from the bar to the terminal.",
     "Antes de entrar: o que pede sua senha no boot.":
         "Before you are in: what asks for your password at boot.",
-    "Já dentro: quando você tranca e volta. O padrão é a tranca do "
-    "caelestia; estas a substituem.":
-        "Once you are in: when you lock and come back. The default is "
-        "caelestia's own lock; these replace it.",
+    "Já dentro: a tranca do caelestia, que segue o seu tema e o seu papel "
+    "de parede.":
+        "Once you are in: caelestia's own lock, which follows your theme and "
+        "your wallpaper.",
     "Quinze arranjos da barra.": "Fifteen arrangements of the bar.",
     "O cartão de visita do terminal.": "What your terminal says hello with.",
     "Papéis de parede e detalhes.": "Wallpapers and small things.",
@@ -161,18 +161,6 @@ ENGLISH = {
     "Uma linha contínua.": "One continuous line.",
     "Some até você precisar.": "Gone until you reach for it.",
 
-    # ── Session locks ──────────────────────────────────────────────────────
-    "Papel de parede": "Wallpaper",
-    "Limpa": "Plain",
-    "Noite": "Night",
-    "Terminal": "Terminal",
-    "O seu papel de parede, desfocado.": "Your wallpaper, blurred.",
-    "Fundo sólido, relógio grande, nada mais.":
-        "A solid background, a big clock, nothing else.",
-    "Escuro de verdade, para não acordar ninguém.":
-        "Properly dark, so as not to wake anybody.",
-    "Monoespaçada, como um prompt.": "Monospaced, like a prompt.",
-
     # ── Fastfetch ──────────────────────────────────────────────────────────
     "Completo": "Full",
     "Sem logo": "No logo",
@@ -210,8 +198,8 @@ ENGLISH = {
     "Terra": "Earth",
     "Meia-Noite": "Midnight",
     "Papel": "Paper",
-    "Verde fechado, barra rente, bloqueio desfocado.":
-        "Deep green, a flush bar, a blurred lock screen.",
+    "Verde fechado e barra rente sobre a mata.":
+        "Deep green and a flush bar over the woods.",
     "Verde claro da casa sobre água parada.":
         "The house's lighter green over still water.",
     "Preto real, barra fina, nada brilhando.":
@@ -231,10 +219,8 @@ ENGLISH = {
     "uma barra que respira.":
         "The basics for a desktop that is no longer the default one: colour, "
         "a wallpaper, and a bar with room to breathe.",
-    "Fastfetch completo, bloqueio monoespaçado e uma barra densa: para quem "
-    "vive no prompt.":
-        "Full fastfetch, a monospaced lock screen and a dense bar: for "
-        "anybody who lives at the prompt.",
+    "Fastfetch completo e uma barra densa: para quem vive no prompt.":
+        "Full fastfetch and a dense bar: for anybody who lives at the prompt.",
     "Claro de dia, sem barulho visual: tema claro, papel minimalista e barra "
     "limpa.":
         "Light by day and visually quiet: a light theme, a minimal wallpaper "

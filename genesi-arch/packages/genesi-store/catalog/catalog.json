@@ -1,6 +1,6 @@
 {
  "version": 1,
- "updated": "2026-09-20",
+ "updated": "2026-09-23",
  "sections": [
   {
    "id": "discover",
@@ -38,9 +38,9 @@
    "id": "lockscreens",
    "label": "Lockscreens",
    "icon": "lock",
-   "blurb": "Once you are in: when you lock and come back. The default is caelestia's own lock; these replace it.",
+   "blurb": "Once you are in: caelestia's own lock, which follows your theme and your wallpaper.",
    "label_pt": "Bloqueio da sessão",
-   "blurb_pt": "Já dentro: quando você tranca e volta. O padrão é a tranca do caelestia; estas a substituem."
+   "blurb_pt": "Já dentro: a tranca do caelestia, que segue o seu tema e o seu papel de parede."
   },
   {
    "id": "bars",
@@ -4355,197 +4355,6 @@
    ]
   },
   {
-   "id": "lock-wallpaper",
-   "section": "lockscreens",
-   "name": "Wallpaper",
-   "blurb": "Your wallpaper, blurred.",
-   "family": "session",
-   "replaces": "caelestia",
-   "author": "Genesi",
-   "tags": [
-    "session",
-    "blur"
-   ],
-   "preview": {
-    "kind": "lock",
-    "background": "#14241c",
-    "accent": "#8fd6ab",
-    "thumb": "wall-forest-dark.jpg",
-    "blur": true
-   },
-   "actions": [
-    {
-     "action": "package",
-     "name": "hyprlock",
-     "binary": "hyprlock"
-    },
-    {
-     "action": "package",
-     "name": "hypridle",
-     "binary": "hypridle"
-    },
-    {
-     "action": "file",
-     "path": "~/.config/hypr/hyprlock.conf",
-     "text": "# Papel de parede -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 3\n    blur_size = 8\n    brightness = 0.7\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 0.9)\n    inner_color = rgba(20, 28, 24, 0.75)\n    font_color = rgba(233, 245, 238, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>senha</i>\n    hide_input = false\n    rounding = 14\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 96\n    font_family = Rubik\n    color = rgba(233, 245, 238, 0.95)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $USER\n    font_size = 16\n    font_family = Rubik\n    color = rgba(143, 214, 171, 0.85)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
-    },
-    {
-     "action": "locker",
-     "use": "hyprlock"
-    }
-   ],
-   "name_pt": "Papel de parede",
-   "blurb_pt": "O seu papel de parede, desfocado.",
-   "tags_pt": [
-    "sessão",
-    "desfoque"
-   ]
-  },
-  {
-   "id": "lock-clean",
-   "section": "lockscreens",
-   "name": "Plain",
-   "blurb": "A solid background, a big clock, nothing else.",
-   "family": "session",
-   "replaces": "caelestia",
-   "author": "Genesi",
-   "tags": [
-    "session",
-    "minimal"
-   ],
-   "preview": {
-    "kind": "lock",
-    "background": "#101412",
-    "accent": "#8fd6ab"
-   },
-   "actions": [
-    {
-     "action": "package",
-     "name": "hyprlock",
-     "binary": "hyprlock"
-    },
-    {
-     "action": "package",
-     "name": "hypridle",
-     "binary": "hypridle"
-    },
-    {
-     "action": "file",
-     "path": "~/.config/hypr/hyprlock.conf",
-     "text": "# Limpa -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = \n    blur_passes = 0\n    blur_size = 0\n    brightness = 1.0\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 0.8)\n    inner_color = rgba(16, 20, 18, 0.9)\n    font_color = rgba(240, 244, 241, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>digite a senha</i>\n    hide_input = false\n    rounding = 8\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 120\n    font_family = Rubik\n    color = rgba(240, 244, 241, 0.95)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = \n    font_size = 16\n    font_family = Rubik\n    color = rgba(143, 214, 171, 0.8)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
-    },
-    {
-     "action": "locker",
-     "use": "hyprlock"
-    }
-   ],
-   "name_pt": "Limpa",
-   "blurb_pt": "Fundo sólido, relógio grande, nada mais.",
-   "tags_pt": [
-    "sessão",
-    "minimalista"
-   ]
-  },
-  {
-   "id": "lock-night",
-   "section": "lockscreens",
-   "name": "Night",
-   "blurb": "Properly dark, so as not to wake anybody.",
-   "family": "session",
-   "replaces": "caelestia",
-   "author": "Genesi",
-   "tags": [
-    "session",
-    "dark",
-    "oled"
-   ],
-   "preview": {
-    "kind": "lock",
-    "background": "#000000",
-    "accent": "#78a08c",
-    "thumb": "wall-oled-mountains.jpg",
-    "blur": true
-   },
-   "actions": [
-    {
-     "action": "package",
-     "name": "hyprlock",
-     "binary": "hyprlock"
-    },
-    {
-     "action": "package",
-     "name": "hypridle",
-     "binary": "hypridle"
-    },
-    {
-     "action": "file",
-     "path": "~/.config/hypr/hyprlock.conf",
-     "text": "# Noite -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 4\n    blur_size = 10\n    brightness = 0.35\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(120, 160, 140, 0.7)\n    inner_color = rgba(0, 0, 0, 0.85)\n    font_color = rgba(200, 220, 208, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>senha</i>\n    hide_input = false\n    rounding = 20\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 84\n    font_family = Rubik\n    color = rgba(200, 220, 208, 0.9)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 16\n    font_family = Rubik\n    color = rgba(120, 160, 140, 0.7)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
-    },
-    {
-     "action": "locker",
-     "use": "hyprlock"
-    }
-   ],
-   "name_pt": "Noite",
-   "blurb_pt": "Escuro de verdade, para não acordar ninguém.",
-   "tags_pt": [
-    "sessão",
-    "escuro",
-    "oled"
-   ]
-  },
-  {
-   "id": "lock-terminal",
-   "section": "lockscreens",
-   "name": "Terminal",
-   "blurb": "Monospaced, like a prompt.",
-   "family": "session",
-   "replaces": "caelestia",
-   "author": "Genesi",
-   "tags": [
-    "session",
-    "mono",
-    "retro"
-   ],
-   "preview": {
-    "kind": "lock",
-    "background": "#0a0e0c",
-    "accent": "#8fd6ab",
-    "thumb": "wall-ink-wave.jpg",
-    "blur": true,
-    "mono": true
-   },
-   "actions": [
-    {
-     "action": "package",
-     "name": "hyprlock",
-     "binary": "hyprlock"
-    },
-    {
-     "action": "package",
-     "name": "hypridle",
-     "binary": "hypridle"
-    },
-    {
-     "action": "file",
-     "path": "~/.config/hypr/hyprlock.conf",
-     "text": "# Terminal -- written by Genesi Store.\n# hyprlock's own format; edit freely, the store keeps a copy of what was here.\n\ngeneral {\n    hide_cursor = true\n    grace = 0\n    no_fade_in = false\n}\n\nbackground {\n    monitor =\n    path = screenshot\n    blur_passes = 1\n    blur_size = 4\n    brightness = 0.5\n    contrast = 1.0\n    vibrancy = 0.17\n}\n\ninput-field {\n    monitor =\n    size = 320, 52\n    outline_thickness = 2\n    dots_size = 0.24\n    dots_spacing = 0.3\n    dots_center = true\n    outer_color = rgba(143, 214, 171, 1.0)\n    inner_color = rgba(10, 14, 12, 0.9)\n    font_color = rgba(143, 214, 171, 1.0)\n    fade_on_empty = false\n    placeholder_text = <i>login:</i>\n    hide_input = false\n    rounding = 2\n    position = 0, -90\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $TIME\n    font_size = 72\n    font_family = CaskaydiaCove Nerd Font\n    color = rgba(143, 214, 171, 1.0)\n    position = 0, 160\n    halign = center\n    valign = center\n}\n\nlabel {\n    monitor =\n    text = $USER@$(hostname)\n    font_size = 16\n    font_family = CaskaydiaCove Nerd Font\n    color = rgba(143, 214, 171, 0.7)\n    position = 0, 96\n    halign = center\n    valign = center\n}\n"
-    },
-    {
-     "action": "locker",
-     "use": "hyprlock"
-    }
-   ],
-   "name_pt": "Terminal",
-   "blurb_pt": "Monoespaçada, como um prompt.",
-   "tags_pt": [
-    "sessão",
-    "mono",
-    "retro"
-   ]
-  },
-  {
    "id": "login-genesi",
    "section": "login",
    "name": "Genesi",
@@ -5182,7 +4991,7 @@
    "id": "rice-floresta-viva",
    "section": "rices",
    "name": "Living Forest",
-   "blurb": "Deep green, a flush bar, a blurred lock screen.",
+   "blurb": "Deep green and a flush bar over the woods.",
    "author": "Genesi",
    "tags": [
     "green",
@@ -5197,12 +5006,11 @@
    "includes": [
     "theme-everforest-medium-dark",
     "wall-forest-dark",
-    "bar-borda",
-    "lock-wallpaper"
+    "bar-borda"
    ],
    "actions": [],
    "name_pt": "Floresta Viva",
-   "blurb_pt": "Verde fechado, barra rente, bloqueio desfocado.",
+   "blurb_pt": "Verde fechado e barra rente sobre a mata.",
    "tags_pt": [
     "verde",
     "natureza"
@@ -5227,8 +5035,7 @@
    "includes": [
     "theme-caelestia-default-dark",
     "wall-lake",
-    "bar-arejado",
-    "lock-clean"
+    "bar-arejado"
    ],
    "actions": [],
    "name_pt": "Orvalho",
@@ -5257,8 +5064,7 @@
    "includes": [
     "theme-darkgreen-hard-dark",
     "wall-oled-mountains",
-    "bar-fio",
-    "lock-night"
+    "bar-fio"
    ],
    "actions": [],
    "name_pt": "Noite Baixa",
@@ -5287,8 +5093,7 @@
    "includes": [
     "theme-gruvbox-medium-dark",
     "wall-gruvbox-city",
-    "bar-painel",
-    "lock-terminal"
+    "bar-painel"
    ],
    "actions": [],
    "name_pt": "Terra",
@@ -5317,8 +5122,7 @@
    "includes": [
     "theme-tokyonight-medium-dark",
     "wall-neocity",
-    "bar-centrado",
-    "lock-night"
+    "bar-centrado"
    ],
    "actions": [],
    "name_pt": "Meia-Noite",
@@ -5347,8 +5151,7 @@
    "includes": [
     "theme-catppuccin-latte-light",
     "wall-minimal-c",
-    "bar-limpo",
-    "lock-clean"
+    "bar-limpo"
    ],
    "actions": [],
    "name_pt": "Papel",
@@ -5388,7 +5191,7 @@
    "id": "bundle-terminal",
    "section": "bundles",
    "name": "Life at the Terminal",
-   "blurb": "Full fastfetch, a monospaced lock screen and a dense bar: for anybody who lives at the prompt.",
+   "blurb": "Full fastfetch and a dense bar: for anybody who lives at the prompt.",
    "author": "Genesi",
    "tags": [
     "terminal"
@@ -5400,13 +5203,12 @@
    },
    "includes": [
     "fetch-full",
-    "lock-terminal",
     "bar-informativo",
     "wall-ink-wave"
    ],
    "actions": [],
    "name_pt": "Vida no Terminal",
-   "blurb_pt": "Fastfetch completo, bloqueio monoespaçado e uma barra densa: para quem vive no prompt.",
+   "blurb_pt": "Fastfetch completo e uma barra densa: para quem vive no prompt.",
    "tags_pt": [
     "terminal"
    ]
@@ -5522,12 +5324,7 @@
    },
    "actions": [
     {
-     "action": "restore",
-     "path": "~/.config/hypr/hyprlock.conf"
-    },
-    {
-     "action": "locker",
-     "use": "caelestia"
+     "action": "unlocker"
     }
    ],
    "name_pt": "Como vem de fábrica",

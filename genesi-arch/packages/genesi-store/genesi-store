@@ -579,145 +579,92 @@ def act_bar(item, args, assets):
     return None
 
 
-def act_locker(item, args, assets):
-    """Make `loginctl lock-session` actually lock the screen, with WHICH lock.
-
-    Two things had to be learned the hard way here.
-
-    First: the side panel's Lock button runs `loginctl lock-session`, which
-    only emits a signal on D-Bus, and on a Genesi desktop nothing was
-    listening for it. hyprlock is not a daemon -- it is a program you run once
-    to lock the screen now -- so something has to run it when logind says to,
-    and that something is hypridle.
-
-    Second, and this is the one that crashed people's desktops: caelestia has
-    a lock screen OF ITS OWN, and it is a `WlSessionLock` -- the Wayland
-    ext-session-lock protocol, which exactly one client may hold. Wiring
-    hyprlock in as the session lock on a desktop that already has one is two
-    programs reaching for the same single-holder protocol, and the shell is
-    what falls over.
-
-    So the locker is a CHOICE. The default is caelestia's own, which cannot
-    conflict with itself and is already themed like everything else. Picking
-    one of the hyprlock looks replaces it, deliberately, and putting the
-    factory back puts caelestia's back.
-
-    Persisted as a user service rather than an exec-once in hyprland.conf:
-    that file belongs to the settings package, reaches existing installs only
-    through a migration that has silently failed twice, and is the user's to
-    edit. A unit in ~/.config is ours, survives a reboot, and reverts cleanly.
-    """
-    which = args.get("use") or "caelestia"
-    if which not in LOCKERS:
-        die("%s asks for a lock screen the store does not know" % item["id"])
-    conf = os.path.expanduser("~/.config/hypr/hypridle.conf")
-    unit_dir = os.path.expanduser("~/.config/systemd/user")
-    unit = os.path.join(unit_dir, "genesi-lock.service")
-
-    kept_conf = backup_file(conf)
-    kept_unit = backup_file(unit)
-
-    os.makedirs(os.path.dirname(conf), exist_ok=True)
-    with io.open(conf, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(HYPRIDLE_CONF % LOCKERS[which])
-    os.makedirs(unit_dir, exist_ok=True)
-    with io.open(unit, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(LOCK_UNIT)
-
-    # Not fatal if this fails: the config is written either way, and a
-    # machine that is not running systemd --user is not a machine where a
-    # refusal here helps anybody.
-    run(["systemctl", "--user", "daemon-reload"], check=False)
-    code, _ = run(["systemctl", "--user", "enable", "--now", "genesi-lock.service"],
-                  check=False)
-    if code != 0:
-        note("the lock watcher was written but not started; it will come up "
-             "at the next login")
-    return {"action": "unlocker", "conf_from": kept_conf, "unit_from": kept_unit}
+def _ours(path):
+    """Did the store write this file? Only then may the store delete it."""
+    try:
+        with io.open(path, encoding="utf-8", errors="replace") as fh:
+            head = fh.read(600)
+    except OSError:
+        return False
+    return "written by genesi store" in head.lower()
 
 
-def act_unlocker(item, args, assets):
-    """Put back whatever was watching for the lock signal before, if anything."""
-    run(["systemctl", "--user", "disable", "--now", "genesi-lock.service"],
-        check=False)
-    for path, kept in ((os.path.expanduser("~/.config/hypr/hypridle.conf"),
-                        args.get("conf_from")),
-                       (os.path.expanduser("~/.config/systemd/user/genesi-lock.service"),
-                        args.get("unit_from"))):
-        if kept and os.path.exists(kept):
-            shutil.copy2(kept, path)
-        elif os.path.exists(path):
-            os.remove(path)
-    run(["systemctl", "--user", "daemon-reload"], check=False)
+def _watcher_backup(state):
+    """Where an older store kept the hypridle.conf it overwrote, if anywhere."""
+    for entry in (state or {}).get("applied", {}).values():
+        for step in entry.get("undo") or []:
+            if step.get("action") == "unlocker" and step.get("conf_from"):
+                return step["conf_from"]
     return None
 
 
-# hypridle's own format. Deliberately thin: this is here to answer the lock
-# SIGNAL, not to decide when somebody's screen should turn off. Adding idle
-# timeouts here would be the store quietly taking over power management.
-# What actually locks the screen. caelestia's own lock is the default: it is
-# the desktop's, it is themed with everything else, and -- the part that
-# matters -- it cannot collide with itself over the Wayland session-lock
-# protocol, which only one client may hold.
-#
-# `|| hyprlock` on the caelestia line is not a second lock screen. It is what
-# happens on a machine where the shell is not running, which would otherwise
-# be a Lock button that does nothing at all.
-LOCKERS = {
-    "caelestia": "caelestia shell -m lock lock || (pidof hyprlock || hyprlock)",
-    "hyprlock": "pidof hyprlock || hyprlock",
-}
+def retire_lock_watcher(state=None):
+    """Undo the session-lock watcher older versions of the store installed.
 
-HYPRIDLE_CONF = """# Written by Genesi Store, so that locking the session locks the screen.
-#
-# `loginctl lock-session` -- what the side panel's Lock button runs -- only
-# emits a signal. hypridle is what listens for it and runs the locker. Without
-# this file, and the service that starts hypridle, pressing Lock does nothing.
-#
-# No unlock_cmd either. hyprlock exits by itself when the password is
-# right, and signalling a process that is already on its way out is a good
-# way to have something else notice the session changed twice.
-#
-# No idle timeouts on purpose: when your screen sleeps is yours to decide.
-# Add listener blocks here if you want them; the store will not touch them
-# again unless you apply another lock screen.
+    For about a week the store shipped hypridle, as a user service, to answer
+    `loginctl lock-session` with hyprlock. The premise was that nothing else
+    answered it. That was wrong: caelestia's own IdleMonitors.qml has a
+    LogindManager wired straight to the session's Lock signal, so every lock
+    request started TWO lockers -- caelestia's WlSessionLock and hyprlock --
+    on the Wayland ext-session-lock protocol, which exactly one client may
+    hold. The shell is what fell over when the session unlocked.
 
-general {
-    lock_cmd = %s
-    before_sleep_cmd = loginctl lock-session
-    after_sleep_cmd = hyprctl dispatch dpms on
-}
-"""
+    So this runs on every invocation and is cheap when there is nothing to
+    do. It touches only what the store itself put there: the unit is ours by
+    name, and hypridle.conf only if it carries the store's marker -- a
+    hypridle.conf somebody wrote by hand is left exactly where it is. Where an
+    older store backed up a file before overwriting it, that file comes back.
 
-LOCK_UNIT = """[Unit]
-Description=Genesi — run the lock screen when the session is locked
-Documentation=man:hypridle(1)
+    The package also ships a drop-in that stops the unit from ever starting
+    again, so a machine where the store is never opened is covered at its
+    next login; this is the half that stops it NOW.
+    """
+    unit = conf("systemd", "user", "genesi-lock.service")
+    watcher = conf("hypr", "hypridle.conf")
+    have_unit = os.path.exists(unit)
+    have_conf = os.path.exists(watcher) and _ours(watcher)
+    if not have_unit and not have_conf:
+        return False
+    run(["systemctl", "--user", "disable", "--now", "genesi-lock.service"],
+        check=False)
+    if have_unit:
+        try:
+            os.remove(unit)
+        except OSError:
+            pass
+    if have_conf:
+        kept = _watcher_backup(state)
+        try:
+            if kept and os.path.exists(kept):
+                shutil.copy2(kept, watcher)
+            else:
+                os.remove(watcher)
+        except OSError:
+            pass
+    run(["systemctl", "--user", "daemon-reload"], check=False)
+    note("removed the lock-screen watcher an older version of the store set "
+         "up; caelestia's own lock handles locking by itself")
+    return True
 
-# NOT graphical-session.target. Hyprland on Genesi is started from a display
-# manager rather than through uwsm, so nothing ever reaches that target and a
-# unit wanted by it is a unit that never runs -- which is why the first
-# version of this needed a logout before the lock screen appeared. default.
-# target is active in every user session.
-After=default.target
 
-[Service]
-Type=simple
-ExecStart=/usr/bin/hypridle
-Restart=on-failure
-RestartSec=2
+def act_unlocker(item, args, assets):
+    """The lock shelf's way back: caelestia's own lock, and nothing on top.
 
-[Install]
-WantedBy=default.target
-"""
+    Kept as an action, rather than folded into retire_lock_watcher alone,
+    because state files written by older stores carry it as an UNDO step
+    with the paths of what they backed up -- and those backups are somebody's
+    own files that deserve to come back.
+    """
+    retire_lock_watcher({"applied": {"_": {"undo": [dict(args,
+                                                          action="unlocker")]}}})
+    return None
 
 
 def act_package(item, args, assets):
     """Something the desktop needs and pacman has.
 
-    The session lock is the honest example: `loginctl lock-session` does
-    nothing at all without a locker installed, so a lock screen that only
-    wrote a config file would be a card that promises a thing it cannot do.
-    The list of what may be installed is HERE, not in the catalogue.
+    The list of what may be installed is HERE, not in the catalogue, and it
+    is the same list the helper enforces as root.
     """
     name = args.get("name")
     if name not in INSTALLABLE:
@@ -744,9 +691,6 @@ def act_package(item, args, assets):
 # name that is there and not here is a privilege nothing uses. ci/store-test.py
 # compares the two.
 INSTALLABLE = (
-    "hyprlock",
-    "hypridle",
-    "swaylock",
     "qt6-5compat",
     "qt6-declarative",
     "qt6-multimedia",
@@ -770,7 +714,6 @@ ACTIONS = {
     "file": act_file,
     "bar": act_bar,
     "package": act_package,
-    "locker": act_locker,
     "unlocker": act_unlocker,
     "restore": act_restore,
     "scheme": act_scheme,
@@ -1127,6 +1070,13 @@ def main():
     global CATALOG
     cat = CATALOG = load_catalog()
     state = read_state()
+    # Clean up after the lock watcher older versions installed. Every command
+    # runs it, because the app calls this CLI the moment it opens, and cheap
+    # when there is nothing to clean: two stat() calls.
+    if retire_lock_watcher(state):
+        state["applied"] = {k: v for k, v in state.get("applied", {}).items()
+                            if not k.startswith("lock-")}
+        write_state(state)
 
     if args.cmd == "sections":
         return cmd_sections(cat, state, args)

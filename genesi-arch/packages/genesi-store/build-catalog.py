@@ -62,8 +62,8 @@ SECTIONS = [
      "icon": "login", "blurb": "Antes de entrar: o que pede sua senha no boot."},
     {"id": "lockscreens", "label": "Bloqueio da sessão", "label_en": "Lockscreens",
      "icon": "lock",
-     "blurb": "Já dentro: quando você tranca e volta. O padrão é a tranca do "
-              "caelestia; estas a substituem."},
+     "blurb": "Já dentro: a tranca do caelestia, que segue o seu tema e "
+              "o seu papel de parede."},
     {"id": "bars", "label": "Barras", "label_en": "Bar styles", "icon": "bar",
      "blurb": "Quinze arranjos da barra."},
     {"id": "fastfetch", "label": "Fastfetch", "label_en": "Fastfetch",
@@ -485,137 +485,14 @@ def build():
 # ── The text-only shelves ──────────────────────────────────────────────────
 
 
-HYPRLOCK_BASE = """# %s -- written by Genesi Store.
-# hyprlock's own format; edit freely, the store keeps a copy of what was here.
-
-general {
-    hide_cursor = true
-    grace = 0
-    no_fade_in = false
-}
-
-background {
-    monitor =
-    path = %s
-    blur_passes = %d
-    blur_size = %d
-    brightness = %s
-    contrast = 1.0
-    vibrancy = 0.17
-}
-
-input-field {
-    monitor =
-    size = 320, 52
-    outline_thickness = 2
-    dots_size = 0.24
-    dots_spacing = 0.3
-    dots_center = true
-    outer_color = %s
-    inner_color = %s
-    font_color = %s
-    fade_on_empty = false
-    placeholder_text = <i>%s</i>
-    hide_input = false
-    rounding = %d
-    position = 0, -90
-    halign = center
-    valign = center
-}
-
-label {
-    monitor =
-    text = $TIME
-    font_size = %d
-    font_family = %s
-    color = %s
-    position = 0, 160
-    halign = center
-    valign = center
-}
-
-label {
-    monitor =
-    text = %s
-    font_size = 16
-    font_family = %s
-    color = %s
-    position = 0, 96
-    halign = center
-    valign = center
-}
-"""
-
-
-def lock_item(ident, name, blurb, tags, text, preview):
-    """A session lock: the config file, and the locker it needs to exist."""
-    return {
-        "id": "lock-" + ident,
-        "section": "lockscreens",
-        "name": name,
-        "blurb": blurb,
-        "family": "session",
-        "replaces": "caelestia",
-        "author": "Genesi",
-        "tags": ["sessão"] + tags,
-        "preview": preview,
-        "actions": [
-            {"action": "package", "name": "hyprlock", "binary": "hyprlock"},
-            # The one that was missing. hyprlock is not a daemon -- it is run
-            # once, to lock the screen now -- and the Lock button emits a
-            # logind signal rather than running anything. hypridle is what
-            # listens for the signal and runs the locker, and without it every
-            # card on this shelf applied cleanly and changed nothing visible.
-            {"action": "package", "name": "hypridle", "binary": "hypridle"},
-            {"action": "file", "path": "~/.config/hypr/hyprlock.conf",
-             "text": text},
-            {"action": "locker", "use": "hyprlock"},
-        ],
-    }
-
-
 def lockscreens():
     out = []
-    out.append(lock_item(
-        "wallpaper", "Papel de parede", "O seu papel de parede, desfocado.",
-        ["desfoque"],
-        HYPRLOCK_BASE % ("Papel de parede", "screenshot", 3, 8, "0.7",
-                         "rgba(143, 214, 171, 0.9)", "rgba(20, 28, 24, 0.75)",
-                         "rgba(233, 245, 238, 1.0)", "senha", 14, 96,
-                         "Rubik", "rgba(233, 245, 238, 0.95)",
-                         "$USER", "Rubik", "rgba(143, 214, 171, 0.85)"),
-        {"kind": "lock", "background": "#14241c", "accent": "#8fd6ab",
-         "thumb": "wall-forest-dark.jpg", "blur": True}))
-    out.append(lock_item(
-        "clean", "Limpa", "Fundo sólido, relógio grande, nada mais.",
-        ["minimalista"],
-        HYPRLOCK_BASE % ("Limpa", "", 0, 0, "1.0",
-                         "rgba(143, 214, 171, 0.8)", "rgba(16, 20, 18, 0.9)",
-                         "rgba(240, 244, 241, 1.0)", "digite a senha", 8, 120,
-                         "Rubik", "rgba(240, 244, 241, 0.95)",
-                         "", "Rubik", "rgba(143, 214, 171, 0.8)"),
-        {"kind": "lock", "background": "#101412", "accent": "#8fd6ab"}))
-    out.append(lock_item(
-        "night", "Noite", "Escuro de verdade, para não acordar ninguém.",
-        ["escuro", "oled"],
-        HYPRLOCK_BASE % ("Noite", "screenshot", 4, 10, "0.35",
-                         "rgba(120, 160, 140, 0.7)", "rgba(0, 0, 0, 0.85)",
-                         "rgba(200, 220, 208, 1.0)", "senha", 20, 84,
-                         "Rubik", "rgba(200, 220, 208, 0.9)",
-                         "$TIME", "Rubik", "rgba(120, 160, 140, 0.7)"),
-        {"kind": "lock", "background": "#000000", "accent": "#78a08c",
-         "thumb": "wall-oled-mountains.jpg", "blur": True}))
-    out.append(lock_item(
-        "terminal", "Terminal", "Monoespaçada, como um prompt.",
-        ["mono", "retro"],
-        HYPRLOCK_BASE % ("Terminal", "screenshot", 1, 4, "0.5",
-                         "rgba(143, 214, 171, 1.0)", "rgba(10, 14, 12, 0.9)",
-                         "rgba(143, 214, 171, 1.0)", "login:", 2, 72,
-                         "CaskaydiaCove Nerd Font", "rgba(143, 214, 171, 1.0)",
-                         "$USER@$(hostname)", "CaskaydiaCove Nerd Font",
-                         "rgba(143, 214, 171, 0.7)"),
-        {"kind": "lock", "background": "#0a0e0c", "accent": "#8fd6ab",
-         "thumb": "wall-ink-wave.jpg", "blur": True, "mono": True}))
+    # There are no session-lock looks on this shelf any more, and that is
+    # deliberate. caelestia locks the session itself -- its IdleMonitors
+    # answer logind's Lock signal directly -- so the only way to put hyprlock
+    # there was to start a SECOND locker on the same single-holder Wayland
+    # protocol, and that crashed the shell on unlock. What the session lock
+    # looks like is your theme and your wallpaper; those shelves set it.
 
     # ── The other lock: the screen BEFORE the session ──────────────────────
     #
@@ -813,8 +690,7 @@ def factory():
              "A tranca do próprio caelestia, que segue o seu tema e o seu "
              "papel de parede.",
              {"kind": "lock", "accent": "#8fd6ab", "background": "#0c120f"},
-             [{"action": "restore", "path": "~/.config/hypr/hyprlock.conf"},
-              {"action": "locker", "use": "caelestia"}]),
+             [{"action": "unlocker"}]),
 
         card("fastfetch", "fastfetch", "Como vem de fábrica",
              "Volta para o cartão do Genesi que aparece ao abrir o terminal.",
@@ -1058,8 +934,13 @@ def fastfetch():
 
 
 def rices(previous):
-    """A whole desktop at once: colours, wallpaper, bar and lock together."""
-    def rice(ident, name, blurb, tags, scheme, wall, bar, lock, colour):
+    """A whole desktop at once: colours, wallpaper and bar together.
+
+    They used to carry a session lock too, which means applying ANY of these
+    started a second locker behind caelestia's own -- the crash on unlock.
+    The lock follows the theme and the wallpaper, so a rice still changes it.
+    """
+    def rice(ident, name, blurb, tags, scheme, wall, bar, colour):
         return {
             "id": "rice-" + ident,
             "section": "rices",
@@ -1070,36 +951,35 @@ def rices(previous):
             "preview": {"kind": "desktop", "accent": colour,
                         "thumb": "wall-%s.jpg" % wall,
                         "scheme": "theme-" + scheme},
-            "includes": ["theme-" + scheme, "wall-" + wall, "bar-" + bar,
-                         "lock-" + lock],
+            "includes": ["theme-" + scheme, "wall-" + wall, "bar-" + bar],
             "actions": [],
         }
 
     made = [
         rice("floresta-viva", "Floresta Viva",
-             "Verde fechado, barra rente, bloqueio desfocado.",
+             "Verde fechado e barra rente sobre a mata.",
              ["verde", "natureza"], "everforest-medium-dark", "forest-dark",
-             "borda", "wallpaper", "#a7c080"),
+             "borda", "#a7c080"),
         rice("orvalho", "Orvalho",
              "Verde claro da casa sobre água parada.",
              ["verde", "calmo"], "caelestia-default-dark", "lake",
-             "arejado", "clean", "#8fd6ab"),
+             "arejado", "#8fd6ab"),
         rice("noite-baixa", "Noite Baixa",
              "Preto real, barra fina, nada brilhando.",
              ["escuro", "oled"], "darkgreen-hard-dark", "oled-mountains",
-             "fio", "night", "#4f8f6a"),
+             "fio", "#4f8f6a"),
         rice("terra", "Terra",
              "Gruvbox, cidade retrô e barra densa.",
              ["quente", "retro"], "gruvbox-medium-dark", "gruvbox-city",
-             "painel", "terminal", "#d79921"),
+             "painel", "#d79921"),
         rice("meia-noite", "Meia-Noite",
              "Tokyo Night com neon e barra centralizada.",
              ["escuro", "neon"], "tokyonight-medium-dark", "neocity",
-             "centrado", "night", "#7aa2f7"),
+             "centrado", "#7aa2f7"),
         rice("papel", "Papel",
              "Claro, quieto, para trabalhar de dia.",
              ["claro", "minimalista"], "catppuccin-latte-light", "minimal-c",
-             "limpo", "clean", "#8839ef"),
+             "limpo", "#8839ef"),
     ]
     return made
 
@@ -1125,14 +1005,13 @@ def bundles():
             "id": "bundle-terminal",
             "section": "bundles",
             "name": "Vida no Terminal",
-            "blurb": "Fastfetch completo, bloqueio monoespaçado e uma barra "
-                     "densa: para quem vive no prompt.",
+            "blurb": "Fastfetch completo e uma barra densa: para quem "
+                     "vive no prompt.",
             "author": "Genesi",
             "tags": ["terminal"],
             "preview": {"kind": "desktop", "accent": "#8fd6ab",
                         "thumb": "wall-ink-wave.jpg"},
-            "includes": ["fetch-full", "lock-terminal", "bar-informativo",
-                         "wall-ink-wave"],
+            "includes": ["fetch-full", "bar-informativo", "wall-ink-wave"],
             "actions": [],
         },
         {

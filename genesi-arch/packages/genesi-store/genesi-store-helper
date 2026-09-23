@@ -47,14 +47,13 @@ over https -- root does no networking here.
 SDDM reads that directory in ALPHABETICAL order and the last file wins.
 The old name, "50-genesi-store.conf", looked like the highest-numbered
 drop-in, and it was -- but numbers sort before letters, so it lost to
-"genesi-theme.conf", which
-Genesi installs itself, and to "kde_settings.conf" on any machine that has
-ever had Plasma near it. Every login screen picked in the store applied
+"genesi-theme.conf", which Genesi installs itself, and to "kde_settings.conf"
+on any machine that has ever had Plasma near it. Every login screen picked in the store applied
 cleanly, wrote its drop-in, and was then overruled by a file further down the
 alphabet. "zz-" sorts after anything either of them will ever be called.
 
-Deleting it puts the login screen back exactly as the install left it. That is what
-`login-theme breeze` does -- it deletes the drop-in rather than writing the
+Deleting it puts the login screen back exactly as the install left it. That
+is what `login-theme breeze` does -- it deletes the drop-in rather than writing the
 old value back, because "back" means "whatever the system decides", not "what
 this tool happened to see".
 
@@ -88,15 +87,17 @@ CATALOG = "/usr/share/genesi-store/catalog.json"
 # ones that exist in the Arch repositories. Anything else is a decision for
 # the person and their package manager, not for a catalogue entry.
 #
+# hyprlock, hypridle and swaylock used to be here, for session locks the store
+# no longer offers: caelestia locks the session itself, and a second locker on
+# the same Wayland protocol is what crashed the shell. A privilege nothing
+# uses is one to give back.
+#
 # The qt6-* entries are here because a downloaded greeter imports QML modules:
 # a theme that imports QtQuick.VirtualKeyboard on a machine without it is a
 # BLACK SCREEN at boot, not a missing keyboard. build-catalog.py reads the
 # imports out of each theme's own QML and records what it needs, and this is
 # the list those may be drawn from.
 INSTALLABLE = (
-    "hyprlock",
-    "hypridle",
-    "swaylock",
     "qt6-5compat",
     "qt6-declarative",
     "qt6-multimedia",

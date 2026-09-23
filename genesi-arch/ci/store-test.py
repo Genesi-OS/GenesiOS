@@ -635,62 +635,100 @@ if os.path.exists(factory_path):
        others <= have, sorted(others - have))
 
 
-# ── A lock screen has to be reachable, not merely written ──────────────────
+# ── One session locker, and it is caelestia's ─────────────────────────────
 #
-# This shelf shipped broken and nothing caught it, because every part of it
-# was individually correct: hyprlock was installed, hyprlock.conf was written,
-# apply returned success. What was missing was the thing that RUNS hyprlock --
-# the Lock button emits a logind signal, hyprlock is not a daemon and does not
-# hear it, and hypridle, which does, was never started. A config file for a
-# program nobody runs is the quietest kind of broken there is.
+# This block used to REQUIRE the opposite: that every lock card install
+# hypridle and wire it to the logind Lock signal, on the premise that nothing
+# else answered `loginctl lock-session`. The premise was wrong. caelestia's
+# IdleMonitors.qml has a LogindManager connected straight to the session's
+# Lock and Unlock, so every lock request started caelestia's WlSessionLock AND
+# hyprlock -- two clients on the Wayland ext-session-lock protocol, which one
+# client may hold -- and the shell crashed on unlock. Every rice included a
+# lock card, so applying any rice did it too.
 #
-# So: a card that writes hyprlock.conf must also set up the listener.
-lock_cards = [i for i in items
-              if any(a.get("action") == "file"
-                     and "hyprlock.conf" in (a.get("path") or "")
-                     for a in i.get("actions", []))]
-deaf = [i["id"] for i in lock_cards
-        if not any(a.get("action") == "locker" for a in i.get("actions", []))]
-ck("every lock screen also sets up what listens for the lock signal",
-   not deaf, deaf)
-
-unstarted = [i["id"] for i in lock_cards
-             if not any(a.get("action") == "package" and a.get("name") == "hypridle"
-                        for a in i.get("actions", []))]
-ck("...and installs it", not unstarted, unstarted)
-
-# Which lock, not just "a lock". caelestia's own lock is a WlSessionLock --
-# the Wayland ext-session-lock protocol, which exactly one client may hold --
-# so wiring hyprlock in as the session lock on a desktop that already has one
-# is two programs reaching for the same single-holder protocol, and the shell
-# is what falls over. Every card that sets a locker has to say which.
-lockers = set(re.findall(r'^LOCKERS = \{(.*?)\}', cli_src, re.M | re.S))
-known_lockers = set(re.findall(r'"([a-z]+)":', "".join(lockers)))
-ck("the CLI names the lockers it can wire up", len(known_lockers) >= 2,
-   sorted(known_lockers))
-
-vague = []
+# A guard that encodes a wrong belief protects the bug. This one encodes what
+# is true: nothing the store can do may start a second locker.
+LOCKER_PACKAGES = {"hypridle", "hyprlock", "swaylock"}
+second = []
 for item in items:
     for action in item.get("actions", []):
-        if action.get("action") != "locker":
-            continue
-        use = action.get("use")
-        if use not in known_lockers:
-            vague.append((item["id"], use))
-ck("every lock card says WHICH lock it is wiring up", not vague, vague)
+        kind = action.get("action")
+        path = os.path.basename(action.get("path") or "")
+        if kind == "locker":
+            second.append((item["id"], "locker"))
+        elif kind == "package" and action.get("name") in LOCKER_PACKAGES:
+            second.append((item["id"], action.get("name")))
+        elif kind in ("file", "restore") and path in ("hypridle.conf",
+                                                      "hyprlock.conf"):
+            second.append((item["id"], path))
+ck("nothing in the catalogue starts a second session locker",
+   not second, second)
 
-# ...and putting the factory back has to leave caelestia's own lock in place,
-# not leave the machine with nothing listening at all.
+cli_installable = set(re.findall(
+    r'"([a-z0-9-]+)"',
+    "".join(re.findall(r'^INSTALLABLE = \((.*?)\)', cli_src, re.M | re.S))))
+ck("...and neither the store nor its helper will install one",
+   not (LOCKER_PACKAGES & (allowed_pkgs | cli_installable)),
+   sorted(LOCKER_PACKAGES & (allowed_pkgs | cli_installable)))
+ck("...and the store has no action left that could wire one up",
+   "locker" not in vocab, sorted(vocab))
+
 back = [i for i in items if i["id"] == "default-lockscreens"]
 ck("the lock shelf has a way back", len(back) == 1)
 if back:
-    uses = [a.get("use") for a in back[0]["actions"]
-            if a.get("action") == "locker"]
-    ck("...and it goes back to the shell's own lock", uses == ["caelestia"],
-       uses)
+    ck("...and it retires the old watcher rather than adding anything",
+       [a.get("action") for a in back[0]["actions"]] == ["unlocker"],
+       back[0]["actions"])
 
-ck("...and there are lock screens to check at all", len(lock_cards) >= 3,
-   len(lock_cards))
+# Machines that applied a lock card before this have hypridle in a user unit.
+# The store removes it when it runs; this drop-in keeps it from starting on a
+# machine where the store is never opened again.
+dropin = os.path.join(PKG, "systemd", "genesi-lock.service.d", "10-retired.conf")
+pkgbuild_src = read(os.path.join(PKG, "PKGBUILD"))
+cond = re.search(r"^ConditionPathExists=(/\S+)", read(dropin), re.M) \
+    if os.path.exists(dropin) else None
+ck("the package retires the old watcher even where the store never runs",
+   bool(cond) and "usr/lib/systemd/user/genesi-lock.service.d/10-retired.conf"
+   in pkgbuild_src, dropin)
+if cond:
+    # The whole trick is a path that is never there. If anything ever
+    # installed it, the retired unit would quietly start working again.
+    ck("...and the path its condition names is one nothing installs",
+       cond.group(1).lstrip("/") not in pkgbuild_src, cond.group(1))
+
+
+# ── Everything the window loads is something the package installs ─────────
+#
+# The PKGBUILD listed the app's root QML files one by one, and Lang.qml was
+# added and registered in qmldir without being added there. On the machine
+# that is a qmldir naming a file that does not exist: the window does not
+# open at all, and nothing in this repository would have said so, because
+# every file the PKGBUILD names DID exist -- it was the other direction that
+# was missing.
+import fnmatch  # noqa: E402
+
+literal = set(re.findall(r'\$\{startdir\}/(app/[A-Za-z0-9_./-]+)', pkgbuild_src))
+globbed = re.findall(r'"\$\{startdir\}"/(app/[^\s;"]+)', pkgbuild_src)
+app_root = os.path.join(PKG, "app")
+not_shipped = []
+for base, _dirs, names in os.walk(app_root):
+    if "__pycache__" in base:
+        continue
+    for name in names:
+        rel = os.path.relpath(os.path.join(base, name), PKG).replace(os.sep, "/")
+        if not (name.endswith((".qml", ".py", ".svg")) or name == "qmldir"):
+            continue
+        if rel in literal or any(fnmatch.fnmatch(rel, g) for g in globbed):
+            continue
+        not_shipped.append(rel)
+ck("every file the window loads is one the package installs",
+   not not_shipped, not_shipped)
+
+registered = re.findall(r"^\s*(?:singleton\s+)?\w+\s+[\d.]+\s+(\S+\.qml)",
+                        read(os.path.join(app_root, "qmldir")), re.M)
+ck("...including everything qmldir registers",
+   all(os.path.exists(os.path.join(app_root, f)) for f in registered)
+   and registered, registered)
 
 
 # ── The window and its backend have to agree ───────────────────────────────
@@ -1003,22 +1041,48 @@ store.do_revert(cat, "bar-ilha", state)
 ck("...and reverting goes back to the one that was current",
    ran("genesi-bar", "apply", "10-padrao"), calls)
 
-# A lock screen asks for its locker BEFORE writing a config that needs it.
-calls.clear()
-state = fresh_state()
-store.shutil.which = lambda name: None          # nothing installed
-pkexec = []
-store.run = lambda argv, check=True, timeout=None: (
-    pkexec.append(list(argv)) or (0, ""))
+# The watcher an older store installed is removed -- and only what it wrote.
+store.shutil.which = lambda name: None          # later tests rely on these
 store.helper_path = lambda: "/usr/lib/genesi-store/genesi-store-helper"
-store.do_apply(cat, "lock-night", state)
-ck("a session lock installs the locker first, under pkexec",
-   pkexec and pkexec[0][0] == "pkexec" and "hyprlock" in pkexec[0],
-   pkexec[:1])
-ck("...and then writes hyprlock's own config",
-   os.path.exists(os.path.join(os.environ["XDG_CONFIG_HOME"], "hypr",
-                               "hyprlock.conf")))
 store.run = fake_run
+cfg = os.environ["XDG_CONFIG_HOME"]
+unit = os.path.join(cfg, "systemd", "user", "genesi-lock.service")
+idle = os.path.join(cfg, "hypr", "hypridle.conf")
+for path in (unit, idle):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+io.open(unit, "w", encoding="utf-8").write(
+    "[Unit]\nDescription=Genesi -- run the lock screen\n")
+io.open(idle, "w", encoding="utf-8").write(
+    "# Written by Genesi Store, so that locking the session locks the screen.\n"
+    "general {\n    lock_cmd = pidof hyprlock || hyprlock\n}\n")
+calls.clear()
+did = store.retire_lock_watcher({"applied": {}})
+ck("the store removes the lock watcher an older version installed",
+   did and not os.path.exists(unit) and not os.path.exists(idle))
+ck("...and stops it now, rather than leaving it running until logout",
+   ran("systemctl", "--user", "disable", "--now", "genesi-lock.service"), calls)
+
+io.open(idle, "w", encoding="utf-8").write(
+    "general {\n    lock_cmd = swaylock\n}\n")
+calls.clear()
+store.retire_lock_watcher({"applied": {}})
+ck("...but a hypridle.conf somebody wrote by hand is left exactly as it was",
+   os.path.exists(idle) and "swaylock" in read(idle) and not calls, calls)
+os.remove(idle)
+
+backup = os.path.join(cfg, "hypridle.before-genesi-store")
+io.open(backup, "w", encoding="utf-8").write("general { lock_cmd = mine }\n")
+io.open(idle, "w", encoding="utf-8").write(
+    "# Written by Genesi Store, so that locking the session locks the screen.\n")
+store.retire_lock_watcher({"applied": {"lock-night": {"undo": [
+    {"action": "unlocker", "conf_from": backup}]}}})
+ck("...and a file it overwrote comes back",
+   os.path.exists(idle) and "mine" in read(idle))
+os.remove(idle)
+
+calls.clear()
+ck("...and it costs nothing when there is nothing to clean",
+   store.retire_lock_watcher({"applied": {}}) is False and not calls, calls)
 
 # A downloaded login screen: what it asks root for, and in what order.
 # Nothing is fetched -- the archive is faked into place -- because what is

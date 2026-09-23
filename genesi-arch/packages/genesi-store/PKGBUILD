@@ -190,7 +190,22 @@ pkgver=0.1.0
 #   * thumbnails are 1280px instead of 480. A card is most of the window on
 #     the mosaic shelf, and a 480px JPEG stretched four times looks exactly
 #     as bad as it sounds.
-pkgrel=12
+# pkgrel 13: the session lock was crashing the shell, and the cause was a
+# wrong premise of mine rather than a bug in either program. I believed nothing
+# answered `loginctl lock-session` and installed hypridle to do it. caelestia
+# answers it already -- IdleMonitors.qml wires a LogindManager straight to the
+# session's Lock signal -- so every lock started caelestia's WlSessionLock AND
+# hyprlock on the one Wayland protocol a single client may hold. Every rice
+# included a lock card too, so applying any rice did the same.
+#
+# The hyprlock cards are gone, the rices stop including them, hypridle and
+# the lockers leave the list of things root may install, and the store
+# removes the watcher it installed -- only its own files, and restoring any
+# the older store backed up. A drop-in keeps the old unit from starting even
+# where the store is never opened again.
+#
+# Also: Lang.qml was about to ship registered in qmldir but not installed.
+pkgrel=13
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -205,7 +220,6 @@ optdepends=(
     'genesi-caelestia-cli: colour schemes and wallpapers'
     'genesi-caelestia-settings: the fifteen bar arrangements'
     'genesi-center: the settings writer the store applies keys through'
-    'hyprlock: session lock screens (the store offers to install it)'
     'fastfetch: the terminal greeting the Fastfetch shelf configures'
     'sddm: the login screen the Genesi greeter replaces'
 )
@@ -357,16 +371,21 @@ package() {
     # of every link travels with the data.
     install -Dm644 "${startdir}/catalog/catalog.json" \
         "${pkgdir}/usr/share/genesi-store/catalog.json"
+    install -Dm644 "${startdir}/catalog_en.py" \
+        "${pkgdir}/usr/share/genesi-store/catalog_en.py"
     install -Dm644 "${startdir}/build-catalog.py" \
         "${pkgdir}/usr/share/genesi-store/build-catalog.py"
 
     # The window.
     install -Dm755 "${startdir}/app/genesi_store_app.py" \
         "${pkgdir}/usr/share/genesi-store/app/genesi_store_app.py"
-    install -Dm644 "${startdir}/app/Main.qml" \
-        "${pkgdir}/usr/share/genesi-store/app/Main.qml"
-    install -Dm644 "${startdir}/app/Tokens.qml" \
-        "${pkgdir}/usr/share/genesi-store/app/Tokens.qml"
+    # Every QML file at the root, by glob. They used to be listed one by
+    # one, which is how Lang.qml -- registered in qmldir -- nearly shipped
+    # without the file qmldir names: a window that does not open at all.
+    for f in "${startdir}"/app/*.qml; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/app/$(basename "$f")"
+    done
     install -Dm644 "${startdir}/app/qmldir" \
         "${pkgdir}/usr/share/genesi-store/app/qmldir"
     for f in "${startdir}"/app/components/*.qml; do
@@ -403,6 +422,10 @@ package() {
     install -Dm644 "${startdir}/sddm/preview.png" \
         "${pkgdir}/usr/share/sddm/themes/genesi/preview.png"
 
+    # Retires the lock watcher older versions wrote into ~/.config. See the
+    # file itself for why; the store also removes the unit when it runs.
+    install -Dm644 "${startdir}/systemd/genesi-lock.service.d/10-retired.conf" \
+        "${pkgdir}/usr/lib/systemd/user/genesi-lock.service.d/10-retired.conf"
     install -Dm644 "${startdir}/genesi-store.svg" \
         "${pkgdir}/usr/share/icons/hicolor/scalable/apps/genesi-store.svg"
 
