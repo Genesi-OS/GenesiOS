@@ -211,6 +211,18 @@ jobs:
       - name: the theme sync writes what each toolkit reads
         run: python genesi-arch/ci/theme-sync-test.py
 
+      - name: the Game Center's games load, and play by their rules
+        # The games are plain QtQuick so that this can load them offscreen
+        # and PLAY them: 2048 merging a tile twice in one move, a snake
+        # chasing its own tail, a first click in Minesweeper landing on a
+        # mine. Any Qt warning while they load or play fails it too.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libfontconfig1 fonts-dejavu-core
+          python -m pip install --quiet PySide6-Essentials
+          python genesi-arch/ci/game-center-test.py
+
       - name: QML that cannot be compiled is at least sane
         # Nothing in the build compiles the shell's QML -- CMake installs it as
         # plain files -- so a green build says nothing about whether the

@@ -587,7 +587,24 @@ pkgver=2.0.3
 #
 # Also: gradient text no longer vanishes when a widget switches to a gradient
 # after it is built (a layer enabled on an invisible item is never rendered).
-pkgrel=43
+# 44: the Game Center. Quick games in a drawer that opens from the
+# bottom-left corner of the screen -- the one place a thrown pointer can land
+# that nothing in caelestia answers yet. Snake, 2048, Minesweeper and Blocks,
+# painted in the scheme's colours, with best scores kept in a state file of
+# the drawer's own. Also `caelestia shell gameCenter toggle`.
+#
+# The corner goes away whenever the screen has a fullscreen window: it sits
+# on the overlay layer so caelestia's drawers cannot swallow it, and that
+# would otherwise put it above a real game too. The side panel's strip on the
+# left edge now stops 32 pixels short of the corner, so the two do not both
+# open on one throw.
+#
+# The games are plain QtQuick and are handed the palette, which is what lets
+# ci/game-center-test.py load them offscreen and play them -- the rules that
+# every first attempt gets wrong (2048 merging a tile twice in one move, a
+# snake chasing its own tail, a first click in Minesweeper landing on a mine)
+# are played there, not assumed.
+pkgrel=44
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -659,9 +676,21 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiSidePanel.qml"
         "GenesiSidePanelState.qml"
         "GenesiDepth.qml"
+        "GenesiGameCenter.qml"
+        "GenesiGames.qml"
+        "GenesiGameSnake.qml"
+        "GenesiGame2048.qml"
+        "GenesiGameMines.qml"
+        "GenesiGameBlocks.qml"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

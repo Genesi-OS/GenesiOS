@@ -90,8 +90,12 @@ Variants {
             anchors.bottom: true
             implicitWidth: 4
 
+            // Stops short of the bottom-left corner, which is the Game
+            // Center's. A pointer thrown into that corner slides down this
+            // edge on the way, and without the gap it would open both.
             MouseArea {
                 anchors.fill: parent
+                anchors.bottomMargin: 32
                 hoverEnabled: true
                 acceptedButtons: Qt.NoButton
                 onContainsMouseChanged: if (containsMouse)

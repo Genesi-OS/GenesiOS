@@ -1257,6 +1257,13 @@ TOPBAR_FILES = ("GenesiTopBar.qml", "GenesiStudio.qml", "GenesiMark.qml")
 # feature: a hover point with nothing behind it is not a thing.
 SIDEPANEL_FILES = ("GenesiSidePanel.qml",)
 
+# The Game Center: the drawer and its corner, the shelf inside it, and the
+# four games. Everything but GenesiGameCenter.qml is plain QtQuick, which is
+# what lets ci/game-center-test.py load and play the games offscreen.
+GAMECENTER_FILES = ("GenesiGameCenter.qml", "GenesiGames.qml",
+                    "GenesiGameSnake.qml", "GenesiGame2048.qml",
+                    "GenesiGameMines.qml", "GenesiGameBlocks.qml")
+
 # The wallpaper's subject, drawn over the clock and the widgets. The
 # cutting is done by genesi-depth, a CLI in this same package; this file
 # is the layer that draws what it produced.
@@ -3246,6 +3253,37 @@ def patch_scheme_screen(release):
     print("schemes: a full-screen picker, on its own layer")
 
 
+def patch_game_center(release):
+    """
+    Quick games in a drawer from the bottom-left corner of the screen.
+
+    One line in shell.qml, like the dock and the scheme picker: the drawer
+    and its corner are windows that decide their own layer, so all upstream
+    has to be told is that they exist. No config section -- the drawer keeps
+    its records and its one switch (is the corner on?) in a state file of its
+    own, which is the reason it needs nothing added to caelestia's schema.
+    """
+    shell = os.path.join(release, "shell.qml")
+    if not os.path.exists(shell):
+        fail(f"{shell} is gone -- the shell's layout moved.")
+
+    for name in GAMECENTER_FILES:
+        shipped = os.path.join(release, "modules", "background", name)
+        if os.path.exists(shipped):
+            fail(f"upstream now ships its own {name}. Decide by hand.")
+
+    text = io.open(shell, encoding="utf-8").read()
+    if "GenesiGameCenter" in text:
+        fail("shell.qml already builds the Game Center -- this ran twice.")
+    line = "    GenesiDock {}\n"
+    if line not in text:
+        fail("shell.qml does not build the dock, which is the line the Game "
+             "Center goes beside -- patch_dock did not run.")
+    io.open(shell, "w", encoding="utf-8", newline="\n").write(
+        text.replace(line, line + "    GenesiGameCenter {}\n", 1))
+    print("game center: a drawer of quick games, from the free corner")
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__.strip())
@@ -3280,6 +3318,7 @@ def main():
     patch_desktop_clock_edit(release)
     patch_dock(release)
     patch_scheme_screen(release)
+    patch_game_center(release)
     patch_topbar(release)
     patch_side_panel(release)
     patch_depth(release)
@@ -3358,6 +3397,14 @@ def main():
                  "to build the depth layer.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(DEPTH_FILES)} depth file(s)")
+
+    for name in GAMECENTER_FILES:
+        src = os.path.join(ours, name)
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- shell.qml has already been told to "
+                 "build the Game Center.")
+        shutil.copyfile(src, os.path.join(widget_dest, name))
+    print(f"installed {len(GAMECENTER_FILES)} game-center file(s)")
 
     verify_genesi_imports(release)
     verify_no_shadowed_types(release)
