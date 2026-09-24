@@ -42,11 +42,17 @@ FocusScope {
     property string current: ""
     property bool lastWasBest: false
 
+    // `unit` is what a score is: points, seconds, or turns taken -- the last
+    // two are the games where lower is better.
     readonly property var games: [
-        { id: "snake", name: qsTr("Snake"), blurb: qsTr("Eat, grow, don't bite yourself"), file: "GenesiGameSnake.qml" },
-        { id: "2048", name: "2048", blurb: qsTr("Slide the tiles, double them up"), file: "GenesiGame2048.qml" },
-        { id: "mines", name: qsTr("Minesweeper"), blurb: qsTr("Read the numbers, flag the mines"), file: "GenesiGameMines.qml" },
-        { id: "blocks", name: qsTr("Blocks"), blurb: qsTr("Fill the lines before the well fills"), file: "GenesiGameBlocks.qml" }
+        { id: "snake", name: qsTr("Snake"), blurb: qsTr("Eat, grow, don't bite yourself"), file: "GenesiGameSnake.qml", unit: "" },
+        { id: "2048", name: "2048", blurb: qsTr("Slide the tiles, double them up"), file: "GenesiGame2048.qml", unit: "" },
+        { id: "flappy", name: qsTr("Flappy Leaf"), blurb: qsTr("Fly the leaf through the branches"), file: "GenesiGameFlappy.qml", unit: "" },
+        { id: "blocks", name: qsTr("Blocks"), blurb: qsTr("Fill the lines before the well fills"), file: "GenesiGameBlocks.qml", unit: "" },
+        { id: "breakout", name: qsTr("Breakout"), blurb: qsTr("Aim the ball, break the wall"), file: "GenesiGameBreakout.qml", unit: "" },
+        { id: "mines", name: qsTr("Minesweeper"), blurb: qsTr("Read the numbers, flag the mines"), file: "GenesiGameMines.qml", unit: "time" },
+        { id: "memory", name: qsTr("Memory"), blurb: qsTr("Find the eight pairs"), file: "GenesiGameMemory.qml", unit: "moves" },
+        { id: "simon", name: qsTr("Simon"), blurb: qsTr("Watch, then play it back"), file: "GenesiGameSimon.qml", unit: "" }
     ]
     readonly property var game: hub.games.find(g => g.id === hub.current) ?? null
     readonly property Item board: stage.item
@@ -71,7 +77,12 @@ FocusScope {
         const b = hub.best[id];
         if (b === undefined)
             return qsTr("Not played yet");
-        return id === "mines" ? qsTr("Best %1s").arg(b) : qsTr("Best %1").arg(Number(b).toLocaleString(Qt.locale(), "f", 0));
+        const unit = hub.games.find(g => g.id === id)?.unit ?? "";
+        if (unit === "time")
+            return qsTr("Best %1s").arg(b);
+        if (unit === "moves")
+            return qsTr("Best: %1 moves").arg(b);
+        return qsTr("Best %1").arg(Number(b).toLocaleString(Qt.locale(), "f", 0));
     }
 
     function record(score: int): void {
@@ -236,13 +247,23 @@ FocusScope {
             }
         }
 
-        Grid {
-            id: grid
+        Flickable {
+            id: shelfScroll
 
             anchors.top: title.bottom
             anchors.topMargin: 20
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.bottom: cornerRow.top
+            anchors.bottomMargin: 12
+            contentHeight: grid.height
+            boundsBehavior: Flickable.StopAtBounds
+            clip: true
+
+        Grid {
+            id: grid
+
+            width: shelfScroll.width
             columns: 2
             spacing: 12
 
@@ -258,7 +279,7 @@ FocusScope {
                     required property int index
 
                     width: grid.tileW
-                    height: grid.tileW * 0.98
+                    height: grid.tileW * 0.9
                     radius: 18
                     color: tileArea.containsMouse
                         ? Qt.tint(hub.pal.m3surfaceContainerHigh, Qt.alpha(hub.pal.m3primary, 0.12))
@@ -284,7 +305,7 @@ FocusScope {
                         anchors.topMargin: 16
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: parent.width - 32
-                        height: parent.height * 0.5
+                        height: parent.height * 0.46
 
                         readonly property real u: Math.min(width / 7, height / 4.2)
 
@@ -383,6 +404,136 @@ FocusScope {
                                 }
                             }
                         }
+
+                        // Flappy Leaf: the leaf itself, between two branches.
+                        Item {
+                            visible: tile.modelData.id === "flappy"
+                            anchors.fill: parent
+
+                            Repeater {
+                                model: [[0.62, 0, 0.36], [0.62, 0.68, 0.32], [0.9, 0, 0.18], [0.9, 0.5, 0.5]]
+
+                                Rectangle {
+                                    required property var modelData
+
+                                    x: art.width * modelData[0]
+                                    y: art.height * modelData[1]
+                                    width: art.width * 0.1
+                                    height: art.height * modelData[2]
+                                    radius: 4
+                                    color: Qt.tint(hub.pal.m3secondaryContainer, Qt.alpha("#6b4f2f", 0.45))
+                                }
+                            }
+                            GenesiLeaf {
+                                x: art.width * 0.2
+                                y: art.height * 0.18
+                                size: art.height * 0.62
+                                pal: hub.pal
+                                mood: "happy"
+                                level: 3
+                                rotation: -15
+                                visible: tile.modelData.id === "flappy"
+                            }
+                        }
+
+                        // Breakout: rows of bricks, the paddle, the ball.
+                        Item {
+                            visible: tile.modelData.id === "breakout"
+                            anchors.fill: parent
+
+                            Grid {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                columns: 6
+                                spacing: 3
+
+                                Repeater {
+                                    model: 18
+
+                                    Rectangle {
+                                        required property int index
+
+                                        visible: index !== 8 && index !== 13
+                                        width: (art.width - 15) / 6
+                                        height: art.height / 9
+                                        radius: 2
+                                        color: [hub.pal.m3error, hub.pal.m3tertiary, hub.pal.m3primary][Math.floor(index / 6)]
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                x: art.width * 0.55
+                                y: art.height * 0.62
+                                width: art.height * 0.1
+                                height: width
+                                radius: width / 2
+                                color: hub.pal.m3primary
+                            }
+                            Rectangle {
+                                x: art.width * 0.36
+                                y: art.height * 0.88
+                                width: art.width * 0.28
+                                height: art.height * 0.07
+                                radius: height / 2
+                                color: hub.pal.m3onSurface
+                            }
+                        }
+
+                        // Memory: cards, two of them turned up and matching.
+                        Grid {
+                            visible: tile.modelData.id === "memory"
+                            anchors.centerIn: parent
+                            columns: 4
+                            spacing: 4
+
+                            Repeater {
+                                model: 8
+
+                                Rectangle {
+                                    required property int index
+
+                                    width: art.height / 2 - 4
+                                    height: width
+                                    radius: 5
+                                    color: index === 1 || index === 6 ? hub.pal.m3surfaceContainerHighest : hub.pal.m3primaryContainer
+
+                                    Rectangle {
+                                        visible: parent.index === 1 || parent.index === 6
+                                        anchors.centerIn: parent
+                                        width: parent.width * 0.46
+                                        height: width
+                                        radius: width / 2
+                                        color: hub.pal.m3tertiary
+                                    }
+                                }
+                            }
+                        }
+
+                        // Simon: four pads, one lit.
+                        Item {
+                            visible: tile.modelData.id === "simon"
+                            anchors.centerIn: parent
+                            width: art.height
+                            height: art.height
+
+                            Repeater {
+                                model: 4
+
+                                Rectangle {
+                                    required property int index
+
+                                    x: index === 1 || index === 2 ? parent.width / 2 + 2 : 0
+                                    y: index >= 2 ? parent.height / 2 + 2 : 0
+                                    width: parent.width / 2 - 2
+                                    height: width
+                                    topLeftRadius: index === 0 ? width : 5
+                                    topRightRadius: index === 1 ? width : 5
+                                    bottomRightRadius: index === 2 ? width : 5
+                                    bottomLeftRadius: index === 3 ? width : 5
+                                    color: index === 1 ? hub.pal.m3tertiary
+                                        : Qt.alpha([hub.pal.m3primary, hub.pal.m3tertiary, hub.pal.m3error, hub.pal.m3secondary][index], 0.35)
+                                }
+                            }
+                        }
                     }
 
                     Column {
@@ -428,11 +579,14 @@ FocusScope {
                 }
             }
         }
+        }
 
         // Whether the corner of the screen opens this. Here, and not only in
         // Genesi Center, because the moment somebody decides the corner is
         // in their way is the moment it has just opened on them.
         Rectangle {
+            id: cornerRow
+
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -555,8 +709,10 @@ FocusScope {
 
                 anchors.verticalCenter: parent.verticalCenter
                 strong: true
-                text: hub.current === "mines"
+                text: hub.game?.unit === "time"
                     ? qsTr("%1s").arg(hub.board?.score ?? 0)
+                    : hub.game?.unit === "moves"
+                    ? qsTr("%1 moves").arg(hub.board?.score ?? 0)
                     : Number(hub.board?.score ?? 0).toLocaleString(Qt.locale(), "f", 0)
             }
             Chip {
@@ -685,8 +841,10 @@ FocusScope {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     visible: veil.ended && !(hub.current === "mines" && !hub.board.won)
-                    text: hub.current === "mines"
+                    text: hub.game?.unit === "time"
                         ? qsTr("in %1 seconds").arg(hub.board?.score ?? 0)
+                        : hub.game?.unit === "moves"
+                        ? qsTr("in %1 moves").arg(hub.board?.score ?? 0)
                         : qsTr("%1 points").arg(Number(hub.board?.score ?? 0).toLocaleString(Qt.locale(), "f", 0))
                     font.family: hub.sans
                     font.pixelSize: 16

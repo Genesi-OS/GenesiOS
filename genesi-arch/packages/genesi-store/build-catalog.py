@@ -87,8 +87,8 @@ SECTIONS = [
 # about has a card here writing exactly the path it reads.
 PLUGINS = [
     ("game-center", "Game Center",
-     "Joguinhos rápidos no canto inferior esquerdo da tela: Snake, 2048, "
-     "Campo Minado e Blocks, com recordes.",
+     "Oito joguinhos rápidos no canto inferior esquerdo da tela: Snake, "
+     "2048, Flappy Leaf, Blocks, Breakout, Campo Minado, Memória e Simon.",
      ["jogos", "canto"], "plugin-game-center.jpg"),
     ("leaf", "Folhinha",
      "Um bichinho na sua tela que é o estado do PC: sua quando a CPU "

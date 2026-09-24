@@ -155,6 +155,13 @@ Scope {
         function hide(): void {
             root.dismiss();
         }
+
+        // From the Plugins page. A string, not a bool: it arrives from a
+        // command line either way, and "false" as a bool is true.
+        function corner(on: string): void {
+            root.corner = on === "true";
+            root.save();
+        }
     }
 
     Variants {

@@ -58,10 +58,10 @@ ENGLISH = {
 
     # ── Plugins ────────────────────────────────────────────────────────────
     "Folhinha": "Leaf",
-    "Joguinhos rápidos no canto inferior esquerdo da tela: Snake, 2048, "
-    "Campo Minado e Blocks, com recordes.":
-        "Quick games from the bottom-left corner of the screen: Snake, 2048, "
-        "Minesweeper and Blocks, with your best scores.",
+    "Oito joguinhos rápidos no canto inferior esquerdo da tela: Snake, "
+    "2048, Flappy Leaf, Blocks, Breakout, Campo Minado, Memória e Simon.":
+        "Eight quick games from the bottom-left corner of the screen: Snake, "
+        "2048, Flappy Leaf, Blocks, Breakout, Minesweeper, Memory and Simon.",
     "Um bichinho na sua tela que é o estado do PC: sua quando a CPU "
     "esquenta, dorme quando você sai e cresce com você.":
         "A little pet that is the state of your machine: it sweats when the "

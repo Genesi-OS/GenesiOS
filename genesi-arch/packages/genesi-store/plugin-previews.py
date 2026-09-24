@@ -119,8 +119,8 @@ Item {
             pal: host.pal
             sans: "%(sans)s"
             icons: "%(icons)s"
-            best: ({ snake: 340, "2048": 5120, mines: 48, blocks: 4200 })
-            plays: ({ snake: 12, "2048": 7, mines: 5, blocks: 9 })
+            best: ({ snake: 340, "2048": 5120, flappy: 23, mines: 48, blocks: 4200 })
+            plays: ({ snake: 12, "2048": 7, mines: 5, blocks: 9, flappy: 14 })
         }
     }
     Rectangle {

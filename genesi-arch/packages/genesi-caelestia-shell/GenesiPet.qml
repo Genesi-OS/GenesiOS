@@ -24,8 +24,9 @@
 //
 // ── Where it lives ────────────────────────────────────────────────────────
 //
-// Along the bottom of the first screen, standing on whatever Genesi surface
-// is down there (GenesiEdges knows how tall the dock is). It wanders every
+// Along the bottom of the screen it was told to live on -- the first one,
+// a named one, or whichever has focus ("follow") -- standing on whatever
+// Genesi surface is down there (GenesiEdges knows how tall the dock is). It wanders every
 // minute or two like a leaf on a breeze, and can be dragged anywhere along
 // the edge; where it was left is remembered. Its window is the width of the
 // screen but takes input only over the leaf and its speech bubble -- a strip
@@ -34,6 +35,18 @@
 //
 // On the TOP layer, not the overlay: a fullscreen window covers it, which is
 // exactly what somebody playing a real game wants.
+//
+// ── Told things from outside ──────────────────────────────────────────────
+//
+//     caelestia shell leaf set screen <name|follow|next>
+//     caelestia shell leaf set scale 1.2      (0.6 to 1.8)
+//     caelestia shell leaf set wander false
+//     caelestia shell leaf set chatty false
+//
+// which is what the Plugins page and the leaf's own right-click menu call.
+// They arrive at the window, which is the one writer of genesi-pet.json --
+// a settings page writing the same file would be a second writer, and the
+// leaf saves its XP every few minutes.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -50,6 +63,16 @@ import qs.modules.launcher as Launcher
 Scope {
     id: root
 
+    signal asked(string key, string value)
+
+    IpcHandler {
+        target: "leaf"
+
+        function set(key: string, value: string): void {
+            root.asked(key, value);
+        }
+    }
+
     GenesiPluginSwitch {
         id: gate
 
@@ -62,7 +85,22 @@ Scope {
         StyledWindow {
             id: win
 
-            screen: Screens.screens[0]
+            // "" is the first screen, "follow" is whichever has focus, and
+            // anything else is a screen's name. A name that is not plugged in
+            // right now falls back to the first rather than to nowhere.
+            property string screenPref: ""
+            property real scaleF: 1
+            property bool wanders: true
+            property bool chatty: true
+            property real napUntil: 0
+
+            readonly property var home: {
+                const list = Screens.screens;
+                const want = win.screenPref === "follow" ? (Hypr.focusedMonitor?.name ?? "") : win.screenPref;
+                return list.find(s => s.name === want) ?? list[0];
+            }
+
+            screen: win.home
             name: "genesi-leaf"
 
             readonly property var monitor: Hypr.monitorFor(win.screen)
@@ -85,7 +123,7 @@ Scope {
             readonly property var senses: ({
                 now: clock.now,
                 happyUntil: win.happyUntil,
-                idle: win.idle,
+                idle: win.idle || clock.now < win.napUntil,
                 cpu: win.cpu,
                 temp: Cpu.temperature,
                 playing: Players.active?.isPlaying ?? false,
@@ -103,7 +141,24 @@ Scope {
             property var bubble: []
             property bool talking: false
 
-            function say(lines: var, ms: int): void {
+            property var actions: []
+
+            // The right-click menu: the same bubble, with things to press.
+            function menu(): void {
+                const acts = [];
+                if (Screens.screens.length > 1)
+                    acts.push({ key: "screen", value: "next", text: mind.t("Next screen", "Próximo monitor") });
+                acts.push(clock.now < win.napUntil
+                    ? { key: "nap", value: "false", text: mind.t("Wake up", "Acordar") }
+                    : { key: "nap", value: "true", text: mind.t("Nap for an hour", "Tirar um cochilo") });
+                acts.push({ key: "wander", value: String(!win.wanders),
+                            text: win.wanders ? mind.t("Stay put", "Ficar parada") : mind.t("Wander", "Passear") });
+                acts.push({ key: "settings", value: "", text: mind.t("Settings", "Ajustes") });
+                win.say(mind.t("What shall we do?", "O que a gente faz?"), 8000, acts);
+            }
+
+            function say(lines: var, ms: int, acts: var): void {
+                win.actions = acts ?? [];
                 win.bubble = typeof lines === "string" ? [lines] : lines;
                 win.talking = true;
                 talkTimer.restart();
@@ -130,7 +185,11 @@ Scope {
                     xp: Math.floor(win.xp),
                     fx: Math.round(win.fx * 1000) / 1000,
                     seenPlays: win.seenPlays,
-                    seenBest: win.seenBest
+                    seenBest: win.seenBest,
+                    screen: win.screenPref,
+                    scale: win.scaleF,
+                    wander: win.wanders,
+                    chatty: win.chatty
                 }, null, 2) + "\n");
             }
 
@@ -139,7 +198,7 @@ Scope {
                     return;
                 const line = mind.remark(win.lastMood, win.mood, win.senses);
                 win.lastMood = win.mood;
-                if (line)
+                if (line && win.chatty)
                     win.say(line, 4000);
             }
 
@@ -181,6 +240,35 @@ Scope {
 
             GenesiPetMind {
                 id: mind
+            }
+
+            Connections {
+                target: root
+
+                function onAsked(key: string, value: string): void {
+                    if (key === "screen") {
+                        const list = Screens.screens;
+                        if (value === "next") {
+                            const at = list.findIndex(s => s.name === win.screen?.name);
+                            win.screenPref = list[(at + 1) % list.length]?.name ?? "";
+                        } else {
+                            win.screenPref = value;
+                        }
+                        win.say(mind.t("I live here now!", "Agora eu moro aqui!"), 2600);
+                        leaf.hop();
+                    } else if (key === "scale") {
+                        win.scaleF = Math.min(1.8, Math.max(0.6, parseFloat(value) || 1));
+                    } else if (key === "wander") {
+                        win.wanders = value === "true";
+                    } else if (key === "chatty") {
+                        win.chatty = value === "true";
+                    } else if (key === "nap") {
+                        win.napUntil = value === "false" ? 0 : Date.now() + 60 * 60 * 1000;
+                    } else {
+                        return;
+                    }
+                    win.save();
+                }
             }
 
             ServiceRef {
@@ -238,6 +326,10 @@ Scope {
                         win.fx = Math.min(0.95, Math.max(0.03, d.fx ?? 0.12));
                         win.seenPlays = d.seenPlays ?? -1;
                         win.seenBest = d.seenBest ?? {};
+                        win.screenPref = d.screen ?? "";
+                        win.scaleF = Math.min(1.8, Math.max(0.6, d.scale ?? 1));
+                        win.wanders = d.wander !== false;
+                        win.chatty = d.chatty !== false;
                     } catch (e) {}
                     win.wake();
                 }
@@ -348,7 +440,7 @@ Scope {
 
                 interval: 60000
                 repeat: true
-                running: win.mood === "normal" && !drag.pressed
+                running: win.wanders && win.mood === "normal" && !drag.pressed
                 onTriggered: {
                     wander.interval = 45000 + Math.random() * 90000;
                     let to = 0.05 + Math.random() * 0.9;
@@ -376,7 +468,7 @@ Scope {
             GenesiLeaf {
                 id: leaf
 
-                size: 64 + Math.min(win.level, 8) * 3
+                size: (64 + Math.min(win.level, 8) * 3) * win.scaleF
                 x: win.fx * (win.width - leaf.width)
                 // A leaf in the air bobs; one on the ground does not.
                 y: win.height - leaf.height - win.floor - (drift.running ? 10 + Math.sin(win.fx * 60) * 8 : 0)
@@ -398,15 +490,18 @@ Scope {
 
                     anchors.fill: parent
                     hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
 
                     onPressed: mouse => {
+                        if (mouse.button !== Qt.LeftButton)
+                            return;
                         drift.stop();
                         drag.startX = mouse.x;
                         drag.moved = false;
                     }
                     onPositionChanged: mouse => {
-                        if (drag.pressed) {
+                        if (drag.pressed && drag.pressedButtons & Qt.LeftButton) {
                             const dx = mouse.x - drag.startX;
                             if (Math.abs(dx) > 3)
                                 drag.moved = true;
@@ -419,8 +514,11 @@ Scope {
                     onExited: leaf.look = Qt.point(0, 0)
                     onReleased: if (drag.moved)
                         win.save()
-                    onClicked: if (!drag.moved) {
-                        win.say(mind.status(win.senses, win.xp), 7000);
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton)
+                            win.menu();
+                        else if (!drag.moved)
+                            win.say(mind.status(win.senses, win.xp), 7000);
                     }
                     onDoubleClicked: {
                         win.cheer(3000);
@@ -435,8 +533,8 @@ Scope {
 
                 visible: opacity > 0
                 opacity: bubbleTimer.running ? 1 : 0
-                width: Math.min(300, bubbleText.implicitWidth + 28)
-                height: bubbleText.implicitHeight + 20
+                width: Math.min(320, Math.max(bubbleText.implicitWidth, actionRow.implicitWidth) + 28)
+                height: bubbleText.implicitHeight + 20 + (win.actions.length ? actionRow.implicitHeight + 10 : 0)
                 x: Math.min(win.width - width - 8, Math.max(8, leaf.x + leaf.width / 2 - width / 2))
                 y: leaf.y - height - 10
                 radius: 14
@@ -465,6 +563,58 @@ Scope {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: bubbleTimer.stop()
+                }
+
+                Flow {
+                    id: actionRow
+
+                    x: 14
+                    y: bubbleText.y + bubbleText.implicitHeight + 10
+                    width: 292
+                    spacing: 6
+                    visible: win.actions.length > 0
+
+                    Repeater {
+                        model: win.actions
+
+                        Rectangle {
+                            id: chip
+
+                            required property var modelData
+
+                            width: chipText.implicitWidth + 20
+                            height: 28
+                            radius: 14
+                            color: chipArea.containsMouse
+                                ? Colours.palette.m3primaryContainer
+                                : Qt.alpha(Colours.palette.m3onSurface, 0.08)
+
+                            Text {
+                                id: chipText
+
+                                anchors.centerIn: parent
+                                text: chip.modelData.text
+                                color: chipArea.containsMouse ? Colours.palette.m3onPrimaryContainer : Colours.palette.m3onSurface
+                                font.family: win.contentItem.Tokens.font.body.small.family
+                                font.pixelSize: 12
+                            }
+
+                            MouseArea {
+                                id: chipArea
+
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    bubbleTimer.stop();
+                                    if (chip.modelData.key === "settings")
+                                        Quickshell.execDetached(["caelestia", "shell", "nexus", "open"]);
+                                    else
+                                        root.asked(chip.modelData.key, chip.modelData.value);
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

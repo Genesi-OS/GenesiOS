@@ -20,6 +20,15 @@ rather than read:
            a number with its flags placed opens the rest; clearing wins
   Blocks   full rows clear and score by the level; a piece against the wall
            still turns; the bag deals every piece once per seven
+  Flappy   a flap lifts, gravity pulls, a branch passed scores, a branch or
+           the ground ends it, the sky does not
+  Breakout walls bounce; where the ball lands on the paddle is where it
+           goes; a brick scores; a lost ball costs a life; a cleared wall
+           is the next level
+  Memory   eight pairs; a match stays up, a miss turns back; the score is
+           turns, lower is better
+  Simon    each round is one longer; the right answer advances, a wrong
+           one ends it
   Hub      each game loads through the shelf; a finished game reports its
            score once; a record is a record in the right direction
   Leaf     hot beats asleep, music beats asleep; the level curve; XP from
@@ -55,7 +64,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SHELL = os.path.normpath(os.path.join(HERE, "..", "packages",
                                       "genesi-caelestia-shell"))
 GAMES = ("GenesiGameSnake.qml", "GenesiGame2048.qml", "GenesiGameMines.qml",
-         "GenesiGameBlocks.qml")
+         "GenesiGameBlocks.qml", "GenesiGameFlappy.qml", "GenesiGameBreakout.qml",
+         "GenesiGameMemory.qml", "GenesiGameSimon.qml")
 PURE = GAMES + ("GenesiGames.qml", "GenesiPetMind.qml", "GenesiWeatherFx.qml")
 # The leaf is drawn with Shapes, which is still Qt and nothing of caelestia's.
 DRAWN = ("GenesiLeaf.qml",)
@@ -88,6 +98,23 @@ for name in DRAWN:
     imports = re.findall(r"^\s*import\s+(\S+)", body, re.M)
     check(f"{name} imports only QtQuick and its Shapes",
           imports == ["QtQuick", "QtQuick.Shapes"], imports)
+
+# ── Every game on the shelf is a game the package installs ────────────────
+#
+# The shelf names a file per game and loads it by name. A game added to the
+# shelf and not to the patcher's GAMECENTER_FILES is a tile that opens onto
+# nothing on the installed system -- and everything here would still pass,
+# because here the file is right beside the shelf.
+hub_src = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, "GenesiGames.qml"),
+                                          encoding="utf-8").read())
+shelf_files = set(re.findall(r'file:\s*"([^"]+\.qml)"', hub_src))
+patcher_src = io.open(os.path.join(HERE, "caelestia-patches.py"), encoding="utf-8").read()
+m = re.search(r"^GAMECENTER_FILES = \((.*?)\)", patcher_src, re.S | re.M)
+installed = set(re.findall(r'"([^"]+\.qml)"', m.group(1))) if m else set()
+check("every game on the shelf is installed by the package",
+      shelf_files and shelf_files <= installed, sorted(shelf_files - installed))
+check("...and every game file here is on the shelf",
+      set(GAMES) <= shelf_files, sorted(set(GAMES) - shelf_files))
 
 # ── Wiring the tests below cannot see ─────────────────────────────────────
 #
@@ -446,6 +473,167 @@ run("blocks", game("GenesiGameBlocks.qml"), """
         ok("a piece with nowhere to appear ends it", g.over && ended === g.score, ended);
 """, size=(460, 600), shot="blocks.png")
 
+# ── Flappy Leaf ───────────────────────────────────────────────────────────
+run("flappy", game("GenesiGameFlappy.qml"), """
+        g.restart();
+        const y0 = g.ly;
+        g.step(0.1);
+        ok("nothing moves before the first flap", g.ly === y0 && !g.over);
+
+        g.flap();
+        g.pipes = [];
+        g.step(0.05);
+        ok("a flap lifts it", g.ly < y0, g.ly + " vs " + y0);
+        for (let i = 0; i < 12; i++)
+            g.step(0.05);
+        ok("...and gravity brings it back down", g.vy > 0, g.vy);
+
+        g.restart();
+        g.flap();
+        g.ly = g.radius + 2;
+        g.vy = -600;
+        g.pipes = [{ x: 300, gap: 200, passed: false }];
+        g.step(0.02);
+        ok("the sky stops it but does not end it", !g.over && g.ly >= g.radius, g.ly);
+
+        g.restart();
+        g.flap();
+        g.ly = 200;
+        g.vy = 0;
+        g.pipes = [{ x: g.leafX - g.radius - g.pipeW - 1, gap: 200, passed: false }];
+        g.step(0.001);
+        ok("a branch passed is a point", g.score === 1, g.score);
+
+        g.restart();
+        g.flap();
+        g.ly = 60;
+        g.vy = 0;
+        let ended = -1;
+        g.finished.connect(sc => ended = sc);
+        g.pipes = [{ x: g.leafX - 10, gap: 300, passed: false }];
+        g.step(0.001);
+        ok("flying into a branch ends it", g.over && ended === 0, ended);
+
+        g.restart();
+        g.flap();
+        g.pipes = [];
+        g.ly = g.worldH - g.ground - g.radius - 1;
+        g.vy = 300;
+        g.step(0.02);
+        ok("so does the ground", g.over);
+        g.restart();
+""", shot="flappy.png")
+
+# ── Breakout ──────────────────────────────────────────────────────────────
+run("breakout", game("GenesiGameBreakout.qml"), """
+        g.restart();
+        ok("forty bricks, three balls", g.bricks.filter(b => b).length === 40 && g.lives === 3);
+
+        g.serve();
+        g.bx = 3; g.by = 300; g.vx = -200; g.vy = -100;
+        g.step(0.02);
+        ok("the left wall bounces", g.vx > 0, g.vx);
+        g.bx = g.worldW - 3; g.vx = 200;
+        g.step(0.02);
+        ok("so does the right", g.vx < 0, g.vx);
+
+        g.px = 180;
+        g.bx = 180; g.by = g.padY - g.r - 1; g.vx = 0; g.vy = 250;
+        g.step(0.01);
+        ok("the middle of the paddle sends it straight up",
+           g.vy < 0 && Math.abs(g.vx) < 5, g.vx + "," + g.vy);
+        g.bx = 180 + g.padW / 2 - 2; g.by = g.padY - g.r - 1; g.vx = 0; g.vy = 250;
+        g.step(0.01);
+        ok("the right edge sends it right", g.vy < 0 && g.vx > 100, g.vx);
+
+        const before = g.score;
+        g.bx = g.side + g.brickW / 2; g.by = g.brickTop + g.brickH * 4.5 + 16 + 2; g.vx = 0; g.vy = -250;
+        g.step(0.02);
+        ok("a brick breaks and scores",
+           g.bricks.filter(b => b).length === 39 && g.score > before && g.vy > 0, g.score);
+
+        g.bx = 100; g.by = g.worldH + 5; g.vx = 0; g.vy = 300;
+        g.step(0.02);
+        ok("a lost ball costs a life, and the next waits on the paddle",
+           g.lives === 2 && !g.served, g.lives);
+
+        g.serve();
+        g.bricks = new Array(40).fill(0);
+        g.bricks[0] = 1;
+        g.bricks = g.bricks.slice();
+        g.bx = g.side + g.brickW / 2; g.by = g.brickTop + g.brickH / 2 + 2; g.vx = 0; g.vy = -250;
+        g.step(0.01);
+        ok("the last brick brings the next level, and a new wall",
+           g.level === 2 && g.bricks.filter(b => b).length === 40, g.level);
+
+        let ended = -1;
+        g.finished.connect(sc => ended = sc);
+        g.lives = 1;
+        g.serve();
+        g.bx = 100; g.by = g.worldH + 5; g.vy = 300;
+        g.step(0.02);
+        ok("the last ball ends it", g.over && ended === g.score, ended);
+        g.restart();
+""", shot="breakout.png")
+
+# ── Memory ────────────────────────────────────────────────────────────────
+run("memory", game("GenesiGameMemory.qml"), """
+        g.restart();
+        const counts = {};
+        g.cards.forEach(c => counts[c.sym] = (counts[c.sym] || 0) + 1);
+        ok("sixteen cards, eight pairs",
+           g.cards.length === 16 && Object.keys(counts).length === 8
+           && Object.values(counts).every(n => n === 2), JSON.stringify(counts));
+
+        g.cards = [0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7].map(s => ({ sym: s, up: false, done: false }));
+        g.pick(0);
+        g.pick(1);
+        ok("a match stays up", g.cards[0].done && g.cards[1].done && g.moves === 1);
+
+        g.pick(2);
+        g.pick(4);
+        ok("a miss is shown...", g.cards[2].up && g.cards[4].up && g.locked);
+        g.pick(6);
+        ok("...and the board takes no third card while it is", !g.cards[6].up);
+        g.settle();
+        ok("...then turns back", !g.cards[2].up && !g.cards[4].up && !g.locked && g.moves === 2);
+
+        let ended = -1;
+        g.finished.connect(sc => ended = sc);
+        for (let i = 2; i < 16; i += 2) {
+            g.pick(i);
+            g.pick(i + 1);
+        }
+        ok("every pair found wins, scored in turns", g.won && ended === 9, ended);
+        ok("...and fewer turns is the better score", g.lowerIsBetter === true);
+        g.restart();
+""", shot="memory.png")
+
+# ── Simon ─────────────────────────────────────────────────────────────────
+run("simon", game("GenesiGameSimon.qml"), """
+        g.restart();
+        g.begin();
+        ok("the first round is one long", g.seq.length === 1 && g.phase === "show");
+        g.press(g.seq[0]);
+        ok("pressing during the demonstration does nothing", g.at === 0);
+
+        g.phase = "input";
+        g.press(g.seq[0]);
+        ok("the right answer completes the round", g.score === 1 && g.phase === "show");
+        g.grow();
+        ok("...and the next is one longer", g.seq.length === 2);
+
+        g.phase = "input";
+        g.press(g.seq[0]);
+        ok("half of it is progress, not a round", g.at === 1 && g.score === 1);
+
+        let ended = -1;
+        g.finished.connect(sc => ended = sc);
+        g.press((g.seq[1] + 1) % 4);
+        ok("a wrong pad ends it, with the rounds done", g.over && ended === 1, ended);
+        g.restart();
+""", shot="simon.png")
+
 # ── The shelf, and a game through it ─────────────────────────────────────
 run("hub", """
     GenesiGames {
@@ -454,7 +642,7 @@ run("hub", """
         anchors.margins: 20
         pal: host.pal
         sans: "sans-serif"
-        best: ({ snake: 120, mines: 40 })
+        best: ({ snake: 120, mines: 40, memory: 18 })
         plays: ({ snake: 3, mines: 2 })
     }
     readonly property Item g: hubItem
@@ -462,12 +650,13 @@ run("hub", """
         const said = [];
         g.played.connect((id, score, low) => said.push([id, score, low]));
 
-        ok("the shelf lists four games", g.games.length === 4);
+        ok("the shelf lists eight games", g.games.length === 8);
         ok("best scores read the right way round",
            g.bestText("snake") === "Best 120" && g.bestText("mines") === "Best 40s"
+           && g.bestText("memory") === "Best: 18 moves"
            && g.bestText("blocks") === "Not played yet", g.bestText("snake") + " / " + g.bestText("mines"));
 
-        for (const id of ["snake", "2048", "mines", "blocks"]) {
+        for (const id of ["snake", "2048", "flappy", "blocks", "breakout", "mines", "memory", "simon"]) {
             g.open(id);
             ok(id + " loads through the shelf", !!g.board && g.current === id);
         }

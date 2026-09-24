@@ -1267,7 +1267,9 @@ SIDEPANEL_FILES = ("GenesiSidePanel.qml",)
 PLUGIN_FILES = ("GenesiPluginSwitch.qml",)
 GAMECENTER_FILES = ("GenesiGameCenter.qml", "GenesiGames.qml",
                     "GenesiGameSnake.qml", "GenesiGame2048.qml",
-                    "GenesiGameMines.qml", "GenesiGameBlocks.qml")
+                    "GenesiGameMines.qml", "GenesiGameBlocks.qml",
+                    "GenesiGameFlappy.qml", "GenesiGameBreakout.qml",
+                    "GenesiGameMemory.qml", "GenesiGameSimon.qml")
 PET_FILES = ("GenesiPet.qml", "GenesiLeaf.qml", "GenesiPetMind.qml")
 WEATHER_FILES = ("GenesiLiveWeather.qml", "GenesiWeatherFx.qml")
 

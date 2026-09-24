@@ -642,7 +642,26 @@ pkgver=2.0.3
 # is a page now: a switch for every plugin -- through the store, so the
 # store's record of what is applied never disagrees with it -- the leaf's
 # level, the weather right now and a preview of each sky.
-pkgrel=46
+# 47: four more games, a leaf that lives where you tell it, and a Plugins
+# page worth opening.
+#
+# Flappy Leaf (the pet itself, flying between branches), Breakout (the
+# angle follows where the ball lands on the paddle), Memory (drawn symbols,
+# never a font glyph that renders differently per machine) and Simon. The
+# shelf scrolls now, and a score knows its unit -- points, seconds, turns.
+# Writing Breakout's test caught a property called `top`, which is FINAL on
+# Item: the game would not have loaded at all.
+#
+# The leaf: `caelestia shell leaf set screen <name|follow|next>`, a size,
+# wandering and talking on their own can be switched off, a nap, and a
+# right-click menu with all of it. The window stays the one writer of
+# genesi-pet.json; the page and the menu ask it over IPC.
+#
+# The Plugins page: a card per plugin with the store's picture, a switch,
+# and its settings -- records and the corner for the Game Center, the
+# leaf's level, screen, size and habits, the weather now and a preview of
+# each sky.
+pkgrel=47
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -727,9 +746,17 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiLiveWeather.qml"
         "GenesiWeatherFx.qml"
         "PluginsPage.qml"
+        "GenesiGameFlappy.qml"
+        "GenesiGameBreakout.qml"
+        "GenesiGameMemory.qml"
+        "GenesiGameSimon.qml"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
