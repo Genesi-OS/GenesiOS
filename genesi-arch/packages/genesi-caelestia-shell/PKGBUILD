@@ -661,7 +661,22 @@ pkgver=2.0.3
 # and its settings -- records and the corner for the Game Center, the
 # leaf's level, screen, size and habits, the weather now and a preview of
 # each sky.
-pkgrel=47
+# 48: two more plugins.
+#
+# Turntable (GenesiVinyl): whatever is playing, spinning on the desktop --
+# the cover on the label, a platter that spins up and coasts down instead of
+# snapping, the lamp's reflection holding still while the grooves turn, and
+# the tonearm creeping inward through the track. Click to pause, scroll to
+# skip; on the bottom layer, under every window.
+#
+# Retrospective (GenesiWrapped): your week or month as full-screen story
+# slides -- time at the machine against the period before, the app of the
+# week, the top five as growing bars, a 24-hour rhythm and who it says you
+# are (night owl, early bird, marathoner...), your biggest day, the Game
+# Center and the leaf. It counts only the CLASS of the focused window,
+# never a title, keeps ten weeks on this machine, and says on Sunday
+# evening, once, that the week is ready.
+pkgrel=48
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -750,9 +765,19 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiGameBreakout.qml"
         "GenesiGameMemory.qml"
         "GenesiGameSimon.qml"
+        "GenesiVinyl.qml"
+        "GenesiVinylDeck.qml"
+        "GenesiWrapped.qml"
+        "GenesiWrappedMath.qml"
+        "GenesiWrappedStory.qml"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

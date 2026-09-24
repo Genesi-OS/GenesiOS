@@ -218,7 +218,9 @@ pkgver=0.1.0
 # wallpaper when the weather outside has them. Its picture is the plugin's
 # own rain drawn over a wallpaper this package already ships.
 # 16: the Game Center card says eight games, and its picture shows them.
-pkgrel=16
+# 17: two more plugin cards -- the Turntable and the Retrospective -- with
+# pictures drawn from the plugins themselves.
+pkgrel=17
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

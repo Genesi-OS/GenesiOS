@@ -98,6 +98,14 @@ PLUGINS = [
      "Quando chove lá fora, chove no seu papel de parede: chuva, neve, "
      "tempestade e neblina, por baixo das janelas.",
      ["clima", "papel de parede"], "plugin-live-weather.jpg"),
+    ("vinyl", "Toca-discos",
+     "O que está tocando, girando na sua área de trabalho: a capa no selo, "
+     "o braço acompanhando a música. Clique pausa, rolar pula.",
+     ["música", "área de trabalho"], "plugin-vinyl.jpg"),
+    ("wrapped", "Retrospectiva",
+     "Sua semana e seu mês no Genesi, contados como uma história: seus apps, "
+     "suas horas, seu ritmo, seus recordes.",
+     ["estatísticas", "semana"], "plugin-wrapped.jpg"),
 ]
 
 

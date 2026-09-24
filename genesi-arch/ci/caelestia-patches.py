@@ -1272,6 +1272,14 @@ GAMECENTER_FILES = ("GenesiGameCenter.qml", "GenesiGames.qml",
                     "GenesiGameMemory.qml", "GenesiGameSimon.qml")
 PET_FILES = ("GenesiPet.qml", "GenesiLeaf.qml", "GenesiPetMind.qml")
 WEATHER_FILES = ("GenesiLiveWeather.qml", "GenesiWeatherFx.qml")
+VINYL_FILES = ("GenesiVinyl.qml", "GenesiVinylDeck.qml")
+WRAPPED_FILES = ("GenesiWrapped.qml", "GenesiWrappedMath.qml",
+                 "GenesiWrappedStory.qml")
+
+# Every plugin file, in one place, so the checks and the copy below cannot
+# disagree about which files are plugins.
+ALL_PLUGIN_FILES = (PLUGIN_FILES + GAMECENTER_FILES + PET_FILES + WEATHER_FILES
+                    + VINYL_FILES + WRAPPED_FILES)
 
 # The Nexus page that lists them. Upstream REGISTERS "Plugins" under System
 # and points it at the placeholder -- the same situation the Updates page was
@@ -3282,13 +3290,14 @@ def patch_plugins(release):
     if not os.path.exists(shell):
         fail(f"{shell} is gone -- the shell's layout moved.")
 
-    for name in PLUGIN_FILES + GAMECENTER_FILES + PET_FILES + WEATHER_FILES:
+    for name in ALL_PLUGIN_FILES:
         shipped = os.path.join(release, "modules", "background", name)
         if os.path.exists(shipped):
             fail(f"upstream now ships its own {name}. Decide by hand.")
 
     text = io.open(shell, encoding="utf-8").read()
-    if "GenesiGameCenter" in text or "GenesiPet" in text or "GenesiLiveWeather" in text:
+    if any(w in text for w in ("GenesiGameCenter", "GenesiPet", "GenesiLiveWeather",
+                               "GenesiVinyl", "GenesiWrapped")):
         fail("shell.qml already builds the plugins -- this ran twice.")
     line = "    GenesiDock {}\n"
     if line not in text:
@@ -3297,9 +3306,10 @@ def patch_plugins(release):
     io.open(shell, "w", encoding="utf-8", newline="\n").write(
         text.replace(line, line + "    GenesiGameCenter {}\n"
                      "    GenesiPet {}\n"
-                     "    GenesiLiveWeather {}\n", 1))
-    print("plugins: the Game Center, the leaf and the weather, each behind "
-          "its switch")
+                     "    GenesiLiveWeather {}\n"
+                     "    GenesiVinyl {}\n"
+                     "    GenesiWrapped {}\n", 1))
+    print("plugins: every one in shell.qml, each behind its switch")
 
 
 def patch_plugins_page(nexus_dir):
@@ -3470,14 +3480,13 @@ def main():
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(DEPTH_FILES)} depth file(s)")
 
-    for name in PLUGIN_FILES + GAMECENTER_FILES + PET_FILES + WEATHER_FILES:
+    for name in ALL_PLUGIN_FILES:
         src = os.path.join(ours, name)
         if not os.path.exists(src):
             fail(f"{src} is missing -- shell.qml has already been told to "
                  "build the plugins.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
-    print(f"installed {len(PLUGIN_FILES + GAMECENTER_FILES + PET_FILES + WEATHER_FILES)} "
-          "plugin file(s)")
+    print(f"installed {len(ALL_PLUGIN_FILES)} plugin file(s)")
     src = os.path.join(ours, PLUGINS_PAGE)
     if not os.path.exists(src):
         fail(f"{src} is missing -- PageCompRegistry has already been told to "

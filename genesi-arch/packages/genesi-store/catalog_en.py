@@ -73,7 +73,21 @@ ENGLISH = {
     "tempestade e neblina, por baixo das janelas.":
         "When it rains outside, it rains on your wallpaper: rain, snow, "
         "storms and fog, underneath your windows.",
+    "Toca-discos": "Turntable",
+    "O que está tocando, girando na sua área de trabalho: a capa no selo, "
+    "o braço acompanhando a música. Clique pausa, rolar pula.":
+        "Whatever is playing, spinning on your desktop: the cover on the "
+        "label, the arm following the track. Click to pause, scroll to skip.",
+    "Retrospectiva": "Retrospective",
+    "Sua semana e seu mês no Genesi, contados como uma história: seus apps, "
+    "suas horas, seu ritmo, seus recordes.":
+        "Your week and your month on Genesi, told as a story: your apps, your "
+        "hours, your rhythm, your records.",
     "jogos": "games",
+    "semana": "week",
+    "estatísticas": "stats",
+    "área de trabalho": "desktop",
+    "música": "music",
     "papel de parede": "wallpaper",
     "clima": "weather",
     "canto": "corner",

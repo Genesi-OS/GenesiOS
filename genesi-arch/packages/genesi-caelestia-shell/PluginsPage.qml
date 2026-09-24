@@ -65,13 +65,27 @@ PageBase {
             name: qsTr("Live weather"),
             icon: "rainy",
             blurb: qsTr("When it rains outside, it rains on your wallpaper -- rain, snow, storms and fog, underneath your windows.")
+        },
+        {
+            id: "vinyl",
+            name: qsTr("Turntable"),
+            icon: "album",
+            blurb: qsTr("Whatever is playing, spinning on your desktop: the cover on the label, the arm following the track. Click to pause, scroll to skip.")
+        },
+        {
+            id: "wrapped",
+            name: qsTr("Retrospective"),
+            icon: "auto_awesome",
+            blurb: qsTr("Your week and your month on Genesi, told as a story: your apps, your hours, your rhythm, your records.")
         }
     ]
 
     readonly property var switches: ({
         "game-center": gameCenter,
         "leaf": leaf,
-        "live-weather": weather
+        "live-weather": weather,
+        "vinyl": vinyl,
+        "wrapped": wrapped
     })
 
     readonly property var gameNames: ({
@@ -88,6 +102,8 @@ PageBase {
     // What the plugins' own files say, read back.
     property var games: ({})
     property var pet: ({})
+    property var deck: ({})
+    property int daysCounted: -1
 
     readonly property int enabledCount: root.plugins.filter(p => root.isOn(p.id, root.switches[p.id]?.active ?? false)).length
 
@@ -153,6 +169,77 @@ PageBase {
             plugin: "live-weather"
         }
 
+        Genesi.GenesiPluginSwitch {
+            id: vinyl
+
+            plugin: "vinyl"
+        }
+
+        Genesi.GenesiPluginSwitch {
+            id: wrapped
+
+            plugin: "wrapped"
+        }
+
+        FileView {
+            id: deckFile
+
+            path: `${Paths.state}/genesi-vinyl.json`
+            printErrors: false
+            onLoaded: {
+                try {
+                    if (!deckSend.running)
+                        root.deck = JSON.parse(text());
+                } catch (e) {}
+            }
+        }
+
+        FileView {
+            id: wrappedFile
+
+            path: `${Paths.state}/genesi-wrapped.json`
+            printErrors: false
+            onLoaded: {
+                try {
+                    root.daysCounted = Object.keys(JSON.parse(text()).days ?? {}).length;
+                } catch (e) {}
+            }
+        }
+
+        Timer {
+            id: deckSend
+
+            property real value: 1
+
+            interval: 250
+            onTriggered: Quickshell.execDetached(["caelestia", "shell", "vinyl", "set", "scale", deckSend.value.toFixed(2)])
+        }
+
+        MenuItem {
+            id: cornerTL
+
+            text: qsTr("Top left")
+            icon: "north_west"
+        }
+        MenuItem {
+            id: cornerTR
+
+            text: qsTr("Top right")
+            icon: "north_east"
+        }
+        MenuItem {
+            id: cornerBL
+
+            text: qsTr("Bottom left")
+            icon: "south_west"
+        }
+        MenuItem {
+            id: cornerBR
+
+            text: qsTr("Bottom right")
+            icon: "south_east"
+        }
+
         Genesi.GenesiPetMind {
             id: mind
         }
@@ -195,6 +282,8 @@ PageBase {
             onTriggered: {
                 gamesFile.reload();
                 petFile.reload();
+                deckFile.reload();
+                wrappedFile.reload();
             }
         }
 
@@ -652,6 +741,94 @@ PageBase {
                                 type: TextButton.Tonal
                                 onClicked: Quickshell.execDetached(["caelestia", "shell", "liveWeather", "preview", modelData.kind])
                             }
+                        }
+                    }
+
+                    // Turntable -----------------------------------------------
+                    SelectRow {
+                        Layout.fillWidth: true
+                        visible: card.pid === "vinyl"
+                        first: true
+                        label: qsTr("Corner")
+                        subtext: qsTr("Where it sits on the desktop")
+                        menuItems: [cornerTL, cornerTR, cornerBL, cornerBR]
+                        active: ({ "top-left": cornerTL, "top-right": cornerTR, "bottom-left": cornerBL })[root.deck.corner] ?? cornerBR
+                        onSelected: item => {
+                            const corner = item === cornerTL ? "top-left" : item === cornerTR ? "top-right" : item === cornerBL ? "bottom-left" : "bottom-right";
+                            const d = Object.assign({}, root.deck);
+                            d.corner = corner;
+                            root.deck = d;
+                            Quickshell.execDetached(["caelestia", "shell", "vinyl", "set", "corner", corner]);
+                        }
+                    }
+
+                    SliderRow {
+                        Layout.fillWidth: true
+                        visible: card.pid === "vinyl"
+                        icon: "open_in_full"
+                        label: qsTr("Size")
+                        // 0.6 to 1.6 on a 0 to 1 slider.
+                        value: ((root.deck.scale ?? 1) - 0.6) / 1.0
+                        valueLabel: Math.round((root.deck.scale ?? 1) * 100) + "%"
+                        onMoved: v => {
+                            const scale = 0.6 + v;
+                            const d = Object.assign({}, root.deck);
+                            d.scale = scale;
+                            root.deck = d;
+                            deckSend.value = scale;
+                            deckSend.restart();
+                        }
+                    }
+
+                    ToggleRow {
+                        Layout.fillWidth: true
+                        visible: card.pid === "vinyl"
+                        last: true
+                        text: qsTr("Hide it when nothing is playing")
+                        subtext: qsTr("Off: an empty turntable waits on the desktop")
+                        checked: root.deck.hideIdle !== false
+                        onToggled: {
+                            const d = Object.assign({}, root.deck);
+                            d.hideIdle = checked;
+                            root.deck = d;
+                            Quickshell.execDetached(["caelestia", "shell", "vinyl", "set", "idle", checked ? "hide" : "show"]);
+                        }
+                    }
+
+                    // Retrospective --------------------------------------------
+                    InfoRow {
+                        Layout.fillWidth: true
+                        visible: card.pid === "wrapped"
+                        first: true
+                        last: true
+                        label: root.daysCounted > 1 ? qsTr("%1 days counted so far").arg(root.daysCounted)
+                            : root.daysCounted === 1 ? qsTr("Counting since today")
+                            : qsTr("Counting starts now")
+                        subtext: qsTr("Only which app is in front, never a window title -- kept on this machine, ten weeks at most.")
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Tokens.spacing.small
+                        visible: card.pid === "wrapped"
+                        spacing: Tokens.spacing.small
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        IconTextButton {
+                            icon: "calendar_month"
+                            text: qsTr("Your month")
+                            type: TextButton.Tonal
+                            onClicked: Quickshell.execDetached(["caelestia", "shell", "wrapped", "show", "month"])
+                        }
+
+                        IconTextButton {
+                            icon: "auto_awesome"
+                            text: qsTr("Your week")
+                            type: TextButton.Filled
+                            onClicked: Quickshell.execDetached(["caelestia", "shell", "wrapped", "show", "week"])
                         }
                     }
                 }

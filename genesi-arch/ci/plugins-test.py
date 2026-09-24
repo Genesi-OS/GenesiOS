@@ -36,6 +36,11 @@ rather than read:
            machine's language; every mood at every stage draws cleanly
   Weather  every WMO code open-meteo sends lands on the right sky; a clear
            day draws nothing; every sky draws cleanly
+  Vinyl    the arm parks off the record, lands on the lead-in, creeps in
+           through the track; the platter spins up and coasts down
+  Wrapped  a week's sums, the period before, the streak, the busiest day,
+           who the hours say you are; an empty week says so instead of
+           showing zeros; the story steps through and closes at the end
   Wiring   the CPU fraction is turned into percent before the leaf's rules
            read it; every plugin the shell asks about is one the store can
            switch on, at the same path
@@ -66,7 +71,8 @@ SHELL = os.path.normpath(os.path.join(HERE, "..", "packages",
 GAMES = ("GenesiGameSnake.qml", "GenesiGame2048.qml", "GenesiGameMines.qml",
          "GenesiGameBlocks.qml", "GenesiGameFlappy.qml", "GenesiGameBreakout.qml",
          "GenesiGameMemory.qml", "GenesiGameSimon.qml")
-PURE = GAMES + ("GenesiGames.qml", "GenesiPetMind.qml", "GenesiWeatherFx.qml")
+PURE = GAMES + ("GenesiGames.qml", "GenesiPetMind.qml", "GenesiWeatherFx.qml",
+                 "GenesiWrappedMath.qml", "GenesiWrappedStory.qml")
 # The leaf is drawn with Shapes, which is still Qt and nothing of caelestia's.
 DRAWN = ("GenesiLeaf.qml",)
 SHOTS = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -92,6 +98,13 @@ for name in PURE:
                                            encoding="utf-8").read())
     imports = re.findall(r"^\s*import\s+(\S+)", body, re.M)
     check(f"{name} imports only QtQuick", imports == ["QtQuick"], imports)
+# The turntable masks the cover round with QtQuick.Effects -- still Qt.
+for name in ("GenesiVinylDeck.qml",):
+    body = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, name),
+                                           encoding="utf-8").read())
+    imports = re.findall(r"^\s*import\s+(\S+)", body, re.M)
+    check(f"{name} imports only QtQuick and its Effects",
+          imports == ["QtQuick", "QtQuick.Effects"], imports)
 for name in DRAWN:
     body = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, name),
                                            encoding="utf-8").read())
@@ -142,8 +155,8 @@ for name in os.listdir(SHELL):
         body = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, name),
                                                encoding="utf-8").read())
         asked |= set(re.findall(r'GenesiPluginSwitch\s*\{[^}]*?plugin:\s*"([^"]+)"', body, re.S))
-check("the shell asks about at least the Game Center, the leaf and the weather",
-      {"game-center", "leaf", "live-weather"} <= asked, sorted(asked))
+check("the shell asks about every plugin there is",
+      {"game-center", "leaf", "live-weather", "vinyl", "wrapped"} <= asked, sorted(asked))
 
 # The Nexus Plugins page lists plugins by hand. One that exists and is not
 # listed is a plugin with no switch in the settings; one listed that does
@@ -771,6 +784,120 @@ run("weather", """
         ok("...and ends", g.kind === "snow");
         g.code = 65;
 """, size=(640, 360), shot="weather.png")
+
+# ── The turntable ─────────────────────────────────────────────────────────
+run("vinyl", """
+    GenesiVinylDeck {
+        id: deckItem
+        anchors.centerIn: parent
+        pal: host.pal
+        sans: "sans-serif"
+        title: "Clair de Lune"
+        artist: "Debussy"
+        progress: 0.4
+    }
+    readonly property Item g: deckItem
+""", """
+        ok("stopped, the arm is parked off the record", g.armAngle(false, 0.5) < 0);
+        ok("playing, it lands on the lead-in", Math.abs(g.armAngle(true, 0) - 16) < 0.01);
+        ok("...and creeps in through the track",
+           g.armAngle(true, 0.5) > g.armAngle(true, 0) && g.armAngle(true, 1) > g.armAngle(true, 0.5));
+        ok("...never past the end, whatever the player reports",
+           g.armAngle(true, 3) === g.armAngle(true, 1) && g.armAngle(true, -1) === g.armAngle(true, 0));
+        ok("stopped, the platter is still", g.speed === 0);
+        g.playing = true;
+        ok("playing, it spins up rather than snapping to speed", g.speed < g.fullSpeed, g.speed);
+""", size=(420, 300), shot="vinyl.png")
+
+# ── The Retrospective ─────────────────────────────────────────────────────
+run("wrapped math", """
+    GenesiWrappedMath {
+        id: wm
+        portuguese: false
+    }
+    readonly property QtObject g: wm
+""", """
+        const h = (n, at) => { const a = new Array(24).fill(0); a[at] = n; return a; };
+        // A week ending on Wednesday 2026-09-23, crossing nothing, with the
+        // week before it lighter.
+        const days = {
+            "2026-09-17": { active: 3600, apps: { firefox: 3600 }, hours: h(3600, 10) },
+            "2026-09-18": { active: 7200, apps: { code: 7200 }, hours: h(7200, 14) },
+            "2026-09-21": { active: 3600, apps: { firefox: 1800, foot: 1800 }, hours: h(3600, 23) },
+            "2026-09-22": { active: 30000, apps: { code: 28000, firefox: 2000 }, hours: h(30000, 15) },
+            "2026-09-23": { active: 1800, apps: { foot: 1800 }, hours: h(1800, 9) },
+            "2026-09-12": { active: 36000, apps: { code: 36000 }, hours: h(36000, 12) }
+        };
+        const s = g.summarize(days, new Date(2026, 8, 23), 7);
+        ok("the week is the seven days ending on the day", s.first === "2026-09-17" && s.last === "2026-09-23",
+           s.first + ".." + s.last);
+        ok("its total is its days, and only its days", s.total === 46200, s.total);
+        ok("it knows how many of them were used", s.activeDays === 5, s.activeDays);
+        ok("apps are summed across the days", s.top[0].app === "code" && s.top[0].secs === 35200,
+           JSON.stringify(s.top[0]));
+        ok("the busiest day is the busiest day", s.busiest.key === "2026-09-22", s.busiest.key);
+        ok("the week before is compared", s.previous === 36000 && s.change === 28, s.change);
+        ok("the streak counts back from the last day", s.streak === 3, s.streak);
+        ok("the hours are summed into the day", s.hours[15] === 30000 && s.hours[23] === 3600);
+        ok("a day over eight hours makes a marathoner", g.persona(s).key === "marathon", g.persona(s).key);
+
+        const owl = g.summarize({ "2026-09-23": { active: 4000, apps: { a: 4000 }, hours: h(4000, 23) } },
+                                new Date(2026, 8, 23), 7);
+        ok("late hours make a night owl", g.persona(owl).key === "owl");
+
+        const empty = g.summarize({}, new Date(2026, 8, 23), 7);
+        const slidesEmpty = g.slides(empty, {});
+        ok("an empty week says so instead of showing zeros",
+           slidesEmpty.length === 2 && slidesEmpty[1].kind === "empty", JSON.stringify(slidesEmpty.map(x => x.kind)));
+
+        const slides = g.slides(s, { games: { total: 12, favourite: "Snake", best: 340 },
+                                     leaf: { level: 3, title: "Leaflet" } });
+        const kinds = slides.map(x => x.kind).join(",");
+        ok("a full week tells the whole story, in order",
+           kinds === "intro,total,topapp,top5,rhythm,busiest,games,leaf,outro", kinds);
+        ok("...and leaves out what it has nothing to say about",
+           g.slides(s, {}).every(x => x.kind !== "games" && x.kind !== "leaf"));
+        ok("a month is called a month", g.slides(g.summarize(days, new Date(2026, 8, 23), 30), {})[0].title.indexOf("month") >= 0);
+        ok("hours read like hours", g.fmt(35200) === "9h 46min" && g.fmt(1800) === "30min" && g.fmt(7200) === "2h");
+""")
+
+run("wrapped story", """
+    GenesiWrappedStory {
+        id: tale
+        anchors.fill: parent
+        pal: host.pal
+        sans: "sans-serif"
+        portuguese: false
+        slides: [
+            { kind: "intro", title: "Your week on Genesi", line: "2026-09-17 → 2026-09-23" },
+            { kind: "total", title: "You spent", value: 46200, line: "with your computer, on 5 of 7 days", change: 28 },
+            { kind: "top5", title: "Your top five", apps: [{ app: "code", secs: 35200 }, { app: "firefox", secs: 7400 }, { app: "foot", secs: 3600 }] },
+            { kind: "rhythm", title: "Marathoner", line: "One day went past eight hours.", hours: [0,0,0,0,0,0,0,0,0,1800,3600,0,0,0,7200,30000,0,0,0,0,0,0,0,3600] },
+            { kind: "leaf", title: "Your leaf", level: 5, name: "Leaf" },
+            { kind: "outro", title: "See you next week", line: "3 days in a row, and counting." }
+        ]
+        names: ({ code: "Visual Studio Code", firefox: "Firefox", foot: "Foot" })
+    }
+    readonly property Item g: tale
+""", """
+        let closed = 0;
+        g.closed.connect(() => closed++);
+        g.restart();
+        ok("it opens on the first slide", g.at === 0 && g.slide.kind === "intro");
+        g.go(1);
+        ok("forward is the next slide", g.at === 1 && g.slide.kind === "total");
+        g.go(-1);
+        g.go(-1);
+        ok("back never goes before the first", g.at === 0);
+        for (let i = 0; i < 5; i++)
+            g.go(1);
+        ok("it reaches the last", g.at === 5 && g.slide.kind === "outro" && closed === 0);
+        g.go(1);
+        ok("...and going past it closes the story", closed === 1 && g.at === 5);
+        ok("names come from the shell, and a class with none is itself",
+           g.nameOf("code") === "Visual Studio Code" && g.nameOf("weird-app") === "weird-app");
+        g.at = 3;
+""", size=(1000, 640), shot="wrapped.png")
 
 # ── The leaf, drawn ───────────────────────────────────────────────────────
 run("leaf drawing", """

@@ -5326,6 +5326,62 @@
    ]
   },
   {
+   "id": "plugin-vinyl",
+   "section": "plugins",
+   "name": "Turntable",
+   "blurb": "Whatever is playing, spinning on your desktop: the cover on the label, the arm following the track. Click to pause, scroll to skip.",
+   "author": "Genesi",
+   "tags": [
+    "music",
+    "desktop"
+   ],
+   "preview": {
+    "kind": "image",
+    "thumb": "plugin-vinyl.jpg"
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/genesi/plugins/vinyl.json",
+     "text": "{\"enabled\": true}\n"
+    }
+   ],
+   "name_pt": "Toca-discos",
+   "blurb_pt": "O que está tocando, girando na sua área de trabalho: a capa no selo, o braço acompanhando a música. Clique pausa, rolar pula.",
+   "tags_pt": [
+    "música",
+    "área de trabalho"
+   ]
+  },
+  {
+   "id": "plugin-wrapped",
+   "section": "plugins",
+   "name": "Retrospective",
+   "blurb": "Your week and your month on Genesi, told as a story: your apps, your hours, your rhythm, your records.",
+   "author": "Genesi",
+   "tags": [
+    "stats",
+    "week"
+   ],
+   "preview": {
+    "kind": "image",
+    "thumb": "plugin-wrapped.jpg"
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/genesi/plugins/wrapped.json",
+     "text": "{\"enabled\": true}\n"
+    }
+   ],
+   "name_pt": "Retrospectiva",
+   "blurb_pt": "Sua semana e seu mês no Genesi, contados como uma história: seus apps, suas horas, seu ritmo, seus recordes.",
+   "tags_pt": [
+    "estatísticas",
+    "semana"
+   ]
+  },
+  {
    "id": "default-themes",
    "section": "themes",
    "name": "The way it ships",
@@ -5484,6 +5540,14 @@
     {
      "action": "restore",
      "path": "~/.config/genesi/plugins/live-weather.json"
+    },
+    {
+     "action": "restore",
+     "path": "~/.config/genesi/plugins/vinyl.json"
+    },
+    {
+     "action": "restore",
+     "path": "~/.config/genesi/plugins/wrapped.json"
     }
    ],
    "name_pt": "Como vem de fábrica",

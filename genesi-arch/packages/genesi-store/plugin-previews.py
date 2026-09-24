@@ -273,6 +273,71 @@ Item {
 }
 """
 
+VINYL = """
+import QtQuick
+Item {
+    id: host
+    width: 1280; height: 720
+    property QtObject pal: %(palette)s
+    Image {
+        anchors.fill: parent
+        source: "%(thumbs)s/wall-nord-city.jpg"
+        fillMode: Image.PreserveAspectCrop
+    }
+    Rectangle {
+        anchors.fill: parent
+        color: Qt.rgba(0, 0, 0, 0.25)
+    }
+    GenesiVinylDeck {
+        anchors.centerIn: parent
+        width: implicitWidth
+        height: implicitHeight
+        scale: 2.1
+        pal: host.pal
+        sans: "%(sans)s"
+        playing: true
+        speed: 200
+        angle: 40
+        title: "Aurora"
+        artist: "Genesi Sessions"
+        art: "%(thumbs)s/wall-aurora.jpg"
+        progress: 0.45
+    }
+}
+"""
+
+WRAPPED = """
+import QtQuick
+Item {
+    id: host
+    width: 1280; height: 720
+    property QtObject pal: %(palette)s
+    GenesiWrappedStory {
+        id: tale
+        anchors.fill: parent
+        pal: host.pal
+        sans: "%(sans)s"
+        portuguese: false
+        slides: [
+            { kind: "intro", title: "Your week on Genesi" },
+            { kind: "total", title: "You spent", value: 46200 },
+            { kind: "top5", title: "Your top five", apps: [
+                { app: "code", secs: 35200 }, { app: "firefox", secs: 17400 },
+                { app: "foot", secs: 9600 }, { app: "discord", secs: 6100 },
+                { app: "steam", secs: 4300 }] },
+            { kind: "outro", title: "See you next week" }
+        ]
+        names: ({ code: "Visual Studio Code", firefox: "Firefox", foot: "Terminal",
+                  discord: "Discord", steam: "Steam" })
+        Component.onCompleted: {
+            tale.at = 2;
+            tale.paused = true;
+            tale.enter();
+        }
+    }
+}
+"""
+
 
 def render(qml, name):
     view = QQuickView()
@@ -300,3 +365,5 @@ def render(qml, name):
 render(GAME_CENTER, "plugin-game-center.jpg")
 render(LEAF, "plugin-leaf.jpg")
 render(WEATHER, "plugin-live-weather.jpg")
+render(VINYL, "plugin-vinyl.jpg")
+render(WRAPPED, "plugin-wrapped.jpg")
