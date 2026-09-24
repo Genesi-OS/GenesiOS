@@ -16,7 +16,7 @@
 //
 // [4, 4, 8, _] slid left is [8, 8, _, _], not [16, _, _, _]: the 8 that was
 // just made does not merge again on the same move. `merged` on the line
-// being built is what stops it. ci/game-center-test.py plays exactly that
+// being built is what stops it. ci/plugins-test.py plays exactly that
 // row, because it is the rule every first attempt at 2048 gets wrong.
 import QtQuick
 

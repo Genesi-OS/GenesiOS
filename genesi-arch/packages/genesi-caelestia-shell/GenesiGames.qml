@@ -4,7 +4,7 @@
 // Plain QtQuick, like the games. GenesiGameCenter.qml is the part that knows
 // about windows, the screen corner, the palette and the file the records are
 // kept in; this knows about none of them, and is handed what it draws with.
-// That split is what lets ci/game-center-test.py lay the whole drawer out
+// That split is what lets ci/plugins-test.py lay the whole drawer out
 // offscreen and play it.
 //
 // ── Every game answers to the same small shape ────────────────────────────

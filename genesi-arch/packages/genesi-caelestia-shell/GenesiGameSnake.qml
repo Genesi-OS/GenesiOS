@@ -2,7 +2,7 @@
 //
 // Plain QtQuick and nothing else, like the other three games: the shell
 // hands in its palette and its fonts, and the game reads nothing from
-// caelestia. That is what lets ci/game-center-test.py load it offscreen and
+// caelestia. That is what lets ci/plugins-test.py load it offscreen and
 // play it, rather than trusting it because it parses.
 //
 // ── Turns are queued, not assigned ────────────────────────────────────────

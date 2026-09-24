@@ -1257,12 +1257,18 @@ TOPBAR_FILES = ("GenesiTopBar.qml", "GenesiStudio.qml", "GenesiMark.qml")
 # feature: a hover point with nothing behind it is not a thing.
 SIDEPANEL_FILES = ("GenesiSidePanel.qml",)
 
+# The plugins: parts of the shell that ship with it and stay off until the
+# Plugins shelf of Genesi Store switches them on (GenesiPluginSwitch).
+#
 # The Game Center: the drawer and its corner, the shelf inside it, and the
-# four games. Everything but GenesiGameCenter.qml is plain QtQuick, which is
-# what lets ci/game-center-test.py load and play the games offscreen.
+# four games. The leaf: the pet's window, its drawing and its rules. Every
+# file but the two windows is plain QtQuick, which is what lets
+# ci/plugins-test.py load, play and draw them offscreen.
+PLUGIN_FILES = ("GenesiPluginSwitch.qml",)
 GAMECENTER_FILES = ("GenesiGameCenter.qml", "GenesiGames.qml",
                     "GenesiGameSnake.qml", "GenesiGame2048.qml",
                     "GenesiGameMines.qml", "GenesiGameBlocks.qml")
+PET_FILES = ("GenesiPet.qml", "GenesiLeaf.qml", "GenesiPetMind.qml")
 
 # The wallpaper's subject, drawn over the clock and the widgets. The
 # cutting is done by genesi-depth, a CLI in this same package; this file
@@ -3253,35 +3259,36 @@ def patch_scheme_screen(release):
     print("schemes: a full-screen picker, on its own layer")
 
 
-def patch_game_center(release):
+def patch_plugins(release):
     """
-    Quick games in a drawer from the bottom-left corner of the screen.
+    The plugins -- the Game Center and the leaf -- into shell.qml.
 
-    One line in shell.qml, like the dock and the scheme picker: the drawer
-    and its corner are windows that decide their own layer, so all upstream
-    has to be told is that they exist. No config section -- the drawer keeps
-    its records and its one switch (is the corner on?) in a state file of its
-    own, which is the reason it needs nothing added to caelestia's schema.
+    One line each, like the dock and the scheme picker: they are windows
+    that decide their own layer, and each asks GenesiPluginSwitch whether it
+    is on before it draws anything. No config section: a plugin is switched
+    by a file the store writes, and keeps its own records in a state file
+    of its own, so nothing is added to caelestia's schema.
     """
     shell = os.path.join(release, "shell.qml")
     if not os.path.exists(shell):
         fail(f"{shell} is gone -- the shell's layout moved.")
 
-    for name in GAMECENTER_FILES:
+    for name in PLUGIN_FILES + GAMECENTER_FILES + PET_FILES:
         shipped = os.path.join(release, "modules", "background", name)
         if os.path.exists(shipped):
             fail(f"upstream now ships its own {name}. Decide by hand.")
 
     text = io.open(shell, encoding="utf-8").read()
-    if "GenesiGameCenter" in text:
-        fail("shell.qml already builds the Game Center -- this ran twice.")
+    if "GenesiGameCenter" in text or "GenesiPet" in text:
+        fail("shell.qml already builds the plugins -- this ran twice.")
     line = "    GenesiDock {}\n"
     if line not in text:
-        fail("shell.qml does not build the dock, which is the line the Game "
-             "Center goes beside -- patch_dock did not run.")
+        fail("shell.qml does not build the dock, which is the line the "
+             "plugins go beside -- patch_dock did not run.")
     io.open(shell, "w", encoding="utf-8", newline="\n").write(
-        text.replace(line, line + "    GenesiGameCenter {}\n", 1))
-    print("game center: a drawer of quick games, from the free corner")
+        text.replace(line, line + "    GenesiGameCenter {}\n"
+                     "    GenesiPet {}\n", 1))
+    print("plugins: the Game Center and the leaf, each behind its switch")
 
 
 def main():
@@ -3318,7 +3325,7 @@ def main():
     patch_desktop_clock_edit(release)
     patch_dock(release)
     patch_scheme_screen(release)
-    patch_game_center(release)
+    patch_plugins(release)
     patch_topbar(release)
     patch_side_panel(release)
     patch_depth(release)
@@ -3398,13 +3405,14 @@ def main():
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(DEPTH_FILES)} depth file(s)")
 
-    for name in GAMECENTER_FILES:
+    for name in PLUGIN_FILES + GAMECENTER_FILES + PET_FILES:
         src = os.path.join(ours, name)
         if not os.path.exists(src):
             fail(f"{src} is missing -- shell.qml has already been told to "
-                 "build the Game Center.")
+                 "build the plugins.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
-    print(f"installed {len(GAMECENTER_FILES)} game-center file(s)")
+    print(f"installed {len(PLUGIN_FILES + GAMECENTER_FILES + PET_FILES)} "
+          "plugin file(s)")
 
     verify_genesi_imports(release)
     verify_no_shadowed_types(release)

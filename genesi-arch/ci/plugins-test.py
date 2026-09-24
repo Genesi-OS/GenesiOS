@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-The Game Center's games load, and play by their rules.
+The shell's plugins load, and behave by their rules: the Game Center's games
+play by theirs, and the leaf feels what the machine is doing.
 
 Nothing in the build compiles the shell's QML, so a green package says
 nothing about whether a game opens -- let alone whether 2048 merges a tile
@@ -21,11 +22,17 @@ rather than read:
            still turns; the bag deals every piece once per seven
   Hub      each game loads through the shelf; a finished game reports its
            score once; a record is a record in the right direction
+  Leaf     hot beats asleep, music beats asleep; the level curve; XP from
+           games without a windfall on first sight; it talks in the
+           machine's language; every mood at every stage draws cleanly
+  Wiring   the CPU fraction is turned into percent before the leaf's rules
+           read it; every plugin the shell asks about is one the store can
+           switch on, at the same path
 
 Any warning Qt prints while loading or playing is a failure too: in QML a
 warning is usually a binding that has silently stopped working.
 
-    python ci/game-center-test.py [shots-dir]
+    python ci/plugins-test.py [shots-dir]
 
 With a directory, it also writes a picture of the shelf and of each game.
 """
@@ -47,7 +54,9 @@ SHELL = os.path.normpath(os.path.join(HERE, "..", "packages",
                                       "genesi-caelestia-shell"))
 GAMES = ("GenesiGameSnake.qml", "GenesiGame2048.qml", "GenesiGameMines.qml",
          "GenesiGameBlocks.qml")
-PURE = GAMES + ("GenesiGames.qml",)
+PURE = GAMES + ("GenesiGames.qml", "GenesiPetMind.qml")
+# The leaf is drawn with Shapes, which is still Qt and nothing of caelestia's.
+DRAWN = ("GenesiLeaf.qml",)
 SHOTS = sys.argv[1] if len(sys.argv) > 1 else ""
 
 fails = []
@@ -60,7 +69,7 @@ def check(name, cond, detail=""):
         fails.append(name)
 
 
-print("== game center ==")
+print("== shell plugins ==")
 
 # ── They have to stay testable ────────────────────────────────────────────
 #
@@ -71,6 +80,45 @@ for name in PURE:
                                            encoding="utf-8").read())
     imports = re.findall(r"^\s*import\s+(\S+)", body, re.M)
     check(f"{name} imports only QtQuick", imports == ["QtQuick"], imports)
+for name in DRAWN:
+    body = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, name),
+                                           encoding="utf-8").read())
+    imports = re.findall(r"^\s*import\s+(\S+)", body, re.M)
+    check(f"{name} imports only QtQuick and its Shapes",
+          imports == ["QtQuick", "QtQuick.Shapes"], imports)
+
+# ── Wiring the tests below cannot see ─────────────────────────────────────
+#
+# The leaf's rules are played with numbers in percent. The service they come
+# from, caelestia's Cpu, reports a FRACTION -- 0.93, not 93 -- and the rules
+# would read that as a machine that is never busy. The conversion lives in
+# the window, which does not load here, so it is checked as text.
+pet_src = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, "GenesiPet.qml"),
+                                          encoding="utf-8").read())
+check("the leaf turns the CPU fraction into percent before it judges it",
+      re.search(r"Cpu\.percentage\s*\*\s*100", pet_src) is not None
+      and not re.search(r"cpu:\s*Cpu\.percentage\b(?!\s*\*)", pet_src))
+
+# Every plugin the shell asks about has a card in the store that switches it
+# on, writing exactly the file the switch reads.
+catalog_path = os.path.normpath(os.path.join(HERE, "..", "packages", "genesi-store",
+                                             "catalog", "catalog.json"))
+import json  # noqa: E402
+catalog = json.load(io.open(catalog_path, encoding="utf-8"))
+store_paths = {a.get("path") for i in catalog["items"] if i.get("section") == "plugins"
+               for a in i.get("actions", []) if a.get("action") == "file"}
+asked = set()
+for name in os.listdir(SHELL):
+    if name.endswith(".qml"):
+        body = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, name),
+                                               encoding="utf-8").read())
+        asked |= set(re.findall(r'GenesiPluginSwitch\s*\{[^}]*?plugin:\s*"([^"]+)"', body, re.S))
+check("the shell asks about at least the Game Center and the leaf",
+      {"game-center", "leaf"} <= asked, sorted(asked))
+for plugin in sorted(asked):
+    want = "~/.config/genesi/plugins/%s.json" % plugin
+    check(f"the store can switch on '{plugin}', at the path the shell reads",
+          want in store_paths, f"{want} not in {sorted(store_paths)}")
 
 try:
     from PySide6.QtCore import QUrl, qInstallMessageHandler
@@ -430,8 +478,93 @@ run("hub", """
         ok("leaving goes back to the shelf", g.current === "");
 """, size=(460, 640), shot="shelf.png")
 
+# ── The leaf's mind ───────────────────────────────────────────────────────
+run("leaf mind", """
+    GenesiPetMind {
+        id: brain
+        portuguese: false
+    }
+    readonly property QtObject g: brain
+""", """
+        const calm = { now: 10, happyUntil: 0, idle: false, cpu: 12, temp: 45,
+                       playing: false, updates: 3, disk: 0.4, hour: 9 };
+        const w = o => Object.assign({}, calm, o);
+
+        ok("a quiet machine is a calm leaf", g.moodFor(calm) === "normal");
+        ok("90% CPU is hot", g.moodFor(w({ cpu: 90 })) === "hot");
+        ok("85 C is hot too", g.moodFor(w({ temp: 86 })) === "hot");
+        ok("hot beats asleep: no sleeping through a fire",
+           g.moodFor(w({ idle: true, cpu: 97 })) === "hot");
+        ok("music beats asleep: listening is not being away",
+           g.moodFor(w({ idle: true, playing: true })) === "dancing");
+        ok("nobody there is asleep", g.moodFor(w({ idle: true })) === "sleeping");
+        ok("a long list of updates makes it sick", g.moodFor(w({ updates: 25 })) === "sick");
+        ok("...a short one does not", g.moodFor(w({ updates: 24 })) === "normal");
+        ok("a nearly full disk makes it sick", g.moodFor(w({ disk: 0.96 })) === "sick");
+        ok("just played with, it is happy above all",
+           g.moodFor(w({ happyUntil: 20, cpu: 99 })) === "happy");
+
+        ok("level 1 at nothing", g.levelFor(0) === 1);
+        ok("level 2 at 60 XP, not a point before",
+           g.levelFor(59) === 1 && g.levelFor(60) === 2, g.levelFor(59) + "/" + g.levelFor(60));
+        ok("level 3 at 180, 5 at 600, 8 at 1680",
+           g.levelFor(180) === 3 && g.levelFor(600) === 5 && g.levelFor(1680) === 8
+           && g.levelFor(1679) === 7);
+        ok("xpFor and levelFor agree", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every(n => g.levelFor(g.xpFor(n)) === n));
+
+        const first = g.fromGames(3, 3, { snake: 50 }, { snake: 50 });
+        ok("no new games, no XP", first.xp === 0 && first.line === "");
+        const two = g.fromGames(5, 3, { snake: 50 }, { snake: 50 });
+        ok("5 XP a game", two.xp === 10 && two.line !== "", JSON.stringify(two));
+        const rec = g.fromGames(4, 3, { snake: 90 }, { snake: 50 });
+        ok("a record is worth 20 more, and it says so", rec.xp === 25 && rec.line.indexOf("record") >= 0,
+           JSON.stringify(rec));
+        const firstBest = g.fromGames(4, 3, { mines: 40 }, {});
+        ok("a first score is a game, not a record", firstBest.xp === 5, JSON.stringify(firstBest));
+
+        const lines = g.status(w({ cpu: 93.4, temp: 71 }), 200);
+        ok("clicked while hot, it says so, with the number",
+           lines[0].indexOf("93%") >= 0 && lines.join(" ").indexOf("71") >= 0, lines.join(" | "));
+        ok("...and where it is in growing up",
+           lines[lines.length - 1].indexOf("level 3") >= 0 && lines[lines.length - 1].indexOf("360") >= 0,
+           lines[lines.length - 1]);
+        ok("healed by updates, it is grateful",
+           g.remark("sick", "normal", w({ updates: 0 })).length > 0);
+        ok("nothing changed, nothing said", g.remark("normal", "normal", calm) === "");
+
+        g.portuguese = true;
+        ok("it talks in the machine's language",
+           g.status(w({ cpu: 93 }), 0)[0].indexOf("quente") >= 0 && g.title(5) === "Folha");
+""")
+
+# ── The leaf, drawn ───────────────────────────────────────────────────────
+run("leaf drawing", """
+    Grid {
+        id: garden
+        anchors.centerIn: parent
+        columns: 6
+        spacing: 10
+        Repeater {
+            model: [["normal", 1], ["happy", 3], ["sleeping", 1], ["hot", 5],
+                    ["sick", 2], ["dancing", 8],
+                    ["normal", 3], ["normal", 5], ["normal", 8],
+                    ["happy", 8], ["sleeping", 5], ["hot", 1]]
+            GenesiLeaf {
+                required property var modelData
+                pal: host.pal
+                mood: modelData[0]
+                level: modelData[1]
+                size: 64
+            }
+        }
+    }
+    readonly property Item g: garden
+""", """
+        ok("twelve leaves, every mood and every stage", g.children.length >= 12, g.children.length);
+""", size=(520, 220), shot="leaves.png")
+
 print()
 if fails:
-    print(f"game center: {len(fails)} FAILURE(S)")
+    print(f"plugins: {len(fails)} FAILURE(S)")
     sys.exit(1)
-print("game center: OK")
+print("plugins: OK")

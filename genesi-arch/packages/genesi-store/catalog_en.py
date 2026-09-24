@@ -26,7 +26,7 @@ SAME = {
     "Arch Nord", "Aurora", "Caelestia", "Caelestia Locklike",
     "Caelestia Minimalist", "Catppuccin Frappe", "Catppuccin Latte",
     "Catppuccin Macchiato", "Catppuccin Mocha", "Cyberpunk", "Dracula",
-    "Echo", "Enfield", "Everblush", "Everforest", "Genesi", "Genshin Impact",
+    "Echo", "Enfield", "Everblush", "Everforest", "Game Center", "Genesi", "Genshin Impact",
     "Gruvbox", "Hacker", "Hollow Knight", "Hypr", "Hyprland", "Jake",
     "Material You", "Minecraft", "Minimal", "Munchlax", "NieR: Automata",
     "Nine Sols", "Ninja Gaiden", "Nord", "Old World", "One Dark", "Pixie",
@@ -53,7 +53,25 @@ ENGLISH = {
     "O cartão de visita do terminal.": "What your terminal says hello with.",
     "Papéis de parede e detalhes.": "Wallpapers and small things.",
     "Combinações que já vêm casadas.": "Combinations that already match.",
-    "Em breve.": "Coming soon.",
+    "Partes do desktop que vêm desligadas até você querer.":
+        "Parts of the desktop that stay off until you want them.",
+
+    # ── Plugins ────────────────────────────────────────────────────────────
+    "Folhinha": "Leaf",
+    "Joguinhos rápidos no canto inferior esquerdo da tela: Snake, 2048, "
+    "Campo Minado e Blocks, com recordes.":
+        "Quick games from the bottom-left corner of the screen: Snake, 2048, "
+        "Minesweeper and Blocks, with your best scores.",
+    "Um bichinho na sua tela que é o estado do PC: sua quando a CPU "
+    "esquenta, dorme quando você sai e cresce com você.":
+        "A little pet that is the state of your machine: it sweats when the "
+        "CPU runs hot, sleeps when you step away and grows up with you.",
+    "Nenhum plugin ligado: o desktop como o Genesi entrega.":
+        "No plugins on: the desktop the way Genesi ships it.",
+    "jogos": "games",
+    "canto": "corner",
+    "bichinho": "pet",
+    "sistema": "system",
 
     # ── Colour schemes ─────────────────────────────────────────────────────
     "Caelestia Claro": "Caelestia Light",

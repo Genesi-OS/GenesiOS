@@ -600,11 +600,36 @@ pkgver=2.0.3
 # open on one throw.
 #
 # The games are plain QtQuick and are handed the palette, which is what lets
-# ci/game-center-test.py load them offscreen and play them -- the rules that
+# ci/plugins-test.py load them offscreen and play them -- the rules that
 # every first attempt gets wrong (2048 merging a tile twice in one move, a
 # snake chasing its own tail, a first click in Minesweeper landing on a mine)
 # are played there, not assumed.
-pkgrel=44
+# 45: plugins, and the leaf.
+#
+# The Game Center is a PLUGIN now, not a corner everybody gets: it ships in
+# this package and stays off until the Plugins shelf of Genesi Store turns it
+# on. Turning one on is the store writing ~/.config/genesi/plugins/<id>.json
+# and turning it off is deleting it -- the store's existing `file` action and
+# its revert, so the store gained no new power: a card is still data, and the
+# code it switches on is code this signed package already carries.
+# GenesiPluginSwitch reads that file every three seconds rather than watching
+# it, because a watcher cannot watch a file that does not exist yet -- which
+# is every plugin before it is switched on.
+#
+# The leaf (GenesiPet): a desktop pet that is the state of the machine. It
+# sweats and goes autumn-orange when the CPU runs hot, sleeps when nobody is
+# there, dances to whatever is playing, yellows when a long list of updates
+# or a nearly full disk is waiting -- things the person can do something
+# about -- and hops when a notification arrives. It grows with time spent
+# together and with games in the Game Center (a dewdrop at level 3, a flower
+# at 5, a golden edge at 8), talks in the machine's language, can be dragged
+# along the bottom edge, and wanders there on its own. Top layer, so a
+# fullscreen game covers it.
+#
+# Cpu.percentage is a FRACTION; the leaf's rules speak percent. Read the
+# other way round it is a leaf that never feels the heat -- caught reading
+# cpu.cpp before it shipped, and pinned by ci/plugins-test.py.
+pkgrel=45
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -682,9 +707,17 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiGame2048.qml"
         "GenesiGameMines.qml"
         "GenesiGameBlocks.qml"
+        "GenesiPluginSwitch.qml"
+        "GenesiPet.qml"
+        "GenesiLeaf.qml"
+        "GenesiPetMind.qml"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

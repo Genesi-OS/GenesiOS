@@ -30,6 +30,13 @@
 // caelestia validates, and which is written by genesi-center-set -- a corner
 // switch inside the drawer writing there would be a second writer.
 //
+// ── A plugin ──────────────────────────────────────────────────────────────
+//
+// Off until it is switched on from the Plugins shelf of Genesi Store (see
+// GenesiPluginSwitch). Off means nothing at all: no corner, no drawer, and
+// the command below does nothing -- a hot corner nobody asked for is a hot
+// corner people only ever meet by accident.
+//
 // ── Also from anywhere ────────────────────────────────────────────────────
 //
 //     caelestia shell gameCenter toggle
@@ -50,6 +57,8 @@ import qs.utils
 Scope {
     id: root
 
+    readonly property bool enabled: gate.active
+
     property bool shown: false
     // An open game, or an open by name, stays until dismissed. A drawer the
     // corner opened closes when the pointer leaves it -- until a game starts.
@@ -61,7 +70,13 @@ Scope {
     property var plays: ({})
     property bool loaded: false
 
+    // Switched off from the store while open: put it away.
+    onEnabledChanged: if (!root.enabled)
+        root.dismiss()
+
     function showOn(screenName: string, pin: bool): void {
+        if (!root.enabled)
+            return;
         root.openOn = screenName;
         root.pinned = pin;
         root.shown = true;
@@ -95,6 +110,12 @@ Scope {
             }
         }
         root.save();
+    }
+
+    GenesiPluginSwitch {
+        id: gate
+
+        plugin: "game-center"
     }
 
     FileView {
@@ -151,7 +172,7 @@ Scope {
             StyledWindow {
                 screen: scope.modelData
                 name: "genesi-games-corner"
-                visible: root.corner && !scope.fullscreen && !root.shown
+                visible: root.enabled && root.corner && !scope.fullscreen && !root.shown
 
                 WlrLayershell.exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Overlay

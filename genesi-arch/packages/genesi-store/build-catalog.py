@@ -73,8 +73,32 @@ SECTIONS = [
     {"id": "bundles", "label": "Coleções", "label_en": "Bundles", "icon": "box",
      "blurb": "Combinações que já vêm casadas."},
     {"id": "plugins", "label": "Plugins", "label_en": "Plugins", "icon": "plug",
-     "blurb": "Em breve."},
+     "blurb": "Partes do desktop que vêm desligadas até você querer."},
 ]
+
+# ── Plugins ────────────────────────────────────────────────────────────────
+# Parts of the shell that ship inside genesi-caelestia-shell and stay off
+# until one of these cards switches them on. Switching one on is WRITING A
+# FILE -- ~/.config/genesi/plugins/<id>.json -- that the shell's
+# GenesiPluginSwitch reads, and switching it off is the store's revert
+# deleting it. So a plugin card is data like every other card here: the code
+# it turns on is code a signed package already carries, and no card can name
+# code of its own. ci/plugins-test.py checks that every plugin the shell asks
+# about has a card here writing exactly the path it reads.
+PLUGINS = [
+    ("game-center", "Game Center",
+     "Joguinhos rápidos no canto inferior esquerdo da tela: Snake, 2048, "
+     "Campo Minado e Blocks, com recordes.",
+     ["jogos", "canto"], "plugin-game-center.jpg"),
+    ("leaf", "Folhinha",
+     "Um bichinho na sua tela que é o estado do PC: sua quando a CPU "
+     "esquenta, dorme quando você sai e cresce com você.",
+     ["bichinho", "sistema"], "plugin-leaf.jpg"),
+]
+
+
+def plugin_path(ident):
+    return "~/.config/genesi/plugins/%s.json" % ident
 
 # ── Wallpapers ──────────────────────────────────────────────────────────────
 # Chosen to lead with Genesi's own weather -- forest, water, green light --
@@ -436,7 +460,7 @@ def build():
         })
 
     for extra in (lockscreens(), fastfetch(), rices(previous), bundles(),
-                  factory()):
+                  plugins(), factory()):
         items.extend(extra)
 
     # The login screens that are downloaded rather than shipped. The map they
@@ -450,9 +474,20 @@ def build():
             with io.open(OUT, encoding="utf-8") as fh:
                 old = json.load(fh)
             greeter_specs = old.get("greeters") or {}
-            items.extend([i for i in old.get("items", [])
-                          if any(a.get("action") == "greeter"
-                                 for a in i.get("actions", []))])
+            # Those items were written out bilingual -- English in `name`,
+            # Portuguese in `name_pt` -- and bilingual() below translates
+            # `name` again. Put them back the way the tables write them, or
+            # every reused login screen is an English string with "no
+            # English" and the offline build cannot finish.
+            for i in old.get("items", []):
+                if not any(a.get("action") == "greeter"
+                           for a in i.get("actions", [])):
+                    continue
+                i = dict(i)
+                for field in ("name", "blurb", "tags"):
+                    if field + "_pt" in i:
+                        i[field] = i.pop(field + "_pt")
+                items.append(i)
     else:
         greeter_specs, greeter_items = greeters()
         items.extend(greeter_items)
@@ -483,6 +518,24 @@ def build():
 
 
 # ── The text-only shelves ──────────────────────────────────────────────────
+
+
+def plugins():
+    """One card per plugin. Each writes its own switch file and nothing else,
+    so two plugins never share a slot and turning one on never turns another
+    off."""
+    return [{
+        "id": "plugin-" + ident,
+        "section": "plugins",
+        "name": name,
+        "blurb": blurb,
+        "author": "Genesi",
+        "tags": tags,
+        "preview": {"kind": "image", "thumb": thumb},
+        "actions": [{"action": "file", "path": plugin_path(ident),
+                     "text": '{"enabled": true}\n'}],
+    } for ident, name, blurb, tags, thumb in PLUGINS]
+
 
 
 def lockscreens():
@@ -699,6 +752,14 @@ def factory():
                         "sessão   Hyprland"]},
              [{"action": "restore",
                "path": "~/.config/fastfetch/config.jsonc"}]),
+
+        # Every plugin off: each switch file deleted, which is the state a
+        # new machine is in.
+        card("plugins", "plugins", "Como vem de fábrica",
+             "Nenhum plugin ligado: o desktop como o Genesi entrega.",
+             plain,
+             [{"action": "restore", "path": plugin_path(ident)}
+              for ident, *_ in PLUGINS]),
 
         card("bars", "bars", "Como vem de fábrica",
              "O arranjo de barra que vem no Genesi novo.",

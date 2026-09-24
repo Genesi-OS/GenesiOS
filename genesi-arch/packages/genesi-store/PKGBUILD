@@ -205,7 +205,16 @@ pkgver=0.1.0
 # where the store is never opened again.
 #
 # Also: Lang.qml was about to ship registered in qmldir but not installed.
-pkgrel=13
+# 14: the Plugins shelf is not "coming soon" any more. Two cards -- the
+# Game Center and the leaf -- and a way back that turns every plugin off.
+# A plugin card is an ordinary `file` action writing
+# ~/.config/genesi/plugins/<id>.json, which genesi-caelestia-shell reads;
+# revert deletes it. The store gained no power: the code a card switches on
+# is code a signed package already carries. Its pictures are the real QML,
+# drawn by plugin-previews.py. And `build-catalog.py --offline` works again:
+# since the catalogue went bilingual it translated the reused login screens
+# a second time and stopped on 123 "missing" strings.
+pkgrel=14
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

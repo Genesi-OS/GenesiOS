@@ -78,9 +78,9 @@
    "id": "plugins",
    "label": "Plugins",
    "icon": "plug",
-   "blurb": "Coming soon.",
+   "blurb": "Parts of the desktop that stay off until you want them.",
    "label_pt": "Plugins",
-   "blurb_pt": "Em breve."
+   "blurb_pt": "Partes do desktop que vêm desligadas até você querer."
   }
  ],
  "greeters": {
@@ -5242,6 +5242,62 @@
    ]
   },
   {
+   "id": "plugin-game-center",
+   "section": "plugins",
+   "name": "Game Center",
+   "blurb": "Quick games from the bottom-left corner of the screen: Snake, 2048, Minesweeper and Blocks, with your best scores.",
+   "author": "Genesi",
+   "tags": [
+    "games",
+    "corner"
+   ],
+   "preview": {
+    "kind": "image",
+    "thumb": "plugin-game-center.jpg"
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/genesi/plugins/game-center.json",
+     "text": "{\"enabled\": true}\n"
+    }
+   ],
+   "name_pt": "Game Center",
+   "blurb_pt": "Joguinhos rápidos no canto inferior esquerdo da tela: Snake, 2048, Campo Minado e Blocks, com recordes.",
+   "tags_pt": [
+    "jogos",
+    "canto"
+   ]
+  },
+  {
+   "id": "plugin-leaf",
+   "section": "plugins",
+   "name": "Leaf",
+   "blurb": "A little pet that is the state of your machine: it sweats when the CPU runs hot, sleeps when you step away and grows up with you.",
+   "author": "Genesi",
+   "tags": [
+    "pet",
+    "system"
+   ],
+   "preview": {
+    "kind": "image",
+    "thumb": "plugin-leaf.jpg"
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/genesi/plugins/leaf.json",
+     "text": "{\"enabled\": true}\n"
+    }
+   ],
+   "name_pt": "Folhinha",
+   "blurb_pt": "Um bichinho na sua tela que é o estado do PC: sua quando a CPU esquenta, dorme quando você sai e cresce com você.",
+   "tags_pt": [
+    "bichinho",
+    "sistema"
+   ]
+  },
+  {
    "id": "default-themes",
    "section": "themes",
    "name": "The way it ships",
@@ -5361,6 +5417,45 @@
    ],
    "name_pt": "Como vem de fábrica",
    "blurb_pt": "Volta para o cartão do Genesi que aparece ao abrir o terminal.",
+   "tags_pt": [
+    "padrão",
+    "de fábrica"
+   ]
+  },
+  {
+   "id": "default-plugins",
+   "section": "plugins",
+   "name": "The way it ships",
+   "blurb": "No plugins on: the desktop the way Genesi ships it.",
+   "family": "factory",
+   "author": "Genesi",
+   "tags": [
+    "default",
+    "factory"
+   ],
+   "preview": {
+    "kind": "scheme",
+    "colours": [
+     "#39d98a",
+     "#8fd6ab",
+     "#1d2a22"
+    ],
+    "background": "#0c120f",
+    "surface": "#16211b",
+    "ink": "#e9f5ee"
+   },
+   "actions": [
+    {
+     "action": "restore",
+     "path": "~/.config/genesi/plugins/game-center.json"
+    },
+    {
+     "action": "restore",
+     "path": "~/.config/genesi/plugins/leaf.json"
+    }
+   ],
+   "name_pt": "Como vem de fábrica",
+   "blurb_pt": "Nenhum plugin ligado: o desktop como o Genesi entrega.",
    "tags_pt": [
     "padrão",
     "de fábrica"
