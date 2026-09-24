@@ -1269,6 +1269,13 @@ GAMECENTER_FILES = ("GenesiGameCenter.qml", "GenesiGames.qml",
                     "GenesiGameSnake.qml", "GenesiGame2048.qml",
                     "GenesiGameMines.qml", "GenesiGameBlocks.qml")
 PET_FILES = ("GenesiPet.qml", "GenesiLeaf.qml", "GenesiPetMind.qml")
+WEATHER_FILES = ("GenesiLiveWeather.qml", "GenesiWeatherFx.qml")
+
+# The Nexus page that lists them. Upstream REGISTERS "Plugins" under System
+# and points it at the placeholder -- the same situation the Updates page was
+# in -- so the entry exists and only its component is ours.
+PLUGINS_PAGE_FILES = ("PluginsPage.qml",)
+PLUGINS_PAGE = PLUGINS_PAGE_FILES[0]
 
 # The wallpaper's subject, drawn over the clock and the widgets. The
 # cutting is done by genesi-depth, a CLI in this same package; this file
@@ -3273,13 +3280,13 @@ def patch_plugins(release):
     if not os.path.exists(shell):
         fail(f"{shell} is gone -- the shell's layout moved.")
 
-    for name in PLUGIN_FILES + GAMECENTER_FILES + PET_FILES:
+    for name in PLUGIN_FILES + GAMECENTER_FILES + PET_FILES + WEATHER_FILES:
         shipped = os.path.join(release, "modules", "background", name)
         if os.path.exists(shipped):
             fail(f"upstream now ships its own {name}. Decide by hand.")
 
     text = io.open(shell, encoding="utf-8").read()
-    if "GenesiGameCenter" in text or "GenesiPet" in text:
+    if "GenesiGameCenter" in text or "GenesiPet" in text or "GenesiLiveWeather" in text:
         fail("shell.qml already builds the plugins -- this ran twice.")
     line = "    GenesiDock {}\n"
     if line not in text:
@@ -3287,8 +3294,63 @@ def patch_plugins(release):
              "plugins go beside -- patch_dock did not run.")
     io.open(shell, "w", encoding="utf-8", newline="\n").write(
         text.replace(line, line + "    GenesiGameCenter {}\n"
-                     "    GenesiPet {}\n", 1))
-    print("plugins: the Game Center and the leaf, each behind its switch")
+                     "    GenesiPet {}\n"
+                     "    GenesiLiveWeather {}\n", 1))
+    print("plugins: the Game Center, the leaf and the weather, each behind "
+          "its switch")
+
+
+def patch_plugins_page(nexus_dir):
+    """
+    Nexus -> System -> Plugins opens a page instead of "under construction".
+
+    Upstream lists Updates and then Plugins under System, both pointed at
+    PlaceholderComp. prepare() in the PKGBUILD replaces the FIRST placeholder
+    after '// System' with the Updates page; this replaces the SECOND, and
+    runs before it, so each finds exactly the one it expects.
+
+    The two registries are matched by position and nothing else, so this
+    checks the positions rather than trusting them: Plugins has to be the
+    entry right after Updates in the page list, and there have to be exactly
+    two placeholders in the System block of the component list.
+    """
+    reg = os.path.join(nexus_dir, "PageRegistry.qml")
+    comp = os.path.join(nexus_dir, "PageCompRegistry.qml")
+    if os.path.exists(os.path.join(nexus_dir, "pages", PLUGINS_PAGE)):
+        fail(f"upstream now ships its own {PLUGINS_PAGE}. Decide by hand.")
+
+    r = io.open(reg, encoding="utf-8").read()
+    live = "\n".join(l for l in r.splitlines() if not l.lstrip().startswith("//"))
+    labels = re.findall(r'label:\s*qsTr\("([^"]+)"\)', live)
+    if "Updates" not in labels or "Plugins" not in labels \
+            or labels.index("Plugins") != labels.index("Updates") + 1:
+        fail("PageRegistry no longer lists Plugins right after Updates -- the "
+             "System block moved, and which placeholder is Plugins' is now a "
+             "guess.")
+
+    c = io.open(comp, encoding="utf-8").read()
+    start = c.index("        // System\n")
+    end = c.index("        // Shell\n", start)
+    block = c[start:end]
+    hole = ("        Component {\n"
+            "            PlaceholderComp {}\n"
+            "        },\n")
+    if block.count(hole) != 2:
+        fail(f"the System block of PageCompRegistry has {block.count(hole)} "
+             "placeholders, not 2 (Updates, Plugins). Its shape changed.")
+    second = block.index(hole, block.index(hole) + len(hole))
+    page = ("        Component {\n"
+            "            // Plugins (Genesi)\n"
+            "            StackPage {\n"
+            "                Component {\n"
+            "                    PluginsPage {}\n"
+            "                }\n"
+            "            }\n"
+            "        },\n")
+    block = block[:second] + page + block[second + len(hole):]
+    io.open(comp, "w", encoding="utf-8", newline="\n").write(
+        c[:start] + block + c[end:])
+    print("PageCompRegistry: Plugins -> PluginsPage")
 
 
 def main():
@@ -3326,6 +3388,7 @@ def main():
     patch_dock(release)
     patch_scheme_screen(release)
     patch_plugins(release)
+    patch_plugins_page(nexus)
     patch_topbar(release)
     patch_side_panel(release)
     patch_depth(release)
@@ -3405,14 +3468,20 @@ def main():
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(DEPTH_FILES)} depth file(s)")
 
-    for name in PLUGIN_FILES + GAMECENTER_FILES + PET_FILES:
+    for name in PLUGIN_FILES + GAMECENTER_FILES + PET_FILES + WEATHER_FILES:
         src = os.path.join(ours, name)
         if not os.path.exists(src):
             fail(f"{src} is missing -- shell.qml has already been told to "
                  "build the plugins.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
-    print(f"installed {len(PLUGIN_FILES + GAMECENTER_FILES + PET_FILES)} "
+    print(f"installed {len(PLUGIN_FILES + GAMECENTER_FILES + PET_FILES + WEATHER_FILES)} "
           "plugin file(s)")
+    src = os.path.join(ours, PLUGINS_PAGE)
+    if not os.path.exists(src):
+        fail(f"{src} is missing -- PageCompRegistry has already been told to "
+             "build it.")
+    shutil.copyfile(src, os.path.join(dest, PLUGINS_PAGE))
+    print(f"installed {PLUGINS_PAGE}")
 
     verify_genesi_imports(release)
     verify_no_shadowed_types(release)

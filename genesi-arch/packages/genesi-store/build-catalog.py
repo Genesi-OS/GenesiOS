@@ -94,6 +94,10 @@ PLUGINS = [
      "Um bichinho na sua tela que é o estado do PC: sua quando a CPU "
      "esquenta, dorme quando você sai e cresce com você.",
      ["bichinho", "sistema"], "plugin-leaf.jpg"),
+    ("live-weather", "Clima vivo",
+     "Quando chove lá fora, chove no seu papel de parede: chuva, neve, "
+     "tempestade e neblina, por baixo das janelas.",
+     ["clima", "papel de parede"], "plugin-live-weather.jpg"),
 ]
 
 

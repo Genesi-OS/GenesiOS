@@ -629,7 +629,20 @@ pkgver=2.0.3
 # Cpu.percentage is a FRACTION; the leaf's rules speak percent. Read the
 # other way round it is a leaf that never feels the heat -- caught reading
 # cpu.cpp before it shipped, and pinned by ci/plugins-test.py.
-pkgrel=45
+# 46: live weather, and the Plugins page.
+#
+# Live weather (GenesiLiveWeather, a plugin): when caelestia's Weather
+# service says it is raining, snowing, storming or foggy, it is -- on the
+# wallpaper, on the bottom layer, under every window, taking no input.
+# `caelestia shell liveWeather preview rain` shows a sky for thirty seconds,
+# because a plugin that depends on the weather needs a way to be seen on
+# the day it is switched on.
+#
+# Nexus -> System -> Plugins was upstream's "page under construction". It
+# is a page now: a switch for every plugin -- through the store, so the
+# store's record of what is applied never disagrees with it -- the leaf's
+# level, the weather right now and a preview of each sky.
+pkgrel=46
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -711,9 +724,15 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiPet.qml"
         "GenesiLeaf.qml"
         "GenesiPetMind.qml"
+        "GenesiLiveWeather.qml"
+        "GenesiWeatherFx.qml"
+        "PluginsPage.qml"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

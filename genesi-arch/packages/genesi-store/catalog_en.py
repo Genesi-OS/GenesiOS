@@ -68,7 +68,14 @@ ENGLISH = {
         "CPU runs hot, sleeps when you step away and grows up with you.",
     "Nenhum plugin ligado: o desktop como o Genesi entrega.":
         "No plugins on: the desktop the way Genesi ships it.",
+    "Clima vivo": "Live weather",
+    "Quando chove lá fora, chove no seu papel de parede: chuva, neve, "
+    "tempestade e neblina, por baixo das janelas.":
+        "When it rains outside, it rains on your wallpaper: rain, snow, "
+        "storms and fog, underneath your windows.",
     "jogos": "games",
+    "papel de parede": "wallpaper",
+    "clima": "weather",
     "canto": "corner",
     "bichinho": "pet",
     "sistema": "system",

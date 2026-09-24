@@ -5298,6 +5298,34 @@
    ]
   },
   {
+   "id": "plugin-live-weather",
+   "section": "plugins",
+   "name": "Live weather",
+   "blurb": "When it rains outside, it rains on your wallpaper: rain, snow, storms and fog, underneath your windows.",
+   "author": "Genesi",
+   "tags": [
+    "weather",
+    "wallpaper"
+   ],
+   "preview": {
+    "kind": "image",
+    "thumb": "plugin-live-weather.jpg"
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/genesi/plugins/live-weather.json",
+     "text": "{\"enabled\": true}\n"
+    }
+   ],
+   "name_pt": "Clima vivo",
+   "blurb_pt": "Quando chove lá fora, chove no seu papel de parede: chuva, neve, tempestade e neblina, por baixo das janelas.",
+   "tags_pt": [
+    "clima",
+    "papel de parede"
+   ]
+  },
+  {
    "id": "default-themes",
    "section": "themes",
    "name": "The way it ships",
@@ -5452,6 +5480,10 @@
     {
      "action": "restore",
      "path": "~/.config/genesi/plugins/leaf.json"
+    },
+    {
+     "action": "restore",
+     "path": "~/.config/genesi/plugins/live-weather.json"
     }
    ],
    "name_pt": "Como vem de fábrica",

@@ -228,13 +228,59 @@ Item {
 }
 """
 
+WEATHER = """
+import QtQuick
+Item {
+    id: host
+    width: 1280; height: 720
+    // A wallpaper the store already ships (D3Ext/aesthetic-wallpapers, MIT),
+    // with the plugin's own rain drawn over it.
+    Image {
+        anchors.fill: parent
+        source: "%(thumbs)s/wall-forest-dark.jpg"
+        fillMode: Image.PreserveAspectCrop
+    }
+    GenesiWeatherFx {
+        anchors.fill: parent
+        forced: "rain"
+        wind: 0.55
+    }
+    Rectangle {
+        x: 40; y: 40
+        width: label.implicitWidth + 40
+        height: 58
+        radius: 29
+        color: Qt.rgba(0.06, 0.09, 0.08, 0.72)
+        Row {
+            id: label
+            anchors.centerIn: parent
+            spacing: 12
+            Text {
+                text: "rainy"
+                color: "#9cf4c3"
+                font.family: "%(icons)s"
+                font.pixelSize: 30
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Rain · 14 °C"
+                color: "#e6f4ec"
+                font.family: "%(sans)s"
+                font.pixelSize: 24
+            }
+        }
+    }
+}
+"""
+
 
 def render(qml, name):
     view = QQuickView()
     view.engine().addImportPath(SHELL)
     comp = QQmlComponent(view.engine())
     comp.setData((qml % {"palette": PALETTE, "backdrop": BACKDROP,
-                         "sans": SANS, "icons": ICONS}).encode("utf-8"),
+                         "sans": SANS, "icons": ICONS,
+                         "thumbs": QUrl.fromLocalFile(OUT).toString()}).encode("utf-8"),
                  QUrl.fromLocalFile(os.path.join(SHELL, "_preview.qml")))
     root = comp.create()
     if root is None:
@@ -242,7 +288,7 @@ def render(qml, name):
     view.setContent(QUrl(), comp, root)
     view.resize(1280, 720)
     view.show()
-    end = time.time() + 1.2
+    end = time.time() + 2.5
     while time.time() < end:
         app.processEvents()
     dest = os.path.join(OUT, name)
@@ -253,3 +299,4 @@ def render(qml, name):
 
 render(GAME_CENTER, "plugin-game-center.jpg")
 render(LEAF, "plugin-leaf.jpg")
+render(WEATHER, "plugin-live-weather.jpg")

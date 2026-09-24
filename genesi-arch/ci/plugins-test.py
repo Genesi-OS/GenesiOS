@@ -25,6 +25,8 @@ rather than read:
   Leaf     hot beats asleep, music beats asleep; the level curve; XP from
            games without a windfall on first sight; it talks in the
            machine's language; every mood at every stage draws cleanly
+  Weather  every WMO code open-meteo sends lands on the right sky; a clear
+           day draws nothing; every sky draws cleanly
   Wiring   the CPU fraction is turned into percent before the leaf's rules
            read it; every plugin the shell asks about is one the store can
            switch on, at the same path
@@ -54,7 +56,7 @@ SHELL = os.path.normpath(os.path.join(HERE, "..", "packages",
                                       "genesi-caelestia-shell"))
 GAMES = ("GenesiGameSnake.qml", "GenesiGame2048.qml", "GenesiGameMines.qml",
          "GenesiGameBlocks.qml")
-PURE = GAMES + ("GenesiGames.qml", "GenesiPetMind.qml")
+PURE = GAMES + ("GenesiGames.qml", "GenesiPetMind.qml", "GenesiWeatherFx.qml")
 # The leaf is drawn with Shapes, which is still Qt and nothing of caelestia's.
 DRAWN = ("GenesiLeaf.qml",)
 SHOTS = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -113,8 +115,20 @@ for name in os.listdir(SHELL):
         body = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, name),
                                                encoding="utf-8").read())
         asked |= set(re.findall(r'GenesiPluginSwitch\s*\{[^}]*?plugin:\s*"([^"]+)"', body, re.S))
-check("the shell asks about at least the Game Center and the leaf",
-      {"game-center", "leaf"} <= asked, sorted(asked))
+check("the shell asks about at least the Game Center, the leaf and the weather",
+      {"game-center", "leaf", "live-weather"} <= asked, sorted(asked))
+
+# The Nexus Plugins page lists plugins by hand. One that exists and is not
+# listed is a plugin with no switch in the settings; one listed that does
+# not exist is a switch that does nothing.
+page = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, "PluginsPage.qml"),
+                                        encoding="utf-8").read())
+listed = set(re.findall(r'\bid:\s*"([a-z-]+)"', page))
+check("the Plugins page lists exactly the plugins there are",
+      listed == asked, f"page {sorted(listed)} vs shell {sorted(asked)}")
+check("...and holds a switch for each of them",
+      set(re.findall(r'"([a-z-]+)":\s*\w+', page.split("switches:")[1].split("})")[0]))
+      == listed if "switches:" in page else False, "switches map")
 for plugin in sorted(asked):
     want = "~/.config/genesi/plugins/%s.json" % plugin
     check(f"the store can switch on '{plugin}', at the path the shell reads",
@@ -536,6 +550,38 @@ run("leaf mind", """
         ok("it talks in the machine's language",
            g.status(w({ cpu: 93 }), 0)[0].indexOf("quente") >= 0 && g.title(5) === "Folha");
 """)
+
+# ── The weather ───────────────────────────────────────────────────────────
+run("weather", """
+    GenesiWeatherFx {
+        id: sky
+        anchors.fill: parent
+    }
+    readonly property Item g: sky
+""", """
+        const want = [[0, "none"], [2, "none"], [3, "none"], [45, "fog"], [48, "fog"],
+                      [51, "drizzle"], [55, "drizzle"], [61, "rain"], [65, "rain"],
+                      [66, "rain"], [71, "snow"], [75, "snow"], [77, "snow"],
+                      [80, "rain"], [82, "rain"], [85, "snow"], [86, "snow"],
+                      [95, "storm"], [96, "storm"], [99, "storm"]];
+        const wrong = want.filter(([c, k]) => g.classify(c).kind !== k)
+                          .map(([c, k]) => c + "->" + g.classify(c).kind + " (want " + k + ")");
+        ok("every WMO code lands on the right sky", wrong.length === 0, wrong.join(", "));
+        ok("heavy rain is heavier than light rain",
+           g.classify(65).intensity > g.classify(61).intensity);
+
+        g.code = 1;
+        ok("a clear day draws nothing", g.drops === 0 && g.flakes === 0 && g.kind === "none");
+        g.code = 63;
+        ok("rain draws rain", g.drops > 100 && g.flakes === 0, g.drops);
+        g.code = 73;
+        ok("snow draws snow", g.flakes > 50 && g.drops === 0, g.flakes);
+        g.forced = "storm";
+        ok("a preview overrides the sky outside", g.kind === "storm" && g.drops > 150);
+        g.forced = "";
+        ok("...and ends", g.kind === "snow");
+        g.code = 65;
+""", size=(640, 360), shot="weather.png")
 
 # ── The leaf, drawn ───────────────────────────────────────────────────────
 run("leaf drawing", """
