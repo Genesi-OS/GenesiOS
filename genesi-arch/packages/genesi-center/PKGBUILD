@@ -178,7 +178,8 @@ pkgver=0.1.0
 # the desktop as something that grows -- raiz, tronco, seiva, flor, anel,
 # semente -- and the Overview's ornament is a line of ours, set on its side.
 # The CJK font hunt that existed to avoid a column of empty boxes goes too.
-pkgrel=36
+# 37: genesi-center-set accepts topbar.showTray, the top bar's new tray.
+pkgrel=37
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

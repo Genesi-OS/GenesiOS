@@ -505,6 +505,7 @@ Variants {
                         { kind: "switch", section: "topbar", key: "showDate", label: qsTr("Date") },
                         { kind: "switch", section: "topbar", key: "showResources", label: qsTr("Processor and memory") },
                         { kind: "switch", section: "topbar", key: "showStatus", label: qsTr("Network and battery") },
+                        { kind: "switch", section: "topbar", key: "showTray", label: qsTr("Tray icons"), blurb: qsTr("Genesi Update, AI Mode and every app's tray icon. Which ones: the arrow at the end of the tray.") },
                         { kind: "switch", section: "topbar", key: "showPower", label: qsTr("Power") },
                         { kind: "switch", section: "topbar", key: "showConfigButton", label: qsTr("This studio's button") },
                         { kind: "note", label: qsTr("With the studio's button off, this opens from Genesi Center → Bar.") }

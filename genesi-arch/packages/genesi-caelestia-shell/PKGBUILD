@@ -676,7 +676,16 @@ pkgver=2.0.3
 # Center and the leaf. It counts only the CLASS of the focused window,
 # never a title, keeps ten weeks on this machine, and says on Sunday
 # evening, once, that the week is ready.
-pkgrel=48
+# 49: the tray, on the top bar. Turning the bar on collapses caelestia's
+# rail, and the rail is where the system tray lived -- Genesi Update, AI
+# Mode and every app's tray icon disappeared with it. They are in the
+# bar's right-hand group now: left click activates, middle is the app's
+# secondary action, right opens its menu, the wheel scrolls. An arrow at
+# the end opens every icon with a pin; unpinned ones leave the bar but stay
+# one click away in that panel. The pins ARE caelestia's own
+# bar.tray.hiddenIcons, so the rail and the bar never disagree, and
+# `topbar.showTray` (the bar's studio) turns the whole tray off.
+pkgrel=49
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

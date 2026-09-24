@@ -48,6 +48,22 @@
 // Each one also decides how TALL the strip is, because a bar flush to the
 // screen edge that still reserves a gap above itself is a bar with a stripe
 // of desktop above it that nothing can ever be dropped into.
+//
+// ── The tray ──────────────────────────────────────────────────────────────
+//
+// Turning this bar on collapses caelestia's rail, and the rail is where the
+// system tray lived -- so Genesi Update, AI Mode and every other app's tray
+// icon went with it. The tray is on this bar now, in the right-hand group.
+//
+// Which icons show is caelestia's own `bar.tray.hiddenIcons`, not a second
+// list: the rail and this bar agree about it whichever one is on. The arrow
+// at the end of the tray opens every icon with a pin beside it -- unpinned
+// ones leave the bar but stay in that panel, still one click away, the way
+// every desktop's "hidden icons" works. `topbar.showTray` turns the whole
+// tray off, from the bar's studio.
+//
+// Left click activates, middle is the app's secondary action, right opens
+// the app's own menu, and the wheel scrolls -- the same as the rail.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -57,11 +73,15 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
 import Quickshell.Services.UPower
+import Quickshell.Services.SystemTray
 import Caelestia.Config
 import Caelestia.Services
 import qs.components
 import qs.components.containers
+import qs.components.controls
+import qs.components.effects
 import qs.services
+import qs.utils
 // GenesiTopBarState -- the flag the bar's own settings panel watches. It sits
 // beside the launcher's body, which is the module both halves import.
 import qs.modules.launcher
@@ -83,6 +103,39 @@ Variants {
         // through contentItem; the ones that read it inside their content do
         // not have to. Getting this wrong is how the dock shipped invisible.
         readonly property bool atTop: win.cfg.position !== "bottom"
+
+        // ── The tray ────────────────────────────────────────────────────
+        property bool trayOpen: false
+        readonly property var hiddenTray: GlobalConfig.bar.tray.hiddenIcons ?? []
+        readonly property var pinnedTray: SystemTray.items.values
+            .filter(i => !win.hiddenTray.includes(i.id))
+
+        function setPinned(id: string, pinned: bool): void {
+            const now = Array.from(win.hiddenTray);
+            const next = pinned ? now.filter(x => x !== id)
+                : (now.includes(id) ? now : now.concat([id]));
+            GlobalConfig.bar.tray.hiddenIcons = next;
+        }
+
+        // `from` is the item that was clicked and `onWindow` the window it is
+        // in, so the app's menu opens under it wherever that is -- on the
+        // bar, or in the panel of hidden icons.
+        function trayClick(item: var, button: int, from: Item, onWindow: var): void {
+            if (button === Qt.MiddleButton) {
+                item.secondaryActivate();
+                return;
+            }
+            if (button === Qt.RightButton || item.onlyMenu) {
+                if (item.hasMenu) {
+                    const at = from.mapToItem(null, 0, win.atTop ? from.height : 0);
+                    item.display(onWindow, at.x, at.y);
+                } else {
+                    item.secondaryActivate();
+                }
+                return;
+            }
+            item.activate();
+        }
 
         // ── The form ────────────────────────────────────────────────────
         readonly property string form: win.cfg.form
@@ -660,6 +713,21 @@ Variants {
             anchors.rightMargin: win.islands ? win.cfg.gap * 2 : win.tok.padding.medium
             anchors.verticalCenter: parent.verticalCenter
 
+            Repeater {
+                model: win.cfg.showTray ? win.pinnedTray : []
+
+                TrayIcon {}
+            }
+
+            // Every icon, pinned or not, with a pin beside each.
+            BarIcon {
+                id: trayArrow
+
+                visible: win.cfg.showTray && SystemTray.items.values.length > 0
+                icon: (win.trayOpen === win.atTop) ? "keyboard_arrow_up" : "keyboard_arrow_down"
+                onActivated: win.trayOpen = !win.trayOpen
+            }
+
             Reading {
                 visible: win.cfg.showResources
                 icon: "memory"
@@ -708,6 +776,181 @@ Variants {
                 visible: win.cfg.showConfigButton
                 icon: "tune"
                 onActivated: GenesiTopBarState.toggle()
+            }
+        }
+
+        // ── Every tray icon, with a pin ─────────────────────────────────────
+        LazyLoader {
+            active: win.trayOpen
+
+            StyledWindow {
+                id: trayWin
+
+                screen: win.modelData
+                name: "genesi-topbar-tray"
+
+                WlrLayershell.exclusionMode: ExclusionMode.Ignore
+                WlrLayershell.layer: WlrLayer.Overlay
+                WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+                color: "transparent"
+
+                anchors.top: true
+                anchors.bottom: true
+                anchors.left: true
+                anchors.right: true
+
+                // A click anywhere off the card puts it away.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: win.trayOpen = false
+                }
+
+                StyledRect {
+                    id: trayCard
+
+                    readonly property real arrowRight: trayArrow.mapToItem(null, trayArrow.width, 0).x
+
+                    width: 340
+                    height: trayList.implicitHeight + win.tok.padding.large * 2
+                    x: Math.max(win.tok.padding.large,
+                                Math.min(trayWin.width - trayCard.width - win.tok.padding.large,
+                                         trayCard.arrowRight - trayCard.width))
+                    y: win.atTop ? win.strip + win.tok.spacing.small
+                        : trayWin.height - win.strip - trayCard.height - win.tok.spacing.small
+                    radius: win.tok.rounding.large
+                    color: Colours.palette.m3surfaceContainer
+                    border.width: 1
+                    border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.6)
+
+                    focus: true
+                    Keys.onEscapePressed: win.trayOpen = false
+
+                    // Eats clicks, so "off the card" stays off the card.
+                    MouseArea {
+                        anchors.fill: parent
+                    }
+
+                    Column {
+                        id: trayList
+
+                        x: win.tok.padding.large
+                        y: win.tok.padding.large
+                        width: trayCard.width - win.tok.padding.large * 2
+                        spacing: win.tok.spacing.small
+
+                        StyledText {
+                            text: qsTr("Tray icons")
+                            font: Tokens.font.title.small
+                        }
+                        StyledText {
+                            width: parent.width
+                            text: qsTr("Pinned ones sit on the bar. The rest stay here, a click away.")
+                            color: Colours.palette.m3onSurfaceVariant
+                            font: Tokens.font.label.medium
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Item {
+                            width: 1
+                            height: win.tok.spacing.small
+                        }
+
+                        Repeater {
+                            model: SystemTray.items.values
+
+                            StyledRect {
+                                id: trayRow
+
+                                required property SystemTrayItem modelData
+
+                                width: trayList.width
+                                height: 44
+                                radius: win.tok.rounding.medium
+                                color: rowHover.containsMouse ? Qt.alpha(Colours.palette.m3onSurface, 0.07) : "transparent"
+
+                                MouseArea {
+                                    id: rowHover
+
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: mouse => {
+                                        win.trayClick(trayRow.modelData, mouse.button, trayRow, trayWin);
+                                        if (mouse.button === Qt.LeftButton && !trayRow.modelData.onlyMenu)
+                                            win.trayOpen = false;
+                                    }
+                                }
+
+                                ColouredIcon {
+                                    id: rowIcon
+
+                                    x: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 22
+                                    height: 22
+                                    source: Icons.getTrayIcon(trayRow.modelData.id, trayRow.modelData.icon)
+                                    colour: Colours.palette.m3secondary
+                                    layer.enabled: GlobalConfig.bar.tray.recolour
+                                }
+
+                                StyledText {
+                                    anchors.left: rowIcon.right
+                                    anchors.leftMargin: 12
+                                    anchors.right: pin.left
+                                    anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: trayRow.modelData.tooltipTitle || trayRow.modelData.title || trayRow.modelData.id
+                                    elide: Text.ElideRight
+                                }
+
+                                StyledSwitch {
+                                    id: pin
+
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    checked: !win.hiddenTray.includes(trayRow.modelData.id)
+                                    onToggled: win.setPinned(trayRow.modelData.id, checked)
+                                }
+                            }
+                        }
+
+                        StyledText {
+                            visible: SystemTray.items.values.length === 0
+                            width: parent.width
+                            text: qsTr("No app has an icon in the tray right now.")
+                            color: Colours.palette.m3outline
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+            }
+        }
+
+        // A tray icon on the bar. Coloured like the rail's, and recoloured to
+        // the scheme when caelestia's "recolour tray icons" is on.
+        component TrayIcon: MouseArea {
+            id: trayIcon
+
+            required property SystemTrayItem modelData
+
+            anchors.verticalCenter: parent.verticalCenter
+            implicitWidth: Math.round(win.cfg.height * 0.52)
+            implicitHeight: Math.round(win.cfg.height * 0.52)
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+
+            onClicked: mouse => win.trayClick(trayIcon.modelData, mouse.button, trayIcon, win)
+            onWheel: wheel => trayIcon.modelData.scroll(wheel.angleDelta.y > 0 ? 1 : -1, false)
+
+            ColouredIcon {
+                anchors.fill: parent
+                source: Icons.getTrayIcon(trayIcon.modelData.id, trayIcon.modelData.icon)
+                colour: Colours.palette.m3secondary
+                layer.enabled: GlobalConfig.bar.tray.recolour
+                opacity: trayIcon.containsMouse ? 1 : 0.9
             }
         }
 
