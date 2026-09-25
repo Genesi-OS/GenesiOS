@@ -3122,7 +3122,9 @@ def patch_hidden_panels(release):
         "    // Genesi: plus the bar. This measures from the top of the panel\n"
         "    // AREA, and that area now starts below the bar -- so hiding by\n"
         "    // its own height left the closed blob hanging in view as a tab.\n"
-        "    anchors.topMargin: (-implicitHeight - 5 - Launcher.GenesiEdges.top)"
+        "    // hideTop, not top: in the frame form the bar is the border, and\n"
+        "    // a drawer parked a bar-height deep in it carves the band open.\n"
+        "    anchors.topMargin: (-implicitHeight - 5 - Launcher.GenesiEdges.hideTop)"
         " * offsetScale\n"), 1)
 
     # patch_launcher_position has already rewritten this line, so the
@@ -3135,8 +3137,9 @@ def patch_hidden_panels(release):
              "patch_launcher_position rewrites that line first, and "
              "this adds the bar to the closed end of it.")
     out[launcher] = src[launcher].replace(old, (
-        "        // Genesi: plus the bar, when the bar is on this edge.\n"
-        "        - (restingOffset + implicitHeight + 5 + GenesiEdges.bottom)"
+        "        // Genesi: plus the bar, when the bar is on this edge (and\n"
+        "        // not in the frame form, where the bar is the border).\n"
+        "        - (restingOffset + implicitHeight + 5 + GenesiEdges.hideBottom)"
         " * offsetScale\n"), 1)
 
     for path, text in out.items():

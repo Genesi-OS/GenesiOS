@@ -107,6 +107,21 @@ Singleton {
     readonly property real bottom: (GlobalConfig.topbar.enabled && !root.barAtTop)
         ? root.reach : 0
 
+    // How far a CLOSED drawer has to climb past the bar to be out of sight
+    // -- the dashboard up, the launcher down. For every form but the frame,
+    // the bar sits outside caelestia's border and the drawer must clear all
+    // of it. In the frame the bar IS the border, so a closed drawer tucks
+    // into it exactly as it does into a stock caelestia border.
+    //
+    // Clearing it anyway was a visible bug. caelestia's blob shader opens a
+    // POCKET in the border wherever a panel's edge sits inside it
+    // (`topPen` in blob.frag), sized by how deep the edge is -- a few pixels
+    // in a stock border. A closed dashboard parked a whole bar-height deep
+    // in the frame's band carved the band out under the clock the moment the
+    // pointer brushed the top edge.
+    readonly property real hideTop: root.framed ? 0 : root.top
+    readonly property real hideBottom: root.framed ? 0 : root.bottom
+
     // ...and WHETHER anything of ours is standing on that edge at all, which
     // is a different question with a different answer. It decides whether the
     // drawers window gives up its eighty-pixel drag margin there, and the

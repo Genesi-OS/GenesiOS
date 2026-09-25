@@ -728,7 +728,15 @@ pkgver=2.0.3
 #     It now starts the update detached and, every time it opens, first asks
 #     whether one is running -- ours, the tray's, or a pacman holding the
 #     database lock -- and follows it to the end before checking.
-pkgrel=53
+# 54: the Frame bar was carved open under the clock when the pointer
+#     brushed the top edge. caelestia's blob shader opens a POCKET in the
+#     border wherever a panel's edge sits inside it (topPen in blob.frag),
+#     as deep as the edge is -- a few pixels in a stock border. Genesi parked
+#     the closed dashboard a whole bar-height up, which in the Frame form is
+#     deep inside the band, so the pocket ate the band. Closed drawers now
+#     clear GenesiEdges.hideTop/hideBottom, which is zero in the Frame form:
+#     they tuck into the band exactly as into a stock border.
+pkgrel=54
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
