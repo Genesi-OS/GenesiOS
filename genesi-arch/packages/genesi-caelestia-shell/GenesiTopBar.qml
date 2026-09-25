@@ -49,6 +49,19 @@
 // screen edge that still reserves a gap above itself is a bar with a stripe
 // of desktop above it that nothing can ever be dropped into.
 //
+// A sixth, `frame`, draws nothing at all. caelestia's own border grows at
+// that edge to the bar's height (GenesiEdges.frameTop, read by the drawers
+// window), so the bar IS the border: its colour, opacity and shadow, and the
+// rounded inner corners where it meets the screen. The contents sit on it.
+//
+// ── What is on it, and where ────────────────────────────────────────────
+//
+// The pieces are components -- WindowLabel, Resources, MediaChip,
+// Workspaces -- instantiated in every group they are allowed in and shown
+// in the one the config names. A Row does not lay out what is not visible,
+// so an unshown copy costs nothing and no group has to be rebuilt when a
+// piece moves.
+//
 // ── The tray ──────────────────────────────────────────────────────────────
 //
 // Turning this bar on collapses caelestia's rail, and the rail is where the
@@ -80,6 +93,7 @@ import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
+import Quickshell.Bluetooth
 import Quickshell.Services.UPower
 import Quickshell.Services.SystemTray
 import Caelestia.Config
@@ -178,6 +192,32 @@ Variants {
         readonly property string form: win.cfg.form
         readonly property bool islands: win.form === "islands"
         readonly property bool notch: win.form === "notch"
+        // caelestia's border, grown to hold the bar. Nothing of ours is
+        // drawn under the groups -- the border is the surface.
+        readonly property bool frame: win.form === "frame"
+        // The frame is part of caelestia's border and cannot slide away with
+        // the groups, so auto-hide means nothing there.
+        readonly property bool hiding: win.cfg.autoHide && !win.frame
+        // How far in from the screen's side the groups start: past the
+        // border's side on the frame, where the border is on screen.
+        readonly property real sideInset: win.islands ? win.cfg.gap * 2
+            : (win.frame ? contentItem.Config.border.thickness + win.tok.padding.large
+                         : win.tok.padding.medium)
+
+        // ── Style ───────────────────────────────────────────────────────
+        readonly property color accent: win.cfg.accent === "tertiary" ? Colours.palette.m3tertiary
+            : (win.cfg.accent === "secondary" ? Colours.palette.m3secondary
+                                              : Colours.palette.m3primary)
+        readonly property color accentInk: win.cfg.accent === "tertiary" ? Colours.palette.m3onTertiary
+            : (win.cfg.accent === "secondary" ? Colours.palette.m3onSecondary
+                                              : Colours.palette.m3onPrimary)
+        readonly property bool rings: win.cfg.resourceStyle === "rings"
+        readonly property bool numbered: win.cfg.workspaceStyle === "numbers"
+        readonly property string timeFormat: (win.cfg.clock24 ? "hh:mm" : "h:mm")
+            + (win.cfg.showSeconds ? ":ss" : "") + (win.cfg.clock24 ? "" : " AP")
+        readonly property string dateFormat: win.cfg.dateStyle === "numbers" ? "ddd, dd/MM"
+            : (win.cfg.dateStyle === "long" ? "dddd, d MMMM" : "ddd, MMM d")
+        readonly property var brightMon: Brightness.getMonitorForScreen(win.modelData)
         // One continuous surface behind the whole bar.
         readonly property bool slab: win.form === "full" || win.form === "fit"
             || win.form === "dock"
@@ -284,7 +324,7 @@ Variants {
         // window that shrinks to nothing has no edge left to notice a pointer
         // arriving at, and the bar could never come back.
         property bool peek: false
-        readonly property bool shown: !win.cfg.autoHide || win.peek
+        readonly property bool shown: !win.hiding || win.peek
 
         // The whole strip reserves space, so a maximised window stops below the
         // bar instead of underneath it. This is the one place the top bar and
@@ -300,10 +340,10 @@ Variants {
         // be something for the pointer to arrive at -- a hidden bar whose input
         // region is the islands it just hid cannot be reached again.
         mask: Region {
-            x: win.cfg.autoHide ? 0 : left.x
-            y: win.cfg.autoHide ? 0 : left.y
-            width: win.cfg.autoHide ? win.width : left.width
-            height: win.cfg.autoHide ? win.height : left.height
+            x: win.hiding ? 0 : left.x
+            y: win.hiding ? 0 : left.y
+            width: win.hiding ? win.width : left.width
+            height: win.hiding ? win.height : left.height
 
             Region {
                 x: centre.x
@@ -333,7 +373,7 @@ Variants {
         // it is hovered whenever the pointer is inside this item, children
         // included.
         HoverHandler {
-            enabled: win.cfg.autoHide
+            enabled: win.hiding
             onHoveredChanged: win.peek = hovered
         }
 
@@ -512,7 +552,7 @@ Variants {
                         height: 4
                         radius: 2
                         y: (gap.height - height) / 2
-                        color: Colours.palette.m3primary
+                        color: win.accent
 
                         SequentialAnimation {
                             running: true
@@ -564,7 +604,7 @@ Variants {
             id: left
 
             anchors.left: parent.left
-            anchors.leftMargin: win.islands ? win.cfg.gap * 2 : win.tok.padding.medium
+            anchors.leftMargin: win.sideInset
             anchors.verticalCenter: parent.verticalCenter
 
             // The Genesi mark. It was the "workspaces" glyph -- three dots
@@ -654,45 +694,19 @@ Variants {
                 }
             }
 
-            Repeater {
-                model: win.cfg.showWorkspaces ? (Hypr.workspaces?.values ?? []) : []
-
-                StyledRect {
-                    id: ws
-
-                    required property var modelData
-
-                    readonly property bool active: ws.modelData?.id === Hypr.activeWsId
-                    readonly property bool occupied: (ws.modelData?.lastIpcObject?.windows ?? 0) > 0
-
-                    anchors.verticalCenter: parent.verticalCenter
-                    // The active one is a bar, the rest are dots. Shape rather
-                    // than colour alone: which workspace you are on has to be
-                    // legible at a glance and out of the corner of an eye, and
-                    // a colour difference is neither on a busy wallpaper.
-                    implicitWidth: ws.active ? win.cfg.height * 0.62 : win.cfg.height * 0.26
-                    implicitHeight: win.cfg.height * 0.26
-                    radius: Tokens.rounding.full
-                    color: ws.active ? Colours.palette.m3primary
-                                     : (ws.occupied ? Colours.palette.m3onSurfaceVariant
-                                                    : Qt.alpha(Colours.palette.m3outline, 0.45))
-
-                    Behavior on implicitWidth {
-                        Anim {}
-                    }
-                    Behavior on color {
-                        CAnim {}
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: Quickshell.execDetached(
-                            ["hyprctl", "dispatch", "workspace",
-                             String(ws.modelData?.id ?? 1)])
-                    }
-                }
+            WindowLabel {
+                here: win.cfg.windowPlace === "left"
             }
+
+            Resources {
+                here: win.cfg.resourcePlace === "left"
+            }
+
+            MediaChip {
+                here: win.cfg.mediaPlace === "left"
+            }
+
+            Workspaces {}
         }
 
         // ── Centre ─────────────────────────────────────────────────
@@ -712,33 +726,38 @@ Variants {
                     v.dashboard = !v.dashboard;
             }
 
-            StyledText {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: win.cfg.showActiveWindow && text !== ""
-                text: Hypr.activeToplevel?.lastIpcObject?.title ?? ""
-                font: Tokens.font.body.small
-                color: Colours.palette.m3onSurfaceVariant
-                elide: Text.ElideRight
-                // A title is the one thing here with no natural width, so it is
-                // the one thing that gets a cap. Without it a browser tab named
-                // after an article pushes the clock off-centre.
-                width: Math.min(implicitWidth, win.width * 0.22)
+            WindowLabel {
+                here: win.cfg.windowPlace !== "left"
+            }
+
+            MediaChip {
+                here: win.cfg.mediaPlace === "centre"
             }
 
             StyledText {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: win.cfg.showClock
-                text: Time.format("hh:mm")
+                text: Time.format(win.timeFormat)
                 font: Tokens.font.body.medium
                 color: Colours.palette.m3onSurface
+            }
+
+            // A dot between the time and the date, when there are both.
+            StyledRect {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: win.cfg.showClock && win.cfg.showDate
+                implicitWidth: 4
+                implicitHeight: 4
+                radius: 2
+                color: win.accent
             }
 
             StyledText {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: win.cfg.showDate
-                text: Time.format("ddd, MMM d")
-                font: Tokens.font.label.small
-                color: Colours.palette.m3outline
+                text: Time.format(win.dateFormat)
+                font: Tokens.font.label.medium
+                color: Colours.palette.m3onSurfaceVariant
             }
         }
 
@@ -747,8 +766,12 @@ Variants {
             id: right
 
             anchors.right: parent.right
-            anchors.rightMargin: win.islands ? win.cfg.gap * 2 : win.tok.padding.medium
+            anchors.rightMargin: win.sideInset
             anchors.verticalCenter: parent.verticalCenter
+
+            MediaChip {
+                here: win.cfg.mediaPlace === "right"
+            }
 
             Repeater {
                 model: win.cfg.showTray ? win.pinnedTray : []
@@ -772,22 +795,44 @@ Variants {
                 }
             }
 
-            Reading {
-                visible: win.cfg.showResources
-                icon: "memory"
-                label: `${Math.round(Cpu.percentage * 100)}%`
+            Resources {
+                here: win.cfg.resourcePlace !== "left"
             }
 
-            Reading {
-                visible: win.cfg.showResources
-                icon: "memory_alt"
-                label: `${Math.round(Memory.percentage * 100)}%`
+            // Scroll for louder or quieter, click to mute.
+            Knob {
+                visible: win.cfg.showVolume
+                icon: Icons.getVolumeIcon(Audio.volume, Audio.muted)
+                label: Audio.muted ? "" : `${Math.round(Audio.volume * 100)}%`
+                onTapped: {
+                    if (Audio.sink?.audio)
+                        Audio.sink.audio.muted = !Audio.sink.audio.muted;
+                }
+                onStepped: dir => dir > 0 ? Audio.incrementVolume() : Audio.decrementVolume()
             }
 
-            Reading {
+            Knob {
+                visible: win.cfg.showBrightness && !!win.brightMon
+                icon: "brightness_6"
+                label: `${Math.round((win.brightMon?.brightness ?? 0) * 100)}%`
+                onStepped: dir => win.brightMon?.setBrightness(
+                    Math.max(0, Math.min(1, win.brightMon.brightness
+                        + dir * GlobalConfig.services.brightnessIncrement)))
+            }
+
+            Knob {
                 visible: win.cfg.showStatus
-                icon: Network.active ? "wifi" : "wifi_off"
+                icon: Network.active ? Icons.getNetworkIcon(Network.active.strength ?? 0) : "wifi_off"
                 label: ""
+                onTapped: GenesiSidePanelState.toggle()
+            }
+
+            Knob {
+                visible: win.cfg.showBluetooth && !!Bluetooth.defaultAdapter
+                icon: !(Bluetooth.defaultAdapter?.enabled ?? false) ? "bluetooth_disabled"
+                    : (Bluetooth.devices.values.some(d => d.connected) ? "bluetooth_connected" : "bluetooth")
+                label: ""
+                onTapped: GenesiSidePanelState.toggle()
             }
 
             Reading {
@@ -797,10 +842,39 @@ Variants {
 
                 // A desktop has no battery, and a battery reading 100% for ever
                 // is a reading nobody has ever looked at twice.
-                visible: win.cfg.showStatus && (batteryReading.dev?.isLaptopBattery ?? false)
+                visible: win.cfg.showStatus && win.cfg.batteryStyle !== "pill"
+                    && (batteryReading.dev?.isLaptopBattery ?? false)
                 icon: (batteryReading.dev?.state === UPowerDeviceState.Charging)
                       ? "battery_charging_full" : "battery_full"
                 label: `${Math.round((batteryReading.dev?.percentage ?? 0) * 100)}%`
+            }
+
+            // The battery as a pill with its number on it: filled with the
+            // accent while it charges, red when it is low.
+            StyledRect {
+                id: batteryPill
+
+                readonly property var dev: UPower.displayDevice
+                readonly property real level: batteryPill.dev?.percentage ?? 0
+                readonly property bool charging: batteryPill.dev?.state === UPowerDeviceState.Charging
+
+                anchors.verticalCenter: parent.verticalCenter
+                visible: win.cfg.showStatus && win.cfg.batteryStyle === "pill"
+                    && (batteryPill.dev?.isLaptopBattery ?? false)
+                implicitWidth: Math.max(implicitHeight * 1.5, pillText.implicitWidth + win.tok.padding.medium * 2)
+                implicitHeight: Math.round(win.cfg.height * 0.56)
+                radius: Tokens.rounding.full
+                color: batteryPill.charging ? win.accent
+                    : (batteryPill.level < 0.2 ? Colours.palette.m3error : Colours.palette.m3onSurfaceVariant)
+
+                StyledText {
+                    id: pillText
+
+                    anchors.centerIn: parent
+                    text: Math.round(batteryPill.level * 100)
+                    font: Tokens.font.label.medium
+                    color: batteryPill.charging ? win.accentInk : Colours.palette.m3surface
+                }
             }
 
             BarIcon {
@@ -1238,8 +1312,8 @@ Variants {
             // into the SLIDE's offset rather than added as a second
             // verticalCenterOffset: two things assigning one property is how
             // the slide was silently dead for a release.
-            readonly property real restOffset:
-                (win.atTop ? 1 : -1) * win.cfg.margin / 2
+            readonly property real restOffset: win.frame ? 0
+                : (win.atTop ? 1 : -1) * win.cfg.margin / 2
 
             anchors.verticalCenterOffset: win.shown ? island.restOffset
                 : (win.atTop ? -(win.cfg.height + win.cfg.gap * 3)
@@ -1317,6 +1391,334 @@ Variants {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: barIcon.activated()
+            }
+        }
+
+        // ── The pieces that can sit in more than one group ───────────────
+        //
+        // Each has `here`, set by the group it is placed in, and is visible
+        // only where the config puts it. Not `visible` itself: a component
+        // that binds its own visibility has that binding REPLACED by any
+        // assignment at the place it is used, and the "is it switched on"
+        // half would silently go with it.
+
+        // The focused window: its title, and with `windowStacked` the app it
+        // belongs to above it, small.
+        component WindowLabel: Column {
+            id: wl
+
+            property bool here: true
+            readonly property var ipc: Hypr.activeToplevel?.lastIpcObject
+            readonly property string title: wl.ipc?.title ?? ""
+            readonly property string app: wl.ipc?.class ?? ""
+            // A title is the one thing here with no natural width, so it is
+            // the one thing that gets a cap. Without it a browser tab named
+            // after an article pushes the clock off-centre.
+            readonly property real cap: win.width * (win.cfg.windowStacked ? 0.16 : 0.22)
+
+            anchors.verticalCenter: parent.verticalCenter
+            visible: wl.here && win.cfg.showActiveWindow && wl.title !== ""
+            spacing: -2
+
+            StyledText {
+                visible: win.cfg.windowStacked && wl.app !== ""
+                width: Math.min(implicitWidth, wl.cap)
+                text: wl.app
+                font: Tokens.font.label.small
+                color: Colours.palette.m3outline
+                elide: Text.ElideRight
+            }
+
+            StyledText {
+                width: Math.min(implicitWidth, wl.cap)
+                text: wl.title
+                font: Tokens.font.body.small
+                color: win.cfg.windowStacked ? Colours.palette.m3onSurface
+                                             : Colours.palette.m3onSurfaceVariant
+                elide: Text.ElideRight
+            }
+        }
+
+        // Processor, memory and -- when asked -- disk and temperature. As an
+        // icon and a number, or as rings that fill.
+        component Resources: Row {
+            id: res
+
+            property bool here: true
+
+            anchors.verticalCenter: parent.verticalCenter
+            visible: res.here && (win.cfg.showResources || win.cfg.showDisk || win.cfg.showTemperature)
+            spacing: win.rings ? win.tok.spacing.medium : win.tok.spacing.small
+
+            Gauge {
+                visible: win.cfg.showResources
+                value: Cpu.percentage
+                icon: "memory"
+                label: `${Math.round(Cpu.percentage * 100)}%`
+            }
+            Gauge {
+                visible: win.cfg.showResources
+                value: Memory.percentage
+                icon: "memory_alt"
+                label: `${Math.round(Memory.percentage * 100)}%`
+            }
+            Gauge {
+                visible: win.cfg.showDisk
+                value: Storage.percentage
+                icon: "hard_drive"
+                label: `${Math.round(Storage.percentage * 100)}%`
+            }
+            Gauge {
+                visible: win.cfg.showTemperature
+                // Against 100 degrees: where a desktop processor throttles.
+                value: Cpu.temperature / 100
+                icon: "thermostat"
+                label: `${Math.round(Cpu.temperature)}°`
+            }
+        }
+
+        // One reading: a ring with the icon inside it, or the icon alone,
+        // and the number beside either.
+        component Gauge: Row {
+            id: gauge
+
+            property real value: 0
+            property string icon: ""
+            property string label: ""
+
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: win.tok.spacing.extraSmall
+
+            Item {
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: win.rings ? Math.round(win.cfg.height * 0.64) : gaugeIcon.implicitWidth
+                implicitHeight: win.rings ? implicitWidth : gaugeIcon.implicitHeight
+
+                CircularProgress {
+                    anchors.fill: parent
+                    visible: win.rings
+                    value: isNaN(gauge.value) ? 0 : gauge.value
+                    strokeWidth: Math.max(2, Math.round(win.cfg.height / 15))
+                    fgColour: gauge.value > 0.85 ? Colours.palette.m3error : win.accent
+                    bgColour: Qt.alpha(Colours.palette.m3onSurface, 0.12)
+                }
+
+                MaterialIcon {
+                    id: gaugeIcon
+
+                    anchors.centerIn: parent
+                    text: gauge.icon
+                    color: Colours.palette.m3onSurfaceVariant
+                    fontStyle: win.rings ? Tokens.font.icon.builders.small.scale(0.75).build()
+                                         : Tokens.font.icon.small
+                }
+            }
+
+            StyledText {
+                anchors.verticalCenter: parent.verticalCenter
+                text: gauge.label
+                font: Tokens.font.label.medium
+                color: Colours.palette.m3onSurface
+            }
+        }
+
+        // What is playing. Click pauses or plays, the wheel skips, the
+        // middle button goes to the next track.
+        component MediaChip: Item {
+            id: media
+
+            property bool here: true
+            readonly property var player: Players.active
+            readonly property string title: media.player?.trackTitle ?? ""
+            readonly property string artist: media.player?.trackArtist ?? ""
+
+            anchors.verticalCenter: parent.verticalCenter
+            visible: media.here && win.cfg.showMedia && media.title !== ""
+            implicitWidth: mediaRow.implicitWidth
+            implicitHeight: mediaRow.implicitHeight
+
+            Row {
+                id: mediaRow
+
+                spacing: win.tok.spacing.small
+
+                MaterialIcon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: (media.player?.isPlaying ?? false) ? "graphic_eq" : "music_note"
+                    color: win.accent
+                    fontStyle: Tokens.font.icon.small
+                }
+
+                StyledText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, win.width * 0.16)
+                    text: media.artist !== "" ? `${media.title} • ${media.artist}` : media.title
+                    font: Tokens.font.body.small
+                    color: Colours.palette.m3onSurfaceVariant
+                    elide: Text.ElideRight
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                cursorShape: Qt.PointingHandCursor
+                onClicked: mouse => {
+                    if (mouse.button === Qt.MiddleButton) {
+                        if (media.player?.canGoNext)
+                            media.player.next();
+                    } else {
+                        media.player?.togglePlaying();
+                    }
+                }
+                onWheel: wheel => {
+                    if (wheel.angleDelta.y < 0 && media.player?.canGoNext)
+                        media.player.next();
+                    else if (wheel.angleDelta.y > 0 && media.player?.canGoPrevious)
+                        media.player.previous();
+                }
+            }
+        }
+
+        // The workspaces: dots with the active one stretched, or numbers
+        // with the active one circled. The wheel over them moves along.
+        component Workspaces: Row {
+            id: wsRow
+
+            // With numbers, the first `workspaceCount` are always there, and
+            // any workspace past them joins for as long as it exists.
+            readonly property var ids: {
+                const n = Math.max(1, Math.min(10, win.cfg.workspaceCount));
+                const out = [];
+                for (let i = 1; i <= n; i++)
+                    out.push(i);
+                for (const w of (Hypr.workspaces?.values ?? []))
+                    if (w.id > n && !out.includes(w.id))
+                        out.push(w.id);
+                return out.sort((a, b) => a - b);
+            }
+
+            anchors.verticalCenter: parent.verticalCenter
+            visible: win.cfg.showWorkspaces
+            spacing: win.numbered ? 0 : win.tok.spacing.medium
+
+            WheelHandler {
+                onWheel: event => Quickshell.execDetached(["hyprctl", "dispatch", "workspace",
+                                                          event.angleDelta.y > 0 ? "r-1" : "r+1"])
+            }
+
+            Repeater {
+                model: win.numbered ? wsRow.ids : []
+
+                Item {
+                    id: num
+
+                    required property int modelData
+
+                    readonly property var ws: (Hypr.workspaces?.values ?? []).find(w => w.id === num.modelData)
+                    readonly property bool active: num.modelData === Hypr.activeWsId
+                    readonly property bool occupied: (num.ws?.lastIpcObject?.windows ?? 0) > 0
+
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: Math.round(win.cfg.height * 0.64)
+                    implicitHeight: implicitWidth
+
+                    StyledRect {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        radius: Tokens.rounding.full
+                        color: num.active ? win.accent : "transparent"
+
+                        Behavior on color {
+                            CAnim {}
+                        }
+                    }
+
+                    StyledText {
+                        anchors.centerIn: parent
+                        text: num.modelData
+                        font: Tokens.font.label.medium
+                        color: num.active ? win.accentInk
+                            : (num.occupied ? Colours.palette.m3onSurface
+                                            : Qt.alpha(Colours.palette.m3outline, 0.7))
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Quickshell.execDetached(["hyprctl", "dispatch", "workspace",
+                                                            String(num.modelData)])
+                    }
+                }
+            }
+
+            Repeater {
+                model: win.numbered ? [] : (Hypr.workspaces?.values ?? [])
+
+                StyledRect {
+                    id: ws
+
+                    required property var modelData
+
+                    readonly property bool active: ws.modelData?.id === Hypr.activeWsId
+                    readonly property bool occupied: (ws.modelData?.lastIpcObject?.windows ?? 0) > 0
+
+                    anchors.verticalCenter: parent.verticalCenter
+                    // The active one is a bar, the rest are dots. Shape rather
+                    // than colour alone: which workspace you are on has to be
+                    // legible at a glance and out of the corner of an eye, and
+                    // a colour difference is neither on a busy wallpaper.
+                    implicitWidth: ws.active ? win.cfg.height * 0.62 : win.cfg.height * 0.26
+                    implicitHeight: win.cfg.height * 0.26
+                    radius: Tokens.rounding.full
+                    color: ws.active ? win.accent
+                                     : (ws.occupied ? Colours.palette.m3onSurfaceVariant
+                                                    : Qt.alpha(Colours.palette.m3outline, 0.45))
+
+                    Behavior on implicitWidth {
+                        Anim {}
+                    }
+                    Behavior on color {
+                        CAnim {}
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Quickshell.execDetached(
+                            ["hyprctl", "dispatch", "workspace",
+                             String(ws.modelData?.id ?? 1)])
+                    }
+                }
+            }
+        }
+
+        // A Reading you can click and scroll.
+        component Knob: Item {
+            id: ctl
+
+            property string icon: ""
+            property string label: ""
+
+            signal tapped
+            signal stepped(dir: int)
+
+            anchors.verticalCenter: parent.verticalCenter
+            implicitWidth: ctlReading.implicitWidth
+            implicitHeight: Math.max(ctlReading.implicitHeight, win.cfg.height * 0.6)
+
+            Reading {
+                id: ctlReading
+
+                icon: ctl.icon
+                label: ctl.label
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: ctl.tapped()
+                onWheel: wheel => ctl.stepped(wheel.angleDelta.y > 0 ? 1 : -1)
             }
         }
 

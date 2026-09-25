@@ -54,6 +54,10 @@ Singleton {
     function stripFor(cfg): real {
         if (!cfg.enabled)
             return 0;
+        // The frame form is caelestia's border grown to the bar's height:
+        // flush to the edge by definition, so no margin and no gap.
+        if (cfg.form === "frame")
+            return cfg.height;
         // `margin` is the distance from the screen edge; `gap` is the space
         // around the islands inside the strip. Both are part of how much of
         // the screen the bar occupies, and everything that lays out around it
@@ -73,6 +77,25 @@ Singleton {
 
     readonly property real barStrip: root.stripFor(GlobalConfig.topbar)
 
+    // ── The frame form ────────────────────────────────────────────────
+    //
+    // The bar drawn BY caelestia's border: the frame's edge grows to the
+    // bar's height and the bar's contents sit on it. How thick that edge
+    // is, per side -- ContentWindow's BlobInvertedRect reads these.
+    readonly property bool framed: GlobalConfig.topbar.enabled
+        && GlobalConfig.topbar.form === "frame"
+    readonly property real frameTop: root.framed && root.barAtTop ? root.barStrip : 0
+    readonly property real frameBottom: root.framed && !root.barAtTop ? root.barStrip : 0
+
+    // How far past caelestia's own border the bar reaches. Every other form
+    // sits INSIDE the border's strip and adds all of its height; the frame
+    // IS that strip, so only the part thicker than the border counts --
+    // otherwise a drawer would open a border's width below the bar with a
+    // stripe of desktop between them.
+    readonly property real reach: root.framed
+        ? Math.max(0, root.barStrip - GlobalConfig.border.thickness)
+        : root.barStrip
+
     // ── Two questions, two names ──────────────────────────────────────
     //
     // HOW MUCH of an edge the bar occupies, for the things that have to lay
@@ -80,9 +103,9 @@ Singleton {
     // backgrounds, where a closed drawer hides. Only the BAR counts, because
     // only the bar reserves space -- a panel opening behind the dock is a
     // panel behind a floating thing, which is what a dock is.
-    readonly property real top: root.barAtTop ? root.barStrip : 0
+    readonly property real top: root.barAtTop ? root.reach : 0
     readonly property real bottom: (GlobalConfig.topbar.enabled && !root.barAtTop)
-        ? root.barStrip : 0
+        ? root.reach : 0
 
     // ...and WHETHER anything of ours is standing on that edge at all, which
     // is a different question with a different answer. It decides whether the

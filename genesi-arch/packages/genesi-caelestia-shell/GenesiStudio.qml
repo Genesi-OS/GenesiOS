@@ -479,12 +479,14 @@ Variants {
                         { kind: "note", label: qsTr("How far the bar sits from the edge of the screen. The gap below is the space around the islands inside it.") },
                         { kind: "head", label: qsTr("FORM") },
                         { kind: "cards", section: "topbar", key: "form", label: qsTr("Form"), options: [
+                            { id: "frame", label: qsTr("FRAME"), blurb: qsTr("caelestia's border") },
                             { id: "islands", label: qsTr("ISLANDS"), blurb: qsTr("Three pills") },
                             { id: "full", label: qsTr("FULL"), blurb: qsTr("Edge to edge") },
                             { id: "fit", label: qsTr("FIT"), blurb: qsTr("Inset frame") },
                             { id: "dock", label: qsTr("DOCK"), blurb: qsTr("Open edge") },
                             { id: "notch", label: qsTr("NOTCH"), blurb: qsTr("Flowing shoulders") }
                         ] },
+                        { kind: "note", label: qsTr("FRAME is caelestia's own border grown to hold the bar: the rounded corners where it meets the screen, the colour, the opacity and the shadow are the border's, and drawers flow out of it. Background, corners and auto-hide below do not apply to it.") },
                         { kind: "switch", section: "topbar", key: "flow", label: qsTr("Flow"), blurb: qsTr("A light running between the islands. Only where there is a gap for it to cross.") },
                         { kind: "head", label: qsTr("SURFACE") },
                         { kind: "switch", section: "topbar", key: "background", label: qsTr("Background") },
@@ -508,7 +510,42 @@ Variants {
                         { kind: "switch", section: "topbar", key: "showTray", label: qsTr("Tray icons"), blurb: qsTr("Genesi Update, AI Mode and every app's tray icon. Which ones: the arrow at the end of the tray.") },
                         { kind: "switch", section: "topbar", key: "showPower", label: qsTr("Power") },
                         { kind: "switch", section: "topbar", key: "showConfigButton", label: qsTr("This studio's button") },
-                        { kind: "note", label: qsTr("With the studio's button off, this opens from Genesi Center → Bar.") }
+                        { kind: "note", label: qsTr("With the studio's button off, this opens from Genesi Center → Bar.") },
+                        { kind: "switch", section: "topbar", key: "showMedia", label: qsTr("Now playing"), blurb: qsTr("The track and the artist. Click to pause or play, scroll to skip, middle-click for the next one.") },
+                        { kind: "switch", section: "topbar", key: "showDisk", label: qsTr("Disk") },
+                        { kind: "switch", section: "topbar", key: "showTemperature", label: qsTr("Processor temperature") },
+                        { kind: "switch", section: "topbar", key: "showVolume", label: qsTr("Volume"), blurb: qsTr("Scroll to change it, click to mute.") },
+                        { kind: "switch", section: "topbar", key: "showBrightness", label: qsTr("Brightness"), blurb: qsTr("Scroll to change it.") },
+                        { kind: "switch", section: "topbar", key: "showBluetooth", label: qsTr("Bluetooth") },
+                        { kind: "head", label: qsTr("LAYOUT") },
+                        { kind: "cards", section: "topbar", key: "windowPlace", label: qsTr("Window title"), options: [
+                            { id: "centre", label: qsTr("CENTRE"), blurb: qsTr("Beside the clock") },
+                            { id: "left", label: qsTr("LEFT"), blurb: qsTr("Beside the mark") }
+                        ] },
+                        { kind: "switch", section: "topbar", key: "windowStacked", label: qsTr("App above the title"), blurb: qsTr("Two lines: which app, small, and its window's title under it.") },
+                        { kind: "choice", section: "topbar", key: "resourcePlace", label: qsTr("Processor and memory"), options: [{ id: "left", label: qsTr("LEFT") }, { id: "right", label: qsTr("RIGHT") }] },
+                        { kind: "choice", section: "topbar", key: "mediaPlace", label: qsTr("Now playing"), options: [{ id: "left", label: qsTr("LEFT") }, { id: "centre", label: qsTr("CENTRE") }, { id: "right", label: qsTr("RIGHT") }] },
+                        { kind: "head", label: qsTr("STYLE") },
+                        { kind: "cards", section: "topbar", key: "accent", label: qsTr("Accent"), options: [
+                            { id: "primary", label: qsTr("PRIMARY"), blurb: qsTr("The scheme's main colour") },
+                            { id: "secondary", label: qsTr("SECONDARY"), blurb: qsTr("Quieter") },
+                            { id: "tertiary", label: qsTr("TERTIARY"), blurb: qsTr("The contrast one") }
+                        ] },
+                        { kind: "cards", section: "topbar", key: "workspaceStyle", label: qsTr("Workspaces"), options: [
+                            { id: "dots", label: qsTr("DOTS"), blurb: qsTr("The active one stretches") },
+                            { id: "numbers", label: qsTr("NUMBERS"), blurb: qsTr("The active one circled") }
+                        ] },
+                        { kind: "amount", section: "topbar", key: "workspaceCount", label: qsTr("Numbers shown"), from: 1, to: 10 },
+                        { kind: "note", label: qsTr("With numbers, this many are always there, empty or not -- and any workspace past them joins while it exists.") },
+                        { kind: "cards", section: "topbar", key: "resourceStyle", label: qsTr("Readings"), options: [
+                            { id: "text", label: qsTr("TEXT"), blurb: qsTr("An icon and a number") },
+                            { id: "rings", label: qsTr("RINGS"), blurb: qsTr("A gauge that fills") }
+                        ] },
+                        { kind: "choice", section: "topbar", key: "batteryStyle", label: qsTr("Battery"), options: [{ id: "icon", label: qsTr("ICON") }, { id: "pill", label: qsTr("PILL") }] },
+                        { kind: "head", label: qsTr("CLOCK") },
+                        { kind: "switch", section: "topbar", key: "clock24", label: qsTr("24-hour clock") },
+                        { kind: "switch", section: "topbar", key: "showSeconds", label: qsTr("Seconds") },
+                        { kind: "choice", section: "topbar", key: "dateStyle", label: qsTr("Date"), options: [{ id: "words", label: qsTr("THU, AUG 13") }, { id: "numbers", label: qsTr("THU, 13/08") }, { id: "long", label: qsTr("THURSDAY, 13 AUGUST") }] }
                     ],
                     "panel": [
                         { kind: "note", label: qsTr("Wi-Fi, Bluetooth, the volume and the screen, down the left edge. It exists only while the top bar does: without the bar, caelestia's rail is on that edge and its own popouts with it.") },
@@ -1298,6 +1335,30 @@ Variants {
                         // reads as a bar rather than as a slightly different
                         // shade of the card it is inside.
                         color: Colours.palette.m3surface
+                    }
+
+                    // ── The frame form: caelestia's border, thick at the
+                    // bar's edge, with the screen showing through a
+                    // rounded hole ────────────────────────────────────
+                    Item {
+                        anchors.fill: parent
+                        visible: preview.bar && preview.form === "frame"
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: win.tok.rounding.small
+                            color: Colours.palette.m3surfaceContainerHighest
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.topMargin: preview.atTop ? mini.thickness : 3
+                            anchors.bottomMargin: preview.atTop ? 3 : mini.thickness
+                            anchors.leftMargin: 3
+                            anchors.rightMargin: 3
+                            radius: 7
+                            color: Colours.palette.m3surface
+                        }
                     }
 
                     // ── The bar ──────────────────────────────────────────

@@ -183,7 +183,10 @@ pkgver=0.1.0
 # TapHandler, which takes a passive grab and lets the press through to what
 # is underneath -- picking a resolution also pressed the rotation button it
 # lay over. MouseAreas now, and ci/center-select-test.py clicks it.
-pkgrel=38
+# 39: genesi-center-set accepts the top bar's frame form and its eighteen
+# new settings (workspace style and count, window placement, rings, media,
+# volume, brightness, Bluetooth, battery pill, accent, clock and date).
+pkgrel=39
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

@@ -709,7 +709,19 @@ pkgver=2.0.3
 #     raises a signal on GenesiPluginBus and the plugin answers it, and its
 #     toasts go straight to caelestia's Toaster -- the old path spawned
 #     `caelestia shell`, then `qs ipc call`, and failed with nothing shown.
-pkgrel=51
+# 52: the top bar grows up.
+#   * FRAME, a sixth form: caelestia's own border thickens at the bar's edge
+#     and IS the bar -- the rounded inner corners where it meets the screen,
+#     the border's colour, opacity and shadow, and drawers that flow out of
+#     it. ContentWindow's BlobInvertedRect reads GenesiEdges.frameTop/Bottom.
+#   * Eighteen new settings, every default the old behaviour: numbered
+#     workspaces with the active one circled (and a fixed count), the window
+#     title on the left with its app above it, readings as rings that fill
+#     (plus disk and temperature), a now-playing chip (left, centre or
+#     right), volume and brightness you scroll, Bluetooth, the battery as a
+#     pill, an accent colour, a 12/24h clock with seconds and three date
+#     styles. All in the bar's studio.
+pkgrel=52
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

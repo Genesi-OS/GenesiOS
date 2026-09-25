@@ -2301,6 +2301,9 @@ def patch_topbar(release):
         "    //   dock     one slab flush to its edge, rounded away\n"
         "    //   notch    the centre flush to the edge with shoulders\n"
         "    //            curving back into it; the sides ride bare\n"
+        "    //   frame    caelestia's own border, grown at that edge to\n"
+        "    //            hold the bar -- its colour, its opacity, its\n"
+        "    //            shadow and its rounded inner corners\n"
         "    CONFIG_PROPERTY(QString, form, u\"islands\"_s)\n"
         "    // Blur behind the bar. Hyprland does this, not Qt -- a\n"
         "    // layer surface cannot blur what is under it from inside\n"
@@ -2330,6 +2333,27 @@ def patch_topbar(release):
         "    CONFIG_PROPERTY(bool, showTray, true)\n"
         "    CONFIG_PROPERTY(bool, showPower, true)\n"
         "    CONFIG_PROPERTY(bool, showConfigButton, true)\n"
+        "\n"
+        "    // How the pieces look and where they sit. Every default is\n"
+        "    // what the bar already did, so nobody's bar changes on update.\n"
+        "    CONFIG_PROPERTY(QString, workspaceStyle, u\"dots\"_s)\n"
+        "    CONFIG_PROPERTY(int, workspaceCount, 5)\n"
+        "    CONFIG_PROPERTY(QString, windowPlace, u\"centre\"_s)\n"
+        "    CONFIG_PROPERTY(bool, windowStacked, false)\n"
+        "    CONFIG_PROPERTY(QString, resourceStyle, u\"text\"_s)\n"
+        "    CONFIG_PROPERTY(QString, resourcePlace, u\"right\"_s)\n"
+        "    CONFIG_PROPERTY(bool, showDisk, false)\n"
+        "    CONFIG_PROPERTY(bool, showTemperature, false)\n"
+        "    CONFIG_PROPERTY(bool, showMedia, false)\n"
+        "    CONFIG_PROPERTY(QString, mediaPlace, u\"left\"_s)\n"
+        "    CONFIG_PROPERTY(bool, showVolume, false)\n"
+        "    CONFIG_PROPERTY(bool, showBrightness, false)\n"
+        "    CONFIG_PROPERTY(bool, showBluetooth, false)\n"
+        "    CONFIG_PROPERTY(QString, batteryStyle, u\"icon\"_s)\n"
+        "    CONFIG_PROPERTY(QString, accent, u\"primary\"_s)\n"
+        "    CONFIG_PROPERTY(bool, clock24, true)\n"
+        "    CONFIG_PROPERTY(bool, showSeconds, false)\n"
+        "    CONFIG_PROPERTY(QString, dateStyle, u\"words\"_s)\n"
         "\n"
         "    // The animated connector between the islands -- the same idea as\n"
         "    // the dock's flow. Three separate pills read as three unrelated\n"
@@ -2893,6 +2917,23 @@ def patch_edge_layout(release):
              "import block where this expects one.")
     out[content] = out[content].replace(
         imp, imp + "import qs.modules.launcher as Launcher\n", 1)
+
+    # The bar's `frame` form. caelestia's border IS the bar there: the
+    # frame's edge grows to the bar's height, so the bar gets the border's
+    # colour, opacity, shadow and rounded inner corners -- and a drawer that
+    # opens from that edge flows out of the bar the way it flows out of the
+    # border. Shrinks with the rest of the frame for a fullscreen window.
+    for side in ("Top", "Bottom"):
+        old = ("            border%s: root.borderThickness - anchors.margins"
+               " - root.sdfBorderOffset\n" % side)
+        if out[content].count(old) != 1:
+            fail("ContentWindow.qml's BlobInvertedRect does not set border%s "
+                 "the way the bar's frame form expects." % side)
+        out[content] = out[content].replace(old, (
+            "            // Genesi: the bar's frame form makes this edge the bar.\n"
+            "            border%s: Math.max(root.borderThickness,"
+            " Launcher.GenesiEdges.frame%s * (1 - root.fsTransitionProg))"
+            " - anchors.margins - root.sdfBorderOffset\n") % (side, side), 1)
 
     for path, text in out.items():
         io.open(path, "w", encoding="utf-8", newline="\n").write(text)
