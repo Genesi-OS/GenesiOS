@@ -37,17 +37,6 @@ R = 284          # the disc the scene is drawn in
 
 app = QGuiApplication(sys.argv)
 
-# The seal's character is set in Yuji Syuku, a brush face under the SIL Open
-# Font Licence, fetched once into a cache outside the repository -- a font
-# only one machine happens to have is a picture nobody else can redraw.
-BRUSH_URL = "https://github.com/google/fonts/raw/main/ofl/yujisyuku/YujiSyuku-Regular.ttf"
-_cache = os.path.join(tempfile.gettempdir(), "genesi-store-build-cache", "fonts")
-os.makedirs(_cache, exist_ok=True)
-_brush = os.path.join(_cache, "YujiSyuku-Regular.ttf")
-if not os.path.exists(_brush):
-    print("fetching", BRUSH_URL)
-    urllib.request.urlretrieve(BRUSH_URL, _brush)
-BRUSH = QFontDatabase.applicationFontFamilies(QFontDatabase.addApplicationFont(_brush))[0]
 
 
 def canvas():
@@ -127,67 +116,82 @@ def save(img, name):
     print("wrote", path)
 
 
-# ── 創 · Sol nascente ────────────────────────────────────────────────────────
-def sol():
-    rng = random.Random(7)
+# ── Aurora ───────────────────────────────────────────────────────────────────
+# Genesi's own: the same green-to-blue light as its wallpaper, as curtains
+# over a lake at night.
+def aurora():
+    rng = random.Random(17)
     img, p = canvas()
     p.save()
     p.setClipPath(disc())
-    p.fillRect(0, 0, S, S, vgrad(0, S, (0, "#15110f"), (1, "#0b0908")))
-    # The sun: big, low and off-centre.
-    sun = QRadialGradient(QPointF(C + 70, C - 40), 190)
-    sun.setColorAt(0, QColor("#ff5a4a"))
-    sun.setColorAt(0.85, QColor("#e0443e"))
-    sun.setColorAt(1, QColor("#b92f2c"))
+    p.fillRect(0, 0, S, S, vgrad(0, S, (0, "#020611"), (0.55, "#061a2a"), (1, "#03101a")))
     p.setPen(Qt.NoPen)
-    p.setBrush(QBrush(sun))
-    p.drawEllipse(QPointF(C + 70, C - 40), 168, 168)
-    # Mist bands across the sun.
-    for i, y in enumerate((C - 30, C + 6, C + 40)):
-        p.setBrush(col("#15110f", 235))
-        p.drawRoundedRect(QRectF(C - 60 + i * 24, y, 320, 9 - i * 2), 4, 4)
-    # Far and near hills.
-    p.setBrush(col("#2a211d"))
-    p.drawPath(ridge(mountain_line(rng, 0, S, C + 150, 120, 9, 12)))
-    p.setBrush(col("#1b1512"))
-    p.drawPath(ridge(mountain_line(rng, 0, S, C + 220, 90, 7, 10)))
-    # The torii, bone white, standing on the near hill.
-    bone = col("#efe6d8")
-    p.setBrush(bone)
-    x0 = C - 170
-    p.drawRect(QRectF(x0 + 38, C - 70, 22, 300))                 # left post
-    p.drawRect(QRectF(x0 + 158, C - 70, 22, 300))                # right post
-    top = QPainterPath()                                          # kasagi
-    top.moveTo(x0 - 18, C - 112)
-    top.quadTo(x0 + 109, C - 92, x0 + 236, C - 112)
-    top.lineTo(x0 + 226, C - 92)
-    top.quadTo(x0 + 109, C - 76, x0 + 8, C - 92)
-    top.closeSubpath()
-    p.drawPath(top)
-    p.drawRect(QRectF(x0 + 10, C - 64, 198, 16))                 # nuki
-    p.drawRect(QRectF(x0 + 100, C - 92, 18, 30))                 # gakuzuka
-    # Birds.
-    p.setPen(QPen(col("#efe6d8", 210), 3, Qt.SolidLine, Qt.RoundCap))
-    p.setBrush(Qt.NoBrush)
-    for bx, by, s in ((C + 120, C - 170, 1.0), (C + 160, C - 150, 0.7), (C + 92, C - 140, 0.6)):
-        bird = QPainterPath(QPointF(bx - 14 * s, by))
-        bird.quadTo(bx - 6 * s, by - 8 * s, bx, by)
-        bird.quadTo(bx + 6 * s, by - 8 * s, bx + 14 * s, by)
-        p.drawPath(bird)
+    for _ in range(120):
+        a = rng.random()
+        p.setBrush(col("#e6f4ff", int(60 + 180 * a)))
+        rr = 0.6 + 1.8 * a * a
+        p.drawEllipse(QPointF(rng.uniform(0, S), rng.uniform(0, C + 20)), rr, rr)
+
+    # The curtains: each a band that follows a slow wave, filled with light
+    # that fades upward, then combed with vertical rays.
+    p.setCompositionMode(QPainter.CompositionMode_Plus)
+    for base, amp, phase, top, colour, alpha in (
+            (C - 10, 60, 0.4, 170, "#2ee6a0", 150),
+            (C - 50, 48, 1.7, 140, "#39c3e6", 120),
+            (C + 20, 40, 3.1, 110, "#7a6cff", 90)):
+        wave = [(x, base + amp * math.sin(x / S * math.tau * 1.1 + phase)) for x in range(-20, S + 21, 10)]
+        band = QPainterPath(QPointF(*wave[0]))
+        for x, y in wave[1:]:
+            band.lineTo(x, y)
+        for x, y in reversed(wave):
+            band.lineTo(x, y - top)
+        band.closeSubpath()
+        # A faint veil, then the rays that make it read as light.
+        g = QLinearGradient(0, base - top - amp, 0, base + amp)
+        g.setColorAt(0, col(colour, 0))
+        g.setColorAt(0.8, col(colour, alpha // 4))
+        g.setColorAt(1, col(colour, 0))
+        p.setBrush(QBrush(g))
+        p.drawPath(band)
+        for i in range(0, len(wave) * 3):
+            x = -20 + i * (S + 40) / (len(wave) * 3)
+            y = base + amp * math.sin(x / S * math.tau * 1.1 + phase)
+            h = top * (0.35 + 0.65 * abs(math.sin(i * 0.37 + phase * 3)))
+            ray = QLinearGradient(0, y - h, 0, y)
+            ray.setColorAt(0, col(colour, 0))
+            ray.setColorAt(0.85, col(colour, int(alpha * rng.uniform(0.35, 0.8))))
+            ray.setColorAt(1, col(colour, 0))
+            p.setBrush(QBrush(ray))
+            p.drawRect(QRectF(x, y - h, rng.uniform(2.0, 4.5), h))
+        # The glow along the foot of the curtain.
+        glow = QPainterPath(QPointF(*wave[0]))
+        for x, y in wave[1:]:
+            glow.lineTo(x, y)
+        for w, a in ((22, 18), (10, 40), (3, 90)):
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(col(colour, a), w, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            p.drawPath(glow)
+        p.setPen(Qt.NoPen)
+    p.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
+    # Mountains, then the lake that mirrors the light.
+    shore = C + 120
+    p.setBrush(col("#07131d"))
+    p.drawPath(ridge(mountain_line(rng, -10, S + 10, shore, 120, 9, 14), shore + 2))
+    p.setBrush(col("#040d15"))
+    p.drawPath(ridge(mountain_line(rng, -10, S + 10, shore, 70, 12, 8), shore + 2))
+    p.fillRect(QRectF(0, shore, S, S - shore), vgrad(shore, S, (0, "#0a2a2c"), (1, "#020a10")))
+    for i in range(9):
+        y = shore + 12 + i * 16
+        w = rng.uniform(80, 260)
+        x = rng.uniform(60, S - 60 - w)
+        p.setBrush(col("#2ee6a0", 70 - i * 6))
+        p.drawRoundedRect(QRectF(x, y, w, 3), 1.5, 1.5)
     p.restore()
-    brush_ring(p, rng, "#efe6d8")
-    # The seal: 創, "to create" -- the first character of genesis.
-    p.setPen(Qt.NoPen)
-    p.setBrush(col("#e0443e"))
-    seal = QRectF(C + 150, C + 150, 92, 92)
-    p.drawRoundedRect(seal, 10, 10)
-    f = QFont(BRUSH)
-    f.setPixelSize(72)
-    p.setFont(f)
-    p.setPen(col("#f7efe3"))
-    p.drawText(seal, Qt.AlignCenter, "創")
+    ring(p, col("#2ee6a0", 220), 5)
+    ring(p, col("#39c3e6", 90), 2, R + 24)
     p.end()
-    save(img, "sol")
+    save(img, "aurora")
 
 
 # ── Folha · the Genesi leaf ──────────────────────────────────────────────────
@@ -593,5 +597,5 @@ def sakura():
 
 
 if __name__ == "__main__":
-    for fn in (sol, folha, synthwave, lua, onda, cyber, sakura):
+    for fn in (aurora, folha, synthwave, lua, onda, cyber, sakura):
         fn()

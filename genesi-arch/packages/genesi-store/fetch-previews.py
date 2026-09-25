@@ -96,7 +96,7 @@ def draw(theme):
     fm = QFontMetricsF(font)
     line_h = 24.5
     x0 = win.x() + 44 + side + 50
-    key_w = fm.horizontalAdvance("M" * 8) + fm.horizontalAdvance("  ")
+    key_w = fm.horizontalAdvance("M" * 11) + fm.horizontalAdvance(" ")
     y = win.y() + 44
     value_ink = QColor(214, 214, 220)
     dim = QColor(150, 150, 158)
@@ -111,28 +111,28 @@ def draw(theme):
             p.setPen(rgb(key))
             p.drawText(QPointF(x0, base), text)
         elif kind == "tagline":
-            p.setFont(font)
-            p.setPen(rgb(key))
-            p.drawText(QPointF(x0, base), "■")
-            p.setPen(dim)
-            p.drawText(QPointF(x0 + fm.horizontalAdvance("■ "), base), "GENESI · " + tagline)
-        elif kind == "rule":
             p.setFont(bold)
-            p.setPen(rgb(key))
-            head = "── %s " % text
-            p.drawText(QPointF(x0, base), head)
+            p.setPen(value_ink)
+            p.drawText(QPointF(x0, base), "Genesi OS")
             p.setFont(font)
             p.setPen(rgb(rule))
-            p.drawText(QPointF(x0 + QFontMetricsF(bold).horizontalAdvance(head), base),
-                       "─" * (30 - len(text)))
+            p.drawText(QPointF(x0 + QFontMetricsF(bold).horizontalAdvance("Genesi OS "), base),
+                       "— " + tagline)
+        elif kind == "group":
+            p.setPen(Qt.NoPen)
+            p.setBrush(rgb(key))
+            p.drawRect(QRectF(x0, y + 4, 5, line_h - 8))
+            p.setFont(bold)
+            p.setPen(value_ink)
+            p.drawText(QPointF(x0 + 16, base), text)
         elif kind == "colors":
             for i, c in enumerate(DOTS):
                 p.setPen(Qt.NoPen)
                 p.setBrush(QColor(c))
-                p.drawEllipse(QPointF(x0 + 9 + i * 28, y + line_h / 2), 8, 8)
+                p.drawRect(QRectF(x0 + i * 26, y + 3, 18, 18))
         else:
             # `kind` is the key here and `text` what it reads.
-            p.setFont(bold)
+            p.setFont(font)
             p.setPen(rgb(key))
             p.drawText(QPointF(x0, base), kind)
             p.setFont(font)

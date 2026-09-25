@@ -865,10 +865,10 @@ def fastfetch():
   ]
 }
 """
-    SECTION_PREVIEW = ["genesi @ genesi", "■ GENESI · grown, not built",
-                       "── VITALS ──────", "CPU      Ryzen 7",
-                       "MEMORY   6.2 / 16 GiB", "── SYSTEM ──────",
-                       "CHANNEL  stable"]
+    SECTION_PREVIEW = ["genesi · genesi", "Genesi OS — grown, not built",
+                       "▍ machine", "cpu       Ryzen 7",
+                       "memory    6.2 / 16 GiB", "▍ software",
+                       "channel   stable"]
 
     return [
         item("compact", "Compacto", "Cinco linhas e o logo pequeno.",

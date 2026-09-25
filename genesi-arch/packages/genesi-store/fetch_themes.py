@@ -6,13 +6,16 @@ config into the catalogue, plugin-style fetch-previews.py draws the card's
 picture -- so the picture on the card and the config the button writes are
 made from the same table and cannot drift apart.
 
-The layout is the one people build by hand and post: the picture on the
-left, then a name line, a tagline behind a coloured square, and the machine
-in three sections -- VITALS, SYSTEM, SESSION -- each under a rule in the
-theme's colour, with the keys aligned in that colour too, and the terminal's
-palette as a row of dots at the end. Two lines no stock fetch has: CHANNEL,
-which Genesi channel this machine follows, and AGE, how long ago it was
-installed.
+Genesi's own layout: the picture on the left, then who and where, "Genesi
+OS" with the theme's line under it, and the machine in three groups --
+machine, software, now -- each marked by a bar in the theme's colour, keys
+in lowercase aligned in that colour, and the terminal's palette as a row of
+squares. Two lines no stock fetch has: `channel`, which Genesi channel this
+machine follows, and `installed`, how long ago it was installed.
+
+It is deliberately not the sectioned look other distributions ship (upper-
+case VITALS / SYSTEM / SESSION under long rules, a coloured square before
+the name): the first version of this shelf was, and it read as a copy.
 """
 import json
 
@@ -24,10 +27,10 @@ SCHEMA = "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.jso
 # tagline -- the tagline is in the config, so it is written in English, the
 # language a terminal already speaks.
 THEMES = [
-    ("sol", "Sol Nascente",
-     "Um torii contra o sol vermelho, com o selo 創 -- \"criar\", o primeiro "
-     "caractere de gênese. Chaves em vermelho.",
-     ["japão", "vermelho"], "sol", (224, 68, 62), (96, 46, 42), "創 · the first light"),
+    ("aurora", "Aurora",
+     "Cortinas de luz verde e azul sobre um lago à noite -- as cores do papel "
+     "de parede do Genesi. Chaves em verde-água.",
+     ["noite", "verde"], "aurora", (64, 224, 208), (57, 195, 230), "northern lights, local time"),
     ("folha", "Folha",
      "A folha do Genesi em órbita, sobre um campo de pólen. Chaves no verde "
      "da casa.",
@@ -56,7 +59,7 @@ THEMES = [
 # not.
 AGE_COMMAND = ('b=$(stat -c %W / 2>/dev/null); [ "${b:-0}" -gt 0 ] || '
                'b=$(stat -c %Y /etc/machine-id); '
-               'echo "$(( ($(date +%s) - b) / 86400 )) days"')
+               'echo "$(( ($(date +%s) - b) / 86400 )) days ago"')
 
 # Which channel -- see beta-channel: testing is an extra repository in
 # pacman.conf, and the machine is on stable without it.
@@ -76,9 +79,8 @@ def config(theme, logo=None):
     ident, _, _, _, art, key, rule, tagline = theme
     k, r = _sgr(key), _sgr(rule)
 
-    def section(label):
-        return {"type": "custom",
-                "format": "{#1;%s}── %s {#0;%s}%s{#}" % (k, label, r, "─" * (30 - len(label)))}
+    def group(label):
+        return {"type": "custom", "format": "{#%s}▍{#} {#1}%s{#}" % (k, label)}
 
     if logo is None:
         logo = {"type": "sixel", "source": "%s/%s.png" % (ART_DIR, art),
@@ -87,34 +89,34 @@ def config(theme, logo=None):
         "$schema": SCHEMA,
         "logo": logo,
         "display": {
-            "separator": "  ",
-            "key": {"width": 8},
-            "color": {"keys": "1;" + k, "title": "1;" + k},
+            "separator": " ",
+            "key": {"width": 11},
+            "color": {"keys": k, "title": "1;" + k},
         },
         "modules": [
-            {"type": "title", "format": "{user-name} @ {host-name}"},
-            {"type": "custom", "format": "{#%s}■{#} GENESI · %s" % (k, tagline)},
+            {"type": "title", "format": "{user-name} · {host-name}"},
+            {"type": "custom", "format": "{#1}Genesi OS{#} {#%s}— %s{#}" % (r, tagline)},
             "break",
-            section("VITALS"),
-            {"type": "cpu", "key": "CPU"},
-            {"type": "gpu", "key": "GPU"},
-            {"type": "memory", "key": "MEMORY"},
-            {"type": "disk", "key": "DISK", "folders": "/"},
+            group("machine"),
+            {"type": "cpu", "key": "cpu"},
+            {"type": "gpu", "key": "gpu"},
+            {"type": "memory", "key": "memory"},
+            {"type": "disk", "key": "disk", "folders": "/"},
             "break",
-            section("SYSTEM"),
-            {"type": "os", "key": "OS"},
-            {"type": "command", "key": "CHANNEL", "text": CHANNEL_COMMAND},
-            {"type": "kernel", "key": "KERNEL"},
-            {"type": "wm", "key": "WM"},
-            {"type": "shell", "key": "SHELL"},
-            {"type": "packages", "key": "PKGS"},
+            group("software"),
+            {"type": "os", "key": "os"},
+            {"type": "command", "key": "channel", "text": CHANNEL_COMMAND},
+            {"type": "kernel", "key": "kernel"},
+            {"type": "wm", "key": "desktop"},
+            {"type": "shell", "key": "shell"},
+            {"type": "packages", "key": "packages"},
             "break",
-            section("SESSION"),
-            {"type": "uptime", "key": "UPTIME"},
-            {"type": "command", "key": "AGE", "text": AGE_COMMAND},
-            {"type": "terminal", "key": "TERM"},
+            group("now"),
+            {"type": "uptime", "key": "up"},
+            {"type": "command", "key": "installed", "text": AGE_COMMAND},
+            {"type": "terminal", "key": "terminal"},
             "break",
-            {"type": "colors", "symbol": "circle"},
+            {"type": "colors", "symbol": "square"},
         ],
     }
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
@@ -122,27 +124,27 @@ def config(theme, logo=None):
 
 # What a real machine prints for each line, for the card's picture.
 SAMPLE = [
-    ("title", "genesi @ genesi"),
+    ("title", "genesi · genesi"),
     ("tagline", None),
     ("break", None),
-    ("rule", "VITALS"),
-    ("CPU", "AMD Ryzen 7 5700X (16) @ 4.66 GHz"),
-    ("GPU", "NVIDIA GeForce RTX 3050 [Discrete]"),
-    ("MEMORY", "6.42 GiB / 31.26 GiB (21%)"),
-    ("DISK", "212.40 GiB / 931.51 GiB (23%) - btrfs"),
+    ("group", "machine"),
+    ("cpu", "AMD Ryzen 7 5700X (16) @ 4.66 GHz"),
+    ("gpu", "NVIDIA GeForce RTX 3050 [Discrete]"),
+    ("memory", "6.42 GiB / 31.26 GiB (21%)"),
+    ("disk", "212.40 GiB / 931.51 GiB (23%) - btrfs"),
     ("break", None),
-    ("rule", "SYSTEM"),
-    ("OS", "Genesi OS x86_64"),
-    ("CHANNEL", "stable"),
-    ("KERNEL", "Linux 6.16.8-2-cachyos"),
-    ("WM", "Hyprland 0.51.1 (Wayland)"),
-    ("SHELL", "fish 4.0.8"),
-    ("PKGS", "1402 (pacman)"),
+    ("group", "software"),
+    ("os", "Genesi OS x86_64"),
+    ("channel", "stable"),
+    ("kernel", "Linux 6.16.8-2-cachyos"),
+    ("desktop", "Hyprland 0.51.1 (Wayland)"),
+    ("shell", "fish 4.0.8"),
+    ("packages", "1402 (pacman)"),
     ("break", None),
-    ("rule", "SESSION"),
-    ("UPTIME", "3 hours, 12 mins"),
-    ("AGE", "41 days"),
-    ("TERM", "foot 1.24.0"),
+    ("group", "now"),
+    ("up", "3 hours, 12 mins"),
+    ("installed", "41 days ago"),
+    ("terminal", "foot 1.24.0"),
     ("break", None),
     ("colors", None),
 ]

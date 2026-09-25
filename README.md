@@ -36,7 +36,7 @@ the Genesi look applied where the desktop allows it.
     <td><img src="genesi-arch/packages/genesi-store/catalog/thumbs/plugin-game-center.jpg" alt="The Game Center plugin"></td>
   </tr>
   <tr>
-    <td><img src="genesi-arch/packages/genesi-store/catalog/thumbs/fetch-sol.jpg" alt="A Fastfetch theme from the Genesi Store"></td>
+    <td><img src="genesi-arch/packages/genesi-store/catalog/thumbs/fetch-aurora.jpg" alt="The Aurora Fastfetch theme from the Genesi Store"></td>
     <td><img src="genesi-arch/packages/genesi-store/catalog/thumbs/plugin-leaf.jpg" alt="The Leaf plugin"></td>
   </tr>
 </table>

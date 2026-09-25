@@ -228,7 +228,13 @@ pkgver=0.1.0
 # pictures rendered as the terminal shows them. Plus three whole looks for
 # the top bar on the Bars shelf (Frame, Islands with flow, Notch), written
 # through genesi-center-set with Revert.
-pkgrel=18
+# 19: the Fastfetch shelf is Genesi's own. The first cut copied another
+# distribution's look -- a torii and red sun with a kanji seal as a picture,
+# and uppercase VITALS / SYSTEM / SESSION under long rules -- close enough to
+# read as a copy. The torii is replaced by an Aurora, in the wallpaper's
+# colours, and the layout is Genesi's: machine / software / now marked by a
+# bar, lowercase keys, `installed … days ago`, the palette as squares.
+pkgrel=19
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

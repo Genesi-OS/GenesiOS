@@ -206,7 +206,6 @@ ENGLISH = {
     "Sem logo": "No logo",
     "Verde": "Green",
     "Com imagem": "With a picture",
-    "Sol Nascente": "Rising Sun",
     "Barra de cima: Moldura": "Top bar: Frame",
     "Barra de cima: Ilhas com fluxo": "Top bar: Islands with flow",
     "Barra de cima: Entalhe": "Top bar: Notch",
@@ -219,8 +218,8 @@ ENGLISH = {
     "Folha": "Leaf",
     "Lua": "Moon",
     "A Onda": "The Wave",
-    "Um torii contra o sol vermelho, com o selo 創 -- \"criar\", o primeiro caractere de gênese. Chaves em vermelho. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
-        "A torii against a red sun, with the seal 創 -- \"to create\", the first character of genesis. Keys in red. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
+    "Cortinas de luz verde e azul sobre um lago à noite -- as cores do papel de parede do Genesi. Chaves em verde-água. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
+        "Curtains of green and blue light over a lake at night -- the colours of Genesi's wallpaper. Keys in aqua. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
     "A folha do Genesi em órbita, sobre um campo de pólen. Chaves no verde da casa. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
         "The Genesi leaf in orbit over a field of pollen. Keys in the house green. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
     "Sol fatiado, montanhas em neon e a grade até o horizonte. Chaves em rosa, réguas em ciano. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
