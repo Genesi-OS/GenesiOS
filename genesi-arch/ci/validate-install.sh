@@ -261,9 +261,22 @@ ok "opt-in groups:            $(wc -l < /tmp/_optin.tsv)"
 # ---------------------------------------------------------------------------
 # LEVEL 1 - dependency dry-run of the HARD (always-installed) sets.
 # ---------------------------------------------------------------------------
+# Resolved against an EMPTY local database -- the disk Calamares installs to
+# and the airootfs mkarchiso builds both start with nothing installed -- and
+# the sync databases just refreshed. Resolving against the CI container's own
+# installed packages tested something no install ever does: on 2026-09-25 the
+# container still had systemd 261.3, Arch had shipped 262 the night before,
+# and `-Sp --needed` upgraded systemd while skipping the installed
+# systemd-sysvcompat, which pins systemd=261.3. The gate failed the ISO over
+# a partial upgrade that existed only inside the runner.
+FRESHDB="$(mktemp -d /tmp/genesi-freshdb.XXXXXX)"
+mkdir -p "$FRESHDB/local"
+cp -a /var/lib/pacman/sync "$FRESHDB/sync"
+FRESH=(--dbpath "$FRESHDB")
+
 dryrun_hard() { # <label> <pkgs...>
   local label="$1"; shift
-  if pacman -Sp --needed --noconfirm "$@" >/tmp/_err 2>&1 </dev/null; then
+  if pacman -Sp "${FRESH[@]}" --noconfirm "$@" >/tmp/_err 2>&1 </dev/null; then
     ok "Level 1: $label resolves"
   else
     bad "Level 1: $label FAILED to resolve"
@@ -302,7 +315,7 @@ dryrun_hard "base + default netinstall (critical)" "${BASE[@]}" "${DEFAULT[@]}"
 # only WARN on failure — Calamares continues the install without them, so a
 # transient repo skew here must not block the ISO.
 if [ "${#SOFT[@]}" -gt 0 ]; then
-  if pacman -Sp --needed --noconfirm "${BASE[@]}" "${SOFT[@]}" >/tmp/_err 2>&1 </dev/null; then
+  if pacman -Sp "${FRESH[@]}" --noconfirm "${BASE[@]}" "${SOFT[@]}" >/tmp/_err 2>&1 </dev/null; then
     ok "Level 1: base + non-critical netinstall resolves"
   else
     warn "Level 1: non-critical netinstall has unresolved deps (install continues without them — critical:false)"
@@ -335,7 +348,7 @@ note "Opt-in groups - dependency dry-run on base+default (conflict=fail; missing
 while IFS=$'\t' read -r gname gcrit gpkgs; do
   [ -n "$gname" ] || continue
   # shellcheck disable=SC2086
-  if pacman -Sp --needed --noconfirm "${BASE[@]}" "${DEFAULT[@]}" $gpkgs >/tmp/_err 2>&1 </dev/null; then
+  if pacman -Sp "${FRESH[@]}" --noconfirm "${BASE[@]}" "${DEFAULT[@]}" $gpkgs >/tmp/_err 2>&1 </dev/null; then
     ok "opt-in: $gname resolves"
   elif grep -qiE 'unable to satisfy|could not satisfy|in conflict|cannot resolve.*dependency' /tmp/_err; then
     bad "opt-in: $gname has a DEPENDENCY CONFLICT (install-breaker)"
