@@ -721,7 +721,14 @@ pkgver=2.0.3
 #     right), volume and brightness you scroll, Bluetooth, the battery as a
 #     pill, an accent colour, a 12/24h clock with seconds and three date
 #     styles. All in the bar's studio.
-pkgrel=52
+# 53: the Updates page (Nexus -> System) knows about an update it did not
+#     start. The update ran in a Process the page owned; closing the window
+#     lost track of it (pacman kept running as root), and the reopened page
+#     checked again and offered "Update now" beside the running transaction.
+#     It now starts the update detached and, every time it opens, first asks
+#     whether one is running -- ours, the tray's, or a pacman holding the
+#     database lock -- and follows it to the end before checking.
+pkgrel=53
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

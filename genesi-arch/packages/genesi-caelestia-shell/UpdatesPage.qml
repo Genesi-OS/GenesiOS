@@ -27,8 +27,24 @@
 // It matters most for `checkupdates`, which exits 2 for "nothing to do".
 // Treating that happy answer as an error is how an updater starts crying wolf.
 //
+// ── An update outlives this page ─────────────────────────────────────────────
+//
+// The update used to run in a Process that belonged to the page, and the page
+// belongs to the Nexus window. Close the window and the page was gone -- but
+// not the update: pacman runs as root, out of reach of anything this page can
+// signal. Reopen it, and a fresh page knew nothing of it, ran `checkupdates`,
+// and offered "Update now" again beside a transaction still in flight.
+// Reported as "it checks again instead of knowing it is already updating".
+//
+// So the update is started detached -- nothing this page owns can hold it --
+// and what the page shows comes from the machine, not from its own memory:
+// every time it opens it first asks whether an update is running (this page's,
+// the tray applet's, or pacman in a terminal), and if one is, it shows it and
+// follows it until it ends, and only then checks.
+//
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Io
 import Caelestia
 import Caelestia.Config
@@ -58,6 +74,21 @@ PageBase {
         checkProc.running = true;
     }
 
+    // Whether the machine is in the middle of an update, asked every time the
+    // page opens and every two seconds while one runs.
+    function probe(): void {
+        busyProc.running = true;
+    }
+
+    function startUpdate(): void {
+        // Detached: see "An update outlives this page" at the top.
+        Quickshell.execDetached(["pkexec", "/usr/bin/genesi-update-center-apply"]);
+        root.applying = true;
+        root.probe();
+    }
+
+    Component.onCompleted: root.probe()
+
     ColumnLayout {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
@@ -74,7 +105,6 @@ PageBase {
         Process {
             id: checkProc
 
-            running: true
             command: ["sh", "-c", "if command -v checkupdates >/dev/null 2>&1; then checkupdates 2>/dev/null; echo \"__RC__$?\"; else pacman -Qu 2>/dev/null; echo '__RC__STALE'; fi"]
             stdout: StdioCollector {
                 onStreamFinished: {
@@ -136,27 +166,48 @@ PageBase {
 
         // ── The one privileged action ────────────────────────────────────────
         //
-        // A FIXED argv. Nothing from this page reaches the command line, and
-        // the polkit action pins exec.path to that script, which itself takes
-        // no argument that reaches pacman. The widest thing this page can ask
-        // for is the transaction the user pressed a button to authorise.
+        // A FIXED argv (startUpdate()). Nothing from this page reaches the
+        // command line, and the polkit action pins exec.path to that script,
+        // which itself takes no argument that reaches pacman. The widest thing
+        // this page can ask for is the transaction the user pressed a button
+        // to authorise.
+        //
+        // ── Is an update running? ────────────────────────────────────────────
+        //
+        // Ours (pkexec and the helper both carry its path), or anyone's
+        // pacman -- but only a pacman holding the system database's LOCK.
+        // `checkupdates`, which the tray and the leaf run on their own, is a
+        // pacman process too, on a private copy of the database; counting it
+        // would put "Updating…" up every time one of them looked. And the
+        // lock alone is not enough either: a pacman that crashed leaves it
+        // behind, and the page would say "Updating…" for ever.
+        //
+        // `appl[y]` so the pattern cannot match this very sh -c, whose own
+        // command line contains it. A pkexec prompt the user cancels simply
+        // ends, and the next probe sees nothing and checks -- cancelling is
+        // not a failed update, and is not shown as one.
         Process {
-            id: applyProc
+            id: busyProc
 
-            command: ["pkexec", "/usr/bin/genesi-update-center-apply"]
+            command: ["sh", "-c", "pgrep -f 'genesi-update-center-appl[y]' >/dev/null && echo busy; [ -e /var/lib/pacman/db.lck ] && pgrep -x pacman >/dev/null && echo busy; true"]
             stdout: StdioCollector {
                 onStreamFinished: {
-                    root.applying = false;
-                    // 126/127 are pkexec's own "cancelled / not authorised".
-                    // Calling that a failed update would be a lie: nothing was
-                    // attempted, and nothing changed.
-                    root.refresh();
+                    const busy = text.indexOf("busy") >= 0;
+                    const was = root.applying;
+                    root.applying = busy;
+                    // Just finished, or nothing was running when the page
+                    // opened: now is when "what is available" is worth asking.
+                    if (!busy && (was || root.updateState === "checking"))
+                        root.refresh();
                 }
             }
-            onRunningChanged: {
-                if (running)
-                    root.applying = true;
-            }
+        }
+
+        Timer {
+            interval: 2000
+            repeat: true
+            running: root.applying
+            onTriggered: root.probe()
         }
 
         // ── Hero: the answer, before any of the detail ───────────────────────
@@ -267,7 +318,7 @@ PageBase {
                     type: TextButton.Filled
                     onClicked: {
                         if (root.updateState === "available")
-                            applyProc.running = true;
+                            root.startUpdate();
                         else
                             root.refresh();
                     }

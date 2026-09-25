@@ -197,6 +197,11 @@ jobs:
         # nothing reads, for ever, in silence.
         run: python genesi-arch/ci/center-wiring-test.py
 
+      - name: the Updates page knows about an update it did not start
+        # Closing the Nexus window lost track of a running update, and the
+        # reopened page offered "Update now" again beside it.
+        run: python genesi-arch/ci/updates-page-test.py
+
       - name: every command the Displays page sends runs in genesi-display
         # `genesi-display mode` could never run -- it counted its own name
         # among its arguments -- and the page throws the output away, so a
