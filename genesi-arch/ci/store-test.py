@@ -383,6 +383,64 @@ absent = sorted({(i.get("preview") or {}).get("thumb") for i in items
                  if (i.get("preview") or {}).get("thumb")} - shipped)
 ck("every preview the catalogue names is shipped", not absent, absent)
 
+# The Fastfetch shelf's emblems ship in the package, and each config names
+# its picture by where the package puts it. A config naming a picture the
+# package does not carry prints an error where the logo should be -- and a
+# config that is not JSON is not read at all, so the fetch falls back to the
+# stock one with no word said.
+art = os.path.join(PKG, "fetch-art")
+carried = set(os.listdir(art) if os.path.isdir(art) else [])
+missing_art, not_json = [], []
+for item in items:
+    if item.get("section") != "fastfetch":
+        continue
+    for action in item.get("actions", []):
+        if action.get("action") != "file":
+            continue
+        try:
+            conf = json.loads(action.get("text", ""))
+        except ValueError as e:
+            not_json.append("%s: %s" % (item["id"], e))
+            continue
+        src = str((conf.get("logo") or {}).get("source", ""))
+        prefix = "/usr/share/genesi-store/fetch-art/"
+        if src.startswith(prefix) and src[len(prefix):] not in carried:
+            missing_art.append("%s -> %s" % (item["id"], src))
+ck("every Fastfetch config is JSON fastfetch can read", not not_json, not_json)
+ck("every picture a Fastfetch config names is shipped in fetch-art/",
+   not missing_art, missing_art)
+ck("the package installs fetch-art/",
+   "/fetch-art/*.png" in read(os.path.join(PKG, "PKGBUILD")))
+
+# A top-bar look is a set of settings written through genesi-center-set, and
+# the writer refuses a key it does not know or a value outside its range --
+# after the look's earlier keys are already written. So every key and value
+# is put through the writer's own table and its own coerce() here.
+center_set = load(os.path.join(ROOT, "genesi-arch", "packages", "genesi-center",
+                               "genesi-center-set"), "genesi_center_set")
+refused = []
+for item in items:
+    for action in item.get("actions", []):
+        if action.get("action") != "config":
+            continue
+        for key, value in (action.get("set") or {}).items():
+            spec = center_set.CAELESTIA_PATHS.get(key)
+            if spec is None:
+                refused.append("%s: %s is not a key the writer knows" % (item["id"], key))
+                continue
+            try:
+                got = center_set.coerce(spec, value, key)
+            except SystemExit:
+                refused.append("%s: %s=%r is refused" % (item["id"], key, value))
+                continue
+            # Numbers are CLAMPED, not refused -- so a look asking for 12 of
+            # something capped at 10 would silently get 10, and its picture
+            # would be showing a bar nobody can have.
+            if spec[0] in ("int", "float") and float(got) != float(value):
+                refused.append("%s: %s=%r would be clamped to %r" % (item["id"], key, value, got))
+ck("every setting a top-bar look writes is one genesi-center-set accepts",
+   not refused, refused)
+
 
 # A config that names a downloaded file writes {{asset:name}} and the store
 # substitutes the real path. An item that asks for an asset it does not

@@ -220,7 +220,15 @@ pkgver=0.1.0
 # 16: the Game Center card says eight games, and its picture shows them.
 # 17: two more plugin cards -- the Turntable and the Retrospective -- with
 # pictures drawn from the plugins themselves.
-pkgrel=17
+# 18: the Fastfetch shelf, redone. The picture cards were wallpapers
+# squeezed into thirty columns; now seven emblems drawn for the job
+# (fetch-art.py, shipped in /usr/share/genesi-store/fetch-art) with a
+# sectioned layout -- VITALS, SYSTEM, SESSION under rules in the theme's
+# colour, aligned keys, the Genesi channel and the install's age -- and card
+# pictures rendered as the terminal shows them. Plus three whole looks for
+# the top bar on the Bars shelf (Frame, Islands with flow, Notch), written
+# through genesi-center-set with Revert.
+pkgrel=18
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -390,6 +398,16 @@ package() {
         "${pkgdir}/usr/share/genesi-store/catalog_en.py"
     install -Dm644 "${startdir}/build-catalog.py" \
         "${pkgdir}/usr/share/genesi-store/build-catalog.py"
+    install -Dm644 "${startdir}/fetch_themes.py" \
+        "${pkgdir}/usr/share/genesi-store/fetch_themes.py"
+
+    # The Fastfetch shelf's emblems. Shipped rather than downloaded, and the
+    # configs name them where they are: a fetch whose logo is a path to a
+    # file that failed to download prints an error where the picture was.
+    for f in "${startdir}"/fetch-art/*.png; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/fetch-art/$(basename "$f")"
+    done
 
     # The window.
     install -Dm755 "${startdir}/app/genesi_store_app.py" \

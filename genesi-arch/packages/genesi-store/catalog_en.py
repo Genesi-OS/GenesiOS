@@ -25,7 +25,7 @@ word by word would produce something nobody would write in English.
 SAME = {
     "Arch Nord", "Aurora", "Caelestia", "Caelestia Locklike",
     "Caelestia Minimalist", "Catppuccin Frappe", "Catppuccin Latte",
-    "Catppuccin Macchiato", "Catppuccin Mocha", "Cyberpunk", "Dracula",
+    "Catppuccin Macchiato", "Catppuccin Mocha", "Cyber", "Cyberpunk", "Dracula",
     "Echo", "Enfield", "Everblush", "Everforest", "Game Center", "Genesi", "Genshin Impact",
     "Gruvbox", "Hacker", "Hollow Knight", "Hypr", "Hyprland", "Jake",
     "Material You", "Minecraft", "Minimal", "Munchlax", "NieR: Automata",
@@ -33,7 +33,8 @@ SAME = {
     "Reverse: 1999", "Rose Pine", "Rose Pine Dawn", "Rose Pine Moon", "Shado",
     "Silent", "Silent Catppuccin Latte", "Silent Catppuccin Macchiato",
     "Silent Catppuccin Mocha", "Silent Everforest", "Silent Ken",
-    "Silent Nord", "Silent Rei", "Solarized", "Star Rail", "Terraria",
+    "Sakura", "Silent Nord", "Silent Rei", "Solarized", "Star Rail",
+    "Synthwave", "Terraria",
     "The Last of Us", "Tokyo Night", "Windows 7", "Wuthering Waves", "osu!",
 }
 
@@ -205,6 +206,33 @@ ENGLISH = {
     "Sem logo": "No logo",
     "Verde": "Green",
     "Com imagem": "With a picture",
+    "Sol Nascente": "Rising Sun",
+    "Barra de cima: Moldura": "Top bar: Frame",
+    "Barra de cima: Ilhas com fluxo": "Top bar: Islands with flow",
+    "Barra de cima: Entalhe": "Top bar: Notch",
+    "A barra É a borda do caelestia: cantos arredondados onde ela encontra a tela, workspaces numerados, anéis de CPU e memória, o que está tocando, volume, brilho e a bateria numa pílula.":
+        "The bar IS caelestia's border: rounded corners where it meets the screen, numbered workspaces, CPU and memory rings, what is playing, volume, brightness and the battery in a pill.",
+    "Três ilhas flutuando, uma luz correndo entre elas, o que está tocando no meio e sombra embaixo.":
+        "Three floating islands, a light running between them, what is playing in the middle and a shadow underneath.",
+    "Só o meio tem fundo, colado na borda com ombros curvos; os lados ficam soltos. Workspaces numerados e anéis à direita.":
+        "Only the middle has a surface, hanging from the edge on curved shoulders; the sides float free. Numbered workspaces and rings on the right.",
+    "Folha": "Leaf",
+    "Lua": "Moon",
+    "A Onda": "The Wave",
+    "Um torii contra o sol vermelho, com o selo 創 -- \"criar\", o primeiro caractere de gênese. Chaves em vermelho. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
+        "A torii against a red sun, with the seal 創 -- \"to create\", the first character of genesis. Keys in red. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
+    "A folha do Genesi em órbita, sobre um campo de pólen. Chaves no verde da casa. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
+        "The Genesi leaf in orbit over a field of pollen. Keys in the house green. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
+    "Sol fatiado, montanhas em neon e a grade até o horizonte. Chaves em rosa, réguas em ciano. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
+        "A sliced sun, neon mountains and the grid to the horizon. Keys in pink, rules in cyan. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
+    "Lua crescente sobre três serras e um pinheiral. Chaves em azul. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
+        "A crescent moon over three ranges and a stand of pines. Keys in blue. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
+    "A grande onda quebrando sob um sol pequeno. Chaves em azul-mar. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
+        "The great wave breaking under a small sun. Keys in sea blue. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
+    "Um núcleo hexagonal com trilhas de circuito saindo dele. Chaves em ciano, detalhes em magenta. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
+        "A hexagonal core with circuit traces running out of it. Keys in cyan, details in magenta. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
+    "Um galho de cerejeira em flor diante de uma lua rosada. Chaves em rosa. Desenhado para o terminal, em sixel: o foot, que é o padrão do Genesi, desenha.":
+        "A cherry branch in bloom before a pink moon. Keys in pink. Drawn for the terminal, in sixel: foot, Genesi's default, draws it.",
     "Com imagem (pequena)": "With a picture (small)",
     "Ficha técnica": "Spec sheet",
     "Ficha técnica (sem logo)": "Spec sheet (no logo)",
@@ -448,6 +476,7 @@ ENGLISH = {
     "arte": "art",
     "azul": "blue",
     "barra": "bar",
+    "barra de cima": "top bar",
     "caelestia": "caelestia",
     "calmo": "calm",
     "cartoon": "cartoon",
@@ -464,9 +493,12 @@ ENGLISH = {
     "dracula": "dracula",
     "escuro": "dark",
     "espaço": "space",
+    "genesi": "genesi",
+    "japão": "japan",
     "everblush": "everblush",
     "everforest": "everforest",
     "foto": "photo",
+    "flutuante": "floating",
     "frio": "cold",
     "gruvbox": "gruvbox",
     "imagem": "image",
@@ -505,6 +537,7 @@ ENGLISH = {
     "terminal": "terminal",
     "tokyonight": "tokyonight",
     "verde": "green",
+    "vermelho": "red",
     "vidro": "glass",
     "vídeo": "video",
 }

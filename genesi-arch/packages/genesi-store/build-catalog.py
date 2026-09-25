@@ -351,6 +351,8 @@ def wallpaper_asset(filename):
 # rather than shipping half-translated, which is the state every
 # half-internationalised app is permanently stuck in.
 from catalog_en import ENGLISH, SAME  # noqa: E402
+import fetch_themes  # noqa: E402
+import topbar_looks  # noqa: E402
 
 
 def englished(text, what):
@@ -472,7 +474,7 @@ def build():
         })
 
     for extra in (lockscreens(), fastfetch(), rices(previous), bundles(),
-                  plugins(), factory()):
+                  plugins(), topbars(), factory()):
         items.extend(extra)
 
     # The login screens that are downloaded rather than shipped. The map they
@@ -608,38 +610,18 @@ def lockscreens():
     return out
 
 
-# Pictures worth putting on a terminal. Chosen to be different from each
-# other rather than to be the prettiest: a neon city, an ink wave, a castle,
-# a moon. One card each.
-FETCH_PICTURES = [
-    ("neon", "neocity.png", "neon", ["cidade", "escuro"]),
-    ("tinta", "ink_wave.png", "tinta", ["arte", "minimalista"]),
-    ("castelo", "tree-nature-castleinsky.png", "castelo", ["arte", "natureza"]),
-    ("lua", "moon.png", "lua", ["escuro", "noite"]),
-    ("gruvbox", "gruvbox_retrocity.png", "gruvbox", ["retro", "quente"]),
-]
+ART_BLURB = ("Desenhado para o terminal, em sixel: o foot, que é o padrão do "
+             "Genesi, desenha.")
 
-# The Genesi leaf, the same file the packaged default uses, so the store's
-# fancy layout and the one the machine ships with draw the same logo.
-GENESI_LOGO_BLOCK = """  "logo": {
+# The picture cards' layout in the house green, for the two cards that
+# carry the ASCII leaf or no logo instead of a picture.
+LEAF_THEME = next(t for t in fetch_themes.THEMES if t[0] == "folha")
+GENESI_LOGO = {
     "type": "file",
     "source": "/usr/share/genesi/fastfetch/genesi-logo.txt",
-    "color": { "1": "38;2;29;158;117", "2": "38;2;225;245;238" },
-    "padding": { "top": 1, "right": 3, "left": 2 }
-  },
-"""
-
-SIXEL_LOGO_BLOCK = """  "logo": {
-    "type": "sixel",
-    "source": "{{asset:picture}}",
-    "width": 30,
-    "padding": { "top": 1, "right": 3 }
-  },
-"""
-
-IMAGE_BLURB = ("Uma foto no lugar do desenho, em sixel. Precisa de um "
-               "terminal que desenhe imagens: o foot, que é o padrão "
-               "do Genesi, desenha.")
+    "color": {"1": "38;2;29;158;117", "2": "38;2;225;245;238"},
+    "padding": {"top": 1, "right": 3, "left": 2},
+}
 
 
 FASTFETCH_HEAD = ('{\n  "$schema": '
@@ -781,6 +763,27 @@ def factory():
     ]
 
 
+def topbars():
+    """Whole looks for Genesi's top bar, on the Bars shelf.
+
+    The bar has some forty settings and what people want is "that one, from
+    the screenshot": each look is those settings as a set, written through
+    genesi-center-set by the `config` action, which records what was there
+    so Revert can put it back. The pictures are drawn from the same table by
+    topbar-previews.py.
+    """
+    return [{
+        "id": "topbar-" + ident,
+        "section": "bars",
+        "name": "Barra de cima: " + name,
+        "blurb": blurb,
+        "author": "Genesi",
+        "tags": tags,
+        "preview": {"kind": "image", "thumb": "topbar-%s.jpg" % ident},
+        "actions": [{"action": "config", "set": dict(settings)}],
+    } for ident, name, blurb, tags, settings in topbar_looks.LOOKS]
+
+
 def fastfetch():
     def item(ident, name, blurb, tags, body):
         out = {
@@ -862,95 +865,10 @@ def fastfetch():
   ]
 }
 """
-    # A card laid out in SECTIONS rather than as one column of keys. This is
-    # the look people build by hand and post screenshots of: a tagline, then
-    # Vitals / System / Session with a rule over each, then the palette as a
-    # row of dots at the bottom.
-    #
-    # Written with only the module types every fastfetch has -- `custom` for
-    # the rules, `break` for the air, `colors` for the dots. No colour escapes
-    # inside the format strings: those are version-specific, and a card that
-    # prints "{#green}" at somebody is worse than a card that prints grey.
-    def sectioned(logo_block, width=46):
-        rule = lambda label: ('    { "type": "custom", "format": "── %s %s" },\n'
-                              % (label, "─" * max(3, width - len(label) - 4)))
-        return (FASTFETCH_HEAD + logo_block + """  "display": {
-    "separator": "  ",
-    "color": { "keys": "38;2;29;158;117", "title": "38;2;29;158;117" }
-  },
-  "modules": [
-    { "type": "title", "format": "{user-name} @ {host-name}" },
-    { "type": "custom", "format": "Genesi OS · um amanhã mais tranquilo" },
-    "break",
-""" + rule("VITAIS") + """    { "type": "cpu", "key": "CPU" },
-    { "type": "gpu", "key": "GPU" },
-    { "type": "memory", "key": "MEMORIA" },
-    { "type": "disk", "key": "DISCO" },
-    "break",
-""" + rule("SISTEMA") + """    { "type": "os", "key": "OS" },
-    { "type": "kernel", "key": "KERNEL" },
-    { "type": "wm", "key": "WM" },
-    { "type": "shell", "key": "SHELL" },
-    { "type": "packages", "key": "PACOTES" },
-    "break",
-""" + rule("SESSAO") + """    { "type": "uptime", "key": "LIGADO HA" },
-    { "type": "terminal", "key": "TERMINAL" },
-    "break",
-    { "type": "colors", "symbol": "circle", "paddingLeft": 2 }
-  ]
-}
-""")
-
-    SECTION_PREVIEW = ["matheus @ genesi", "Genesi OS", "── VITAIS ──────",
-                       "CPU      Ryzen 7", "MEMORIA  6.2 / 16 GiB",
-                       "── SISTEMA ─────", "WM       Hyprland"]
-
-    # An image where the ASCII art goes. `sixel` is the protocol foot speaks --
-    # Genesi's default terminal, picked because it needs no OpenGL and so
-    # survives a VM -- and it is NOT kitty's, so a config copied from a kitty
-    # setup shows nothing here.
-    #
-    # The picture is downloaded with the card and its path is substituted in,
-    # rather than named as a fixed location: pointing at a file that may not
-    # be there prints an error where the logo should be.
-    shot_asset, _ = wallpaper_asset("dark_forest.png")
-
-    image_big = FASTFETCH_HEAD + """  "logo": {
-    "type": "sixel",
-    "source": "{{asset:picture}}",
-    "width": 34,
-    "padding": { "top": 1, "right": 3 }
-  },
-  "display": { "separator": "  ", "color": { "keys": "green" } },
-  "modules": [
-    { "type": "title", "format": "{user-name}@{host-name}" },
-    "separator",
-    { "type": "os", "key": "sistema" },
-    { "type": "kernel", "key": "kernel" },
-    { "type": "wm", "key": "sessão" },
-    { "type": "cpu", "key": "cpu" },
-    { "type": "gpu", "key": "gpu" },
-    { "type": "memory", "key": "memoria" },
-    { "type": "uptime", "key": "ligado ha" }
-  ]
-}
-"""
-
-    image_small = FASTFETCH_HEAD + """  "logo": {
-    "type": "sixel",
-    "source": "{{asset:picture}}",
-    "width": 18,
-    "padding": { "top": 1, "right": 2 }
-  },
-  "display": { "separator": "  " },
-  "modules": [
-    { "type": "title", "format": "{user-name}" },
-    { "type": "os", "format": "{name}" },
-    { "type": "wm", "format": "{name}" },
-    { "type": "uptime" }
-  ]
-}
-"""
+    SECTION_PREVIEW = ["genesi @ genesi", "■ GENESI · grown, not built",
+                       "── VITALS ──────", "CPU      Ryzen 7",
+                       "MEMORY   6.2 / 16 GiB", "── SYSTEM ──────",
+                       "CHANNEL  stable"]
 
     return [
         item("compact", "Compacto", "Cinco linhas e o logo pequeno.",
@@ -971,38 +889,39 @@ def fastfetch():
                          "preview": ["matheus em genesi",
                                      "-----------------------------",
                                      "sistema  Genesi OS", "sessao   Hyprland"]}),
-        item("image", "Com imagem", IMAGE_BLURB, ["imagem", "sixel"],
-             {"text": image_big, "logo": "image", "asset": shot_asset,
-              "preview": ["sistema  Genesi OS", "sessão   Hyprland",
-                          "cpu      Ryzen 7", "memoria  6.2 / 16 GiB"]}),
-        item("image-small", "Com imagem (pequena)", IMAGE_BLURB,
-             ["imagem", "sixel", "curto"],
-             {"text": image_small, "logo": "image", "asset": shot_asset,
-              "preview": ["genesi", "Genesi OS", "Hyprland", "1d 3h"]}),
 
-        # The sectioned one, with the Genesi leaf.
+        # The sectioned one, with the Genesi leaf in ASCII, and with no logo
+        # at all -- the picture cards' layout, in the house green.
         item("ficha", "Ficha técnica",
              "Vitais, sistema e sessão separados, com a paleta embaixo. "
              "O jeitão que as pessoas montam à mão.",
              ["seções", "completo"],
-             {"text": sectioned(GENESI_LOGO_BLOCK), "logo": "full",
-              "preview": SECTION_PREVIEW}),
+             {"text": fetch_themes.config(LEAF_THEME, logo=GENESI_LOGO),
+              "logo": "full", "preview": SECTION_PREVIEW}),
         item("ficha-limpa", "Ficha técnica (sem logo)",
              "A mesma ficha, sem desenho nenhum na frente.",
              ["seções", "minimalista"],
-             {"text": sectioned('  "logo": { "type": "none" },\n'),
+             {"text": fetch_themes.config(LEAF_THEME, logo={"type": "none"}),
               "logo": "none", "preview": SECTION_PREVIEW}),
     ] + [
-        # ...and the same ficha with a real picture instead of the leaf. One
-        # card per picture, because "an image" is not a look -- WHICH image is
-        # the look, and picking one for everybody is how you get a shelf
-        # nobody uses.
-        item("ficha-" + ident, "Ficha técnica (%s)" % label, IMAGE_BLURB,
-             ["seções", "imagem", "sixel"] + tags,
-             {"text": sectioned(SIXEL_LOGO_BLOCK), "logo": "image",
-              "asset": wallpaper_asset(filename)[0],
-              "preview": SECTION_PREVIEW})
-        for ident, filename, label, tags in FETCH_PICTURES
+        # One card per emblem. They used to be wallpapers squeezed into
+        # thirty columns, which is a smudge; these are drawn for the job by
+        # fetch-art.py, shipped in this package, and the card's picture is
+        # the terminal drawn from the very table the config comes from.
+        {
+            "id": "fetch-" + ident,
+            "section": "fastfetch",
+            "name": name,
+            "blurb": blurb + " " + ART_BLURB,
+            "author": "Genesi",
+            "tags": tags + ["imagem", "seções"],
+            "preview": {"kind": "image", "thumb": "fetch-%s.jpg" % ident},
+            "actions": [{"action": "file",
+                         "path": "~/.config/fastfetch/config.jsonc",
+                         "text": fetch_themes.config(theme)}],
+        }
+        for theme in fetch_themes.THEMES
+        for ident, name, blurb, tags in [theme[:4]]
     ]
 
 
