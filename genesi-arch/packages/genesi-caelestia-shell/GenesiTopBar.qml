@@ -64,6 +64,14 @@
 //
 // Left click activates, middle is the app's secondary action, right opens
 // the app's own menu, and the wheel scrolls -- the same as the rail.
+//
+// The menu is DRAWN here, from the app's menu tree (QsMenuOpener), the way
+// caelestia's rail draws its own. It used to be handed to
+// SystemTrayItem.display() -- which nothing in caelestia calls -- and on a
+// layer-shell bar that opened nothing at all. Genesi Update and AI Mode are
+// appindicator icons, which are ONLY a menu (`onlyMenu`): their "activate"
+// is a no-op by design. So every Genesi icon on this bar did nothing when
+// clicked, left or right, which is exactly how it was reported.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -106,6 +114,11 @@ Variants {
 
         // ── The tray ────────────────────────────────────────────────────
         property bool trayOpen: false
+        // The icon whose menu is open, the path into its submenus, and the x
+        // (in screen-wide window coordinates) the card hangs from.
+        property var trayMenu: null
+        property var menuPath: []
+        property real trayAt: 0
         readonly property var hiddenTray: GlobalConfig.bar.tray.hiddenIcons ?? []
         readonly property var pinnedTray: SystemTray.items.values
             .filter(i => !win.hiddenTray.includes(i.id))
@@ -117,24 +130,43 @@ Variants {
             GlobalConfig.bar.tray.hiddenIcons = next;
         }
 
-        // `from` is the item that was clicked and `onWindow` the window it is
-        // in, so the app's menu opens under it wherever that is -- on the
-        // bar, or in the panel of hidden icons.
-        function trayClick(item: var, button: int, from: Item, onWindow: var): void {
+        function closeTray(): void {
+            win.trayOpen = false;
+            win.trayMenu = null;
+            win.menuPath = [];
+        }
+
+        // Where a card opened from `from` hangs: under its middle. Both this
+        // bar and the card's window span the whole screen, so an x mapped
+        // into either one is the same x.
+        function hangFrom(from: Item): void {
+            win.trayAt = from.mapToItem(null, from.width / 2, 0).x;
+        }
+
+        // `from` is the item that was clicked -- on the bar, or a row in the
+        // panel of hidden icons -- so the menu opens under it.
+        function trayClick(item: var, button: int, from: Item): void {
             if (button === Qt.MiddleButton) {
                 item.secondaryActivate();
                 return;
             }
-            if (button === Qt.RightButton || item.onlyMenu) {
-                if (item.hasMenu) {
-                    const at = from.mapToItem(null, 0, win.atTop ? from.height : 0);
-                    item.display(onWindow, at.x, at.y);
-                } else {
-                    item.secondaryActivate();
+            const wantsMenu = button === Qt.RightButton || item.onlyMenu;
+            if (wantsMenu && item.hasMenu) {
+                if (win.trayMenu === item) {
+                    win.closeTray();
+                    return;
                 }
+                win.hangFrom(from);
+                win.trayOpen = false;
+                win.menuPath = [item.menu];
+                win.trayMenu = item;
                 return;
             }
-            item.activate();
+            win.closeTray();
+            if (button === Qt.RightButton)
+                item.secondaryActivate();
+            else
+                item.activate();
         }
 
         // ── The form ────────────────────────────────────────────────────
@@ -725,7 +757,14 @@ Variants {
 
                 visible: win.cfg.showTray && SystemTray.items.values.length > 0
                 icon: (win.trayOpen === win.atTop) ? "keyboard_arrow_up" : "keyboard_arrow_down"
-                onActivated: win.trayOpen = !win.trayOpen
+                onActivated: {
+                    const open = !win.trayOpen;
+                    win.closeTray();
+                    if (open) {
+                        win.hangFrom(trayArrow);
+                        win.trayOpen = true;
+                    }
+                }
             }
 
             Reading {
@@ -779,9 +818,9 @@ Variants {
             }
         }
 
-        // ── Every tray icon, with a pin ─────────────────────────────────────
+        // ── Every tray icon with a pin, or one icon's menu ──────────────────
         LazyLoader {
-            active: win.trayOpen
+            active: win.trayOpen || win.trayMenu !== null
 
             StyledWindow {
                 id: trayWin
@@ -802,19 +841,21 @@ Variants {
                 // A click anywhere off the card puts it away.
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: win.trayOpen = false
+                    acceptedButtons: Qt.AllButtons
+                    onClicked: win.closeTray()
                 }
 
                 StyledRect {
                     id: trayCard
 
-                    readonly property real arrowRight: trayArrow.mapToItem(null, trayArrow.width, 0).x
+                    readonly property bool menuMode: win.trayMenu !== null
 
-                    width: 340
-                    height: trayList.implicitHeight + win.tok.padding.large * 2
+                    width: trayCard.menuMode ? 280 : 340
+                    height: (trayCard.menuMode ? menuList.implicitHeight : trayList.implicitHeight)
+                        + win.tok.padding.large * 2
                     x: Math.max(win.tok.padding.large,
                                 Math.min(trayWin.width - trayCard.width - win.tok.padding.large,
-                                         trayCard.arrowRight - trayCard.width))
+                                         win.trayAt - trayCard.width / 2))
                     y: win.atTop ? win.strip + win.tok.spacing.small
                         : trayWin.height - win.strip - trayCard.height - win.tok.spacing.small
                     radius: win.tok.rounding.large
@@ -823,16 +864,112 @@ Variants {
                     border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.6)
 
                     focus: true
-                    Keys.onEscapePressed: win.trayOpen = false
+                    Keys.onEscapePressed: win.closeTray()
 
                     // Eats clicks, so "off the card" stays off the card.
                     MouseArea {
                         anchors.fill: parent
+                        acceptedButtons: Qt.AllButtons
                     }
 
+                    // ── One icon's menu ─────────────────────────────────
+                    Column {
+                        id: menuList
+
+                        readonly property var handle: win.menuPath.length > 0
+                            ? win.menuPath[win.menuPath.length - 1] : null
+
+                        visible: trayCard.menuMode
+                        x: win.tok.padding.large
+                        y: win.tok.padding.large
+                        width: trayCard.width - win.tok.padding.large * 2
+                        spacing: 2
+
+                        QsMenuOpener {
+                            id: opener
+
+                            menu: menuList.handle
+                        }
+
+                        StyledText {
+                            width: parent.width
+                            bottomPadding: win.tok.spacing.small
+                            text: win.trayMenu ? (win.trayMenu.tooltipTitle || win.trayMenu.title || win.trayMenu.id) : ""
+                            color: Colours.palette.m3onSurfaceVariant
+                            font: Tokens.font.label.medium
+                            elide: Text.ElideRight
+                        }
+
+                        // Out of a submenu.
+                        MenuRow {
+                            visible: win.menuPath.length > 1
+                            glyph: "chevron_left"
+                            label: qsTr("Back")
+                            onChosen: win.menuPath = win.menuPath.slice(0, -1)
+                        }
+
+                        Repeater {
+                            model: opener.children
+
+                            Item {
+                                id: entry
+
+                                required property QsMenuEntry modelData
+
+                                width: menuList.width
+                                height: entry.modelData.isSeparator ? 9 : row.height
+
+                                Rectangle {
+                                    visible: entry.modelData.isSeparator
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width
+                                    height: 1
+                                    color: Qt.alpha(Colours.palette.m3outlineVariant, 0.7)
+                                }
+
+                                MenuRow {
+                                    id: row
+
+                                    visible: !entry.modelData.isSeparator
+                                    width: parent.width
+                                    label: entry.modelData.text
+                                    image: entry.modelData.icon
+                                    live: entry.modelData.enabled
+                                    more: entry.modelData.hasChildren
+                                    // A check or a radio shows its state; a
+                                    // plain entry shows nothing there.
+                                    glyph: entry.modelData.buttonType === QsMenuButtonType.None ? ""
+                                        : entry.modelData.checkState === Qt.Checked
+                                            ? (entry.modelData.buttonType === QsMenuButtonType.RadioButton
+                                               ? "radio_button_checked" : "check_box")
+                                            : (entry.modelData.buttonType === QsMenuButtonType.RadioButton
+                                               ? "radio_button_unchecked" : "check_box_outline_blank")
+                                    onChosen: {
+                                        if (entry.modelData.hasChildren) {
+                                            win.menuPath = win.menuPath.concat([entry.modelData]);
+                                        } else {
+                                            entry.modelData.triggered();
+                                            win.closeTray();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        StyledText {
+                            visible: opener.children.values.length === 0
+                            width: parent.width
+                            topPadding: win.tok.spacing.small
+                            text: qsTr("Loading the menu…")
+                            color: Colours.palette.m3outline
+                        }
+                    }
+
+                    // ── Every icon, with a pin ──────────────────────────
                     Column {
                         id: trayList
 
+                        visible: !trayCard.menuMode
                         x: win.tok.padding.large
                         y: win.tok.padding.large
                         width: trayCard.width - win.tok.padding.large * 2
@@ -875,11 +1012,7 @@ Variants {
                                     hoverEnabled: true
                                     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: mouse => {
-                                        win.trayClick(trayRow.modelData, mouse.button, trayRow, trayWin);
-                                        if (mouse.button === Qt.LeftButton && !trayRow.modelData.onlyMenu)
-                                            win.trayOpen = false;
-                                    }
+                                    onClicked: mouse => win.trayClick(trayRow.modelData, mouse.button, trayRow)
                                 }
 
                                 ColouredIcon {
@@ -942,7 +1075,7 @@ Variants {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
 
-            onClicked: mouse => win.trayClick(trayIcon.modelData, mouse.button, trayIcon, win)
+            onClicked: mouse => win.trayClick(trayIcon.modelData, mouse.button, trayIcon)
             onWheel: wheel => trayIcon.modelData.scroll(wheel.angleDelta.y > 0 ? 1 : -1, false)
 
             ColouredIcon {
@@ -951,6 +1084,81 @@ Variants {
                 colour: Colours.palette.m3secondary
                 layer.enabled: GlobalConfig.bar.tray.recolour
                 opacity: trayIcon.containsMouse ? 1 : 0.9
+            }
+        }
+
+        // One line of a tray menu: an optional check or icon, the text, and a
+        // chevron when it opens a submenu.
+        component MenuRow: StyledRect {
+            id: menuRow
+
+            property string label: ""
+            property string image: ""
+            property string glyph: ""
+            property bool live: true
+            property bool more: false
+
+            signal chosen
+
+            height: 34
+            radius: win.tok.rounding.medium
+            color: menuHover.containsMouse && menuRow.live
+                ? Qt.alpha(Colours.palette.m3onSurface, 0.08) : "transparent"
+
+            MaterialIcon {
+                id: menuGlyph
+
+                x: 8
+                anchors.verticalCenter: parent.verticalCenter
+                visible: menuRow.glyph !== ""
+                text: menuRow.glyph
+                color: Colours.palette.m3primary
+                fontStyle: Tokens.font.icon.small
+            }
+
+            IconImage {
+                id: menuImage
+
+                x: 8
+                anchors.verticalCenter: parent.verticalCenter
+                visible: menuRow.glyph === "" && menuRow.image !== ""
+                implicitSize: 18
+                asynchronous: true
+                source: menuRow.image
+            }
+
+            StyledText {
+                anchors.left: parent.left
+                anchors.leftMargin: (menuGlyph.visible || menuImage.visible) ? 36 : 10
+                anchors.right: menuMore.left
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                // Qt menus mark their mnemonic with an underscore or an
+                // ampersand; neither means anything here.
+                text: menuRow.label.replace(/_([^_])/g, "$1").replace(/&([^&])/g, "$1")
+                color: menuRow.live ? Colours.palette.m3onSurface : Colours.palette.m3outline
+                elide: Text.ElideRight
+            }
+
+            MaterialIcon {
+                id: menuMore
+
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                visible: menuRow.more
+                text: "chevron_right"
+                color: Colours.palette.m3onSurfaceVariant
+            }
+
+            MouseArea {
+                id: menuHover
+
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: menuRow.live
+                cursorShape: Qt.PointingHandCursor
+                onClicked: menuRow.chosen()
             }
         }
 

@@ -17,7 +17,12 @@ pkgver=1.0.0
 # panel advertises, and the repacking that keeps neighbours touching now
 # accounts for the new width -- a mode change moves a neighbour exactly as
 # a scale change does.
-pkgrel=6
+# 7: `mode` could never run. It counted its own name among its arguments,
+# so the usage check always failed, and past that it called a persist()
+# that was never written. The Displays page discards the tool's output, so
+# a resolution pick simply did nothing. ci/display-cli-test.py runs every
+# verb the page sends against a fake Hyprland.
+pkgrel=7
 pkgdesc='Monitor scale and rotation for Hyprland, persisted across reloads'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -20,6 +20,16 @@
  * It flips ABOVE the field when there is not enough room below, for the same
  * reason: the last row of a long page is exactly where a resolution list is
  * most likely to be opened.
+ *
+ * ── Why the list uses MouseArea and not TapHandler ──────────────────────────
+ *
+ * Being drawn on top is not the same as catching the click. A TapHandler only
+ * takes a PASSIVE grab, and a passive grab lets the press carry on down to
+ * everything beneath -- so on the Displays page, picking "1680 × 1050" also
+ * pressed the 90° rotation button it happened to be lying over, and both
+ * fired. A MouseArea accepts the press and nothing under it ever sees it.
+ * The same goes for the backdrop that closes the list: it has to swallow the
+ * click, or "click away to close" also clicks whatever was there.
  */
 import QtQuick
 import ".."
@@ -57,6 +67,9 @@ Item {
         const top = root.sceneRoot();
         if (!top)
             return;
+        catcher.parent = top;
+        catcher.width = top.width;
+        catcher.height = top.height;
         list.parent = top;
 
         const here = root.mapToItem(top, 0, 0);
@@ -117,10 +130,22 @@ Item {
         }
     }
 
+    // Clicking anywhere else closes it. A full-scene catcher UNDER the list,
+    // reparented next to it on open, so the first click outside dismisses
+    // rather than landing on whatever happened to be beneath.
+    MouseArea {
+        id: catcher
+        visible: list.visible
+        z: 9998
+        acceptedButtons: Qt.AllButtons
+        onPressed: root.closeList()
+        onWheel: wheel => wheel.accepted = true
+    }
+
     // ── The list, once it is opened ─────────────────────────────────────────
     //
     // Declared here so it reads with the control it belongs to, but reparented
-    // on open. Until then it has no parent of its own and is not visible.
+    // on open. Until then it is not visible.
     Rectangle {
         id: list
 
@@ -138,19 +163,10 @@ Item {
         border.color: Tokens.accentDeep
         clip: true
 
-        // Clicking anywhere else closes it. A full-scene catcher UNDER the
-        // list, so the first click outside dismisses rather than landing on
-        // whatever happened to be beneath.
-        Item {
-            id: catcher
-            parent: list.parent ? list.parent : null
-            anchors.fill: parent ? parent : undefined
-            visible: list.visible
-            z: list.z - 1
-            MouseArea {
-                anchors.fill: parent
-                onPressed: root.closeList()
-            }
+        // The list is solid: a press on its border or padding stops here.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
         }
 
         ListView {
@@ -173,8 +189,8 @@ Item {
                 height: list.rowHeight
                 radius: 3
                 color: modelData.id === root.current ? Tokens.accentDeep
-                                                     : (h.hovered ? Tokens.cardHi
-                                                                  : "transparent")
+                                                     : (h.containsMouse ? Tokens.cardHi
+                                                                        : "transparent")
                 Text {
                     anchors {
                         left: parent.left; leftMargin: 8
@@ -187,9 +203,12 @@ Item {
                     font.pixelSize: Tokens.fsMicro
                     elide: Text.ElideRight
                 }
-                HoverHandler { id: h; cursorShape: Qt.PointingHandCursor }
-                TapHandler {
-                    onTapped: {
+                MouseArea {
+                    id: h
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
                         root.picked(modelData.id);
                         root.closeList();
                     }

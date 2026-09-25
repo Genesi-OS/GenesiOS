@@ -179,7 +179,11 @@ pkgver=0.1.0
 # semente -- and the Overview's ornament is a line of ours, set on its side.
 # The CJK font hunt that existed to avoid a column of empty boxes goes too.
 # 37: genesi-center-set accepts topbar.showTray, the top bar's new tray.
-pkgrel=37
+# 38: a pick in a dropdown lands on the dropdown only. Its rows used a
+# TapHandler, which takes a passive grab and lets the press through to what
+# is underneath -- picking a resolution also pressed the rotation button it
+# lay over. MouseAreas now, and ci/center-select-test.py clicks it.
+pkgrel=38
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

@@ -30,6 +30,8 @@ Usage:
   genesi-display show                 the same, readable
   genesi-display scale <name> <n>     1, 1.25, 1.5, 2 …, or "up"/"down"
   genesi-display rotate <name> <deg>  0, 90, 180, 270, or "cycle"
+  genesi-display mode <name> <mode>   WxH@Hz as `list` reports it, or WxH
+  genesi-display modes <name>         every mode the panel offers, as JSON
   genesi-display position <a> <where> <b>
                                       put <a> left-of/right-of/above/below <b>
   genesi-display place <name> <x> <y> exact position, snapped to neighbours
@@ -635,7 +637,9 @@ def cmd_mode(name, wanted):
     if wanted == m["mode"]:
         print(f"{m['name']} is already at {wanted}")
         return
-    persist(apply_change(m, mode=wanted))
+    ov = read_overrides()
+    ov.update(apply_change(m, mode=wanted))
+    write_overrides(ov)
     print(f"{m['name']} -> {wanted}")
 
 
@@ -724,13 +728,16 @@ def main():
             die("usage: genesi-display place <monitor> <x> <y>")
         cmd_place(*rest)
     elif cmd == "mode":
-        if len(args) != 2:
+        # `rest`, not `args`: `args` still holds the word "mode", so the
+        # count was never 2 and every resolution change died on its usage
+        # line -- the Displays page's picker did nothing at all.
+        if len(rest) != 2:
             die("usage: genesi-display mode <monitor> <WxH@Hz | WxH>")
-        cmd_mode(args[0], args[1])
+        cmd_mode(*rest)
     elif cmd == "modes":
-        if len(args) != 1:
+        if len(rest) != 1:
             die("usage: genesi-display modes <monitor>")
-        cmd_modes(args[0])
+        cmd_modes(*rest)
     elif cmd == "primary":
         if len(rest) != 1:
             die("usage: genesi-display primary <monitor>")

@@ -7,21 +7,25 @@
 // dashboard shows -- so the turntable and the dashboard always agree. The
 // record is the cover; click it to pause or play, scroll over it to skip.
 //
-// ── On the desktop ────────────────────────────────────────────────────────
+// ── Above the windows, by default ─────────────────────────────────────────
 //
-// The BOTTOM layer, like the weather: over the wallpaper, under every
-// window. A turntable you can only see on an empty workspace is still one
-// you look at every time you go back to the desktop, and one on the top
-// layer would sit over your editor for the length of an album.
+// It started on the BOTTOM layer, under every window, like the weather. On a
+// tiling desktop that is nowhere: the first window on a workspace covers the
+// whole screen, so the turntable only ever showed on an empty workspace --
+// reported, fairly, as "it does not appear when something is playing".
 //
-// The window covers the screen and takes input only over the deck, so the
-// desktop menu and the widgets still get every click that misses it.
+// So it sits on the TOP layer now, in its corner, and hides for a fullscreen
+// window. `layer desktop` puts it back under the windows for anyone who
+// wants it there. Either way the window covers the screen and takes input
+// only over the deck, so every click that misses the record goes to whatever
+// is under it.
 //
 // ── Told things from outside ──────────────────────────────────────────────
 //
 //     caelestia shell vinyl set corner <top-left|top-right|bottom-left|bottom-right>
 //     caelestia shell vinyl set scale 1.2        (0.6 to 1.6)
 //     caelestia shell vinyl set idle <hide|show> (with nothing playing)
+//     caelestia shell vinyl set layer <above|desktop>
 //
 // kept in `genesi-vinyl.json` in caelestia's state directory, which this
 // file alone writes.
@@ -43,6 +47,7 @@ Scope {
     property string corner: "bottom-right"
     property real scaleF: 1
     property bool hideIdle: true
+    property bool above: true
     property bool loaded: false
 
     function save(): void {
@@ -51,7 +56,8 @@ Scope {
         store.setText(JSON.stringify({
             corner: root.corner,
             scale: root.scaleF,
-            hideIdle: root.hideIdle
+            hideIdle: root.hideIdle,
+            layer: root.above ? "above" : "desktop"
         }, null, 2) + "\n");
     }
 
@@ -72,6 +78,7 @@ Scope {
                 root.corner = ["top-left", "top-right", "bottom-left", "bottom-right"].includes(d.corner) ? d.corner : "bottom-right";
                 root.scaleF = Math.min(1.6, Math.max(0.6, d.scale ?? 1));
                 root.hideIdle = d.hideIdle !== false;
+                root.above = d.layer !== "desktop";
             } catch (e) {}
             root.loaded = true;
         }
@@ -88,6 +95,8 @@ Scope {
                 root.scaleF = Math.min(1.6, Math.max(0.6, parseFloat(value) || 1));
             else if (key === "idle")
                 root.hideIdle = value !== "show";
+            else if (key === "layer")
+                root.above = value !== "desktop";
             else
                 return;
             root.save();
@@ -115,7 +124,7 @@ Scope {
             visible: !win.fullscreen
 
             WlrLayershell.exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.layer: WlrLayer.Bottom
+            WlrLayershell.layer: root.above ? WlrLayer.Top : WlrLayer.Bottom
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             color: "transparent"
 

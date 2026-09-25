@@ -685,7 +685,23 @@ pkgver=2.0.3
 # one click away in that panel. The pins ARE caelestia's own
 # bar.tray.hiddenIcons, so the rail and the bar never disagree, and
 # `topbar.showTray` (the bar's studio) turns the whole tray off.
-pkgrel=49
+# 50: three things reported from real hardware.
+#   * The tray icons on the top bar did nothing when clicked. Genesi Update
+#     and AI Mode are appindicator icons -- ONLY a menu, whose "activate" is
+#     a no-op -- and their menu went to SystemTrayItem.display(), which
+#     nothing in caelestia calls and which opened nothing from a layer-shell
+#     bar. The menu is drawn by the bar now, from the app's menu tree
+#     (QsMenuOpener), with submenus, checks and radios, the way caelestia's
+#     rail draws its own.
+#   * The Turntable sat on the bottom layer, under every window, and on a
+#     tiling desktop that is nowhere: it only showed on an empty workspace.
+#     It sits above the windows now, taking input only over the record, and
+#     "Above the windows" (Plugins page) puts it back on the desktop.
+#   * The Retrospective's buttons failed in silence. It now says why in a
+#     toast when it cannot open (switched off, or the story failed to build),
+#     answers the IPC call with what happened, and the page explains how the
+#     story is read.
+pkgrel=50
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

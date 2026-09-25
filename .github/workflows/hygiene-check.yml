@@ -197,6 +197,13 @@ jobs:
         # nothing reads, for ever, in silence.
         run: python genesi-arch/ci/center-wiring-test.py
 
+      - name: every command the Displays page sends runs in genesi-display
+        # `genesi-display mode` could never run -- it counted its own name
+        # among its arguments -- and the page throws the output away, so a
+        # resolution pick did nothing, silently. Runs each verb the page can
+        # send against a fake Hyprland.
+        run: python genesi-arch/ci/display-cli-test.py
+
       - name: shell.json survives concurrent writers
         # A widget drop used to be three processes rewriting one JSON file
         # through one shared scratch path. Two of the three changes were lost
@@ -222,6 +229,12 @@ jobs:
             libegl1 libgl1 libxkbcommon0 libfontconfig1 fonts-dejavu-core
           python -m pip install --quiet PySide6-Essentials
           python genesi-arch/ci/plugins-test.py
+
+      - name: a dropdown pick in Genesi Center lands on the dropdown only
+        # The resolution list used to press the rotation button lying under
+        # it as well. Runs the real Displays page offscreen; PySide6 is
+        # already installed by the step above.
+        run: python genesi-arch/ci/center-select-test.py
 
       - name: QML that cannot be compiled is at least sane
         # Nothing in the build compiles the shell's QML -- CMake installs it as

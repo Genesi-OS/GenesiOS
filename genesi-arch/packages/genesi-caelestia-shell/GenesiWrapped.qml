@@ -19,6 +19,10 @@
 //
 // which is what the Plugins page's button calls. On Sunday evening, the
 // first time the shell sees one, it says the week is ready -- once.
+//
+// It never fails in silence. The buttons were reported as "doing nothing",
+// and a story that cannot open has exactly one way to say why: a toast, and
+// the answer of the IPC call for whoever ran it from a terminal.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -76,9 +80,27 @@ Scope {
         root.dirty = true;
     }
 
-    function show(span: int): void {
-        if (!gate.active)
-            return;
+    function toast(title: string, body: string): void {
+        Quickshell.execDetached(["caelestia", "shell", "toaster", "warn", title, body, "auto_awesome"]);
+    }
+
+    function show(span: int): string {
+        if (!gate.active) {
+            root.toast(mathNow.t("The Retrospective is off", "A Retrospectiva está desligada"),
+                       mathNow.t("Switch it on in Settings -> Plugins first", "Ligue ela antes em Configurações -> Plugins"));
+            return "off";
+        }
+        try {
+            root.build(span);
+        } catch (e) {
+            console.warn("genesi-wrapped: could not build the story:", e);
+            root.toast(mathNow.t("The Retrospective could not open", "A Retrospectiva não abriu"), String(e));
+            return `error: ${e}`;
+        }
+        return "shown";
+    }
+
+    function build(span: int): void {
         root.span = span;
         const s = mathNow.summarize(root.days, new Date(), span);
 
@@ -222,8 +244,8 @@ Scope {
     IpcHandler {
         target: "wrapped"
 
-        function show(span: string): void {
-            root.show(span === "month" ? 30 : 7);
+        function show(span: string): string {
+            return root.show(span === "month" ? 30 : 7);
         }
 
         function hide(): void {

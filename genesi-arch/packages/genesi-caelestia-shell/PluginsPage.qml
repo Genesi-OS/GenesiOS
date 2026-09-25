@@ -783,6 +783,20 @@ PageBase {
                     ToggleRow {
                         Layout.fillWidth: true
                         visible: card.pid === "vinyl"
+                        text: qsTr("Above the windows")
+                        subtext: qsTr("Off: only on the desktop, under every window")
+                        checked: root.deck.layer !== "desktop"
+                        onToggled: {
+                            const d = Object.assign({}, root.deck);
+                            d.layer = checked ? "above" : "desktop";
+                            root.deck = d;
+                            Quickshell.execDetached(["caelestia", "shell", "vinyl", "set", "layer", checked ? "above" : "desktop"]);
+                        }
+                    }
+
+                    ToggleRow {
+                        Layout.fillWidth: true
+                        visible: card.pid === "vinyl"
                         last: true
                         text: qsTr("Hide it when nothing is playing")
                         subtext: qsTr("Off: an empty turntable waits on the desktop")
@@ -805,6 +819,16 @@ PageBase {
                             : root.daysCounted === 1 ? qsTr("Counting since today")
                             : qsTr("Counting starts now")
                         subtext: qsTr("Only which app is in front, never a window title -- kept on this machine, ten weeks at most.")
+                    }
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Tokens.spacing.small
+                        visible: card.pid === "wrapped"
+                        text: qsTr("It opens full screen, as a story: it moves on by itself, a click or → goes to the next slide, ← goes back, Esc closes. On Sunday evening it tells you your week is ready.")
+                        color: Colours.palette.m3outline
+                        font: Tokens.font.label.small
+                        wrapMode: Text.WordWrap
                     }
 
                     RowLayout {
