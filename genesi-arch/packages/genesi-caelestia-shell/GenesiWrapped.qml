@@ -29,10 +29,14 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Caelestia
 import Caelestia.Config
 import qs.components.containers
 import qs.services
 import qs.utils
+// GenesiPluginBus. A singleton is reached through its module even from next
+// door, so it lives with the others in the launcher's directory.
+import qs.modules.launcher as Launcher
 
 Scope {
     id: root
@@ -80,8 +84,10 @@ Scope {
         root.dirty = true;
     }
 
+    // Straight to caelestia's Toaster, in-process. It used to go out through
+    // `caelestia shell toaster`, one more hop that could fail unseen.
     function toast(title: string, body: string): void {
-        Quickshell.execDetached(["caelestia", "shell", "toaster", "warn", title, body, "auto_awesome"]);
+        Toaster.toast(title, body, "auto_awesome", Toast.Warning);
     }
 
     function show(span: int): string {
@@ -133,6 +139,15 @@ Scope {
         id: gate
 
         plugin: "wrapped"
+    }
+
+    // The Plugins page's buttons, without leaving the process.
+    Connections {
+        target: Launcher.GenesiPluginBus
+
+        function onWrappedRequested(span: string): void {
+            root.show(span === "month" ? 30 : 7);
+        }
     }
 
     GenesiWrappedMath {

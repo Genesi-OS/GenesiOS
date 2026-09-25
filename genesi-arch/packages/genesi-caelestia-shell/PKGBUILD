@@ -701,7 +701,15 @@ pkgver=2.0.3
 #     toast when it cannot open (switched off, or the story failed to build),
 #     answers the IPC call with what happened, and the page explains how the
 #     story is read.
-pkgrel=50
+# 51: left click on a tray icon opens its menu too. Every Genesi icon is a
+#     libayatana AppIndicator, which ignores Activate and does not declare
+#     itself menu-only, so a left click did nothing on them; apps with a
+#     window get an "Open" row at the top of the menu instead. And the
+#     Retrospective's buttons no longer leave the process: the Plugins page
+#     raises a signal on GenesiPluginBus and the plugin answers it, and its
+#     toasts go straight to caelestia's Toaster -- the old path spawned
+#     `caelestia shell`, then `qs ipc call`, and failed with nothing shown.
+pkgrel=51
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -780,6 +788,7 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiGameMines.qml"
         "GenesiGameBlocks.qml"
         "GenesiPluginSwitch.qml"
+        "GenesiPluginBus.qml"
         "GenesiPet.qml"
         "GenesiLeaf.qml"
         "GenesiPetMind.qml"
@@ -798,6 +807,7 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

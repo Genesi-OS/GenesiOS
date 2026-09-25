@@ -1239,7 +1239,8 @@ def patch_ddc_timeout(services_dir):
 LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml",
                    "GenesiSchemeFlow.qml", "GenesiSchemeState.qml",
                    "GenesiTopBarState.qml", "GenesiEdges.qml",
-                   "GenesiSidePanelState.qml", "GenesiWidgetEditState.qml")
+                   "GenesiSidePanelState.qml", "GenesiWidgetEditState.qml",
+                   "GenesiPluginBus.qml")
 
 # The full-screen colour-scheme picker. Its WINDOW goes in modules/background,
 # which is the one Genesi directory shell.qml already imports -- so putting it
@@ -2903,7 +2904,8 @@ def patch_edge_layout(release):
 # lives in that same directory -- Quickshell exposes a directory's singletons
 # through its module, not by proximity.
 GENESI_SINGLETONS = ("GenesiEdges", "GenesiSchemeState", "GenesiTopBarState",
-                     "GenesiSidePanelState", "GenesiWidgetEditState")
+                     "GenesiSidePanelState", "GenesiWidgetEditState",
+                     "GenesiPluginBus")
 
 
 def verify_genesi_imports(release):
@@ -2943,10 +2945,13 @@ def verify_genesi_imports(release):
                 rel = os.path.relpath(path, release)
                 # `Launcher.GenesiEdges` needs the qualified import, and
                 # nothing else does.
-                if re.search(r"(?<![.\w])Launcher\.%s\s*\." % singleton,
+                # A bare use counts too: `target: Launcher.GenesiPluginBus`
+                # in a Connections has no member after it, and the check that
+                # wanted one let a missing import through.
+                if re.search(r"(?<![.\w])Launcher\.%s\b" % singleton,
                              body) and not has_qual:
                     bad.append((rel, "Launcher." + singleton))
-                if not re.search(r"(?<![.\w])%s\s*\." % singleton, body):
+                if not re.search(r"(?<![.\w])%s\b" % singleton, body):
                     continue
                 if not has_import:
                     bad.append((rel, singleton))

@@ -41,6 +41,7 @@ import qs.services
 import qs.utils
 import qs.modules.nexus.common
 import qs.modules.background as Genesi
+import qs.modules.launcher as Launcher
 
 PageBase {
     id: root
@@ -845,14 +846,14 @@ PageBase {
                             icon: "calendar_month"
                             text: qsTr("Your month")
                             type: TextButton.Tonal
-                            onClicked: Quickshell.execDetached(["caelestia", "shell", "wrapped", "show", "month"])
+                            onClicked: Launcher.GenesiPluginBus.wrappedRequested("month")
                         }
 
                         IconTextButton {
                             icon: "auto_awesome"
                             text: qsTr("Your week")
                             type: TextButton.Filled
-                            onClicked: Quickshell.execDetached(["caelestia", "shell", "wrapped", "show", "week"])
+                            onClicked: Launcher.GenesiPluginBus.wrappedRequested("week")
                         }
                     }
                 }

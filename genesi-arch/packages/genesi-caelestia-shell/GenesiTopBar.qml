@@ -150,8 +150,13 @@ Variants {
                 item.secondaryActivate();
                 return;
             }
-            const wantsMenu = button === Qt.RightButton || item.onlyMenu;
-            if (wantsMenu && item.hasMenu) {
+            // Left click opens the menu too, whenever there is one. Every
+            // Genesi tray icon is a libayatana AppIndicator, which ignores
+            // Activate and does NOT declare itself menu-only -- so a left
+            // click that went to activate() did nothing at all on them,
+            // exactly as reported. Apps that do have a window to raise get
+            // an "Open" row at the top of the menu instead.
+            if (item.hasMenu) {
                 if (win.trayMenu === item) {
                     win.closeTray();
                     return;
@@ -898,6 +903,19 @@ Variants {
                             color: Colours.palette.m3onSurfaceVariant
                             font: Tokens.font.label.medium
                             elide: Text.ElideRight
+                        }
+
+                        // What a plain left click used to do, for the apps
+                        // where it does something: raise their window.
+                        MenuRow {
+                            visible: win.menuPath.length === 1 && win.trayMenu !== null && !win.trayMenu.onlyMenu
+                            glyph: "open_in_new"
+                            label: qsTr("Open")
+                            onChosen: {
+                                const item = win.trayMenu;
+                                win.closeTray();
+                                item.activate();
+                            }
                         }
 
                         // Out of a submenu.
