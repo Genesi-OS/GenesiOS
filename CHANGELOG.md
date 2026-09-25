@@ -11,6 +11,30 @@ Rolling: every push to `main` rebuilds the ISO and republishes the packages, so
 there is no gap between "merged" and "shipped". Dated headings below mark the
 points worth remembering, not release gates.
 
+### 2026-09 — The Hyprland desktop grows up
+
+- **The top bar's Frame form.** caelestia's own border grows to hold the bar:
+  the rounded corners where it meets the screen, the border's colour and
+  shadow, and drawers that flow out of it. Eighteen new settings with it —
+  numbered workspaces, the window title on the left with its app above it,
+  resource rings, a now-playing chip, volume, brightness, Bluetooth, a battery
+  pill, an accent colour, and the clock and date formats.
+- **The tray on the top bar**, with pins for which icons show and the apps'
+  own menus drawn by the bar — left click opens them, since Genesi's tray
+  icons are menu-only.
+- **Plugins**, off until you turn them on from the store or Nexus → Plugins:
+  a **Game Center** with eight games in a corner of the screen, a **leaf**
+  that lives on your screen and reflects the machine's state, **live
+  weather** on the wallpaper, a **turntable** for what is playing, and a
+  weekly **retrospective**.
+- **Genesi Store**: Fastfetch themes with emblems drawn for the terminal and
+  a sectioned layout, whole top-bar looks in one click, and plugin cards.
+- **Signed repositories** — every `[genesi]` package is signed; the keys ship
+  in `genesi-keyring`.
+- Fixed: picking a resolution in Genesi Center did nothing, and a pick in any
+  dropdown also clicked the control underneath it.
+- `genesi-report` collects a redacted diagnostic and opens a pre-filled issue.
+
 ### 2026-08 — Automations grow a data flow
 
 - **Values between blocks.** Every block now publishes named values that later
@@ -49,7 +73,7 @@ points worth remembering, not release gates.
 
 ### Earlier
 
-Phase 3 (own packages and repository) is done: 41 packages build and publish
+Phase 3 (own packages and repository) is done: every package builds and publishes
 from this repository on every push, and the in-OS updater consumes them.
 
 ## [2026.05.01] - 2026-05-01

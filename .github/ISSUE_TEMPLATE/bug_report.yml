@@ -1,0 +1,97 @@
+name: Bug report
+description: Something in Genesi OS does not work the way it should.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time. The fastest way to a fix is `genesi-report`:
+        run it on the affected machine and it opens this page already filled in, with
+        the versions, desktop, GPU and this boot's errors — anything personal removed,
+        and shown to you before anything is sent.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        I opened Genesi Center → Displays and picked 1920×1080. I expected the
+        resolution to change; nothing happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: desktop
+    attributes:
+      label: Desktop
+      options:
+        - KDE Plasma
+        - Hyprland + caelestia
+        - GNOME
+        - Xfce
+        - Cinnamon
+        - Budgie
+        - LXDE
+        - COSMIC
+        - Niri
+        - The live ISO / the installer
+        - No desktop (TTY)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where the problem is, as best you can tell.
+      options:
+        - Installer
+        - Boot, login or lock screen
+        - Updates and packages
+        - Genesi Store
+        - Genesi Center / settings
+        - Top bar, dock or side panel (Hyprland)
+        - Plugins (Game Center, Leaf, Weather, Turntable, Retrospective)
+        - AI Mode / Turbo / Mesh
+        - Developer apps (Code, Forge, Sandboxes, Automations…)
+        - Snapshots
+        - Something else
+    validations:
+      required: true
+
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Update channel
+      description: "`genesi-channel get` prints it."
+      options:
+        - stable
+        - testing
+        - I don't know
+    validations:
+      required: true
+
+  - type: textarea
+    id: report
+    attributes:
+      label: genesi-report
+      description: The output of `genesi-report --print`, if `genesi-report` did not fill this page in for you.
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, a video, what changed recently, whether it happens every time.

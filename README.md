@@ -1,262 +1,173 @@
 <div align="center">
 
-# Genesi OS
+<img src="docs/assets/banner.png" alt="Genesi OS" width="100%">
 
-**The Arch-based Linux distribution built for developers, supercharged by local AI.**
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1D9E75)](LICENSE)
+[![Based on CachyOS](https://img.shields.io/badge/based%20on-CachyOS-2f80ed)](https://cachyos.org)
+[![ISO build](https://img.shields.io/github/actions/workflow/status/Genesi-OS/GenesiOS/iso-pipeline.yml?branch=main&label=ISO%20build)](https://github.com/Genesi-OS/GenesiOS/actions/workflows/iso-pipeline.yml)
+[![Packages](https://img.shields.io/github/actions/workflow/status/Genesi-OS/GenesiOS/publish-packages.yml?branch=main&label=packages)](https://github.com/Genesi-OS/GenesiOS/actions/workflows/publish-packages.yml)
+[![Checks](https://img.shields.io/github/actions/workflow/status/Genesi-OS/GenesiOS/hygiene-check.yml?branch=main&label=checks)](https://github.com/Genesi-OS/GenesiOS/actions/workflows/hygiene-check.yml)
+[![Forum](https://img.shields.io/badge/forum-genesios.org-1D9E75)](https://forum.genesios.org)
 
-A CachyOS-based, developer-first OS with a stunning KDE Plasma desktop. It provides a lightning-fast out-of-the-box coding environment and automatically tunes the system to its absolute limits the moment you start running local AI models to assist your workflow.
-
-[![License](https://img.shields.io/badge/License-AGPL--3.0-1D9E75.svg)](LICENSE)
-[![Based on](https://img.shields.io/badge/Based%20on-CachyOS-blue.svg)](https://cachyos.org)
-[![Desktop](https://img.shields.io/badge/Desktop-KDE%20Plasma%206-1d99f3.svg)](https://kde.org/plasma-desktop/)
-[![ISO Pipeline](https://img.shields.io/github/actions/workflow/status/Genesi-OS/GenesiOS/iso-pipeline.yml?label=ISO%20build&branch=main)](https://github.com/Genesi-OS/GenesiOS/actions/workflows/iso-pipeline.yml)
-[![Packages](https://img.shields.io/github/actions/workflow/status/Genesi-OS/GenesiOS/publish-packages.yml?label=packages&branch=main)](https://github.com/Genesi-OS/GenesiOS/actions/workflows/publish-packages.yml)
-
-[Download](#-download) • [Features](#-features) • [How it works](#-how-it-works) • [Build](#-building-from-source) • [Roadmap](docs/ROADMAP.md) • [Contributing](#-contributing)
-
-<img src="wallpapers/wallpaper.png" alt="Genesi OS" width="760">
+**[Download](#download)** · **[What's inside](#whats-inside)** · **[Install](#install)** · **[How it's built](#how-its-built)** · **[Contributing](#contributing)** · **[Website](https://www.genesios.org)**
 
 </div>
 
 ---
 
-## 🌟 What is Genesi OS?
+Genesi OS is a rolling Linux distribution built on [CachyOS](https://cachyos.org)
+and Arch. It installs a finished desktop — themed, configured and with its own
+apps — and it treats local AI as a workload the system should tune itself for,
+not something to set up by hand.
 
-Genesi OS is an **Arch-based Linux distribution** (built on top of [CachyOS](https://cachyos.org)) designed from the ground up to be the ultimate daily driver for **software developers and engineers**. It delivers a perfectly curated, out-of-the-box coding environment with bleeding-edge packages, a highly optimized custom kernel, and a breathtaking visual aesthetic.
+You pick the desktop in the installer. Two of them are Genesi's own:
 
-But what truly sets it apart is its unique approach to the modern developer workflow: **the operating system optimizes itself for local AI inference**. 
+- **KDE Plasma 6**, with a glass theme, rounded windows and Genesi's widgets.
+- **Hyprland with [caelestia-shell](https://github.com/caelestia-dots/shell)**,
+  extended by Genesi with a configurable top bar, a dock, a quick-settings
+  panel and optional plugins.
 
-When it detects that you're running Ollama, llama.cpp, vLLM, or LocalAI for code generation, code review, or local LLM chatting, a background daemon retunes the CPU governor, memory, huge pages, and process priorities for maximum inference speed — then puts everything back to normal when you're done compiling or coding. No flags, no config files.
+GNOME, Xfce, Cinnamon, Budgie, LXDE, COSMIC and Niri are also offered, with
+the Genesi look applied where the desktop allows it.
 
-### Why Genesi OS?
+<table>
+  <tr>
+    <td><img src="genesi-arch/packages/genesi-store/catalog/thumbs/topbar-moldura.jpg" alt="The Frame top bar"></td>
+    <td><img src="genesi-arch/packages/genesi-store/catalog/thumbs/plugin-game-center.jpg" alt="The Game Center plugin"></td>
+  </tr>
+  <tr>
+    <td><img src="genesi-arch/packages/genesi-store/catalog/thumbs/fetch-sol.jpg" alt="A Fastfetch theme from the Genesi Store"></td>
+    <td><img src="genesi-arch/packages/genesi-store/catalog/thumbs/plugin-leaf.jpg" alt="The Leaf plugin"></td>
+  </tr>
+</table>
+<p align="center"><sub>Pictures from the Genesi Store's own shelves: the plugin cards are rendered from the plugins' real QML; the bar and terminal cards are drawn from the exact settings each card applies.</sub></p>
 
-- 🧑‍💻 **Developer First** — ships with the tools, performance, and stability developers need to focus on code, not configuration.
-- 🤖 **AI Mode Companion** — automatic hardware optimization when local AI is running to assist your dev workflow.
-- ⚡ **Tuned for speed** — built on CachyOS's optimized packages, BORE scheduler, and x86-64-v3/v4 architecture.
-- 🎨 **Beautiful by default** — custom dark-green Plasma theme with glassmorphism and rounded corners.
-- 📦 **Native packages** — branding & features survive installation via a self-hosted pacman repo.
-- 🔄 **Real rolling updates** — stable & testing channels for bleeding-edge software.
+## Download
 
----
-
-## ✨ Features
-
-### 🧑‍💻 Developer-First Ecosystem
-Genesi OS is built to get out of your way and let you code. While Phase 4 of our roadmap will introduce even deeper IDE integrations, the system already provides a robust environment where Docker, build tools, and modern compilers run blazingly fast thanks to the underlying CachyOS optimizations.
-
-### 🤖 AI Mode — the differentiator
-A systemd daemon (`genesi-aid`) watches for AI workloads (like a background code-assistant model) and reconfigures the system on the fly:
-
-| When AI is running | Genesi OS does |
-|--------------------|----------------|
-| **CPU** | Switches the governor to `performance` |
-| **Memory** | Drops `vm.swappiness` to 10 |
-| **Huge pages** | Enables 2MB Transparent Huge Pages, pre-allocates for inference |
-| **Scheduling** | Raises priority (`nice -5`), pins threads to physical performance cores |
-| **I/O** | Tunes readahead for large GGUF files |
-
-When inference stops, every change is reverted so your compiler can have the resources back. A **Plasma widget** and a dedicated **Genesi Monitor App** show AI Mode status, detected processes, and optimizations applied.
-
-### 🎨 Visual identity
-- **Dark-green theme** — `GenesiOS.colors` (Genesi `#1D9E75`, Forest `#04342C`, Mint `#E1F5EE`)
-- **Glassmorphism** — KWin blur + translucency, Darkly window decorations
-- **Rounded windows** — 14px corners via Klassy
-- **Custom desktop** — floating panel, desktop widgets, branded icons
-- **Genesi Welcome** — first-run app to set up your dev environment
-
-### ⚙️ Under the hood
-- **Base:** CachyOS (Arch Linux with optimized kernel)
-- **Kernel:** `linux-cachyos` with the BORE scheduler
-- **Desktop:** KDE Plasma 6
-- **Display server:** Wayland (X11 available)
-- **Package manager:** `pacman` + the Genesi repository
-- **Init:** systemd
-
----
-
-## 📥 Download
-
-**One file, always the current build.**
+One file, always the latest build of `main`:
 
 ```bash
-# fast, resumable, no account needed
 aria2c -x16 -s16 https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso
-```
-
-Or click through from the
-[Download page](https://github.com/Genesi-OS/GenesiOS/releases/tag/rolling),
-which also carries the checksum and the changelog for the build you are getting.
-
-> `genesi-os-latest.iso` is rebuilt from `main` and replaced in place, so the
-> link never changes and there is only ever one ISO. Older builds are kept as
-> browsable archives under
-> [Releases](https://github.com/Genesi-OS/GenesiOS/releases) (split into parts,
-> since GitHub caps a single file at 2 GB).
-
-### System requirements
-
-| | Minimum | Recommended |
-|---|---|---|
-| **CPU** | x86_64 (64-bit) | Modern multi-core |
-| **RAM** | 4 GB | 16 GB+ (for local AI dev tools) |
-| **Storage** | 30 GB | 50 GB+ NVMe SSD |
-| **GPU** | Any (AI Mode works CPU-only) | NVIDIA Turing+ / modern AMD |
-
-### Verify your download
-
-```bash
 curl -O https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso.sha256
 sha256sum -c genesi-os-latest.iso.sha256
 ```
 
----
+The [download page](https://github.com/Genesi-OS/GenesiOS/releases/tag/rolling)
+carries the checksum and the changelog for the build you are getting. The link
+never changes: the ISO is rebuilt and replaced in place, so there is only ever
+one.
 
-## 🚀 Installation
+| | Minimum | Recommended |
+|---|---|---|
+| CPU | x86-64 | x86-64-v3 (most CPUs since 2015) |
+| Memory | 4 GB | 16 GB or more for local models |
+| Storage | 30 GB | 50 GB or more, NVMe |
+| GPU | Any — AI Mode also works on CPU | NVIDIA Turing or newer, recent AMD |
 
-**1. Write the ISO to a USB drive**
+## What's inside
+
+### The desktop
+
+| | |
+|---|---|
+| **Genesi Store** | Themes, wallpapers, login and lock screens, bar styles, Fastfetch themes, plugins and whole desktops — one click each, and one click back. |
+| **Genesi Center** | The control centre: system overview, displays, input, appearance, and every setting the desktop has, validated before it is written. |
+| **Top bar** (Hyprland) | Six forms — including one that is caelestia's own border grown to hold the bar — and some forty settings: numbered workspaces, resource rings, now playing, tray with menus. |
+| **Plugins** (Hyprland) | Off until you turn them on: a Game Center with eight games, a leaf that lives on your screen and reflects the machine's state, live weather on the wallpaper, a turntable for what is playing, and a weekly retrospective. |
+| **Snapshots** | Btrfs snapshots before every update, restorable from the boot menu or from the app. |
+
+### Local AI
+
+| | |
+|---|---|
+| **AI Mode** | A daemon (`genesi-aid`) notices when a model is running — Ollama, llama.cpp, vLLM, LocalAI — and tunes the CPU governor, memory, huge pages, scheduling and I/O for inference. Every change is reverted when the model stops. |
+| **Turbo** | llama.cpp builds for Vulkan and CUDA, run with the settings that fit your hardware; any local GGUF works without importing it anywhere. |
+| **Mesh** | Pools GPU memory across machines on your network, to run a model none of them fits alone. |
+| **MemPalace** | Long-term memory for the local assistant, kept on your machine. |
+
+### For developers
+
+**Genesi Code** (a local-first editor and agentic terminal), **Forge** (a project
+hub with a full git client and pipelines), **Sandboxes** (isolated Distrobox
+workspaces), **Automations** (event-driven workflows with a visual editor),
+**Studio Mode**, **PortScope**, an **API Inspector**, a database client and a
+container dashboard.
+
+Everything above ships as one of the 53 packages in the Genesi repository —
+the full list, with what each does, is in [`genesi-arch/packages`](genesi-arch/packages).
+
+## Install
+
+1. Write the ISO to a USB drive — `dd` on Linux and macOS, or
+   [Ventoy](https://www.ventoy.net) / [Rufus](https://rufus.ie) on Windows.
+2. Boot from it, and choose **Install Genesi OS**.
+3. Pick your desktop in the installer. If you are unsure, or installing in a
+   virtual machine, pick KDE Plasma.
+
+The step-by-step guide is in [docs/installation.md](docs/installation.md), and
+the [FAQ](docs/faq.md) covers the common questions.
+
+## Updating
+
+Genesi is rolling: `sudo pacman -Syu`, or the update applet in the tray, which
+takes a snapshot first. Two channels are available, switchable at any time with
+`genesi-channel`:
+
+- **stable** — built from `main`
+- **testing** — built from `develop`, newer and less proven
+
+The `[genesi]` repositories are signed; the public keys ship in
+`genesi-keyring`.
+
+## How it's built
+
+Every push to `main` goes through three workflows, kept separate so that a
+broken ISO can never stop updates reaching installed machines, and the other
+way round:
+
+| Workflow | What it does |
+|---|---|
+| [Checks](.github/workflows/hygiene-check.yml) | Over fifty guards in [`genesi-arch/ci`](genesi-arch/ci): QML that would fail to load, settings pages wired to keys nothing reads, packages published but installed by nothing, and the regressions each one was written after. |
+| [Packages](.github/workflows/publish-packages.yml) | Builds every changed package in a CachyOS container, signs it, and publishes the pacman repository. |
+| [ISO](.github/workflows/iso-pipeline.yml) | Resolves and installs the installer's package set into an empty root first, and only builds the ISO if that works. |
+
+To build locally, inside a CachyOS or Arch environment:
 
 ```bash
-# Linux / macOS
-sudo dd if=genesi-os-latest.iso of=/dev/sdX bs=4M status=progress oflag=sync
-```
-On Windows use [Rufus](https://rufus.ie/) or [Ventoy](https://www.ventoy.net/).
-
-**2. Boot from USB** — enter your BIOS/UEFI boot menu (often F2, F12, or Del) and select the drive.
-
-**3. Install** — click **Install Genesi OS** on the live desktop and follow the Calamares installer. Reboot when done.
-
-Full guide: [docs/installation.md](docs/installation.md).
-
----
-
-## 🧠 How it works
-
-Genesi OS is delivered through **two strictly separate CI pipelines** so that
-fixing the live ISO can never break updates for installed users — and vice-versa.
-
-### 1. Package / Update pipeline — `publish-packages.yml`
-Builds all custom packages inside a `cachyos-v3` container, runs `repo-add`, and
-commits the resulting pacman repository to `genesi-arch/repo/x86_64`. Installed
-systems pull from it via plain `pacman -Syu` or the in-OS update notifier.
-
-- `main` → **stable** channel
-- `develop` → **testing** channel
-
-### 2. ISO pipeline — `iso-pipeline.yml`
-A two-stage build:
-
-1. **validate-install** — dependency dry-run **plus a real `pacstrap`** into a
-   throwaway root, reproducing the Calamares package set. A broken set fails here,
-   *before* a ~30-minute build.
-2. **build-iso** — runs only if validation passed; `mkarchiso` → `.iso`, uploaded
-   as an artifact (and attached to a Release on `v*` tags).
-
----
-
-## 🎯 Quick start: test AI Mode
-
-```bash
-# Install Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Pull a model and run it — AI Mode activates automatically
-ollama pull llama3.2
-ollama run llama3.2
-
-# Watch AI Mode kick in
-systemctl status genesi-aid
+cd genesi-arch/packages && ./build-packages.sh    # the packages and the repo database
+cd genesi-arch && bash prepare-and-build.sh       # the ISO, into genesi-arch/out/
 ```
 
-The AI Mode widget in your panel will light up and list the detected process and
-the optimizations it applied.
+## Contributing
 
----
+Bug reports are the most useful thing you can send. Run `genesi-report` on the
+affected machine: it collects the versions, desktop, GPU and the errors from
+the current boot, removes anything personal, shows you everything, and only
+then opens a pre-filled issue.
 
-## 🔧 Building from source
+- Questions and ideas: [the forum](https://forum.genesios.org)
+- Bugs and feature requests: [issues](https://github.com/Genesi-OS/GenesiOS/issues/new/choose)
+- Code: [CONTRIBUTING.md](CONTRIBUTING.md) — how the repository is laid out,
+  how packages are versioned, and what the checks expect
+- Security: [SECURITY.md](SECURITY.md) — please report privately
 
-Genesi OS builds with archiso inside a CachyOS environment (the build scripts
-refuse to run as root and use `sudo`).
+Plans and progress are tracked in the [roadmap](docs/ROADMAP.md), and what has
+shipped in the [changelog](CHANGELOG.md).
 
-```bash
-cd genesi-arch
-bash prepare-and-build.sh     # -> buildiso.sh -p desktop -> mkarchiso
-# The ISO lands in genesi-arch/out/
-```
+## Credits
 
-Build just the packages locally:
+Genesi OS is built on [CachyOS](https://cachyos.org) and
+[Arch Linux](https://archlinux.org), and ships
+[KDE Plasma](https://kde.org/plasma-desktop/),
+[Hyprland](https://hyprland.org),
+[caelestia-shell](https://github.com/caelestia-dots/shell) and
+[Quickshell](https://quickshell.org),
+[llama.cpp](https://github.com/ggml-org/llama.cpp) and
+[Ollama](https://ollama.com). Thank you to everyone behind them.
 
-```bash
-cd genesi-arch/packages
-./build-packages.sh           # builds each package + generates the repo db
-```
+## License
 
----
-
-## 🗺️ Roadmap
-
-| Phase | Scope | Status |
-|-------|-------|--------|
-| **1** | Visual Identity | ✅ Complete |
-| **2** | AI Mode (local AI optimizations) | 🟩 ~90% — core shipping |
-| **3** | Own Packages & Repository | ✅ Operational — 8 packages, dual channels |
-| **4** | IDE & Dev Tools | ⬜ Pending |
-| **5** | Polish & Distribution | ⬜ Pending |
-
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the detailed, per-feature breakdown.
-
----
-
-## 📚 Documentation
-
-- [Installation Guide](docs/installation.md)
-- [FAQ](docs/faq.md)
-- [Roadmap & Infrastructure](docs/ROADMAP.md)
-- [AI Mode (build system docs)](genesi-arch/README.md)
-- [Contributing Guide](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome:
-
-- 🐛 **Report bugs** — [open an issue](https://github.com/Genesi-OS/GenesiOS/issues/new)
-- 💡 **Suggest features** — [open an issue](https://github.com/Genesi-OS/GenesiOS/issues/new)
-- 🔧 **Submit PRs** — see [CONTRIBUTING.md](CONTRIBUTING.md)
-- ⭐ **Star the repo** — it genuinely helps
-
----
-
-## 🙏 Credits
-
-Genesi OS stands on the shoulders of:
-
-- [**CachyOS**](https://cachyos.org/) — optimized Arch Linux base and packages
-- [**Arch Linux**](https://archlinux.org/) — the foundation
-- [**KDE Plasma**](https://kde.org/plasma-desktop/) — the desktop environment
-- [**Ollama**](https://ollama.ai/) & [**llama.cpp**](https://github.com/ggerganov/llama.cpp) — local AI made practical
-
-Special thanks to the CachyOS team and the Arch community.
-
----
-
-## 📜 License
-
-Genesi OS is licensed under the [GNU Affero General Public License v3.0](LICENSE)
-(AGPL-3.0-or-later).
-
-Genesi OS builds on CachyOS and Arch Linux. Bundled third-party packages and
-inherited components (such as the CachyOS-derived Calamares config) retain their
-own licenses — mostly GPL-3.0, which is compatible with AGPL-3.0. A Linux
-distribution is an aggregate, so each component keeps its original license.
-
----
-
-<div align="center">
-
-**Built by developers, for developers.**
-
-[⬆ Back to top](#genesi-os)
-
-</div>
+Genesi OS is licensed under the [GNU Affero General Public License v3.0 or
+later](LICENSE). A distribution is an aggregate: the third-party packages it
+ships, and the components it derives from (such as the CachyOS Calamares
+configuration), keep their own licenses.
