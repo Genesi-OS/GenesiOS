@@ -736,7 +736,13 @@ pkgver=2.0.3
 #     deep inside the band, so the pocket ate the band. Closed drawers now
 #     clear GenesiEdges.hideTop/hideBottom, which is zero in the Frame form:
 #     they tuck into the band exactly as into a stock border.
-pkgrel=54
+# 55: 53's "Update now" did nothing but re-check. It ran pkexec through
+#     execDetached, whose double fork hands the child to init at once, and
+#     pkexec refuses a caller whose parent is init ("Refusing to render
+#     service to dead parents") before any password prompt. A shell now
+#     stays alive as pkexec's parent, and the first probes after the click
+#     wait for the process to appear before calling the update finished.
+pkgrel=55
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

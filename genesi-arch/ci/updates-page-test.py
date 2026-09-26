@@ -65,8 +65,19 @@ def blocks(kind):
 procs = blocks("Process")
 check(not any("genesi-update-center-apply" in b and "command:" in b and "pgrep" not in b for b in procs),
       "no Process the page owns runs the update")
-check(re.search(r"Quickshell\.execDetached\(\s*\[\s*\"pkexec\",\s*\"/usr/bin/genesi-update-center-apply\"", code) is not None,
+detached = re.findall(r"Quickshell\.execDetached\(\s*\[([^\]]*)\]", code)
+check(any("/usr/bin/genesi-update-center-apply" in d for d in detached),
       "the update is started detached")
+# pkexec refuses to run once its parent is init ("Refusing to render service
+# to dead parents"), and execDetached re-parents its child to init at once.
+# Started that way the button did nothing but re-check.
+check(not any(re.match(r"\s*\"pkexec\"", d) for d in detached),
+      "pkexec is not detached itself -- it needs a live parent")
+wrapped = [d for d in detached if "genesi-update-center-apply" in d]
+check(bool(wrapped) and all(re.search(r"\"sh\",\s*\"-c\",\s*\"pkexec [^\"]*;", d) for d in wrapped),
+      "a shell stays pkexec's parent (pkexec is not its last command)")
+check(re.search(r"Date\.now\(\)\s*-\s*root\.startedAt", code) is not None,
+      "a probe right after the click does not mistake 'not started yet' for 'done'")
 check(re.search(r"^\s*import Quickshell\s*$", code, re.M) is not None,
       "the page imports Quickshell, which execDetached needs")
 

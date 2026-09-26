@@ -80,11 +80,24 @@ PageBase {
         busyProc.running = true;
     }
 
+    // When startUpdate() last ran. The first probes after it may come before
+    // the new process shows up in /proc, and must not read that as "finished".
+    property real startedAt: 0
+
     function startUpdate(): void {
         // Detached: see "An update outlives this page" at the top.
-        Quickshell.execDetached(["pkexec", "/usr/bin/genesi-update-center-apply"]);
+        //
+        // But never pkexec ITSELF detached. execDetached double-forks, so the
+        // child it starts is re-parented to init at once -- and pkexec checks
+        // exactly that and bails out ("Refusing to render service to dead
+        // parents") before any password prompt. The button then did nothing
+        // but re-check, which is how it was reported: "it just reloads".
+        // A shell stays alive as pkexec's parent. `; rc=$?; exit $rc` keeps
+        // pkexec from being the last command, which bash would exec in place
+        // of itself -- bringing the dead parent right back.
+        Quickshell.execDetached(["sh", "-c", "pkexec /usr/bin/genesi-update-center-apply; rc=$?; exit $rc"]);
+        root.startedAt = Date.now();
         root.applying = true;
-        root.probe();
     }
 
     Component.onCompleted: root.probe()
@@ -193,6 +206,9 @@ PageBase {
             stdout: StdioCollector {
                 onStreamFinished: {
                     const busy = text.indexOf("busy") >= 0;
+                    // Just pressed: give the process a moment to appear.
+                    if (!busy && root.applying && Date.now() - root.startedAt < 5000)
+                        return;
                     const was = root.applying;
                     root.applying = busy;
                     // Just finished, or nothing was running when the page
