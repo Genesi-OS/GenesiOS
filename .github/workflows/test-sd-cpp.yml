@@ -88,17 +88,23 @@ jobs:
           cd "$GITHUB_WORKSPACE/genesi-arch/packages/genesi-sd-cpp"
           pacman -U --noconfirm ./*.pkg.tar.zst
           echo "--- ldd ---"
-          ldd /usr/lib/genesi-sd-cpp/sd-cli
-          if ldd /usr/lib/genesi-sd-cpp/sd-cli | grep -q 'not found'; then
+          # Captured, never piped into `grep -q`: grep exits at the first match,
+          # the writer gets SIGPIPE, and under pipefail the `if` then reads
+          # the 141 as "no match" -- a check that passes without checking.
+          deps="$(ldd /usr/lib/genesi-sd-cpp/sd-cli)"
+          if grep -q 'not found' <<< "$deps"; then
             echo "::error::sd-cli has unresolved libraries"; exit 1
           fi
+          echo "$deps"
           # Every resolved libggml must be the private one.
-          if ldd /usr/lib/genesi-sd-cpp/sd-cli | grep 'libggml' | grep -vq '/usr/lib/genesi-sd-cpp/'; then
+          if grep 'libggml' <<< "$deps" | grep -v '/usr/lib/genesi-sd-cpp/' >/dev/null; then
             echo "::error::sd-cli resolved a libggml outside its private directory"; exit 1
           fi
           # Through the /usr/bin symlink, which is how genesi-ai-image calls it:
           # the backend loader must still find the variants beside the binary.
-          genesi-sd-cli --help | head -20
+          # --version, not `--help | head`: head closing the pipe early is a
+          # SIGPIPE, which pipefail turned into this job's only failure (#1).
+          genesi-sd-cli --version
           genesi-sd-cli --list-devices || true
 
       - name: Upload the package

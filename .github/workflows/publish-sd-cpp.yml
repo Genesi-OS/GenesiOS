@@ -1,0 +1,283 @@
+name: Build and Publish the image engine
+
+# Dedicated, ISOLATED publisher for genesi-sd-cpp (stable-diffusion.cpp,
+# Vulkan), the engine behind AI Mode's Image page. Modelled on
+# publish-llama-cpp-cuda.yml, for the same two reasons:
+#
+#   * publish-packages.yml is the load-bearing update pipeline and is kept
+#     untouched -- a package that fails inside it aborts the publish of EVERY
+#     package. An engine that only image-generation users ever install must not
+#     be able to hold back everyone's updates.
+#   * it is installed on demand, never by an install list, so it does not
+#     belong in [genesi] at all.
+#
+# So it owns its own release-hosted pacman repo: tag `image-repo`, db
+# `genesi-image`. genesi-ai-mode's .install adds [genesi-image] to pacman.conf;
+# the Image page's Install button is then a plain `pacman -S genesi-sd-cpp`.
+#
+# ORDER MATTERS: this must have published at least once before any
+# genesi-ai-mode that seeds [genesi-image] ships. A repo in pacman.conf whose
+# db does not exist makes `pacman -Sy` fail for everyone.
+#
+# Manual + path-triggered only. Package assets are immutable (unique pkgrel per
+# publish); the db is switched only after the upload is verified byte-for-byte.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'genesi-arch/packages/genesi-sd-cpp/**'
+      - '.github/workflows/publish-sd-cpp.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-sd-cpp
+  cancel-in-progress: false
+
+env:
+  IMAGE_TAG: image-repo
+  DB_NAME: genesi-image
+  PKG: genesi-sd-cpp
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: cachyos/cachyos-v3:latest
+      options: --privileged
+
+    steps:
+      - name: Install git + gh in container
+        run: pacman -Sy --needed --noconfirm git openssh github-cli
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # Same key as [genesi], [genesi-apps] and [genesi-cuda].
+      - name: Import the repository signing key
+        id: signing
+        uses: ./.github/actions/signing-key
+        with:
+          enabled:        ${{ vars.GENESI_SIGNING_ENABLED }}
+          signing_key:    ${{ secrets.GENESI_SIGNING_KEY }}
+          signing_key_id: ${{ secrets.GENESI_SIGNING_KEY_ID }}
+          passphrase:     ${{ secrets.GENESI_SIGNING_KEY_PASSPHRASE }}
+          gnupghome:      /root/genesi-signing-gnupg-image
+
+      - name: Install build deps
+        run: |
+          set -euxo pipefail
+          pacman -Sy --noconfirm
+          pacman -S --needed --noconfirm --overwrite='*' \
+            base-devel git \
+            systemd systemd-sysvcompat \
+            cmake vulkan-headers shaderc glslang vulkan-icd-loader \
+            spirv-headers spirv-tools
+
+      - name: Normalize build flags for broad CPU compatibility
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # The SAME normalization publish-packages.yml and the CUDA lane do.
+          # The CUDA lane once shipped without it and every ggml-cpu variant,
+          # x64 baseline included, came out with AVX-512 -- SIGILL on a Zen 3.
+          # One build goes to every machine, so it has to be baseline x86-64;
+          # GGML_CPU_ALL_VARIANTS then picks the fastest variant at run time.
+          for f in /etc/makepkg.conf /etc/makepkg.conf.d/*.conf; do
+            [ -f "$f" ] || continue
+            sed -i -E \
+              -e 's/-march=[^ "]+/-march=x86-64/g' \
+              -e 's/-mtune=[^ "]+/-mtune=generic/g' \
+              -e 's/(-C[[:space:]]*target-cpu=)[^ "]+/\1x86-64/g' \
+              "$f"
+          done
+          grep -RHE 'march=|mtune=|target-cpu=' /etc/makepkg.conf /etc/makepkg.conf.d/ || true
+
+      - name: Headroom (overcommit + swap)
+        shell: bash
+        run: |
+          set -x
+          sysctl -w vm.overcommit_memory=1 || echo "::warning::could not set overcommit"
+          set +e
+          if [ ! -e /ci-swapfile ]; then
+            avail_mb=$(df --output=avail -m / 2>/dev/null | tail -1 | tr -d ' '); avail_mb=${avail_mb:-0}
+            want_mb=$(( avail_mb / 2 )); [ "$want_mb" -gt 16384 ] && want_mb=16384
+            if [ "$want_mb" -ge 2048 ]; then
+              fallocate -l "${want_mb}M" /ci-swapfile 2>/dev/null \
+                || dd if=/dev/zero of=/ci-swapfile bs=1M count="$want_mb" status=none
+              if [ -s /ci-swapfile ]; then
+                chmod 600 /ci-swapfile
+                mkswap /ci-swapfile >/dev/null 2>&1 && swapon /ci-swapfile \
+                  || echo "::warning::swapon failed — relying on overcommit"
+              fi
+              swapon --show 2>/dev/null | grep -q /ci-swapfile || rm -f /ci-swapfile
+            fi
+          fi
+          set -e
+          swapon --show || true; free -h || true
+
+      - name: Build + assemble the repo
+        shell: bash
+        env:
+          SIGN_ENABLED: ${{ steps.signing.outputs.enabled }}
+          SIGN_KEYID:   ${{ steps.signing.outputs.keyid }}
+        run: |
+          set -euo pipefail
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+          OUT="$GITHUB_WORKSPACE/genesi-arch/packages/image-repo"
+          mkdir -p "$OUT"; chown builder:builder "$OUT"
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/$PKG"
+
+          # Unique pkgrel per publish so filenames are immutable (pacman caches
+          # the compressed size; replacing a filename later breaks downloads).
+          # pkgver is static in this PKGBUILD (no pkgver()), so makepkg cannot
+          # reset the stamp the way it did in the CUDA lane.
+          PUBLISH_REL="${GITHUB_RUN_ID}${GITHUB_RUN_ATTEMPT}"
+          sed -i "s/^pkgrel=.*/pkgrel=${PUBLISH_REL}/" PKGBUILD
+          echo "building $(grep -E '^pkg(ver|rel)=' PKGBUILD | tr '\n' ' ')"
+
+          start=$(date +%s)
+          if timeout 5400 runuser -u builder -- env PKGDEST="$OUT" \
+              makepkg -f --noconfirm --noprogressbar; then
+            rc=0
+          else
+            rc=$?
+          fi
+          echo "build took $(( $(date +%s) - start ))s, exit=$rc"
+          [ "$rc" -eq 0 ] || { echo "::error::$PKG failed to build (exit $rc)"; exit "$rc"; }
+
+          cd "$OUT"
+          echo "Built:"; ls -lh ./*.pkg.tar.zst
+          # The layout genesi-ai-image and the Image page rely on (capture then
+          # match -- `tar tf | grep -q` trips pipefail via SIGPIPE).
+          contents="$(tar tf ./*.pkg.tar.zst)"
+          for f in usr/lib/genesi-sd-cpp/sd-cli usr/bin/genesi-sd-cli; do
+            grep -qx "$f" <<< "$contents" || { echo "::error::package missing $f"; exit 1; }
+          done
+          grep -qE '^usr/lib/genesi-sd-cpp/libggml-cpu-.*\.so$' <<< "$contents" \
+            || { echo "::error::no libggml-cpu-* variants (would SIGILL on older CPUs)"; exit 1; }
+          if grep -qE '^usr/lib/[^/]+\.so' <<< "$contents"; then
+            echo "::error::a library landed directly in /usr/lib (conflicts with genesi-llama-cpp)"; exit 1
+          fi
+
+          # It must install and RUN, through the /usr/bin symlink, with its own
+          # libggml -- before anything is published.
+          pacman -U --noconfirm ./*.pkg.tar.zst
+          # Captured, never piped into `grep -q`: grep exits at the first match,
+          # the writer gets SIGPIPE, and under pipefail the `if` then reads
+          # the 141 as "no match" -- a check that passes without checking.
+          deps="$(ldd /usr/lib/genesi-sd-cpp/sd-cli)"
+          if grep -q 'not found' <<< "$deps"; then
+            echo "::error::sd-cli has unresolved libraries"; exit 1
+          fi
+          if grep 'libggml' <<< "$deps" | grep -v '/usr/lib/genesi-sd-cpp/' >/dev/null; then
+            echo "::error::sd-cli resolved a libggml outside its private directory"; exit 1
+          fi
+          genesi-sd-cli --version
+          genesi-sd-cli --list-devices || true
+
+          # Build the release-hosted pacman db.
+          rm -f "${DB_NAME}".db* "${DB_NAME}".files* ./*.pkg.tar.zst.sig
+
+          # Sign BEFORE indexing: repo-add records a package's signature in the
+          # database only if the .sig is already on disk beside it.
+          REPO_ADD_SIGN=()
+          if [ "${SIGN_ENABLED:-0}" = "1" ]; then
+            GPG_ARGS=(--batch --yes --no-tty --detach-sign --local-user "${SIGN_KEYID}")
+            if [ -f "${GNUPGHOME:-}/passphrase" ]; then
+              GPG_ARGS+=(--pinentry-mode loopback --passphrase-file "${GNUPGHOME}/passphrase")
+            fi
+            for p in ./*.pkg.tar.zst; do
+              gpg "${GPG_ARGS[@]}" --output "${p}.sig" "${p}"
+              gpg --batch --quiet --verify "${p}.sig" "${p}" 2>/dev/null \
+                || { echo "::error::signature does not verify: ${p}"; exit 1; }
+            done
+            REPO_ADD_SIGN=(--sign --key "${SIGN_KEYID}")
+            export GPGKEY="${SIGN_KEYID}"
+          else
+            echo "::warning::no signing key — [genesi-image] will be published UNSIGNED"
+          fi
+
+          repo-add ${REPO_ADD_SIGN[@]+"${REPO_ADD_SIGN[@]}"} "${DB_NAME}.db.tar.gz" ./*.pkg.tar.zst
+          # Release assets must be flat files: replace repo-add's symlinks.
+          cp --remove-destination "${DB_NAME}.db.tar.gz"    "${DB_NAME}.db"
+          cp --remove-destination "${DB_NAME}.files.tar.gz" "${DB_NAME}.files"
+          if [ -f "${DB_NAME}.db.tar.gz.sig" ]; then
+            cp --remove-destination "${DB_NAME}.db.tar.gz.sig"    "${DB_NAME}.db.sig"
+            cp --remove-destination "${DB_NAME}.files.tar.gz.sig" "${DB_NAME}.files.sig"
+          elif [ "${SIGN_ENABLED:-0}" = "1" ]; then
+            echo "::error::repo-add did not produce ${DB_NAME}.db.tar.gz.sig"
+            exit 1
+          fi
+
+          # Verify repo-add recorded the exact filename + compressed size.
+          PACKAGE_PATH=$(find . -maxdepth 1 -type f -name "${PKG}-*.pkg.tar.zst" -print -quit)
+          test -n "$PACKAGE_PATH"
+          PACKAGE_NAME=${PACKAGE_PATH#./}
+          PACKAGE_SIZE=$(stat -c%s "$PACKAGE_PATH")
+          DESC_ENTRY=$(bsdtar -tf "${DB_NAME}.db.tar.gz" | grep '/desc$' | head -1)
+          DB_NAME_IN=$(bsdtar -xOf "${DB_NAME}.db.tar.gz" "$DESC_ENTRY" | awk '/^%FILENAME%$/{getline; print; exit}')
+          DB_SIZE_IN=$(bsdtar -xOf "${DB_NAME}.db.tar.gz" "$DESC_ENTRY" | awk '/^%CSIZE%$/{getline; print; exit}')
+          test "$DB_NAME_IN" = "$PACKAGE_NAME"
+          test "$DB_SIZE_IN" = "$PACKAGE_SIZE"
+
+          PACKAGE_SHA256=$(sha256sum "$PACKAGE_PATH" | awk '{print $1}')
+          printf '%s  %s\n' "$PACKAGE_SHA256" "$PACKAGE_NAME" > "${PACKAGE_NAME}.sha256"
+          echo "PACKAGE_NAME=$PACKAGE_NAME" >> "$GITHUB_ENV"
+
+      - name: Publish immutable package
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/image-repo"
+          # --prerelease keeps this infrastructure release off the top of the
+          # Releases page: `rolling` (the ISO download) must stay the only
+          # non-prerelease. The TAG is baked into installed systems' pacman.conf
+          # Server line, so it must never change.
+          gh release create "$IMAGE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "[infra] Pacman repo — genesi-image (not a download)" \
+            --prerelease \
+            --notes "Release-hosted pacman repo for the AI Mode image engine (genesi-sd-cpp). Package assets are immutable; the stable db points to the current package. This is NOT the Genesi OS ISO download." \
+            2>/dev/null || echo "Release $IMAGE_TAG already exists — updating assets."
+          if gh release view "$IMAGE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            -q '.assets[].name' | grep -Fxq "$PACKAGE_NAME"; then
+            echo "::error::refusing to overwrite immutable package asset $PACKAGE_NAME"
+            exit 1
+          fi
+          EXTRA=()
+          if [ -f "${PACKAGE_NAME}.sig" ]; then EXTRA+=("${PACKAGE_NAME}.sig"); fi
+          gh release upload "$IMAGE_TAG" --repo "$GITHUB_REPOSITORY" \
+            "$PACKAGE_NAME" "${PACKAGE_NAME}.sha256" ${EXTRA[@]+"${EXTRA[@]}"}
+          mkdir -p remote-package
+          gh release download "$IMAGE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$PACKAGE_NAME" --dir remote-package
+          cmp --silent "$PACKAGE_NAME" "remote-package/$PACKAGE_NAME"
+          echo "$(cut -d' ' -f1 "${PACKAGE_NAME}.sha256")  remote-package/$PACKAGE_NAME" | sha256sum --check -
+
+      - name: Publish repository db
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/image-repo"
+          INDEX_SIGS=()
+          if [ -f "${DB_NAME}.db.sig" ]; then
+            INDEX_SIGS+=("${DB_NAME}.db.sig" "${DB_NAME}.db.tar.gz.sig"
+                         "${DB_NAME}.files.sig" "${DB_NAME}.files.tar.gz.sig")
+          fi
+          gh release upload "$IMAGE_TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            "${DB_NAME}.db.tar.gz" "${DB_NAME}.db" \
+            "${DB_NAME}.files.tar.gz" "${DB_NAME}.files" ${INDEX_SIGS[@]+"${INDEX_SIGS[@]}"}
+          echo "Published $PACKAGE_NAME to [genesi-image]."
