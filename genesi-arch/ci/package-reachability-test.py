@@ -58,6 +58,11 @@ NOT_INSTALLED = {
         "~172 MB; release-hosted, installed from Welcome / Package Installer.",
     "genesi-llama-cpp-cuda":
         "~122 MB and CUDA-only; pulled in by AI Mode Turbo when asked for.",
+    "genesi-sd-cpp":
+        "the image engine; installed from the AI Mode Monitor's Image page "
+        "when the user asks for it (most people never generate images, and "
+        "the ones who do download GBs of weights anyway). An optdepend of "
+        "genesi-ai-mode.",
     "genesi-gaming":
         "large bundle; installed from Welcome / Package Installer "
         "(see the note in genesi-desktop's PKGBUILD).",

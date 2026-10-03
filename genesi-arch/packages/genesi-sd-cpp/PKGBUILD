@@ -1,0 +1,118 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# stable-diffusion.cpp with the VULKAN backend: local image generation and
+# editing for AI Mode's Image page (genesi-ai-image). The same ggml family as
+# llama.cpp, so it runs GGUF-quantized diffusion models on any GPU (NVIDIA /
+# AMD / Intel) with no CUDA toolkit and no Python/PyTorch stack, which is the
+# whole reason it was picked over a ComfyUI backend.
+#
+# Installed ON DEMAND from the Monitor's Image page, never by default: most
+# people will not generate images, and the ones who do download several GB of
+# weights anyway.
+#
+# ── Why everything lives in /usr/lib/genesi-sd-cpp ──────────────────────────
+#
+# stable-diffusion.cpp vendors its OWN patched ggml (leejet/ggml). llama.cpp
+# installs libggml*.so into /usr/lib, so a second libggml there is a file
+# conflict with genesi-llama-cpp -- and, worse, a binary picking up the other
+# project's ggml at run time. So the binaries and every ggml library go into a
+# private directory with RPATH=$ORIGIN, and /usr/bin only gets symlinks.
+#
+# ── Why the ggml CPU backend is built as runtime-picked variants ─────────────
+#
+# Same trap genesi-llama-cpp documents at length: with GGML_NATIVE=OFF, ggml
+# still force-enables AVX2/FMA/F16C, and the binary SIGILLs on any CPU without
+# them. GGML_BACKEND_DL + GGML_CPU_ALL_VARIANTS builds one CPU backend per ISA
+# level and lets ggml dlopen the best one this CPU supports. The loader looks
+# next to the executable, and /proc/self/exe resolves the /usr/bin symlink to
+# /usr/lib/genesi-sd-cpp -- which is where the variants are.
+pkgname=genesi-sd-cpp
+# The upstream build number of the pinned commit (tag master-929-3f8527a).
+# Static on purpose -- see the pkgver() note in genesi-llama-cpp-cuda: a
+# pkgver() that disagrees with this line makes makepkg reset pkgrel.
+pkgver=929
+pkgrel=1
+pkgdesc='stable-diffusion.cpp (Vulkan) — local image generation and editing for Genesi AI Mode'
+arch=('x86_64')
+url='https://github.com/leejet/stable-diffusion.cpp'
+license=('MIT')
+depends=('vulkan-icd-loader' 'gcc-libs' 'glibc')
+makedepends=('git' 'cmake' 'vulkan-headers' 'shaderc' 'glslang'
+             'spirv-headers' 'spirv-tools')
+# PINNED. Model support moves fast upstream (a new architecture lands every few
+# days) and genesi-ai-image builds its sd-cli command lines against the flags
+# of THIS commit. To move forward: change _commit and pkgver together, and run
+# ci/image-cli-test.py plus one real generation per catalog model.
+_commit=3f8527a46c54ecf4cb4ed6003da8e8982283c73c
+source=("stable-diffusion.cpp::git+https://github.com/leejet/stable-diffusion.cpp.git#commit=${_commit}"
+        "ggml::git+https://github.com/leejet/ggml.git")
+sha256sums=('SKIP'
+            'SKIP')
+
+prepare() {
+    cd stable-diffusion.cpp
+    # Only the patched ggml. The web UI, libwebp and libwebm submodules are
+    # left out: genesi-ai-image reads and writes PNG, and has its own UI.
+    git submodule init ggml
+    git config submodule.ggml.url "$srcdir/ggml"
+    git -c protocol.file.allow=always submodule update ggml
+}
+
+build() {
+    # The Vulkan shader generation forks one compiler per variant; full
+    # -j$(nproc) runs the CI runner out of memory. Same cap as genesi-llama-cpp:
+    # one job per 6 GB, read from /proc/meminfo (free(1) is translated).
+    local mem_gb jobs
+    mem_gb=$(awk '/^MemTotal:/{printf "%d", $2/1048576}' /proc/meminfo 2>/dev/null)
+    [ -z "$mem_gb" ] && mem_gb=8
+    jobs=$(( mem_gb / 6 )); [ "$jobs" -lt 1 ] && jobs=1
+    [ "$jobs" -gt "$(nproc)" ] && jobs=$(nproc)
+    echo "genesi-sd-cpp: building with -j${jobs} (RAM ${mem_gb} GB)"
+
+    # '$ORIGIN' is literal: the binaries find their libraries beside them.
+    cmake -B build -S stable-diffusion.cpp \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DSD_VULKAN=ON \
+        -DSD_WEBP=OFF \
+        -DSD_WEBM=OFF \
+        -DSD_SERVER_BUILD_FRONTEND=OFF \
+        -DBUILD_SHARED_LIBS=ON \
+        -DSD_BUILD_SHARED_GGML_LIB=ON \
+        -DGGML_NATIVE=OFF \
+        -DGGML_BACKEND_DL=ON \
+        -DGGML_CPU_ALL_VARIANTS=ON \
+        -DCMAKE_SKIP_INSTALL_RPATH=OFF \
+        -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+        -DCMAKE_INSTALL_RPATH='$ORIGIN'
+    cmake --build build --config Release -j"${jobs}"
+}
+
+package() {
+    local lib="$pkgdir/usr/lib/genesi-sd-cpp"
+    install -dm755 "$lib" "$pkgdir/usr/bin"
+    install -Dm755 build/bin/sd-cli "$lib/sd-cli"
+    # sd-server is built (it is part of the examples target) but not shipped:
+    # the library is static in each binary, so it is another 38 MB, and nothing
+    # uses it yet. It comes back with a warm-model mode in genesi-ai-image.
+    # Every shared object the build produced: libggml, libggml-base, the Vulkan
+    # backend and each CPU variant, plus any third-party lib that came out
+    # shared. The CPU variants are the point, so refuse to package without them.
+    # cp -P, not install: libggml.so -> .so.0 -> .so.0.25.3 are symlinks, and
+    # install(1) follows them, shipping the same library three times over.
+    local so n=0
+    for so in build/bin/*.so*; do
+        [ -e "$so" ] || continue
+        cp -P "$so" "$lib/"
+        n=$((n + 1))
+    done
+    if ! ls "$lib"/libggml-cpu-*.so >/dev/null 2>&1; then
+        echo "genesi-sd-cpp: no libggml-cpu-*.so variants were built" >&2
+        return 1
+    fi
+    echo "genesi-sd-cpp: packaged $n shared libraries"
+    # Prefixed names in /usr/bin: a bare `sd-cli` could collide with an AUR
+    # stable-diffusion.cpp package, and the prefix says whose it is.
+    ln -s /usr/lib/genesi-sd-cpp/sd-cli "$pkgdir/usr/bin/genesi-sd-cli"
+    install -Dm644 stable-diffusion.cpp/LICENSE \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

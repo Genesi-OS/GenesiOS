@@ -1,0 +1,108 @@
+name: Test genesi-sd-cpp build
+
+# Standalone, manual-only smoke build for the Vulkan stable-diffusion.cpp
+# package behind AI Mode's Image page, same reasoning as test-llama-cpp.yml: a
+# package that fails inside publish-packages.yml aborts the whole publish, so a
+# new heavy package proves itself here first. Once this is green, add
+# "genesi-sd-cpp" to publish-packages.yml's PACKAGES (next to genesi-llama-cpp,
+# before the genesi-desktop meta).
+#
+# Beyond "it compiles", this checks the three things the PKGBUILD is built
+# around, each of which fails only on a user's machine otherwise:
+#   * the binaries find their private libggml through RPATH=$ORIGIN, not the
+#     one genesi-llama-cpp puts in /usr/lib;
+#   * the CPU backend came out as runtime-picked variants (the SIGILL guard);
+#   * nothing lands in /usr/lib directly, where it would conflict with
+#     genesi-llama-cpp.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: cachyos/cachyos-v3:latest
+    steps:
+      - name: Install git in container
+        run: pacman -Sy --needed --noconfirm git openssh
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          set -euxo pipefail
+          pacman -Sy --noconfirm
+          pacman -S --needed --noconfirm --overwrite='*' \
+            base-devel git \
+            systemd systemd-sysvcompat \
+            cmake vulkan-headers shaderc glslang vulkan-icd-loader \
+            spirv-headers spirv-tools
+
+      - name: Build the package (timed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/genesi-sd-cpp"
+          start=$(date +%s)
+          if timeout 2100 runuser -u builder -- makepkg -f --noconfirm --noprogressbar; then
+            rc=0
+          else
+            rc=$?
+          fi
+          echo "build took $(( $(date +%s) - start ))s, exit=$rc"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::genesi-sd-cpp failed to build (exit $rc)"
+            exit "$rc"
+          fi
+          ls -lh ./*.pkg.tar.zst
+
+          # Capture first: `tar tf | grep -q` trips pipefail via SIGPIPE (see
+          # the note in test-llama-cpp.yml).
+          contents="$(tar tf ./*.pkg.tar.zst)"
+          echo "$contents" | grep -E '^usr/(bin|lib)/' || true
+          fail=0
+          for f in usr/lib/genesi-sd-cpp/sd-cli usr/bin/genesi-sd-cli; do
+            if grep -qx "$f" <<< "$contents"; then echo "OK: $f"; else
+              echo "::error::package is missing $f"; fail=1; fi
+          done
+          if grep -qE '^usr/lib/genesi-sd-cpp/libggml-cpu-.*\.so$' <<< "$contents"; then
+            echo "OK: CPU backend variants present"
+          else
+            echo "::error::no libggml-cpu-* variants: the binary would SIGILL on older CPUs"; fail=1
+          fi
+          if grep -qE '^usr/lib/[^/]+\.so' <<< "$contents"; then
+            echo "::error::a library landed directly in /usr/lib (conflicts with genesi-llama-cpp)"; fail=1
+          fi
+          exit $fail
+
+      - name: Install it and run the engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/genesi-arch/packages/genesi-sd-cpp"
+          pacman -U --noconfirm ./*.pkg.tar.zst
+          echo "--- ldd ---"
+          ldd /usr/lib/genesi-sd-cpp/sd-cli
+          if ldd /usr/lib/genesi-sd-cpp/sd-cli | grep -q 'not found'; then
+            echo "::error::sd-cli has unresolved libraries"; exit 1
+          fi
+          # Every resolved libggml must be the private one.
+          if ldd /usr/lib/genesi-sd-cpp/sd-cli | grep 'libggml' | grep -vq '/usr/lib/genesi-sd-cpp/'; then
+            echo "::error::sd-cli resolved a libggml outside its private directory"; exit 1
+          fi
+          # Through the /usr/bin symlink, which is how genesi-ai-image calls it:
+          # the backend loader must still find the variants beside the binary.
+          genesi-sd-cli --help | head -20
+          genesi-sd-cli --list-devices || true
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesi-sd-cpp-pkg
+          path: genesi-arch/packages/genesi-sd-cpp/*.pkg.tar.zst
