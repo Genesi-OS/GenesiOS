@@ -1,0 +1,939 @@
+#!/usr/bin/env python3
+"""
+genesi-ai-image — local image generation and editing for Genesi AI Mode.
+
+The AI Mode Monitor's Image page is a front end over this tool, the same split
+as genesi-ai-turbo / genesi-find: everything that touches models, the disk or
+the GPU lives here, where it can be run and tested from a terminal, and the
+window only draws what this prints. With --json every subcommand prints one
+JSON object per line on stdout; human text goes to stderr.
+
+    genesi-ai-image status   [--json]
+    genesi-ai-image catalog  [--json]
+    genesi-ai-image pull     MODEL [--json]
+    genesi-ai-image remove   MODEL [--json]
+    genesi-ai-image generate --model MODEL --prompt TEXT [--ref IMAGE]
+                             [--width W --height H] [--steps N] [--seed S]
+                             [--out PATH] [--keep-llm] [--json]
+    genesi-ai-image upscale  --in IMAGE [--out PATH] [--json]
+    genesi-ai-image gallery  [--limit N] [--json]
+
+The engine is stable-diffusion.cpp (package genesi-sd-cpp, `genesi-sd-cli`),
+the same ggml family as the llama.cpp behind Turbo. Weights are never shipped:
+the user downloads a model from the catalog when they want one, exactly like a
+chat model.
+
+── The catalog ──────────────────────────────────────────────────────────────
+
+Only models whose licence lets anyone use the output for anything (Apache-2.0
+weights, BSD upscaler), and only files that download without a Hugging Face
+login. Each file carries its size and SHA-256, so a download that was cut, or
+a file that is not the one we tested against, is caught before sd-cli is asked
+to load it -- a truncated GGUF does not fail cleanly, it fails as a confusing
+tensor error minutes into a load.
+
+Components are shared by NAME across models: a file two models need is
+downloaded once, and removing one model never deletes a file the other still
+uses.
+"""
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import random
+import re
+import shutil
+import signal
+import struct
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+OLLAMA = "http://127.0.0.1:11434"
+ENGINE_NAMES = ("genesi-sd-cli", "sd-cli")
+
+HF = "https://huggingface.co/"
+
+# Every file any model needs. size/sha256 are what Hugging Face (and GitHub,
+# for the upscaler) report for the exact file -- checked when it lands.
+COMPONENTS = {
+    "flux2-klein-4b-q8": {
+        "file": "flux-2-klein-4b-Q8_0.gguf",
+        "url": HF + "leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf",
+        "size": 4300629440,
+        "sha256": "0bba6951258ec8f92d51114a8fa13e66828297bfff58a738f52729b3ef66fa28",
+    },
+    "flux2-vae": {
+        "file": "flux2-full_encoder_small_decoder.safetensors",
+        "url": HF + "black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors",
+        "size": 249519092,
+        "sha256": "ea4273f02d1fafbf8e1d1c2cf6018ed8748652eb0bf34f2dd91171f16f15ab62",
+    },
+    "qwen3-4b-q4km": {
+        "file": "Qwen3-4B-Q4_K_M.gguf",
+        "url": HF + "unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+        "size": 2497281312,
+        "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
+    },
+    "z-image-turbo-q4k": {
+        "file": "z_image_turbo-Q4_K.gguf",
+        "url": HF + "leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q4_K.gguf",
+        "size": 3864250304,
+        "sha256": "14b375ab4f226bc5378f68f37e899ef3c2242b8541e61e2bc1aff40976086fbd",
+    },
+    "flux1-vae": {
+        "file": "flux1-ae.safetensors",
+        "url": HF + "Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+        "size": 335304388,
+        "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+    },
+    "qwen3-4b-2507-q4km": {
+        "file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        "url": HF + "unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        "size": 2497281120,
+        "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+    },
+    "realesrgan-x4": {
+        "file": "RealESRGAN_x4plus.pth",
+        "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+        "size": 67040989,
+        # GitHub publishes no digest for release assets; the size is the check.
+        "sha256": "",
+    },
+}
+
+# What each model is, in the words the Image page shows. `parts` maps the
+# sd-cli role of each file to its component. `caps` decides which modes offer
+# the model: generate (text -> image), edit (image + instruction -> image),
+# upscale (image -> bigger image).
+MODELS = [
+    {
+        "id": "flux2-klein",
+        "name": "FLUX.2 klein 4B",
+        "summary": {
+            "en": "Generates AND edits. Describe a change (\"make the sky a sunset\") and it redraws the picture. 4 steps — fast on any 6 GB+ GPU.",
+            "pt": "Gera E edita. Descreva uma mudança (\"deixa o céu em pôr do sol\") e ele redesenha a imagem. 4 passos — rápido em qualquer GPU de 6 GB+.",
+        },
+        "license": "Apache-2.0",
+        "caps": ["generate", "edit"],
+        "parts": {"diffusion": "flux2-klein-4b-q8", "vae": "flux2-vae",
+                  "llm": "qwen3-4b-q4km"},
+        "defaults": {"steps": 4, "cfg": 1.0, "sampler": "euler"},
+        "recommended": True,
+    },
+    {
+        "id": "z-image-turbo",
+        "name": "Z-Image Turbo",
+        "summary": {
+            "en": "The most photorealistic of the set, and good at text inside the image. Generates only. 8 steps.",
+            "pt": "O mais fotorrealista do catálogo, e bom em texto dentro da imagem. Só gera. 8 passos.",
+        },
+        "license": "Apache-2.0",
+        "caps": ["generate"],
+        "parts": {"diffusion": "z-image-turbo-q4k", "vae": "flux1-vae",
+                  "llm": "qwen3-4b-2507-q4km"},
+        "defaults": {"steps": 8, "cfg": 1.0, "sampler": "euler"},
+        "recommended": False,
+    },
+    {
+        "id": "upscaler",
+        "name": "Real-ESRGAN 4×",
+        "summary": {
+            "en": "Makes any picture four times larger and sharper. Small (67 MB).",
+            "pt": "Deixa qualquer imagem quatro vezes maior e mais nítida. Pequeno (67 MB).",
+        },
+        "license": "BSD-3-Clause",
+        "caps": ["upscale"],
+        "parts": {"upscale": "realesrgan-x4"},
+        "defaults": {},
+        "recommended": False,
+    },
+]
+
+# The flag each part is handed to sd-cli under, at the pinned genesi-sd-cpp.
+PART_FLAGS = {"diffusion": "--diffusion-model", "vae": "--vae", "llm": "--llm",
+              "upscale": "--upscale-model"}
+
+# About one megapixel: what these models were trained at. Sides are multiples
+# of 16 because the latent is 1/8 of the image and the DiT patches it by 2.
+TARGET_PIXELS = 1024 * 1024
+MAX_SIDE = 2048
+
+
+# ── paths ────────────────────────────────────────────────────────────────────
+
+def models_dir():
+    env = os.environ.get("GENESI_IMAGE_MODELS_DIR", "").strip()
+    if env:
+        return env
+    data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    # NOT genesi/models: that is the GGUF chat library genesi-ai-turbo scans,
+    # and a diffusion GGUF listed as a chat model would be offered in every
+    # model picker and fail to load in all of them.
+    return os.path.join(data, "genesi", "image-models")
+
+
+def _xdg_pictures():
+    try:
+        r = subprocess.run(["xdg-user-dir", "PICTURES"], capture_output=True,
+                           text=True, timeout=3)
+        p = (r.stdout or "").strip()
+        # xdg-user-dir answers $HOME when the directory is not configured,
+        # which would scatter pictures across the home folder.
+        if p and os.path.realpath(p) != os.path.realpath(os.path.expanduser("~")):
+            return p
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.path.expanduser("~/Pictures")
+
+
+def output_dir():
+    env = os.environ.get("GENESI_IMAGE_OUTPUT_DIR", "").strip()
+    return env or os.path.join(_xdg_pictures(), "Genesi AI")
+
+
+def find_engine():
+    env = os.environ.get("GENESI_SD_CLI", "").strip()
+    if env:
+        return env if os.path.exists(env) else None
+    for name in ENGINE_NAMES:
+        p = shutil.which(name)
+        if p:
+            return p
+    return None
+
+
+# ── output ───────────────────────────────────────────────────────────────────
+
+class Out:
+    """One JSON object per line in --json mode, readable text otherwise."""
+
+    def __init__(self, as_json):
+        self.json = as_json
+
+    def event(self, kind, **fields):
+        if self.json:
+            fields["event"] = kind
+            sys.stdout.write(json.dumps(fields, ensure_ascii=False) + "\n")
+            sys.stdout.flush()
+        else:
+            text = fields.get("text")
+            if kind == "progress":
+                steps = fields.get("steps") or 0
+                text = "%s %s/%s" % (fields.get("phase", ""), fields.get("step"), steps)
+            elif kind == "done":
+                text = fields.get("path") or "done"
+            if text:
+                sys.stderr.write(("[!] " if kind == "error" else ":: ") + str(text) + "\n")
+
+    def data(self, obj):
+        if self.json:
+            sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        else:
+            sys.stdout.write(json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
+        sys.stdout.flush()
+
+
+# ── catalog / install state ──────────────────────────────────────────────────
+
+def model_by_id(mid):
+    for m in MODELS:
+        if m["id"] == mid:
+            return m
+    return None
+
+
+def component_path(cid):
+    return os.path.join(models_dir(), COMPONENTS[cid]["file"])
+
+
+def component_ready(cid):
+    """Present at its full size. Size, not hash: hashing 4 GB on every catalog
+    refresh would freeze the page, and the hash was checked when it landed."""
+    try:
+        return os.path.getsize(component_path(cid)) == COMPONENTS[cid]["size"]
+    except OSError:
+        return False
+
+
+def model_components(m):
+    seen, out = set(), []
+    for cid in m["parts"].values():
+        if cid not in seen:
+            seen.add(cid)
+            out.append(cid)
+    return out
+
+
+def model_state(m):
+    comps = model_components(m)
+    total = sum(COMPONENTS[c]["size"] for c in comps)
+    have = 0
+    for c in comps:
+        p = component_path(c)
+        if component_ready(c):
+            have += COMPONENTS[c]["size"]
+        else:
+            try:
+                have += min(os.path.getsize(p + ".part"), COMPONENTS[c]["size"])
+            except OSError:
+                pass
+    installed = all(component_ready(c) for c in comps)
+    return {
+        "id": m["id"], "name": m["name"], "summary": m["summary"],
+        "license": m["license"], "caps": m["caps"],
+        "recommended": m["recommended"], "defaults": m["defaults"],
+        "size": total, "downloaded": have if not installed else total,
+        "installed": installed,
+        "partial": (not installed) and have > 0,
+    }
+
+
+def gpu_vram_mb():
+    """Total VRAM of the biggest GPU, or 0 when nothing can be read."""
+    best = 0
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=memory.total",
+                            "--format=csv,noheader,nounits"],
+                           capture_output=True, text=True, timeout=5)
+        for line in (r.stdout or "").splitlines():
+            try:
+                best = max(best, int(float(line.strip())))
+            except ValueError:
+                pass
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if best:
+        return best
+    # amdgpu / i915 with local memory publish it in sysfs.
+    drm = "/sys/class/drm"
+    try:
+        for card in os.listdir(drm):
+            f = os.path.join(drm, card, "device", "mem_info_vram_total")
+            try:
+                with open(f) as fh:
+                    best = max(best, int(fh.read().strip()) // (1024 * 1024))
+            except (OSError, ValueError):
+                pass
+    except OSError:
+        pass
+    return best
+
+
+# ── downloads ────────────────────────────────────────────────────────────────
+
+def _sha256(path, out, label):
+    h = hashlib.sha256()
+    size = os.path.getsize(path)
+    done, last = 0, 0.0
+    with open(path, "rb") as fh:
+        while True:
+            chunk = fh.read(8 * 1024 * 1024)
+            if not chunk:
+                break
+            h.update(chunk)
+            done += len(chunk)
+            now = time.monotonic()
+            if now - last > 0.5:
+                last = now
+                out.event("progress", phase="verify", file=label,
+                          step=done, steps=size)
+    return h.hexdigest()
+
+
+def download_component(cid, out, stop=lambda: False):
+    """Fetch one file into the models dir, resuming a .part when there is one.
+    Returns True when the file is in place and verified."""
+    c = COMPONENTS[cid]
+    dest = component_path(cid)
+    if component_ready(cid):
+        return True
+    os.makedirs(models_dir(), exist_ok=True)
+    part = dest + ".part"
+    have = 0
+    try:
+        have = os.path.getsize(part)
+    except OSError:
+        pass
+    if have > c["size"]:
+        os.unlink(part)
+        have = 0
+
+    if have < c["size"]:
+        req = urllib.request.Request(c["url"], headers={
+            "User-Agent": "genesi-ai-image/1"})
+        if have:
+            req.add_header("Range", "bytes=%d-" % have)
+        try:
+            resp = urllib.request.urlopen(req, timeout=60)
+        except urllib.error.HTTPError as e:
+            if e.code == 416:          # already complete on the server's count
+                resp = None
+            else:
+                out.event("error", text="%s: HTTP %s" % (c["file"], e.code))
+                return False
+        except (urllib.error.URLError, OSError) as e:
+            out.event("error", text="%s: %s" % (c["file"], getattr(e, "reason", e)))
+            return False
+        if resp is not None:
+            # A server that ignored the Range sends the whole file from byte 0;
+            # appending that to the partial would build a corrupt file.
+            if have and resp.status != 206:
+                have = 0
+            mode = "ab" if have else "wb"
+            done, last, t0 = have, 0.0, time.monotonic()
+            try:
+                with resp, open(part, mode) as fh:
+                    while True:
+                        if stop():
+                            out.event("error", text="cancelled")
+                            return False
+                        chunk = resp.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                        done += len(chunk)
+                        now = time.monotonic()
+                        if now - last > 0.4:
+                            last = now
+                            rate = (done - have) / max(now - t0, 1e-6)
+                            out.event("progress", phase="download", file=c["file"],
+                                      step=done, steps=c["size"],
+                                      rate=int(rate))
+            except (OSError, urllib.error.URLError) as e:
+                out.event("error", text="%s: %s (the download resumes where it "
+                          "stopped next time)" % (c["file"], e))
+                return False
+
+    size = os.path.getsize(part)
+    if size != c["size"]:
+        out.event("error", text="%s: got %d bytes, expected %d (try again — it "
+                  "resumes)" % (c["file"], size, c["size"]))
+        return False
+    if c["sha256"]:
+        digest = _sha256(part, out, c["file"])
+        if digest != c["sha256"]:
+            os.unlink(part)
+            out.event("error", text="%s failed its checksum and was deleted — "
+                      "download it again" % c["file"])
+            return False
+    os.replace(part, dest)
+    return True
+
+
+# ── image helpers ────────────────────────────────────────────────────────────
+
+def image_size(path):
+    """(width, height) of a PNG or JPEG from its header, or None."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(32)
+            if head[:8] == b"\x89PNG\r\n\x1a\n":
+                return struct.unpack(">II", head[16:24])
+            if head[:2] != b"\xff\xd8":
+                return None
+            fh.seek(2)
+            while True:
+                b = fh.read(1)
+                while b and b != b"\xff":
+                    b = fh.read(1)
+                while b == b"\xff":
+                    b = fh.read(1)
+                if not b:
+                    return None
+                marker = b[0]
+                seglen = struct.unpack(">H", fh.read(2))[0]
+                # SOF0..SOF15 except DHT(C4), JPG(C8), DAC(CC) carry the size.
+                if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                    fh.read(1)
+                    h, w = struct.unpack(">HH", fh.read(4))
+                    return (w, h)
+                fh.seek(seglen - 2, 1)
+    except (OSError, struct.error):
+        return None
+
+
+def snap(n):
+    return max(256, int(round(n / 16.0)) * 16)
+
+
+def fit_size(w, h, target=TARGET_PIXELS):
+    """Keep the aspect ratio, land near `target` pixels, multiples of 16."""
+    if w <= 0 or h <= 0:
+        return 1024, 1024
+    scale = (target / float(w * h)) ** 0.5
+    nw, nh = snap(w * scale), snap(h * scale)
+    big = max(nw, nh)
+    if big > MAX_SIDE:
+        f = MAX_SIDE / float(big)
+        nw, nh = snap(nw * f), snap(nh * f)
+    return nw, nh
+
+
+def new_output_path(stem="genesi"):
+    d = output_dir()
+    os.makedirs(d, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = os.path.join(d, "%s-%s.png" % (stem, ts))
+    n = 2
+    while os.path.exists(path):
+        path = os.path.join(d, "%s-%s-%d.png" % (stem, ts, n))
+        n += 1
+    return path
+
+
+# ── the engine ───────────────────────────────────────────────────────────────
+
+def engine_argv(engine):
+    """How to start the engine. A .py engine is the stand-in ci/image-cli-test.py
+    uses, run through this interpreter so the test also runs where a shebang
+    does not (a Windows dev box)."""
+    return [sys.executable, engine] if engine.endswith(".py") else [engine]
+
+
+def build_generate_argv(engine, model, prompt, out_path, width, height,
+                        steps=None, seed=-1, ref=None, extra_flags=()):
+    d = model["defaults"]
+    argv = engine_argv(engine)
+    for role, cid in model["parts"].items():
+        argv += [PART_FLAGS[role], component_path(cid)]
+    argv += ["-p", prompt,
+             "-W", str(int(width)), "-H", str(int(height)),
+             "--steps", str(int(steps or d.get("steps", 20))),
+             "--cfg-scale", str(d.get("cfg", 1.0)),
+             "--seed", str(int(seed)),
+             "-o", out_path]
+    if d.get("sampler"):
+        argv += ["--sampling-method", d["sampler"]]
+    if ref:
+        argv += ["-r", ref]
+    # Flash attention in the diffusion model only: the big VRAM saving, and
+    # the one path every backend of the pinned ggml implements.
+    argv += ["--diffusion-fa"]
+    argv += list(extra_flags)
+    return argv
+
+
+def build_upscale_argv(engine, model, src, out_path):
+    return engine_argv(engine) + ["-M", "upscale",
+            "--upscale-model", component_path(model["parts"]["upscale"]),
+            "-i", src, "-o", out_path]
+
+
+# A progress bar from sd-cli's pretty_progress: "|====>   | 3/4 - 1.23s/it".
+# The SAME printer also draws the model-loading bar, in bytes per second.
+_PROG = re.compile(r"(\d+)/(\d+) - ([\d.]+)\s*(s/it|it/s|[KMG]B/s)")
+
+
+class ProgressParser:
+    """Turns sd-cli's terminal output into phases the page can show.
+
+    The output mixes \\r-redrawn bars with log lines, so it is fed raw chunks
+    and splits on BOTH. Phases: load (weights going to the GPU, a bytes bar),
+    encode (the prompt through the text model), sample (the steps),
+    decode (latent to pixels), upscale.
+    """
+
+    def __init__(self):
+        self.buf = ""
+        self.phase = "load"
+        self.last_error = ""
+
+    def feed(self, text):
+        self.buf += text
+        events = []
+        parts = re.split(r"[\r\n]", self.buf)
+        self.buf = parts.pop()
+        for line in parts:
+            ev = self._line(line)
+            if ev:
+                events.append(ev)
+        # A bar redrawn with \r and no newline yet still says where we are.
+        if self.buf:
+            ev = self._bar(self.buf)
+            if ev:
+                events.append(ev)
+        return events
+
+    def _bar(self, line):
+        m = _PROG.search(line)
+        if not m:
+            return None
+        step, steps, unit = int(m.group(1)), int(m.group(2)), m.group(4)
+        if unit.endswith("B/s"):
+            # Weights load lazily, one model at a time: the VAE's bytes bar
+            # comes AFTER the steps. Once drawing has started, a load bar is
+            # part of finishing -- reporting it as "load" sent the page's bar
+            # back to 10% at the very end of a run.
+            if self.phase in ("sample", "decode"):
+                self.phase = "decode"
+                return {"kind": "phase", "phase": "decode"}
+            phase = "load"
+        else:
+            phase = "upscale" if self.phase == "upscale" else "sample"
+        if phase == "sample":
+            self.phase = "sample"
+        rate = float(m.group(3))
+        sec_per_it = rate if unit == "s/it" else (1.0 / rate if rate else 0.0)
+        return {"kind": "progress", "phase": phase, "step": step, "steps": steps,
+                "sec_per_step": round(sec_per_it, 3) if phase != "load" else None}
+
+    def _line(self, line):
+        line = line.strip()
+        if not line:
+            return None
+        bar = self._bar(line)
+        if bar:
+            return bar
+        low = line.lower()
+        if "[error" in low or "error:" in low or "failed" in low:
+            self.last_error = re.sub(r"^\[[A-Z]+\s*\]\s*", "", line)[:300]
+        # The prompt has been through the text model: sampling is next.
+        if "condition" in low and "completed" in low:
+            return {"kind": "phase", "phase": "encode"}
+        if "sampling completed" in low:
+            self.phase = "decode"
+            return {"kind": "phase", "phase": "decode"}
+        if "upscaling from" in low or ("upscal" in low and "loading" in low):
+            self.phase = "upscale"
+            return {"kind": "phase", "phase": "upscale"}
+        return None
+
+
+def ollama_unload_all():
+    """Give the GPU back from Ollama: unload every model it keeps warm.
+    Same request genesi-ai-turbo uses; a model reloads on its next question."""
+    try:
+        with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=2) as r:
+            models = json.loads(r.read().decode()).get("models", [])
+    except (OSError, ValueError, urllib.error.URLError):
+        return 0
+    n = 0
+    for m in models:
+        name = m.get("name") or m.get("model")
+        if not name:
+            continue
+        try:
+            body = json.dumps({"model": name, "keep_alive": 0}).encode()
+            req = urllib.request.Request(OLLAMA + "/api/generate", data=body,
+                                         headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=15).read()
+            n += 1
+        except (OSError, urllib.error.URLError):
+            pass
+    return n
+
+
+_child = None
+
+
+def _forward_signal(signum, _frame):
+    if _child and _child.poll() is None:
+        try:
+            _child.terminate()
+        except OSError:
+            pass
+    sys.exit(130)
+
+
+def run_engine(argv, out):
+    """Run sd-cli, translating its output into events. Returns (rc, error)."""
+    global _child
+    parser = ProgressParser()
+    try:
+        _child = subprocess.Popen(argv, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, bufsize=0)
+    except OSError as e:
+        return 127, str(e)
+    last_emit = 0.0
+    last_phase = ""
+    pending = None
+    while True:
+        chunk = _child.stdout.read(4096)
+        if not chunk:
+            break
+        for ev in parser.feed(chunk.decode("utf-8", "replace")):
+            if ev["kind"] == "phase":
+                # A redrawn bar re-parses as the same phase on every chunk.
+                if ev["phase"] != last_phase:
+                    last_phase = ev["phase"]
+                    out.event("phase", phase=ev["phase"])
+                continue
+            # Bars redraw many times a second; the page needs a few.
+            pending = ev
+            now = time.monotonic()
+            if now - last_emit > 0.25 or ev["step"] == ev["steps"]:
+                last_emit = now
+                out.event("progress", phase=ev["phase"], step=ev["step"],
+                          steps=ev["steps"], sec_per_step=ev.get("sec_per_step"))
+                pending = None
+    if pending:
+        out.event("progress", phase=pending["phase"], step=pending["step"],
+                  steps=pending["steps"], sec_per_step=pending.get("sec_per_step"))
+    rc = _child.wait()
+    return rc, parser.last_error
+
+
+def write_sidecar(png, meta):
+    try:
+        with open(os.path.splitext(png)[0] + ".json", "w", encoding="utf-8") as fh:
+            json.dump(meta, fh, ensure_ascii=False, indent=1)
+    except OSError:
+        pass
+
+
+# ── subcommands ──────────────────────────────────────────────────────────────
+
+def cmd_status(args, out):
+    engine = find_engine()
+    out.data({
+        "engine": engine or "",
+        "engine_installed": bool(engine),
+        "models_dir": models_dir(),
+        "output_dir": output_dir(),
+        "vram_mb": gpu_vram_mb(),
+        "any_model": any(model_state(m)["installed"] for m in MODELS
+                         if "generate" in m["caps"]),
+    })
+    return 0
+
+
+def cmd_catalog(args, out):
+    out.data([model_state(m) for m in MODELS])
+    return 0
+
+
+def cmd_pull(args, out):
+    m = model_by_id(args.model)
+    if not m:
+        out.event("error", text="unknown model: %s" % args.model)
+        return 2
+    comps = model_components(m)
+    for i, cid in enumerate(comps, 1):
+        if component_ready(cid):
+            continue
+        out.event("status", text="%s (%d/%d)" % (COMPONENTS[cid]["file"], i, len(comps)))
+        if not download_component(cid, out):
+            return 1
+    out.event("done", model=m["id"], text="%s ready" % m["name"])
+    return 0
+
+
+def cmd_remove(args, out):
+    m = model_by_id(args.model)
+    if not m:
+        out.event("error", text="unknown model: %s" % args.model)
+        return 2
+    # Files another INSTALLED (or half-downloaded) model still needs stay.
+    keep = set()
+    for other in MODELS:
+        if other["id"] == m["id"]:
+            continue
+        st = model_state(other)
+        if st["installed"] or st["partial"]:
+            keep.update(model_components(other))
+    freed = 0
+    for cid in model_components(m):
+        if cid in keep:
+            continue
+        for p in (component_path(cid), component_path(cid) + ".part"):
+            try:
+                freed += os.path.getsize(p)
+                os.unlink(p)
+            except OSError:
+                pass
+    out.event("done", model=m["id"], freed=freed, text="removed %s" % m["name"])
+    return 0
+
+
+def _engine_or_fail(out):
+    engine = find_engine()
+    if not engine:
+        out.event("error", code="no-engine",
+                  text="the image engine is not installed (sudo pacman -S genesi-sd-cpp)")
+    return engine
+
+
+def cmd_generate(args, out):
+    m = model_by_id(args.model)
+    if not m:
+        out.event("error", text="unknown model: %s" % args.model)
+        return 2
+    mode = "edit" if args.ref else "generate"
+    if mode not in m["caps"]:
+        out.event("error", text="%s cannot %s images" % (m["name"], mode))
+        return 2
+    if not model_state(m)["installed"]:
+        out.event("error", code="no-model", text="%s is not downloaded yet" % m["name"])
+        return 2
+    prompt = (args.prompt or "").strip()
+    if not prompt:
+        out.event("error", text="empty prompt")
+        return 2
+    engine = _engine_or_fail(out)
+    if not engine:
+        return 3
+
+    if args.ref:
+        if not os.path.isfile(args.ref):
+            out.event("error", text="no such image: %s" % args.ref)
+            return 2
+        dims = image_size(args.ref)
+        if not dims:
+            out.event("error", text="%s is not a PNG or JPEG" % args.ref)
+            return 2
+    if args.width and args.height:
+        width, height = fit_size(args.width, args.height,
+                                 target=min(args.width * args.height,
+                                            MAX_SIDE * MAX_SIDE))
+    elif args.ref:
+        width, height = fit_size(*dims)
+    else:
+        width, height = 1024, 1024
+    seed = args.seed if args.seed is not None and args.seed >= 0 \
+        else random.randint(0, 2 ** 31 - 1)
+    out_path = args.out or new_output_path("genesi-edit" if args.ref else "genesi")
+
+    if not args.keep_llm:
+        n = ollama_unload_all()
+        if n:
+            out.event("status", text="unloaded %d chat model(s) to free the GPU" % n)
+
+    argv = build_generate_argv(engine, m, prompt, out_path, width, height,
+                               steps=args.steps, seed=seed, ref=args.ref)
+    out.event("start", mode=mode, model=m["id"], width=width, height=height,
+              seed=seed, path=out_path)
+    t0 = time.monotonic()
+    rc, err = run_engine(argv, out)
+    secs = round(time.monotonic() - t0, 1)
+    if rc != 0 or not os.path.isfile(out_path):
+        out.event("error", text=err or "the image engine stopped (exit %d)" % rc)
+        return 1
+    write_sidecar(out_path, {
+        "mode": mode, "model": m["id"], "prompt": prompt, "seed": seed,
+        "width": width, "height": height,
+        "steps": args.steps or m["defaults"].get("steps"),
+        "source": os.path.abspath(args.ref) if args.ref else "",
+        "seconds": secs, "created": int(time.time()),
+    })
+    out.event("done", path=out_path, seconds=secs, seed=seed,
+              width=width, height=height)
+    return 0
+
+
+def cmd_upscale(args, out):
+    m = model_by_id("upscaler")
+    if not model_state(m)["installed"]:
+        out.event("error", code="no-model", text="%s is not downloaded yet" % m["name"])
+        return 2
+    if not os.path.isfile(args.input or ""):
+        out.event("error", text="no such image: %s" % args.input)
+        return 2
+    engine = _engine_or_fail(out)
+    if not engine:
+        return 3
+    base = os.path.splitext(os.path.basename(args.input))[0]
+    out_path = args.out or os.path.join(output_dir(), base + "-4x.png")
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    n = 2
+    while not args.out and os.path.exists(out_path):
+        out_path = os.path.join(output_dir(), "%s-4x-%d.png" % (base, n))
+        n += 1
+    out.event("start", mode="upscale", model=m["id"], path=out_path)
+    out.event("phase", phase="upscale")
+    t0 = time.monotonic()
+    rc, err = run_engine(build_upscale_argv(engine, m, args.input, out_path), out)
+    secs = round(time.monotonic() - t0, 1)
+    if rc != 0 or not os.path.isfile(out_path):
+        out.event("error", text=err or "the upscaler stopped (exit %d)" % rc)
+        return 1
+    dims = image_size(out_path) or (0, 0)
+    write_sidecar(out_path, {"mode": "upscale", "model": m["id"], "prompt": "",
+                             "source": os.path.abspath(args.input),
+                             "width": dims[0], "height": dims[1],
+                             "seconds": secs, "created": int(time.time())})
+    out.event("done", path=out_path, seconds=secs, width=dims[0], height=dims[1])
+    return 0
+
+
+def cmd_gallery(args, out):
+    d = output_dir()
+    items = []
+    try:
+        names = [n for n in os.listdir(d) if n.lower().endswith(".png")]
+    except OSError:
+        names = []
+    for n in names:
+        p = os.path.join(d, n)
+        try:
+            mtime = os.path.getmtime(p)
+        except OSError:
+            continue
+        meta = {}
+        try:
+            with open(os.path.splitext(p)[0] + ".json", encoding="utf-8") as fh:
+                meta = json.load(fh)
+        except (OSError, ValueError):
+            pass
+        meta.update({"path": p, "mtime": int(mtime)})
+        items.append(meta)
+    items.sort(key=lambda it: it["mtime"], reverse=True)
+    out.data(items[:max(1, args.limit)])
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="genesi-ai-image",
+                                 description="Local image generation for Genesi AI Mode")
+    ap.add_argument("--json", action="store_true", help="machine-readable output")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("status")
+    sub.add_parser("catalog")
+    p = sub.add_parser("pull"); p.add_argument("model")
+    p = sub.add_parser("remove"); p.add_argument("model")
+    p = sub.add_parser("generate")
+    p.add_argument("--model", default="flux2-klein")
+    p.add_argument("--prompt", required=True)
+    p.add_argument("--ref", help="image to edit (the instruction is the prompt)")
+    p.add_argument("--width", type=int, default=0)
+    p.add_argument("--height", type=int, default=0)
+    p.add_argument("--steps", type=int, default=0)
+    p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--out")
+    p.add_argument("--keep-llm", action="store_true",
+                   help="do not unload Ollama's warm chat models first")
+    p = sub.add_parser("upscale")
+    p.add_argument("--in", dest="input", required=True)
+    p.add_argument("--out")
+    p = sub.add_parser("gallery")
+    p.add_argument("--limit", type=int, default=60)
+
+    # --json is accepted after the subcommand too, which is where people type it.
+    # The Monitor reads this as UTF-8 whatever the locale says, and a prompt in
+    # Portuguese must not become a UnicodeEncodeError under LANG=C.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+    raw = list(sys.argv[1:] if argv is None else argv)
+    as_json = "--json" in raw
+    raw = [a for a in raw if a != "--json"]
+    args = ap.parse_args(raw)
+    out = Out(as_json)
+
+    signal.signal(signal.SIGTERM, _forward_signal)
+    signal.signal(signal.SIGINT, _forward_signal)
+
+    handler = {"status": cmd_status, "catalog": cmd_catalog, "pull": cmd_pull,
+               "remove": cmd_remove, "generate": cmd_generate,
+               "upscale": cmd_upscale, "gallery": cmd_gallery}[args.cmd]
+    return handler(args, out)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

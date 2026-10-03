@@ -538,7 +538,12 @@ Kirigami.ApplicationWindow {
                         { "icon": "icons/nav-chat.svg",      "key": "nav.chat" },
                         { "icon": "icons/nav-models.svg",    "key": "nav.models" },
                         { "icon": "icons/zap.svg",           "key": "nav.automations", "label": "Automations" },
-                        { "icon": "icons/nav-models.svg",    "key": "nav.mesh", "label": "Mesh" }
+                        { "icon": "icons/nav-models.svg",    "key": "nav.mesh", "label": "Mesh" },
+                        // Labelled here rather than in the shared I18n: that file is
+                        // bundled into four other apps, and one new key would make
+                        // every one of them a new release.
+                        { "icon": "icons/image.svg",         "key": "nav.image",
+                          "label": i18n.lang === "pt" ? "Imagem" : "Image" }
                     ]
                     delegate: Rectangle {
                         required property int index
@@ -1526,6 +1531,15 @@ Kirigami.ApplicationWindow {
 
         // ───────────────────────── 5. MESH ─────────────────────────
         MeshPage { id: meshPage; i18n: i18n }
+
+        // ───────────────────────── 6. IMAGEM ─────────────────────────
+        // Last on purpose: every page is addressed by its index (currentTab =
+        // 2 opens Models from several places), so a new page goes at the end.
+        ImagePage {
+            id: imagePage
+            i18n: i18n
+            chatModel: win.turboModel || win.firstInstalledModel
+        }
         }
         }
 

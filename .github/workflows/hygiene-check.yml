@@ -343,6 +343,16 @@ jobs:
         # it -- this reads both sides as text instead.
         run: python genesi-arch/ci/monitor-slots-test.py
 
+      - name: the Image page's tool downloads, draws and reports what it did
+        # genesi-ai-image against a stand-in sd-cli and a local HTTP server:
+        # resumed and Range-ignoring downloads, a checksum mismatch deleting
+        # the file, shared files surviving a model's removal, the argv each
+        # mode hands the engine, and the progress events the page draws. With
+        # network, it also holds every flag to genesi-sd-cpp's PINNED commit
+        # and every catalog URL to its size -- a gated or moved file is a
+        # Download button that can never work. No network: those are skipped.
+        run: python genesi-arch/ci/image-cli-test.py
+
       - name: an API model runs the agent, and Stop stops a model that has said nothing
         # The agent loop and the automations run on hosted models: a real
         # automation drives a fake provider that asks for a tool, and the tool

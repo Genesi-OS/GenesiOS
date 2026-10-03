@@ -1523,7 +1523,29 @@ pkgver=1.0.0
 # it asked for, it asks Hyprland by class to float, resize and centre it --
 # twice at most, because a window that argues with the compositor forever is
 # worse than a wide one.
-pkgrel=200
+# pkgrel 201: the Image page. Generate a picture from a description, edit one
+# by describing the change, or enlarge one 4x -- locally, in the Monitor, with
+# stable-diffusion.cpp (genesi-sd-cpp, the same ggml family as Turbo's
+# llama.cpp) instead of a ComfyUI/PyTorch stack.
+#
+# Nothing is installed by default. The page offers the engine (genesi-sd-cpp,
+# an optdepend) and each model as a button, like a chat model: FLUX.2 klein 4B
+# (generates AND edits, the default), Z-Image Turbo (generates) and
+# Real-ESRGAN 4x (upscales). Only Apache/BSD weights that download without a
+# Hugging Face login, each checked by size and SHA-256 when it lands.
+#
+# The new genesi-ai-image CLI owns the catalog, the resumable downloads and the
+# sd-cli command lines; the page is a front end over its --json, the Genesi
+# Find split. Before drawing it unloads Ollama's warm chat models and pauses
+# Turbo (back on with the same model afterwards), because a diffusion model
+# next to a resident LLM on an 8 GB card spills to RAM and runs several times
+# slower. "Improve with AI" has the chat model rewrite the prompt in English.
+#
+# The engine is not in [genesi]: publish-sd-cpp.yml publishes it to its own
+# release-hosted repo, [genesi-image], which .install adds to pacman.conf the
+# same way it adds [genesi-cuda]. That repo was published (and its db checked)
+# BEFORE this build, because a configured repo with no db breaks `pacman -Sy`.
+pkgrel=201
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1555,6 +1577,7 @@ optdepends=(
     'ollama: run local models (genesi-ai-mode bench)'
     'qt6-tools: qdbus for the KWin desktop-effect trimmer'
     'genesi-llama-cpp: Genesi Turbo speculative decoding (llama-server, Vulkan — shipped by default)'
+    'genesi-sd-cpp: the Image page (local image generation and editing) — installed from that page'
     'genesi-ttf-rubik-vf: Rubik brand UI font for the Monitor (shipped by default; falls back to the system sans if absent)'
     'libnotify: desktop notifications from Automations (notify-send)'
     # Speech. Neither is required: `genesi-ai-voice install` builds what it needs
@@ -1575,6 +1598,9 @@ package() {
     install -Dm755 "${startdir}/genesi-aid"      "$pkgdir/usr/local/bin/genesi-aid"
     install -Dm755 "${startdir}/genesi-ai-mode"  "$pkgdir/usr/local/bin/genesi-ai-mode"
     install -Dm755 "${startdir}/genesi-ai-turbo"  "$pkgdir/usr/local/bin/genesi-ai-turbo"
+    # Image generation: catalog, downloads and the sd-cli runs behind the
+    # Monitor's Image page.
+    install -Dm755 "${startdir}/genesi-ai-image"  "$pkgdir/usr/local/bin/genesi-ai-image"
     # Spoken answers (Kokoro) and the hosted-model key. Separate tools
     # rather than flags on genesi-ai-mode: each owns a file, each can be
     # run and tested from a terminal, and Genesi Center reads both
@@ -1708,6 +1734,8 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/Main.qml"
     install -Dm644 "${startdir}/monitor/MeshPage.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/MeshPage.qml"
+    install -Dm644 "${startdir}/monitor/ImagePage.qml" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/ImagePage.qml"
     install -Dm644 "${startdir}/monitor/ChatPage.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatPage.qml"
     install -Dm644 "${startdir}/monitor/AdvisorPage.qml" \
