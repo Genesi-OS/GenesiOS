@@ -226,11 +226,30 @@ jobs:
           # start, which is what proves its libraries resolve.)
           pacman -U --noconfirm ./*.pkg.tar.zst
           deps="$(ldd /usr/lib/genesi-sd-cpp/sd-cli)"
-          if grep -q 'not found' <<< "$deps"; then
-            echo "::error::sd-cli has unresolved libraries"; exit 1
+          echo "--- ldd sd-cli"; echo "$deps"
+          missing="$(grep 'not found' <<< "$deps" || true)"
+          # The CUDA build links the CUDA DRIVER (libcuda.so.1). That comes
+          # from nvidia-utils -- the proprietary driver -- which exists on every
+          # machine this package is for and in no CI container. Only that one
+          # may be missing here; anything else unresolved is a broken package.
+          # (Run #2 built fine and was refused on exactly this.)
+          if [ "${{ matrix.variant }}" = "cuda" ]; then
+            missing="$(grep -v 'libcuda\.so' <<< "$missing" || true)"
+          fi
+          if [ -n "$missing" ]; then
+            echo "::error::sd-cli has unresolved libraries:"; echo "$missing"; exit 1
           fi
           if grep 'libggml' <<< "$deps" | grep -v '/usr/lib/genesi-sd-cpp/' >/dev/null; then
             echo "::error::sd-cli resolved a libggml outside its private directory"; exit 1
+          fi
+          # The CUDA build cannot start without libcuda.so.1; the toolkit ships
+          # a link-time stub of it, enough to prove everything ELSE resolves and
+          # the binary runs (the stub has no driver, so --list-devices finds no
+          # CUDA device here -- on an NVIDIA machine the real driver answers).
+          if [ "${{ matrix.variant }}" = "cuda" ]; then
+            mkdir -p /tmp/cudastub
+            ln -sf /opt/cuda/lib64/stubs/libcuda.so /tmp/cudastub/libcuda.so.1
+            export LD_LIBRARY_PATH="/tmp/cudastub${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           fi
           genesi-sd-cli --version
           genesi-sd-cli --list-devices || true
