@@ -1,17 +1,17 @@
 /*
  * Genesi AI Mode Monitor — Image page.
  *
- * Generate a picture from a description, edit one by describing the change,
- * or make one four times larger. All of it local, on the same GPU the chat
- * uses, through stable-diffusion.cpp.
+ * Generate a picture from a description, edit one (by instruction, or by
+ * redrawing it with any generation model), or make one four times larger.
+ * All of it local, on the same GPU the chat uses, through stable-diffusion.cpp.
  *
  * A FRONT END ONLY, like the Mesh page: `genesi-ai-image` owns the catalog,
- * the downloads and the engine, and the backend relays its JSON events here.
- * Nothing on this page decides what a model can do -- the catalog's `caps`
- * does -- so the page and the terminal cannot disagree about it.
+ * the downloads, the engine and the warm server, and the backend relays its
+ * JSON events here. Nothing on this page decides what a model can do -- the
+ * catalog's `caps` does -- so the page and the terminal cannot disagree.
  *
- * Nothing is installed until the user asks: the engine (genesi-sd-cpp) and
- * every model are a button press away, never a default.
+ * Nothing is installed until the user asks: the engine and every model are a
+ * button press away, never a default.
  */
 import QtQuick
 import QtQuick.Layouts
@@ -27,6 +27,7 @@ Item {
     Theme { id: appTheme }
 
     function tr(en, pt) { return root.i18n && root.i18n.lang === "pt" ? pt : en }
+    function loc(o) { return o ? (root.i18n && root.i18n.lang === "pt" ? o.pt : o.en) : "" }
 
     // ── state, filled from the backend ──
     property bool toolPresent: true
@@ -34,10 +35,11 @@ Item {
     property var catalog: []
     property var gallery: []
     readonly property bool engineReady: status.engine_installed === true
-    readonly property bool anyModel: catalog.some(function (m) { return m.installed && m.caps.indexOf("generate") >= 0 })
+    readonly property string backendName: status.backend || ""
+    readonly property bool warmRunning: !!(status.warm && status.warm.running)
     property string engineState: ""       // terminal | installing | ready | failed
 
-    // download
+    // download / remove / import / optimize
     property string pullingId: ""
     property real pullFrac: 0
     property string pullText: ""
@@ -52,15 +54,19 @@ Item {
     property real secPerStep: 0
     property string runStatus: ""
     property string runError: ""
+    property string runErrorCode: ""
+    property bool runTurbo: false
     property double runStarted: 0
     property int elapsed: 0
+    property string logText: ""
+    property bool showLog: false
 
-    // what is shown in the preview
-    property var current: null            // gallery item {path, prompt, seed, mode, ...}
+    property var current: null            // gallery item shown in the preview
 
     // the form
     property string mode: "generate"      // generate | edit | upscale
-    property string modelId: "flux2-klein"
+    property string modelId: ""
+    property var variantPick: ({})        // model id -> variant id the user chose
     property string refPath: ""
     property string refName: ""
     property int refW: 0
@@ -69,9 +75,16 @@ Item {
     property bool lockSeed: false
     property int seed: -1
     property int stepsOverride: 0
+    property real strength: 0.6
+    property string negative: ""
+    property bool turbo: true
     property bool pauseTurbo: true
     property bool enhancing: false
     property string enhanceError: ""
+
+    // the model browser
+    property bool browserOpen: false
+    property string filterTag: "all"
 
     readonly property var aspects: [
         { label: "1:1",  w: 1024, h: 1024 },
@@ -86,22 +99,99 @@ Item {
             if (catalog[i].id === id) return catalog[i]
         return null
     }
-    // Models offered for the current mode, the recommended one first.
-    function modelsForMode() {
-        var out = catalog.filter(function (m) { return m.caps.indexOf(root.mode) >= 0 })
-        out.sort(function (a, b) { return (b.recommended ? 1 : 0) - (a.recommended ? 1 : 0) })
-        return out
+    function has(arr, x) { return arr && arr.indexOf(x) >= 0 }
+    // Which models a mode offers. Edit takes both kinds of editor: the ones
+    // that follow an instruction, and every generation model that can redraw
+    // a picture (img2img) -- the uncensored ones among them.
+    function fitsMode(m, md) {
+        if (md === "upscale") return has(m.caps, "upscale")
+        if (md === "edit") return has(m.caps, "edit") || has(m.caps, "img2img")
+        return has(m.caps, "generate")
+    }
+    function modelsForMode(md) {
+        return catalog.filter(function (m) { return fitsMode(m, md) })
     }
     function activeModel() {
-        if (mode === "upscale") return modelInfo("upscaler")
         var m = modelInfo(modelId)
-        if (m && m.caps.indexOf(mode) >= 0) return m
-        var list = modelsForMode()
-        for (var i = 0; i < list.length; i++) if (list[i].installed) return list[i]
-        return list.length ? list[0] : null
+        if (m && fitsMode(m, mode) && m.installed) return m
+        var list = modelsForMode(mode)
+        var installed = list.filter(function (x) { return x.installed })
+        if (installed.length) {
+            // An instruction editor first in Edit: it is what "edit" means to
+            // most people; img2img is the fallback.
+            if (mode === "edit") {
+                var instr = installed.filter(function (x) { return has(x.caps, "edit") })
+                if (instr.length) return instr[0]
+            }
+            return installed[0]
+        }
+        return m && fitsMode(m, mode) ? m : null
     }
-    function gb(bytes) { return (bytes / 1e9).toFixed(bytes >= 1e10 ? 0 : 1) + " GB" }
+    function editKind(m) { return m && has(m.caps, "edit") ? "edit" : "img2img" }
+    function variantOf(m) {
+        if (!m) return null
+        var want = variantPick[m.id] || m.active_variant
+        for (var i = 0; i < m.variants.length; i++)
+            if (m.variants[i].id === want) return m.variants[i]
+        return m.variants[0]
+    }
+    function installedVariant(m) {
+        if (!m) return null
+        var v = variantOf(m)
+        if (v && v.installed) return v
+        for (var i = 0; i < m.variants.length; i++)
+            if (m.variants[i].installed) return m.variants[i]
+        return null
+    }
+    function gb(bytes) {
+        if (bytes < 1e9) return Math.max(1, Math.round(bytes / 1e6)) + " MB"
+        return (bytes / 1e9).toFixed(bytes >= 1e10 ? 0 : 1) + " GB"
+    }
     function fileUrl(p) { return p ? "file://" + p : "" }
+    function vramBytes() { return (status.vram_mb || 0) * 1048576 }
+    function ramGb() { return Math.round((status.ram_mb || 0) / 1024) }
+    function fitsGpu(m) {
+        var v = variantOf(m)
+        return v && vramBytes() > 0 && v.gpu_size <= vramBytes() - 1536 * 1048576
+    }
+    function tagLabel(t) {
+        return ({
+            "unfiltered": tr("Unfiltered", "Sem filtro"), "fast": tr("Fast", "Rápido"),
+            "heavy": tr("Heavy", "Pesado"), "photo": tr("Photo", "Foto"),
+            "anime": "Anime", "text": tr("Text", "Texto"), "edit": tr("Edits", "Edita"),
+            "noncommercial": tr("Non-commercial", "Não-comercial"),
+            "custom": tr("Yours", "Seu"), "sdxl": "SDXL", "sd15": "SD 1.5"
+        })[t] || t
+    }
+    function tagColor(t) {
+        if (t === "unfiltered") return appTheme.red
+        if (t === "fast") return appTheme.greenBright
+        if (t === "heavy" || t === "noncommercial") return appTheme.turboBright
+        if (t === "custom") return appTheme.purpleBright
+        return appTheme.textMid
+    }
+    function browserModels() {
+        return catalog.filter(function (m) {
+            if (has(m.caps, "upscale") && filterTag !== "all" && filterTag !== "installed") return false
+            if (filterTag === "all") return true
+            if (filterTag === "installed") return m.installed || m.partial
+            if (filterTag === "fits") return fitsGpu(m)
+            if (filterTag === "editors") return has(m.caps, "edit") || has(m.caps, "img2img")
+            return has(m.tags, filterTag)
+        })
+    }
+    function turboText(m) {
+        if (!m) return ""
+        var parts = [tr("model stays loaded between pictures", "o modelo fica carregado entre uma imagem e outra")]
+        if (m.turbo && m.turbo.kind === "lora")
+            parts.push(tr("Lightning: " + (m.turbo.steps || 4) + " steps instead of " + m.defaults.steps,
+                          "Lightning: " + (m.turbo.steps || 4) + " passos em vez de " + m.defaults.steps))
+        else if (m.turbo && m.turbo.kind === "cache")
+            parts.push(tr("step cache", "cache de passos"))
+        if (backendName === "cuda")
+            parts.push("CUDA + SageAttention")
+        return parts.join(" · ")
+    }
 
     function refresh() {
         backend.loadImageInfo()
@@ -109,7 +199,6 @@ Item {
     }
 
     function phaseText() {
-        if (phase === "download") return tr("Downloading", "Baixando")
         if (phase === "load") return tr("Loading the model onto the GPU", "Carregando o modelo na GPU")
         if (phase === "encode") return tr("Reading your prompt", "Lendo o seu prompt")
         if (phase === "sample") return tr("Drawing", "Desenhando")
@@ -129,7 +218,7 @@ Item {
     function canRun() {
         if (busy || !engineReady) return false
         var m = activeModel()
-        if (!m || !m.installed) return false
+        if (!m || !installedVariant(m)) return false
         if (mode !== "generate" && !refPath) return false
         if (mode !== "upscale" && prompt.text.trim().length === 0) return false
         return true
@@ -138,18 +227,26 @@ Item {
     function run() {
         if (!canRun()) return
         var m = activeModel()
+        var v = installedVariant(m)
         var a = aspects[aspect]
-        var o = { mode: mode, model: m.id, pauseTurbo: pauseTurbo }
-        if (mode !== "upscale") {
+        var o = { model: m.id, variant: v.id, pauseTurbo: pauseTurbo, turbo: turbo }
+        if (mode === "upscale") {
+            o.mode = "upscale"
+        } else {
+            o.mode = mode === "edit" ? editKind(m) : "generate"
             o.prompt = prompt.text.trim()
             if (stepsOverride > 0) o.steps = stepsOverride
             if (lockSeed && seed >= 0) o.seed = seed
+            if (negative.trim().length) o.negative = negative.trim()
+            if (o.mode === "img2img") o.strength = strength
         }
         if (mode === "generate") { o.width = a.w; o.height = a.h }
         if (mode !== "generate") o.ref = refPath
-        runError = ""; runStatus = ""; phase = ""; step = 0; steps = 0; secPerStep = 0
+        runError = ""; runErrorCode = ""; runStatus = ""; phase = ""; step = 0; steps = 0
+        secPerStep = 0; showLog = false; logText = ""
         busy = true
         runStarted = Date.now(); elapsed = 0
+        backend.setImagePrefs(JSON.stringify({ model: m.id, mode: mode }))
         backend.generateImage(JSON.stringify(o))
     }
 
@@ -169,23 +266,45 @@ Item {
         mode = newMode
         if (newMode === "edit") prompt.text = ""
     }
-    function show(item) {
-        current = item
-    }
     function reuse(item) {
         if (!item) return
         if (item.prompt) prompt.text = item.prompt
-        if (item.seed !== undefined) { seed = item.seed }
+        if (item.seed !== undefined) seed = item.seed
+    }
+    function pickVariant(m, vid) {
+        var o = {}
+        for (var k in variantPick) o[k] = variantPick[k]
+        o[m.id] = vid
+        variantPick = o
+    }
+    function startPull(m) {
+        pullError = ""
+        pullingId = m.id
+        var v = variantOf(m)
+        backend.pullImageModel(m.id, v ? v.id : "")
     }
 
-    // Every page is built when the Monitor starts, and this one's refresh runs
-    // subprocesses (nvidia-smi among them) -- so only when it is looked at.
-    Component.onCompleted: if (visible) refresh()
+    Component.onCompleted: {
+        try {
+            var p = JSON.parse(backend.imagePrefs())
+            turbo = p.turbo !== false
+            if (p.model) modelId = p.model
+        } catch (e) {}
+        // Every page is built when the Monitor starts, and refreshing runs
+        // subprocesses (nvidia-smi among them) -- only when it is looked at.
+        if (visible) refresh()
+    }
     onVisibleChanged: if (visible) refresh()
+    onTurboChanged: backend.setImagePrefs(JSON.stringify({ turbo: turbo }))
 
     Timer {
         interval: 1000; repeat: true; running: root.busy
         onTriggered: root.elapsed = Math.round((Date.now() - root.runStarted) / 1000)
+    }
+    // The warm engine stops itself when idle; keep its chip honest.
+    Timer {
+        interval: 15000; repeat: true; running: root.visible && root.warmRunning && !root.busy
+        onTriggered: backend.loadImageInfo()
     }
 
     Connections {
@@ -208,15 +327,19 @@ Item {
             try { ev = JSON.parse(js) } catch (e) { return }
             if (ev.event === "progress") {
                 root.pullFrac = ev.steps ? ev.step / ev.steps : 0
-                var what = ev.phase === "verify" ? root.tr("checking ", "conferindo ") : ""
+                var what = ev.phase === "verify" ? root.tr("checking ", "conferindo ")
+                         : ev.phase === "convert" ? root.tr("optimizing ", "otimizando ") : ""
                 root.pullText = (root.pullPart ? root.pullPart + "  ·  " : "")
-                    + what + ev.file + " — " + Math.round(root.pullFrac * 100) + "%"
+                    + what + (ev.file || "") + " — " + Math.round(root.pullFrac * 100) + "%"
                     + (ev.rate ? "  ·  " + (ev.rate / 1e6).toFixed(1) + " MB/s" : "")
             } else if (ev.event === "status") {
                 // "file.gguf (2/3)": the bar restarts per file, so say which.
-                var m = /\((\d+\/\d+)\)\s*$/.exec(ev.text || "")
-                root.pullPart = m ? m[1] : ""
+                var mm = /\((\d+\/\d+)\)\s*$/.exec(ev.text || "")
+                root.pullPart = mm ? mm[1] : root.pullPart
                 root.pullText = ev.text
+            } else if (ev.event === "phase" && ev.phase === "convert") {
+                root.pullFrac = 0
+                root.pullText = root.tr("optimizing for your GPU (Q8)…", "otimizando pra sua GPU (Q8)…")
             } else if (ev.event === "error") {
                 root.pullError = ev.text
             }
@@ -238,14 +361,19 @@ Item {
                 if (ev.sec_per_step) root.secPerStep = ev.sec_per_step
             } else if (ev.event === "start") {
                 if (ev.seed !== undefined) root.seed = ev.seed
+                root.runTurbo = !!ev.turbo
             } else if (ev.event === "done") {
                 root.current = { path: ev.path, seed: ev.seed, width: ev.width,
                                  height: ev.height, mode: root.mode,
                                  prompt: root.mode === "upscale" ? "" : prompt.text.trim(),
                                  seconds: ev.seconds }
                 if (ev.seed !== undefined) root.seed = ev.seed
+                if (ev.low_memory)
+                    root.runStatus = root.tr("Made in low-memory mode (smaller size).",
+                                             "Feita no modo econômico (tamanho menor).")
             } else if (ev.event === "error") {
                 root.runError = ev.text === "cancelled" ? "" : ev.text
+                root.runErrorCode = ev.code || ""
             }
         }
         function onImageBusy(b) { root.busy = b }
@@ -273,12 +401,18 @@ Item {
         nameFilters: ["PNG (*.png)"]
         onAccepted: if (root.current) backend.saveImageAs(root.current.path, selectedFile.toString())
     }
+    QQD.FileDialog {
+        id: importDialog
+        title: root.tr("Add a checkpoint", "Adicionar um checkpoint")
+        nameFilters: [root.tr("Checkpoints", "Checkpoints") + " (*.safetensors *.gguf)"]
+        onAccepted: { root.pullError = ""; root.pullingId = "import"; backend.importImageModel(selectedFile.toString()) }
+    }
 
     // Drop a picture anywhere on the page: it becomes the one to edit.
     DropArea {
         anchors.fill: parent
         z: 50
-        enabled: !root.busy
+        enabled: !root.busy && !root.browserOpen
         onEntered: function (drag) { drag.accepted = drag.hasUrls && drag.urls.length > 0 }
         onDropped: function (drop) {
             if (drop.hasUrls && drop.urls.length > 0) root.setSource(drop.urls[0].toString())
@@ -302,41 +436,101 @@ Item {
 
     readonly property bool narrow: width < 980
 
+    // A small rounded tag. Self-contained on purpose: an inline component
+    // does not see the ids of the file it is declared in, so `appTheme` here
+    // would be a ReferenceError at run time, not at load.
+    component Chip: Rectangle {
+        property string text: ""
+        property color tint: "#9aa4b2"
+        implicitHeight: 18
+        implicitWidth: chipLabel.implicitWidth + 12
+        radius: 9
+        color: Qt.rgba(tint.r, tint.g, tint.b, 0.14)
+        border.width: 1
+        border.color: Qt.rgba(tint.r, tint.g, tint.b, 0.35)
+        QQC2.Label {
+            id: chipLabel
+            anchors.centerIn: parent
+            text: parent.text
+            color: parent.tint
+            font.pixelSize: 9; font.bold: true
+        }
+    }
+
     GridLayout {
         anchors.fill: parent
         anchors.margins: 18
         columns: root.narrow ? 1 : 2
         columnSpacing: 16
-        rowSpacing: 14
+        rowSpacing: 12
 
         // ── header, above both columns ──
-        ColumnLayout {
+        RowLayout {
             Layout.fillWidth: true
             Layout.columnSpan: root.narrow ? 1 : 2
-            spacing: 4
-            QQC2.Label {
-                text: root.tr("Image", "Imagem")
-                color: appTheme.textHi
-                font.pixelSize: 24; font.bold: true
-            }
-            QQC2.Label {
+            spacing: 10
+            ColumnLayout {
                 Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                color: appTheme.textMid
-                font.pixelSize: 12
-                text: root.tr("Create a picture from a description, or change one by saying what to change. Runs on your GPU — nothing leaves this computer.",
-                              "Crie uma imagem a partir de uma descrição, ou mude uma dizendo o que mudar. Roda na sua GPU — nada sai deste computador.")
+                spacing: 4
+                QQC2.Label {
+                    text: root.tr("Image", "Imagem")
+                    color: appTheme.textHi
+                    font.pixelSize: 24; font.bold: true
+                }
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: appTheme.textMid
+                    font.pixelSize: 12
+                    text: root.tr("Create a picture from a description, or change one by saying what to change. Runs on your GPU — nothing leaves this computer.",
+                                  "Crie uma imagem a partir de uma descrição, ou mude uma dizendo o que mudar. Roda na sua GPU — nada sai deste computador.")
+                }
+            }
+            Chip {
+                visible: root.engineReady && root.backendName !== ""
+                text: root.tr("Engine: ", "Motor: ") + (root.backendName === "cuda" ? "CUDA"
+                      : root.backendName === "vulkan" ? "Vulkan" : "CPU")
+                tint: root.backendName === "cuda" ? appTheme.greenBright : appTheme.textMid
+            }
+            // The warm engine holds VRAM: say so, and offer it back.
+            Rectangle {
+                visible: root.warmRunning
+                implicitHeight: 30
+                implicitWidth: warmRow.implicitWidth + 16
+                radius: 15
+                color: appTheme.a(appTheme.turbo, 0.12)
+                border.width: 1; border.color: appTheme.a(appTheme.turbo, 0.4)
+                RowLayout {
+                    id: warmRow
+                    anchors.centerIn: parent
+                    spacing: 8
+                    FIcon { name: "zap"; size: 13; color: appTheme.turboBright }
+                    QQC2.Label {
+                        text: {
+                            var m = root.modelInfo(root.status.warm ? root.status.warm.model : "")
+                            return root.tr("Loaded: ", "Carregado: ") + (m ? m.name : "")
+                        }
+                        color: appTheme.textHi; font.pixelSize: 11
+                    }
+                    QQC2.Label {
+                        text: root.tr("Free the GPU", "Liberar GPU")
+                        color: appTheme.turboBright; font.pixelSize: 11; font.bold: true
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: backend.stopImageServer()
+                        }
+                    }
+                }
             }
         }
 
         // ── engine missing: the one thing to do first ──
-        // Above both columns, so a narrow window shows it before the form
-        // rather than under it. Invisible items take no cell in a GridLayout.
         Rectangle {
             visible: !root.engineReady
             Layout.fillWidth: true
             Layout.columnSpan: root.narrow ? 1 : 2
-            implicitHeight: engCol.implicitHeight + 36
+            implicitHeight: engCol.implicitHeight + 32
             radius: appTheme.rLg
             color: appTheme.surface
             border.width: 1; border.color: appTheme.hairline
@@ -344,8 +538,8 @@ Item {
                 id: engCol
                 anchors.left: parent.left; anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.margins: 18
-                spacing: 10
+                anchors.margins: 16
+                spacing: 8
                 QQC2.Label {
                     text: root.tr("Install the image engine", "Instale o motor de imagens")
                     color: appTheme.textHi; font.pixelSize: 16; font.bold: true
@@ -353,8 +547,11 @@ Item {
                 QQC2.Label {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
                     color: appTheme.textMid; font.pixelSize: 12
-                    text: root.tr("Genesi draws pictures with stable-diffusion.cpp, the same family of engine that runs your chat models. It is a small package (genesi-sd-cpp); the models are downloaded separately, only the ones you pick.",
-                                  "O Genesi desenha imagens com o stable-diffusion.cpp, o mesmo tipo de motor que roda seus modelos de chat. É um pacote pequeno (genesi-sd-cpp); os modelos são baixados à parte, só os que você escolher.")
+                    text: root.status.nvidia
+                        ? root.tr("You have an NVIDIA card: the CUDA engine is the fast one. The Vulkan engine works on any GPU.",
+                                  "Você tem placa NVIDIA: o motor CUDA é o rápido. O motor Vulkan funciona em qualquer GPU.")
+                        : root.tr("stable-diffusion.cpp, the same family of engine that runs your chat models. Models are downloaded separately, only the ones you pick.",
+                                  "stable-diffusion.cpp, o mesmo tipo de motor que roda seus modelos de chat. Os modelos são baixados à parte, só os que você escolher.")
                 }
                 RowLayout {
                     spacing: 10
@@ -363,14 +560,52 @@ Item {
                         enabled: root.engineState !== "terminal" && root.engineState !== "installing"
                         text: root.engineState === "terminal" ? root.tr("Follow the terminal…", "Siga o terminal…")
                             : root.engineState === "installing" ? root.tr("Installing…", "Instalando…")
+                            : root.status.nvidia ? root.tr("Install (CUDA)", "Instalar (CUDA)")
                             : root.tr("Install", "Instalar")
-                        onClicked: backend.installImageEngine()
+                        onClicked: backend.installImageEngine(root.status.nvidia ? "cuda" : "vulkan")
+                    }
+                    GButton {
+                        theme: appTheme; kind: "ghost"
+                        visible: !!root.status.nvidia
+                        enabled: root.engineState !== "terminal" && root.engineState !== "installing"
+                        text: root.tr("Vulkan instead", "Usar Vulkan")
+                        onClicked: backend.installImageEngine("vulkan")
                     }
                     QQC2.Label {
                         visible: root.engineState === "failed"
-                        text: root.tr("Not installed — try: sudo pacman -S genesi-sd-cpp", "Não instalou — tente: sudo pacman -S genesi-sd-cpp")
+                        text: root.tr("Not installed — see the terminal for the reason.", "Não instalou — veja o motivo no terminal.")
                         color: appTheme.red; font.pixelSize: 11
                     }
+                }
+            }
+        }
+
+        // ── NVIDIA on the Vulkan engine: the faster one is a click away ──
+        Rectangle {
+            visible: root.engineReady && !!root.status.nvidia && root.backendName !== "cuda"
+            Layout.fillWidth: true
+            Layout.columnSpan: root.narrow ? 1 : 2
+            implicitHeight: cudaRow.implicitHeight + 18
+            radius: appTheme.rMd
+            color: appTheme.a(appTheme.turbo, 0.08)
+            border.width: 1; border.color: appTheme.a(appTheme.turbo, 0.3)
+            RowLayout {
+                id: cudaRow
+                anchors.fill: parent; anchors.margins: 9
+                spacing: 10
+                FIcon { name: "zap"; size: 16; color: appTheme.turboBright }
+                QQC2.Label {
+                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                    color: appTheme.textHi; font.pixelSize: 12
+                    text: root.tr("Your NVIDIA card is running the Vulkan engine. The CUDA engine is faster and unlocks flash attention + SageAttention in Turbo.",
+                                  "Sua placa NVIDIA está no motor Vulkan. O motor CUDA é mais rápido e libera flash attention + SageAttention no Turbo.")
+                }
+                GButton {
+                    theme: appTheme; kind: "filled"; accent: appTheme.turbo
+                    enabled: root.engineState !== "terminal" && root.engineState !== "installing"
+                    text: root.engineState === "terminal" ? root.tr("Follow the terminal…", "Siga o terminal…")
+                        : root.tr("Switch to CUDA", "Trocar pra CUDA")
+                    onClicked: backend.installImageEngine("cuda")
                 }
             }
         }
@@ -378,7 +613,7 @@ Item {
         // ════════════════════════ LEFT: the form ════════════════════════
         QQC2.ScrollView {
             id: formScroll
-            Layout.preferredWidth: root.narrow ? -1 : 360
+            Layout.preferredWidth: root.narrow ? -1 : 370
             Layout.fillWidth: root.narrow
             Layout.fillHeight: !root.narrow
             Layout.preferredHeight: root.narrow ? Math.min(form.implicitHeight, root.height * 0.55) : -1
@@ -388,7 +623,7 @@ Item {
             ColumnLayout {
                 id: form
                 width: formScroll.availableWidth
-                spacing: 12
+                spacing: 11
 
                 // ── mode ──
                 RowLayout {
@@ -411,147 +646,74 @@ Item {
 
                 // ── model ──
                 QQC2.Label {
-                    visible: root.mode !== "upscale"
                     text: root.tr("MODEL", "MODELO")
                     color: appTheme.textLo; font.pixelSize: 10; font.letterSpacing: 1.1
                 }
-                Repeater {
-                    model: root.mode === "upscale" ? [] : root.modelsForMode()
-                    delegate: Rectangle {
-                        id: mrow
-                        required property var modelData
-                        readonly property bool sel: root.activeModel() && root.activeModel().id === modelData.id
-                        Layout.fillWidth: true
-                        implicitHeight: mcol.implicitHeight + 18
-                        radius: appTheme.rMd
-                        color: sel ? appTheme.a(appTheme.green, 0.12) : appTheme.surface
-                        border.width: 1
-                        border.color: sel ? appTheme.a(appTheme.green, 0.45) : appTheme.hairline
-                        ColumnLayout {
-                            id: mcol
-                            anchors.left: parent.left; anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.margins: 10
-                            spacing: 4
-                            RowLayout {
-                                Layout.fillWidth: true
-                                QQC2.Label {
-                                    text: mrow.modelData.name
-                                    color: appTheme.textHi; font.bold: true; font.pixelSize: 13
-                                    Layout.fillWidth: true; elide: Text.ElideRight
-                                }
-                                QQC2.Label {
-                                    visible: mrow.modelData.recommended
-                                    text: root.tr("recommended", "recomendado")
-                                    color: appTheme.accentText; font.pixelSize: 10
-                                }
-                            }
-                            QQC2.Label {
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                text: root.i18n && root.i18n.lang === "pt" ? mrow.modelData.summary.pt : mrow.modelData.summary.en
-                                color: appTheme.textMid; font.pixelSize: 11
-                            }
-                            QQC2.Label {
-                                text: mrow.modelData.license + "  ·  " + root.gb(mrow.modelData.size)
-                                      + (mrow.modelData.installed ? "  ·  " + root.tr("downloaded", "baixado") : "")
-                                color: appTheme.textLo; font.pixelSize: 10
-                            }
-                            // download / progress
-                            RowLayout {
-                                visible: !mrow.modelData.installed
-                                Layout.fillWidth: true
-                                spacing: 8
-                                GButton {
-                                    theme: appTheme
-                                    visible: root.pullingId !== mrow.modelData.id
-                                    enabled: root.pullingId === ""
-                                    kind: "filled"
-                                    iconSource: "download"
-                                    text: mrow.modelData.partial ? root.tr("Resume download", "Continuar download")
-                                                                 : root.tr("Download", "Baixar") + " (" + root.gb(mrow.modelData.size) + ")"
-                                    onClicked: {
-                                        root.pullError = ""
-                                        root.pullingId = mrow.modelData.id
-                                        root.modelId = mrow.modelData.id
-                                        backend.pullImageModel(mrow.modelData.id)
-                                    }
-                                }
-                                ColumnLayout {
-                                    visible: root.pullingId === mrow.modelData.id
-                                    Layout.fillWidth: true
-                                    spacing: 4
-                                    Rectangle {
-                                        Layout.fillWidth: true; implicitHeight: 6; radius: 3
-                                        color: appTheme.a(appTheme.textHi, 0.08)
-                                        Rectangle {
-                                            width: parent.width * Math.max(0, Math.min(1, root.pullFrac))
-                                            height: parent.height; radius: 3
-                                            color: appTheme.green
-                                            Behavior on width { NumberAnimation { duration: 300 } }
-                                        }
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        QQC2.Label {
-                                            Layout.fillWidth: true
-                                            text: root.pullText || root.tr("starting…", "iniciando…")
-                                            color: appTheme.textMid; font.pixelSize: 10
-                                            elide: Text.ElideMiddle
-                                        }
-                                        GButton {
-                                            theme: appTheme; kind: "ghost"; iconSource: "x"
-                                            tooltip: root.tr("Stop (resumes later)", "Parar (continua depois)")
-                                            onClicked: backend.cancelImagePull()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            z: -1
-                            enabled: mrow.modelData.installed
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: root.modelId = mrow.modelData.id
-                        }
-                    }
-                }
-
-                // upscaler download (Upscale mode has no picker, one model)
                 Rectangle {
-                    readonly property var up: root.modelInfo("upscaler")
-                    visible: root.mode === "upscale" && up && !up.installed
+                    id: modelCard
+                    readonly property var m: root.activeModel()
+                    readonly property var v: root.installedVariant(m)
                     Layout.fillWidth: true
-                    implicitHeight: upCol.implicitHeight + 20
+                    implicitHeight: mcCol.implicitHeight + 20
                     radius: appTheme.rMd
-                    color: appTheme.surface
-                    border.width: 1; border.color: appTheme.hairline
+                    color: m && v ? appTheme.a(appTheme.green, 0.10) : appTheme.surface
+                    border.width: 1
+                    border.color: m && v ? appTheme.a(appTheme.green, 0.40) : appTheme.hairline
                     ColumnLayout {
-                        id: upCol
-                        anchors.fill: parent; anchors.margins: 10
-                        spacing: 6
-                        QQC2.Label {
-                            Layout.fillWidth: true; wrapMode: Text.WordWrap
-                            text: root.tr("Upscaling needs Real-ESRGAN 4× (67 MB, BSD licence).",
-                                          "Ampliar precisa do Real-ESRGAN 4× (67 MB, licença BSD).")
-                            color: appTheme.textMid; font.pixelSize: 11
+                        id: mcCol
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.margins: 10
+                        spacing: 5
+                        RowLayout {
+                            Layout.fillWidth: true
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                text: modelCard.m && modelCard.v ? modelCard.m.name
+                                    : root.tr("No model for this yet", "Nenhum modelo pra isso ainda")
+                                color: appTheme.textHi; font.bold: true; font.pixelSize: 13
+                            }
+                            GButton {
+                                theme: appTheme
+                                kind: modelCard.m && modelCard.v ? "ghost" : "filled"
+                                iconSource: "layout-grid"
+                                text: modelCard.m && modelCard.v ? root.tr("Change", "Trocar")
+                                                               : root.tr("Choose a model", "Escolher modelo")
+                                onClicked: {
+                                    root.filterTag = root.mode === "edit" ? "editors" : "all"
+                                    root.browserOpen = true
+                                }
+                            }
                         }
-                        GButton {
-                            theme: appTheme; kind: "filled"; iconSource: "download"
-                            enabled: root.pullingId === ""
-                            text: root.pullingId === "upscaler" ? root.pullText || root.tr("Downloading…", "Baixando…")
-                                                                : root.tr("Download", "Baixar")
-                            onClicked: { root.pullError = ""; root.pullingId = "upscaler"; backend.pullImageModel("upscaler") }
+                        Flow {
+                            visible: !!(modelCard.m && modelCard.v)
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Repeater {
+                                model: modelCard.m && modelCard.v ? modelCard.m.tags.filter(function (t) { return t !== "sdxl" }) : []
+                                delegate: Chip {
+                                    required property var modelData
+                                    text: root.tagLabel(modelData)
+                                    tint: root.tagColor(modelData)
+                                }
+                            }
+                            Chip {
+                                visible: !!modelCard.v
+                                text: modelCard.v ? root.loc(modelCard.v.label) : ""
+                                tint: appTheme.textLo
+                            }
+                        }
+                        QQC2.Label {
+                            visible: root.mode === "edit" && !!modelCard.m && !!modelCard.v
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            color: appTheme.textLo; font.pixelSize: 11
+                            text: root.editKind(modelCard.m) === "edit"
+                                ? root.tr("Edits by instruction: say what to change.", "Edita por instrução: diga o que mudar.")
+                                : root.tr("Redraws your picture in the direction you describe — use the slider for how much.",
+                                          "Redesenha sua imagem na direção que você descrever — o controle diz o quanto.")
                         }
                     }
-                }
-
-                QQC2.Label {
-                    visible: root.pullError !== ""
-                    Layout.fillWidth: true; wrapMode: Text.WordWrap
-                    text: root.pullError
-                    color: appTheme.red; font.pixelSize: 11
                 }
 
                 // ── source picture (edit / upscale) ──
@@ -612,14 +774,15 @@ Item {
                 // ── prompt ──
                 QQC2.Label {
                     visible: root.mode !== "upscale"
-                    text: root.mode === "edit" ? root.tr("WHAT TO CHANGE", "O QUE MUDAR")
-                                               : root.tr("DESCRIBE THE PICTURE", "DESCREVA A IMAGEM")
+                    text: root.mode !== "edit" ? root.tr("DESCRIBE THE PICTURE", "DESCREVA A IMAGEM")
+                        : root.editKind(root.activeModel()) === "edit" ? root.tr("WHAT TO CHANGE", "O QUE MUDAR")
+                        : root.tr("HOW IT SHOULD LOOK", "COMO DEVE FICAR")
                     color: appTheme.textLo; font.pixelSize: 10; font.letterSpacing: 1.1
                 }
                 Rectangle {
                     visible: root.mode !== "upscale"
                     Layout.fillWidth: true
-                    implicitHeight: Math.max(110, prompt.implicitHeight + 16)
+                    implicitHeight: Math.max(104, prompt.implicitHeight + 16)
                     radius: appTheme.rMd
                     color: appTheme.surface
                     border.width: 1
@@ -663,7 +826,8 @@ Item {
                         onClicked: {
                             root.enhancing = true
                             root.enhanceError = ""
-                            backend.enhanceImagePrompt(root.chatModel, prompt.text, root.mode)
+                            backend.enhanceImagePrompt(root.chatModel, prompt.text,
+                                                       root.mode === "edit" ? root.editKind(root.activeModel()) : "generate")
                         }
                     }
                     Item { Layout.fillWidth: true }
@@ -673,6 +837,31 @@ Item {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
                     text: root.enhanceError
                     color: appTheme.red; font.pixelSize: 11
+                }
+
+                // ── how much an img2img edit may change ──
+                ColumnLayout {
+                    visible: root.mode === "edit" && root.editKind(root.activeModel()) === "img2img"
+                    Layout.fillWidth: true
+                    spacing: 2
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            text: root.tr("How much to change", "Quanto mudar")
+                            color: appTheme.textMid; font.pixelSize: 12
+                        }
+                        QQC2.Label {
+                            text: Math.round(root.strength * 100) + "%"
+                            color: appTheme.textHi; font.pixelSize: 12; font.bold: true
+                        }
+                    }
+                    QQC2.Slider {
+                        Layout.fillWidth: true
+                        from: 0.2; to: 0.95; stepSize: 0.05
+                        value: root.strength
+                        onMoved: root.strength = value
+                    }
                 }
 
                 // ── shape (generate only; an edit keeps the source's shape) ──
@@ -697,6 +886,45 @@ Item {
                     }
                 }
 
+                // ── Turbo ──
+                Rectangle {
+                    visible: root.mode !== "upscale"
+                    Layout.fillWidth: true
+                    implicitHeight: turboCol.implicitHeight + 18
+                    radius: appTheme.rMd
+                    color: root.turbo ? appTheme.a(appTheme.turbo, 0.10) : appTheme.surface
+                    border.width: 1
+                    border.color: root.turbo ? appTheme.a(appTheme.turbo, 0.40) : appTheme.hairline
+                    ColumnLayout {
+                        id: turboCol
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.margins: 10
+                        spacing: 4
+                        RowLayout {
+                            Layout.fillWidth: true
+                            FIcon { name: "zap"; size: 15; color: root.turbo ? appTheme.turboBright : appTheme.textLo }
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                text: "Turbo"
+                                color: appTheme.textHi; font.bold: true; font.pixelSize: 13
+                            }
+                            GToggle {
+                                theme: appTheme
+                                checked: root.turbo
+                                onToggled: function (v) { root.turbo = v }
+                            }
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            color: appTheme.textMid; font.pixelSize: 11
+                            text: root.turbo ? root.turboText(root.activeModel())
+                                : root.tr("Off: every picture loads the model from disk and gives the GPU back when done.",
+                                          "Desligado: cada imagem carrega o modelo do disco e devolve a GPU ao terminar.")
+                        }
+                    }
+                }
+
                 // ── advanced ──
                 QQC2.Label {
                     visible: root.mode !== "upscale"
@@ -715,6 +943,14 @@ Item {
                     Layout.fillWidth: true
                     spacing: 10
 
+                    QQC2.TextField {
+                        readonly property var m: root.activeModel()
+                        visible: !!m && m.defaults && m.defaults.cfg > 1
+                        Layout.fillWidth: true
+                        text: root.negative
+                        placeholderText: root.tr("What to avoid (negative prompt)", "O que evitar (prompt negativo)")
+                        onEditingFinished: root.negative = text
+                    }
                     RowLayout {
                         Layout.fillWidth: true
                         QQC2.Label {
@@ -723,7 +959,7 @@ Item {
                             Layout.fillWidth: true
                         }
                         QQC2.SpinBox {
-                            from: 0; to: 50
+                            from: 0; to: 60
                             value: root.stepsOverride
                             onValueModified: root.stepsOverride = value
                             textFromValue: function (v) { return v === 0 ? root.tr("auto", "auto") : String(v) }
@@ -756,8 +992,8 @@ Item {
                         QQC2.Label {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
-                            text: root.tr("Pause Turbo while drawing (frees the GPU, much faster)",
-                                          "Pausar o Turbo enquanto desenha (libera a GPU, bem mais rápido)")
+                            text: root.tr("Pause the chat Turbo while drawing (frees the GPU)",
+                                          "Pausar o Turbo do chat enquanto desenha (libera a GPU)")
                             color: appTheme.textMid; font.pixelSize: 12
                         }
                         GToggle {
@@ -789,7 +1025,7 @@ Item {
                     color: appTheme.textLo; font.pixelSize: 11
                     text: {
                         var m = root.activeModel()
-                        if (!m || !m.installed) return root.tr("Download a model above first.", "Baixe um modelo acima primeiro.")
+                        if (!m || !root.installedVariant(m)) return root.tr("Choose and download a model first.", "Escolha e baixe um modelo primeiro.")
                         if (root.mode !== "generate" && !root.refPath) return root.tr("Choose a picture first.", "Escolha uma imagem primeiro.")
                         if (root.mode !== "upscale") return root.tr("Write what you want first.", "Escreva o que você quer primeiro.")
                         return ""
@@ -805,7 +1041,6 @@ Item {
             Layout.fillHeight: true
             spacing: 12
 
-            // ── the picture ──
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -828,23 +1063,29 @@ Item {
                     Behavior on opacity { NumberAnimation { duration: 200 } }
                 }
 
-                // nothing yet
                 ColumnLayout {
                     anchors.centerIn: parent
-                    width: Math.min(parent.width - 40, 420)
+                    width: Math.min(parent.width - 40, 440)
                     visible: !root.current && !root.busy
-                    spacing: 8
+                    spacing: 10
                     FIcon { Layout.alignment: Qt.AlignHCenter; name: "image"; size: 40; color: appTheme.textLo }
                     QQC2.Label {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         color: appTheme.textMid; font.pixelSize: 13
-                        text: !root.anyModel
-                            ? root.tr("Download a model on the left to start. FLUX.2 klein is the one to try first: it generates and edits.",
-                                      "Baixe um modelo à esquerda para começar. O FLUX.2 klein é o primeiro a testar: ele gera e edita.")
+                        text: !root.catalog.some(function (m) { return m.installed })
+                            ? root.tr("Pick a model to start — there are fast ones, unfiltered ones, anime, photo, and editors.",
+                                      "Escolha um modelo pra começar — tem rápidos, sem filtro, anime, foto e editores.")
                             : root.tr("Your pictures appear here, and are saved in Pictures › Genesi AI.",
                                       "Suas imagens aparecem aqui, e ficam salvas em Imagens › Genesi AI.")
+                    }
+                    GButton {
+                        Layout.alignment: Qt.AlignHCenter
+                        visible: !root.catalog.some(function (m) { return m.installed })
+                        theme: appTheme; kind: "filled"; iconSource: "layout-grid"
+                        text: root.tr("Browse models", "Ver modelos")
+                        onClicked: { root.filterTag = "all"; root.browserOpen = true }
                     }
                 }
 
@@ -852,18 +1093,23 @@ Item {
                 Rectangle {
                     visible: root.busy
                     anchors.centerIn: parent
-                    width: Math.min(parent.width - 40, 380)
+                    width: Math.min(parent.width - 40, 400)
                     height: progCol.implicitHeight + 32
                     radius: appTheme.rLg
-                    color: appTheme.a(appTheme.card, 0.92)
+                    color: appTheme.a(appTheme.card, 0.94)
                     border.width: 1; border.color: appTheme.lineHi
                     ColumnLayout {
                         id: progCol
                         anchors.fill: parent; anchors.margins: 16
                         spacing: 8
-                        QQC2.Label {
-                            text: root.phaseText()
-                            color: appTheme.textHi; font.pixelSize: 14; font.bold: true
+                        RowLayout {
+                            Layout.fillWidth: true
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                text: root.phaseText()
+                                color: appTheme.textHi; font.pixelSize: 14; font.bold: true
+                            }
+                            Chip { visible: root.runTurbo; text: "TURBO"; tint: appTheme.turboBright }
                         }
                         Rectangle {
                             Layout.fillWidth: true; implicitHeight: 8; radius: 4
@@ -888,15 +1134,65 @@ Item {
                                 return s
                             }
                         }
+                        QQC2.Label {
+                            visible: root.runStatus !== "" && root.phase !== ""
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            color: appTheme.textLo; font.pixelSize: 10
+                            text: root.runStatus
+                        }
                     }
                 }
             }
 
-            QQC2.Label {
+            // ── what went wrong, with the engine's own words a click away ──
+            Rectangle {
                 visible: root.runError !== ""
-                Layout.fillWidth: true; wrapMode: Text.WordWrap
-                text: root.runError
-                color: appTheme.red; font.pixelSize: 12
+                Layout.fillWidth: true
+                implicitHeight: errCol.implicitHeight + 18
+                radius: appTheme.rMd
+                color: appTheme.a(appTheme.red, 0.08)
+                border.width: 1; border.color: appTheme.a(appTheme.red, 0.35)
+                ColumnLayout {
+                    id: errCol
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: 9
+                    spacing: 6
+                    QQC2.Label {
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        text: root.runError
+                        color: appTheme.textHi; font.pixelSize: 12
+                    }
+                    RowLayout {
+                        spacing: 8
+                        GButton {
+                            theme: appTheme; kind: "ghost"; iconSource: "file-text"
+                            text: root.showLog ? root.tr("Hide details", "Esconder detalhes") : root.tr("Show details", "Ver detalhes")
+                            onClicked: {
+                                root.showLog = !root.showLog
+                                if (root.showLog) root.logText = backend.imageLog()
+                            }
+                        }
+                        GButton {
+                            theme: appTheme; kind: "ghost"; iconSource: "copy"
+                            text: root.tr("Copy log", "Copiar log")
+                            onClicked: backend.copyText(root.runError + "\n\n" + backend.imageLog())
+                        }
+                    }
+                    QQC2.ScrollView {
+                        visible: root.showLog
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 160
+                        QQC2.TextArea {
+                            readOnly: true
+                            text: root.logText
+                            font.family: appTheme.mono; font.pixelSize: 10
+                            color: appTheme.textMid
+                            wrapMode: TextEdit.WrapAnywhere
+                            background: Rectangle { color: appTheme.a(appTheme.black, 0.25); radius: 6 }
+                        }
+                    }
+                }
             }
 
             // ── what to do with it ──
@@ -906,7 +1202,7 @@ Item {
                 spacing: 8
                 GButton {
                     theme: appTheme; iconSource: "edit"
-                    visible: root.catalog.some(function (m) { return m.installed && m.caps.indexOf("edit") >= 0 })
+                    visible: root.catalog.some(function (m) { return m.installed && (root.has(m.caps, "edit") || root.has(m.caps, "img2img")) })
                     text: root.tr("Edit this", "Editar esta")
                     onClicked: root.useAsSource(root.current, "edit")
                 }
@@ -996,13 +1292,288 @@ Item {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        acceptedButtons: Qt.LeftButton
-                        onClicked: root.show(thumb.modelData)
-                        onDoubleClicked: { root.show(thumb.modelData); root.reuse(thumb.modelData) }
                         hoverEnabled: true
+                        onClicked: root.current = thumb.modelData
+                        onDoubleClicked: { root.current = thumb.modelData; root.reuse(thumb.modelData) }
                         QQC2.ToolTip.visible: containsMouse && !!thumb.modelData.prompt
                         QQC2.ToolTip.text: thumb.modelData.prompt || ""
                         QQC2.ToolTip.delay: 500
+                    }
+                }
+            }
+        }
+    }
+
+    // ════════════════════════ the model browser ════════════════════════
+    Rectangle {
+        anchors.fill: parent
+        visible: root.browserOpen
+        z: 80
+        color: appTheme.a(appTheme.black, 0.55)
+        // Swallow clicks so the page behind does not react (MouseArea, not
+        // TapHandler: a TapHandler lets the press through).
+        MouseArea { anchors.fill: parent; onClicked: root.browserOpen = false }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 32, 1060)
+            height: Math.min(parent.height - 32, 760)
+            radius: appTheme.rLg
+            color: appTheme.card
+            border.width: 1; border.color: appTheme.lineHi
+            MouseArea { anchors.fill: parent }
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        text: root.tr("Image models", "Modelos de imagem")
+                        color: appTheme.textHi; font.pixelSize: 20; font.bold: true
+                    }
+                    GButton {
+                        theme: appTheme; kind: "tonal"; iconSource: "plus"
+                        enabled: root.pullingId === "" && root.engineReady
+                        text: root.tr("Add my model", "Adicionar meu modelo")
+                        tooltip: root.tr("Any SD 1.5 or SDXL checkpoint (.safetensors / .gguf) — Civitai models, Pony, Illustrious…",
+                                         "Qualquer checkpoint SD 1.5 ou SDXL (.safetensors / .gguf) — modelos do Civitai, Pony, Illustrious…")
+                        onClicked: importDialog.open()
+                    }
+                    GButton {
+                        theme: appTheme; kind: "ghost"; iconSource: "x"
+                        onClicked: root.browserOpen = false
+                    }
+                }
+                QQC2.Label {
+                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                    color: appTheme.textMid; font.pixelSize: 11
+                    text: root.tr("Each model downloads only when you ask. The variant picks size vs. quality — the recommended one fits your GPU"
+                                  + (root.status.vram_mb ? " (" + Math.round(root.status.vram_mb / 1024) + " GB)" : "") + ".",
+                                  "Cada modelo só é baixado quando você pedir. A variante escolhe tamanho × qualidade — a recomendada cabe na sua GPU"
+                                  + (root.status.vram_mb ? " (" + Math.round(root.status.vram_mb / 1024) + " GB)" : "") + ".")
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: [
+                            { id: "all", en: "All", pt: "Todos" },
+                            { id: "installed", en: "Downloaded", pt: "Baixados" },
+                            { id: "fits", en: "Fit my GPU", pt: "Cabem na minha GPU" },
+                            { id: "unfiltered", en: "Unfiltered", pt: "Sem filtro" },
+                            { id: "fast", en: "Fast", pt: "Rápidos" },
+                            { id: "editors", en: "Editing", pt: "Edição" },
+                            { id: "photo", en: "Photo", pt: "Foto" },
+                            { id: "anime", en: "Anime", pt: "Anime" },
+                            { id: "text", en: "Text in image", pt: "Texto na imagem" }
+                        ]
+                        delegate: GPill {
+                            required property var modelData
+                            label: root.tr(modelData.en, modelData.pt)
+                            active: root.filterTag === modelData.id
+                            onClicked: root.filterTag = modelData.id
+                        }
+                    }
+                }
+                QQC2.Label {
+                    visible: root.pullError !== ""
+                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                    text: root.pullError
+                    color: appTheme.red; font.pixelSize: 11
+                }
+
+                QQC2.ScrollView {
+                    id: browserScroll
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    contentWidth: availableWidth
+                    clip: true
+                    Flow {
+                        id: cards
+                        width: browserScroll.availableWidth
+                        spacing: 10
+                        readonly property int cols: Math.max(1, Math.floor((width + 10) / 320))
+                        readonly property real cardW: (width - (cols - 1) * 10) / cols
+                        Repeater {
+                            model: root.browserModels()
+                            delegate: Rectangle {
+                                id: card
+                                required property var modelData
+                                readonly property var v: root.variantOf(modelData)
+                                readonly property bool pulling: root.pullingId === modelData.id
+                                readonly property bool ramShort: modelData.min_ram_gb > 0 && root.ramGb() > 0
+                                                                 && root.ramGb() < modelData.min_ram_gb
+                                width: cards.cardW
+                                implicitHeight: cardCol.implicitHeight + 22
+                                radius: appTheme.rMd
+                                color: appTheme.surface
+                                border.width: 1
+                                border.color: modelData.installed ? appTheme.a(appTheme.green, 0.40) : appTheme.hairline
+                                ColumnLayout {
+                                    id: cardCol
+                                    anchors.left: parent.left; anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 11
+                                    spacing: 6
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        QQC2.Label {
+                                            Layout.fillWidth: true
+                                            text: card.modelData.name
+                                            color: appTheme.textHi; font.bold: true; font.pixelSize: 14
+                                            elide: Text.ElideRight
+                                        }
+                                        Chip {
+                                            visible: card.modelData.recommended
+                                            text: root.tr("START HERE", "COMECE AQUI")
+                                            tint: appTheme.greenBright
+                                        }
+                                    }
+                                    Flow {
+                                        Layout.fillWidth: true
+                                        spacing: 4
+                                        Repeater {
+                                            model: card.modelData.tags.filter(function (t) { return t !== "sdxl" })
+                                            delegate: Chip {
+                                                required property var modelData
+                                                text: root.tagLabel(modelData)
+                                                tint: root.tagColor(modelData)
+                                            }
+                                        }
+                                        Chip {
+                                            text: root.has(card.modelData.caps, "edit") ? root.tr("edits by instruction", "edita por instrução")
+                                                : root.has(card.modelData.caps, "img2img") ? root.tr("generates · redraws", "gera · redesenha")
+                                                : root.has(card.modelData.caps, "upscale") ? root.tr("upscaler", "amplia")
+                                                : root.tr("edit only", "só edita")
+                                            tint: appTheme.textLo
+                                        }
+                                    }
+                                    QQC2.Label {
+                                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                        text: root.loc(card.modelData.summary)
+                                        color: appTheme.textMid; font.pixelSize: 11
+                                    }
+                                    QQC2.Label {
+                                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                        color: card.ramShort ? appTheme.turboBright : appTheme.textLo
+                                        font.pixelSize: 10
+                                        text: card.modelData.license
+                                            + (card.v ? "  ·  GPU " + root.gb(card.v.gpu_size) : "")
+                                            + (card.ramShort ? "  ·  " + root.tr("needs " + card.modelData.min_ram_gb + " GB RAM (you have " + root.ramGb() + ")",
+                                                                                 "precisa de " + card.modelData.min_ram_gb + " GB de RAM (você tem " + root.ramGb() + ")") : "")
+                                    }
+                                    // variant: size vs. quality
+                                    QQC2.ComboBox {
+                                        id: variantBox
+                                        visible: card.modelData.variants.length > 1
+                                        Layout.fillWidth: true
+                                        enabled: !card.pulling
+                                        model: card.modelData.variants.map(function (x) {
+                                            return root.loc(x.label) + "  ·  " + root.gb(x.installed ? x.size : (x.download || x.size))
+                                                + (x.installed ? "  ✓" : "")
+                                                + (x.recommended ? "  ·  " + root.tr("recommended", "recomendada") : "")
+                                        })
+                                        onActivated: function (i) { root.pickVariant(card.modelData, card.modelData.variants[i].id) }
+                                    }
+                                    // A Binding element, not `currentIndex:` on the box: a
+                                    // ComboBox resets its index to 0 when its model arrives,
+                                    // and that reset destroys a plain binding -- the box then
+                                    // showed Q4 while Q8 was the variant in use.
+                                    Binding {
+                                        target: variantBox
+                                        property: "currentIndex"
+                                        value: {
+                                            for (var i = 0; i < card.modelData.variants.length; i++)
+                                                if (card.v && card.modelData.variants[i].id === card.v.id) return i
+                                            return 0
+                                        }
+                                    }
+                                    QQC2.Label {
+                                        visible: !!card.v && card.v.converts && !card.v.installed
+                                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                        color: appTheme.textLo; font.pixelSize: 10
+                                        text: root.tr("Optimized on your machine right after the download (7 GB → 4 GB, a few minutes).",
+                                                      "Otimizado na sua máquina logo após o download (7 GB → 4 GB, alguns minutos).")
+                                    }
+                                    // download progress
+                                    ColumnLayout {
+                                        visible: card.pulling
+                                        Layout.fillWidth: true
+                                        spacing: 4
+                                        Rectangle {
+                                            Layout.fillWidth: true; implicitHeight: 6; radius: 3
+                                            color: appTheme.a(appTheme.textHi, 0.08)
+                                            Rectangle {
+                                                width: parent.width * Math.max(0, Math.min(1, root.pullFrac))
+                                                height: parent.height; radius: 3
+                                                color: appTheme.green
+                                                Behavior on width { NumberAnimation { duration: 300 } }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            QQC2.Label {
+                                                Layout.fillWidth: true
+                                                text: root.pullText || root.tr("starting…", "iniciando…")
+                                                color: appTheme.textMid; font.pixelSize: 10
+                                                elide: Text.ElideMiddle
+                                            }
+                                            GButton {
+                                                theme: appTheme; kind: "ghost"; iconSource: "x"
+                                                tooltip: root.tr("Stop (resumes later)", "Parar (continua depois)")
+                                                onClicked: backend.cancelImagePull()
+                                            }
+                                        }
+                                    }
+                                    RowLayout {
+                                        visible: !card.pulling
+                                        Layout.fillWidth: true
+                                        spacing: 6
+                                        GButton {
+                                            theme: appTheme; kind: "filled"; iconSource: "download"
+                                            visible: !!card.v && !card.v.installed
+                                            enabled: root.pullingId === "" && (root.engineReady || !card.v.converts)
+                                            text: (card.v && card.v.partial ? root.tr("Resume", "Continuar") : root.tr("Download", "Baixar"))
+                                                  + (card.v ? " · " + root.gb(card.v.download || card.v.size) : "")
+                                            onClicked: root.startPull(card.modelData)
+                                        }
+                                        GButton {
+                                            theme: appTheme; kind: "filled"; iconSource: "check"
+                                            visible: !!card.v && card.v.installed && !root.has(card.modelData.caps, "upscale")
+                                            text: root.tr("Use", "Usar")
+                                            onClicked: {
+                                                root.modelId = card.modelData.id
+                                                if (!root.fitsMode(card.modelData, root.mode))
+                                                    root.mode = root.has(card.modelData.caps, "generate") ? "generate" : "edit"
+                                                root.browserOpen = false
+                                            }
+                                        }
+                                        GButton {
+                                            theme: appTheme; kind: "tonal"
+                                            visible: card.modelData.custom && card.modelData.variants.length === 1 && card.modelData.installed
+                                            enabled: root.pullingId === ""
+                                            text: root.tr("Optimize (Q8)", "Otimizar (Q8)")
+                                            tooltip: root.tr("Convert to GGUF Q8_0: about half the memory, same picture.",
+                                                             "Converte pra GGUF Q8_0: cerca de metade da memória, mesma imagem.")
+                                            onClicked: { root.pullingId = card.modelData.id; backend.optimizeImageModel(card.modelData.id, "q8_0") }
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        GButton {
+                                            theme: appTheme; kind: "ghost"; iconSource: "trash"
+                                            visible: card.modelData.installed || card.modelData.partial
+                                            enabled: root.pullingId === ""
+                                            tooltip: card.modelData.custom ? root.tr("Remove from the list (your file stays)", "Tirar da lista (seu arquivo fica)")
+                                                                           : root.tr("Delete the downloaded files", "Apagar os arquivos baixados")
+                                            onClicked: backend.removeImageModel(card.modelData.id, "")
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

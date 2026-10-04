@@ -397,6 +397,21 @@ for _f in sorted(PACKAGES.rglob("*.qml")):
                             "nothing else tells you the handle moved"
                             % (_rel, _line))
 
+# ── a method whose name starts upper-case ───────────────────────────────────
+#
+# "Method names cannot begin with an upper case letter" is a LOAD error: the
+# whole component refuses to compile. The Monitor's Image page shipped a
+# `function L(o)` helper for exactly one review; only an offscreen load caught
+# it. Comments and strings are stripped first, so prose cannot trip it.
+_UPPER_FN = re.compile(r"(?<![.\w])function\s+([A-Z]\w*)\s*\(")
+for _f in sorted(PACKAGES.rglob("*.qml")):
+    _code = strip(_f.read_text(encoding="utf-8", errors="replace"))
+    for _m in _UPPER_FN.finditer(_code):
+        failures.append("%s:%d `function %s` -- QML refuses a method name that "
+                        "starts upper-case (load error)"
+                        % (_f.relative_to(PACKAGES).as_posix(),
+                           _code[:_m.start()].count(chr(10)) + 1, _m.group(1)))
+
 print(f"checked {checked} QML files")
 if failures:
     print(f"\n{len(failures)} PROBLEM(S):")

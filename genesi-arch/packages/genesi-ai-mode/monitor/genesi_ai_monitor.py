@@ -2853,9 +2853,11 @@ class Backend(QObject):
 
     # ── Image (genesi-ai-image) ─────────────────────────────────────────────
     # The Image page is a front end over `genesi-ai-image --json`, the same
-    # split as Genesi Find: the tool owns the catalog, the downloads and the
-    # engine, and this only relays its JSON lines to the page. Generation runs
-    # in its own process group so Cancel stops sd-cli too, not just the wrapper.
+    # split as Genesi Find: the tool owns the catalog, the downloads, the
+    # engine and the warm server, and this only relays its JSON lines to the
+    # page. A run is its own process group so Cancel stops sd-cli too; the warm
+    # server is NOT in that group -- it outlives a run on purpose, and stops
+    # itself after a few idle minutes (or on "Free the GPU").
     _IMAGE_ENHANCE_SYSTEM = (
         "You write prompts for a text-to-image model. The user gives a short "
         "idea in any language. Reply with ONE prompt in English: the subject "
@@ -2868,6 +2870,7 @@ class Backend(QObject):
         "a change to a picture in any language. Reply with ONE short instruction "
         "in English that says exactly what to change and what to keep, at most "
         "40 words. No preamble, no quotes -- only the instruction.")
+    _IMAGE_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/image.json")
 
     @staticmethod
     def _image_tool():
@@ -2886,9 +2889,45 @@ class Backend(QObject):
         try:
             r = subprocess.run(tool + list(args) + ["--json"], capture_output=True,
                                timeout=timeout, encoding="utf-8", errors="replace")
-            return json.loads(r.stdout or "null")
+            lines = [l for l in (r.stdout or "").splitlines() if l.strip()]
+            return json.loads(lines[-1]) if lines else None
         except (OSError, subprocess.SubprocessError, ValueError):
             return None
+
+    def _image_prefs(self):
+        try:
+            with open(self._IMAGE_CONFIG) as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            return {}
+
+    def _save_image_prefs(self, **kw):
+        prefs = self._image_prefs()
+        prefs.update(kw)
+        try:
+            os.makedirs(os.path.dirname(self._IMAGE_CONFIG), exist_ok=True)
+            tmp = self._IMAGE_CONFIG + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(prefs, fh)
+            os.replace(tmp, self._IMAGE_CONFIG)
+        except OSError:
+            pass
+
+    @Slot(result=str)
+    def imagePrefs(self):
+        """Turbo on/off and the last model, remembered across launches.
+        Turbo defaults ON: it is the fast path and it gives the GPU back by
+        itself after a few idle minutes."""
+        p = self._image_prefs()
+        return json.dumps({"turbo": p.get("turbo", True), "model": p.get("model", ""),
+                           "mode": p.get("mode", "generate")})
+
+    @Slot(str)
+    def setImagePrefs(self, prefs_json):
+        try:
+            self._save_image_prefs(**json.loads(prefs_json or "{}"))
+        except (ValueError, TypeError):
+            pass
 
     @Slot()
     def loadImageInfo(self):
@@ -2950,11 +2989,9 @@ class Backend(QObject):
                 except OSError:
                     pass
 
-    @Slot(str)
-    def pullImageModel(self, model_id):
-        if getattr(self, "_image_pull_proc", None):
-            return
-
+    def _image_task(self, args, attr="_image_pull_proc", model_id=""):
+        """A download, removal, import or optimization: events on
+        imagePullEvent, the end on imagePullDone, then a catalog refresh."""
         def work():
             state = {"error": ""}
 
@@ -2962,27 +2999,71 @@ class Backend(QObject):
                 if ev.get("event") == "error":
                     state["error"] = ev.get("text", "")
                 self.imagePullEvent.emit(json.dumps(ev))
-            rc = self._image_stream(["pull", model_id], on_event, "_image_pull_proc")
+            rc = self._image_stream(args, on_event, attr)
             self.imagePullDone.emit(rc == 0, model_id, state["error"])
             self.loadImageInfo()
         threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def pullImageModel(self, model_id, variant):
+        if getattr(self, "_image_pull_proc", None):
+            return
+        args = ["pull", model_id] + (["--variant", variant] if variant else [])
+        self._image_task(args, model_id=model_id)
 
     @Slot()
     def cancelImagePull(self):
         self._image_kill(getattr(self, "_image_pull_proc", None))
 
+    @Slot(str, str)
+    def removeImageModel(self, model_id, variant):
+        args = ["remove", model_id] + (["--variant", variant] if variant else [])
+        self._image_task(args, attr="_image_rm_proc", model_id=model_id)
+
     @Slot(str)
-    def removeImageModel(self, model_id):
+    def importImageModel(self, source):
+        path = QUrl(source).toLocalFile() if source.startswith("file:") else source
+        self._image_task(["import", path], attr="_image_pull_proc", model_id="")
+
+    @Slot(str, str)
+    def optimizeImageModel(self, model_id, qtype):
+        if getattr(self, "_image_pull_proc", None):
+            return
+        self._image_task(["optimize", model_id, "--type", qtype or "q8_0"],
+                         model_id=model_id)
+
+    @Slot()
+    def stopImageServer(self):
         def work():
-            self._image_json("remove", model_id, timeout=60)
+            self._image_json("server", "stop", timeout=30)
             self.loadImageInfo()
         threading.Thread(target=work, daemon=True).start()
 
+    @Slot(result=str)
+    def imageLog(self):
+        """The last run's full engine output -- what "Show details" opens."""
+        path = os.path.join(os.environ.get("XDG_CACHE_HOME")
+                            or os.path.expanduser("~/.cache"),
+                            "genesi-ai-image", "last-run.log")
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            return ""
+        # The tail is where the reason is; a bar redrawn 4000 times is not.
+        lines = [l for l in re.split(r"[\r\n]+", text) if l.strip()]
+        return "\n".join(lines[-80:])
+
+    @Slot(str)
+    def copyText(self, text):
+        QGuiApplication.clipboard().setText(text or "")
+
     @Slot(str)
     def generateImage(self, opts_json):
-        """opts: {mode: generate|edit|upscale, model, prompt, ref, width,
-        height, steps, seed, pauseTurbo}. Every event of the run arrives on
-        imageEvent, ending with exactly one `done` or `error`."""
+        """opts: {mode: generate|edit|img2img|upscale, model, variant, prompt,
+        negative, ref, strength, width, height, steps, seed, turbo,
+        pauseTurbo}. Every event of the run arrives on imageEvent, ending with
+        exactly one `done` or `error`."""
         if getattr(self, "_image_proc", None):
             return
         try:
@@ -2991,18 +3072,27 @@ class Backend(QObject):
             return
         mode = o.get("mode") or "generate"
         if mode == "upscale":
-            args = ["upscale", "--in", o.get("ref") or ""]
+            args = ["upscale", "--in", o.get("ref") or "",
+                    "--model", o.get("model") or "upscaler"]
         else:
             args = ["generate", "--model", o.get("model") or "flux2-klein",
-                    "--prompt", o.get("prompt") or ""]
-            if mode == "edit" and o.get("ref"):
+                    "--prompt", o.get("prompt") or "", "--mode", mode]
+            if o.get("variant"):
+                args += ["--variant", o["variant"]]
+            if mode in ("edit", "img2img") and o.get("ref"):
                 args += ["--ref", o["ref"]]
+            if mode == "img2img" and o.get("strength") is not None:
+                args += ["--strength", str(float(o["strength"]))]
+            if o.get("negative"):
+                args += ["--negative", o["negative"]]
             for key, flag in (("width", "--width"), ("height", "--height"),
                               ("steps", "--steps")):
                 if int(o.get(key) or 0) > 0:
                     args += [flag, str(int(o[key]))]
             if o.get("seed") is not None and int(o.get("seed")) >= 0:
                 args += ["--seed", str(int(o["seed"]))]
+            if o.get("turbo"):
+                args += ["--turbo"]
 
         def work():
             self.imageBusy.emit(True)
@@ -3015,7 +3105,7 @@ class Backend(QObject):
                     and self._turbo_model and not self._remote_turbo()):
                 resume = (self._turbo_model, self._turbo_spec)
                 self.imageEvent.emit(json.dumps(
-                    {"event": "status", "text": "pausing Turbo to free the GPU"}))
+                    {"event": "status", "text": "pausing the chat Turbo to free the GPU"}))
                 self._stop_turbo()
             ended = {"v": False}
 
@@ -3034,9 +3124,10 @@ class Backend(QObject):
                 self.imageBusy.emit(False)
                 if resume:
                     self.imageEvent.emit(json.dumps(
-                        {"event": "status", "text": "restarting Turbo"}))
+                        {"event": "status", "text": "restarting the chat Turbo"}))
                     self.setTurbo(True, resume[0], resume[1])
                 self.loadImageGallery()
+                self.loadImageInfo()
         threading.Thread(target=work, daemon=True).start()
 
     @Slot()
@@ -3070,13 +3161,13 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def prepareImageInput(self, source):
-        """Any picture the user picked or dropped, as a PNG sd-cli can read.
+        """Any picture the user picked or dropped, as an RGB PNG sd-cli reads.
 
         sd-cli reads PNG and JPEG (WebP support is not built in), ignores EXIF
         rotation, and a 6000px phone photo would be scaled down anyway -- so
-        every input is normalised here once: rotated upright, at most 2048 on
-        the long side, written as PNG to the cache."""
-        from PySide6.QtGui import QImageReader
+        every input is normalised here once: rotated upright, flattened onto
+        white if it has transparency, at most 2048 on the long side."""
+        from PySide6.QtGui import QImage, QImageReader, QPainter, QColor
         path = source or ""
         if path.startswith("file:"):
             path = QUrl(path).toLocalFile()
@@ -3090,6 +3181,14 @@ class Backend(QObject):
         if max(img.width(), img.height()) > 2048:
             img = img.scaled(2048, 2048, Qt.KeepAspectRatio,
                              Qt.SmoothTransformation)
+        if img.hasAlphaChannel():
+            flat = QImage(img.size(), QImage.Format_RGB32)
+            flat.fill(QColor("white"))
+            painter = QPainter(flat)
+            painter.drawImage(0, 0, img)
+            painter.end()
+            img = flat
+        img = img.convertToFormat(QImage.Format_RGB888)
         cache = os.path.join(os.environ.get("XDG_CACHE_HOME")
                              or os.path.expanduser("~/.cache"), "genesi-ai-image")
         os.makedirs(cache, exist_ok=True)
@@ -3151,26 +3250,31 @@ class Backend(QObject):
             os.makedirs(base, exist_ok=True)
             self.openImageExternally(base)
 
-    @Slot()
-    def installImageEngine(self):
-        """genesi-sd-cpp from the [genesi] repo, in a terminal the user can
-        read -- the same way Turbo installs its backend -- with pkexec as the
-        fallback when no terminal emulator is found."""
-        if shutil.which("genesi-sd-cli"):
-            self.imageEngineStatus.emit("ready")
-            self.loadImageInfo()
-            return
+    @Slot(str)
+    def installImageEngine(self, kind):
+        """The image engine from [genesi-image]: the Vulkan build (any GPU) or
+        the CUDA build (NVIDIA + proprietary driver, the fast one). Both own
+        the same files, so switching removes the other first -- with -Rdd, as
+        Turbo's backend switch does, since nothing hard-depends on either.
+        In a terminal the user can read; pkexec when there is no terminal."""
+        kind = "cuda" if str(kind).lower() == "cuda" else "vulkan"
+        pkg = "genesi-sd-cpp-cuda" if kind == "cuda" else "genesi-sd-cpp"
+        other = "genesi-sd-cpp" if kind == "cuda" else "genesi-sd-cpp-cuda"
+        # A running warm server holds the old engine's files open.
+        self._image_json("server", "stop", timeout=30)
         script = (
             "#!/bin/bash\n"
-            "echo '== Genesi AI Mode — installing the image engine =='\n"
+            "echo '== Genesi AI Mode — installing the image engine (%s) =='\n"
             "echo\n"
-            "sudo pacman -Sy --needed genesi-sd-cpp\n"
+            "sudo pacman -Sy\n"
+            "sudo sh -c \"pacman -Rdd --noconfirm %s 2>/dev/null; "
+            "pacman -S --needed %s\"\n"
             "status=$?\necho\n"
             "if [ $status -eq 0 ]; then echo '✓ Done — go back to the Monitor.'; "
             "else echo \"✗ pacman exited with code $status — scroll up for the "
             "reason.\"; fi\n"
             "echo 'Press Enter to close this window.'; read -r\n"
-            "exit $status\n")
+            "exit $status\n") % (kind.upper(), other, pkg)
         proc = self._spawn_install_terminal(script)
 
         def wait_terminal():
@@ -3178,18 +3282,19 @@ class Backend(QObject):
                 proc.wait(timeout=7200)
             except Exception:
                 pass
-            self._image_engine_result()
+            self._image_engine_result(pkg)
 
         def via_pkexec():
             self.imageEngineStatus.emit("installing")
             try:
-                subprocess.run(["pkexec", "pacman", "-Sy", "--needed",
-                                "--noconfirm", "genesi-sd-cpp"],
+                subprocess.run(["pkexec", "sh", "-c",
+                                "pacman -Rdd --noconfirm %s 2>/dev/null; "
+                                "pacman -Sy --needed --noconfirm %s" % (other, pkg)],
                                stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL, timeout=1800)
+                               stderr=subprocess.DEVNULL, timeout=3600)
             except (OSError, subprocess.SubprocessError):
                 pass
-            self._image_engine_result()
+            self._image_engine_result(pkg)
 
         if proc is not None:
             self.imageEngineStatus.emit("terminal")
@@ -3199,9 +3304,13 @@ class Backend(QObject):
         else:
             self.imageEngineStatus.emit("failed")
 
-    def _image_engine_result(self):
-        self.imageEngineStatus.emit(
-            "ready" if shutil.which("genesi-sd-cli") else "failed")
+    def _image_engine_result(self, pkg):
+        try:
+            ok = subprocess.run(["pacman", "-Qq", pkg], capture_output=True,
+                                timeout=10).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            ok = bool(shutil.which("genesi-sd-cli"))
+        self.imageEngineStatus.emit("ready" if ok else "failed")
         self.loadImageInfo()
 
 

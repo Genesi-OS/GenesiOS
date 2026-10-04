@@ -8,35 +8,54 @@ the GPU lives here, where it can be run and tested from a terminal, and the
 window only draws what this prints. With --json every subcommand prints one
 JSON object per line on stdout; human text goes to stderr.
 
-    genesi-ai-image status   [--json]
-    genesi-ai-image catalog  [--json]
-    genesi-ai-image pull     MODEL [--json]
-    genesi-ai-image remove   MODEL [--json]
-    genesi-ai-image generate --model MODEL --prompt TEXT [--ref IMAGE]
-                             [--width W --height H] [--steps N] [--seed S]
-                             [--out PATH] [--keep-llm] [--json]
-    genesi-ai-image upscale  --in IMAGE [--out PATH] [--json]
-    genesi-ai-image gallery  [--limit N] [--json]
+    genesi-ai-image status    [--json]
+    genesi-ai-image catalog   [--json]
+    genesi-ai-image pull      MODEL [--variant V] [--json]
+    genesi-ai-image remove    MODEL [--variant V] [--json]
+    genesi-ai-image generate  --model MODEL [--variant V] --prompt TEXT
+                              [--mode generate|edit|img2img] [--ref IMAGE]
+                              [--strength S] [--negative TEXT]
+                              [--width W --height H] [--steps N] [--seed S]
+                              [--turbo] [--out PATH] [--keep-llm] [--json]
+    genesi-ai-image upscale   --in IMAGE [--model UPSCALER] [--out PATH] [--json]
+    genesi-ai-image import    FILE [--name NAME] [--json]
+    genesi-ai-image optimize  MODEL [--type q8_0|q5_0|q4_0] [--json]
+    genesi-ai-image server    status|stop [--json]
+    genesi-ai-image gallery   [--limit N] [--json]
 
-The engine is stable-diffusion.cpp (package genesi-sd-cpp, `genesi-sd-cli`),
-the same ggml family as the llama.cpp behind Turbo. Weights are never shipped:
-the user downloads a model from the catalog when they want one, exactly like a
-chat model.
+The engine is stable-diffusion.cpp (genesi-sd-cpp, or genesi-sd-cpp-cuda on
+NVIDIA), the same ggml family as the llama.cpp behind Turbo. Weights are never
+shipped: the user downloads a model from the catalog when they want one.
+
+── Turbo ────────────────────────────────────────────────────────────────────
+
+Measured, not assumed (WSL, 2026-10-03): the first picture from a cold engine
+spent 221 s of its run just READING weights; the next one, from the same
+warm process, spent none. So Turbo is, first, keeping the model loaded: a
+genesi-sd-server held by a small keeper process that shuts it down after a
+few idle minutes so the GPU goes back to the chat. On top of that, per model:
+a Lightning LoRA that cuts a 30-step model to 4 steps, or a step cache for the
+models that run many steps; and on CUDA, flash attention and SageAttention,
+which the upstream docs say help there and only there.
 
 ── The catalog ──────────────────────────────────────────────────────────────
 
-Only models whose licence lets anyone use the output for anything (Apache-2.0
-weights, BSD upscaler), and only files that download without a Hugging Face
-login. Each file carries its size and SHA-256, so a download that was cut, or
-a file that is not the one we tested against, is caught before sd-cli is asked
-to load it -- a truncated GGUF does not fail cleanly, it fails as a confusing
-tensor error minutes into a load.
+Every file carries its size and SHA-256, so a download that was cut or a file
+that is not the one tested is caught before sd-cli loads it. Files are shared
+by NAME across models and variants, downloaded once, and never deleted while
+another downloaded model still needs them.
 
-Components are shared by NAME across models: a file two models need is
-downloaded once, and removing one model never deletes a file the other still
-uses.
+Variants are quantizations of the same weights: smaller is faster to load and
+fits a smaller card, larger is closer to the original. The SDXL checkpoints
+arrive as 7 GB fp16 files and are converted to GGUF Q8_0 on the user's own
+machine right after the download (`sd-cli -M convert`), which halves what the
+card has to hold.
+
+Licences are shown, not filtered: several models are non-commercial, and the
+"unfiltered" tag marks models trained without a content filter.
 """
 import argparse
+import base64
 import datetime
 import hashlib
 import json
@@ -45,6 +64,7 @@ import random
 import re
 import shutil
 import signal
+import socket
 import struct
 import subprocess
 import sys
@@ -54,126 +74,303 @@ import urllib.request
 
 OLLAMA = "http://127.0.0.1:11434"
 ENGINE_NAMES = ("genesi-sd-cli", "sd-cli")
-
+SERVER_NAMES = ("genesi-sd-server", "sd-server")
 HF = "https://huggingface.co/"
+GH_ESRGAN = "https://github.com/xinntao/Real-ESRGAN/releases/download/"
 
-# Every file any model needs. size/sha256 are what Hugging Face (and GitHub,
-# for the upscaler) report for the exact file -- checked when it lands.
+# Idle minutes before the warm engine gives the GPU back.
+WARM_IDLE = int(os.environ.get("GENESI_IMAGE_WARM_IDLE", "600"))
+
+
+def C(file, url, size, sha256=""):
+    return {"file": file, "url": url, "size": size, "sha256": sha256}
+
+
+# ── every file any model needs ───────────────────────────────────────────────
 COMPONENTS = {
-    "flux2-klein-4b-q8": {
-        "file": "flux-2-klein-4b-Q8_0.gguf",
-        "url": HF + "leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf",
-        "size": 4300629440,
-        "sha256": "0bba6951258ec8f92d51114a8fa13e66828297bfff58a738f52729b3ef66fa28",
-    },
-    "flux2-vae": {
-        "file": "flux2-full_encoder_small_decoder.safetensors",
-        "url": HF + "black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors",
-        "size": 249519092,
-        "sha256": "ea4273f02d1fafbf8e1d1c2cf6018ed8748652eb0bf34f2dd91171f16f15ab62",
-    },
-    "qwen3-4b-q4km": {
-        "file": "Qwen3-4B-Q4_K_M.gguf",
-        "url": HF + "unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
-        "size": 2497281312,
-        "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
-    },
-    "z-image-turbo-q4k": {
-        "file": "z_image_turbo-Q4_K.gguf",
-        "url": HF + "leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q4_K.gguf",
-        "size": 3864250304,
-        "sha256": "14b375ab4f226bc5378f68f37e899ef3c2242b8541e61e2bc1aff40976086fbd",
-    },
-    "flux1-vae": {
-        "file": "flux1-ae.safetensors",
-        "url": HF + "Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
-        "size": 335304388,
-        "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
-    },
-    "qwen3-4b-2507-q4km": {
-        "file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-        "url": HF + "unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-        "size": 2497281120,
-        "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
-    },
-    "realesrgan-x4": {
-        "file": "RealESRGAN_x4plus.pth",
-        "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
-        "size": 67040989,
-        # GitHub publishes no digest for release assets; the size is the check.
-        "sha256": "",
-    },
+    # FLUX.2 klein
+    "flux2-klein-4b-q4": C("flux-2-klein-4b-Q4_0.gguf", HF + "leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q4_0.gguf", 2460378560, "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4"),
+    "flux2-klein-4b-q8": C("flux-2-klein-4b-Q8_0.gguf", HF + "leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf", 4300629440, "0bba6951258ec8f92d51114a8fa13e66828297bfff58a738f52729b3ef66fa28"),
+    "flux2-klein-9b-q8": C("flux-2-klein-9b-Q8_0.gguf", HF + "leejet/FLUX.2-klein-9B-GGUF/resolve/main/flux-2-klein-9b-Q8_0.gguf", 9978284192, "67ca777c7aa2d6a0d63d4a7564f823c63af88e9688643df727e1867789062982"),
+    "flux2-vae": C("flux2-full_encoder_small_decoder.safetensors", HF + "black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors", 249519092, "ea4273f02d1fafbf8e1d1c2cf6018ed8748652eb0bf34f2dd91171f16f15ab62"),
+    "qwen3-4b-q4km": C("Qwen3-4B-Q4_K_M.gguf", HF + "unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf", 2497281312, "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a"),
+    "qwen3-8b-q4km": C("Qwen3-8B-Q4_K_M.gguf", HF + "unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf", 5027784512, "120307ba529eb2439d6c430d94104dabd578497bc7bfe7e322b5d9933b449bd4"),
+    # Z-Image
+    "z-image-turbo-q4k": C("z_image_turbo-Q4_K.gguf", HF + "leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q4_K.gguf", 3864250304, "14b375ab4f226bc5378f68f37e899ef3c2242b8541e61e2bc1aff40976086fbd"),
+    "z-image-turbo-q6k": C("z_image_turbo-Q6_K.gguf", HF + "leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q6_K.gguf", 5263239104, "319f627beac8059b7546f36a7b4d5097b7f4ee6a1fc37585d0f75ca1d12d01af"),
+    "z-image-turbo-q8": C("z_image_turbo-Q8_0.gguf", HF + "leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf", 6577440704, "df1c5baa86d1398c979495a6072dbcee79444fdb884a2445582ba0769c44e9a1"),
+    "z-image-q4km": C("z-image-Q4_K_M.gguf", HF + "unsloth/Z-Image-GGUF/resolve/main/z-image-Q4_K_M.gguf", 5066995776, "a62b929f76553b21f68894e9ed34d24b7fb67fb59b5689fa06981865986cce40"),
+    "z-image-q6k": C("z-image-Q6_K.gguf", HF + "unsloth/Z-Image-GGUF/resolve/main/z-image-Q6_K.gguf", 6101921856, "cbe468f6095fb3fe8089c015e6c10c6f8416fdd05407865d431fe3493bed75c0"),
+    "z-image-q8": C("z-image-Q8_0.gguf", HF + "unsloth/Z-Image-GGUF/resolve/main/z-image-Q8_0.gguf", 7224707136, "a51d4e36f84caa972e0eff65e8bd2961add14374d8a7038a51eefea2fe45f2c9"),
+    "qwen3-4b-2507-q4km": C("Qwen3-4B-Instruct-2507-Q4_K_M.gguf", HF + "unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf", 2497281120, "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"),
+    "flux1-vae": C("flux1-ae.safetensors", HF + "Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors", 335304388, "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38"),
+    # Chroma (FLUX.1-schnell lineage, trained without a content filter)
+    "chroma-hd-q4km": C("Chroma1-HD-Q4_K_M.gguf", HF + "silveroxides/Chroma1-HD-GGUF/resolve/main/Chroma1-HD-Q4_K_M.gguf", 5566533792, "086f561e371d442b82b2c3689149da75046754c62a35293932cda397fc2bf9d2"),
+    "chroma-hd-q6k": C("Chroma1-HD-Q6_K.gguf", HF + "silveroxides/Chroma1-HD-GGUF/resolve/main/Chroma1-HD-Q6_K.gguf", 7650971808, "53d3619d77acfa8ee78c700cca1eb45a6c856e6d9563301140a3a04957657379"),
+    "chroma-hd-q8": C("Chroma1-HD-Q8_0.gguf", HF + "silveroxides/Chroma1-HD-GGUF/resolve/main/Chroma1-HD-Q8_0.gguf", 9735409824, "8c8d66177bfc584573dd21584399ebc1f00bde60acbbc48ac3cc8f58f10c6094"),
+    "chroma-flash-q4km": C("Chroma1-HD-Flash-Q4_K_M.gguf", HF + "silveroxides/Chroma1-Flash-GGUF/resolve/main/Chroma1-HD-Flash-Q4_K_M.gguf", 5566533792, "59b7ecbc09e8ebe6b260b01da93c9edf465289ef8650e510a637b58a144eaa49"),
+    "chroma-flash-q6k": C("Chroma1-HD-Flash-Q6_K.gguf", HF + "silveroxides/Chroma1-Flash-GGUF/resolve/main/Chroma1-HD-Flash-Q6_K.gguf", 7650971808, "76746a90ab6203b42d59d9657aacd37b11d17b2d2b3be1e6bbbfa07df98c23ef"),
+    "chroma-flash-q8": C("Chroma1-HD-Flash-Q8_0.gguf", HF + "silveroxides/Chroma1-Flash-GGUF/resolve/main/Chroma1-HD-Flash-Q8_0.gguf", 9735409824, "8dd6330a785a342a92ffc827979e883dc9504ed262d2cf65c678c0ef1b7f7063"),
+    "t5xxl-q5km": C("t5-v1_1-xxl-encoder-Q5_K_M.gguf", HF + "city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q5_K_M.gguf", 3386856640, "b51cbb10b1a7aac6dd1c3b62f0ed908bfd06e0b42d2f3577d43e061361f51dae"),
+    # Qwen-Image (20B: the best text rendering and the strongest editor)
+    "qwen-image-2512-q3km": C("qwen-image-2512-Q3_K_M.gguf", HF + "unsloth/Qwen-Image-2512-GGUF/resolve/main/qwen-image-2512-Q3_K_M.gguf", 9932896800, "db9842e93007b61d2e2a1ed5da52cf468cd1bb0c655a77926effa5220c2f1011"),
+    "qwen-image-2512-q4km": C("qwen-image-2512-Q4_K_M.gguf", HF + "unsloth/Qwen-Image-2512-GGUF/resolve/main/qwen-image-2512-Q4_K_M.gguf", 13244758560, "b2a5f6249eb58ee10c9e2ce8cb1114b89897db23de2fdf7dc49140800aa928fc"),
+    "qwen-image-edit-2511-q3km": C("qwen-image-edit-2511-Q3_K_M.gguf", HF + "unsloth/Qwen-Image-Edit-2511-GGUF/resolve/main/qwen-image-edit-2511-Q3_K_M.gguf", 9920805472, "5631fd3a407880e1fb541dc47696628633c898565136c128d5a2741d4b84e9e9"),
+    "qwen-image-edit-2511-q4km": C("qwen-image-edit-2511-Q4_K_M.gguf", HF + "unsloth/Qwen-Image-Edit-2511-GGUF/resolve/main/qwen-image-edit-2511-Q4_K_M.gguf", 13244758624, "8677bac90627adbbc11efab87b1870e701c4eb3689ee865a3de8ab81b705a723"),
+    "qwen25vl-7b-q4km": C("Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf", HF + "mradermacher/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf", 4683072512, "0f00a930ba3108b6861ddadf74d8ebbd82e257c63eba728e62c3e8970f5eed94"),
+    "qwen25vl-7b-mmproj": C("Qwen2.5-VL-7B-Instruct.mmproj-Q8_0.gguf", HF + "mradermacher/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct.mmproj-Q8_0.gguf", 853119712, "2185ca0adf339f96845318c7b666f5d242f86bbace5657a89cb834785d0cea57"),
+    "qwen-image-vae": C("Qwen_Image-VAE.safetensors", HF + "QuantStack/Qwen-Image-GGUF/resolve/main/VAE/Qwen_Image-VAE.safetensors", 253806246, "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f"),
+    "qwen-image-2512-lightning": C("Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors", HF + "lightx2v/Qwen-Image-2512-Lightning/resolve/main/Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors", 849608296, "de0d236e54ecf2c43b32447d13478c6eae0d361b1fed48c69675b084fa240d87"),
+    "qwen-image-edit-2511-lightning": C("Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors", HF + "lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors", 849608296, "22226e8d05d354bb356627d428809f5afd7819399b077238a2b70a82883a904f"),
+    # SDXL checkpoints (fp16 single files; converted to GGUF Q8_0 locally)
+    "juggernaut-xl-v9": C("Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors", HF + "RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors", 7105348188, "c9e3e68f89b8e38689e1097d4be4573cf308de4e3fd044c64ca697bdb4aa8bca"),
+    "realvis-xl-v5-lightning": C("RealVisXL_V5.0_Lightning_fp16.safetensors", HF + "SG161222/RealVisXL_V5.0_Lightning/resolve/main/RealVisXL_V5.0_Lightning_fp16.safetensors", 6938065512, "fabcadd9330dcc4f9702063428d40b9d4d07168d8acefc819b8d1d9db466b3ec"),
+    "dreamshaper-xl-lightning": C("DreamShaperXL_Lightning.safetensors", HF + "Lykon/dreamshaper-xl-lightning/resolve/main/DreamShaperXL_Lightning.safetensors", 6939220250, "fdbe56354b8f876b736f24d3ad867ecd4140c019f57642ec8ddd878088d44f64"),
+    "pony-v6-xl": C("ponyDiffusionV6XL_v6StartWithThisOne.safetensors", HF + "LyliaEngine/Pony_Diffusion_V6_XL/resolve/main/ponyDiffusionV6XL_v6StartWithThisOne.safetensors", 6938041050, "67ab2fd8ec439a89b3fedb15cc65f54336af163c7eb5e4f2acc98f090a29b0b3"),
+    "illustrious-xl-v2": C("Illustrious-XL-v2.0.safetensors", HF + "OnomaAIResearch/Illustrious-XL-v2.0/resolve/main/Illustrious-XL-v2.0.safetensors", 6938040674, "c2a1a3eaa13d4c107dc7e00c3fe830cab427aa026362740ea094745b3422a331"),
+    "sdxl-vae": C("sdxl_vae-fp16-fix.safetensors", HF + "madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors", 334641162, "235745af8d86bf4a4c1b5b4f529868b37019a10f7c0b2e79ad0abca3a22bc6e1"),
+    # Upscalers (GitHub publishes no digest for release assets)
+    "realesrgan-x4": C("RealESRGAN_x4plus.pth", GH_ESRGAN + "v0.1.0/RealESRGAN_x4plus.pth", 67040989, "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1"),
+    "realesrgan-x4-anime": C("RealESRGAN_x4plus_anime_6B.pth", GH_ESRGAN + "v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth", 17938799, "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da"),
 }
 
-# What each model is, in the words the Image page shows. `parts` maps the
-# sd-cli role of each file to its component. `caps` decides which modes offer
-# the model: generate (text -> image), edit (image + instruction -> image),
-# upscale (image -> bigger image).
+
+# sd-cli flag for each role a file can play.
+PART_FLAGS = {"diffusion": "--diffusion-model", "model": "-m", "vae": "--vae",
+              "llm": "--llm", "llm_vision": "--llm_vision", "t5xxl": "--t5xxl",
+              "upscale": "--upscale-model"}
+
+T = lambda en, pt: {"en": en, "pt": pt}
+
+# SDXL checkpoints share almost everything but their weights and prompt habits.
+def _sdxl(mid, name, src, summary, license_, tags, defaults, turbo=None,
+          recommended=False):
+    return {
+        "id": mid, "name": name, "family": "sdxl", "summary": summary,
+        "license": license_, "caps": ["generate", "img2img"],
+        "tags": ["unfiltered", "sdxl"] + tags,
+        "parts": {"vae": "sdxl-vae"},
+        "variants": [
+            {"id": "q8", "label": "Q8_0 (optimized)",
+             "convert": {"from": src, "type": "q8_0",
+                         "file": "%s-q8_0.gguf" % mid, "role": "model"}},
+            {"id": "fp16", "label": "FP16 (original)", "parts": {"model": src}},
+        ],
+        "defaults": dict({"steps": 28, "cfg": 5.5, "sampler": "euler_a",
+                          "strength": 0.6, "base": 1024}, **defaults),
+        # {} is a real answer (a 5-step Lightning model has nothing to cache),
+        # so only None takes the default.
+        "turbo": {"cache": "ucache"} if turbo is None else turbo,
+        "recommended": recommended,
+    }
+
+
 MODELS = [
+    # ── generate + edit ──────────────────────────────────────────────────
     {
-        "id": "flux2-klein",
-        "name": "FLUX.2 klein 4B",
-        "summary": {
-            "en": "Generates AND edits. Describe a change (\"make the sky a sunset\") and it redraws the picture. 4 steps — fast on any 6 GB+ GPU.",
-            "pt": "Gera E edita. Descreva uma mudança (\"deixa o céu em pôr do sol\") e ele redesenha a imagem. 4 passos — rápido em qualquer GPU de 6 GB+.",
-        },
-        "license": "Apache-2.0",
-        "caps": ["generate", "edit"],
-        "parts": {"diffusion": "flux2-klein-4b-q8", "vae": "flux2-vae",
-                  "llm": "qwen3-4b-q4km"},
-        "defaults": {"steps": 4, "cfg": 1.0, "sampler": "euler"},
-        "recommended": True,
+        "id": "flux2-klein", "name": "FLUX.2 klein 4B", "family": "flux2",
+        "summary": T("Generates AND edits by instruction (\"make the sky a sunset\"). 4 steps — the quick all-rounder.",
+                     "Gera E edita por instrução (\"deixa o céu em pôr do sol\"). 4 passos — o curinga rápido."),
+        "license": "Apache-2.0", "caps": ["generate", "edit"], "tags": ["fast", "edit"],
+        "parts": {"vae": "flux2-vae", "llm": "qwen3-4b-q4km"},
+        "variants": [{"id": "q4", "label": "Q4_0", "parts": {"diffusion": "flux2-klein-4b-q4"}},
+                     {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "flux2-klein-4b-q8"}}],
+        "defaults": {"steps": 4, "cfg": 1.0, "sampler": "euler", "base": 1024},
+        "turbo": {}, "recommended": True,
     },
     {
-        "id": "z-image-turbo",
-        "name": "Z-Image Turbo",
-        "summary": {
-            "en": "The most photorealistic of the set, and good at text inside the image. Generates only. 8 steps.",
-            "pt": "O mais fotorrealista do catálogo, e bom em texto dentro da imagem. Só gera. 8 passos.",
-        },
-        "license": "Apache-2.0",
-        "caps": ["generate"],
-        "parts": {"diffusion": "z-image-turbo-q4k", "vae": "flux1-vae",
-                  "llm": "qwen3-4b-2507-q4km"},
-        "defaults": {"steps": 8, "cfg": 1.0, "sampler": "euler"},
-        "recommended": False,
+        "id": "flux2-klein-9b", "name": "FLUX.2 klein 9B", "family": "flux2",
+        "summary": T("The bigger klein: noticeably better detail and edits, same 4 steps. Non-commercial licence.",
+                     "O klein maior: bem mais detalhe e edições melhores, nos mesmos 4 passos. Licença não-comercial."),
+        "license": "FLUX Non-Commercial", "caps": ["generate", "edit"],
+        "tags": ["edit", "noncommercial", "heavy"],
+        "parts": {"vae": "flux2-vae", "llm": "qwen3-8b-q4km"},
+        "variants": [{"id": "q8", "label": "Q8_0", "parts": {"diffusion": "flux2-klein-9b-q8"}}],
+        "defaults": {"steps": 4, "cfg": 1.0, "sampler": "euler", "base": 1024},
+        "turbo": {}, "recommended": False,
     },
     {
-        "id": "upscaler",
-        "name": "Real-ESRGAN 4×",
-        "summary": {
-            "en": "Makes any picture four times larger and sharper. Small (67 MB).",
-            "pt": "Deixa qualquer imagem quatro vezes maior e mais nítida. Pequeno (67 MB).",
-        },
-        "license": "BSD-3-Clause",
-        "caps": ["upscale"],
-        "parts": {"upscale": "realesrgan-x4"},
-        "defaults": {},
-        "recommended": False,
+        "id": "qwen-image-edit", "name": "Qwen-Image-Edit 2511", "family": "qwen",
+        "summary": T("The strongest editor: changes text in a picture, swaps objects, keeps faces. 20B — needs 32 GB of RAM.",
+                     "O editor mais forte: troca texto da imagem, objetos, mantém rostos. 20B — precisa de 32 GB de RAM."),
+        "license": "Apache-2.0", "caps": ["edit"], "tags": ["edit", "text", "heavy"],
+        "parts": {"vae": "qwen-image-vae", "llm": "qwen25vl-7b-q4km", "llm_vision": "qwen25vl-7b-mmproj"},
+        "variants": [{"id": "q3", "label": "Q3_K_M", "parts": {"diffusion": "qwen-image-edit-2511-q3km"}},
+                     {"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "qwen-image-edit-2511-q4km"}}],
+        "defaults": {"steps": 30, "cfg": 2.5, "sampler": "euler", "flow_shift": 3,
+                     "model_args": "qwen_image_zero_cond_t=true", "base": 1024},
+        "turbo": {"lora": "qwen-image-edit-2511-lightning", "steps": 4, "cfg": 1.0},
+        "min_ram_gb": 32, "recommended": False,
+    },
+    # ── generate ─────────────────────────────────────────────────────────
+    {
+        "id": "z-image-turbo", "name": "Z-Image Turbo", "family": "zimage",
+        "summary": T("Photorealism in 8 steps, good at text inside the image. Trained without a content filter.",
+                     "Fotorrealismo em 8 passos, bom em texto dentro da imagem. Treinado sem filtro de conteúdo."),
+        "license": "Apache-2.0", "caps": ["generate", "img2img"],
+        "tags": ["fast", "photo", "text", "unfiltered"],
+        "parts": {"vae": "flux1-vae", "llm": "qwen3-4b-2507-q4km"},
+        "variants": [{"id": "q4", "label": "Q4_K", "parts": {"diffusion": "z-image-turbo-q4k"}},
+                     {"id": "q6", "label": "Q6_K", "parts": {"diffusion": "z-image-turbo-q6k"}},
+                     {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "z-image-turbo-q8"}}],
+        "defaults": {"steps": 8, "cfg": 1.0, "sampler": "euler", "strength": 0.6, "base": 1024},
+        "turbo": {}, "recommended": False,
+    },
+    {
+        "id": "z-image", "name": "Z-Image", "family": "zimage",
+        "summary": T("The full Z-Image: more variety and control than Turbo, takes a negative prompt. 28 steps.",
+                     "O Z-Image completo: mais variedade e controle que o Turbo, aceita prompt negativo. 28 passos."),
+        "license": "Apache-2.0", "caps": ["generate", "img2img"], "tags": ["photo", "unfiltered"],
+        "parts": {"vae": "flux1-vae", "llm": "qwen3-4b-2507-q4km"},
+        "variants": [{"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "z-image-q4km"}},
+                     {"id": "q6", "label": "Q6_K", "parts": {"diffusion": "z-image-q6k"}},
+                     {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "z-image-q8"}}],
+        "defaults": {"steps": 28, "cfg": 4.0, "sampler": "euler", "strength": 0.6, "base": 1024,
+                     "negative": "blurry, low quality, distorted, watermark"},
+        "turbo": {"cache": "easycache"}, "recommended": False,
+    },
+    {
+        "id": "chroma-hd", "name": "Chroma1-HD", "family": "chroma",
+        "summary": T("Uncensored FLUX-class model, trained from scratch without a filter. Very wide range of styles.",
+                     "Modelo classe FLUX sem censura, treinado do zero sem filtro. Gama de estilos enorme."),
+        "license": "Apache-2.0", "caps": ["generate", "img2img"], "tags": ["unfiltered", "photo"],
+        "parts": {"vae": "flux1-vae", "t5xxl": "t5xxl-q5km"},
+        "variants": [{"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "chroma-hd-q4km"}},
+                     {"id": "q6", "label": "Q6_K", "parts": {"diffusion": "chroma-hd-q6k"}},
+                     {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "chroma-hd-q8"}}],
+        "defaults": {"steps": 26, "cfg": 4.0, "sampler": "euler", "strength": 0.6, "base": 1024,
+                     "model_args": "chroma_use_dit_mask=false",
+                     "negative": "low quality, blurry, ugly, bad anatomy, jpeg artifacts"},
+        "turbo": {"cache": "easycache"}, "recommended": False,
+    },
+    {
+        "id": "chroma-flash", "name": "Chroma1-HD Flash", "family": "chroma",
+        "summary": T("Chroma distilled for speed: same uncensored model in about 10 steps.",
+                     "O Chroma destilado pra velocidade: o mesmo modelo sem censura em uns 10 passos."),
+        "license": "Apache-2.0", "caps": ["generate", "img2img"],
+        "tags": ["unfiltered", "fast", "photo"],
+        "parts": {"vae": "flux1-vae", "t5xxl": "t5xxl-q5km"},
+        "variants": [{"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "chroma-flash-q4km"}},
+                     {"id": "q6", "label": "Q6_K", "parts": {"diffusion": "chroma-flash-q6k"}},
+                     {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "chroma-flash-q8"}}],
+        "defaults": {"steps": 10, "cfg": 1.0, "sampler": "euler", "strength": 0.6, "base": 1024,
+                     "model_args": "chroma_use_dit_mask=false"},
+        "turbo": {}, "recommended": False,
+    },
+    {
+        "id": "qwen-image", "name": "Qwen-Image 2512", "family": "qwen",
+        "summary": T("Best at text in images (posters, signs, any language) and complex scenes. 20B — needs 32 GB of RAM.",
+                     "O melhor em texto na imagem (cartazes, placas, qualquer idioma) e cenas complexas. 20B — precisa de 32 GB de RAM."),
+        "license": "Apache-2.0", "caps": ["generate"], "tags": ["text", "photo", "heavy"],
+        "parts": {"vae": "qwen-image-vae", "llm": "qwen25vl-7b-q4km"},
+        "variants": [{"id": "q3", "label": "Q3_K_M", "parts": {"diffusion": "qwen-image-2512-q3km"}},
+                     {"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "qwen-image-2512-q4km"}}],
+        "defaults": {"steps": 30, "cfg": 2.5, "sampler": "euler", "flow_shift": 3, "base": 1024},
+        "turbo": {"lora": "qwen-image-2512-lightning", "steps": 4, "cfg": 1.0},
+        "min_ram_gb": 32, "recommended": False,
+    },
+    _sdxl("juggernaut-xl", "Juggernaut XL v9", "juggernaut-xl-v9",
+          T("The classic photoreal SDXL: people, products, cinematic scenes. Huge prompt know-how online.",
+            "O SDXL fotorrealista clássico: pessoas, produtos, cenas de cinema. Muito material de prompt na internet."),
+          "CreativeML OpenRAIL-M", ["photo"],
+          {"steps": 30, "cfg": 5.0, "sampler": "dpm++2m", "scheduler": "karras",
+           "negative": "cartoon, painting, illustration, worst quality, low quality, blurry"}),
+    _sdxl("realvis-xl-lightning", "RealVisXL V5 Lightning", "realvis-xl-v5-lightning",
+          T("Photoreal SDXL distilled to 5 steps. Fast realistic portraits and scenes.",
+            "SDXL fotorrealista destilado em 5 passos. Retratos e cenas realistas rápidos."),
+          "OpenRAIL++", ["photo", "fast"],
+          {"steps": 5, "cfg": 1.5, "sampler": "dpm++2m", "scheduler": "karras",
+           "negative": "cartoon, drawing, worst quality, low quality"},
+          turbo={}),
+    _sdxl("dreamshaper-xl-lightning", "DreamShaper XL Lightning", "dreamshaper-xl-lightning",
+          T("Versatile SDXL — art, fantasy, illustration and photos — in 6 steps.",
+            "SDXL versátil — arte, fantasia, ilustração e fotos — em 6 passos."),
+          "OpenRAIL++", ["fast"],
+          {"steps": 6, "cfg": 2.0, "sampler": "dpm++2m", "scheduler": "karras"},
+          turbo={}),
+    _sdxl("pony-v6-xl", "Pony Diffusion V6 XL", "pony-v6-xl",
+          T("Anime, cartoon and furry art, uncensored. Understands booru-style tags.",
+            "Anime, cartoon e furry, sem censura. Entende tags estilo booru."),
+          "Fair AI Public License", ["anime"],
+          {"steps": 25, "cfg": 7.0, "sampler": "euler_a", "clip_skip": 2,
+           "prefix": "score_9, score_8_up, score_7_up, ",
+           "negative": "score_4, score_5, score_6, worst quality, low quality"}),
+    _sdxl("illustrious-xl", "Illustrious XL 2.0", "illustrious-xl-v2",
+          T("High-detail anime illustration, uncensored. Danbooru tags work best.",
+            "Ilustração anime com muito detalhe, sem censura. Tags do Danbooru funcionam melhor."),
+          "CreativeML OpenRAIL-M", ["anime"],
+          {"steps": 28, "cfg": 5.5, "sampler": "euler_a",
+           "prefix": "masterpiece, best quality, ",
+           "negative": "worst quality, low quality, lowres, bad anatomy, watermark"}),
+    # ── upscale ──────────────────────────────────────────────────────────
+    {
+        "id": "upscaler", "name": "Real-ESRGAN 4×", "family": "esrgan",
+        "summary": T("Makes any photo four times larger and sharper. 67 MB.",
+                     "Deixa qualquer foto quatro vezes maior e mais nítida. 67 MB."),
+        "license": "BSD-3-Clause", "caps": ["upscale"], "tags": ["photo"],
+        "parts": {}, "variants": [{"id": "x4", "label": "x4plus", "parts": {"upscale": "realesrgan-x4"}}],
+        "defaults": {}, "turbo": {}, "recommended": True,
+    },
+    {
+        "id": "upscaler-anime", "name": "Real-ESRGAN 4× Anime", "family": "esrgan",
+        "summary": T("The upscaler tuned for drawings and anime: clean lines, flat colours. 18 MB.",
+                     "O upscaler ajustado pra desenho e anime: linhas limpas, cores chapadas. 18 MB."),
+        "license": "BSD-3-Clause", "caps": ["upscale"], "tags": ["anime"],
+        "parts": {}, "variants": [{"id": "x4", "label": "x4plus anime 6B", "parts": {"upscale": "realesrgan-x4-anime"}}],
+        "defaults": {}, "turbo": {}, "recommended": False,
     },
 ]
 
-# The flag each part is handed to sd-cli under, at the pinned genesi-sd-cpp.
-PART_FLAGS = {"diffusion": "--diffusion-model", "vae": "--vae", "llm": "--llm",
-              "upscale": "--upscale-model"}
+# Model families the user may import as a single checkpoint file.
+IMPORT_DEFAULTS = {
+    "sdxl": {"steps": 28, "cfg": 5.5, "sampler": "euler_a", "strength": 0.6, "base": 1024},
+    "sd15": {"steps": 25, "cfg": 7.0, "sampler": "euler_a", "strength": 0.6, "base": 512},
+}
 
-# About one megapixel: what these models were trained at. Sides are multiples
-# of 16 because the latent is 1/8 of the image and the DiT patches it by 2.
 TARGET_PIXELS = 1024 * 1024
 MAX_SIDE = 2048
 
 
 # ── paths ────────────────────────────────────────────────────────────────────
 
+def _data_home():
+    return os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+
+
 def models_dir():
     env = os.environ.get("GENESI_IMAGE_MODELS_DIR", "").strip()
-    if env:
-        return env
-    data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     # NOT genesi/models: that is the GGUF chat library genesi-ai-turbo scans,
     # and a diffusion GGUF listed as a chat model would be offered in every
     # model picker and fail to load in all of them.
-    return os.path.join(data, "genesi", "image-models")
+    return env or os.path.join(_data_home(), "genesi", "image-models")
+
+
+def cache_dir():
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    d = os.environ.get("GENESI_IMAGE_CACHE_DIR", "").strip() or os.path.join(base, "genesi-ai-image")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def runtime_dir():
+    env = os.environ.get("GENESI_IMAGE_RUNTIME_DIR", "").strip()
+    if env:
+        os.makedirs(env, exist_ok=True)
+        return env
+    # NOT $XDG_RUNTIME_DIR, though it is the textbook place. It is a tmpfs
+    # logind can mount AFTER a process started -- under WSL, ~20 s after boot
+    # -- and every file in it (the warm engine's state, its activity clock,
+    # its logs) vanishes under a running keeper: the server looked like it
+    # "exited while loading" every first run, and keepers lost track of their
+    # own activity file and never went idle. A stale file in the cache dir is
+    # harmless: every pid in it is checked for life before it is believed.
+    d = os.path.join(cache_dir(), "run")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def log_path():
+    return os.path.join(cache_dir(), "last-run.log")
 
 
 def _xdg_pictures():
@@ -195,15 +392,30 @@ def output_dir():
     return env or os.path.join(_xdg_pictures(), "Genesi AI")
 
 
-def find_engine():
-    env = os.environ.get("GENESI_SD_CLI", "").strip()
+def _find(env_name, names):
+    env = os.environ.get(env_name, "").strip()
     if env:
         return env if os.path.exists(env) else None
-    for name in ENGINE_NAMES:
+    for name in names:
         p = shutil.which(name)
         if p:
             return p
     return None
+
+
+def find_engine():
+    return _find("GENESI_SD_CLI", ENGINE_NAMES)
+
+
+def find_server():
+    return _find("GENESI_SD_SERVER", SERVER_NAMES)
+
+
+def engine_argv(engine):
+    """How to start an engine binary. A .py one is the stand-in
+    ci/image-cli-test.py uses, run through this interpreter so the test also
+    runs where a shebang does not (a Windows dev box)."""
+    return [sys.executable, engine] if engine.endswith(".py") else [engine]
 
 
 # ── output ───────────────────────────────────────────────────────────────────
@@ -222,78 +434,28 @@ class Out:
         else:
             text = fields.get("text")
             if kind == "progress":
-                steps = fields.get("steps") or 0
-                text = "%s %s/%s" % (fields.get("phase", ""), fields.get("step"), steps)
+                text = "%s %s/%s" % (fields.get("phase", ""), fields.get("step"),
+                                     fields.get("steps") or 0)
             elif kind == "done":
-                text = fields.get("path") or "done"
+                text = fields.get("path") or fields.get("text") or "done"
+            elif kind == "phase":
+                text = fields.get("phase")
             if text:
                 sys.stderr.write(("[!] " if kind == "error" else ":: ") + str(text) + "\n")
 
     def data(self, obj):
-        if self.json:
-            sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
-        else:
-            sys.stdout.write(json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
+        sys.stdout.write(json.dumps(obj, ensure_ascii=False,
+                                    indent=None if self.json else 2) + "\n")
         sys.stdout.flush()
 
 
-# ── catalog / install state ──────────────────────────────────────────────────
-
-def model_by_id(mid):
-    for m in MODELS:
-        if m["id"] == mid:
-            return m
-    return None
-
-
-def component_path(cid):
-    return os.path.join(models_dir(), COMPONENTS[cid]["file"])
-
-
-def component_ready(cid):
-    """Present at its full size. Size, not hash: hashing 4 GB on every catalog
-    refresh would freeze the page, and the hash was checked when it landed."""
-    try:
-        return os.path.getsize(component_path(cid)) == COMPONENTS[cid]["size"]
-    except OSError:
-        return False
-
-
-def model_components(m):
-    seen, out = set(), []
-    for cid in m["parts"].values():
-        if cid not in seen:
-            seen.add(cid)
-            out.append(cid)
-    return out
-
-
-def model_state(m):
-    comps = model_components(m)
-    total = sum(COMPONENTS[c]["size"] for c in comps)
-    have = 0
-    for c in comps:
-        p = component_path(c)
-        if component_ready(c):
-            have += COMPONENTS[c]["size"]
-        else:
-            try:
-                have += min(os.path.getsize(p + ".part"), COMPONENTS[c]["size"])
-            except OSError:
-                pass
-    installed = all(component_ready(c) for c in comps)
-    return {
-        "id": m["id"], "name": m["name"], "summary": m["summary"],
-        "license": m["license"], "caps": m["caps"],
-        "recommended": m["recommended"], "defaults": m["defaults"],
-        "size": total, "downloaded": have if not installed else total,
-        "installed": installed,
-        "partial": (not installed) and have > 0,
-    }
-
+# ── hardware ─────────────────────────────────────────────────────────────────
 
 def gpu_vram_mb():
     """Total VRAM of the biggest GPU, or 0 when nothing can be read."""
+    env = os.environ.get("GENESI_IMAGE_VRAM_MB", "").strip()
+    if env.isdigit():
+        return int(env)
     best = 0
     try:
         r = subprocess.run(["nvidia-smi", "--query-gpu=memory.total",
@@ -308,7 +470,6 @@ def gpu_vram_mb():
         pass
     if best:
         return best
-    # amdgpu / i915 with local memory publish it in sysfs.
     drm = "/sys/class/drm"
     try:
         for card in os.listdir(drm):
@@ -321,6 +482,310 @@ def gpu_vram_mb():
     except OSError:
         pass
     return best
+
+
+def ram_mb():
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+def has_nvidia():
+    if shutil.which("nvidia-smi"):
+        try:
+            return subprocess.run(["nvidia-smi", "-L"], capture_output=True,
+                                  timeout=5).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+    return False
+
+
+def engine_info():
+    """Which backend the installed engine will run on: cuda | vulkan | cpu.
+
+    Asked of the engine itself (`--list-devices`), not guessed from the
+    package name, and cached by the engine's mtime -- the probe loads every
+    backend and is not free."""
+    engine = find_engine()
+    if not engine:
+        return {"installed": False, "backend": "", "devices": [], "package": ""}
+    try:
+        stamp = "%s:%s" % (os.path.realpath(engine), os.path.getmtime(os.path.realpath(engine)))
+    except OSError:
+        stamp = engine
+    cache = os.path.join(cache_dir(), "engine.json")
+    try:
+        with open(cache) as fh:
+            c = json.load(fh)
+        if c.get("stamp") == stamp:
+            return c["info"]
+    except (OSError, ValueError, KeyError):
+        pass
+    devices, backend = [], "cpu"
+    try:
+        r = subprocess.run(engine_argv(engine) + ["--list-devices"], capture_output=True,
+                           text=True, timeout=60)
+        for line in (r.stdout or "").splitlines():
+            m = re.match(r"^(CUDA\d+|Vulkan\d+|ROCm\d+|CPU)\s+(.*)$", line.strip())
+            if m:
+                devices.append({"id": m.group(1), "name": m.group(2).strip()})
+        ids = [d["id"] for d in devices]
+        if any(i.startswith("CUDA") for i in ids):
+            backend = "cuda"
+        elif any(i.startswith("Vulkan") for i in ids):
+            backend = "vulkan"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    pkg = ""
+    for p in ("genesi-sd-cpp-cuda", "genesi-sd-cpp"):
+        try:
+            if subprocess.run(["pacman", "-Qq", p], capture_output=True,
+                              timeout=10).returncode == 0:
+                pkg = p
+                break
+        except (OSError, subprocess.SubprocessError):
+            break
+    info = {"installed": True, "backend": backend, "devices": devices, "package": pkg}
+    try:
+        with open(cache, "w") as fh:
+            json.dump({"stamp": stamp, "info": info}, fh)
+    except OSError:
+        pass
+    return info
+
+
+# ── catalog / install state ──────────────────────────────────────────────────
+
+def custom_path():
+    return os.path.join(models_dir(), "custom.json")
+
+
+def load_custom():
+    try:
+        with open(custom_path(), encoding="utf-8") as fh:
+            items = json.load(fh)
+        return items if isinstance(items, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_custom(items):
+    os.makedirs(models_dir(), exist_ok=True)
+    tmp = custom_path() + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(items, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, custom_path())
+
+
+def _custom_model(c):
+    """A user's own checkpoint, shaped like a catalog model."""
+    d = dict(IMPORT_DEFAULTS.get(c.get("family"), IMPORT_DEFAULTS["sdxl"]))
+    parts = {"vae": "sdxl-vae"} if c.get("family") == "sdxl" else {}
+    variants = [{"id": "file", "label": T("Original file", "Arquivo original"),
+                 "parts": {"model": c["path"]}}]
+    for q in c.get("optimized", []):
+        variants.append({"id": q, "label": q.upper(),
+                         "parts": {"model": os.path.join(models_dir(), "%s-%s.gguf" % (c["id"], q))}})
+    return {"id": c["id"], "name": c["name"], "family": c.get("family", "sdxl"),
+            "summary": T("Your model (%s)." % os.path.basename(c["path"]),
+                         "Seu modelo (%s)." % os.path.basename(c["path"])),
+            "license": "—", "caps": ["generate", "img2img"],
+            "tags": ["custom", c.get("family", "sdxl")],
+            "parts": parts, "variants": variants, "defaults": d,
+            "turbo": {"cache": "ucache"}, "recommended": False, "custom": True}
+
+
+def all_models():
+    return MODELS + [_custom_model(c) for c in load_custom()]
+
+
+def model_by_id(mid):
+    for m in all_models():
+        if m["id"] == mid:
+            return m
+    return None
+
+
+def component_path(ref):
+    """A part is either a component id or, for imported models, a path."""
+    if os.path.isabs(ref):
+        return ref
+    return os.path.join(models_dir(), COMPONENTS[ref]["file"])
+
+
+def component_ready(ref):
+    """Present at its full size. Size, not hash: hashing GBs on every catalog
+    refresh would freeze the page, and the hash was checked when it landed."""
+    p = component_path(ref)
+    if os.path.isabs(ref):
+        return os.path.isfile(p)
+    try:
+        return os.path.getsize(p) == COMPONENTS[ref]["size"]
+    except OSError:
+        return False
+
+
+def _component_size(ref):
+    if os.path.isabs(ref):
+        try:
+            return os.path.getsize(ref)
+        except OSError:
+            return 0
+    return COMPONENTS[ref]["size"]
+
+
+def converted_path(v):
+    return os.path.join(models_dir(), v["convert"]["file"])
+
+
+def converted_ready(v):
+    p = converted_path(v)
+    return os.path.isfile(p) and os.path.isfile(p + ".ok")
+
+
+def variant_parts(m, v):
+    """role -> part (component id or path) for this variant, shared ones too."""
+    parts = dict(m.get("parts", {}))
+    if "convert" in v:
+        parts[v["convert"]["role"]] = converted_path(v)
+    else:
+        parts.update(v.get("parts", {}))
+    return parts
+
+
+def variant_downloads(m, v):
+    """Component ids this variant has to download (the source of a
+    conversion included, since the conversion needs it)."""
+    ids = []
+    for ref in m.get("parts", {}).values():
+        if not os.path.isabs(ref) and ref not in ids:
+            ids.append(ref)
+    if "convert" in v:
+        if not converted_ready(v):
+            ids.append(v["convert"]["from"])
+    else:
+        for ref in v.get("parts", {}).values():
+            if not os.path.isabs(ref) and ref not in ids:
+                ids.append(ref)
+    lora = (m.get("turbo") or {}).get("lora")
+    if lora and lora not in ids:
+        ids.append(lora)
+    return ids
+
+
+def variant_ready(m, v):
+    for ref in variant_parts(m, v).values():
+        if os.path.isabs(ref):
+            if not os.path.isfile(ref) or ("convert" in v and not converted_ready(v)):
+                return False
+        elif not component_ready(ref):
+            return False
+    return True
+
+
+def turbo_ready(m):
+    lora = (m.get("turbo") or {}).get("lora")
+    return (not lora) or component_ready(lora)
+
+
+def _variant_size(m, v):
+    total = 0
+    for ref in m.get("parts", {}).values():
+        total += _component_size(ref)
+    if "convert" in v:
+        # What stays on disk: about 60% of the fp16 source for Q8_0 (measured: 6.94 -> 4.18 GB).
+        total += int(COMPONENTS[v["convert"]["from"]]["size"] * 0.61)
+    else:
+        for ref in v.get("parts", {}).values():
+            total += _component_size(ref)
+    return total
+
+
+def _gpu_part_size(m, v):
+    """The weights the GPU actually computes with each step."""
+    parts = v.get("parts", {})
+    ref = parts.get("diffusion") or parts.get("model") or parts.get("upscale")
+    if "convert" in v:
+        return int(COMPONENTS[v["convert"]["from"]]["size"] * 0.61)
+    return _component_size(ref) if ref else 0
+
+
+def recommended_variant(m, vram_mb=None):
+    """The largest variant whose compute weights fit the card with ~1.5 GB to
+    spare for activations; the smallest one when none does (auto-fit and
+    offload carry the rest, slower)."""
+    vram_mb = gpu_vram_mb() if vram_mb is None else vram_mb
+    vs = sorted(m["variants"], key=lambda v: _gpu_part_size(m, v))
+    if not vram_mb:
+        return vs[0]
+    fit = [v for v in vs if _gpu_part_size(m, v) <= (vram_mb - 1536) * 1024 * 1024]
+    # An fp16 checkpoint is never the recommendation when a converted one
+    # exists: same picture, twice the memory.
+    fit = [v for v in fit if not (v["id"] == "fp16" and any("convert" in x for x in vs))] or fit
+    return fit[-1] if fit else vs[0]
+
+
+def pick_variant(m, wanted=None):
+    """The variant to run: the one asked for, else the best installed one."""
+    by_id = {v["id"]: v for v in m["variants"]}
+    if wanted:
+        return by_id.get(wanted)
+    rec = recommended_variant(m)
+    if variant_ready(m, rec):
+        return rec
+    ready = [v for v in m["variants"] if variant_ready(m, v)]
+    return ready[-1] if ready else rec
+
+
+def model_state(m, vram_mb=None):
+    vram_mb = gpu_vram_mb() if vram_mb is None else vram_mb
+    rec = recommended_variant(m, vram_mb)
+    variants = []
+    for v in m["variants"]:
+        need = variant_downloads(m, v)
+        have = 0
+        for ref in need:
+            if component_ready(ref):
+                have += _component_size(ref)
+            else:
+                try:
+                    have += min(os.path.getsize(component_path(ref) + ".part"), _component_size(ref))
+                except OSError:
+                    pass
+        ready = variant_ready(m, v)
+        variants.append({
+            "id": v["id"],
+            "label": v["label"] if isinstance(v["label"], dict) else T(v["label"], v["label"]),
+            "size": _variant_size(m, v), "gpu_size": _gpu_part_size(m, v),
+            # What is still to fetch -- not what the variant weighs: a file
+            # another model already brought is not downloaded again.
+            "download": sum(_component_size(r) for r in need
+                            if not component_ready(r)) if not ready else 0,
+            "downloaded": have, "installed": ready,
+            "partial": (not ready) and have > 0,
+            "converts": "convert" in v,
+            "recommended": v["id"] == rec["id"],
+        })
+    installed = [v for v in variants if v["installed"]]
+    return {
+        "id": m["id"], "name": m["name"], "family": m.get("family", ""),
+        "summary": m["summary"], "license": m["license"], "caps": m["caps"],
+        "tags": m.get("tags", []), "defaults": m.get("defaults", {}),
+        "recommended": m.get("recommended", False), "custom": m.get("custom", False),
+        "min_ram_gb": m.get("min_ram_gb", 0),
+        "turbo": {"kind": ("lora" if (m.get("turbo") or {}).get("lora")
+                           else (m.get("turbo") or {}).get("cache") and "cache" or "warm"),
+                  "steps": (m.get("turbo") or {}).get("steps")},
+        "variants": variants,
+        "installed": bool(installed),
+        "partial": any(v["partial"] for v in variants),
+        "active_variant": pick_variant(m)["id"] if installed else rec["id"],
+    }
 
 
 # ── downloads ────────────────────────────────────────────────────────────────
@@ -339,8 +804,7 @@ def _sha256(path, out, label):
             now = time.monotonic()
             if now - last > 0.5:
                 last = now
-                out.event("progress", phase="verify", file=label,
-                          step=done, steps=size)
+                out.event("progress", phase="verify", file=label, step=done, steps=size)
     return h.hexdigest()
 
 
@@ -363,8 +827,7 @@ def download_component(cid, out, stop=lambda: False):
         have = 0
 
     if have < c["size"]:
-        req = urllib.request.Request(c["url"], headers={
-            "User-Agent": "genesi-ai-image/1"})
+        req = urllib.request.Request(c["url"], headers={"User-Agent": "genesi-ai-image/2"})
         if have:
             req.add_header("Range", "bytes=%d-" % have)
         try:
@@ -401,8 +864,7 @@ def download_component(cid, out, stop=lambda: False):
                             last = now
                             rate = (done - have) / max(now - t0, 1e-6)
                             out.event("progress", phase="download", file=c["file"],
-                                      step=done, steps=c["size"],
-                                      rate=int(rate))
+                                      step=done, steps=c["size"], rate=int(rate))
             except (OSError, urllib.error.URLError) as e:
                 out.event("error", text="%s: %s (the download resumes where it "
                           "stopped next time)" % (c["file"], e))
@@ -421,6 +883,30 @@ def download_component(cid, out, stop=lambda: False):
                       "download it again" % c["file"])
             return False
     os.replace(part, dest)
+    return True
+
+
+def convert(engine, src, dst, qtype, out):
+    """Quantize a checkpoint to GGUF with the engine itself (sd-cli -M
+    convert). Written to a temporary name and moved into place only when the
+    engine says it finished, with a .ok marker -- a half-written GGUF must
+    never look like a model."""
+    tmp = dst + ".converting"
+    argv = engine_argv(engine) + ["-M", "convert", "-m", src, "-o", tmp, "--type", qtype]
+    out.event("phase", phase="convert")
+    out.event("status", text="optimizing %s → %s" % (os.path.basename(src), qtype.upper()))
+    rc, err, _ = run_engine(argv, out)
+    if rc != 0 or not os.path.isfile(tmp):
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        out.event("error", text=err or "conversion failed (exit %s)" % rc, log=log_path())
+        return False
+    os.replace(tmp, dst)
+    with open(dst + ".ok", "w") as fh:
+        json.dump({"from": os.path.basename(src), "type": qtype,
+                   "size": os.path.getsize(dst), "at": int(time.time())}, fh)
     return True
 
 
@@ -463,7 +949,8 @@ def snap(n):
 def fit_size(w, h, target=TARGET_PIXELS):
     """Keep the aspect ratio, land near `target` pixels, multiples of 16."""
     if w <= 0 or h <= 0:
-        return 1024, 1024
+        side = snap(target ** 0.5)
+        return side, side
     scale = (target / float(w * h)) ** 0.5
     nw, nh = snap(w * scale), snap(h * scale)
     big = max(nw, nh)
@@ -485,62 +972,129 @@ def new_output_path(stem="genesi"):
     return path
 
 
-# ── the engine ───────────────────────────────────────────────────────────────
+# ── what the engine is asked to do ───────────────────────────────────────────
 
-def engine_argv(engine):
-    """How to start the engine. A .py engine is the stand-in ci/image-cli-test.py
-    uses, run through this interpreter so the test also runs where a shebang
-    does not (a Windows dev box)."""
-    return [sys.executable, engine] if engine.endswith(".py") else [engine]
+def _heavy(m, v, vram_mb):
+    """Weights that will not fit the card next to their activations."""
+    total = sum(_component_size(r) for r in variant_parts(m, v).values()
+                if not (os.path.isabs(r) and not os.path.exists(r)))
+    return (not vram_mb) or total > (vram_mb - 1536) * 1024 * 1024
 
 
-def build_generate_argv(engine, model, prompt, out_path, width, height,
-                        steps=None, seed=-1, ref=None, extra_flags=()):
-    d = model["defaults"]
-    argv = engine_argv(engine)
-    for role, cid in model["parts"].items():
-        argv += [PART_FLAGS[role], component_path(cid)]
-    argv += ["-p", prompt,
-             "-W", str(int(width)), "-H", str(int(height)),
-             "--steps", str(int(steps or d.get("steps", 20))),
-             "--cfg-scale", str(d.get("cfg", 1.0)),
-             "--seed", str(int(seed)),
-             "-o", out_path]
-    if d.get("sampler"):
-        argv += ["--sampling-method", d["sampler"]]
-    if ref:
+def ctx_flags(m, v, backend, turbo, safe, vram_mb):
+    """Flags that shape the engine itself -- the same for every picture, so a
+    warm server started with them can take any request for this model."""
+    flags = []
+    for role, ref in variant_parts(m, v).items():
+        flags += [PART_FLAGS[role], component_path(ref)]
+    d = m.get("defaults", {})
+    if d.get("model_args"):
+        flags += ["--model-args", d["model_args"]]
+    # Flash attention helps on CUDA and CPU and, per the upstream performance
+    # notes, slows the other backends down -- Vulkan included.
+    if backend in ("cuda", "cpu"):
+        flags += ["--diffusion-fa"]
+    if backend == "cuda" and turbo:
+        flags += ["--sage-attn"]
+    # Weights in RAM, staged onto the card as each segment runs, with ~1 GB
+    # of the card held back: upstream's recommended shape for a model bigger
+    # than the card. Also the safe retry after an out-of-memory failure.
+    if safe or _heavy(m, v, vram_mb):
+        flags += ["--offload-to-cpu", "--max-vram", "-1"]
+    if (m.get("turbo") or {}).get("lora"):
+        flags += ["--lora-model-dir", models_dir()]
+    return flags
+
+
+def gen_settings(m, mode, turbo, steps=0, cfg=None, negative=None, strength=None):
+    d = m.get("defaults", {})
+    t = m.get("turbo") or {}
+    s = {"steps": d.get("steps", 20), "cfg": d.get("cfg", 1.0),
+         "sampler": d.get("sampler"), "scheduler": d.get("scheduler"),
+         "flow_shift": d.get("flow_shift"), "clip_skip": d.get("clip_skip"),
+         "prefix": d.get("prefix", ""),
+         "negative": d.get("negative", "") if negative is None else negative,
+         "strength": d.get("strength", 0.6) if strength is None else strength,
+         "lora": None, "cache": None}
+    if turbo and t.get("lora") and component_ready(t["lora"]):
+        s["lora"] = component_path(t["lora"])
+        s["steps"] = t.get("steps", s["steps"])
+        s["cfg"] = t.get("cfg", s["cfg"])
+    elif turbo and t.get("cache"):
+        s["cache"] = t["cache"]
+    if steps:
+        s["steps"] = steps
+    if cfg is not None:
+        s["cfg"] = cfg
+    # Distilled models ignore a negative prompt at cfg 1 -- sending one only
+    # makes the engine encode text it will not use.
+    if s["cfg"] <= 1.0:
+        s["negative"] = ""
+    return s
+
+
+def build_cli_argv(engine, m, v, s, prompt, out_path, width, height, seed,
+                   mode, ref, backend, turbo, safe, vram_mb):
+    argv = engine_argv(engine) + ctx_flags(m, v, backend, turbo, safe, vram_mb)
+    text = s["prefix"] + prompt
+    if s["lora"]:
+        text += " <lora:%s:1>" % os.path.splitext(os.path.basename(s["lora"]))[0]
+    argv += ["-p", text]
+    if s["negative"]:
+        argv += ["-n", s["negative"]]
+    argv += ["-W", str(int(width)), "-H", str(int(height)),
+             "--steps", str(int(s["steps"])), "--cfg-scale", str(s["cfg"]),
+             "--seed", str(int(seed)), "-o", out_path]
+    if s["sampler"]:
+        argv += ["--sampling-method", s["sampler"]]
+    if s["scheduler"]:
+        argv += ["--scheduler", s["scheduler"]]
+    if s["flow_shift"]:
+        argv += ["--flow-shift", str(s["flow_shift"])]
+    if s["clip_skip"]:
+        argv += ["--clip-skip", str(s["clip_skip"])]
+    if s["cache"]:
+        argv += ["--cache-mode", s["cache"]]
+    if mode == "edit":
         argv += ["-r", ref]
-    # Flash attention in the diffusion model only: the big VRAM saving, and
-    # the one path every backend of the pinned ggml implements.
-    argv += ["--diffusion-fa"]
-    argv += list(extra_flags)
+    elif mode == "img2img":
+        argv += ["-i", ref, "--strength", str(s["strength"])]
+    # Encoding a picture has no out-of-memory retry upstream (decoding does),
+    # which is exactly why edits failed on an 8 GB card while generating
+    # worked: tile it.
+    if mode in ("edit", "img2img") or safe:
+        argv += ["--vae-tiling"]
     return argv
 
 
-def build_upscale_argv(engine, model, src, out_path):
+def build_upscale_argv(engine, m, v, src, out_path):
     return engine_argv(engine) + ["-M", "upscale",
-            "--upscale-model", component_path(model["parts"]["upscale"]),
-            "-i", src, "-o", out_path]
+                                  "--upscale-model", component_path(v["parts"]["upscale"]),
+                                  "-i", src, "-o", out_path]
 
 
 # A progress bar from sd-cli's pretty_progress: "|====>   | 3/4 - 1.23s/it".
 # The SAME printer also draws the model-loading bar, in bytes per second.
 _PROG = re.compile(r"(\d+)/(\d+) - ([\d.]+)\s*(s/it|it/s|[KMG]B/s)")
+_OOM = re.compile(r"out of memory|outofdevicememory|cudamalloc failed|failed to allocate|"
+                  r"cannot allocate|vk::.*memory|not enough memory|alloc.*failed", re.I)
+_GENERIC = re.compile(r"generate failed|new_sd_ctx_t failed|generate_image failed", re.I)
 
 
 class ProgressParser:
-    """Turns sd-cli's terminal output into phases the page can show.
+    """Turns sd-cli / sd-server output into phases the page can show.
 
     The output mixes \\r-redrawn bars with log lines, so it is fed raw chunks
-    and splits on BOTH. Phases: load (weights going to the GPU, a bytes bar),
+    and splits on BOTH. Phases: load (weights onto the device, a bytes bar),
     encode (the prompt through the text model), sample (the steps),
     decode (latent to pixels), upscale.
     """
 
-    def __init__(self):
+    def __init__(self, phase="load"):
         self.buf = ""
-        self.phase = "load"
-        self.last_error = ""
+        self.phase = phase
+        self.errors = []
+        self.oom = False
 
     def feed(self, text):
         self.buf += text
@@ -558,6 +1112,13 @@ class ProgressParser:
                 events.append(ev)
         return events
 
+    def last_error(self):
+        """The line that says WHY. sd-cli ends every failure with a generic
+        "generate failed", which is all the page used to show; the reason is
+        the error before it."""
+        specific = [e for e in self.errors if not _GENERIC.search(e)]
+        return (specific or self.errors or [""])[-1]
+
     def _bar(self, line):
         m = _PROG.search(line)
         if not m:
@@ -571,6 +1132,9 @@ class ProgressParser:
             if self.phase in ("sample", "decode"):
                 self.phase = "decode"
                 return {"kind": "phase", "phase": "decode"}
+            if self.phase == "convert":
+                return {"kind": "progress", "phase": "convert", "step": step,
+                        "steps": steps, "sec_per_step": None}
             phase = "load"
         else:
             phase = "upscale" if self.phase == "upscale" else "sample"
@@ -589,8 +1153,10 @@ class ProgressParser:
         if bar:
             return bar
         low = line.lower()
-        if "[error" in low or "error:" in low or "failed" in low:
-            self.last_error = re.sub(r"^\[[A-Z]+\s*\]\s*", "", line)[:300]
+        if "[error" in low or "error:" in low or " failed" in low:
+            self.errors.append(re.sub(r"^\[[A-Z]+\s*\]\s*(\S+:\d+\s*-\s*)?", "", line)[:300])
+        if _OOM.search(line):
+            self.oom = True
         # The prompt has been through the text model: sampling is next.
         if "condition" in low and "completed" in low:
             return {"kind": "phase", "phase": "encode"}
@@ -627,6 +1193,34 @@ def ollama_unload_all():
     return n
 
 
+class _Emitter:
+    """Throttles bar redraws (many a second) to what the page needs."""
+
+    def __init__(self, out):
+        self.out = out
+        self.last = 0.0
+        self.pending = None
+        self.phase = ""
+
+    def __call__(self, ev):
+        if ev["kind"] == "phase":
+            if ev["phase"] != self.phase:
+                self.phase = ev["phase"]
+                self.out.event("phase", phase=ev["phase"])
+            return
+        self.pending = ev
+        now = time.monotonic()
+        if now - self.last > 0.25 or ev["step"] == ev["steps"]:
+            self.last = now
+            self.flush()
+
+    def flush(self):
+        ev, self.pending = self.pending, None
+        if ev:
+            self.out.event("progress", phase=ev["phase"], step=ev["step"],
+                           steps=ev["steps"], sec_per_step=ev.get("sec_per_step"))
+
+
 _child = None
 
 
@@ -636,45 +1230,42 @@ def _forward_signal(signum, _frame):
             _child.terminate()
         except OSError:
             pass
+    if _warm_job:
+        _warm_cancel()
     sys.exit(130)
 
 
-def run_engine(argv, out):
-    """Run sd-cli, translating its output into events. Returns (rc, error)."""
+def run_engine(argv, out, phase="load"):
+    """Run sd-cli, translating its output into events and keeping all of it
+    in last-run.log. Returns (rc, reason, parser)."""
     global _child
-    parser = ProgressParser()
+    parser = ProgressParser(phase)
+    emit = _Emitter(out)
+    try:
+        log = open(log_path(), "w", encoding="utf-8", errors="replace")
+        log.write("$ " + " ".join(argv) + "\n\n")
+    except OSError:
+        log = None
     try:
         _child = subprocess.Popen(argv, stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT, bufsize=0)
     except OSError as e:
-        return 127, str(e)
-    last_emit = 0.0
-    last_phase = ""
-    pending = None
+        return 127, str(e), parser
     while True:
         chunk = _child.stdout.read(4096)
         if not chunk:
             break
-        for ev in parser.feed(chunk.decode("utf-8", "replace")):
-            if ev["kind"] == "phase":
-                # A redrawn bar re-parses as the same phase on every chunk.
-                if ev["phase"] != last_phase:
-                    last_phase = ev["phase"]
-                    out.event("phase", phase=ev["phase"])
-                continue
-            # Bars redraw many times a second; the page needs a few.
-            pending = ev
-            now = time.monotonic()
-            if now - last_emit > 0.25 or ev["step"] == ev["steps"]:
-                last_emit = now
-                out.event("progress", phase=ev["phase"], step=ev["step"],
-                          steps=ev["steps"], sec_per_step=ev.get("sec_per_step"))
-                pending = None
-    if pending:
-        out.event("progress", phase=pending["phase"], step=pending["step"],
-                  steps=pending["steps"], sec_per_step=pending.get("sec_per_step"))
+        text = chunk.decode("utf-8", "replace")
+        if log:
+            log.write(text)
+        for ev in parser.feed(text):
+            emit(ev)
+    emit.flush()
     rc = _child.wait()
-    return rc, parser.last_error
+    if log:
+        log.write("\n[exit %s]\n" % rc)
+        log.close()
+    return rc, parser.last_error(), parser
 
 
 def write_sidecar(png, meta):
@@ -685,25 +1276,458 @@ def write_sidecar(png, meta):
         pass
 
 
+# ── the warm engine (Turbo) ──────────────────────────────────────────────────
+#
+# A keeper process owns one genesi-sd-server: it records where it listens in
+# server.json, and stops it once nothing has touched `activity` for WARM_IDLE
+# seconds, so a picture made at lunch does not hold the GPU all afternoon.
+# Requests carry everything per-picture (prompt, size, steps, LoRA, cache); the
+# server is restarted only when what shapes the engine itself changes -- the
+# model, its variant, the backend flags.
+
+_warm_job = None
+
+
+def _state_file():
+    return os.path.join(runtime_dir(), "server.json")
+
+
+def _activity_file():
+    return os.path.join(runtime_dir(), "activity")
+
+
+def _touch_activity():
+    try:
+        with open(_activity_file(), "a"):
+            pass
+        os.utime(_activity_file(), None)
+    except OSError:
+        pass
+
+
+def _alive(pid):
+    try:
+        pid = int(pid)
+    except (ValueError, TypeError):
+        return False
+    if os.name == "nt":
+        # os.kill(pid, 0) on Windows TERMINATES the process (any signal other
+        # than the console ones is TerminateProcess) -- only the test suite
+        # runs this on Windows, and it must not kill what it is checking.
+        try:
+            r = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"],
+                               capture_output=True, text=True, timeout=10)
+            return str(pid) in (r.stdout or "")
+        except (OSError, subprocess.SubprocessError):
+            return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def server_state():
+    try:
+        with open(_state_file()) as fh:
+            st = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not _alive(st.get("pid")):
+        return None
+    return st
+
+
+def _http(port, path, body=None, timeout=30):
+    req = urllib.request.Request(
+        "http://127.0.0.1:%d%s" % (port, path),
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def stop_server():
+    st = server_state()
+    if not st:
+        try:
+            os.unlink(_state_file())
+        except OSError:
+            pass
+        return False
+    for pid in (st.get("keeper"), st.get("pid")):
+        if pid and _alive(pid):
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+            except OSError:
+                pass
+    for _ in range(40):
+        if not _alive(st.get("pid")):
+            break
+        time.sleep(0.25)
+    if _alive(st.get("pid")):
+        try:
+            os.kill(int(st["pid"]), getattr(signal, "SIGKILL", signal.SIGTERM))
+        except OSError:
+            pass
+    try:
+        os.unlink(_state_file())
+    except OSError:
+        pass
+    return True
+
+
+def _free_port():
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def keeper_main(argv):
+    """`genesi-ai-image _keeper STATE IDLE -- server argv...`: own the server.
+
+    Everything the keeper reads and writes lives beside STATE, never
+    re-derived from the environment. A keeper that recomputed its directory
+    once watched a different `activity` file than its clients touched -- it
+    never went idle, and held a second copy of a model in RAM for half an hour.
+    """
+    state_path, idle = argv[0], int(argv[1])
+    home = os.path.dirname(state_path)
+    activity = os.path.join(home, "activity")
+    busy_flag = os.path.join(home, "busy")
+    sargv = argv[3:]
+    port = int(sargv[sargv.index("--listen-port") + 1])
+    log = open(os.path.join(home, "server.log"), "w")
+    # Run it from the keeper's own (near-empty) directory too: anything the
+    # server resolves against "." must not mean the user's home.
+    child = subprocess.Popen(sargv, stdout=log, stderr=subprocess.STDOUT, cwd=home)
+    key = os.environ.get("GENESI_IMAGE_KEY", "")
+    started = time.time()
+
+    def bye(*_):
+        if child.poll() is None:
+            child.terminate()
+            try:
+                child.wait(10)
+            except subprocess.TimeoutExpired:
+                child.kill()
+        try:
+            with open(state_path) as fh:
+                if json.load(fh).get("pid") == child.pid:
+                    os.unlink(state_path)
+        except (OSError, ValueError):
+            pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, bye)
+    signal.signal(signal.SIGINT, bye)
+    with open(state_path + ".tmp", "w") as fh:
+        json.dump({"pid": child.pid, "keeper": os.getpid(), "port": port, "key": key,
+                   "model": os.environ.get("GENESI_IMAGE_MODEL", ""),
+                   "variant": os.environ.get("GENESI_IMAGE_VARIANT", ""),
+                   "started": int(started)}, fh)
+    os.replace(state_path + ".tmp", state_path)
+    while child.poll() is None:
+        time.sleep(5)
+        if os.path.exists(busy_flag):
+            continue
+        try:
+            last = os.path.getmtime(activity)
+        except OSError:
+            # No activity file at all is not "active now": count from start,
+            # or a deleted file would keep the server forever.
+            last = started
+        if time.time() - max(last, started) > idle:
+            sys.stderr.write("keeper: idle for %ds, stopping the server\n" % idle)
+            bye()
+    # The server went away on its own: say how, or a crash is
+    # indistinguishable from a clean stop.
+    rc = child.returncode
+    sys.stderr.write("keeper: the server exited with %s%s\n" % (
+        rc, " (signal %d)" % -rc if rc is not None and rc < 0 else ""))
+    sys.stderr.flush()
+    bye()
+
+
+def _kill_stray_keepers():
+    """Every warm engine this user still runs, whatever state file it uses.
+
+    One card holds one warm model: a keeper left from an earlier session (or
+    from a different runtime directory) is a second copy of a model in memory,
+    and on a 16 GB machine that is what turns a 10-second load into minutes.
+    """
+    if not os.path.isdir("/proc"):
+        return 0
+    me, uid, n = os.getpid(), os.getuid(), 0
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit() or int(pid) == me:
+            continue
+        try:
+            if os.stat("/proc/" + pid).st_uid != uid:
+                continue
+            with open("/proc/%s/cmdline" % pid, "rb") as fh:
+                cmd = fh.read().split(b"\0")
+        except OSError:
+            continue
+        if b"_keeper" in cmd and any(c.endswith(b"genesi-ai-image") for c in cmd):
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+                n += 1
+            except OSError:
+                pass
+    return n
+
+
+def ensure_server(m, v, flags, out):
+    """A warm server for exactly these engine flags, started if needed."""
+    server = find_server()
+    if not server:
+        return None
+    key = hashlib.sha256(json.dumps([server] + flags).encode()).hexdigest()[:16]
+    st = server_state()
+    if st and st.get("key") == key:
+        try:
+            _http(st["port"], "/sdcpp/v1/capabilities", timeout=5)
+            return st
+        except (OSError, ValueError, urllib.error.URLError):
+            pass
+    if st:
+        out.event("status", text="switching the warm engine to %s" % m["name"])
+    stop_server()
+    if _kill_stray_keepers():
+        time.sleep(2)
+    port = _free_port()
+    sargv = engine_argv(server) + ["--listen-ip", "127.0.0.1", "--listen-port", str(port)] + flags
+    # sd-server scans its LoRA directory RECURSIVELY on /capabilities and on
+    # every picture request. Without the flag it scans the working directory
+    # -- the user's home -- and every request hangs for minutes (found in WSL:
+    # /capabilities timed out for 10 minutes, and answered at once with the
+    # flag). Always name the small models directory.
+    if "--lora-model-dir" not in sargv:
+        sargv += ["--lora-model-dir", models_dir()]
+    env = dict(os.environ, GENESI_IMAGE_KEY=key, GENESI_IMAGE_MODEL=m["id"],
+               GENESI_IMAGE_VARIANT=v["id"])
+    me = os.path.abspath(__file__)
+    # The keeper's own errors go to keeper.log: with them in /dev/null a
+    # keeper that died at start looked exactly like a slow server.
+    klog = open(os.path.join(runtime_dir(), "keeper.log"), "a")
+    klog.write("--- %s: starting %s/%s\n" % (time.strftime("%H:%M:%S"), m["id"], v["id"]))
+    klog.flush()
+    subprocess.Popen([sys.executable, me, "_keeper", _state_file(), str(WARM_IDLE), "--"] + sargv,
+                     stdin=subprocess.DEVNULL, stdout=klog, stderr=subprocess.STDOUT,
+                     env=env, start_new_session=True)
+    klog.close()
+    # sd-server loads EVERY weight before it starts listening -- seconds from
+    # the page cache, minutes for a 20B model on a cold disk. The first real
+    # run gave up at a fixed 120 s while the server was still loading. So: wait
+    # as long as the server is alive (with a generous ceiling), show its load
+    # bar meanwhile, and give up at once only if it dies.
+    parser = ProgressParser("load")
+    emit = _Emitter(out)
+    slog = os.path.join(runtime_dir(), "server.log")
+    offset = 0
+    t0 = time.monotonic()
+    seen_state = False
+    reason = "it did not answer within 15 minutes"
+    while time.monotonic() - t0 < 900:
+        # Someone is waiting for this server: that is activity. Without it
+        # the keeper counted a long load as idle time and killed the server
+        # at exactly WARM_IDLE -- seen in WSL, where reading 4 GB took 10 min.
+        _touch_activity()
+        st = server_state()
+        if st and st.get("key") == key:
+            seen_state = True
+            try:
+                _http(st["port"], "/sdcpp/v1/capabilities", timeout=5)
+                emit.flush()
+                return st
+            except (OSError, ValueError, urllib.error.URLError):
+                pass
+        elif seen_state:
+            # It came up and went away: the server process exited.
+            reason = "the server exited while loading"
+            break
+        elif time.monotonic() - t0 > 60:
+            reason = ("its keeper never started" if not st else
+                      "another engine's state is in the way (key %s, wanted %s)"
+                      % (st.get("key"), key))
+            break
+        try:
+            with open(slog, "rb") as fh:
+                fh.seek(offset)
+                chunk = fh.read()
+                offset += len(chunk)
+            for ev in parser.feed(chunk.decode("utf-8", "replace")):
+                emit(ev)
+        except OSError:
+            pass
+        time.sleep(0.5)
+    try:
+        with open(log_path(), "wb") as dst:
+            for name in ("keeper.log", "server.log"):
+                try:
+                    with open(os.path.join(runtime_dir(), name), "rb") as fh:
+                        dst.write(("== %s ==\n" % name).encode() + fh.read()[-200000:] + b"\n")
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    out.event("status", code="warm-failed", text="warm engine: " + reason)
+    stop_server()
+    return None
+
+
+def _warm_cancel():
+    job, port = _warm_job
+    try:
+        _http(port, "/sdcpp/v1/jobs/%s/cancel" % job, body={}, timeout=5)
+    except (OSError, ValueError, urllib.error.URLError):
+        # A job already generating cannot be interrupted upstream: stopping
+        # the server is the only way to give the GPU back now.
+        stop_server()
+
+
+def _b64(path):
+    with open(path, "rb") as fh:
+        return base64.b64encode(fh.read()).decode()
+
+
+def run_warm(st, s, prompt, out_path, width, height, seed, mode, ref, out):
+    """One picture through the warm server. Returns (ok, reason, parser)."""
+    global _warm_job
+    port = st["port"]
+    text = s["prefix"] + prompt
+    body = {"prompt": text, "width": int(width), "height": int(height), "seed": int(seed),
+            "sample_params": {"sample_steps": int(s["steps"]),
+                              "guidance": {"txt_cfg": float(s["cfg"])}}}
+    if s["sampler"]:
+        body["sample_params"]["sample_method"] = s["sampler"]
+    if s["scheduler"]:
+        body["sample_params"]["scheduler"] = s["scheduler"]
+    if s["flow_shift"]:
+        body["sample_params"]["flow_shift"] = float(s["flow_shift"])
+    if s["negative"]:
+        body["negative_prompt"] = s["negative"]
+    if s["clip_skip"]:
+        body["clip_skip"] = int(s["clip_skip"])
+    if s["cache"]:
+        body["cache_mode"] = s["cache"]
+    if s["lora"]:
+        body["lora"] = [{"path": os.path.basename(s["lora"]), "multiplier": 1.0}]
+    if mode == "edit":
+        body["ref_images"] = [_b64(ref)]
+    elif mode == "img2img":
+        body["init_image"] = _b64(ref)
+        body["strength"] = float(s["strength"])
+    if mode in ("edit", "img2img"):
+        body["vae_tiling_params"] = {"enabled": True}
+
+    parser = ProgressParser("load")
+    emit = _Emitter(out)
+    slog = os.path.join(runtime_dir(), "server.log")
+    try:
+        offset = os.path.getsize(slog)
+    except OSError:
+        offset = 0
+    busy = os.path.join(runtime_dir(), "busy")
+    open(busy, "w").close()
+    _touch_activity()
+    try:
+        try:
+            job = _http(port, "/sdcpp/v1/img_gen", body=body, timeout=30)
+        except urllib.error.HTTPError as e:
+            return False, "the warm engine refused the request: %s" % e.read()[:200], parser
+        except (OSError, urllib.error.URLError) as e:
+            return False, "the warm engine is not answering: %s" % e, parser
+        _warm_job = (job["id"], port)
+        while True:
+            # The server prints the same bars sd-cli does: tail them.
+            try:
+                with open(slog, "rb") as fh:
+                    fh.seek(offset)
+                    chunk = fh.read()
+                    offset += len(chunk)
+                for ev in parser.feed(chunk.decode("utf-8", "replace")):
+                    emit(ev)
+            except OSError:
+                pass
+            try:
+                js = _http(port, "/sdcpp/v1/jobs/" + job["id"], timeout=10)
+            except (OSError, ValueError, urllib.error.URLError):
+                if not server_state():
+                    return False, parser.last_error() or "the warm engine stopped", parser
+                time.sleep(1)
+                continue
+            if js.get("status") == "completed":
+                emit.flush()
+                imgs = (js.get("result") or {}).get("images") or []
+                if not imgs:
+                    return False, "the warm engine returned no picture", parser
+                with open(out_path, "wb") as fh:
+                    fh.write(base64.b64decode(imgs[0]["b64_json"]))
+                return True, "", parser
+            if js.get("status") in ("failed", "cancelled"):
+                err = (js.get("error") or {}).get("message") or ""
+                return False, parser.last_error() or err or js["status"], parser
+            time.sleep(0.4)
+    finally:
+        _warm_job = None
+        try:
+            os.unlink(busy)
+        except OSError:
+            pass
+        _touch_activity()
+        try:
+            with open(slog, "rb") as fh:
+                fh.seek(max(0, offset - 200000))
+                with open(log_path(), "wb") as dst:
+                    dst.write(fh.read())
+        except OSError:
+            pass
+
+
 # ── subcommands ──────────────────────────────────────────────────────────────
 
 def cmd_status(args, out):
-    engine = find_engine()
+    st = server_state()
+    info = engine_info()
     out.data({
-        "engine": engine or "",
-        "engine_installed": bool(engine),
+        "engine": find_engine() or "",
+        "engine_installed": bool(info["installed"]),
+        "backend": info["backend"],
+        "devices": info["devices"],
+        "package": info["package"],
+        "server_available": bool(find_server()),
+        "nvidia": has_nvidia(),
+        "warm": {"running": bool(st), "model": (st or {}).get("model", ""),
+                 "variant": (st or {}).get("variant", ""),
+                 "since": (st or {}).get("started", 0), "idle_limit": WARM_IDLE},
         "models_dir": models_dir(),
         "output_dir": output_dir(),
+        "log": log_path(),
         "vram_mb": gpu_vram_mb(),
-        "any_model": any(model_state(m)["installed"] for m in MODELS
-                         if "generate" in m["caps"]),
+        "ram_mb": ram_mb(),
+        "any_model": any(model_state(m)["installed"] for m in all_models()
+                         if set(m["caps"]) & {"generate", "edit"}),
     })
     return 0
 
 
 def cmd_catalog(args, out):
-    out.data([model_state(m) for m in MODELS])
+    vram = gpu_vram_mb()
+    out.data([model_state(m, vram) for m in all_models()])
     return 0
+
+
+def _variant_or_fail(m, wanted, out):
+    if wanted:
+        v = {x["id"]: x for x in m["variants"]}.get(wanted)
+        if not v:
+            out.event("error", text="%s has no variant %s" % (m["name"], wanted))
+        return v
+    return recommended_variant(m)
 
 
 def cmd_pull(args, out):
@@ -711,15 +1735,52 @@ def cmd_pull(args, out):
     if not m:
         out.event("error", text="unknown model: %s" % args.model)
         return 2
-    comps = model_components(m)
-    for i, cid in enumerate(comps, 1):
-        if component_ready(cid):
-            continue
-        out.event("status", text="%s (%d/%d)" % (COMPONENTS[cid]["file"], i, len(comps)))
+    v = _variant_or_fail(m, args.variant, out)
+    if not v:
+        return 2
+    if "convert" in v and not converted_ready(v) and not find_engine():
+        out.event("error", code="no-engine",
+                  text="install the image engine first — it optimizes this model after the download")
+        return 3
+    # Was the fp16 source already here -- i.e. does the user keep the fp16
+    # variant? Then the conversion must not delete it afterwards.
+    had_source = "convert" in v and component_ready(v["convert"]["from"])
+    need = [r for r in variant_downloads(m, v) if not component_ready(r)]
+    for i, cid in enumerate(need, 1):
+        out.event("status", text="%s (%d/%d)" % (COMPONENTS[cid]["file"], i, len(need)))
         if not download_component(cid, out):
             return 1
-    out.event("done", model=m["id"], text="%s ready" % m["name"])
+    if "convert" in v and not converted_ready(v):
+        src = component_path(v["convert"]["from"])
+        if not convert(find_engine(), src, converted_path(v), v["convert"]["type"], out):
+            return 1
+        # The fp16 source stays only if it was here before this pull (the
+        # user has the fp16 variant); otherwise it is 7 GB nothing will ever
+        # read again.
+        if not had_source:
+            try:
+                os.unlink(src)
+            except OSError:
+                pass
+    out.event("done", model=m["id"], variant=v["id"], text="%s ready" % m["name"])
     return 0
+
+
+def _in_use_by_others(skip_model, skip_variant):
+    keep = set()
+    for other in all_models():
+        for v in other["variants"]:
+            if other["id"] == skip_model and (skip_variant is None or v["id"] == skip_variant):
+                continue
+            st_ready = variant_ready(other, v)
+            st_partial = any(os.path.exists(component_path(r) + ".part")
+                             for r in variant_downloads(other, v) if not os.path.isabs(r))
+            if st_ready or st_partial:
+                keep.update(r for r in variant_parts(other, v).values() if not os.path.isabs(r))
+                lora = (other.get("turbo") or {}).get("lora")
+                if lora:
+                    keep.add(lora)
+    return keep
 
 
 def cmd_remove(args, out):
@@ -727,24 +1788,39 @@ def cmd_remove(args, out):
     if not m:
         out.event("error", text="unknown model: %s" % args.model)
         return 2
-    # Files another INSTALLED (or half-downloaded) model still needs stay.
-    keep = set()
-    for other in MODELS:
-        if other["id"] == m["id"]:
-            continue
-        st = model_state(other)
-        if st["installed"] or st["partial"]:
-            keep.update(model_components(other))
+    variants = [v for v in m["variants"] if not args.variant or v["id"] == args.variant]
+    keep = _in_use_by_others(m["id"], args.variant)
+    st = server_state()
+    if st and st.get("model") == m["id"]:
+        stop_server()
     freed = 0
-    for cid in model_components(m):
-        if cid in keep:
-            continue
-        for p in (component_path(cid), component_path(cid) + ".part"):
-            try:
-                freed += os.path.getsize(p)
-                os.unlink(p)
-            except OSError:
-                pass
+    for v in variants:
+        targets = []
+        if "convert" in v:
+            targets += [converted_path(v), converted_path(v) + ".ok", converted_path(v) + ".converting"]
+            # The fp16 source may still be the user's fp16 variant.
+            if v["convert"]["from"] not in keep:
+                targets.append(component_path(v["convert"]["from"]))
+        for ref in list(m.get("parts", {}).values()) + list(v.get("parts", {}).values()):
+            if os.path.isabs(ref):
+                # An imported file is the user's: only what WE made goes.
+                if os.path.dirname(ref) == models_dir():
+                    targets.append(ref)
+                continue
+            if ref not in keep:
+                targets.append(component_path(ref))
+        lora = (m.get("turbo") or {}).get("lora")
+        if lora and lora not in keep and not args.variant:
+            targets.append(component_path(lora))
+        for p in set(targets):
+            for q in (p, p + ".part"):
+                try:
+                    freed += os.path.getsize(q)
+                    os.unlink(q)
+                except OSError:
+                    pass
+    if m.get("custom") and not args.variant:
+        save_custom([c for c in load_custom() if c["id"] != m["id"]])
     out.event("done", model=m["id"], freed=freed, text="removed %s" % m["name"])
     return 0
 
@@ -757,16 +1833,25 @@ def _engine_or_fail(out):
     return engine
 
 
+def _friendly(reason, parser, safe):
+    if parser is not None and parser.oom:
+        return ("out of video memory%s — try a smaller size, a smaller variant, or "
+                "close what else uses the GPU" % (" even in low-memory mode" if safe else ""))
+    return reason
+
+
 def cmd_generate(args, out):
     m = model_by_id(args.model)
     if not m:
         out.event("error", text="unknown model: %s" % args.model)
         return 2
-    mode = "edit" if args.ref else "generate"
+    mode = args.mode or ("edit" if args.ref and "edit" in m["caps"] else
+                         "img2img" if args.ref else "generate")
     if mode not in m["caps"]:
-        out.event("error", text="%s cannot %s images" % (m["name"], mode))
+        out.event("error", text="%s cannot %s" % (m["name"], mode))
         return 2
-    if not model_state(m)["installed"]:
+    v = pick_variant(m, args.variant)
+    if not v or not variant_ready(m, v):
         out.event("error", code="no-model", text="%s is not downloaded yet" % m["name"])
         return 2
     prompt = (args.prompt or "").strip()
@@ -777,6 +1862,9 @@ def cmd_generate(args, out):
     if not engine:
         return 3
 
+    base = m.get("defaults", {}).get("base", 1024)
+    target = base * base
+    dims = None
     if args.ref:
         if not os.path.isfile(args.ref):
             out.event("error", text="no such image: %s" % args.ref)
@@ -786,13 +1874,14 @@ def cmd_generate(args, out):
             out.event("error", text="%s is not a PNG or JPEG" % args.ref)
             return 2
     if args.width and args.height:
+        # Never past what the model was trained at: a 1024 preset on an SD 1.5
+        # model lands at 512x512, and a small request stays small.
         width, height = fit_size(args.width, args.height,
-                                 target=min(args.width * args.height,
-                                            MAX_SIDE * MAX_SIDE))
-    elif args.ref:
-        width, height = fit_size(*dims)
+                                 target=min(args.width * args.height, target))
+    elif dims:
+        width, height = fit_size(*dims, target=target)
     else:
-        width, height = 1024, 1024
+        width, height = fit_size(base, base, target=target)
     seed = args.seed if args.seed is not None and args.seed >= 0 \
         else random.randint(0, 2 ** 31 - 1)
     out_path = args.out or new_output_path("genesi-edit" if args.ref else "genesi")
@@ -802,31 +1891,73 @@ def cmd_generate(args, out):
         if n:
             out.event("status", text="unloaded %d chat model(s) to free the GPU" % n)
 
-    argv = build_generate_argv(engine, m, prompt, out_path, width, height,
-                               steps=args.steps, seed=seed, ref=args.ref)
-    out.event("start", mode=mode, model=m["id"], width=width, height=height,
-              seed=seed, path=out_path)
+    info = engine_info()
+    backend = info["backend"] or "cpu"
+    vram = gpu_vram_mb()
+    turbo = bool(args.turbo)
+    s = gen_settings(m, mode, turbo, steps=args.steps, negative=args.negative,
+                     strength=args.strength)
+    out.event("start", mode=mode, model=m["id"], variant=v["id"], width=width,
+              height=height, seed=seed, path=out_path, steps=s["steps"],
+              backend=backend, turbo=turbo,
+              turbo_extra="lora" if s["lora"] else (s["cache"] or ""))
     t0 = time.monotonic()
-    rc, err = run_engine(argv, out)
+    ok, reason, parser, safe = False, "", None, False
+
+    # Turbo: the warm engine first. Any failure there falls through to a
+    # one-shot run, which is slower but has never needed the server.
+    if turbo and find_server():
+        flags = ctx_flags(m, v, backend, turbo, False, vram)
+        st = ensure_server(m, v, flags, out)
+        if st:
+            out.event("status", text="warm engine ready")
+            ok, reason, parser = run_warm(st, s, prompt, out_path, width, height,
+                                          seed, mode, args.ref, out)
+            if not ok and parser.oom:
+                stop_server()
+        else:
+            out.event("status", text="the warm engine did not start — drawing without it")
+
+    if not ok:
+        for attempt in (1, 2):
+            safe = attempt == 2
+            if safe:
+                # Out of memory, or any failure after the engine started: the
+                # low-memory shape -- weights in RAM, tiled VAE, ~0.6 MP.
+                width, height = fit_size(width, height, target=min(target, 768 * 768))
+                out.event("status", code="retry",
+                          text="retrying in low-memory mode (%dx%d)" % (width, height))
+            argv = build_cli_argv(engine, m, v, s, prompt, out_path, width, height, seed,
+                                  mode, args.ref, backend, turbo, safe, vram)
+            rc, reason, parser = run_engine(argv, out)
+            ok = rc == 0 and os.path.isfile(out_path)
+            if ok or rc in (-15, 130, 143) or attempt == 2:
+                break
+
     secs = round(time.monotonic() - t0, 1)
-    if rc != 0 or not os.path.isfile(out_path):
-        out.event("error", text=err or "the image engine stopped (exit %d)" % rc)
+    if not ok:
+        out.event("error", code="oom" if parser and parser.oom else "engine",
+                  text=_friendly(reason or "the image engine stopped", parser, safe),
+                  log=log_path())
         return 1
     write_sidecar(out_path, {
-        "mode": mode, "model": m["id"], "prompt": prompt, "seed": seed,
-        "width": width, "height": height,
-        "steps": args.steps or m["defaults"].get("steps"),
-        "source": os.path.abspath(args.ref) if args.ref else "",
+        "mode": mode, "model": m["id"], "variant": v["id"], "prompt": prompt, "seed": seed,
+        "width": width, "height": height, "steps": s["steps"], "turbo": turbo,
+        "backend": backend, "source": os.path.abspath(args.ref) if args.ref else "",
         "seconds": secs, "created": int(time.time()),
     })
     out.event("done", path=out_path, seconds=secs, seed=seed,
-              width=width, height=height)
+              width=width, height=height, low_memory=safe)
     return 0
 
 
 def cmd_upscale(args, out):
-    m = model_by_id("upscaler")
-    if not model_state(m)["installed"]:
+    m = model_by_id(args.model or "upscaler")
+    if not m or "upscale" not in m["caps"]:
+        out.event("error", text="unknown upscaler: %s" % args.model)
+        return 2
+    v = pick_variant(m)
+    if not variant_ready(m, v):
         out.event("error", code="no-model", text="%s is not downloaded yet" % m["name"])
         return 2
     if not os.path.isfile(args.input or ""):
@@ -843,12 +1974,14 @@ def cmd_upscale(args, out):
         out_path = os.path.join(output_dir(), "%s-4x-%d.png" % (base, n))
         n += 1
     out.event("start", mode="upscale", model=m["id"], path=out_path)
-    out.event("phase", phase="upscale")
     t0 = time.monotonic()
-    rc, err = run_engine(build_upscale_argv(engine, m, args.input, out_path), out)
+    rc, err, parser = run_engine(build_upscale_argv(engine, m, v, args.input, out_path),
+                                 out, phase="upscale")
     secs = round(time.monotonic() - t0, 1)
     if rc != 0 or not os.path.isfile(out_path):
-        out.event("error", text=err or "the upscaler stopped (exit %d)" % rc)
+        out.event("error", code="oom" if parser.oom else "engine",
+                  text=_friendly(err or "the upscaler stopped (exit %d)" % rc, parser, False),
+                  log=log_path())
         return 1
     dims = image_size(out_path) or (0, 0)
     write_sidecar(out_path, {"mode": "upscale", "model": m["id"], "prompt": "",
@@ -856,6 +1989,129 @@ def cmd_upscale(args, out):
                              "width": dims[0], "height": dims[1],
                              "seconds": secs, "created": int(time.time())})
     out.event("done", path=out_path, seconds=secs, width=dims[0], height=dims[1])
+    return 0
+
+
+# ── importing a checkpoint ───────────────────────────────────────────────────
+
+def _safetensors_keys(path):
+    with open(path, "rb") as fh:
+        n = struct.unpack("<Q", fh.read(8))[0]
+        if n > 200 * 1024 * 1024:
+            raise ValueError("header too large")
+        return list(json.loads(fh.read(n).decode("utf-8")).keys())
+
+
+def _gguf_tensor_names(path, limit=4000):
+    """Tensor names from a GGUF header (v2/v3), without loading weights."""
+    with open(path, "rb") as fh:
+        if fh.read(4) != b"GGUF":
+            raise ValueError("not a GGUF file")
+        version = struct.unpack("<I", fh.read(4))[0]
+        if version < 2:
+            raise ValueError("GGUF v%d is too old" % version)
+        n_tensors, n_kv = struct.unpack("<QQ", fh.read(16))
+        sizes = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8}
+
+        def rstr():
+            ln = struct.unpack("<Q", fh.read(8))[0]
+            return fh.read(ln).decode("utf-8", "replace")
+
+        def skip(t):
+            if t == 8:
+                rstr()
+            elif t == 9:
+                et, cnt = struct.unpack("<IQ", fh.read(12))
+                for _ in range(cnt):
+                    skip(et)
+            else:
+                fh.read(sizes[t])
+
+        for _ in range(n_kv):
+            rstr()
+            skip(struct.unpack("<I", fh.read(4))[0])
+        names = []
+        for _ in range(min(n_tensors, limit)):
+            names.append(rstr())
+            nd = struct.unpack("<I", fh.read(4))[0]
+            fh.read(8 * nd + 4 + 8)
+        return names
+
+
+def detect_family(path):
+    """sdxl | sd15 | '' from the tensor names of a single-file checkpoint."""
+    keys = (_gguf_tensor_names(path) if path.lower().endswith(".gguf")
+            else _safetensors_keys(path))
+    joined = "\n".join(keys)
+    if "conditioner.embedders.1" in joined:
+        return "sdxl"
+    if "model.diffusion_model.input_blocks" in joined and "cond_stage_model" in joined:
+        return "sd15"
+    return ""
+
+
+def cmd_import(args, out):
+    path = os.path.abspath(os.path.expanduser(args.file))
+    if not os.path.isfile(path) or not path.lower().endswith((".safetensors", ".gguf")):
+        out.event("error", text="pick a .safetensors or .gguf checkpoint")
+        return 2
+    try:
+        family = detect_family(path)
+    except (OSError, ValueError, struct.error, KeyError) as e:
+        out.event("error", text="could not read %s: %s" % (os.path.basename(path), e))
+        return 2
+    if not family:
+        out.event("error", code="unsupported",
+                  text="this file is not a complete SD 1.5 or SDXL checkpoint (Pony, "
+                       "Illustrious and most Civitai models are). Diffusion-only files "
+                       "need their text encoders and cannot be imported alone.")
+        return 2
+    name = (args.name or os.path.splitext(os.path.basename(path))[0])[:60]
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "model"
+    mid = "custom-" + slug
+    items = [c for c in load_custom() if c["id"] != mid]
+    items.append({"id": mid, "name": name, "path": path, "family": family,
+                  "optimized": [], "added": int(time.time())})
+    save_custom(items)
+    # An SDXL checkpoint needs the fp16-safe VAE: fetch it now so the model is
+    # usable the moment the import says it is done.
+    if family == "sdxl" and not component_ready("sdxl-vae"):
+        out.event("status", text="fetching the SDXL VAE (335 MB)")
+        if not download_component("sdxl-vae", out):
+            return 1
+    out.event("done", model=mid, family=family, text="%s added" % name)
+    return 0
+
+
+def cmd_optimize(args, out):
+    m = model_by_id(args.model)
+    if not m or not m.get("custom"):
+        out.event("error", text="only imported models are optimized here — catalog "
+                                 "models come with their variants")
+        return 2
+    engine = _engine_or_fail(out)
+    if not engine:
+        return 3
+    qtype = args.type
+    items = load_custom()
+    c = next(x for x in items if x["id"] == m["id"])
+    dst = os.path.join(models_dir(), "%s-%s.gguf" % (c["id"], qtype.split("_")[0]))
+    if not convert(engine, c["path"], dst, qtype, out):
+        return 1
+    tag = qtype.split("_")[0]
+    if tag not in c["optimized"]:
+        c["optimized"].append(tag)
+    save_custom(items)
+    out.event("done", model=m["id"], variant=tag, text="optimized to %s" % qtype.upper())
+    return 0
+
+
+def cmd_server(args, out):
+    if args.action == "stop":
+        out.event("done", stopped=stop_server(), text="warm engine stopped")
+        return 0
+    st = server_state()
+    out.data({"running": bool(st), **(st or {})})
     return 0
 
 
@@ -886,6 +2142,11 @@ def cmd_gallery(args, out):
 
 
 def main(argv=None):
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw[:1] == ["_keeper"]:
+        keeper_main(raw[1:])
+        return 0
+
     ap = argparse.ArgumentParser(prog="genesi-ai-image",
                                  description="Local image generation for Genesi AI Mode")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
@@ -893,26 +2154,34 @@ def main(argv=None):
 
     sub.add_parser("status")
     sub.add_parser("catalog")
-    p = sub.add_parser("pull"); p.add_argument("model")
-    p = sub.add_parser("remove"); p.add_argument("model")
+    p = sub.add_parser("pull"); p.add_argument("model"); p.add_argument("--variant")
+    p = sub.add_parser("remove"); p.add_argument("model"); p.add_argument("--variant")
     p = sub.add_parser("generate")
     p.add_argument("--model", default="flux2-klein")
+    p.add_argument("--variant")
     p.add_argument("--prompt", required=True)
-    p.add_argument("--ref", help="image to edit (the instruction is the prompt)")
+    p.add_argument("--mode", choices=["generate", "edit", "img2img"])
+    p.add_argument("--ref", help="picture to edit, or to start from (img2img)")
+    p.add_argument("--strength", type=float, default=None)
+    p.add_argument("--negative", default=None)
     p.add_argument("--width", type=int, default=0)
     p.add_argument("--height", type=int, default=0)
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--turbo", action="store_true")
     p.add_argument("--out")
     p.add_argument("--keep-llm", action="store_true",
                    help="do not unload Ollama's warm chat models first")
     p = sub.add_parser("upscale")
     p.add_argument("--in", dest="input", required=True)
+    p.add_argument("--model", default="upscaler")
     p.add_argument("--out")
-    p = sub.add_parser("gallery")
-    p.add_argument("--limit", type=int, default=60)
+    p = sub.add_parser("import"); p.add_argument("file"); p.add_argument("--name")
+    p = sub.add_parser("optimize"); p.add_argument("model")
+    p.add_argument("--type", default="q8_0", choices=["q8_0", "q5_0", "q4_0"])
+    p = sub.add_parser("server"); p.add_argument("action", choices=["status", "stop"])
+    p = sub.add_parser("gallery"); p.add_argument("--limit", type=int, default=60)
 
-    # --json is accepted after the subcommand too, which is where people type it.
     # The Monitor reads this as UTF-8 whatever the locale says, and a prompt in
     # Portuguese must not become a UnicodeEncodeError under LANG=C.
     for stream in (sys.stdout, sys.stderr):
@@ -920,7 +2189,7 @@ def main(argv=None):
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):
             pass
-    raw = list(sys.argv[1:] if argv is None else argv)
+    # --json is accepted after the subcommand too, which is where people type it.
     as_json = "--json" in raw
     raw = [a for a in raw if a != "--json"]
     args = ap.parse_args(raw)
@@ -930,8 +2199,9 @@ def main(argv=None):
     signal.signal(signal.SIGINT, _forward_signal)
 
     handler = {"status": cmd_status, "catalog": cmd_catalog, "pull": cmd_pull,
-               "remove": cmd_remove, "generate": cmd_generate,
-               "upscale": cmd_upscale, "gallery": cmd_gallery}[args.cmd]
+               "remove": cmd_remove, "generate": cmd_generate, "upscale": cmd_upscale,
+               "import": cmd_import, "optimize": cmd_optimize, "server": cmd_server,
+               "gallery": cmd_gallery}[args.cmd]
     return handler(args, out)
 
 
