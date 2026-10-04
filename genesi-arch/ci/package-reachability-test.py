@@ -63,6 +63,10 @@ NOT_INSTALLED = {
         "when the user asks for it (most people never generate images, and "
         "the ones who do download GBs of weights anyway). An optdepend of "
         "genesi-ai-mode.",
+    "genesi-sd-cpp-cuda":
+        "the image engine's CUDA build, swapped in from the Image page on "
+        "NVIDIA cards; release-hosted in [genesi-image] by publish-sd-cpp.yml "
+        "(it needs the CUDA toolkit and is far past what [genesi] can carry).",
     "genesi-gaming":
         "large bundle; installed from Welcome / Package Installer "
         "(see the note in genesi-desktop's PKGBUILD).",

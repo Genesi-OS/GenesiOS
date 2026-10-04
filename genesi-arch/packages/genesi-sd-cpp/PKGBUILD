@@ -31,7 +31,10 @@ pkgname=genesi-sd-cpp
 # Static on purpose -- see the pkgver() note in genesi-llama-cpp-cuda: a
 # pkgver() that disagrees with this line makes makepkg reset pkgrel.
 pkgver=929
-pkgrel=1
+# pkgrel 2: sd-server is shipped again. The Image page's Turbo keeps the model
+# loaded in it between pictures instead of reloading gigabytes of weights for
+# every one -- which was most of each run's time.
+pkgrel=2
 pkgdesc='stable-diffusion.cpp (Vulkan) — local image generation and editing for Genesi AI Mode'
 arch=('x86_64')
 url='https://github.com/leejet/stable-diffusion.cpp'
@@ -91,9 +94,9 @@ package() {
     local lib="$pkgdir/usr/lib/genesi-sd-cpp"
     install -dm755 "$lib" "$pkgdir/usr/bin"
     install -Dm755 build/bin/sd-cli "$lib/sd-cli"
-    # sd-server is built (it is part of the examples target) but not shipped:
-    # the library is static in each binary, so it is another 38 MB, and nothing
-    # uses it yet. It comes back with a warm-model mode in genesi-ai-image.
+    # The warm engine behind the Image page's Turbo: one process holds the
+    # model and takes jobs over HTTP on loopback.
+    install -Dm755 build/bin/sd-server "$lib/sd-server"
     # Every shared object the build produced: libggml, libggml-base, the Vulkan
     # backend and each CPU variant, plus any third-party lib that came out
     # shared. The CPU variants are the point, so refuse to package without them.
@@ -113,6 +116,7 @@ package() {
     # Prefixed names in /usr/bin: a bare `sd-cli` could collide with an AUR
     # stable-diffusion.cpp package, and the prefix says whose it is.
     ln -s /usr/lib/genesi-sd-cpp/sd-cli "$pkgdir/usr/bin/genesi-sd-cli"
+    ln -s /usr/lib/genesi-sd-cpp/sd-server "$pkgdir/usr/bin/genesi-sd-server"
     install -Dm644 stable-diffusion.cpp/LICENSE \
         "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
