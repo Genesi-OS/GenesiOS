@@ -535,6 +535,149 @@ rc, ev = run(mod, "remove", "custom-mymix-xl")
 check(rc == 0 and xl.exists() and not mod.model_by_id("custom-mymix-xl"),
       "removing an imported model never deletes the user's file")
 
+# ── user LoRAs ──────────────────────────────────────────────────────────────
+print("== user LoRAs ==")
+def fake_lora(path, keys, pad=0):
+    hdr = json.dumps({k: {"dtype": "F16", "shape": [1], "data_offsets": [0, 2]} for k in keys}).encode()
+    Path(path).write_bytes(struct.pack("<Q", len(hdr)) + hdr + b"\0\0" + b"\0" * pad)
+fams = {
+    "sdxl": ["lora_unet_input_blocks_4_1_proj_in.lora_down.weight", "lora_te2_text_model_x.lora_up.weight"],
+    "sd15": ["lora_unet_down_blocks_0_attentions_0_transformer_blocks_0_attn1_to_q.lora_down.weight",
+             "lora_te_text_model_encoder_layers_0_mlp_fc1.lora_down.weight"],
+    "flux": ["lora_unet_double_blocks_0_img_attn_qkv.lora_down.weight"],
+    "qwen": ["transformer_blocks.0.img_mod.1.lora_A.weight"],
+    "zimage": ["context_refiner.0.attention.to_q.lora_A.weight"],
+}
+for fam, keys in fams.items():
+    f = tmp / ("l-%s.safetensors" % fam)
+    fake_lora(f, keys)
+    check(mod.detect_lora_family(str(f)) == fam, "a %s LoRA is recognized from its tensor names" % fam,
+          mod.detect_lora_family(str(f)))
+ckpt = tmp / "old.ckpt"
+ckpt.write_bytes(b"\x80\x04pickle")
+rc, ev = run(mod, "lora", "import", str(ckpt))
+check(rc == 2 and ev[-1].get("code") == "unsafe-format",
+      "a .ckpt LoRA is refused -- a pickle can run code when it is loaded", ev[-1:])
+rc, ev = run(mod, "lora", "import", str(tmp / "l-flux.safetensors"), "--name", "Film Look",
+             "--trigger", "kodak portra")
+check(rc == 0 and ev[-1].get("family") == "flux" and (tmp / "models" / "userlora-film-look.safetensors").exists(),
+      "a .safetensors LoRA imports into the models dir under a resolvable name", ev[-1:])
+rc, ev = run(mod, "lora", "import", str(tmp / "l-sdxl.safetensors"), "--name", "Detail XL")
+rc, ev = run(mod, "lora", "list")
+ids = {x["id"]: x for x in ev[0]}
+check(set(ids) == {"film-look", "detail-xl"} and ids["film-look"]["trigger"] == "kodak portra"
+      and ids["detail-xl"]["present"], "lora list shows both, with trigger words", ev[0])
+
+mod.MODELS.append({"id": "fx", "name": "FX", "family": "chroma", "summary": {"en": "", "pt": ""},
+                   "license": "MIT", "caps": ["generate", "img2img"], "tags": [],
+                   "parts": {"vae": "shared"},
+                   "variants": [{"id": "q4", "label": "Q4", "parts": {"diffusion": "b"}}],
+                   "defaults": dict(D, steps=10), "turbo": {}, "recommended": False})
+run(mod, "pull", "fx")
+rc, ev = run(mod, "generate", "--model", "fx", "--prompt", "a portrait", "--lora", "film-look:0.6")
+a = last_argv()
+pr = a[a.index("-p") + 1]
+check(rc == 0 and "<lora:userlora-film-look:0.6>" in pr and "kodak portra" in pr,
+      "a LoRA goes into the prompt with its weight, and its trigger words are added", pr)
+check(a[a.index("--lora-model-dir") + 1] == mod.models_dir(), "the engine is told where LoRAs live", a)
+rc, ev = run(mod, "generate", "--model", "fx", "--prompt", "x", "--lora", "detail-xl")
+check(rc == 2 and ev[-1].get("code") == "lora-mismatch", "an SDXL LoRA is refused on a FLUX-family model", ev[-1:])
+rc, ev = run(mod, "generate", "--model", "fx", "--mode", "img2img", "--prompt", "x",
+             "--ref", str(tmp / "src.png") if (tmp / "src.png").exists() else str(TOOL), "--lora", "film-look")
+check(rc == 2 and ev[-1].get("code") in ("lora-generate-only",) , "LoRAs are refused on edits of an existing picture", ev[-1:])
+rc, ev = run(mod, "lora", "remove", "film-look")
+check(rc == 0 and not (tmp / "models" / "userlora-film-look.safetensors").exists()
+      and "film-look" not in {x["id"] for x in mod.load_loras()}, "lora remove deletes our copy and the entry")
+
+# ── masks and kept faces ────────────────────────────────────────────────────
+print("== masks and kept faces ==")
+try:
+    from PySide6.QtGui import QImage, QColor, QPainter
+    have_qt = True
+except ImportError:
+    have_qt = False
+    print("  skip masks: no PySide6")
+if have_qt:
+    # A source picture with a pattern, a mask painting only its right half.
+    srcq = QImage(400, 240, QImage.Format_RGB32)
+    for y in range(240):
+        for x in range(400):
+            srcq.setPixel(x, y, QColor((x * 3) % 256, (y * 5) % 256, 90).rgb())
+    msrc = tmp / "msrc.png"; srcq.save(str(msrc))
+    mq = QImage(400, 240, QImage.Format_Grayscale8); mq.fill(0)
+    pp = QPainter(mq); pp.fillRect(260, 0, 140, 240, QColor(255, 255, 255)); pp.end()
+    mpng = tmp / "mask.png"; mq.save(str(mpng))
+    rc, ev = run(mod, "generate", "--model", "m1", "--mode", "edit", "--prompt", "change the right",
+                 "--ref", str(msrc), "--mask", str(mpng))
+    done = [e for e in ev if e.get("event") == "done"]
+    outp = done[0]["path"] if done else ""
+    oq = QImage(outp)
+    check(rc == 0 and oq.width() == 400 and oq.height() == 240,
+          "a masked edit comes back at the SOURCE's resolution", (oq.width(), oq.height()))
+    same_left = all(oq.pixel(x, y) == srcq.pixel(x, y) for x in range(0, 200, 7) for y in range(0, 240, 7))
+    changed_right = all(oq.pixel(x, y) != srcq.pixel(x, y) for x in range(330, 400, 7) for y in range(0, 240, 7))
+    check(same_left, "every pixel outside the mask is the original's, exactly")
+    check(changed_right, "inside the mask the model's picture is used")
+    check(not list((tmp / "out").glob("*.raw.png")), "the engine's raw picture is not left in the gallery")
+    a = last_argv()
+    check("--mask" not in a, "an instruction editor is not handed a mask it does not take (the composite does it)")
+    rc, ev = run(mod, "generate", "--model", "m2", "--mode", "img2img", "--prompt", "x",
+                 "--ref", str(msrc), "--mask", str(mpng))
+    a = last_argv()
+    mk = a[a.index("--mask") + 1] if "--mask" in a else ""
+    mki = QImage(mk) if mk else QImage()
+    check(rc == 0 and mk and mki.width() == int(a[a.index("-W") + 1]),
+          "img2img gets sd-cli's own inpainting mask, scaled to the working size", (mk, mki.width()))
+    # Kept faces: stand in for OpenCV with a fixed box.
+    mod.faces_available = lambda: True
+    mod.detect_faces = lambda path: [(40, 60, 80, 80)]
+    rc, ev = run(mod, "generate", "--model", "m1", "--mode", "edit", "--prompt", "restyle",
+                 "--ref", str(msrc), "--protect-faces")
+    done = [e for e in ev if e.get("event") == "done"]
+    oq = QImage(done[0]["path"]) if done else QImage()
+    face_same = all(oq.pixel(x, y) == srcq.pixel(x, y) for x in range(65, 95, 5) for y in range(85, 115, 5))
+    rest_changed = oq.pixel(330, 200) != srcq.pixel(330, 200)
+    check(rc == 0 and face_same and rest_changed,
+          "with faces protected, the face is the original's and the rest is the edit", ev[-2:])
+    check(any(e.get("text") == "protecting 1 face(s)" for e in ev), "the page is told how many faces were kept")
+    mod.faces_available = lambda: False
+    rc, ev = run(mod, "generate", "--model", "m1", "--mode", "edit", "--prompt", "x",
+                 "--ref", str(msrc), "--protect-faces")
+    check(rc == 0 and any(e.get("code") == "no-faces" for e in ev),
+          "without OpenCV, face protection says what to install and the edit still runs")
+
+    # The page's painted strokes become the mask file in the Monitor backend.
+    mon = PKG / "genesi-ai-mode" / "monitor"
+    sys.path.insert(0, str(mon))
+    try:
+        spec = importlib.util.spec_from_file_location("gam_monitor", mon / "genesi_ai_monitor.py")
+        gam = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gam)
+    except Exception as e:  # noqa: BLE001 -- report, do not crash the suite
+        gam = None
+        check(False, "the Monitor backend imports for the mask test", repr(e))
+    if gam is not None:
+        class _Self:
+            n = 0
+            def imageMaskPath(self):
+                _Self.n += 1
+                return str(tmp / ("paint-%d.png" % _Self.n))
+        stroke = [{"erase": False, "size": 0.1, "pts": [[0.6, 0.5], [0.9, 0.5]]},
+                  {"erase": True, "size": 0.1, "pts": [[0.75, 0.5]]}]
+        mp = gam.Backend.writeImageMask(_Self(), json.dumps(stroke), str(msrc), False)
+        mi = QImage(mp)
+        g = lambda x, y: QColor(mi.pixel(x, y)).red()
+        check(mi.width() == 400 and mi.height() == 240,
+              "the mask is drawn at the source picture's own size", (mi.width(), mi.height()))
+        check(g(260, 120) == 255 and g(345, 120) == 255 and g(20, 20) == 0,
+              "painted = white (change), unpainted = black (keep)", (g(260, 120), g(20, 20)))
+        check(g(300, 120) == 0, "an eraser dab cuts the painted area back to keep", g(300, 120))
+        mp = gam.Backend.writeImageMask(_Self(), json.dumps(stroke), str(msrc), True)
+        mi = QImage(mp)
+        check(g(260, 120) == 0 and g(20, 20) == 255, "inverted: everything BUT the painted area changes")
+        check(gam.Backend.writeImageMask(_Self(), "[]", str(msrc), False) == "",
+              "no strokes, no mask file")
+
 # ── pure helpers ─────────────────────────────────────────────────────────────
 print("== helpers ==")
 check(mod.image_size(str(src)) == (1600, 900), "PNG size from the header")

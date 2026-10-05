@@ -16,11 +16,15 @@ JSON object per line on stdout; human text goes to stderr.
                               [--mode generate|edit|img2img] [--ref IMAGE]
                               [--strength S] [--negative TEXT]
                               [--width W --height H] [--steps N] [--seed S]
-                              [--turbo] [--out PATH] [--keep-llm] [--json]
+                              [--mask MASK.png] [--protect-faces]
+                              [--lora ID[:WEIGHT]]... [--turbo]
+                              [--out PATH] [--keep-llm] [--json]
     genesi-ai-image upscale   --in IMAGE [--model UPSCALER] [--out PATH] [--json]
     genesi-ai-image import    FILE [--name NAME] [--json]
     genesi-ai-image optimize  MODEL [--type q8_0|q5_0|q4_0] [--json]
     genesi-ai-image server    status|stop [--json]
+    genesi-ai-image lora      list|import FILE [--name N] [--trigger WORDS]
+                              |remove ID [--json]
     genesi-ai-image gallery   [--limit N] [--json]
 
 The engine is stable-diffusion.cpp (genesi-sd-cpp, or genesi-sd-cpp-cuda on
@@ -176,7 +180,7 @@ MODELS = [
         "variants": [{"id": "q4", "label": "Q4_0", "parts": {"diffusion": "flux2-klein-4b-q4"}},
                      {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "flux2-klein-4b-q8"}}],
         "defaults": {"steps": 4, "cfg": 1.0, "sampler": "euler", "base": 1024},
-        "turbo": {}, "recommended": True,
+        "turbo": {}, "recommended": True, "identity": 1,
     },
     {
         "id": "flux2-klein-9b", "name": "FLUX.2 klein 9B", "family": "flux2",
@@ -187,7 +191,7 @@ MODELS = [
         "parts": {"vae": "flux2-vae", "llm": "qwen3-8b-q4km"},
         "variants": [{"id": "q8", "label": "Q8_0", "parts": {"diffusion": "flux2-klein-9b-q8"}}],
         "defaults": {"steps": 4, "cfg": 1.0, "sampler": "euler", "base": 1024},
-        "turbo": {}, "recommended": False,
+        "turbo": {}, "recommended": False, "identity": 2,
     },
     {
         "id": "qwen-image-edit", "name": "Qwen-Image-Edit 2511", "family": "qwen",
@@ -200,7 +204,7 @@ MODELS = [
         "defaults": {"steps": 30, "cfg": 2.5, "sampler": "euler", "flow_shift": 3,
                      "model_args": "qwen_image_zero_cond_t=true", "base": 1024},
         "turbo": {"lora": "qwen-image-edit-2511-lightning", "steps": 4, "cfg": 1.0},
-        "min_ram_gb": 32, "recommended": False,
+        "min_ram_gb": 32, "recommended": False, "identity": 3,
     },
     # ── generate ─────────────────────────────────────────────────────────
     {
@@ -326,6 +330,15 @@ IMPORT_DEFAULTS = {
     "sdxl": {"steps": 28, "cfg": 5.5, "sampler": "euler_a", "strength": 0.6, "base": 1024},
     "sd15": {"steps": 25, "cfg": 7.0, "sampler": "euler_a", "strength": 0.6, "base": 512},
 }
+
+# A LoRA only fits the base it was trained on. "flux" covers FLUX.1-style
+# LoRAs, which Chroma (a FLUX.1-schnell derivative) and FLUX.2 klein take
+# with mixed results -- the page says so.
+LORA_FAMILIES = {
+    "sdxl": ["sdxl"], "sd15": ["sd15"], "chroma": ["flux"], "flux2": ["flux"],
+    "qwen": ["qwen"], "zimage": ["zimage"],
+}
+LORA_PREFIX = "userlora-"
 
 TARGET_PIXELS = 1024 * 1024
 MAX_SIDE = 2048
@@ -778,6 +791,8 @@ def model_state(m, vram_mb=None):
         "tags": m.get("tags", []), "defaults": m.get("defaults", {}),
         "recommended": m.get("recommended", False), "custom": m.get("custom", False),
         "min_ram_gb": m.get("min_ram_gb", 0),
+        "identity": m.get("identity", 0),
+        "lora_families": LORA_FAMILIES.get(m.get("family", ""), []),
         "turbo": {"kind": ("lora" if (m.get("turbo") or {}).get("lora")
                            else (m.get("turbo") or {}).get("cache") and "cache" or "warm"),
                   "steps": (m.get("turbo") or {}).get("steps")},
@@ -1001,8 +1016,9 @@ def ctx_flags(m, v, backend, turbo, safe, vram_mb):
     # than the card. Also the safe retry after an out-of-memory failure.
     if safe or _heavy(m, v, vram_mb):
         flags += ["--offload-to-cpu", "--max-vram", "-1"]
-    if (m.get("turbo") or {}).get("lora"):
-        flags += ["--lora-model-dir", models_dir()]
+    # Always: user LoRAs and Turbo LoRAs both live in the models directory,
+    # and sd-server must be given one anyway (see ensure_server).
+    flags += ["--lora-model-dir", models_dir()]
     return flags
 
 
@@ -1015,9 +1031,10 @@ def gen_settings(m, mode, turbo, steps=0, cfg=None, negative=None, strength=None
          "prefix": d.get("prefix", ""),
          "negative": d.get("negative", "") if negative is None else negative,
          "strength": d.get("strength", 0.6) if strength is None else strength,
-         "lora": None, "cache": None}
+         "lora": None, "loras": [], "cache": None}
     if turbo and t.get("lora") and component_ready(t["lora"]):
         s["lora"] = component_path(t["lora"])
+        s["loras"].append((s["lora"], 1.0))
         s["steps"] = t.get("steps", s["steps"])
         s["cfg"] = t.get("cfg", s["cfg"])
     elif turbo and t.get("cache"):
@@ -1037,8 +1054,8 @@ def build_cli_argv(engine, m, v, s, prompt, out_path, width, height, seed,
                    mode, ref, backend, turbo, safe, vram_mb):
     argv = engine_argv(engine) + ctx_flags(m, v, backend, turbo, safe, vram_mb)
     text = s["prefix"] + prompt
-    if s["lora"]:
-        text += " <lora:%s:1>" % os.path.splitext(os.path.basename(s["lora"]))[0]
+    for path, weight in s["loras"]:
+        text += " <lora:%s:%g>" % (os.path.splitext(os.path.basename(path))[0], weight)
     argv += ["-p", text]
     if s["negative"]:
         argv += ["-n", s["negative"]]
@@ -1059,6 +1076,9 @@ def build_cli_argv(engine, m, v, s, prompt, out_path, width, height, seed,
         argv += ["-r", ref]
     elif mode == "img2img":
         argv += ["-i", ref, "--strength", str(s["strength"])]
+        # Inpainting proper: the sampler only changes the painted area.
+        if s.get("mask"):
+            argv += ["--mask", s["mask"]]
     # Encoding a picture has no out-of-memory retry upstream (decoding does),
     # which is exactly why edits failed on an 8 GB card while generating
     # worked: tile it.
@@ -1614,13 +1634,16 @@ def run_warm(st, s, prompt, out_path, width, height, seed, mode, ref, out):
         body["clip_skip"] = int(s["clip_skip"])
     if s["cache"]:
         body["cache_mode"] = s["cache"]
-    if s["lora"]:
-        body["lora"] = [{"path": os.path.basename(s["lora"]), "multiplier": 1.0}]
+    if s["loras"]:
+        body["lora"] = [{"path": os.path.basename(path), "multiplier": float(w)}
+                        for path, w in s["loras"]]
     if mode == "edit":
         body["ref_images"] = [_b64(ref)]
     elif mode == "img2img":
         body["init_image"] = _b64(ref)
         body["strength"] = float(s["strength"])
+        if s.get("mask"):
+            body["mask_image"] = _b64(s["mask"])
     if mode in ("edit", "img2img"):
         body["vae_tiling_params"] = {"enabled": True}
 
@@ -1688,6 +1711,289 @@ def run_warm(st, s, prompt, out_path, width, height, seed, mode, ref, out):
             pass
 
 
+# ── masks, faces and compositing ─────────────────────────────────────────────
+#
+# A mask is a grayscale picture the size of the source: white = change, black
+# = keep. Whatever the model does, the final picture is composited: outside
+# the mask every pixel is the ORIGINAL, at the original resolution. That is
+# the guarantee "edit only this part" needs -- even an instruction editor,
+# which takes no mask, cannot touch what was not painted.
+#
+# Done with PySide6 (a hard dependency of genesi-ai-mode); faces come from
+# OpenCV's frontal-face detector when python-opencv is installed.
+
+def _qt():
+    try:
+        from PySide6 import QtGui, QtCore
+        return QtGui, QtCore
+    except ImportError:
+        return None, None
+
+
+def prepare_mask(mask, width, height):
+    """The user's mask scaled to the engine's working size, for sd-cli's own
+    inpainting (img2img). Returns a path, or None when Qt is missing."""
+    QtGui, QtCore = _qt()
+    if not QtGui:
+        return None
+    img = QtGui.QImage(mask)
+    if img.isNull():
+        return None
+    img = img.convertToFormat(QtGui.QImage.Format_Grayscale8).scaled(
+        int(width), int(height), QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation)
+    out = os.path.join(cache_dir(), "mask-%dx%d.png" % (width, height))
+    return out if img.save(out, "PNG") else None
+
+
+def _cascade_path():
+    cands = []
+    try:
+        import cv2
+        cands.append(os.path.join(getattr(cv2, "data", None).haarcascades, ""))
+    except (ImportError, AttributeError, TypeError):
+        pass
+    cands += ["/usr/share/opencv4/haarcascades/", "/usr/share/opencv/haarcascades/"]
+    for d in cands:
+        f = os.path.join(d, "haarcascade_frontalface_default.xml")
+        if os.path.isfile(f):
+            return f
+    return None
+
+
+def faces_available():
+    try:
+        import cv2  # noqa: F401
+    except ImportError:
+        return False
+    return _cascade_path() is not None
+
+
+def detect_faces(path):
+    """Face boxes (x, y, w, h) in source pixels; [] when none or no OpenCV."""
+    try:
+        import cv2
+    except ImportError:
+        return []
+    cascade = _cascade_path()
+    if not cascade:
+        return []
+    img = cv2.imread(path)
+    if img is None:
+        return []
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    side = min(gray.shape[:2])
+    found = cv2.CascadeClassifier(cascade).detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=5, minSize=(max(24, side // 25),) * 2)
+    return [tuple(int(v) for v in f) for f in found]
+
+
+def composite(src, result, out_path, mask=None, faces=()):
+    """Write `result` over `src` through `mask` (white = take the result),
+    with every face box kept from `src`, at src's full resolution."""
+    QtGui, QtCore = _qt()
+    if not QtGui:
+        return False
+    Q = QtGui.QImage
+    base = Q(src).convertToFormat(Q.Format_RGB32)
+    res = Q(result)
+    if base.isNull() or res.isNull():
+        return False
+    W, H = base.width(), base.height()
+    layer = res.scaled(W, H, QtCore.Qt.IgnoreAspectRatio,
+                       QtCore.Qt.SmoothTransformation).convertToFormat(Q.Format_ARGB32_Premultiplied)
+    if mask:
+        m = Q(mask).convertToFormat(Q.Format_Grayscale8).scaled(
+            W, H, QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation)
+    else:
+        m = Q(W, H, Q.Format_Grayscale8)
+        m.fill(255)
+    m = m.convertToFormat(Q.Format_Grayscale8)
+    if faces:
+        p = QtGui.QPainter(m)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(QtGui.QColor(0, 0, 0))
+        for (x, y, w, h) in faces:
+            # A margin around the box: hairline and chin belong to the face.
+            mx, my = w * 0.25, h * 0.35
+            p.drawEllipse(QtCore.QRectF(x - mx, y - my, w + 2 * mx, h + 2 * my))
+        p.end()
+    # Feather the edge (down- then up-scaling is a cheap, decent blur) so the
+    # seam between kept and changed pixels does not show.
+    k = max(1, min(W, H) // 96)
+    m = m.scaled(max(1, W // k), max(1, H // k), QtCore.Qt.IgnoreAspectRatio,
+                 QtCore.Qt.SmoothTransformation).scaled(
+                     W, H, QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation)
+    m = m.convertToFormat(Q.Format_Grayscale8)
+    raw = bytes(m.constBits())[: m.bytesPerLine() * m.height()]
+    alpha = Q(raw, m.width(), m.height(), m.bytesPerLine(), Q.Format_Alpha8).copy()
+    p = QtGui.QPainter(layer)
+    p.setCompositionMode(QtGui.QPainter.CompositionMode_DestinationIn)
+    p.drawImage(0, 0, alpha)
+    p.end()
+    p = QtGui.QPainter(base)
+    p.drawImage(0, 0, layer)
+    p.end()
+    return base.save(out_path, "PNG")
+
+
+# ── user LoRAs ───────────────────────────────────────────────────────────────
+#
+# Downloaded by the user (Civitai, Hugging Face), imported here: copied into
+# the models directory as userlora-<slug>.safetensors so sd-cli and sd-server
+# both resolve them by name. ONLY .safetensors: a .ckpt/.pt is a Python pickle,
+# and loading one can run arbitrary code -- that is a door, not a format.
+#
+# They apply to Generate (text to image), not to edits of an existing photo:
+# a community LoRA on top of an editor that keeps faces is how fake intimate
+# pictures of real people get made, and nothing here can know who is in a
+# photo or whether they agreed.
+
+def loras_path():
+    return os.path.join(models_dir(), "loras.json")
+
+
+def load_loras():
+    try:
+        with open(loras_path(), encoding="utf-8") as fh:
+            items = json.load(fh)
+        return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_loras(items):
+    os.makedirs(models_dir(), exist_ok=True)
+    tmp = loras_path() + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(items, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, loras_path())
+
+
+def detect_lora_family(path):
+    """sdxl | sd15 | flux | qwen | zimage | '' from a LoRA's tensor names."""
+    keys = _safetensors_keys(path)
+    joined = "\n".join(keys)
+    if "lora_te2_" in joined or "lora_te1_" in joined or "lora_unet_input_blocks_" in joined \
+            or "lora_unet_label_emb" in joined:
+        return "sdxl"
+    if "double_blocks" in joined or "single_blocks" in joined \
+            or "single_transformer_blocks" in joined:
+        return "flux"
+    if "img_mod" in joined or "txt_mlp" in joined or "img_mlp" in joined:
+        return "qwen"
+    if "context_refiner" in joined or "noise_refiner" in joined:
+        return "zimage"
+    if "lora_unet_down_blocks_" in joined or "lora_te_text_model" in joined:
+        # SDXL's unet has up to 10 transformer blocks per attention; SD 1.5 has one.
+        if re.search(r"transformer_blocks_[2-9]", joined):
+            return "sdxl"
+        return "sd15"
+    return ""
+
+
+def lora_by_id(lid):
+    for x in load_loras():
+        if x.get("id") == lid:
+            return x
+    return None
+
+
+def resolve_loras(m, mode, specs, out):
+    """[(path, weight)] for `--lora ID[:W]` specs, or None after an error."""
+    chosen = []
+    for spec in specs or []:
+        lid, _, w = spec.partition(":")
+        lo = lora_by_id(lid)
+        if not lo:
+            out.event("error", code="no-lora", text="no imported LoRA %s" % lid)
+            return None
+        if mode != "generate":
+            out.event("error", code="lora-generate-only",
+                      text="LoRAs apply to Generate only, not to edits of an existing picture")
+            return None
+        fams = LORA_FAMILIES.get(m.get("family", ""), [])
+        if lo.get("family") and lo["family"] not in fams:
+            out.event("error", code="lora-mismatch",
+                      text="%s is a %s LoRA; %s takes %s" % (lo["name"], lo["family"].upper(),
+                                                             m["name"], ", ".join(f.upper() for f in fams) or "none"))
+            return None
+        path = os.path.join(models_dir(), lo["file"])
+        if not os.path.isfile(path):
+            out.event("error", code="no-lora", text="%s's file is gone" % lo["name"])
+            return None
+        try:
+            weight = float(w) if w else float(lo.get("weight", 0.8))
+        except ValueError:
+            weight = float(lo.get("weight", 0.8))
+        chosen.append((path, max(-2.0, min(2.0, weight)), lo.get("trigger", "")))
+    return chosen
+
+
+def cmd_lora(args, out):
+    if args.action == "list":
+        items = load_loras()
+        for x in items:
+            x["present"] = os.path.isfile(os.path.join(models_dir(), x.get("file", "")))
+        out.data(items)
+        return 0
+    if args.action == "remove":
+        lo = lora_by_id(args.target or "")
+        if not lo:
+            out.event("error", text="no imported LoRA %s" % args.target)
+            return 2
+        try:
+            os.unlink(os.path.join(models_dir(), lo["file"]))
+        except OSError:
+            pass
+        save_loras([x for x in load_loras() if x.get("id") != lo["id"]])
+        out.event("done", lora=lo["id"], text="removed %s" % lo["name"])
+        return 0
+    # import
+    path = os.path.abspath(os.path.expanduser(args.target or ""))
+    if not os.path.isfile(path):
+        out.event("error", text="no such file: %s" % args.target)
+        return 2
+    if not path.lower().endswith(".safetensors"):
+        out.event("error", code="unsafe-format",
+                  text="only .safetensors LoRAs are accepted — .ckpt/.pt files can run "
+                       "code when loaded; look for the .safetensors version")
+        return 2
+    try:
+        family = detect_lora_family(path)
+    except (OSError, ValueError, struct.error) as e:
+        out.event("error", text="not a readable .safetensors file: %s" % e)
+        return 2
+    size = os.path.getsize(path)
+    if size > 3 * 1024 ** 3:
+        out.event("error", code="not-a-lora",
+                  text="this is %.1f GB — that is a full model, not a LoRA; use Add my model"
+                       % (size / 1024 ** 3))
+        return 2
+    name = (args.name or os.path.splitext(os.path.basename(path))[0])[:60]
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "lora"
+    lid = slug
+    n = 2
+    existing = {x.get("id") for x in load_loras()}
+    while lid in existing:
+        lid = "%s-%d" % (slug, n)
+        n += 1
+    fname = LORA_PREFIX + lid + ".safetensors"
+    os.makedirs(models_dir(), exist_ok=True)
+    dest = os.path.join(models_dir(), fname)
+    out.event("status", text="copying %s" % os.path.basename(path))
+    shutil.copyfile(path, dest + ".part")
+    os.replace(dest + ".part", dest)
+    items = load_loras()
+    items.append({"id": lid, "name": name, "file": fname, "family": family,
+                  "trigger": (args.trigger or "").strip()[:200], "weight": 0.8,
+                  "size": size, "added": int(time.time())})
+    save_loras(items)
+    out.event("done", lora=lid, family=family,
+              text="%s added%s" % (name, "" if family else " (base not recognized)"))
+    return 0
+
+
 # ── subcommands ──────────────────────────────────────────────────────────────
 
 def cmd_status(args, out):
@@ -1707,6 +2013,8 @@ def cmd_status(args, out):
         "models_dir": models_dir(),
         "output_dir": output_dir(),
         "log": log_path(),
+        "faces_available": faces_available(),
+        "loras": len(load_loras()),
         "vram_mb": gpu_vram_mb(),
         "ram_mb": ram_mb(),
         "any_model": any(model_state(m)["installed"] for m in all_models()
@@ -1897,6 +2205,35 @@ def cmd_generate(args, out):
     turbo = bool(args.turbo)
     s = gen_settings(m, mode, turbo, steps=args.steps, negative=args.negative,
                      strength=args.strength)
+    user_loras = resolve_loras(m, mode, args.lora, out)
+    if user_loras is None:
+        return 2
+    for path, weight, trigger in user_loras:
+        s["loras"].append((path, weight))
+        if trigger and trigger.lower() not in prompt.lower():
+            prompt = prompt + ", " + trigger
+
+    # Masks and protected faces only make sense on a picture being edited.
+    mask = args.mask if (args.mask and args.ref) else None
+    if args.mask and not args.ref:
+        out.event("status", text="a mask needs a picture to edit; ignoring it")
+    if mask and not os.path.isfile(mask):
+        out.event("error", text="no such mask: %s" % mask)
+        return 2
+    faces = []
+    if args.protect_faces and args.ref:
+        if not faces_available():
+            out.event("status", code="no-faces",
+                      text="face protection needs python-opencv (sudo pacman -S python-opencv)")
+        else:
+            faces = detect_faces(args.ref)
+            out.event("status", text="protecting %d face(s)" % len(faces))
+    if mask and mode == "img2img":
+        s["mask"] = prepare_mask(mask, width, height)
+    # The composite writes the final picture; the engine writes beside it.
+    final_path = out_path
+    if args.ref and (mask or faces):
+        out_path = os.path.splitext(final_path)[0] + ".raw.png"
     out.event("start", mode=mode, model=m["id"], variant=v["id"], width=width,
               height=height, seed=seed, path=out_path, steps=s["steps"],
               backend=backend, turbo=turbo,
@@ -1940,10 +2277,24 @@ def cmd_generate(args, out):
                   text=_friendly(reason or "the image engine stopped", parser, safe),
                   log=log_path())
         return 1
+    if out_path != final_path:
+        if composite(args.ref, out_path, final_path, mask=mask, faces=faces):
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
+            width, height = image_size(final_path) or (width, height)
+        else:
+            out.event("status", text="could not keep the unpainted area (PySide6 missing); "
+                                     "showing the model's picture as is")
+            os.replace(out_path, final_path)
+        out_path = final_path
     write_sidecar(out_path, {
         "mode": mode, "model": m["id"], "variant": v["id"], "prompt": prompt, "seed": seed,
         "width": width, "height": height, "steps": s["steps"], "turbo": turbo,
         "backend": backend, "source": os.path.abspath(args.ref) if args.ref else "",
+        "masked": bool(mask), "faces_kept": len(faces),
+        "loras": [os.path.basename(p_) for p_, _w in s["loras"]],
         "seconds": secs, "created": int(time.time()),
     })
     out.event("done", path=out_path, seconds=secs, seed=seed,
@@ -2169,6 +2520,11 @@ def main(argv=None):
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--turbo", action="store_true")
+    p.add_argument("--mask", help="grayscale PNG: white = change, black = keep")
+    p.add_argument("--protect-faces", action="store_true",
+                   help="keep every detected face exactly as in the source")
+    p.add_argument("--lora", action="append", default=[],
+                   help="an imported LoRA, ID or ID:WEIGHT (repeatable)")
     p.add_argument("--out")
     p.add_argument("--keep-llm", action="store_true",
                    help="do not unload Ollama's warm chat models first")
@@ -2181,6 +2537,11 @@ def main(argv=None):
     p.add_argument("--type", default="q8_0", choices=["q8_0", "q5_0", "q4_0"])
     p = sub.add_parser("server"); p.add_argument("action", choices=["status", "stop"])
     p = sub.add_parser("gallery"); p.add_argument("--limit", type=int, default=60)
+    p = sub.add_parser("lora")
+    p.add_argument("action", choices=["list", "import", "remove"])
+    p.add_argument("target", nargs="?")
+    p.add_argument("--name")
+    p.add_argument("--trigger")
 
     # The Monitor reads this as UTF-8 whatever the locale says, and a prompt in
     # Portuguese must not become a UnicodeEncodeError under LANG=C.
@@ -2201,7 +2562,7 @@ def main(argv=None):
     handler = {"status": cmd_status, "catalog": cmd_catalog, "pull": cmd_pull,
                "remove": cmd_remove, "generate": cmd_generate, "upscale": cmd_upscale,
                "import": cmd_import, "optimize": cmd_optimize, "server": cmd_server,
-               "gallery": cmd_gallery}[args.cmd]
+               "gallery": cmd_gallery, "lora": cmd_lora}[args.cmd]
     return handler(args, out)
 
 

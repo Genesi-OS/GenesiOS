@@ -82,6 +82,24 @@ Item {
     property bool enhancing: false
     property string enhanceError: ""
 
+    // "only this part": a mask painted on the picture being edited. Strokes
+    // are kept in 0..1 picture coordinates, so resizing the window does not
+    // move what was painted.
+    property bool maskOn: false
+    property var strokes: []              // [{erase, size, pts: [[x, y], ...]}]
+    property real brushSize: 0.07         // of the picture's short side
+    property bool eraseMode: false
+    property bool maskInvert: false
+    property bool protectFaces: false
+
+    // LoRAs the user imported (Generate only)
+    property var loras: []
+    property var loraPick: ({})           // lora id -> weight, for the ones switched on
+    property bool loraGuideOpen: false
+    property string loraTrigger: ""
+    property string loraMsg: ""
+    property bool loraBusy: false
+
     // the model browser
     property bool browserOpen: false
     property string filterTag: "all"
@@ -196,6 +214,40 @@ Item {
     function refresh() {
         backend.loadImageInfo()
         backend.loadImageGallery()
+        backend.loadImageLoras()
+    }
+
+    // ── editors, ranked by how well they keep the original ──
+    function instructionEditors() {
+        var out = catalog.filter(function (m) { return has(m.caps, "edit") })
+        out.sort(function (a, b) { return (b.identity || 0) - (a.identity || 0) })
+        return out
+    }
+    function redrawEditors() {
+        return catalog.filter(function (m) { return !has(m.caps, "edit") && has(m.caps, "img2img") })
+    }
+    function identityText(n) {
+        if (n >= 3) return tr("Best at keeping faces and details", "O melhor pra manter rostos e detalhes")
+        if (n === 2) return tr("Good balance of fidelity and speed", "Bom equilíbrio entre fidelidade e velocidade")
+        return tr("Lightest — faces can drift", "O mais leve — rostos podem mudar")
+    }
+    function stars(n) { return "★★★".substring(0, n) + "☆☆☆".substring(0, 3 - n) }
+
+    // ── LoRAs ──
+    function compatibleLoras(m) {
+        if (!m || !m.lora_families) return []
+        return loras.filter(function (l) { return l.present !== false && has(m.lora_families, l.family) })
+    }
+    function setLora(id, on, weight) {
+        var o = {}
+        for (var k in loraPick) o[k] = loraPick[k]
+        if (on) o[id] = weight === undefined ? (o[id] || 0.8) : weight
+        else delete o[id]
+        loraPick = o
+    }
+    function familyLabel(f) {
+        return ({ "sdxl": "SDXL / Pony / Illustrious", "sd15": "SD 1.5", "flux": "FLUX",
+                  "qwen": "Qwen-Image", "zimage": "Z-Image" })[f] || tr("unknown base", "base desconhecida")
     }
 
     function phaseText() {
@@ -230,6 +282,16 @@ Item {
         var v = installedVariant(m)
         var a = aspects[aspect]
         var o = { model: m.id, variant: v.id, pauseTurbo: pauseTurbo, turbo: turbo }
+        if (mode === "edit")
+            o.protectFaces = protectFaces && !!status.faces_available
+        if (mode === "generate") {
+            var picked = []
+            var ok = compatibleLoras(m)
+            for (var i = 0; i < ok.length; i++)
+                if (loraPick[ok[i].id] !== undefined)
+                    picked.push({ id: ok[i].id, weight: loraPick[ok[i].id] })
+            o.loras = picked
+        }
         if (mode === "upscale") {
             o.mode = "upscale"
         } else {
@@ -247,6 +309,15 @@ Item {
         busy = true
         runStarted = Date.now(); elapsed = 0
         backend.setImagePrefs(JSON.stringify({ model: m.id, mode: mode }))
+        // A painted area becomes the mask file, drawn at the picture's own size.
+        if (mode === "edit" && maskOn && strokes.length > 0) {
+            o.mask = backend.writeImageMask(JSON.stringify(strokes), refPath, maskInvert)
+            if (!o.mask) {
+                busy = false
+                runError = tr("Could not save the painted area.", "Não deu pra salvar a área pintada.")
+                return
+            }
+        }
         backend.generateImage(JSON.stringify(o))
     }
 
@@ -283,6 +354,8 @@ Item {
         var v = variantOf(m)
         backend.pullImageModel(m.id, v ? v.id : "")
     }
+
+    onRefPathChanged: { strokes = []; maskInvert = false }
 
     Component.onCompleted: {
         try {
@@ -345,6 +418,12 @@ Item {
             }
         }
         function onImagePullDone(ok, id, err) {
+            if (id === "lora") {
+                root.loraBusy = false
+                root.loraMsg = ok ? root.tr("LoRA added.", "LoRA adicionada.") : err
+                root.loraTrigger = ""
+                return
+            }
             root.pullingId = ""
             root.pullPart = ""
             root.pullFrac = 0
@@ -386,6 +465,12 @@ Item {
             root.engineState = s
             if (s === "ready") root.refresh()
         }
+        function onImageLoras(js) {
+            var arr = []
+            try { arr = JSON.parse(js) } catch (e) {}
+            root.loras = arr
+            root.loraBusy = false
+        }
     }
 
     QQD.FileDialog {
@@ -393,6 +478,16 @@ Item {
         title: root.tr("Choose a picture", "Escolha uma imagem")
         nameFilters: [root.tr("Images", "Imagens") + " (*.png *.jpg *.jpeg *.webp *.bmp)"]
         onAccepted: root.setSource(selectedFile.toString())
+    }
+    QQD.FileDialog {
+        id: loraDialog
+        title: root.tr("Choose a LoRA (.safetensors)", "Escolha uma LoRA (.safetensors)")
+        nameFilters: ["LoRA (*.safetensors)"]
+        onAccepted: {
+            root.loraBusy = true
+            root.loraMsg = root.tr("Adding…", "Adicionando…")
+            backend.importImageLora(selectedFile.toString(), "", root.loraTrigger)
+        }
     }
     QQD.FileDialog {
         id: saveDialog
@@ -653,6 +748,7 @@ Item {
                     id: modelCard
                     readonly property var m: root.activeModel()
                     readonly property var v: root.installedVariant(m)
+                    visible: root.mode !== "edit"
                     Layout.fillWidth: true
                     implicitHeight: mcCol.implicitHeight + 20
                     radius: appTheme.rMd
@@ -716,6 +812,125 @@ Item {
                     }
                 }
 
+                // ── Edit: which editor -- the ones that KEEP the photo first ──
+                ColumnLayout {
+                    visible: root.mode === "edit"
+                    Layout.fillWidth: true
+                    spacing: 6
+                    QQC2.Label {
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        color: appTheme.textMid; font.pixelSize: 11
+                        text: root.tr("Editors that keep the photo change only what you ask. The ones further down redraw the whole picture.",
+                                      "Os editores que mantêm a foto mudam só o que você pede. Os de baixo redesenham a imagem inteira.")
+                    }
+                    Repeater {
+                        model: root.instructionEditors()
+                        delegate: Rectangle {
+                            id: ed
+                            required property var modelData
+                            readonly property bool sel: root.activeModel() && root.activeModel().id === modelData.id
+                            readonly property var v: root.variantOf(modelData)
+                            readonly property bool ramShort: modelData.min_ram_gb > 0 && root.ramGb() > 0
+                                                             && root.ramGb() < modelData.min_ram_gb
+                            Layout.fillWidth: true
+                            implicitHeight: edCol.implicitHeight + 16
+                            radius: appTheme.rMd
+                            color: sel ? appTheme.a(appTheme.green, 0.12) : appTheme.surface
+                            border.width: 1
+                            border.color: sel ? appTheme.a(appTheme.green, 0.5) : appTheme.hairline
+                            ColumnLayout {
+                                id: edCol
+                                anchors.left: parent.left; anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.margins: 9
+                                spacing: 3
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    QQC2.Label {
+                                        Layout.fillWidth: true; elide: Text.ElideRight
+                                        text: ed.modelData.name
+                                        color: appTheme.textHi; font.bold: true; font.pixelSize: 12
+                                    }
+                                    QQC2.Label {
+                                        text: root.stars(ed.modelData.identity || 1)
+                                        color: appTheme.turboBright; font.pixelSize: 12
+                                    }
+                                }
+                                QQC2.Label {
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                    text: root.identityText(ed.modelData.identity || 1)
+                                          + (ed.ramShort ? "  ·  " + root.tr("needs " + ed.modelData.min_ram_gb + " GB of RAM",
+                                                                               "precisa de " + ed.modelData.min_ram_gb + " GB de RAM") : "")
+                                    color: ed.ramShort ? appTheme.turboBright : appTheme.textMid; font.pixelSize: 10
+                                }
+                                RowLayout {
+                                    visible: !ed.modelData.installed
+                                    spacing: 6
+                                    GButton {
+                                        theme: appTheme; kind: "tonal"; iconSource: "download"
+                                        enabled: root.pullingId === "" && root.engineReady
+                                        text: root.pullingId === ed.modelData.id
+                                              ? (root.pullText || root.tr("Downloading…", "Baixando…"))
+                                              : root.tr("Download", "Baixar") + (ed.v ? " · " + root.gb(ed.v.download || ed.v.size) : "")
+                                        onClicked: root.startPull(ed.modelData)
+                                    }
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                z: -1
+                                enabled: ed.modelData.installed
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: root.modelId = ed.modelData.id
+                            }
+                        }
+                    }
+                    // Redraw editors: present, but below and plainly labeled.
+                    QQC2.Label {
+                        readonly property var installedRedraw: root.redrawEditors().filter(function (x) { return x.installed })
+                        visible: installedRedraw.length > 0
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        Layout.topMargin: 4
+                        text: (redrawBox.open ? "▾ " : "▸ ") + root.tr("Redraw instead (style, variations — faces change)",
+                                                                         "Redesenhar (estilo, variações — rostos mudam)")
+                              + " (" + installedRedraw.length + ")"
+                        color: appTheme.textLo; font.pixelSize: 11
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: redrawBox.open = !redrawBox.open }
+                    }
+                    Flow {
+                        id: redrawBox
+                        property bool open: false
+                        visible: open
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Repeater {
+                            model: root.redrawEditors().filter(function (x) { return x.installed })
+                            delegate: GPill {
+                                required property var modelData
+                                label: modelData.name
+                                active: root.activeModel() && root.activeModel().id === modelData.id
+                                onClicked: root.modelId = modelData.id
+                            }
+                        }
+                    }
+                    Rectangle {
+                        visible: root.editKind(root.activeModel()) === "img2img" && !!root.activeModel()
+                        Layout.fillWidth: true
+                        implicitHeight: redrawWarn.implicitHeight + 14
+                        radius: appTheme.rSm
+                        color: appTheme.a(appTheme.turbo, 0.10)
+                        border.width: 1; border.color: appTheme.a(appTheme.turbo, 0.35)
+                        QQC2.Label {
+                            id: redrawWarn
+                            anchors.fill: parent; anchors.margins: 7
+                            wrapMode: Text.WordWrap
+                            color: appTheme.textHi; font.pixelSize: 11
+                            text: root.tr("This model REDRAWS the picture: faces and details will change. To change just one part, paint it below — the rest stays exactly the same.",
+                                          "Esse modelo REDESENHA a imagem: rostos e detalhes vão mudar. Pra mudar só uma parte, pinte ela abaixo — o resto fica exatamente igual.")
+                        }
+                    }
+                }
+
                 // ── source picture (edit / upscale) ──
                 QQC2.Label {
                     visible: root.mode !== "generate"
@@ -768,6 +983,88 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: pickDialog.open()
+                    }
+                }
+
+                // ── only this part: a painted mask, and kept faces ──
+                Rectangle {
+                    visible: root.mode === "edit" && root.refPath !== ""
+                    Layout.fillWidth: true
+                    implicitHeight: maskCol.implicitHeight + 18
+                    radius: appTheme.rMd
+                    color: root.maskOn ? appTheme.a(appTheme.green, 0.08) : appTheme.surface
+                    border.width: 1
+                    border.color: root.maskOn ? appTheme.a(appTheme.green, 0.40) : appTheme.hairline
+                    ColumnLayout {
+                        id: maskCol
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.margins: 10
+                        spacing: 7
+                        RowLayout {
+                            Layout.fillWidth: true
+                            FIcon { name: "edit"; size: 14; color: root.maskOn ? appTheme.greenBright : appTheme.textLo }
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                text: root.tr("Change only a part", "Mudar só uma parte")
+                                color: appTheme.textHi; font.bold: true; font.pixelSize: 12
+                            }
+                            GToggle {
+                                theme: appTheme
+                                checked: root.maskOn
+                                onToggled: function (v) { root.maskOn = v }
+                            }
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            color: appTheme.textMid; font.pixelSize: 11
+                            text: root.maskOn
+                                ? root.tr("Paint over the picture on the right. Only the painted area changes — everything else stays the original, pixel for pixel, at full resolution.",
+                                          "Pinte em cima da imagem à direita. Só a área pintada muda — todo o resto continua a original, pixel por pixel, na resolução cheia.")
+                                : root.tr("Off: the whole picture can change.", "Desligado: a imagem inteira pode mudar.")
+                        }
+                        Flow {
+                            visible: root.maskOn
+                            Layout.fillWidth: true
+                            spacing: 6
+                            GPill { icon: "edit"; label: root.tr("Brush", "Pincel"); active: !root.eraseMode; onClicked: root.eraseMode = false }
+                            GPill { icon: "x"; label: root.tr("Eraser", "Borracha"); active: root.eraseMode; onClicked: root.eraseMode = true }
+                            GPill { icon: "refresh-cw"; label: root.tr("Invert", "Inverter"); active: root.maskInvert; onClicked: { root.maskInvert = !root.maskInvert; maskCanvas.requestPaint() } }
+                            GPill { icon: "trash"; label: root.tr("Clear", "Limpar"); onClicked: { root.strokes = []; maskCanvas.requestPaint() } }
+                        }
+                        RowLayout {
+                            visible: root.maskOn
+                            Layout.fillWidth: true
+                            QQC2.Label { text: root.tr("Size", "Tamanho"); color: appTheme.textMid; font.pixelSize: 11 }
+                            QQC2.Slider {
+                                Layout.fillWidth: true
+                                from: 0.015; to: 0.25
+                                value: root.brushSize
+                                onMoved: root.brushSize = value
+                            }
+                        }
+                        // Faces: kept from the original, whatever the editor does.
+                        RowLayout {
+                            Layout.fillWidth: true
+                            QQC2.Label {
+                                Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                text: root.tr("Keep faces exactly as they are", "Manter os rostos exatamente como estão")
+                                color: root.status.faces_available ? appTheme.textMid : appTheme.textLo; font.pixelSize: 12
+                            }
+                            GToggle {
+                                theme: appTheme
+                                enabled: !!root.status.faces_available
+                                opacity: enabled ? 1 : 0.4
+                                checked: root.protectFaces && !!root.status.faces_available
+                                onToggled: function (v) { root.protectFaces = v }
+                            }
+                        }
+                        QQC2.Label {
+                            visible: !root.status.faces_available
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            color: appTheme.textLo; font.pixelSize: 10
+                            text: root.tr("Needs the face detector: sudo pacman -S python-opencv", "Precisa do detector de rostos: sudo pacman -S python-opencv")
+                        }
                     }
                 }
 
@@ -882,6 +1179,90 @@ Item {
                             label: modelData.label
                             active: root.aspect === index
                             onClicked: root.aspect = index
+                        }
+                    }
+                }
+
+                // ── LoRAs (Generate) ──
+                Rectangle {
+                    id: loraCard
+                    readonly property var m: root.activeModel()
+                    readonly property var ok: root.compatibleLoras(m)
+                    visible: root.mode === "generate"
+                    Layout.fillWidth: true
+                    implicitHeight: loraCol.implicitHeight + 18
+                    radius: appTheme.rMd
+                    color: appTheme.surface
+                    border.width: 1; border.color: appTheme.hairline
+                    ColumnLayout {
+                        id: loraCol
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.margins: 10
+                        spacing: 6
+                        RowLayout {
+                            Layout.fillWidth: true
+                            FIcon { name: "layers"; size: 14; color: appTheme.purpleBright }
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                text: "LoRAs" + (loraCard.ok.length ? "  ·  " + loraCard.ok.length : "")
+                                color: appTheme.textHi; font.bold: true; font.pixelSize: 12
+                            }
+                            GButton {
+                                theme: appTheme; kind: "ghost"; iconSource: "plus"
+                                text: root.tr("Import", "Importar")
+                                onClicked: root.loraGuideOpen = true
+                            }
+                        }
+                        QQC2.Label {
+                            visible: loraCard.ok.length === 0
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            color: appTheme.textMid; font.pixelSize: 11
+                            text: root.loras.length === 0
+                                ? root.tr("A LoRA adds a style or a look on top of a model (photorealism, film, illustration…). You download them yourself and import them here.",
+                                          "Uma LoRA dá um estilo ou um visual em cima de um modelo (fotorrealismo, filme, ilustração…). Você baixa por fora e importa aqui.")
+                                : root.tr("None of your LoRAs fit this model's base. A LoRA only works on the base it was made for.",
+                                          "Nenhuma das suas LoRAs serve pra base desse modelo. Uma LoRA só funciona na base pra qual foi feita.")
+                        }
+                        Repeater {
+                            model: loraCard.ok
+                            delegate: ColumnLayout {
+                                id: lr
+                                required property var modelData
+                                readonly property bool on: root.loraPick[modelData.id] !== undefined
+                                Layout.fillWidth: true
+                                spacing: 0
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    QQC2.CheckBox {
+                                        checked: lr.on
+                                        onToggled: root.setLora(lr.modelData.id, checked)
+                                    }
+                                    QQC2.Label {
+                                        Layout.fillWidth: true; elide: Text.ElideRight
+                                        text: lr.modelData.name
+                                        color: appTheme.textHi; font.pixelSize: 12
+                                    }
+                                    QQC2.Label {
+                                        visible: lr.on
+                                        text: (root.loraPick[lr.modelData.id] || 0).toFixed(2)
+                                        color: appTheme.textMid; font.pixelSize: 11
+                                    }
+                                }
+                                QQC2.Slider {
+                                    visible: lr.on
+                                    Layout.fillWidth: true
+                                    from: 0.1; to: 1.5; stepSize: 0.05
+                                    value: root.loraPick[lr.modelData.id] || 0.8
+                                    onMoved: root.setLora(lr.modelData.id, true, value)
+                                }
+                                QQC2.Label {
+                                    visible: lr.on && !!lr.modelData.trigger
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                    text: root.tr("Trigger words added: ", "Palavras-gatilho adicionadas: ") + lr.modelData.trigger
+                                    color: appTheme.textLo; font.pixelSize: 10
+                                }
+                            }
                         }
                     }
                 }
@@ -1054,7 +1435,10 @@ Item {
                     id: preview
                     anchors.fill: parent
                     anchors.margins: 12
-                    source: root.current ? root.fileUrl(root.current.path) : ""
+                    // While painting a mask, the picture being edited is shown.
+                    readonly property bool masking: root.mode === "edit" && root.maskOn && root.refPath !== "" && !root.busy
+                    source: masking ? root.fileUrl(root.refPath)
+                          : (root.current ? root.fileUrl(root.current.path) : "")
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
                     cache: false
@@ -1066,7 +1450,7 @@ Item {
                 ColumnLayout {
                     anchors.centerIn: parent
                     width: Math.min(parent.width - 40, 440)
-                    visible: !root.current && !root.busy
+                    visible: !root.current && !root.busy && !preview.masking
                     spacing: 10
                     FIcon { Layout.alignment: Qt.AlignHCenter; name: "image"; size: 40; color: appTheme.textLo }
                     QQC2.Label {
@@ -1087,6 +1471,103 @@ Item {
                         text: root.tr("Browse models", "Ver modelos")
                         onClicked: { root.filterTag = "all"; root.browserOpen = true }
                     }
+                }
+
+                // The mask, painted straight onto the picture.
+                Canvas {
+                    id: maskCanvas
+                    visible: preview.masking
+                    x: preview.x + (preview.width - preview.paintedWidth) / 2
+                    y: preview.y + (preview.height - preview.paintedHeight) / 2
+                    width: Math.max(1, preview.paintedWidth)
+                    height: Math.max(1, preview.paintedHeight)
+                    // Only for show: the mask file itself is drawn by the
+                    // backend from root.strokes (writeImageMask).
+                    property var live: null           // the stroke being drawn
+                    readonly property color tint: appTheme.green
+                    function strokeAll(ctx, change) {
+                        var all = root.strokes.slice()
+                        if (live) all.push(live)
+                        var side = Math.min(width, height)
+                        ctx.lineCap = "round"; ctx.lineJoin = "round"
+                        for (var i = 0; i < all.length; i++) {
+                            var st = all[i]
+                            // Shown layer: a stroke either adds the tint or cuts it away.
+                            var cut = st.erase !== root.maskInvert
+                            ctx.globalCompositeOperation = cut ? "destination-out" : "source-over"
+                            ctx.strokeStyle = cut ? "#000000" : change
+                            ctx.fillStyle = cut ? "#000000" : change
+                            ctx.lineWidth = st.size * side
+                            ctx.beginPath()
+                            var p0 = st.pts[0]
+                            if (st.pts.length === 1) {
+                                ctx.arc(p0[0] * width, p0[1] * height, ctx.lineWidth / 2, 0, Math.PI * 2)
+                                ctx.fill()
+                                continue
+                            }
+                            ctx.moveTo(p0[0] * width, p0[1] * height)
+                            for (var j = 1; j < st.pts.length; j++)
+                                ctx.lineTo(st.pts[j][0] * width, st.pts[j][1] * height)
+                            ctx.stroke()
+                        }
+                    }
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.reset()
+                        // What the user sees: a tint over the area that will change.
+                        var tinted = Qt.rgba(tint.r, tint.g, tint.b, 0.45)
+                        if (root.maskInvert) {
+                            ctx.fillStyle = tinted
+                            ctx.fillRect(0, 0, width, height)
+                        }
+                        strokeAll(ctx, tinted)
+                    }
+                    onWidthChanged: requestPaint()
+                    onHeightChanged: requestPaint()
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.CrossCursor
+                        function pt(mouse) { return [Math.max(0, Math.min(1, mouse.x / width)), Math.max(0, Math.min(1, mouse.y / height))] }
+                        onPressed: function (mouse) {
+                            maskCanvas.live = { erase: root.eraseMode, size: root.brushSize, pts: [pt(mouse)] }
+                            maskCanvas.requestPaint()
+                        }
+                        onPositionChanged: function (mouse) {
+                            if (!maskCanvas.live) return
+                            maskCanvas.live.pts.push(pt(mouse))
+                            maskCanvas.requestPaint()
+                        }
+                        onReleased: {
+                            if (!maskCanvas.live) return
+                            var s2 = root.strokes.slice()
+                            s2.push(maskCanvas.live)
+                            maskCanvas.live = null
+                            root.strokes = s2
+                            maskCanvas.requestPaint()
+                        }
+                    }
+                    // Brush preview ring follows the pointer.
+                    Rectangle {
+                        id: brushRing
+                        visible: brushHover.hovered
+                        width: root.brushSize * Math.min(maskCanvas.width, maskCanvas.height)
+                        height: width; radius: width / 2
+                        x: brushHover.point.position.x - width / 2
+                        y: brushHover.point.position.y - height / 2
+                        color: "transparent"
+                        border.width: 1.5
+                        border.color: root.eraseMode ? appTheme.red : appTheme.greenBright
+                    }
+                    HoverHandler { id: brushHover }
+                }
+                QQC2.Label {
+                    visible: preview.masking && root.strokes.length === 0
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom; anchors.bottomMargin: 18
+                    text: root.tr("Paint the area to change", "Pinte a área que vai mudar")
+                    color: appTheme.textHi; font.pixelSize: 13; font.bold: true
+                    background: Rectangle { color: appTheme.a(appTheme.card, 0.85); radius: 8 }
+                    padding: 8
                 }
 
                 // progress over the picture
@@ -1298,6 +1779,165 @@ Item {
                         QQC2.ToolTip.visible: containsMouse && !!thumb.modelData.prompt
                         QQC2.ToolTip.text: thumb.modelData.prompt || ""
                         QQC2.ToolTip.delay: 500
+                    }
+                }
+            }
+        }
+    }
+
+    // ════════════════════════ LoRAs: how-to, warning, import, list ════════════════════════
+    Rectangle {
+        anchors.fill: parent
+        visible: root.loraGuideOpen
+        z: 85
+        color: appTheme.a(appTheme.black, 0.55)
+        MouseArea { anchors.fill: parent; onClicked: root.loraGuideOpen = false }
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 32, 760)
+            height: Math.min(parent.height - 32, 760)
+            radius: appTheme.rLg
+            color: appTheme.card
+            border.width: 1; border.color: appTheme.lineHi
+            MouseArea { anchors.fill: parent }
+            QQC2.ScrollView {
+                id: guideScroll
+                anchors.fill: parent
+                anchors.margins: 18
+                contentWidth: availableWidth
+                clip: true
+                ColumnLayout {
+                    width: guideScroll.availableWidth
+                    spacing: 12
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            text: root.tr("LoRAs — how to import", "LoRAs — como importar")
+                            color: appTheme.textHi; font.pixelSize: 20; font.bold: true
+                        }
+                        GButton { theme: appTheme; kind: "ghost"; iconSource: "x"; onClicked: root.loraGuideOpen = false }
+                    }
+                    Repeater {
+                        model: [
+                            { n: "1", en: "Find a LoRA on Civitai or Hugging Face. Check its BASE MODEL: SDXL, Pony, Illustrious, FLUX, Qwen-Image or Z-Image. It only works on a model with that same base.",
+                                      pt: "Ache uma LoRA no Civitai ou no Hugging Face. Confira o BASE MODEL dela: SDXL, Pony, Illustrious, FLUX, Qwen-Image ou Z-Image. Ela só funciona num modelo com essa mesma base." },
+                            { n: "2", en: "Download the .safetensors file. Never a .ckpt or .pt: those can run code on your computer when loaded, and Genesi refuses them.",
+                                      pt: "Baixe o arquivo .safetensors. Nunca .ckpt ou .pt: esses podem rodar código no seu computador quando abertos, e o Genesi recusa." },
+                            { n: "3", en: "If the page lists trigger words, paste them below — Genesi adds them to your prompt when the LoRA is on.",
+                                      pt: "Se a página da LoRA tiver palavras-gatilho (trigger words), cole abaixo — o Genesi coloca no seu prompt quando a LoRA estiver ligada." },
+                            { n: "4", en: "Click Choose file. Genesi reads which base the LoRA is for and shows it only on matching models.",
+                                      pt: "Clique em Escolher arquivo. O Genesi lê pra qual base a LoRA é e só mostra ela nos modelos que combinam." },
+                            { n: "5", en: "In Generate, switch it on in the LoRAs card and set its strength (0.6–1.0 is usual).",
+                                      pt: "No Gerar, ligue ela no card de LoRAs e ajuste a força (0,6–1,0 é o comum)." }
+                        ]
+                        delegate: RowLayout {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Rectangle {
+                                Layout.alignment: Qt.AlignTop
+                                width: 24; height: 24; radius: 12
+                                color: appTheme.a(appTheme.green, 0.18)
+                                QQC2.Label { anchors.centerIn: parent; text: modelData.n; color: appTheme.greenBright; font.bold: true; font.pixelSize: 12 }
+                            }
+                            QQC2.Label {
+                                Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                text: root.tr(modelData.en, modelData.pt)
+                                color: appTheme.textHi; font.pixelSize: 12
+                            }
+                        }
+                    }
+                    // The warning, in full, before the button.
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: warnCol.implicitHeight + 20
+                        radius: appTheme.rMd
+                        color: appTheme.a(appTheme.red, 0.08)
+                        border.width: 1; border.color: appTheme.a(appTheme.red, 0.35)
+                        ColumnLayout {
+                            id: warnCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.margins: 10
+                            spacing: 5
+                            QQC2.Label {
+                                text: root.tr("Use it legally and safely", "Use de forma legal e segura")
+                                color: appTheme.textHi; font.bold: true; font.pixelSize: 13
+                            }
+                            QQC2.Label {
+                                Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                color: appTheme.textMid; font.pixelSize: 11
+                                text: root.tr("• Only import files from sources you trust. A LoRA is a file from the internet; .safetensors cannot run code, but a model can still be made to produce things you did not want.\n• Never create sexual or intimate images of a real person without their consent, and never any sexual content involving minors — it is a crime and Genesi forbids it in its terms of use.\n• Do not use pictures to deceive, harass or impersonate anyone.\n• Respect each LoRA's licence (some forbid commercial use).\n• LoRAs work in Generate, not in edits of an existing photo.\n• Everything runs on this computer: Genesi does not see, store or send your pictures or prompts — and so you are responsible for what you make.",
+                                              "• Só importe arquivos de fontes em que você confia. Uma LoRA é um arquivo da internet; .safetensors não roda código, mas um modelo ainda pode ser feito pra gerar coisas que você não queria.\n• Nunca crie imagens sexuais ou íntimas de uma pessoa real sem o consentimento dela, e jamais qualquer conteúdo sexual envolvendo menores — é crime e os termos de uso do Genesi proíbem.\n• Não use imagens pra enganar, assediar ou se passar por alguém.\n• Respeite a licença de cada LoRA (algumas proíbem uso comercial).\n• LoRAs funcionam no Gerar, não em edições de uma foto existente.\n• Tudo roda neste computador: o Genesi não vê, não guarda e não envia suas imagens nem seus prompts — por isso a responsabilidade pelo que você cria é sua.")
+                            }
+                        }
+                    }
+                    QQC2.TextField {
+                        Layout.fillWidth: true
+                        text: root.loraTrigger
+                        color: appTheme.textHi
+                        placeholderTextColor: appTheme.textLo
+                        leftPadding: 10; rightPadding: 10
+                        background: Rectangle {
+                            implicitHeight: 34
+                            radius: appTheme.rSm
+                            color: appTheme.surface
+                            border.width: 1; border.color: appTheme.hairline
+                        }
+                        placeholderText: root.tr("Trigger words (optional), e.g. film grain, kodak portra",
+                                                 "Palavras-gatilho (opcional), ex.: film grain, kodak portra")
+                        onTextEdited: root.loraTrigger = text
+                    }
+                    RowLayout {
+                        spacing: 10
+                        GButton {
+                            theme: appTheme; kind: "filled"; iconSource: "plus"
+                            enabled: !root.loraBusy
+                            text: root.loraBusy ? root.tr("Adding…", "Adicionando…") : root.tr("Choose file (.safetensors)", "Escolher arquivo (.safetensors)")
+                            onClicked: { root.loraMsg = ""; loraDialog.open() }
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            visible: root.loraMsg !== ""
+                            text: root.loraMsg
+                            color: appTheme.textMid; font.pixelSize: 11
+                        }
+                    }
+                    QQC2.Label {
+                        visible: root.loras.length > 0
+                        text: root.tr("YOUR LORAS", "SUAS LORAS")
+                        color: appTheme.textLo; font.pixelSize: 10; font.letterSpacing: 1.1
+                        Layout.topMargin: 6
+                    }
+                    Repeater {
+                        model: root.loras
+                        delegate: Rectangle {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            implicitHeight: 44
+                            radius: appTheme.rSm
+                            color: appTheme.surface
+                            border.width: 1; border.color: appTheme.hairline
+                            RowLayout {
+                                anchors.fill: parent; anchors.margins: 8
+                                spacing: 8
+                                QQC2.Label {
+                                    Layout.fillWidth: true; elide: Text.ElideRight
+                                    text: modelData.name
+                                    color: appTheme.textHi; font.pixelSize: 12
+                                }
+                                Chip {
+                                    text: root.familyLabel(modelData.family)
+                                    tint: modelData.family ? appTheme.purpleBright : appTheme.turboBright
+                                }
+                                GButton {
+                                    theme: appTheme; kind: "ghost"; iconSource: "trash"
+                                    tooltip: root.tr("Remove", "Remover")
+                                    onClicked: { root.setLora(modelData.id, false); backend.removeImageLora(modelData.id) }
+                                }
+                            }
+                        }
                     }
                 }
             }

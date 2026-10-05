@@ -165,6 +165,7 @@ class Backend(QObject):
     imageBusy = Signal(bool)          # a run is in flight
     imagePromptEnhanced = Signal(str, str)  # improved prompt, error text
     imageEngineStatus = Signal(str)   # terminal | installing | ready | failed
+    imageLoras = Signal(str)          # JSON array of imported LoRAs
 
     def __init__(self):
         super().__init__()
@@ -3033,6 +3034,105 @@ class Backend(QObject):
                          model_id=model_id)
 
     @Slot()
+    def loadImageLoras(self):
+        def work():
+            self.imageLoras.emit(json.dumps(self._image_json("lora", "list") or []))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str, str)
+    def importImageLora(self, source, name, trigger):
+        """A LoRA the user downloaded. The tool refuses anything but
+        .safetensors (a .ckpt/.pt is a pickle that can run code) and says
+        which base it was trained for."""
+        path = QUrl(source).toLocalFile() if source.startswith("file:") else source
+        args = ["lora", "import", path]
+        if name.strip():
+            args += ["--name", name.strip()]
+        if trigger.strip():
+            args += ["--trigger", trigger.strip()]
+
+        def work():
+            state = {"error": "", "ok": False}
+
+            def on_event(ev):
+                if ev.get("event") == "error":
+                    state["error"] = ev.get("text", "")
+                self.imagePullEvent.emit(json.dumps(ev))
+            rc = self._image_stream(args, on_event, "_image_lora_proc")
+            self.imagePullDone.emit(rc == 0, "lora", state["error"])
+            self.loadImageLoras()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    def removeImageLora(self, lora_id):
+        def work():
+            self._image_json("lora", "remove", lora_id, timeout=30)
+            self.loadImageLoras()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(result=str)
+    def imageMaskPath(self):
+        """Where the page's mask canvas saves itself: a fresh file each time,
+        so an old mask is never picked up by a later edit."""
+        cache = os.path.join(os.environ.get("XDG_CACHE_HOME")
+                             or os.path.expanduser("~/.cache"), "genesi-ai-image")
+        os.makedirs(cache, exist_ok=True)
+        for old in os.listdir(cache):
+            if old.startswith("paint-") and old.endswith(".png"):
+                try:
+                    os.unlink(os.path.join(cache, old))
+                except OSError:
+                    pass
+        return os.path.join(cache, "paint-%s.png" % uuid.uuid4().hex[:10])
+
+    @Slot(str, str, bool, result=str)
+    def writeImageMask(self, strokes_json, ref, invert):
+        """The area painted on the page, as the mask file the tool reads:
+        white = change, black = keep, at the SOURCE picture's own size.
+
+        The page keeps its strokes in 0..1 picture coordinates and only draws
+        them for show; the file is drawn here with QPainter, because the QML
+        Canvas's own save() is not reliable on every scene-graph backend."""
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QImage, QImageReader, QPainter, QColor, QPen
+        try:
+            strokes = json.loads(strokes_json or "[]")
+        except ValueError:
+            return ""
+        path = QUrl(ref).toLocalFile() if ref.startswith("file:") else ref
+        size = QImageReader(path).size()
+        if not strokes or not size.isValid() or size.isEmpty():
+            return ""
+        w, h = size.width(), size.height()
+        change = QColor(0, 0, 0) if invert else QColor(255, 255, 255)
+        keep = QColor(255, 255, 255) if invert else QColor(0, 0, 0)
+        img = QImage(w, h, QImage.Format_Grayscale8)
+        img.fill(keep)
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.Antialiasing)
+        side = min(w, h)
+        for st in strokes:
+            pts = [QPointF(float(x) * w, float(y) * h) for x, y in (st.get("pts") or [])]
+            if not pts:
+                continue
+            color = keep if st.get("erase") else change
+            width = max(1.0, float(st.get("size", 0.05)) * side)
+            if len(pts) == 1:
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(color)
+                painter.drawEllipse(pts[0], width / 2, width / 2)
+                continue
+            pen = QPen(color, width)
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPolyline(pts)
+        painter.end()
+        out = self.imageMaskPath()
+        return out if img.save(out) else ""
+
+    @Slot()
     def stopImageServer(self):
         def work():
             self._image_json("server", "stop", timeout=30)
@@ -3093,6 +3193,14 @@ class Backend(QObject):
                 args += ["--seed", str(int(o["seed"]))]
             if o.get("turbo"):
                 args += ["--turbo"]
+            # Only on an edit: a mask or kept faces need a source picture.
+            if mode in ("edit", "img2img") and o.get("mask"):
+                args += ["--mask", o["mask"]]
+            if mode in ("edit", "img2img") and o.get("protectFaces"):
+                args += ["--protect-faces"]
+            for lo in (o.get("loras") or []):
+                if lo.get("id"):
+                    args += ["--lora", "%s:%g" % (lo["id"], float(lo.get("weight", 0.8)))]
 
         def work():
             self.imageBusy.emit(True)

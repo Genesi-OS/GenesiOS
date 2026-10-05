@@ -1577,7 +1577,28 @@ pkgver=1.0.0
 # mode now also redraws a picture with ANY generation model (img2img, with a
 # strength slider). "Add my model" imports any SD 1.5/SDXL checkpoint -- Pony,
 # Illustrious, Civitai -- and can optimize it to Q8.
-pkgrel=202
+#
+# pkgrel 203: the Image page, round three -- editing that keeps the photo.
+#
+# CHANGE ONLY A PART. In Edit, a brush paints over the picture (eraser, size,
+# invert, clear). The painted strokes are drawn into a mask at the picture's
+# own size by the backend (QPainter -- the QML Canvas's save() is unreliable on
+# some scene-graph backends and corrupted the heap in testing), and the result
+# is COMPOSITED back onto the original: outside the painted area every pixel is
+# the original's, exactly, at full resolution. Redraw models get sd-cli's own
+# inpainting mask as well.
+# KEEP FACES. Optional (python-opencv): faces found in the source are pasted
+# back over the edit, feathered. Only rectangles are computed; nothing kept.
+# EDITORS RANKED. Edit mode lists the instruction editors first, by how well
+# they keep identity (Qwen-Image-Edit, FLUX.2 klein 9B, klein 4B), with the
+# redraw (img2img) models folded below a plain warning that faces change.
+# USER LORAS. Import a LoRA you downloaded (Civitai, Hugging Face): only
+# .safetensors (a .ckpt/.pt is a pickle that runs code on load), its base is
+# read from the tensor names (SDXL/Pony/Illustrious, SD 1.5, FLUX, Qwen-Image,
+# Z-Image) and it is offered only on matching models, with a strength slider
+# and its trigger words. In-app guide with the legal/safety warning. LoRAs are
+# GENERATE-ONLY by design: they are not applied to edits of existing photos.
+pkgrel=203
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1612,6 +1633,7 @@ optdepends=(
     'genesi-sd-cpp: the Image page (local image generation and editing) — installed from that page'
     'genesi-ttf-rubik-vf: Rubik brand UI font for the Monitor (shipped by default; falls back to the system sans if absent)'
     'libnotify: desktop notifications from Automations (notify-send)'
+    'python-opencv: keep faces unchanged when editing pictures on the Image page'
     # Speech. Neither is required: `genesi-ai-voice install` builds what it needs
     # in its own virtualenv. Having them from pacman makes that install smaller and
     # faster, because the venv is created with --system-site-packages.
