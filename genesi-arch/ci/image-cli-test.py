@@ -583,8 +583,11 @@ check(a[a.index("--lora-model-dir") + 1] == mod.models_dir(), "the engine is tol
 rc, ev = run(mod, "generate", "--model", "fx", "--prompt", "x", "--lora", "detail-xl")
 check(rc == 2 and ev[-1].get("code") == "lora-mismatch", "an SDXL LoRA is refused on a FLUX-family model", ev[-1:])
 rc, ev = run(mod, "generate", "--model", "fx", "--mode", "img2img", "--prompt", "x",
-             "--ref", str(tmp / "src.png") if (tmp / "src.png").exists() else str(TOOL), "--lora", "film-look")
-check(rc == 2 and ev[-1].get("code") in ("lora-generate-only",) , "LoRAs are refused on edits of an existing picture", ev[-1:])
+             "--ref", str(src), "--lora", "film-look:0.5")
+a = last_argv()
+pr = a[a.index("-p") + 1]
+check(rc == 0 and "<lora:userlora-film-look:0.5>" in pr and "-i" in a,
+      "a LoRA also applies when editing a picture", (rc, pr, ev[-1:]))
 rc, ev = run(mod, "lora", "remove", "film-look")
 check(rc == 0 and not (tmp / "models" / "userlora-film-look.safetensors").exists()
       and "film-look" not in {x["id"] for x in mod.load_loras()}, "lora remove deletes our copy and the entry")

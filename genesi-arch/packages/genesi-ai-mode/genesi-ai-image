@@ -1908,10 +1908,6 @@ def resolve_loras(m, mode, specs, out):
         if not lo:
             out.event("error", code="no-lora", text="no imported LoRA %s" % lid)
             return None
-        if mode != "generate":
-            out.event("error", code="lora-generate-only",
-                      text="LoRAs apply to Generate only, not to edits of an existing picture")
-            return None
         fams = LORA_FAMILIES.get(m.get("family", ""), [])
         if lo.get("family") and lo["family"] not in fams:
             out.event("error", code="lora-mismatch",

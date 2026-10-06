@@ -92,7 +92,7 @@ Item {
     property bool maskInvert: false
     property bool protectFaces: false
 
-    // LoRAs the user imported (Generate only)
+    // LoRAs the user imported (Generate and Edit)
     property var loras: []
     property var loraPick: ({})           // lora id -> weight, for the ones switched on
     property bool loraGuideOpen: false
@@ -188,8 +188,12 @@ Item {
         if (t === "custom") return appTheme.purpleBright
         return appTheme.textMid
     }
+    function editScore(m) {
+        if (has(m.caps, "edit")) return 10 + (m.identity || 0)
+        return has(m.caps, "img2img") ? 1 : 0
+    }
     function browserModels() {
-        return catalog.filter(function (m) {
+        var out = catalog.filter(function (m) {
             if (has(m.caps, "upscale") && filterTag !== "all" && filterTag !== "installed") return false
             if (filterTag === "all") return true
             if (filterTag === "installed") return m.installed || m.partial
@@ -197,6 +201,10 @@ Item {
             if (filterTag === "editors") return has(m.caps, "edit") || has(m.caps, "img2img")
             return has(m.tags, filterTag)
         })
+        // In Edit, the editors that keep the photo come first, best first.
+        if (filterTag === "editors" || mode === "edit")
+            out.sort(function (a, b) { return editScore(b) - editScore(a) })
+        return out
     }
     function turboText(m) {
         if (!m) return ""
@@ -222,9 +230,6 @@ Item {
         var out = catalog.filter(function (m) { return has(m.caps, "edit") })
         out.sort(function (a, b) { return (b.identity || 0) - (a.identity || 0) })
         return out
-    }
-    function redrawEditors() {
-        return catalog.filter(function (m) { return !has(m.caps, "edit") && has(m.caps, "img2img") })
     }
     function identityText(n) {
         if (n >= 3) return tr("Best at keeping faces and details", "O melhor pra manter rostos e detalhes")
@@ -284,7 +289,7 @@ Item {
         var o = { model: m.id, variant: v.id, pauseTurbo: pauseTurbo, turbo: turbo }
         if (mode === "edit")
             o.protectFaces = protectFaces && !!status.faces_available
-        if (mode === "generate") {
+        if (mode === "generate" || mode === "edit") {
             var picked = []
             var ok = compatibleLoras(m)
             for (var i = 0; i < ok.length; i++)
@@ -748,7 +753,6 @@ Item {
                     id: modelCard
                     readonly property var m: root.activeModel()
                     readonly property var v: root.installedVariant(m)
-                    visible: root.mode !== "edit"
                     Layout.fillWidth: true
                     implicitHeight: mcCol.implicitHeight + 20
                     radius: appTheme.rMd
@@ -812,16 +816,28 @@ Item {
                     }
                 }
 
-                // ── Edit: which editor -- the ones that KEEP the photo first ──
+                // ── Edit: recommended editors, the ones that KEEP the photo ──
                 ColumnLayout {
                     visible: root.mode === "edit"
                     Layout.fillWidth: true
-                    spacing: 6
-                    QQC2.Label {
-                        Layout.fillWidth: true; wrapMode: Text.WordWrap
-                        color: appTheme.textMid; font.pixelSize: 11
-                        text: root.tr("Editors that keep the photo change only what you ask. The ones further down redraw the whole picture.",
-                                      "Os editores que mantêm a foto mudam só o que você pede. Os de baixo redesenham a imagem inteira.")
+                    spacing: 5
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            text: root.tr("RECOMMENDED FOR EDITING PHOTOS", "RECOMENDADOS PRA EDITAR FOTO")
+                            color: appTheme.textLo; font.pixelSize: 10; font.letterSpacing: 1.1
+                        }
+                        QQC2.Label {
+                            text: root.tr("See all", "Ver todos")
+                            color: appTheme.greenBright; font.pixelSize: 11
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: { root.filterTag = "editors"; root.browserOpen = true }
+                            }
+                        }
                     }
                     Repeater {
                         model: root.instructionEditors()
@@ -830,86 +846,61 @@ Item {
                             required property var modelData
                             readonly property bool sel: root.activeModel() && root.activeModel().id === modelData.id
                             readonly property var v: root.variantOf(modelData)
-                            readonly property bool ramShort: modelData.min_ram_gb > 0 && root.ramGb() > 0
-                                                             && root.ramGb() < modelData.min_ram_gb
                             Layout.fillWidth: true
-                            implicitHeight: edCol.implicitHeight + 16
-                            radius: appTheme.rMd
+                            implicitHeight: edRow.implicitHeight + 12
+                            radius: appTheme.rSm
                             color: sel ? appTheme.a(appTheme.green, 0.12) : appTheme.surface
                             border.width: 1
                             border.color: sel ? appTheme.a(appTheme.green, 0.5) : appTheme.hairline
-                            ColumnLayout {
-                                id: edCol
-                                anchors.left: parent.left; anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.margins: 9
-                                spacing: 3
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    QQC2.Label {
-                                        Layout.fillWidth: true; elide: Text.ElideRight
-                                        text: ed.modelData.name
-                                        color: appTheme.textHi; font.bold: true; font.pixelSize: 12
-                                    }
-                                    QQC2.Label {
-                                        text: root.stars(ed.modelData.identity || 1)
-                                        color: appTheme.turboBright; font.pixelSize: 12
-                                    }
-                                }
-                                QQC2.Label {
-                                    Layout.fillWidth: true; wrapMode: Text.WordWrap
-                                    text: root.identityText(ed.modelData.identity || 1)
-                                          + (ed.ramShort ? "  ·  " + root.tr("needs " + ed.modelData.min_ram_gb + " GB of RAM",
-                                                                               "precisa de " + ed.modelData.min_ram_gb + " GB de RAM") : "")
-                                    color: ed.ramShort ? appTheme.turboBright : appTheme.textMid; font.pixelSize: 10
-                                }
-                                RowLayout {
-                                    visible: !ed.modelData.installed
-                                    spacing: 6
-                                    GButton {
-                                        theme: appTheme; kind: "tonal"; iconSource: "download"
-                                        enabled: root.pullingId === "" && root.engineReady
-                                        text: root.pullingId === ed.modelData.id
-                                              ? (root.pullText || root.tr("Downloading…", "Baixando…"))
-                                              : root.tr("Download", "Baixar") + (ed.v ? " · " + root.gb(ed.v.download || ed.v.size) : "")
-                                        onClicked: root.startPull(ed.modelData)
-                                    }
-                                }
-                            }
                             MouseArea {
                                 anchors.fill: parent
-                                z: -1
                                 enabled: ed.modelData.installed
                                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                                 onClicked: root.modelId = ed.modelData.id
                             }
-                        }
-                    }
-                    // Redraw editors: present, but below and plainly labeled.
-                    QQC2.Label {
-                        readonly property var installedRedraw: root.redrawEditors().filter(function (x) { return x.installed })
-                        visible: installedRedraw.length > 0
-                        Layout.fillWidth: true; wrapMode: Text.WordWrap
-                        Layout.topMargin: 4
-                        text: (redrawBox.open ? "▾ " : "▸ ") + root.tr("Redraw instead (style, variations — faces change)",
-                                                                         "Redesenhar (estilo, variações — rostos mudam)")
-                              + " (" + installedRedraw.length + ")"
-                        color: appTheme.textLo; font.pixelSize: 11
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: redrawBox.open = !redrawBox.open }
-                    }
-                    Flow {
-                        id: redrawBox
-                        property bool open: false
-                        visible: open
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Repeater {
-                            model: root.redrawEditors().filter(function (x) { return x.installed })
-                            delegate: GPill {
-                                required property var modelData
-                                label: modelData.name
-                                active: root.activeModel() && root.activeModel().id === modelData.id
-                                onClicked: root.modelId = modelData.id
+                            RowLayout {
+                                id: edRow
+                                anchors.left: parent.left; anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: 9; anchors.rightMargin: 6
+                                spacing: 8
+                                QQC2.Label {
+                                    text: root.stars(ed.modelData.identity || 1)
+                                    color: appTheme.turboBright; font.pixelSize: 12
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 6
+                                        QQC2.Label {
+                                            Layout.fillWidth: true; elide: Text.ElideRight
+                                            text: ed.modelData.name
+                                            color: appTheme.textHi; font.bold: true; font.pixelSize: 12
+                                        }
+                                    }
+                                    QQC2.Label {
+                                        Layout.fillWidth: true; elide: Text.ElideRight
+                                        text: root.identityText(ed.modelData.identity || 1)
+                                              + (ed.modelData.min_ram_gb ? "  ·  " + ed.modelData.min_ram_gb + " GB RAM" : "")
+                                        color: appTheme.textMid; font.pixelSize: 10
+                                    }
+                                }
+                                GButton {
+                                    visible: !ed.modelData.installed
+                                    theme: appTheme; kind: "tonal"; iconSource: "download"
+                                    enabled: root.pullingId === "" && root.engineReady
+                                    text: root.pullingId === ed.modelData.id
+                                          ? (root.pullText || root.tr("Downloading…", "Baixando…"))
+                                          : (ed.v ? root.gb(ed.v.download || ed.v.size) : root.tr("Download", "Baixar"))
+                                    tooltip: root.tr("Download", "Baixar")
+                                    onClicked: root.startPull(ed.modelData)
+                                }
+                                FIcon {
+                                    visible: ed.sel
+                                    name: "check"; size: 14; color: appTheme.greenBright
+                                }
                             }
                         }
                     }
@@ -1188,7 +1179,7 @@ Item {
                     id: loraCard
                     readonly property var m: root.activeModel()
                     readonly property var ok: root.compatibleLoras(m)
-                    visible: root.mode === "generate"
+                    visible: root.mode === "generate" || root.mode === "edit"
                     Layout.fillWidth: true
                     implicitHeight: loraCol.implicitHeight + 18
                     radius: appTheme.rMd
@@ -1221,8 +1212,10 @@ Item {
                             text: root.loras.length === 0
                                 ? root.tr("A LoRA adds a style or a look on top of a model (photorealism, film, illustration…). You download them yourself and import them here.",
                                           "Uma LoRA dá um estilo ou um visual em cima de um modelo (fotorrealismo, filme, ilustração…). Você baixa por fora e importa aqui.")
-                                : root.tr("None of your LoRAs fit this model's base. A LoRA only works on the base it was made for.",
-                                          "Nenhuma das suas LoRAs serve pra base desse modelo. Uma LoRA só funciona na base pra qual foi feita.")
+                                : root.tr("None of your LoRAs fit this model's base. A LoRA only works on the base it was made for"
+                                          + (root.mode === "edit" ? " — for an editor, look for LoRAs made for it (e.g. \"Qwen-Image-Edit\", \"FLUX.2 klein\")." : "."),
+                                          "Nenhuma das suas LoRAs serve pra base desse modelo. Uma LoRA só funciona na base pra qual foi feita"
+                                          + (root.mode === "edit" ? " — pra um editor, procure LoRAs feitas pra ele (ex.: \"Qwen-Image-Edit\", \"FLUX.2 klein\")." : "."))
                         }
                         Repeater {
                             model: loraCard.ok
@@ -1828,8 +1821,8 @@ Item {
                                       pt: "Se a página da LoRA tiver palavras-gatilho (trigger words), cole abaixo — o Genesi coloca no seu prompt quando a LoRA estiver ligada." },
                             { n: "4", en: "Click Choose file. Genesi reads which base the LoRA is for and shows it only on matching models.",
                                       pt: "Clique em Escolher arquivo. O Genesi lê pra qual base a LoRA é e só mostra ela nos modelos que combinam." },
-                            { n: "5", en: "In Generate, switch it on in the LoRAs card and set its strength (0.6–1.0 is usual).",
-                                      pt: "No Gerar, ligue ela no card de LoRAs e ajuste a força (0,6–1,0 é o comum)." }
+                            { n: "5", en: "In Generate or Edit, switch it on in the LoRAs card and set its strength (0.6–1.0 is usual).",
+                                      pt: "No Gerar ou no Editar, ligue ela no card de LoRAs e ajuste a força (0,6–1,0 é o comum)." }
                         ]
                         delegate: RowLayout {
                             required property var modelData
@@ -1868,8 +1861,8 @@ Item {
                             QQC2.Label {
                                 Layout.fillWidth: true; wrapMode: Text.WordWrap
                                 color: appTheme.textMid; font.pixelSize: 11
-                                text: root.tr("• Only import files from sources you trust. A LoRA is a file from the internet; .safetensors cannot run code, but a model can still be made to produce things you did not want.\n• Never create sexual or intimate images of a real person without their consent, and never any sexual content involving minors — it is a crime and Genesi forbids it in its terms of use.\n• Do not use pictures to deceive, harass or impersonate anyone.\n• Respect each LoRA's licence (some forbid commercial use).\n• LoRAs work in Generate, not in edits of an existing photo.\n• Everything runs on this computer: Genesi does not see, store or send your pictures or prompts — and so you are responsible for what you make.",
-                                              "• Só importe arquivos de fontes em que você confia. Uma LoRA é um arquivo da internet; .safetensors não roda código, mas um modelo ainda pode ser feito pra gerar coisas que você não queria.\n• Nunca crie imagens sexuais ou íntimas de uma pessoa real sem o consentimento dela, e jamais qualquer conteúdo sexual envolvendo menores — é crime e os termos de uso do Genesi proíbem.\n• Não use imagens pra enganar, assediar ou se passar por alguém.\n• Respeite a licença de cada LoRA (algumas proíbem uso comercial).\n• LoRAs funcionam no Gerar, não em edições de uma foto existente.\n• Tudo roda neste computador: o Genesi não vê, não guarda e não envia suas imagens nem seus prompts — por isso a responsabilidade pelo que você cria é sua.")
+                                text: root.tr("• Only import files from sources you trust. A LoRA is a file from the internet; .safetensors cannot run code, but a model can still be made to produce things you did not want.\n• Never create sexual or intimate images of a real person without their consent, and never any sexual content involving minors — it is a crime and Genesi forbids it in its terms of use.\n• Do not use pictures to deceive, harass or impersonate anyone.\n• Respect each LoRA's licence (some forbid commercial use).\n• For editing, pick LoRAs made for the editor itself (Qwen-Image-Edit, FLUX.2 klein); a LoRA made for another model does nothing or ruins the picture.\n• Everything runs on this computer: Genesi does not see, store or send your pictures or prompts — and so you are responsible for what you make.",
+                                              "• Só importe arquivos de fontes em que você confia. Uma LoRA é um arquivo da internet; .safetensors não roda código, mas um modelo ainda pode ser feito pra gerar coisas que você não queria.\n• Nunca crie imagens sexuais ou íntimas de uma pessoa real sem o consentimento dela, e jamais qualquer conteúdo sexual envolvendo menores — é crime e os termos de uso do Genesi proíbem.\n• Não use imagens pra enganar, assediar ou se passar por alguém.\n• Respeite a licença de cada LoRA (algumas proíbem uso comercial).\n• Pra editar, use LoRAs feitas pro próprio editor (Qwen-Image-Edit, FLUX.2 klein); uma LoRA de outro modelo não faz nada ou estraga a imagem.\n• Tudo roda neste computador: o Genesi não vê, não guarda e não envia suas imagens nem seus prompts — por isso a responsabilidade pelo que você cria é sua.")
                             }
                         }
                     }
@@ -2076,6 +2069,20 @@ Item {
                                     Flow {
                                         Layout.fillWidth: true
                                         spacing: 4
+                                        // Edit: how well it keeps the original photo
+                                        Chip {
+                                            visible: root.mode === "edit" && root.has(card.modelData.caps, "edit")
+                                            text: root.stars(card.modelData.identity || 1) + " "
+                                                  + ((card.modelData.identity || 0) >= 3 ? root.tr("BEST FOR FACES", "MELHOR PRA ROSTOS")
+                                                                                         : root.tr("KEEPS THE PHOTO", "MANTÉM A FOTO"))
+                                            tint: appTheme.turboBright
+                                        }
+                                        Chip {
+                                            visible: root.mode === "edit" && !root.has(card.modelData.caps, "edit")
+                                                     && root.has(card.modelData.caps, "img2img")
+                                            text: root.tr("REDRAWS · FACES CHANGE", "REDESENHA · ROSTOS MUDAM")
+                                            tint: appTheme.textLo
+                                        }
                                         Repeater {
                                             model: card.modelData.tags.filter(function (t) { return t !== "sdxl" })
                                             delegate: Chip {
