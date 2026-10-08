@@ -72,7 +72,8 @@ GAMES = ("GenesiGameSnake.qml", "GenesiGame2048.qml", "GenesiGameMines.qml",
          "GenesiGameBlocks.qml", "GenesiGameFlappy.qml", "GenesiGameBreakout.qml",
          "GenesiGameMemory.qml", "GenesiGameSimon.qml")
 PURE = GAMES + ("GenesiGames.qml", "GenesiPetMind.qml", "GenesiWeatherFx.qml",
-                 "GenesiWrappedMath.qml", "GenesiWrappedStory.qml")
+                 "GenesiWrappedMath.qml", "GenesiWrappedStory.qml",
+                 "GenesiAiIslandCard.qml")
 # The leaf is drawn with Shapes, which is still Qt and nothing of caelestia's.
 DRAWN = ("GenesiLeaf.qml",)
 SHOTS = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -156,7 +157,7 @@ for name in os.listdir(SHELL):
                                                encoding="utf-8").read())
         asked |= set(re.findall(r'GenesiPluginSwitch\s*\{[^}]*?plugin:\s*"([^"]+)"', body, re.S))
 check("the shell asks about every plugin there is",
-      {"game-center", "leaf", "live-weather", "vinyl", "wrapped"} <= asked, sorted(asked))
+      {"game-center", "leaf", "live-weather", "vinyl", "wrapped", "ai-island"} <= asked, sorted(asked))
 
 # The Nexus Plugins page lists plugins by hand. One that exists and is not
 # listed is a plugin with no switch in the settings; one listed that does
@@ -924,6 +925,84 @@ run("leaf drawing", """
 """, """
         ok("twelve leaves, every mood and every stage", g.children.length >= 12, g.children.length);
 """, size=(520, 220), shot="leaves.png")
+
+# ── The AI island, played ─────────────────────────────────────────────────
+# Every state the Quick Chat can publish, and what each button asks for.
+# The window (GenesiAiIsland) is caelestia's and does not load here; the
+# card is where every decision about what to show is made.
+run("ai island", """
+    Column {
+        anchors.centerIn: parent
+        spacing: 14
+        GenesiAiIslandCard { id: island; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight }
+        GenesiAiIslandCard { id: shotWork; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
+            st: ({ phase: "running", pid: 1, turn: 1, prompt: "Corrige o arredondamento e faz o push", total: 3,
+                   steps: [{ title: "Ler arquivo", state: "action-complete", message: "billing.ts" },
+                           { title: "Rodar comando", state: "action-complete", message: "npm test" },
+                           { title: "Rodar comando", state: "running", message: "git push origin main" }] }) }
+        GenesiAiIslandCard { id: shotAsk; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
+            st: ({ phase: "approval", pid: 1, turn: 1, approval: { id: "a1", title: "Allow this action?",
+                   description: "Genesi AI wants to run a command.", approve: "Allow", detail: "git push origin main" } }) }
+    }
+    readonly property Item g: island
+""", """
+        let approved = [], denied = [], attached = [], opened = 0, stopped = 0;
+        g.approve.connect(id => approved.push(id));
+        g.deny.connect(id => denied.push(id));
+        g.attach.connect((path, request) => attached.push([path, request]));
+        g.openChat.connect(() => opened++);
+        g.stopWork.connect(() => stopped++);
+
+        ok("with no Quick Chat it is the small pill", g.view === "idle" && !g.expanded);
+        g.st = ({ phase: "thinking", pid: 7, turn: 1, prompt: "oi" });
+        ok("...and a stale file from a chat that is gone does not open it", g.view === "idle");
+        g.live = true;
+        ok("thinking opens the card", g.view === "work" && g.expanded);
+        g.st = ({ phase: "running", pid: 7, turn: 1, total: 2,
+                  steps: [{ title: "Read", state: "action-complete" }, { title: "Run", state: "running" }] });
+        ok("running shows the steps", g.view === "work" && g.steps.length === 2
+           && g.stepMark("action-complete") === "✓" && g.stepMark("running") === "›" && g.stepMark("denied") === "✕");
+        g.act("noop");
+        g.stopWork();
+        ok("stop asks the chat to stop", stopped === 1);
+
+        g.st = ({ phase: "approval", pid: 7, turn: 1,
+                  approval: { id: "req-1", approve: "Open", detail: "firefox" } });
+        ok("an approval shows the command", g.view === "approval");
+        ok("the agent's English label is shown in the person's language",
+           ["Open", "Abrir"].indexOf(g.approveLabel("Open")) >= 0);
+        g.act("approve");
+        g.act("deny");
+        ok("Allow and Deny answer THAT request", approved[0] === "req-1" && denied[0] === "req-1");
+        g.st = ({ phase: "approval", pid: 7, turn: 1, approval: null });
+        ok("an approval with nothing to approve is not a card with buttons", g.view !== "approval");
+
+        g.st = ({ phase: "done", pid: 7, turn: 1, answer: "O total é R$ 1.240" });
+        ok("done shows the answer", g.view === "done");
+        g.act("fold");
+        ok("OK folds it", g.view === "idle");
+        g.st = ({ phase: "done", pid: 7, turn: 5, answer: "outra" });
+        ok("...but the next answer opens it again", g.view === "done");
+        g.act("open");
+        ok("Open chat opens the chat and folds the card", opened === 1 && g.view === "idle");
+        g.st = ({ phase: "error", pid: 7, turn: 6 });
+        ok("an error shows itself", g.view === "error");
+        g.act("fold");
+
+        g.offerPath = "/home/eu/Documentos/orçamento.pdf";
+        ok("a dropped file asks what to do with it", g.view === "offer"
+           && g.fileName(g.offerPath) === "orçamento.pdf");
+        g.act("summary");
+        ok("Summarize hands the file over with a request, then lets go",
+           attached.length === 1 && attached[0][0] === "/home/eu/Documentos/orçamento.pdf"
+           && attached[0][1].length > 0 && g.offerPath === "");
+        g.offerPath = "/tmp/a.txt";
+        g.act("ask");
+        ok("Ask about it hands it over with no request", attached.length === 2 && attached[1][1] === "");
+        g.offerPath = "/tmp/b.txt";
+        g.act("cancel");
+        ok("Cancel drops it", attached.length === 2 && g.view === "idle");
+""", size=(620, 420), shot="ai-island.png")
 
 print()
 if fails:

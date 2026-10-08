@@ -742,7 +742,14 @@ pkgver=2.0.3
 #     service to dead parents") before any password prompt. A shell now
 #     stays alive as pkexec's parent, and the first probes after the click
 #     wait for the process to appear before calling the update finished.
-pkgrel=55
+# 56: the AI island, a new plugin (GenesiAiIsland). The Quick Chat's state at
+# the top of the screen, with the leaf as its face: thinking, each step the
+# agent runs (2/4), the exact command waiting for permission with Deny/Allow
+# answered right there, the start of the answer when it is done, and files
+# dropped on it handed to the chat. "Always" or "only with the Quick Chat".
+# It leaves the topmost pixels to caelestia's dashboard hover and slides out
+# of the way while the dashboard is open, so the dashboard is always on top.
+pkgrel=56
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -837,9 +844,13 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiWrapped.qml"
         "GenesiWrappedMath.qml"
         "GenesiWrappedStory.qml"
+        "GenesiAiIsland.qml"
+        "GenesiAiIslandCard.qml"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'

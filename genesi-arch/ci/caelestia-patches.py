@@ -1276,11 +1276,15 @@ WEATHER_FILES = ("GenesiLiveWeather.qml", "GenesiWeatherFx.qml")
 VINYL_FILES = ("GenesiVinyl.qml", "GenesiVinylDeck.qml")
 WRAPPED_FILES = ("GenesiWrapped.qml", "GenesiWrappedMath.qml",
                  "GenesiWrappedStory.qml")
+# The AI island: the Quick Chat's state at the top of the screen. The window,
+# and the card it draws (plain QtQuick, played by ci/plugins-test.py). It
+# draws the leaf, so it needs PET_FILES too -- they are always installed.
+ISLAND_FILES = ("GenesiAiIsland.qml", "GenesiAiIslandCard.qml")
 
 # Every plugin file, in one place, so the checks and the copy below cannot
 # disagree about which files are plugins.
 ALL_PLUGIN_FILES = (PLUGIN_FILES + GAMECENTER_FILES + PET_FILES + WEATHER_FILES
-                    + VINYL_FILES + WRAPPED_FILES)
+                    + VINYL_FILES + WRAPPED_FILES + ISLAND_FILES)
 
 # The Nexus page that lists them. Upstream REGISTERS "Plugins" under System
 # and points it at the placeholder -- the same situation the Updates page was
@@ -3350,7 +3354,7 @@ def patch_plugins(release):
 
     text = io.open(shell, encoding="utf-8").read()
     if any(w in text for w in ("GenesiGameCenter", "GenesiPet", "GenesiLiveWeather",
-                               "GenesiVinyl", "GenesiWrapped")):
+                               "GenesiVinyl", "GenesiWrapped", "GenesiAiIsland")):
         fail("shell.qml already builds the plugins -- this ran twice.")
     line = "    GenesiDock {}\n"
     if line not in text:
@@ -3361,7 +3365,8 @@ def patch_plugins(release):
                      "    GenesiPet {}\n"
                      "    GenesiLiveWeather {}\n"
                      "    GenesiVinyl {}\n"
-                     "    GenesiWrapped {}\n", 1))
+                     "    GenesiWrapped {}\n"
+                     "    GenesiAiIsland {}\n", 1))
     print("plugins: every one in shell.qml, each behind its switch")
 
 

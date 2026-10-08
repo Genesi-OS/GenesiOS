@@ -84,6 +84,13 @@ ENGLISH = {
     "suas horas, seu ritmo, seus recordes.":
         "Your week and your month on Genesi, told as a story: your apps, your "
         "hours, your rhythm, your records.",
+    "Ilha da IA": "AI island",
+    "A Genesi AI no topo da tela, com a folhinha: mostra cada passo que a "
+    "IA está fazendo, pede permissão ali mesmo e recebe arquivos arrastados.":
+        "Genesi AI at the top of the screen, with the leaf: every step the AI "
+        "is taking, permission asked right there, and files you drop on it.",
+    "ia": "ai",
+    "topo": "top",
     "jogos": "games",
     "semana": "week",
     "estatísticas": "stats",

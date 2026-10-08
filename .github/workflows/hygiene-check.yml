@@ -368,6 +368,13 @@ jobs:
           python genesi-arch/ci/ai-agent-cloud-test.py
           python genesi-arch/ci/ai-stop-test.py
 
+      - name: the Quick Chat feeds the AI island, and the island's answers reach it
+        # The island (a shell plugin) only reads a state file the Quick Chat
+        # writes and answers through `genesi-ai-quick --approve ID` & co. over
+        # the chat's socket: every command has to arrive, the file has to be
+        # written whole, and a dropped file has to become text the model reads.
+        run: python genesi-arch/ci/ai-island-bridge-test.py
+
       - name: no QML object sets the same property twice
         # "Property value set multiple times" is a load error: the file, and
         # for a window the whole window, does not exist at run time. A second

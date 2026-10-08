@@ -4,9 +4,11 @@
 import argparse
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -26,12 +28,38 @@ from genesi_ai_monitor import Backend, OLLAMA, _turbo_base
 
 APP_ID = "org.genesi.aiquick"
 SOCKET_NAME = "genesi-ai-quick.sock"
+# What the Quick Chat is doing, for the AI island at the top of the screen
+# (genesi-caelestia-shell's GenesiAiIsland). One writer -- this process --
+# and the shell only reads it.
+ISLAND_NAME = "genesi-ai-island.json"
+
+# Attachments: how much of a dropped file is handed to the model. A local
+# model with an 8k context would drown in a whole book, so the text is cut
+# per file and in total, and the model is told that it was cut.
+ATTACH_FILE_CHARS = 24_000
+ATTACH_TOTAL_CHARS = 48_000
+TEXT_SUFFIXES = {
+    ".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".toml", ".ini",
+    ".conf", ".cfg", ".log", ".xml", ".html", ".htm", ".css", ".js", ".ts",
+    ".tsx", ".jsx", ".py", ".rs", ".go", ".c", ".h", ".cpp", ".hpp", ".java",
+    ".kt", ".rb", ".php", ".sh", ".fish", ".zsh", ".sql", ".lua", ".qml",
+    ".srt", ".tex", ".rst", ".env", ".gitignore",
+}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg", ".heic"}
+
+
+def runtime_dir():
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/genesi-ai-{os.getuid()}"
+    os.makedirs(runtime, mode=0o700, exist_ok=True)
+    return runtime
 
 
 def socket_path():
-    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/genesi-ai-{os.getuid()}"
-    os.makedirs(runtime, mode=0o700, exist_ok=True)
-    return os.path.join(runtime, SOCKET_NAME)
+    return os.path.join(runtime_dir(), SOCKET_NAME)
+
+
+def island_path():
+    return os.path.join(runtime_dir(), ISLAND_NAME)
 
 
 def send_to_running(command):
@@ -45,15 +73,122 @@ def send_to_running(command):
         return False
 
 
+def parse_command(raw):
+    """A socket message: the old bare words ("show", "toggle") or, for
+    everything the island sends, one JSON object with a "cmd"."""
+    raw = (raw or "").strip()
+    if raw.startswith("{"):
+        try:
+            message = json.loads(raw)
+            if isinstance(message, dict) and isinstance(message.get("cmd"), str):
+                return message
+        except ValueError:
+            pass
+        return {"cmd": "toggle"}
+    return {"cmd": "show" if raw == "show" else "toggle"}
+
+
+def _pdf_text(path):
+    """A PDF's text: poppler's pdftotext when it is there, Qt's own PDF module
+    when it is not. Empty when neither can read it -- a scanned PDF is
+    pictures, and there is no text in it to read."""
+    if shutil.which("pdftotext"):
+        try:
+            done = subprocess.run(["pdftotext", "-layout", "-l", "60", path, "-"],
+                                  capture_output=True, timeout=30)
+            if done.returncode == 0:
+                return done.stdout.decode("utf-8", "replace")
+        except (OSError, subprocess.SubprocessError):
+            pass
+    try:
+        from PySide6.QtPdf import QPdfDocument
+    except ImportError:
+        return None
+    doc = QPdfDocument()
+    if doc.load(path) != QPdfDocument.Error.None_:
+        return ""
+    return "\n\n".join(doc.getAllText(i).text() for i in range(min(doc.pageCount(), 60)))
+
+
+def read_attachment(path):
+    """(info, text) for a file the person attached. info is what the window
+    shows; text is what the model will be given, or "" when there is none."""
+    name = os.path.basename(path)
+    info = {"name": name, "path": path, "kind": "file", "chars": 0, "size": 0, "error": ""}
+    if not os.path.isfile(path):
+        info["error"] = "not-found"
+        return info, ""
+    info["size"] = os.path.getsize(path)
+    suffix = os.path.splitext(name)[1].lower()
+    text = ""
+    if suffix == ".pdf":
+        info["kind"] = "pdf"
+        got = _pdf_text(path)
+        if got is None:
+            info["error"] = "no-pdf-reader"
+        else:
+            text = got
+            if not text.strip():
+                info["error"] = "no-text"
+    elif suffix in IMAGE_SUFFIXES:
+        info["kind"] = "image"
+        info["error"] = "image"
+    else:
+        try:
+            with open(path, "rb") as handle:
+                data = handle.read(ATTACH_FILE_CHARS * 4)
+        except OSError:
+            info["error"] = "unreadable"
+            return info, ""
+        if b"\0" in data[:65536] and suffix not in TEXT_SUFFIXES:
+            info["kind"] = "binary"
+            info["error"] = "binary"
+        else:
+            info["kind"] = "text"
+            text = data.decode("utf-8", "replace")
+    if len(text) > ATTACH_FILE_CHARS:
+        text = text[:ATTACH_FILE_CHARS] + "\n[... cut here: the file goes on]"
+    info["chars"] = len(text)
+    return info, text
+
+
+def attachment_context(entries):
+    """The block put in front of the person's message: each file's name,
+    where it is, and its text -- or why there is no text."""
+    parts = ["The user attached these files to the message below."]
+    left = ATTACH_TOTAL_CHARS
+    for info, text in entries:
+        head = "### %s (%s)" % (info["name"], info["path"])
+        if not text:
+            why = {"image": "an image -- its pixels are not readable here, only its path",
+                   "no-text": "a PDF with no text layer (scanned pages)",
+                   "no-pdf-reader": "a PDF, and no PDF reader is installed",
+                   "binary": "a binary file"}.get(info.get("error"), "not readable")
+            parts.append(head + "\n(%s)" % why)
+            continue
+        piece = text[:max(0, left)]
+        left -= len(piece)
+        if len(piece) < len(text):
+            piece += "\n[... cut here: too much text in total]"
+        parts.append(head + "\n```\n" + piece + "\n```")
+    return "\n\n".join(parts)
+
+
 class QuickBackend(Backend):
     toggleRequested = Signal()
     showRequested = Signal()
+    hideRequested = Signal()
     modelChanged = Signal(str)
+    # From the AI island, through the socket.
+    islandApproval = Signal(str, bool)      # request id, approved
+    islandStop = Signal()
+    attachRequested = Signal(str, str)      # path, a prompt to send with it ("" = none)
 
     def __init__(self):
         super().__init__()
         self._quick_model = ""
         self._socket = None
+        self._attached = {}
         # Model/service discovery may need to wake Ollama. Keep it off the GUI
         # thread so Ctrl+Alt+Space can paint immediately after login.
         threading.Thread(target=self._prepare_model, daemon=True).start()
@@ -162,6 +297,60 @@ class QuickBackend(Backend):
             self._quick_model = model
             self.modelChanged.emit(model)
 
+    # ── The AI island ────────────────────────────────────────────────────────
+    #
+    # The window says what it is doing; this writes it where the shell reads
+    # it. Atomic (a temporary file renamed over the old one), so the island
+    # never reads half a state.
+    @Slot(str)
+    def publishIsland(self, payload):
+        try:
+            state = json.loads(payload)
+        except ValueError:
+            return
+        state["pid"] = os.getpid()
+        state["t"] = int(time.time() * 1000)
+        target = island_path()
+        try:
+            fd, tmp = tempfile.mkstemp(prefix=".genesi-ai-island.", dir=os.path.dirname(target))
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(state, handle, ensure_ascii=False)
+            os.replace(tmp, target)
+        except OSError:
+            pass
+
+    def clearIsland(self):
+        try:
+            os.unlink(island_path())
+        except OSError:
+            pass
+
+    # ── Attachments ──────────────────────────────────────────────────────────
+    @Slot(str, result=str)
+    def attachFile(self, source):
+        path = QUrl(source).toLocalFile() if source.startswith("file:") else source
+        info, text = read_attachment(path)
+        # Even a file with no readable text goes along by name and path: the
+        # agent can still open, move or convert it.
+        if info["error"] not in ("not-found", "unreadable"):
+            self._attached[path] = (info, text)
+        return json.dumps(info, ensure_ascii=False)
+
+    @Slot(str)
+    def detachFile(self, path):
+        self._attached.pop(path, None)
+
+    @Slot(str, result=str)
+    def attachmentContext(self, paths_json):
+        try:
+            paths = json.loads(paths_json)
+        except ValueError:
+            return ""
+        entries = [self._attached[p] for p in paths if p in self._attached]
+        for p in paths:
+            self._attached.pop(p, None)
+        return attachment_context(entries) if entries else ""
+
     def listen(self):
         path = socket_path()
         try:
@@ -179,15 +368,33 @@ class QuickBackend(Backend):
                 try:
                     connection, _ = server.accept()
                     with connection:
-                        command = connection.recv(64).decode("utf-8", "replace").strip()
-                    if command == "show":
-                        self.showRequested.emit()
-                    else:
-                        self.toggleRequested.emit()
+                        connection.settimeout(1)
+                        chunks = []
+                        while sum(len(c) for c in chunks) < 65536:
+                            chunk = connection.recv(4096)
+                            if not chunk:
+                                break
+                            chunks.append(chunk)
+                    self.dispatch(parse_command(b"".join(chunks).decode("utf-8", "replace")))
                 except OSError:
                     return
 
         threading.Thread(target=serve, daemon=True).start()
+
+    def dispatch(self, message):
+        cmd = message.get("cmd")
+        if cmd == "show":
+            self.showRequested.emit()
+        elif cmd == "hide":
+            self.hideRequested.emit()
+        elif cmd in ("approve", "deny"):
+            self.islandApproval.emit(str(message.get("id", "")), cmd == "approve")
+        elif cmd == "stop":
+            self.islandStop.emit()
+        elif cmd == "attach" and message.get("path"):
+            self.attachRequested.emit(str(message["path"]), str(message.get("prompt") or ""))
+        else:
+            self.toggleRequested.emit()
 
     def closeSocket(self):
         if self._socket:
@@ -215,10 +422,31 @@ def main():
     parser.add_argument("--background", action="store_true")
     parser.add_argument("--toggle", action="store_true")
     parser.add_argument("--show", action="store_true")
+    # What the AI island asks for.
+    parser.add_argument("--hide", action="store_true")
+    parser.add_argument("--approve", metavar="ID")
+    parser.add_argument("--deny", metavar="ID")
+    parser.add_argument("--stop", action="store_true")
+    parser.add_argument("--attach", metavar="PATH")
+    parser.add_argument("--prompt", default="", help="with --attach: send this right away")
     args = parser.parse_args()
 
-    command = "toggle" if args.toggle else "show"
+    if args.approve or args.deny:
+        message = {"cmd": "approve" if args.approve else "deny", "id": args.approve or args.deny}
+    elif args.stop:
+        message = {"cmd": "stop"}
+    elif args.hide:
+        message = {"cmd": "hide"}
+    elif args.attach:
+        message = {"cmd": "attach", "path": os.path.abspath(args.attach), "prompt": args.prompt}
+    else:
+        message = {"cmd": "toggle" if args.toggle else "show"}
+    command = message["cmd"] if message["cmd"] in ("show", "toggle") else json.dumps(message)
     if send_to_running(command):
+        return 0
+    # Nobody running: an answer to a question nobody asked has nowhere to go,
+    # but a file someone dropped on the island should open the chat with it.
+    if message["cmd"] in ("approve", "deny", "stop", "hide"):
         return 0
 
     configure_qt()
@@ -264,7 +492,12 @@ def main():
     root = engine.rootObjects()[0]
     backend.toggleRequested.connect(root.toggleQuick)
     backend.showRequested.connect(root.showQuick)
+    backend.hideRequested.connect(root.hideQuick)
+    backend.islandApproval.connect(root.islandAnswer)
+    backend.islandStop.connect(root.stopWork)
+    backend.attachRequested.connect(root.attachAndShow)
     app.aboutToQuit.connect(backend.closeSocket)
+    app.aboutToQuit.connect(backend.clearIsland)
     app.aboutToQuit.connect(backend.stopChat)
 
     # Pick up an update without a logout.
@@ -308,7 +541,9 @@ def main():
     reload_timer.timeout.connect(maybe_reload)
     reload_timer.start()
 
-    if not args.background:
+    if message["cmd"] == "attach":
+        root.attachAndShow(message["path"], message.get("prompt") or "")
+    elif not args.background:
         root.showQuick()
     return app.exec()
 

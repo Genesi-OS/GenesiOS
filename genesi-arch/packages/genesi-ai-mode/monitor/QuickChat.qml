@@ -89,6 +89,7 @@ QQC2.ApplicationWindow {
     title: "Genesi AI Quick Chat"
 
     property bool expanded: settingsOpen || conversation.length > 0 || thinking || pendingApproval !== null
+                            || attachments.length > 0
     property bool thinking: false
     property bool settingsOpen: false
     property bool technicalOpen: false
@@ -96,6 +97,15 @@ QQC2.ApplicationWindow {
     property var conversation: []
     property var timeline: []
     property string activityText: "Thinking"
+    // Files the person attached (dropped here or on the AI island): what the
+    // backend read from each, shown as chips until the message goes out.
+    property var attachments: []
+    // For the AI island: the last agent state, how the last request ended
+    // ("done", "error" or ""), and where in the timeline it began.
+    property string activityState: ""
+    property string lastOutcome: ""
+    property int turnStart: 0
+    property string lastPrompt: ""
     property string actionMode: backend.agentMode() === "automatic" ? "automatic" : "approval"
     property var availableModels: []
     property string modelName: backend.quickModel()
@@ -158,6 +168,79 @@ QQC2.ApplicationWindow {
         prompt.text = ""
     }
     function toggleQuick() { visible ? hideQuick() : showQuick() }
+
+    // ── The AI island ───────────────────────────────────────────────────────
+    // What this window is doing, written for the shell's island to show.
+    // Throttled: tokens stream in many times a second, the island needs a few.
+    function publishIsland() { if (!islandTimer.running) islandTimer.start() }
+    function islandState() {
+        var steps = []
+        for (var i = turnStart; i < timeline.length; ++i)
+            if (timeline[i].kind === "action")
+                steps.push({"title": timeline[i].title, "state": timeline[i].state,
+                            "message": timeline[i].message})
+        var answer = ""
+        for (var j = conversation.length - 1; j >= 0; --j) {
+            if (conversation[j].role !== "assistant") break
+            answer = conversation[j].content + answer
+        }
+        var phase = "idle"
+        if (pendingApproval !== null) phase = "approval"
+        else if (thinking) phase = activityState === "running" ? "running" : "thinking"
+        else if (lastOutcome) phase = lastOutcome
+        var approval = null
+        if (pendingApproval !== null) {
+            var args = pendingApproval.arguments || {}
+            var details = pendingApproval.details || []
+            approval = {
+                "id": pendingApproval.id || "",
+                "title": pendingApproval.title || "",
+                "description": pendingApproval.description || "",
+                "risk": pendingApproval.risk_label || "",
+                "approve": pendingApproval.approve_label || "Allow",
+                "detail": String(args.command || (details.length ? details[0].value : "")
+                                 || pendingApproval.reason || "")
+            }
+        }
+        return {
+            "v": 1, "open": visible, "phase": phase, "activity": activityText, "turn": turnStart,
+            "steps": steps.slice(-4), "total": steps.length,
+            "approval": approval, "answer": answer.trim().slice(-320),
+            "prompt": lastPrompt.slice(0, 160), "model": modelName,
+            "attachments": attachments.length
+        }
+    }
+    // An answer given on the island. The id is checked: an approval that
+    // timed out and was replaced must not be answered by a stale click.
+    function islandAnswer(id, approved) {
+        if (pendingApproval === null) return
+        if (id && pendingApproval.id && id !== pendingApproval.id) return
+        resolveApproval(approved)
+    }
+    function addAttachment(source) {
+        var info = {}
+        try { info = JSON.parse(backend.attachFile(source)) } catch (e) { return }
+        if (info.error === "not-found" || info.error === "unreadable") return
+        for (var i = 0; i < attachments.length; ++i)
+            if (attachments[i].path === info.path) return
+        var next = attachments.slice(0)
+        next.push(info)
+        attachments = next
+    }
+    function removeAttachment(path) {
+        backend.detachFile(path)
+        attachments = attachments.filter(function(a) { return a.path !== path })
+    }
+    // A file dropped on the island: attach it, open, and -- when the island's
+    // button said what to do with it -- ask right away.
+    function attachAndShow(path, request) {
+        addAttachment(path)
+        showQuick()
+        if (request && !thinking && pendingApproval === null) {
+            prompt.text = request
+            sendPrompt()
+        }
+    }
     function pollState() {
         try {
             var state = JSON.parse(backend.state())
@@ -196,12 +279,15 @@ QQC2.ApplicationWindow {
         technicalOpen = false
         backend.stopChat()
     }
-    function addMessage(role, content) {
+    // `shown` is what the window prints when it differs from what the model
+    // is given -- a message with files carries their text, and nobody needs
+    // to scroll past a whole PDF to read their own question.
+    function addMessage(role, content, shown) {
         var next = conversation.slice(0)
         next.push({"role": role, "content": content})
         conversation = next
         var visual = timeline.slice(0)
-        visual.push({"kind": "message", "role": role, "content": content,
+        visual.push({"kind": "message", "role": role, "content": shown !== undefined ? shown : content,
                      "id": "message-" + Date.now() + "-" + visual.length})
         timeline = visual
         scrollToBottom()
@@ -237,6 +323,10 @@ QQC2.ApplicationWindow {
     }
     function consumeActivity(activity) {
         var state = activity.state || "thinking"
+        activityState = state
+        if (state === "complete") lastOutcome = "done"
+        else if (["error", "limit-reached", "repeat-blocked"].indexOf(state) >= 0) lastOutcome = "error"
+        else if (state === "stopped") lastOutcome = ""
         if (["waiting-approval", "running", "action-complete", "action-error", "denied", "stopped"].indexOf(state) >= 0)
             rememberAction(activity)
         if (state === "running") activityText = activity.reason || "Running an action"
@@ -258,7 +348,19 @@ QQC2.ApplicationWindow {
                 : "No local model is ready. Install a model in AI Mode first.")
             return
         }
-        addMessage("user", text)
+        turnStart = timeline.length
+        lastPrompt = text
+        lastOutcome = ""
+        activityState = "thinking"
+        if (attachments.length > 0) {
+            var paths = attachments.map(function(a) { return a.path })
+            var names = attachments.map(function(a) { return "📎 " + a.name }).join("  ")
+            var context = backend.attachmentContext(JSON.stringify(paths))
+            attachments = []
+            addMessage("user", context ? context + "\n\n" + text : text, names + "\n" + text)
+        } else {
+            addMessage("user", text)
+        }
         prompt.text = ""
         settingsOpen = false
         activityText = "Thinking"
@@ -289,7 +391,21 @@ QQC2.ApplicationWindow {
         close.accepted = false
         hideQuick()
     }
-    onVisibleChanged: if (visible) reposition()
+    onVisibleChanged: {
+        if (visible) reposition()
+        publishIsland()
+    }
+    onThinkingChanged: publishIsland()
+    onPendingApprovalChanged: publishIsland()
+    onTimelineChanged: publishIsland()
+    onActivityTextChanged: publishIsland()
+    onLastOutcomeChanged: publishIsland()
+    onAttachmentsChanged: publishIsland()
+    Timer {
+        id: islandTimer
+        interval: 150
+        onTriggered: backend.publishIsland(JSON.stringify(root.islandState()))
+    }
 
     Theme { id: theme }
     QtCore.Settings {
@@ -306,6 +422,7 @@ QQC2.ApplicationWindow {
         backend.loadCloud()
         backend.loadVoiceLanguages()
         backend.backendInfo()
+        publishIsland()
     }
 
     Rectangle {
@@ -365,6 +482,16 @@ QQC2.ApplicationWindow {
                     NumberAnimation { from: 0; to: Math.max(0, root.width - 16 - pulse.width); duration: 900; easing.type: Easing.InOutCubic }
                     NumberAnimation { from: Math.max(0, root.width - 16 - pulse.width); to: 0; duration: 900; easing.type: Easing.InOutCubic }
                 }
+            }
+        }
+
+        DropArea {
+            anchors.fill: parent
+            keys: ["text/uri-list"]
+            onDropped: function(drop) {
+                for (var i = 0; i < drop.urls.length; ++i)
+                    root.addAttachment(drop.urls[i].toString())
+                drop.accept()
             }
         }
 
@@ -509,6 +636,49 @@ QQC2.ApplicationWindow {
                         onClicked: root.hideQuick()
                         QQC2.ToolTip.visible: containsMouse
                         QQC2.ToolTip.text: "Close"
+                    }
+                }
+            }
+            Flow {
+                visible: root.attachments.length > 0
+                Layout.fillWidth: true
+                spacing: 6
+                Repeater {
+                    model: root.attachments
+                    delegate: Rectangle {
+                        id: chip
+                        required property var modelData
+                        readonly property bool warn: !!chip.modelData.error
+                        height: 26
+                        width: chipRow.implicitWidth + 16
+                        radius: 13
+                        color: chip.warn ? theme.a(theme.turbo, 0.16) : theme.a(theme.green, 0.14)
+                        border.width: 1
+                        border.color: chip.warn ? theme.a(theme.turbo, 0.4) : theme.a(theme.green, 0.35)
+                        RowLayout {
+                            id: chipRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            FIcon { name: "file-text"; size: 11; color: root.textMid }
+                            QQC2.Label {
+                                text: chip.modelData.name
+                                      + (chip.modelData.error === "image" ? " · only its path"
+                                         : chip.modelData.error === "no-text" ? " · no text in it"
+                                         : chip.modelData.error === "no-pdf-reader" ? " · install poppler to read PDFs"
+                                         : chip.modelData.error ? " · not readable" : "")
+                                color: root.textHi; font.pixelSize: 11
+                                elide: Text.ElideMiddle
+                                Layout.maximumWidth: 420
+                            }
+                            QQC2.Label {
+                                text: "✕"; color: root.textLo; font.pixelSize: 11
+                                MouseArea {
+                                    anchors.fill: parent; anchors.margins: -4
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.removeAttachment(chip.modelData.path)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1139,6 +1309,7 @@ QQC2.ApplicationWindow {
             root.addMessage("assistant", token)
         }
         function onChatDone(stats) {
+            if (root.lastOutcome === "") root.lastOutcome = "done"
             root.thinking = false
             prompt.forceActiveFocus()
             // The whole answer, not the last token: onChatToken appends each
@@ -1158,11 +1329,13 @@ QQC2.ApplicationWindow {
         function onSpeakAnswersChanged(on) { root.speakAnswers = on }
         function onVoiceReadyChanged(ready) { root.voiceReady = ready }
         function onChatStopped() {
+            root.lastOutcome = ""
             root.thinking = false
             root.activityText = "Stopped"
             prompt.forceActiveFocus()
         }
         function onChatError(message) {
+            root.lastOutcome = "error"
             root.thinking = false
             root.addMessage("assistant", message)
         }

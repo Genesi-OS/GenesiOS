@@ -106,6 +106,10 @@ PLUGINS = [
      "Sua semana e seu mês no Genesi, contados como uma história: seus apps, "
      "suas horas, seu ritmo, seus recordes.",
      ["estatísticas", "semana"], "plugin-wrapped.jpg"),
+    ("ai-island", "Ilha da IA",
+     "A Genesi AI no topo da tela, com a folhinha: mostra cada passo que a "
+     "IA está fazendo, pede permissão ali mesmo e recebe arquivos arrastados.",
+     ["ia", "topo"], "plugin-ai-island.jpg"),
 ]
 
 

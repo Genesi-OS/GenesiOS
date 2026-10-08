@@ -78,6 +78,12 @@ PageBase {
             name: qsTr("Retrospective"),
             icon: "auto_awesome",
             blurb: qsTr("Your week and your month on Genesi, told as a story: your apps, your hours, your rhythm, your records.")
+        },
+        {
+            id: "ai-island",
+            name: qsTr("AI island"),
+            icon: "smart_toy",
+            blurb: qsTr("Genesi AI at the top of the screen, with the leaf: every step it takes, permission asked right there, and files dropped on it handed to the chat.")
         }
     ]
 
@@ -86,7 +92,8 @@ PageBase {
         "leaf": leaf,
         "live-weather": weather,
         "vinyl": vinyl,
-        "wrapped": wrapped
+        "wrapped": wrapped,
+        "ai-island": island
     })
 
     readonly property var gameNames: ({
@@ -104,6 +111,7 @@ PageBase {
     property var games: ({})
     property var pet: ({})
     property var deck: ({})
+    property var islandPrefs: ({})
     property int daysCounted: -1
 
     readonly property int enabledCount: root.plugins.filter(p => root.isOn(p.id, root.switches[p.id]?.active ?? false)).length
@@ -180,6 +188,37 @@ PageBase {
             id: wrapped
 
             plugin: "wrapped"
+        }
+
+        Genesi.GenesiPluginSwitch {
+            id: island
+
+            plugin: "ai-island"
+        }
+
+        FileView {
+            id: islandFile
+
+            path: `${Paths.state}/genesi-ai-island.json`
+            printErrors: false
+            onLoaded: {
+                try {
+                    root.islandPrefs = JSON.parse(text());
+                } catch (e) {}
+            }
+        }
+
+        MenuItem {
+            id: islandAlways
+
+            text: qsTr("Always on screen")
+            icon: "push_pin"
+        }
+        MenuItem {
+            id: islandWithChat
+
+            text: qsTr("Only with the Quick Chat")
+            icon: "chat"
         }
 
         FileView {
@@ -284,6 +323,7 @@ PageBase {
                 gamesFile.reload();
                 petFile.reload();
                 deckFile.reload();
+                islandFile.reload();
                 wrappedFile.reload();
             }
         }
@@ -698,6 +738,31 @@ PageBase {
                         text: qsTr("Nap for an hour")
                         type: TextButton.Tonal
                         onClicked: root.leafSet("nap", "true")
+                    }
+
+                    // AI island ------------------------------------------------
+                    SelectRow {
+                        Layout.fillWidth: true
+                        visible: card.pid === "ai-island"
+                        first: true
+                        label: qsTr("When it is shown")
+                        subtext: qsTr("“Only with the Quick Chat”: while the chat is open or the AI is working (Ctrl+Alt+Space)")
+                        menuItems: [islandAlways, islandWithChat]
+                        active: root.islandPrefs.mode === "quickchat" ? islandWithChat : islandAlways
+                        onSelected: item => {
+                            const mode = item === islandWithChat ? "quickchat" : "always";
+                            root.islandPrefs = Object.assign({}, root.islandPrefs, { mode: mode });
+                            Quickshell.execDetached(["caelestia", "shell", "aiIsland", "set", "mode", mode]);
+                        }
+                    }
+
+                    InfoRow {
+                        Layout.fillWidth: true
+                        visible: card.pid === "ai-island"
+                        last: true
+                        label: qsTr("Living with the dashboard")
+                        subtext: qsTr("The very top edge still opens caelestia's dashboard, and the island steps aside while it is open. Drop a file on it to ask the AI about it.")
+                        value: ""
                     }
 
                     // Live weather --------------------------------------------

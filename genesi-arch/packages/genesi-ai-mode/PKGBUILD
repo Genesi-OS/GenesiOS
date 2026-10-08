@@ -1606,7 +1606,18 @@ pkgver=1.0.0
 # redraw models "faces change". User LoRAs now apply in Edit as well as
 # Generate (same family check; the guide says to use LoRAs made for the editor
 # itself, e.g. Qwen-Image-Edit or FLUX.2 klein).
-pkgrel=204
+#
+# pkgrel 205: the Quick Chat feeds the AI island (genesi-caelestia-shell 56).
+# It writes what it is doing to $XDG_RUNTIME_DIR/genesi-ai-island.json --
+# phase, the agent's steps, the command waiting for permission, the start of
+# the answer -- and takes the island's answers over its socket, now JSON
+# commands: genesi-ai-quick --approve ID / --deny ID / --stop / --hide /
+# --attach PATH [--prompt TEXT]. An approval is matched by id, so a stale
+# click never answers a newer request. Files can be attached (dropped on the
+# window or on the island): text and code are read, PDFs through pdftotext
+# (poppler) or Qt's PDF module, images go by path; the model gets their text
+# in front of the question, the window shows only their names.
+pkgrel=205
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1642,6 +1653,7 @@ optdepends=(
     'genesi-ttf-rubik-vf: Rubik brand UI font for the Monitor (shipped by default; falls back to the system sans if absent)'
     'libnotify: desktop notifications from Automations (notify-send)'
     'python-opencv: keep faces unchanged when editing pictures on the Image page'
+    'poppler: read the text of PDFs attached to the Quick Chat (pdftotext)'
     # Speech. Neither is required: `genesi-ai-voice install` builds what it needs
     # in its own virtualenv. Having them from pacman makes that install smaller and
     # faster, because the venv is created with --system-site-packages.

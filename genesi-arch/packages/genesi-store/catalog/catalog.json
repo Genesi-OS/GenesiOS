@@ -1,6 +1,6 @@
 {
  "version": 1,
- "updated": "2026-09-25",
+ "updated": "2026-10-08",
  "sections": [
   {
    "id": "discover",
@@ -5244,6 +5244,34 @@
    ]
   },
   {
+   "id": "plugin-ai-island",
+   "section": "plugins",
+   "name": "AI island",
+   "blurb": "Genesi AI at the top of the screen, with the leaf: every step the AI is taking, permission asked right there, and files you drop on it.",
+   "author": "Genesi",
+   "tags": [
+    "ai",
+    "top"
+   ],
+   "preview": {
+    "kind": "image",
+    "thumb": "plugin-ai-island.jpg"
+   },
+   "actions": [
+    {
+     "action": "file",
+     "path": "~/.config/genesi/plugins/ai-island.json",
+     "text": "{\"enabled\": true}\n"
+    }
+   ],
+   "name_pt": "Ilha da IA",
+   "blurb_pt": "A Genesi AI no topo da tela, com a folhinha: mostra cada passo que a IA está fazendo, pede permissão ali mesmo e recebe arquivos arrastados.",
+   "tags_pt": [
+    "ia",
+    "topo"
+   ]
+  },
+  {
    "id": "topbar-moldura",
    "section": "bars",
    "name": "Top bar: Frame",
@@ -5556,6 +5584,10 @@
     {
      "action": "restore",
      "path": "~/.config/genesi/plugins/wrapped.json"
+    },
+    {
+     "action": "restore",
+     "path": "~/.config/genesi/plugins/ai-island.json"
     }
    ],
    "name_pt": "Como vem de fábrica",
