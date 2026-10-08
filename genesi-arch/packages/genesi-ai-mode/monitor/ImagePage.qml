@@ -92,6 +92,16 @@ Item {
     property bool maskInvert: false
     property bool protectFaces: false
 
+    // Reference pictures (picture 2, 3... in Edit; 1, 2... in Generate) for
+    // the editors that take several: [{path, name, width, height}].
+    property var extraRefs: []
+    // Distilled models draw the same scene for the same request whatever the
+    // seed; this adds a drawn variation (lighting, angle, style, pose).
+    // On by default for edits, where it was reported, off for Generate.
+    property bool varyEdit: true
+    property bool varyGenerate: false
+    readonly property bool vary: mode === "edit" ? varyEdit : mode === "generate" ? varyGenerate : false
+
     // LoRAs the user imported (Generate and Edit)
     property var loras: []
     property var loraPick: ({})           // lora id -> weight, for the ones switched on
@@ -289,6 +299,9 @@ Item {
         var o = { model: m.id, variant: v.id, pauseTurbo: pauseTurbo, turbo: turbo }
         if (mode === "edit")
             o.protectFaces = protectFaces && !!status.faces_available
+        if (vary) o.vary = true
+        if (refSlots() > 0 && extraRefs.length > 0)
+            o.refs = extraRefs.slice(0, refSlots()).map(function (r) { return r.path })
         if (mode === "generate" || mode === "edit") {
             var picked = []
             var ok = compatibleLoras(m)
@@ -324,6 +337,44 @@ Item {
             }
         }
         backend.generateImage(JSON.stringify(o))
+    }
+
+    // ── reference pictures ──
+    function maxRefs() {
+        var m = activeModel()
+        return m && m.max_refs ? m.max_refs : 1
+    }
+    // How many references fit beside the picture being edited (or, in
+    // Generate, in total).
+    function refSlots() {
+        if (mode === "edit") return Math.max(0, maxRefs() - 1)
+        if (mode === "generate") return maxRefs() > 1 ? maxRefs() : 0
+        return 0
+    }
+    function refNumber(i) { return i + (mode === "edit" ? 2 : 1) }
+    function addRef(url) {
+        if (extraRefs.length >= refSlots()) return
+        var r = {}
+        try { r = JSON.parse(backend.prepareImageInput(url)) } catch (e) { r = { error: "?" } }
+        if (r.error) { runError = r.error; return }
+        var next = extraRefs.slice(0)
+        next.push({ path: r.path, name: r.name, width: r.width, height: r.height })
+        extraRefs = next
+    }
+    function removeRef(i) {
+        var next = extraRefs.slice(0)
+        next.splice(i, 1)
+        extraRefs = next
+    }
+    // Clicking a picture's number writes its name into the prompt, in the
+    // person's language; the tool turns it into the model's own word.
+    function insertRef(n) {
+        var word = tr("image ", "imagem ") + n
+        var at = prompt.cursorPosition
+        var before = prompt.text.substring(0, at)
+        var pad = before.length && !/\s$/.test(before) ? " " : ""
+        prompt.insert(at, pad + word + " ")
+        prompt.forceActiveFocus()
     }
 
     function setSource(url) {
@@ -483,6 +534,16 @@ Item {
         title: root.tr("Choose a picture", "Escolha uma imagem")
         nameFilters: [root.tr("Images", "Imagens") + " (*.png *.jpg *.jpeg *.webp *.bmp)"]
         onAccepted: root.setSource(selectedFile.toString())
+    }
+    QQD.FileDialog {
+        id: refDialog
+        title: root.tr("Choose reference pictures", "Escolha imagens de referência")
+        fileMode: QQD.FileDialog.OpenFiles
+        nameFilters: [root.tr("Images", "Imagens") + " (*.png *.jpg *.jpeg *.webp *.bmp)"]
+        onAccepted: {
+            for (var i = 0; i < selectedFiles.length; i++)
+                root.addRef(selectedFiles[i].toString())
+        }
     }
     QQD.FileDialog {
         id: loraDialog
@@ -925,7 +986,9 @@ Item {
                 // ── source picture (edit / upscale) ──
                 QQC2.Label {
                     visible: root.mode !== "generate"
-                    text: root.mode === "edit" ? root.tr("PICTURE TO EDIT", "IMAGEM PARA EDITAR")
+                    text: root.mode === "edit" ? (root.refSlots() > 0
+                                                  ? root.tr("PICTURE 1 — THE ONE TO EDIT", "IMAGEM 1 — A QUE VAI SER EDITADA")
+                                                  : root.tr("PICTURE TO EDIT", "IMAGEM PARA EDITAR"))
                                                : root.tr("PICTURE TO ENLARGE", "IMAGEM PARA AMPLIAR")
                     color: appTheme.textLo; font.pixelSize: 10; font.letterSpacing: 1.1
                 }
@@ -974,6 +1037,160 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: pickDialog.open()
+                    }
+                }
+
+                // ── reference pictures, for the editors that take several ──
+                ColumnLayout {
+                    visible: root.mode === "edit" || (root.mode === "generate" && root.refSlots() > 0)
+                    Layout.fillWidth: true
+                    spacing: 6
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            text: root.refSlots() > 0
+                                ? root.tr("REFERENCE PICTURES", "IMAGENS DE REFERÊNCIA") + "  ·  "
+                                  + root.extraRefs.length + "/" + root.refSlots()
+                                : root.tr("REFERENCE PICTURES", "IMAGENS DE REFERÊNCIA")
+                            color: appTheme.textLo; font.pixelSize: 10; font.letterSpacing: 1.1
+                        }
+                    }
+                    // A model that takes one picture: say which ones take more.
+                    QQC2.Label {
+                        visible: root.refSlots() === 0
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        color: appTheme.textMid; font.pixelSize: 11
+                        text: root.tr("This model works from one picture. To add references — \"the jacket from image 2\" — pick Qwen-Image-Edit (up to 3 pictures) or FLUX.2 klein (up to 4).",
+                                      "Esse modelo trabalha com uma imagem só. Pra usar referências — \"a jaqueta da imagem 2\" — escolha o Qwen-Image-Edit (até 3 imagens) ou o FLUX.2 klein (até 4).")
+                    }
+                    Flow {
+                        visible: root.refSlots() > 0
+                        Layout.fillWidth: true
+                        spacing: 8
+                        // Picture 1 (the one being edited) is listed too, so it
+                        // can be named in the prompt with a click.
+                        Repeater {
+                            model: root.mode === "edit" && root.refPath !== "" ? [{ path: root.refPath, n: 1, main: true }] : []
+                            delegate: Item {
+                                required property var modelData
+                                width: 64; height: 64
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: appTheme.rSm
+                                    color: appTheme.surface
+                                    border.width: 1; border.color: appTheme.a(appTheme.green, 0.5)
+                                    clip: true
+                                    Image {
+                                        anchors.fill: parent; anchors.margins: 1
+                                        source: root.fileUrl(modelData.path)
+                                        fillMode: Image.PreserveAspectCrop
+                                        sourceSize.width: 128; sourceSize.height: 128
+                                        asynchronous: true
+                                    }
+                                }
+                                Rectangle {
+                                    x: 4; y: 4; width: 20; height: 20; radius: 10
+                                    color: appTheme.green
+                                    QQC2.Label { anchors.centerIn: parent; text: "1"; color: "#08130E"; font.bold: true; font.pixelSize: 11 }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.insertRef(1)
+                                }
+                            }
+                        }
+                        Repeater {
+                            model: root.extraRefs
+                            delegate: Item {
+                                id: refItem
+                                required property var modelData
+                                required property int index
+                                readonly property bool over: index >= root.refSlots()
+                                width: 64; height: 64
+                                opacity: over ? 0.35 : 1
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: appTheme.rSm
+                                    color: appTheme.surface
+                                    border.width: 1; border.color: appTheme.hairline
+                                    clip: true
+                                    Image {
+                                        anchors.fill: parent; anchors.margins: 1
+                                        source: root.fileUrl(refItem.modelData.path)
+                                        fillMode: Image.PreserveAspectCrop
+                                        sourceSize.width: 128; sourceSize.height: 128
+                                        asynchronous: true
+                                    }
+                                }
+                                Rectangle {
+                                    x: 4; y: 4; width: 20; height: 20; radius: 10
+                                    color: appTheme.purpleBright
+                                    QQC2.Label { anchors.centerIn: parent; text: String(root.refNumber(refItem.index)); color: "white"; font.bold: true; font.pixelSize: 11 }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: !refItem.over
+                                    onClicked: root.insertRef(root.refNumber(refItem.index))
+                                }
+                                Rectangle {
+                                    anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 3
+                                    width: 18; height: 18; radius: 9
+                                    color: appTheme.a(appTheme.black, 0.65)
+                                    QQC2.Label { anchors.centerIn: parent; text: "✕"; color: "white"; font.pixelSize: 9 }
+                                    MouseArea {
+                                        anchors.fill: parent; anchors.margins: -3
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.removeRef(refItem.index)
+                                    }
+                                }
+                            }
+                        }
+                        // Add more, while there is room.
+                        Rectangle {
+                            visible: root.extraRefs.length < root.refSlots()
+                            width: 64; height: 64
+                            radius: appTheme.rSm
+                            color: addRefMa.containsMouse ? appTheme.hover : "transparent"
+                            border.width: 1; border.color: appTheme.hairline
+                            ColumnLayout {
+                                anchors.centerIn: parent
+                                spacing: 2
+                                FIcon { Layout.alignment: Qt.AlignHCenter; name: "plus"; size: 16; color: appTheme.textMid }
+                                QQC2.Label {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: root.tr("image ", "imagem ") + root.refNumber(root.extraRefs.length)
+                                    color: appTheme.textLo; font.pixelSize: 9
+                                }
+                            }
+                            MouseArea {
+                                id: addRefMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: refDialog.open()
+                            }
+                        }
+                    }
+                    QQC2.Label {
+                        visible: root.refSlots() > 0
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        color: appTheme.textLo; font.pixelSize: 10
+                        text: root.mode === "edit"
+                            ? root.tr("Name them in the prompt: \"put the person in image 1 in the jacket from image 2\". Click a picture to write its name. Each extra picture makes the run heavier.",
+                                      "Cite no prompt: \"coloque a pessoa da imagem 1 com a jaqueta da imagem 2\". Clique numa imagem pra escrever o nome dela. Cada imagem a mais deixa a geração mais pesada.")
+                            : root.tr("Optional: pictures the new one should follow — \"in the style of image 1\". Click one to write its name. Each one makes the run heavier.",
+                                      "Opcional: imagens pra nova seguir — \"no estilo da imagem 1\". Clique numa pra escrever o nome dela. Cada uma deixa a geração mais pesada.")
+                    }
+                    QQC2.Label {
+                        visible: root.extraRefs.length > root.refSlots() && root.refSlots() >= 0 && root.extraRefs.length > 0
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        color: appTheme.turboBright; font.pixelSize: 10
+                        text: root.tr("This model takes fewer pictures — the faded ones will not be used.",
+                                      "Esse modelo aceita menos imagens — as apagadas não vão ser usadas.")
                     }
                 }
 
@@ -1256,6 +1473,36 @@ Item {
                                     color: appTheme.textLo; font.pixelSize: 10
                                 }
                             }
+                        }
+                    }
+                }
+
+                // ── variety: a different scene each time ──
+                RowLayout {
+                    visible: root.mode === "edit" || root.mode === "generate"
+                    Layout.fillWidth: true
+                    spacing: 10
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            text: root.tr("Vary the scene every time", "Variar a cena a cada vez")
+                            color: appTheme.textHi; font.pixelSize: 12
+                        }
+                        QQC2.Label {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            text: root.tr("Fast models repeat the same scene for the same request. This draws lighting, angle, room style and pose (when you ask for one) — the same seed gives the same draw.",
+                                          "Modelos rápidos repetem o mesmo cenário pro mesmo pedido. Isso sorteia luz, ângulo, estilo do ambiente e pose (quando você pede uma) — a mesma seed repete o mesmo sorteio.")
+                            color: appTheme.textLo; font.pixelSize: 10
+                        }
+                    }
+                    GToggle {
+                        theme: appTheme
+                        checked: root.vary
+                        onToggled: function (v) {
+                            if (root.mode === "edit") root.varyEdit = v
+                            else root.varyGenerate = v
                         }
                     }
                 }
@@ -1729,12 +1976,13 @@ Item {
                 visible: root.current !== null && !root.busy && !!root.current && !!root.current.prompt
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                maximumLineCount: 2
+                maximumLineCount: 3
                 elide: Text.ElideRight
                 color: appTheme.textLo; font.pixelSize: 11
                 text: root.current ? (root.current.prompt || "")
                       + (root.current.seed !== undefined ? "   ·   seed " + root.current.seed : "")
-                      + (root.current.seconds ? "   ·   " + root.current.seconds + " s" : "") : ""
+                      + (root.current.seconds ? "   ·   " + root.current.seconds + " s" : "")
+                      + (root.current.variation ? "\n" + root.tr("variation: ", "variação: ") + root.current.variation : "") : ""
             }
 
             // ── gallery ──

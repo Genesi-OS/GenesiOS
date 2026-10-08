@@ -3193,6 +3193,12 @@ class Backend(QObject):
                 args += ["--seed", str(int(o["seed"]))]
             if o.get("turbo"):
                 args += ["--turbo"]
+            if o.get("vary"):
+                args += ["--vary"]
+            # Pictures 2, 3...: references the prompt can point at.
+            for ref in (o.get("refs") or []):
+                if ref:
+                    args += ["--extra-ref", QUrl(ref).toLocalFile() if str(ref).startswith("file:") else ref]
             # Only on an edit: a mask or kept faces need a source picture.
             if mode in ("edit", "img2img") and o.get("mask"):
                 args += ["--mask", o["mask"]]

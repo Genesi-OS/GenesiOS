@@ -180,7 +180,7 @@ MODELS = [
         "variants": [{"id": "q4", "label": "Q4_0", "parts": {"diffusion": "flux2-klein-4b-q4"}},
                      {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "flux2-klein-4b-q8"}}],
         "defaults": {"steps": 4, "cfg": 1.0, "sampler": "euler", "base": 1024},
-        "turbo": {}, "recommended": True, "identity": 1,
+        "turbo": {}, "recommended": True, "identity": 1, "max_refs": 4,
     },
     {
         "id": "flux2-klein-9b", "name": "FLUX.2 klein 9B", "family": "flux2",
@@ -191,7 +191,7 @@ MODELS = [
         "parts": {"vae": "flux2-vae", "llm": "qwen3-8b-q4km"},
         "variants": [{"id": "q8", "label": "Q8_0", "parts": {"diffusion": "flux2-klein-9b-q8"}}],
         "defaults": {"steps": 4, "cfg": 1.0, "sampler": "euler", "base": 1024},
-        "turbo": {}, "recommended": False, "identity": 2,
+        "turbo": {}, "recommended": False, "identity": 2, "max_refs": 4,
     },
     {
         "id": "qwen-image-edit", "name": "Qwen-Image-Edit 2511", "family": "qwen",
@@ -204,7 +204,7 @@ MODELS = [
         "defaults": {"steps": 30, "cfg": 2.5, "sampler": "euler", "flow_shift": 3,
                      "model_args": "qwen_image_zero_cond_t=true", "base": 1024},
         "turbo": {"lora": "qwen-image-edit-2511-lightning", "steps": 4, "cfg": 1.0},
-        "min_ram_gb": 32, "recommended": False, "identity": 3,
+        "min_ram_gb": 32, "recommended": False, "identity": 3, "max_refs": 3,
     },
     # ── generate ─────────────────────────────────────────────────────────
     {
@@ -792,6 +792,7 @@ def model_state(m, vram_mb=None):
         "recommended": m.get("recommended", False), "custom": m.get("custom", False),
         "min_ram_gb": m.get("min_ram_gb", 0),
         "identity": m.get("identity", 0),
+        "max_refs": max_refs(m),
         "lora_families": LORA_FAMILIES.get(m.get("family", ""), []),
         "turbo": {"kind": ("lora" if (m.get("turbo") or {}).get("lora")
                            else (m.get("turbo") or {}).get("cache") and "cache" or "warm"),
@@ -1072,8 +1073,9 @@ def build_cli_argv(engine, m, v, s, prompt, out_path, width, height, seed,
         argv += ["--clip-skip", str(s["clip_skip"])]
     if s["cache"]:
         argv += ["--cache-mode", s["cache"]]
-    if mode == "edit":
-        argv += ["-r", ref]
+    if mode == "edit" or s.get("refs"):
+        for r in s.get("refs") or [ref]:
+            argv += ["-r", r]
     elif mode == "img2img":
         argv += ["-i", ref, "--strength", str(s["strength"])]
         # Inpainting proper: the sampler only changes the painted area.
@@ -1082,7 +1084,7 @@ def build_cli_argv(engine, m, v, s, prompt, out_path, width, height, seed,
     # Encoding a picture has no out-of-memory retry upstream (decoding does),
     # which is exactly why edits failed on an 8 GB card while generating
     # worked: tile it.
-    if mode in ("edit", "img2img") or safe:
+    if mode in ("edit", "img2img") or s.get("refs") or safe:
         argv += ["--vae-tiling"]
     return argv
 
@@ -1637,14 +1639,14 @@ def run_warm(st, s, prompt, out_path, width, height, seed, mode, ref, out):
     if s["loras"]:
         body["lora"] = [{"path": os.path.basename(path), "multiplier": float(w)}
                         for path, w in s["loras"]]
-    if mode == "edit":
-        body["ref_images"] = [_b64(ref)]
+    if mode == "edit" or s.get("refs"):
+        body["ref_images"] = [_b64(r) for r in (s.get("refs") or [ref])]
     elif mode == "img2img":
         body["init_image"] = _b64(ref)
         body["strength"] = float(s["strength"])
         if s.get("mask"):
             body["mask_image"] = _b64(s["mask"])
-    if mode in ("edit", "img2img"):
+    if mode in ("edit", "img2img") or s.get("refs"):
         body["vae_tiling_params"] = {"enabled": True}
 
     parser = ProgressParser("load")
@@ -1728,6 +1730,141 @@ def _qt():
         return QtGui, QtCore
     except ImportError:
         return None, None
+
+
+# ── Reference pictures ─────────────────────────────────────────────────────
+#
+# An editor that takes several pictures (Qwen-Image-Edit, FLUX.2 klein) is
+# given them in order: picture 1 is the one being edited, the rest are what
+# the prompt points at -- "put the jacket from picture 2 on the person in
+# picture 1". Each one costs memory and time in proportion to its pixels, so
+# the extra ones are scaled down to REF_EXTRA_AREA before they go in; the
+# model needs to SEE a reference, not reproduce it pixel for pixel.
+REF_EXTRA_AREA = 1024 * 768
+
+# How each family names the pictures, in the words it was trained on.
+# Qwen-Image-Edit's own template labels them "Picture 1:", "Picture 2:"
+# (sd.cpp conditioner, QwenImageEditPlusPipeline); FLUX.2's examples say
+# "image 1". Whatever the person typed -- "imagem 2", "foto 2", "img 2",
+# "@2" -- becomes that, so the prompt and the template agree.
+REF_LABEL = {"qwen": "Picture %d", "flux2": "image %d"}
+_REF_WORD = re.compile(r"(?i)(?:@\s*([1-9])\b|\b(?:imagem|imagen|image|img|foto|photo|picture|pic|figura|refer[eê]ncia|ref)\s*#?\s*([1-9])\b)")
+
+
+# ── Variety ────────────────────────────────────────────────────────────────
+#
+# The fast editors (Qwen-Image-Edit with its Lightning LoRA, FLUX.2 klein)
+# are distilled: a new seed barely moves them. Asked twice for "a bedroom"
+# with the same photo they draw the same bedroom, because the seed is not
+# where their variety lives -- the TEXT is. So --vary adds a few concrete
+# details to the prompt, drawn from the run's seed: a different room each
+# time, and the same one again when the seed is locked. What was added is
+# reported and recorded, never hidden.
+VARY_ROOM = [
+    "a minimalist Scandinavian room with light wood and white walls",
+    "a cozy room with exposed brick walls and warm textiles",
+    "a modern loft with tall windows and polished concrete",
+    "a vintage room with patterned wallpaper and old furniture",
+    "a Japanese-style room with tatami mats and paper screens",
+    "a bohemian room full of plants, rugs and hanging lights",
+    "an industrial room with metal shelves and dark wood",
+    "a luxurious hotel room with marble and brass details",
+    "a small attic room with a slanted wooden ceiling",
+    "a colorful retro 1970s room with round furniture",
+    "a dark moody room with deep green walls and velvet",
+    "a bright beach-house room with linen and rattan",
+]
+VARY_LIGHT = [
+    "soft morning light", "golden hour sunlight through the window",
+    "warm evening lamp light", "cool overcast daylight",
+    "neon accent lighting at night", "candlelight", "bright natural daylight",
+    "dramatic side light with deep shadows",
+]
+VARY_ANGLE = [
+    "shot from a low angle", "a wide shot showing the whole space",
+    "a medium shot", "seen from the side", "from a slightly high angle",
+    "framed through a doorway",
+]
+VARY_POSE = [
+    "sitting on the edge of the bed", "leaning against the wall",
+    "standing by the window", "lying on the floor reading",
+    "sitting cross-legged on the floor", "stretching with arms raised",
+    "walking toward the camera", "looking back over the shoulder",
+    "sitting in an armchair with legs crossed", "kneeling beside a low table",
+]
+VARY_PALETTE = [
+    "muted earthy colors", "a pastel color palette", "deep blue and teal tones",
+    "warm orange and brown tones", "neutral beige and cream tones",
+    "black and white with one bold accent color",
+]
+_ROOMISH = re.compile(r"(?i)\b(quarto|sala|cozinha|banheiro|escrit[oó]rio|cômodo|comodo|casa|"
+                      r"room|bedroom|living room|kitchen|bathroom|office|interior|apartamento|apartment|"
+                      r"habitaci[oó]n|dormitorio)")
+# The person already said how it is lit: do not draw over that.
+_LIT = re.compile(r"(?i)\b(noite|night|dia|day|manh[aã]|morning|tarde|evening|p[oô]r do sol|sunset|"
+                  r"amanhecer|sunrise|luz|light|lighting|ilumina\w*|escur\w*|dark|sol|sun|neon|vela|candle)\b")
+_POSEY = re.compile(r"(?i)\b(pose|poses|posi[cç][aã]o|posando|aleat[oó]ri\w*|random|qualquer|any)\b")
+
+
+def variation(prompt, seed):
+    """A few details for this run, the same for the same seed."""
+    rnd = random.Random(int(seed) * 7919 + 17)
+    parts = []
+    if _ROOMISH.search(prompt):
+        parts.append(rnd.choice(VARY_ROOM))
+    light = rnd.choice(VARY_LIGHT)
+    if not _LIT.search(prompt):
+        parts.append(light)
+    if _POSEY.search(prompt):
+        parts.append(rnd.choice(VARY_POSE))
+    if rnd.random() < 0.6:
+        parts.append(rnd.choice(VARY_ANGLE))
+    if rnd.random() < 0.5:
+        parts.append(rnd.choice(VARY_PALETTE))
+    return ", ".join(parts)
+
+
+def max_refs(m):
+    """How many pictures the model takes at once: 1 for everything but the
+    multi-reference editors."""
+    if "edit" not in m.get("caps", []):
+        return 1
+    return int(m.get("max_refs", 1))
+
+
+def ref_prompt(prompt, family, n):
+    """The prompt with every mention of picture k (k <= n) said the way the
+    model's family says it. Numbers past the last picture are left alone --
+    "image 7" with three pictures is the person's words, not a reference."""
+    label = REF_LABEL.get(family)
+    if not label or n < 2:
+        return prompt
+
+    def swap(match):
+        k = int(match.group(1) or match.group(2))
+        return label % k if k <= n else match.group(0)
+    return _REF_WORD.sub(swap, prompt)
+
+
+def prepare_ref(path, index):
+    """An extra reference scaled down to REF_EXTRA_AREA (never up). Returns
+    the path to hand the engine -- the original when it is already small or
+    Qt is missing."""
+    dims = image_size(path)
+    if not dims or dims[0] * dims[1] <= REF_EXTRA_AREA:
+        return path
+    QtGui, QtCore = _qt()
+    if not QtGui:
+        return path
+    img = QtGui.QImage(path)
+    if img.isNull():
+        return path
+    w, h = fit_size(dims[0], dims[1], target=REF_EXTRA_AREA)
+    img = img.scaled(int(w), int(h), QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation)
+    if img.hasAlphaChannel():
+        img = img.convertToFormat(QtGui.QImage.Format_RGB888)
+    out = os.path.join(cache_dir(), "ref-%d-%dx%d.png" % (index, w, h))
+    return out if img.save(out, "PNG") else path
 
 
 def prepare_mask(mask, width, height):
@@ -2159,6 +2296,10 @@ def cmd_generate(args, out):
         out.event("error", code="no-model", text="%s is not downloaded yet" % m["name"])
         return 2
     prompt = (args.prompt or "").strip()
+    # What the person typed, kept apart from what the engine is finally told
+    # (references renamed, trigger words, a variation): the gallery's "use
+    # this prompt again" must give back their words, not ours.
+    asked = prompt
     if not prompt:
         out.event("error", text="empty prompt")
         return 2
@@ -2177,6 +2318,22 @@ def cmd_generate(args, out):
         if not dims:
             out.event("error", text="%s is not a PNG or JPEG" % args.ref)
             return 2
+    extras = [r for r in (args.extra_ref or []) if r]
+    if extras:
+        if mode == "img2img" or "edit" not in m["caps"]:
+            out.event("error", code="refs-unsupported",
+                      text="%s works from one picture only; for several, use an editor "
+                           "(Qwen-Image-Edit or FLUX.2 klein)" % m["name"])
+            return 2
+        limit = max_refs(m) - (1 if args.ref else 0)
+        if len(extras) > limit:
+            out.event("error", code="too-many-refs",
+                      text="%s takes at most %d pictures at once" % (m["name"], max_refs(m)))
+            return 2
+        for r in extras:
+            if not os.path.isfile(r) or not image_size(r):
+                out.event("error", text="%s is not a PNG or JPEG" % r)
+                return 2
     if args.width and args.height:
         # Never past what the model was trained at: a 1024 preset on an SD 1.5
         # model lands at 512x512, and a small request stays small.
@@ -2201,6 +2358,16 @@ def cmd_generate(args, out):
     turbo = bool(args.turbo)
     s = gen_settings(m, mode, turbo, steps=args.steps, negative=args.negative,
                      strength=args.strength)
+    if extras:
+        refs = ([args.ref] if args.ref else []) + [prepare_ref(r, i + 2) for i, r in enumerate(extras)]
+        s["refs"] = refs
+        prompt = ref_prompt(prompt, m.get("family", ""), len(refs))
+        out.event("status", text="%d reference picture(s)" % len(refs))
+    varied = ""
+    if args.vary:
+        varied = variation(prompt, seed)
+        prompt = prompt.rstrip(" .,") + ", " + varied
+        out.event("status", code="variation", text="variation: " + varied, variation=varied)
     user_loras = resolve_loras(m, mode, args.lora, out)
     if user_loras is None:
         return 2
@@ -2286,15 +2453,17 @@ def cmd_generate(args, out):
             os.replace(out_path, final_path)
         out_path = final_path
     write_sidecar(out_path, {
-        "mode": mode, "model": m["id"], "variant": v["id"], "prompt": prompt, "seed": seed,
+        "mode": mode, "model": m["id"], "variant": v["id"], "prompt": asked, "seed": seed,
         "width": width, "height": height, "steps": s["steps"], "turbo": turbo,
         "backend": backend, "source": os.path.abspath(args.ref) if args.ref else "",
         "masked": bool(mask), "faces_kept": len(faces),
+        "refs": [os.path.basename(r) for r in (args.extra_ref or [])],
+        "variation": varied,
         "loras": [os.path.basename(p_) for p_, _w in s["loras"]],
         "seconds": secs, "created": int(time.time()),
     })
     out.event("done", path=out_path, seconds=secs, seed=seed,
-              width=width, height=height, low_memory=safe)
+              width=width, height=height, low_memory=safe, variation=varied)
     return 0
 
 
@@ -2516,6 +2685,11 @@ def main(argv=None):
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--turbo", action="store_true")
+    p.add_argument("--vary", action="store_true",
+                   help="add a few details drawn from the seed (lighting, angle, style, pose) "
+                        "so the same request does not draw the same scene every time")
+    p.add_argument("--extra-ref", action="append", default=[], metavar="IMAGE",
+                   help="another reference picture (picture 2, 3...) for editors that take several")
     p.add_argument("--mask", help="grayscale PNG: white = change, black = keep")
     p.add_argument("--protect-faces", action="store_true",
                    help="keep every detected face exactly as in the source")

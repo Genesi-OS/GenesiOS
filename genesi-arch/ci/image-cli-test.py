@@ -593,6 +593,74 @@ check(rc == 0 and not (tmp / "models" / "userlora-film-look.safetensors").exists
       and "film-look" not in {x["id"] for x in mod.load_loras()}, "lora remove deletes our copy and the entry")
 
 # ── masks and kept faces ────────────────────────────────────────────────────
+# ── several reference pictures ─────────────────────────────────────────────
+print("== reference pictures ==")
+m1 = mod.model_by_id("m1")
+m1_saved = (m1.get("family"), m1.get("max_refs"))
+m1["family"], m1["max_refs"] = "qwen", 3
+r2 = tmp / "ref2.png"; r2.write_bytes(png_bytes(640, 480))
+r3 = tmp / "ref3.png"; r3.write_bytes(png_bytes(3000, 2000))
+r4 = tmp / "ref4.png"; r4.write_bytes(png_bytes(320, 320))
+rc, ev = run(mod, "generate", "--model", "m1", "--mode", "edit", "--ref", str(src),
+             "--prompt", "a pessoa da imagem 1 com a jaqueta da foto 2 no fundo da @3",
+             "--extra-ref", str(r2), "--extra-ref", str(r3))
+a = last_argv()
+rs = [a[i + 1] for i, x in enumerate(a) if x == "-r"]
+pr = a[a.index("-p") + 1]
+check(rc == 0 and len(rs) == 3 and rs[0] == str(src) and rs[1] == str(r2),
+      "picture 1 is the one edited, the others follow in order", rs)
+check("Picture 1" in pr and "Picture 2" in pr and "Picture 3" in pr and "imagem" not in pr and "@3" not in pr,
+      "the prompt names the pictures the way Qwen-Image-Edit's template does", pr)
+big = mod.image_size(rs[2]) if rs[2:] else None
+check(big and big[0] * big[1] <= mod.REF_EXTRA_AREA and rs[2] != str(r3),
+      "a huge extra reference is scaled down before it costs memory", big)
+check(mod.image_size(rs[1]) == (640, 480) and rs[1] == str(r2), "a small one is used as it is")
+check("--vae-tiling" in a, "references are encoded tiled")
+rc, ev = run(mod, "generate", "--model", "m1", "--mode", "edit", "--ref", str(src), "--prompt", "x",
+             "--extra-ref", str(r2), "--extra-ref", str(r3), "--extra-ref", str(r4))
+check(rc == 2 and ev[-1].get("code") == "too-many-refs", "more pictures than the model takes is refused", ev[-1:])
+rc, ev = run(mod, "generate", "--model", "m2", "--mode", "img2img", "--ref", str(src), "--prompt", "x",
+             "--extra-ref", str(r2))
+check(rc == 2 and ev[-1].get("code") == "refs-unsupported", "a one-picture model says to use an editor", ev[-1:])
+rc, ev = run(mod, "generate", "--model", "m1", "--prompt", "o gato da imagem 1 na praia", "--extra-ref", str(r2))
+a = last_argv()
+check(rc == 0 and a.count("-r") == 1 and "Picture" not in a[a.index("-p") + 1],
+      "Generate can take a reference too; one picture needs no names", a)
+check(mod.ref_prompt("imagem 12 e 1024 px", "qwen", 3) == "imagem 12 e 1024 px",
+      "numbers that are not pictures are left alone")
+check(mod.ref_prompt("image 2", "flux2", 2) == "image 2" and mod.ref_prompt("foto 2", "flux2", 2) == "image 2",
+      "FLUX.2 is told 'image N'")
+check(mod.model_state(m1)["max_refs"] == 3 and mod.model_state(mod.model_by_id("m2"))["max_refs"] == 1,
+      "the page is told how many pictures each model takes")
+m1["family"], m1["max_refs"] = m1_saved
+if m1_saved[0] is None: m1.pop("family")
+if m1_saved[1] is None: m1.pop("max_refs")
+
+# ── variety: the same request, a different scene ──────────────────────────
+print("== variety ==")
+rc, ev = run(mod, "generate", "--model", "m1", "--mode", "edit", "--ref", str(src),
+             "--prompt", "coloca ele num quarto numa pose aleatória", "--seed", "11", "--vary")
+a1 = last_argv()
+p1 = a1[a1.index("-p") + 1]
+var = [e for e in ev if e.get("code") == "variation"]
+done = [e for e in ev if e.get("event") == "done"]
+check(rc == 0 and var and var[0]["variation"] in p1 and "room" in var[0]["variation"],
+      "a variation is drawn, said out loud, and sent with the prompt", (var, p1))
+side = json.loads(Path(done[0]["path"]).with_suffix(".json").read_text(encoding="utf-8")) if done else {}
+check(side.get("prompt") == "coloca ele num quarto numa pose aleatória" and side.get("variation") == var[0]["variation"],
+      "the gallery keeps the person's words and the variation apart", side)
+run(mod, "generate", "--model", "m1", "--mode", "edit", "--ref", str(src),
+    "--prompt", "coloca ele num quarto numa pose aleatória", "--seed", "11", "--vary")
+check(last_argv()[last_argv().index("-p") + 1] == p1, "the same seed draws the same variation")
+seen = {mod.variation("um quarto", sd) for sd in range(40)}
+check(len(seen) > 20, "different seeds draw different scenes", len(seen))
+check(all(not any(l in mod.variation("deixa de noite", sd) for l in mod.VARY_LIGHT) for sd in range(30)),
+      "a prompt that already says how it is lit is not relit")
+check(not any(any(p_ in mod.variation("um quarto", sd) for p_ in mod.VARY_POSE) for sd in range(30)),
+      "a pose is only drawn when one was asked for")
+run(mod, "generate", "--model", "m1", "--mode", "edit", "--ref", str(src), "--prompt", "um quarto", "--seed", "3")
+check(last_argv()[last_argv().index("-p") + 1].endswith("um quarto"), "without --vary the prompt is left as it is")
+
 print("== masks and kept faces ==")
 try:
     from PySide6.QtGui import QImage, QColor, QPainter
