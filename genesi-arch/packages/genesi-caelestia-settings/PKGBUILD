@@ -210,7 +210,10 @@ pkgver=1.0.0
 # transparent, workspace-high slab ("opens full screen and goes see-through"
 # when the AI asked for permission). The migration deletes every old form of
 # OUR rules and appends the working ones; a person's own rules are untouched.
-pkgrel=44
+# pkgrel 45: the Quick Chat rule's section marker reads the same as a regex
+# and as a literal (ci/hypr-migration-test.sh compares it with grep -F); the
+# `\.` in 44 matched at run time but was not the text in the file.
+pkgrel=45
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

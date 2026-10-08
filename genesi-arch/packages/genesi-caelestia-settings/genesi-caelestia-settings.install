@@ -124,7 +124,9 @@ HYPR
     # 7. Quick Chat windowrules (append once). Hyprland TILED the frameless
     #    summon bar into a workspace-high slab (reported 2026-07-18, photo).
     #    Float it at its own compact size, centered, pinned to every workspace.
-    if ! grep -q 'match:class ^(org\\.genesi\\.aiquick)' "$cfg"; then
+    # The marker reads the same as a regex (here) and as a literal (the CI's
+    # grep -F): no `\.` -- a regex escape is not the text that is in the file.
+    if ! grep -q 'aiquick)$, float on' "$cfg"; then
         cat >> "$cfg" <<'HYPR'
 # Genesi AI Quick Chat (Ctrl+Alt+Space): never tile the summon bar — float it
 # at its own size, centered, on every workspace (it is drag-movable).
