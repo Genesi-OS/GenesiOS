@@ -37,4 +37,23 @@ Singleton {
     function toggle(): void {
         root.open = !root.open;
     }
+
+    // ── The AI island, hanging from the bar ─────────────────────────────
+    //
+    // The bar is one window per screen and the AI island another; neither can
+    // reach into the other's items. So the bar writes WHERE its centre pill is
+    // (screen name -> {x, w, bottom, radius, fill, shown, atTop}), the island
+    // drops its card from exactly there in the bar's own colour, and the
+    // island writes back WHAT the AI is doing, which the pill shows as a chip.
+    property var centres: ({})
+    property bool aiOn: false
+    property var ai: ({})
+
+    signal aiOpenRequested
+
+    function setCentre(name: string, info: var): void {
+        const next = Object.assign({}, root.centres);
+        next[name] = info;
+        root.centres = next;
+    }
 }

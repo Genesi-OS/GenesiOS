@@ -49,14 +49,16 @@ _migrate_hypr() {
     sed -i '/^[[:space:]]*pseudotile[[:space:]]*=[[:space:]]*true[[:space:]]*$/d' "$cfg"
     # 2. togglesplit is no longer a direct dispatcher (0.54+) — route via layoutmsg.
     sed -i 's/\(,[[:space:]]*J,[[:space:]]*\)togglesplit,[[:space:]]*$/\1layoutmsg, togglesplit/' "$cfg"
-    # 2b. Hyprland 0.55 windowrule syntax: the rule and its matchers are now
-    #     SPACE-separated, not comma — `windowrule = float, class:..` errors with
-    #     "invalid field". Heal the comma form an earlier upgrade may have written.
-    sed -i '/^windowrule = /s/,[[:space:]]*class:/ class:/' "$cfg"
-    # 2c. Hyprland 0.55 rejects the noborder/rounding/move windowrules
-    #     ("invalid field type noborder" / "rounding … garbage input"). They're
-    #     cosmetic — drop them, keep only `float` (the popup rounds itself).
-    sed -i -E '/^windowrule = (noborder|rounding|move).*genesi-ai-tray/d' "$cfg"
+    # 2b. Genesi's own windowrules, in a form Hyprland actually applies.
+    #     Since 0.53 a rule is `windowrule = match:class RE, effect on, ...`:
+    #     props are `match:`, effects take a value, and a rule with no `match:`
+    #     is thrown away. Two earlier "fixes" wrote `float, class:..` and then
+    #     `float class:..` -- neither has a match:, so the Quick Chat was never
+    #     floated and opened TILED, a transparent workspace-high slab (reported
+    #     2026-10-08, "it opens full screen and goes see-through"). Every old
+    #     form of the lines for OUR two windows is deleted here; sections 3 and
+    #     7 below append the working ones. A user's own rules are not touched.
+    sed -i -E '/^windowrule = [^m].*class:\^\((genesi-ai-tray|org\\\.genesi\\\.aiquick)\)\$/d' "$cfg"
 
     # 3. tray applets + popup windowrule (append once).
     if ! grep -q 'genesi-ai-tray' "$cfg"; then
@@ -69,10 +71,11 @@ exec-once = genesi-update --tray
 exec-once = genesi-ai-tray
 exec-once = genesi-containers-tray
 exec-once = genesi-ports-tray
-# Float the AI Mode tray popup (only `float` — Hyprland 0.55 rejects the
-# noborder/rounding/move rules; the popup rounds itself via its stylesheet).
-windowrule = float class:^(genesi-ai-tray)$
 HYPR
+    fi
+    # The AI Mode tray popup floats (it rounds itself via its stylesheet).
+    if ! grep -q 'match:class ^(genesi-ai-tray)' "$cfg"; then
+        printf '%s\n' 'windowrule = match:class ^(genesi-ai-tray)$, float on' >> "$cfg"
     fi
 
     # Users who already received the original tray block still need PortScope.
@@ -121,13 +124,11 @@ HYPR
     # 7. Quick Chat windowrules (append once). Hyprland TILED the frameless
     #    summon bar into a workspace-high slab (reported 2026-07-18, photo).
     #    Float it at its own compact size, centered, pinned to every workspace.
-    if ! grep -q 'aiquick)' "$cfg"; then
+    if ! grep -q 'match:class ^(org\\.genesi\\.aiquick)' "$cfg"; then
         cat >> "$cfg" <<'HYPR'
 # Genesi AI Quick Chat (Ctrl+Alt+Space): never tile the summon bar — float it
 # at its own size, centered, on every workspace (it is drag-movable).
-windowrule = float class:^(org\.genesi\.aiquick)$
-windowrule = center class:^(org\.genesi\.aiquick)$
-windowrule = pin class:^(org\.genesi\.aiquick)$
+windowrule = match:class ^(org\.genesi\.aiquick)$, float on, center on, pin on
 HYPR
     fi
 

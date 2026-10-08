@@ -960,6 +960,10 @@ run("ai island", """
         ok("thinking opens the card", g.view === "work" && g.expanded);
         g.st = ({ phase: "running", pid: 7, turn: 1, total: 2,
                   steps: [{ title: "Read", state: "action-complete" }, { title: "Run", state: "running" }] });
+        ok("the bar's chip says how far it got", g.shortLabel.indexOf("1/2") === 0 && g.shortLabel.indexOf("Run") > 0,
+           g.shortLabel);
+        ok("the card is drawn in the theme's colours, not its own",
+           Qt.colorEqual(g.hi, host.pal.m3onSurface) && Qt.colorEqual(g.accent, host.pal.m3primary));
         ok("running shows the steps", g.view === "work" && g.steps.length === 2
            && g.stepMark("action-complete") === "✓" && g.stepMark("running") === "›" && g.stepMark("denied") === "✕");
         g.act("noop");

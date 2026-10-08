@@ -89,12 +89,20 @@ Scope {
             readonly property bool fullscreen: win.monitor?.activeWorkspace?.toplevels.values.some(t => t.lastIpcObject.fullscreen > 1) ?? false
             readonly property bool dashboardOpen: Visibilities.getForActive()?.dashboard ?? false
 
-            // Shown at all: always, or only around the chat.
-            readonly property bool wanted: win.mode === "always" || card.expanded || (win.live && (win.st.open ?? false))
+            // Genesi's top bar on this screen, at the top: the island hangs
+            // from its centre pill, in its colour, and the pill itself is the
+            // resting state -- its chip says what the AI is doing.
+            readonly property var bar: Launcher.GenesiTopBarState.centres[win.screen?.name ?? ""] ?? null
+            readonly property bool hangsFromBar: !!(win.bar && win.bar.shown && win.bar.atTop)
+
+            // Shown at all: always, or only around the chat. Under the bar the
+            // card shows only when there is something to show.
+            readonly property bool wanted: win.hangsFromBar ? card.expanded
+                : (win.mode === "always" || card.expanded || (win.live && (win.st.open ?? false)))
             readonly property bool away: win.dashboardOpen || !win.wanted
 
-            readonly property real top: Launcher.GenesiEdges.top
-            readonly property bool attached: win.top < 1
+            readonly property real top: win.hangsFromBar ? win.bar.bottom + 8 : Launcher.GenesiEdges.top
+            readonly property bool attached: !win.hangsFromBar && win.top < 1
             // The strip along the very top the island leaves to caelestia.
             readonly property int passStrip: win.attached ? 6 : 0
 
@@ -120,7 +128,8 @@ Scope {
             GenesiAiIslandCard {
                 id: card
 
-                x: Math.round((win.width - width) / 2)
+                x: Math.round(win.hangsFromBar ? Math.min(Math.max(8, win.bar.x + win.bar.w / 2 - width / 2), win.width - width - 8)
+                                        : (win.width - width) / 2)
                 y: win.away ? -height - 12 : win.top
                 width: implicitWidth
                 height: implicitHeight
@@ -129,6 +138,7 @@ Scope {
                 live: win.live
                 attached: win.attached
                 pal: Colours.palette
+                fill: win.hangsFromBar ? win.bar.fill : Qt.alpha(Colours.palette.m3surfaceContainer, 0.96)
 
                 Behavior on y {
                     NumberAnimation { duration: 340; easing.type: Easing.OutCubic }
@@ -144,6 +154,26 @@ Scope {
                 onAttach: (path, request) => Quickshell.execDetached(request
                     ? ["genesi-ai-quick", "--attach", path, "--prompt", request]
                     : ["genesi-ai-quick", "--attach", path])
+            }
+
+            // Tell the bar what to put in its chip, and listen for its click.
+            Binding {
+                target: Launcher.GenesiTopBarState
+                property: "ai"
+                value: ({ phase: card.expanded ? card.phase : "idle", label: card.shortLabel })
+            }
+            Binding {
+                target: Launcher.GenesiTopBarState
+                property: "aiOn"
+                value: true
+            }
+            Connections {
+                target: Launcher.GenesiTopBarState
+
+                function onAiOpenRequested(): void {
+                    if (win.screen?.name === (Hypr.focusedMonitor?.name ?? win.screen?.name))
+                        Quickshell.execDetached(["genesi-ai-quick", "--toggle"]);
+                }
             }
 
             Connections {

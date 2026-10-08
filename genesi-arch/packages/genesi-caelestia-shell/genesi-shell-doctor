@@ -188,7 +188,7 @@ def layerrules():
     # Asking for the rule is the only reliable test: an unsupported rule is
     # answered with an error and changes nothing.
     code, out, err = run(["hyprctl", "keyword", "layerrule",
-                          "order 2,caelestia-genesi-topbar"])
+                          "order 2, match:namespace ^(caelestia-genesi-topbar)$"])
     answer = (out or err).strip()
     print("  setting it answers: " + (answer[:120] or "(nothing, which is ok)"))
     if "invalid" in answer.lower() or "unknown" in answer.lower():

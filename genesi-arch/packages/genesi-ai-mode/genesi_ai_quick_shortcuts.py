@@ -102,8 +102,10 @@ def register_hyprland():
     # Runtime registration is naturally reset with the compositor, while this
     # helper runs at every login. No user config needs to be edited.
     run("hyprctl", "keyword", "bind", "CTRL ALT, SPACE, exec, " + COMMAND)
-    run("hyprctl", "keyword", "windowrule", "float class:^(org.genesi.aiquick)$")
-    run("hyprctl", "keyword", "windowrule", "center class:^(org.genesi.aiquick)$")
+    # `match:` + effect values: the form Hyprland 0.53+ applies. The older
+    # `float class:...` had no match: and was silently discarded.
+    run("hyprctl", "keyword", "windowrule",
+        r"match:class ^(org\.genesi\.aiquick)$, float on, center on, pin on")
     return True
 
 

@@ -64,14 +64,31 @@ Item {
     signal stopWork
     signal attach(string path, string request)
 
-    readonly property color ink: "#0a0b0f"
-    readonly property color hi: "#f2f4f8"
-    readonly property color mid: "#a9b1c0"
-    readonly property color lo: "#6d7586"
-    readonly property color green: "#3ccf7e"
-    readonly property color amber: "#f0a43a"
-    readonly property color red: "#ef5b5b"
+    // The theme's colours: the active caelestia scheme, like every surface of
+    // the shell. The literals are only for a palette that is not there yet.
+    // `fill` is set by the window when the island hangs from the bar, so the
+    // two read as one surface.
+    property color fill: Qt.alpha(card.pal.m3surfaceContainer ?? "#16181d", 0.96)
+    readonly property color ink: card.fill
+    readonly property color hi: card.pal.m3onSurface ?? "#f2f4f8"
+    readonly property color mid: card.pal.m3onSurfaceVariant ?? "#a9b1c0"
+    readonly property color lo: card.pal.m3outline ?? "#6d7586"
+    readonly property color green: card.pal.m3primary ?? "#3ccf7e"
+    readonly property color amber: card.pal.m3tertiary ?? "#f0a43a"
+    readonly property color red: card.pal.m3error ?? "#ef5b5b"
     readonly property color accent: card.pal.m3primary ?? "#7aa2ff"
+    readonly property color accentInk: card.pal.m3onPrimary ?? "#0a0b0f"
+
+    // What the bar's chip says.
+    readonly property string shortLabel: card.phase === "approval" ? card.t("Needs permission", "Precisa de permissão")
+        : card.phase === "running" ? ((card.st.total ?? 0) > 0
+            ? card.steps.filter(s => card.stepMark(s.state) === "✓").length + "/" + card.st.total + " · "
+              + (card.steps.length ? card.steps[card.steps.length - 1].title : "")
+            : card.t("Working", "Trabalhando"))
+        : card.phase === "thinking" ? card.t("Thinking…", "Pensando…")
+        : card.phase === "done" ? card.t("Done", "Pronto")
+        : card.phase === "error" ? card.t("Something went wrong", "Algo deu errado")
+        : ""
 
     readonly property color tint: card.view === "approval" ? card.amber
         : card.view === "done" || card.view === "drop" || card.view === "offer" ? card.green
@@ -132,13 +149,13 @@ Item {
         id: shape
 
         anchors.fill: parent
-        color: Qt.alpha(card.ink, 0.97)
+        color: card.ink
         topLeftRadius: card.attached ? 0 : 14
         topRightRadius: card.attached ? 0 : 14
         bottomLeftRadius: card.expanded ? 26 : 19
         bottomRightRadius: card.expanded ? 26 : 19
         border.width: 1
-        border.color: Qt.alpha("white", 0.06)
+        border.color: Qt.alpha(card.hi, 0.08)
 
         // The glow: the colour of what is going on, rising from the bottom.
         // Its own corners: clip cuts to the rectangle, not to the rounding.
@@ -338,7 +355,7 @@ Item {
                     width: 22
                     height: 22
                     radius: 11
-                    color: stopHover.hovered ? Qt.alpha(card.red, 0.3) : Qt.alpha("white", 0.08)
+                    color: stopHover.hovered ? Qt.alpha(card.red, 0.3) : Qt.alpha(card.hi, 0.08)
                     Rectangle {
                         anchors.centerIn: parent
                         width: 8
@@ -360,7 +377,7 @@ Item {
                     width: 22
                     height: 22
                     radius: 11
-                    color: openHover.hovered ? Qt.alpha("white", 0.18) : Qt.alpha("white", 0.08)
+                    color: openHover.hovered ? Qt.alpha(card.hi, 0.18) : Qt.alpha(card.hi, 0.08)
                     Text {
                         anchors.centerIn: parent
                         text: "↗"
@@ -465,7 +482,7 @@ Item {
             width: parent.width
             height: cmd.implicitHeight + 12
             radius: 8
-            color: Qt.alpha("white", 0.07)
+            color: Qt.alpha(card.hi, 0.07)
             Text {
                 id: cmd
 
@@ -566,14 +583,14 @@ Item {
                     width: label.implicitWidth + 26
                     height: 28
                     radius: 14
-                    color: btn.modelData.filled ? (btnHover.hovered ? "white" : card.hi)
-                                                : (btnHover.hovered ? Qt.alpha("white", 0.16) : Qt.alpha("white", 0.08))
+                    color: btn.modelData.filled ? (btnHover.hovered ? Qt.lighter(card.accent, 1.12) : card.accent)
+                                                : (btnHover.hovered ? Qt.alpha(card.hi, 0.16) : Qt.alpha(card.hi, 0.08))
                     Text {
                         id: label
 
                         anchors.centerIn: parent
                         text: btn.modelData.text
-                        color: btn.modelData.filled ? card.ink : card.hi
+                        color: btn.modelData.filled ? card.accentInk : card.hi
                         font.pixelSize: 12
                         font.weight: Font.DemiBold
                     }

@@ -1344,7 +1344,10 @@ QQC2.ApplicationWindow {
             root.rememberAction(root.pendingApproval)
             root.settingsOpen = false
             root.thinking = false
-            root.showQuick()
+            // With the AI island on, the island asks; the window stays where
+            // it is (open if it was open, hidden if it was hidden).
+            if (!backend.islandShowsApprovals())
+                root.showQuick()
         }
         function onAgentActivity(payload) {
             var activity = JSON.parse(payload)

@@ -325,6 +325,21 @@ class QuickBackend(Backend):
         except OSError:
             pass
 
+    @Slot(result=bool)
+    def islandShowsApprovals(self):
+        """True when the AI island (a caelestia shell plugin) is on: it shows
+        an approval at the top of the screen with its own Allow/Deny, so the
+        chat window does not have to jump open over whatever the person is
+        doing. Off Hyprland the plugin does not exist, whatever its file says."""
+        if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+            return False
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+        try:
+            with open(os.path.join(base, "genesi", "plugins", "ai-island.json"), encoding="utf-8") as fh:
+                return json.load(fh).get("enabled") is True
+        except (OSError, ValueError, AttributeError):
+            return False
+
     # ── Attachments ──────────────────────────────────────────────────────────
     @Slot(str, result=str)
     def attachFile(self, source):

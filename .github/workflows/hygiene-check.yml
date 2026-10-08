@@ -375,6 +375,12 @@ jobs:
         # written whole, and a dropped file has to become text the model reads.
         run: python genesi-arch/ci/ai-island-bridge-test.py
 
+      - name: every Hyprland rule Genesi writes is one Hyprland applies
+        # Since Hyprland 0.53 a rule with no `match:` is silently discarded.
+        # Three generations of Genesi rules were, and the Quick Chat opened
+        # tiled -- a transparent, workspace-high slab -- while Frost did nothing.
+        run: python genesi-arch/ci/hypr-rules-test.py
+
       - name: no QML object sets the same property twice
         # "Property value set multiple times" is a load error: the file, and
         # for a window the whole window, does not exist at run time. A second

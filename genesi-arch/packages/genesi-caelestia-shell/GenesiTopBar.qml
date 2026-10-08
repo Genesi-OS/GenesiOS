@@ -261,14 +261,16 @@ Variants {
         readonly property bool frost: win.cfg.frost
 
         function applyFrost(): void {
+            // `effect value, match:namespace RE` -- the form Hyprland 0.53+
+            // applies. The old `blur,NS` has no match: and was discarded, so
+            // Frost had been a switch that did nothing. A later rule wins
+            // over an earlier one, so "off" is a rule too.
             if (win.frost) {
                 Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
-                                         `blur,${win.ns}`]);
-                Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
-                                         `ignorezero,${win.ns}`]);
+                                         `blur on, ignore_alpha 0, match:namespace ^(${win.ns})$`]);
             } else {
                 Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
-                                         `unset,${win.ns}`]);
+                                         `blur off, match:namespace ^(${win.ns})$`]);
             }
         }
 
@@ -724,6 +726,88 @@ Variants {
                 const v = Visibilities.getForActive();
                 if (v)
                     v.dashboard = !v.dashboard;
+            }
+
+            // Where the AI island hangs from (GenesiTopBarState.centres). x, y
+            // and width are named so the binding re-runs when they move;
+            // mapToItem alone is not something a binding can watch.
+            readonly property var aiSlot: {
+                const p = centre.mapToItem(null, 0, 0 * centre.x * centre.y * centre.width);
+                return {
+                    x: p.x,
+                    w: centre.width,
+                    bottom: p.y + centre.height,
+                    radius: centre.radius,
+                    shown: win.visible && win.shown,
+                    atTop: win.atTop,
+                    fill: Qt.alpha(Colours.palette.m3surfaceContainer,
+                                   Math.max(0.9, Math.min(100, win.cfg.backgroundOpacity) / 100))
+                };
+            }
+            onAiSlotChanged: GenesiTopBarState.setCentre(win.modelData.name, centre.aiSlot)
+            Component.onCompleted: GenesiTopBarState.setCentre(win.modelData.name, centre.aiSlot)
+
+            // Genesi AI at work: a chip in the pill. Its own click opens the
+            // chat; the rest of the pill still opens the dashboard.
+            Item {
+                id: aiChip
+
+                readonly property string phase: GenesiTopBarState.ai.phase ?? "idle"
+                readonly property bool busy: GenesiTopBarState.aiOn && aiChip.phase !== "idle"
+                readonly property color tint: aiChip.phase === "approval" ? Colours.palette.m3tertiary
+                    : aiChip.phase === "error" ? Colours.palette.m3error
+                    : Colours.palette.m3primary
+
+                anchors.verticalCenter: parent.verticalCenter
+                visible: aiChip.busy
+                implicitWidth: aiRow.implicitWidth + win.tok.padding.normal * 2
+                implicitHeight: win.cfg.height * 0.7
+
+                StyledRect {
+                    anchors.fill: parent
+                    radius: Tokens.rounding.full
+                    color: Qt.alpha(aiChip.tint, aiHover.containsMouse ? 0.3 : 0.18)
+                }
+
+                Row {
+                    id: aiRow
+
+                    anchors.centerIn: parent
+                    spacing: win.tok.spacing.small
+
+                    MaterialIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: aiChip.phase === "approval" ? "front_hand"
+                            : aiChip.phase === "error" ? "error"
+                            : aiChip.phase === "done" ? "check_circle" : "eco"
+                        color: aiChip.tint
+                        fontStyle: Tokens.font.icon.medium
+
+                        SequentialAnimation on opacity {
+                            running: aiChip.busy && (aiChip.phase === "thinking" || aiChip.phase === "running")
+                            loops: Animation.Infinite
+                            onRunningChanged: if (!running) parent.opacity = 1
+                            NumberAnimation { to: 0.35; duration: 650 }
+                            NumberAnimation { to: 1; duration: 650 }
+                        }
+                    }
+
+                    StyledText {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: GenesiTopBarState.ai.label ?? ""
+                        color: Colours.palette.m3onSurface
+                        font: Tokens.font.label.medium
+                    }
+                }
+
+                MouseArea {
+                    id: aiHover
+
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: GenesiTopBarState.aiOpenRequested()
+                }
             }
 
             WindowLabel {

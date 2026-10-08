@@ -749,7 +749,13 @@ pkgver=2.0.3
 # dropped on it handed to the chat. "Always" or "only with the Quick Chat".
 # It leaves the topmost pixels to caelestia's dashboard hover and slides out
 # of the way while the dashboard is open, so the dashboard is always on top.
-pkgrel=56
+# 57: the AI island belongs to the bar. With Genesi's top bar at the top, it
+# no longer floats on its own: it drops from the bar's centre pill, in the
+# bar's own colour, and the pill shows a chip with what the AI is doing (its
+# click opens the chat; the rest of the pill still opens the dashboard). The
+# card is drawn in the active scheme's colours. And Frost (bar and dock blur)
+# now works: its layerrules lacked `match:`, which Hyprland 0.53+ discards.
+pkgrel=57
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

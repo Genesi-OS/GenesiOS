@@ -120,14 +120,16 @@ Variants {
         readonly property bool frost: win.cfg.frost
 
         function applyFrost(): void {
+            // `effect value, match:namespace RE` -- the form Hyprland 0.53+
+            // applies. The old `blur,NS` has no match: and was discarded, so
+            // Frost had been a switch that did nothing. A later rule wins
+            // over an earlier one, so "off" is a rule too.
             if (win.frost) {
                 Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
-                                         `blur,${win.ns}`]);
-                Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
-                                         `ignorezero,${win.ns}`]);
+                                         `blur on, ignore_alpha 0, match:namespace ^(${win.ns})$`]);
             } else {
                 Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
-                                         `unset,${win.ns}`]);
+                                         `blur off, match:namespace ^(${win.ns})$`]);
             }
         }
 

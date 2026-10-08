@@ -1633,7 +1633,13 @@ pkgver=1.0.0
 # default option for edits adds lighting/angle/room style/pose drawn from the
 # seed (a lit prompt is not relit; a pose only when asked), shown under the
 # picture and kept apart from the person's prompt in the gallery.
-pkgrel=206
+#
+# pkgrel 207: with the AI island on (Hyprland), an approval no longer forces
+# the Quick Chat window open over everything -- the island asks. And the
+# runtime windowrule is written as `match:class ..., float on, center on,
+# pin on`; the old `float class:...` had no match: and was discarded, which
+# is why the window opened tiled and see-through.
+pkgrel=207
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
