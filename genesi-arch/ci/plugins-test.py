@@ -953,6 +953,9 @@ run("ai island", """
         GenesiAiIslandCard { id: shotAsk; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
             st: ({ phase: "approval", pid: 1, turn: 1, approval: { id: "a1", title: "Allow this action?",
                    description: "Genesi AI wants to run a command.", approve: "Allow", detail: "git push origin main" } }) }
+        GenesiAiIslandCard { id: shotThink; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
+            st: ({ phase: "thinking", pid: 1, turn: 1, prompt: "como eu deixo o tema escuro?",
+                   activity: "Lendo o arquivo de configuração inteiro para descobrir qual opção controla o tema escuro e depois comparar com o que você pediu" }) }
         GenesiAiIslandCard { id: shotTyping; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
             asking: true; st: ({ phase: "idle", pid: 1, turn: 1, model: "gguf:qwen3-8b-q4_k_m" }) }
         GenesiAiIslandCard { id: shotAnswer; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
@@ -981,6 +984,9 @@ run("ai island", """
         ok("...and a stale file from a chat that is gone does not open it", g.view === "idle");
         g.live = true;
         ok("thinking opens the card", g.view === "work" && g.expanded);
+        ok("a long activity stays inside the island", shotThink.children.length > 0
+           && shotThink.implicitWidth === shotThink.fullWidth && shotThink.implicitHeight < 140,
+           shotThink.implicitWidth + "x" + shotThink.implicitHeight);
         g.st = ({ phase: "running", pid: 7, turn: 1, total: 2,
                   steps: [{ title: "Read", state: "action-complete" }, { title: "Run", state: "running" }] });
         ok("the bar's chip says how far it got", g.shortLabel.indexOf("1/2") === 0 && g.shortLabel.indexOf("Run") > 0,
@@ -1086,7 +1092,7 @@ run("ai island", """
         ok("...and the menu closes", g.view === "idle");
         ok("the peek names the model, not its path", g.modelLabel("gguf:/models/qwen3-8b.gguf") === "qwen3-8b.gguf"
            && g.modelLabel("") === "");
-""", size=(640, 1180), shot="ai-island.png")
+""", size=(640, 1320), shot="ai-island.png")
 
 print()
 if fails:

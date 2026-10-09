@@ -671,13 +671,23 @@ Item {
         }
         Row {
             visible: card.view === "work" && card.steps.length === 0
+            width: parent.width
             spacing: 4
 
             Text {
+                id: activityText
+
+                // What the agent says it is doing can be a whole sentence of
+                // its reasoning: inside the card, two lines at most. It used
+                // to run out past the island's edge (reported 2026-10-09).
+                width: Math.min(implicitWidth, parent.width - 24)
                 text: card.st.activity && card.st.activity !== "Thinking" ? card.st.activity : card.t("Thinking", "Pensando")
                 color: card.hi
                 font.pixelSize: 13
                 font.weight: Font.Medium
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
             }
             Repeater {
                 model: 3
@@ -686,7 +696,7 @@ Item {
                     id: dot
 
                     required property int index
-                    anchors.verticalCenter: parent.verticalCenter
+                    y: activityText.height - height - 5
                     width: 4
                     height: 4
                     radius: 2

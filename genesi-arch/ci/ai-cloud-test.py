@@ -100,6 +100,15 @@ REAL = {
     "groq": "openai",
     "openrouter": "openai",
     "together": "openai",
+    # All six speak chat-completions at their own address (Hugging Face's
+    # router, Cerebras, DeepSeek, Mistral, xAI and NVIDIA's NIM catalogue all
+    # document the OpenAI request shape and a Bearer key).
+    "huggingface": "openai",
+    "cerebras": "openai",
+    "deepseek": "openai",
+    "mistral": "openai",
+    "xai": "openai",
+    "nvidia": "openai",
 }
 
 

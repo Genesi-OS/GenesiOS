@@ -720,9 +720,11 @@ class Backend(QObject):
 
     @Slot()
     def loadCloud(self):
-        """Which providers have a key, and the model each is set to."""
+        """Which providers have a key, and the model each is set to -- and
+        every provider Genesi knows (`known`), so a picker can offer one that
+        has no key yet, with where to get the key and a few models to start."""
         def work():
-            out = {"active": None, "providers": []}
+            out = {"active": None, "providers": [], "known": []}
             if assist is not None:
                 st = assist.cloud_store()
                 out["active"] = st.get("active")
@@ -731,7 +733,36 @@ class Backend(QObject):
                     out["providers"].append({
                         "provider": name, "model": p.get("model") or "",
                         "ref": CLOUD_PREFIX + name})
+                info = getattr(assist, "PROVIDER_INFO", {})
+                for name, row in info.items():
+                    label, key_url, suggested, tier = row
+                    out["known"].append({
+                        "provider": name, "label": label, "keyUrl": key_url,
+                        "suggested": suggested, "tier": tier,
+                        "default": (assist.PROVIDERS.get(name) or ("", "", ""))[1],
+                        "configured": name in st["providers"]})
             self.cloudLoaded.emit(json.dumps(out))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def setCloudKey(self, provider, key):
+        """Store an API key for a provider, piped to genesi-ai-key on stdin --
+        never on a command line, where `ps` would show it to every user."""
+        key = (key or "").strip()
+        provider = str(provider)
+        if not key or not provider:
+            return
+
+        def work():
+            try:
+                done = subprocess.run(["genesi-ai-key", "set", "--provider", provider],
+                                      input=key, capture_output=True, text=True, timeout=20)
+                if done.returncode != 0:
+                    self.chatError.emit((done.stderr or done.stdout or "").strip()
+                                        .replace("genesi-ai-key: ", ""))
+            except (OSError, subprocess.SubprocessError) as e:
+                self.chatError.emit(str(e))
+            self.loadCloud()
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str, str)
@@ -1097,6 +1128,28 @@ class Backend(QObject):
                     "temperature": 0.2},
             900, on_response=self._track)
 
+    # Local models in the agent loop (reported 2026-10-09: "slow as hell and
+    # does not work right"). Three things made a local step far worse than it
+    # had to be:
+    #   * thinking models (Qwen3, DeepSeek-R1, gpt-oss) reasoned out loud
+    #     before EVERY step -- hundreds of tokens per action, at a few dozen a
+    #     second -- and nothing asked them not to;
+    #   * Ollama was given no context size, so the ~1.3k-token tool catalogue
+    #     plus the conversation could overflow its default window and be cut
+    #     from the FRONT -- the instructions went first, and the model stopped
+    #     answering in the action format;
+    #   * no output cap and no temperature on the Ollama path.
+    # Thinking is switched off where the server understands the request, the
+    # window is sized for the prompt, and any <think> block that still comes
+    # back is removed before the reply is parsed.
+    AGENT_CTX = 8192
+
+    @staticmethod
+    def _strip_thinking(text):
+        text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S)
+        # A cut-off reply can leave the block open.
+        return re.sub(r"^\s*<think>.*", "", text, flags=re.S).strip() or (text or "").strip()
+
     def _agent_model_reply(self, model, messages):
         payload_messages = [{"role": "system", "content": agent_system_prompt()}, *messages]
         if str(model).startswith(CLOUD_PREFIX):
@@ -1108,7 +1161,11 @@ class Backend(QObject):
                 "messages": payload_messages,
                 "stream": False,
                 "max_tokens": 768,
+                "temperature": 0.2,
                 "cache_prompt": True,
+                # Templates that know the switch (Qwen3 & co.) skip the
+                # thinking; the rest ignore an argument they do not use.
+                "chat_template_kwargs": {"enable_thinking": False},
             }).encode()
             base = BRIDGE if self._recall else _turbo_base()
             req = urllib.request.Request(
@@ -1119,22 +1176,36 @@ class Backend(QObject):
             choices = obj.get("choices") or []
             if not choices:
                 raise RuntimeError("Turbo returned no assistant response.")
-            return (choices[0].get("message") or {}).get("content", "")
+            return self._strip_thinking((choices[0].get("message") or {}).get("content", ""))
 
         if not self._ensure_ollama():
             raise RuntimeError("Ollama isn't running (systemctl start ollama)")
-        body = json.dumps({
+        request = {
             "model": model,
             "messages": payload_messages,
             "stream": False,
             "keep_alive": "15m",
-        }).encode()
-        req = urllib.request.Request(
-            OLLAMA + "/api/chat", data=body,
-            headers={"Content-Type": "application/json"},
-        )
-        obj = json.loads(self._read_agent_response(req).decode())
-        return (obj.get("message") or {}).get("content", "")
+            "think": False,
+            "options": {"num_ctx": self.AGENT_CTX, "num_predict": 768, "temperature": 0.2},
+        }
+
+        def ask(payload):
+            req = urllib.request.Request(
+                OLLAMA + "/api/chat", data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            return json.loads(self._read_agent_response(req).decode())
+
+        try:
+            obj = ask(request)
+        except urllib.error.HTTPError as e:
+            # An older Ollama, or a model with no thinking switch, may refuse
+            # the field: ask again without it rather than fail the request.
+            if e.code != 400:
+                raise
+            request.pop("think", None)
+            obj = ask(request)
+        return self._strip_thinking((obj.get("message") or {}).get("content", ""))
 
     def _read_agent_response(self, request):
         response = urllib.request.urlopen(request, timeout=900)

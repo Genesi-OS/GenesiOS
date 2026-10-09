@@ -811,7 +811,10 @@ pkgver=2.0.3
 #     the Quick Chat and every desktop (the old state file is still read).
 #   * >ai <question> in the launcher -- Genesi's layout and caelestia's --
 #     asks Genesi AI and answers on the island.
-pkgrel=61
+# pkgrel 62: the island's "thinking" line stays inside the island -- the
+# agent's activity can be a whole sentence, and it ran out past the edge
+# (two lines at most now, then an ellipsis).
+pkgrel=62
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

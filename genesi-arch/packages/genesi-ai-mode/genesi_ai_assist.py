@@ -266,7 +266,55 @@ PROVIDERS = {
                    "openai"),
     "together": ("https://api.together.xyz/v1",
                  "meta-llama/Llama-3.3-70B-Instruct-Turbo", "openai"),
+    # The same set genesi-code offers, and the fast/free ones people ask for
+    # when a local model is too slow: Hugging Face's router (free monthly
+    # credits, gpt-oss-120b on Cerebras hardware), Cerebras itself, and the
+    # big labs that speak the OpenAI shape at their own address.
+    "huggingface": ("https://router.huggingface.co/v1",
+                    "openai/gpt-oss-120b:cerebras", "openai"),
+    "cerebras": ("https://api.cerebras.ai/v1", "gpt-oss-120b", "openai"),
+    "deepseek": ("https://api.deepseek.com/v1", "deepseek-chat", "openai"),
+    "mistral": ("https://api.mistral.ai/v1", "mistral-small-latest", "openai"),
+    "xai": ("https://api.x.ai/v1", "grok-3-mini", "openai"),
+    "nvidia": ("https://integrate.api.nvidia.com/v1",
+               "meta/llama-3.3-70b-instruct", "openai"),
     "custom": ("", "", "openai"),
+}
+
+# What each provider is called on screen, where its key comes from, and a few
+# models to pick from before the provider's own list has been asked for (it
+# needs a key, and a person adding one wants to see what they are getting).
+# The provider's /models answer is still what the picker trusts once there
+# is a key -- names go stale; these are only the first offer.
+PROVIDER_INFO = {
+    "gemini": ("Google Gemini", "https://aistudio.google.com/apikey",
+               ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash",
+                "gemini-3.5-flash", "gemini-2.5-pro"], "free"),
+    "groq": ("Groq", "https://console.groq.com/keys",
+             ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b",
+              "llama-3.1-8b-instant"], "free"),
+    "huggingface": ("Hugging Face", "https://huggingface.co/settings/tokens",
+                    ["openai/gpt-oss-120b:cerebras", "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+                     "meta-llama/Llama-3.3-70B-Instruct", "meta-llama/Llama-3.1-8B-Instruct"], "free"),
+    "cerebras": ("Cerebras", "https://cloud.cerebras.ai/",
+                 ["gpt-oss-120b", "llama-3.3-70b", "qwen-3-32b"], "free"),
+    "openrouter": ("OpenRouter", "https://openrouter.ai/keys",
+                   ["openai/gpt-4o-mini", "deepseek/deepseek-chat", "meta-llama/llama-3.3-70b-instruct:free",
+                    "google/gemini-2.5-flash"], "free"),
+    "nvidia": ("NVIDIA NIM", "https://build.nvidia.com/",
+               ["meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-r1", "qwen/qwen2.5-coder-32b-instruct"], "free"),
+    "mistral": ("Mistral", "https://console.mistral.ai/api-keys",
+                ["mistral-small-latest", "mistral-medium-latest", "codestral-latest"], "free"),
+    "openai": ("OpenAI · ChatGPT", "https://platform.openai.com/api-keys",
+               ["gpt-4o-mini", "gpt-4.1-mini", "gpt-5.4"], "paid"),
+    "anthropic": ("Anthropic · Claude", "https://console.anthropic.com/settings/keys",
+                  ["claude-sonnet-5", "claude-haiku-4-5", "claude-opus-4-8"], "paid"),
+    "deepseek": ("DeepSeek", "https://platform.deepseek.com/api_keys",
+                 ["deepseek-chat", "deepseek-reasoner"], "paid"),
+    "xai": ("xAI · Grok", "https://console.x.ai/",
+            ["grok-3-mini", "grok-4"], "paid"),
+    "together": ("Together", "https://api.together.xyz/settings/api-keys",
+                 ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "Qwen/Qwen2.5-72B-Instruct-Turbo"], "paid"),
 }
 
 ANTHROPIC_VERSION = "2023-06-01"

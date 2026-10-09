@@ -65,7 +65,13 @@ Item {
         { id: "gemini", label: qsTr("Google · Gemini") },
         { id: "groq", label: qsTr("Groq") },
         { id: "openrouter", label: qsTr("OpenRouter") },
-        { id: "together", label: qsTr("Together") }
+        { id: "together", label: qsTr("Together") },
+        { id: "huggingface", label: qsTr("Hugging Face") },
+        { id: "cerebras", label: qsTr("Cerebras") },
+        { id: "deepseek", label: qsTr("DeepSeek") },
+        { id: "mistral", label: qsTr("Mistral") },
+        { id: "xai", label: qsTr("xAI · Grok") },
+        { id: "nvidia", label: qsTr("NVIDIA NIM") }
     ]
     // What the picker is on, before anything is saved. Follows whatever is
     // configured, so opening the page on a machine with a key set shows that

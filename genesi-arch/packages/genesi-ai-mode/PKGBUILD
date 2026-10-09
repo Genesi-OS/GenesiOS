@@ -1665,7 +1665,24 @@ pkgver=1.0.0
 #     card, segmented settings -- and it follows the desktop's colours live.
 #     Strings in English and Portuguese.
 # Needs layer-shell-qt (the layer surface) -- a small Qt plugin from KDE.
-pkgrel=208
+# pkgrel 209: after the first real use (2026-10-09).
+#   * More providers: Hugging Face (free credits, gpt-oss-120b on Cerebras
+#     hardware -- the one genesi-code defaults to), Cerebras, DeepSeek,
+#     Mistral, xAI and NVIDIA NIM join OpenAI, Anthropic, Gemini, Groq,
+#     OpenRouter and Together. The Quick Chat lists every one, says which have
+#     a free tier, takes the key right there (piped to genesi-ai-key, never on
+#     a command line) and links to where the key comes from; models are
+#     Genesi's suggestions plus whatever the provider says the key can use.
+#   * Picking another model now shows at once: the footer named the old one
+#     (a slot call in a binding re-runs only when its argument changes, and
+#     "cloud:gemini" did not), and the model box jumped to the list's first
+#     entry instead of the model in use.
+#   * Local models in the agent: thinking switched off (Ollama `think`, the
+#     chat template's enable_thinking on Turbo), an 8k window so the tool
+#     catalogue is never cut off the front, a capped and steady reply, and
+#     <think> blocks removed before parsing. ci/ai-agent-local-test.py.
+#   * The settings scroll instead of being cut off at the window's height.
+pkgrel=209
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

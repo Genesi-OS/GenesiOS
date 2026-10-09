@@ -382,6 +382,12 @@ jobs:
         # (never a token), every button's message, and the window itself.
         run: python genesi-arch/ci/ai-island-standalone-test.py
 
+      - name: the agent asks a local model for what it can actually do
+        # Thinking switched off, a context window that fits the tool
+        # catalogue, a capped reply, and no <think> block in what is parsed --
+        # "local AI is slow and does not work right" was the request.
+        run: python genesi-arch/ci/ai-agent-local-test.py
+
       - name: every Hyprland rule Genesi writes is one Hyprland applies
         # Since Hyprland 0.53 a rule with no `match:` is silently discarded.
         # Three generations of Genesi rules were, and the Quick Chat opened

@@ -132,17 +132,71 @@ QQC2.ApplicationWindow {
     // Monitor's chat. The API side is a provider and a model typed the way
     // that provider names it.
     property string source: backend.chatSource()
-    property var cloudProviders: []
+    property var cloudProviders: []         // the ones with a key: [{provider, model, ref}]
+    property var cloudKnown: []             // every provider Genesi knows, key or not
     property string cloudProvider: ""
     property var cloudSuggestions: []
+    property string cloudKeyDraft: ""
     readonly property string cloudModel: {
         for (var i = 0; i < cloudProviders.length; ++i)
             if (cloudProviders[i].provider === cloudProvider)
                 return cloudProviders[i].model
         return ""
     }
+    readonly property bool cloudReady: {
+        for (var i = 0; i < cloudProviders.length; ++i)
+            if (cloudProviders[i].provider === cloudProvider)
+                return true
+        return false
+    }
+    readonly property var cloudInfo: {
+        for (var i = 0; i < cloudKnown.length; ++i)
+            if (cloudKnown[i].provider === cloudProvider)
+                return cloudKnown[i]
+        return ({ "provider": cloudProvider, "label": cloudProvider, "suggested": [], "keyUrl": "" })
+    }
+    // What to pick from: the provider's own list once it answered, after the
+    // ones Genesi suggests -- each name once.
+    readonly property var cloudChoices: {
+        var out = []
+        // The model in use first: a list without it shows another name.
+        var all = [cloudModel].concat(cloudInfo.suggested || [], cloudSuggestions || [])
+        for (var i = 0; i < all.length; ++i)
+            if (all[i] && out.indexOf(all[i]) < 0) out.push(all[i])
+        return out
+    }
     readonly property string currentRef: source === "api"
-        ? (cloudProvider ? "cloud:" + cloudProvider : "") : modelName
+        ? (cloudReady ? "cloud:" + cloudProvider : "") : modelName
+    // What the footer says. Built here from the provider and its model, not
+    // asked of the backend: a slot call in a binding only re-runs when its
+    // ARGUMENT changes, and "cloud:gemini" stays "cloud:gemini" when the
+    // model under it changes -- so the footer kept naming the old model.
+    readonly property string currentLabel: source === "api"
+        ? (cloudReady ? (cloudInfo.label || cloudProvider) + " · " + cloudModel : "")
+        : (modelName ? backend.modelLabel(modelName) : "")
+    function pickCloudModel(name) {
+        name = String(name || "").trim()
+        if (!name || !cloudProvider) return
+        // Shown at once; the file follows (backend.setCloudModel re-reads it).
+        var next = []
+        for (var i = 0; i < cloudProviders.length; ++i) {
+            var p = cloudProviders[i]
+            next.push(p.provider === cloudProvider ? {"provider": p.provider, "model": name, "ref": p.ref} : p)
+        }
+        cloudProviders = next
+        backend.setCloudModel(cloudProvider, name)
+        publishIsland()
+    }
+    function pickCloudProvider(id) {
+        cloudProvider = id
+        cloudSuggestions = []
+        cloudKeyDraft = ""
+        for (var i = 0; i < cloudProviders.length; ++i)
+            if (cloudProviders[i].provider === id) {
+                backend.useCloudProvider(id)
+                backend.listCloudModels(id)
+            }
+    }
     property var voiceLanguages: []
     property string voiceLanguage: ""
     property string forceMode: "auto"
@@ -234,7 +288,7 @@ QQC2.ApplicationWindow {
             "v": 2, "open": visible, "phase": phase, "activity": say(activityText), "turn": turnStart,
             "steps": steps.slice(-4), "total": steps.length,
             "approval": approval, "answer": answer,
-            "prompt": lastPrompt.slice(0, 160), "model": currentRef,
+            "prompt": lastPrompt.slice(0, 160), "model": currentLabel || currentRef,
             "attachments": attachments.length,
             "inline": islandTurn, "elapsed": Math.round(turnTook),
             "actionMode": actionMode, "hint": clipHint
@@ -444,8 +498,8 @@ QQC2.ApplicationWindow {
         if (!currentRef) {
             islandTurn = fromIsland
             addMessage("assistant", source === "api"
-                ? t("No API key is set. Add one in Genesi Center › Local AI.",
-                    "Nenhuma chave de API. Adicione uma no Genesi Center › IA local.")
+                ? t("No API key for this provider yet. Paste one in the settings (the sliders button).",
+                    "Ainda não tem chave para esse provedor. Cole uma nas configurações (o botão de ajustes).")
                 : t("No local model is ready. Install a model in AI Mode first.",
                     "Nenhum modelo local pronto. Instale um modelo no Modo IA primeiro."))
             lastOutcome = "error"
@@ -921,10 +975,19 @@ QQC2.ApplicationWindow {
             }
 
             // ── Settings ────────────────────────────────────────────────
-            ColumnLayout {
+            // Scrolls: with the providers, the island and Turbo it is taller
+            // than the window may grow, and the bottom used to be cut off.
+            QQC2.ScrollView {
+                id: settingsScroll
                 visible: root.settingsOpen && root.pendingApproval === null
                 Layout.fillWidth: true
-                Layout.leftMargin: 4; Layout.rightMargin: 4
+                Layout.preferredHeight: Math.min(470, settingsCol.implicitHeight)
+                contentWidth: availableWidth
+                clip: true
+            ColumnLayout {
+                id: settingsCol
+                width: settingsScroll.availableWidth - 8
+                x: 4
                 spacing: 10
 
                 Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.hairline }
@@ -966,39 +1029,131 @@ QQC2.ApplicationWindow {
                     Layout.fillWidth: true
                     visible: root.source === "api"
                     RowLabel { text: root.t("Provider", "Provedor") }
-                    QQC2.Label {
-                        visible: root.cloudProviders.length === 0
-                        text: root.t("No API key yet — add one in Genesi Center › Local AI",
-                                     "Nenhuma chave ainda — adicione no Genesi Center › IA local")
-                        color: root.textLo
-                        font.pixelSize: theme.fsSmall
-                    }
+                    // Every provider Genesi knows: the ones with a key marked,
+                    // the free tiers said so -- picking one without a key
+                    // opens the key field below instead of an error.
                     QQC2.ComboBox {
                         id: quickProvider
-                        visible: root.cloudProviders.length > 0
-                        Layout.preferredWidth: 140
-                        model: root.cloudProviders.map(function (p) { return p.provider })
-                        currentIndex: Math.max(0, model.indexOf(root.cloudProvider))
-                        onActivated: {
-                            root.cloudProvider = model[currentIndex]
-                            root.cloudSuggestions = []
-                            backend.useCloudProvider(root.cloudProvider)
+                        Layout.fillWidth: true
+                        model: root.cloudKnown
+                        textRole: "label"
+                        currentIndex: {
+                            for (var i = 0; i < root.cloudKnown.length; ++i)
+                                if (root.cloudKnown[i].provider === root.cloudProvider) return i
+                            return -1
+                        }
+                        displayText: root.cloudInfo.label || root.t("Choose a provider", "Escolha um provedor")
+                        delegate: QQC2.ItemDelegate {
+                            required property var modelData
+                            required property int index
+                            width: quickProvider.width
+                            highlighted: quickProvider.highlightedIndex === index
+                            contentItem: RowLayout {
+                                spacing: 8
+                                QQC2.Label { text: modelData.label; color: root.textHi; Layout.fillWidth: true }
+                                QQC2.Label {
+                                    visible: modelData.tier === "free"
+                                    text: root.t("free tier", "plano grátis")
+                                    color: theme.greenBright; font.pixelSize: 10
+                                }
+                                QQC2.Label {
+                                    visible: modelData.configured
+                                    text: "✓"
+                                    color: theme.greenBright; font.bold: true
+                                }
+                            }
+                        }
+                        onActivated: root.pickCloudProvider(root.cloudKnown[currentIndex].provider)
+                    }
+                }
+                RowLayout {
+                    // No key for this provider yet: paste it here.
+                    Layout.fillWidth: true
+                    visible: root.source === "api" && root.cloudProvider !== "" && !root.cloudReady
+                    RowLabel { text: root.t("API key", "Chave da API") }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 32
+                        radius: 16
+                        color: theme.a(theme.textHi, 0.05)
+                        border.width: 1
+                        border.color: keyField.activeFocus ? theme.a(theme.green, 0.5) : theme.hairline
+                        QQC2.TextField {
+                            id: keyField
+                            anchors.fill: parent
+                            anchors.leftMargin: 6; anchors.rightMargin: 6
+                            echoMode: TextInput.Password
+                            placeholderText: root.t("Paste your %1 key", "Cole sua chave do %1").arg(root.cloudInfo.label || "")
+                            text: root.cloudKeyDraft
+                            onTextChanged: root.cloudKeyDraft = text
+                            background: Item {}
+                            color: root.textHi
+                            placeholderTextColor: root.textLo
+                            Keys.onReturnPressed: saveKey.clicked()
                         }
                     }
-                    // Typed as the company names it, with the provider's
-                    // own list offered when opened.
+                    Rectangle {
+                        id: saveKey
+                        signal clicked
+                        implicitWidth: saveText.implicitWidth + 26; implicitHeight: 32
+                        radius: 16
+                        color: root.cloudKeyDraft.trim() ? (saveMa.containsMouse ? theme.greenBright : theme.green) : theme.a(theme.textHi, 0.07)
+                        QQC2.Label {
+                            id: saveText
+                            anchors.centerIn: parent
+                            text: root.t("Save", "Salvar")
+                            color: root.cloudKeyDraft.trim() ? "#06130c" : root.textLo
+                            font.bold: true
+                        }
+                        MouseArea { id: saveMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: saveKey.clicked() }
+                        onClicked: {
+                            if (!root.cloudKeyDraft.trim()) return
+                            backend.setCloudKey(root.cloudProvider, root.cloudKeyDraft)
+                            root.cloudKeyDraft = ""
+                        }
+                    }
+                }
+                QQC2.Label {
+                    visible: root.source === "api" && root.cloudProvider !== "" && !root.cloudReady && !!root.cloudInfo.keyUrl
+                    Layout.leftMargin: 126
+                    text: root.t("Get a key at %1 ↗", "Pegue uma chave em %1 ↗").arg(String(root.cloudInfo.keyUrl).replace(/^https:\/\//, "").split("/")[0])
+                    color: theme.greenBright; font.pixelSize: 11
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Qt.openUrlExternally(root.cloudInfo.keyUrl)
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: root.source === "api" && root.cloudReady
+                    RowLabel { text: root.t("Model", "Modelo") }
+                    // Typed as the company names it, or picked: Genesi's
+                    // suggestions first, then what the provider says this key
+                    // can use (asked when the list opens).
                     QQC2.ComboBox {
-                        visible: quickProvider.visible
+                        id: quickCloudModel
                         Layout.fillWidth: true
                         editable: true
-                        model: root.cloudSuggestions
+                        model: root.cloudChoices
+                        // Pinned to the model in use. Left alone, a ComboBox
+                        // given a list jumps to its first entry and shows a
+                        // model that is not the one answering.
+                        currentIndex: root.cloudChoices.indexOf(root.cloudModel)
                         editText: root.cloudModel
                         onPressedChanged: if (pressed && root.cloudSuggestions.length === 0)
                                               backend.listCloudModels(root.cloudProvider)
-                        onAccepted: backend.setCloudModel(root.cloudProvider, editText)
-                        onActivated: backend.setCloudModel(root.cloudProvider,
-                                                           root.cloudSuggestions[currentIndex])
+                        onAccepted: root.pickCloudModel(editText)
+                        onActivated: root.pickCloudModel(root.cloudChoices[currentIndex])
                     }
+                }
+                QQC2.Label {
+                    visible: root.source === "api"
+                    Layout.fillWidth: true
+                    text: root.t("Fast and free to start: Groq, Cerebras, Hugging Face, Gemini, OpenRouter.",
+                                 "Rápidos e grátis para começar: Groq, Cerebras, Hugging Face, Gemini, OpenRouter.")
+                    color: root.textLo; font.pixelSize: 10
+                    wrapMode: Text.WordWrap
                 }
 
                 SectionTitle { text: root.t("BEHAVIOUR", "COMPORTAMENTO") }
@@ -1115,6 +1270,8 @@ QQC2.ApplicationWindow {
                 }
 
                 Rectangle {
+                    // Turbo speeds up a LOCAL model; with an API it does nothing.
+                    visible: root.source === "local"
                     Layout.fillWidth: true
                     implicitHeight: turboControls.implicitHeight + 20
                     radius: 14
@@ -1168,6 +1325,8 @@ QQC2.ApplicationWindow {
                         }
                     }
                 }
+            }
+
             }
 
             // ── The conversation ────────────────────────────────────────
@@ -1533,7 +1692,7 @@ QQC2.ApplicationWindow {
                         }
                         QQC2.Label {
                             text: root.currentRef
-                                ? (root.currentRef === "turbo" ? "Turbo" : backend.modelLabel(root.currentRef))
+                                ? root.currentLabel
                                   + (root.turboRequested && root.source === "local" ? " · Turbo" : "")
                                 : (root.source === "api" ? root.t("No API key set", "Sem chave de API")
                                                           : root.t("No model available", "Nenhum modelo"))
@@ -1590,12 +1749,17 @@ QQC2.ApplicationWindow {
             var d = {}
             try { d = JSON.parse(payload) } catch (error) {}
             root.cloudProviders = d.providers || []
+            root.cloudKnown = d.known || []
+            // A provider just picked to add a key to stays picked; anything
+            // else falls back to the active one.
             var keep = false
-            for (var i = 0; i < root.cloudProviders.length; ++i)
-                if (root.cloudProviders[i].provider === root.cloudProvider) keep = true
-            if (!keep)
+            for (var i = 0; i < root.cloudKnown.length; ++i)
+                if (root.cloudKnown[i].provider === root.cloudProvider) keep = true
+            for (var j = 0; j < root.cloudProviders.length; ++j)
+                if (root.cloudProviders[j].provider === root.cloudProvider) keep = true
+            if (!keep || !root.cloudProvider)
                 root.cloudProvider = d.active || (root.cloudProviders.length
-                                                  ? root.cloudProviders[0].provider : "")
+                                                  ? root.cloudProviders[0].provider : "gemini")
         }
         function onCloudModelsListed(provider, payload) {
             if (provider !== root.cloudProvider) return
