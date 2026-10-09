@@ -4,15 +4,19 @@
 // adds a map on top: a screen named in it shows its own picture, GIF or video;
 // a screen that is not named shows caelestia's as before. The map is written
 // by `genesi-wallpaper` (the Center's wallpaper section calls it) and only
-// read here:
-//
-//     ${Paths.state}/genesi-wallpapers.json
-//     { "screens": { "DP-1": {"path": "/…/a.mp4", "kind": "video"},
-//                    "*":    {"path": "/…/b.gif", "kind": "gif"} } }
+// read here, from genesi-wallpapers.json in caelestia's state folder: under
+// "screens", one entry per screen name (DP-1, HDMI-A-1...) holding the file's
+// path and kind (image, gif or video).
 //
 // "*" is every screen without an entry of its own -- how a video becomes the
 // wallpaper everywhere without caelestia's own image path (which feeds the
 // colour scheme) having to be a video.
+//
+// NO BRACE CHARACTER above the pragma line, not even in this comment:
+// Quickshell stops looking for that pragma at the first line containing
+// one, and this file then loads as a plain type -- no instance, every call
+// on it "not a function" (shipped that way in pkgrel 58-59; reported
+// 2026-10-09). ci/qml-sanity-test.py guards it.
 pragma Singleton
 
 import QtQuick
@@ -38,8 +42,21 @@ Singleton {
     function pick(path: string, screen: string): void {
         if (Quickshell.screens.length <= 1 || screen === "")
             Wallpapers.setWallpaper(path);
-        else
+        else {
             Quickshell.execDetached(["genesi-wallpaper", "pick", path, "--monitor", screen]);
+            // The launcher holds the preview's colours until caelestia's
+            // picture changes (Wallpapers.previewColourLock). A screen other
+            // than the first does not change it -- so let go after a moment,
+            // or the scheme stays stuck on the preview.
+            colourRelease.restart();
+        }
+    }
+
+    Timer {
+        id: colourRelease
+
+        interval: 8000
+        onTriggered: Wallpapers.previewColourLock = false
     }
 
     // This screen's own wallpaper, or null for caelestia's.

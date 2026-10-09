@@ -197,6 +197,21 @@ for path in sorted(PACKAGES.rglob("*.qml")):
     rel = path.relative_to(PACKAGES)
     checked += 1
 
+    # Quickshell looks for `pragma Singleton` only in the file's header, and
+    # the header ends at the first line containing "{" -- a comment's
+    # included. Past that, the file loads as a plain type: no instance, and
+    # every call on it "is not a function" (GenesiWallpaperState, pkgrel 59).
+    raw_lines = raw.splitlines()
+    for n, text in enumerate(raw_lines):
+        if text.strip() == "pragma Singleton":
+            early = [i for i in range(n) if "{" in raw_lines[i]]
+            if early:
+                failures.append(
+                    f"{rel}:{early[0] + 1}: a '{{' above `pragma Singleton` "
+                    f"(line {n + 1}) ends Quickshell's header scan -- the "
+                    f"file would load as a plain type, not a singleton")
+            break
+
     # How is each module imported here: qualified (as X) or plain?
     qualifier = {}
     for module, alias in IMPORT.findall(raw):

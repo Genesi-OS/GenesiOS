@@ -369,7 +369,8 @@ Variants {
                                     width: 4
                                     height: 4
                                     radius: 2
-                                    y: (parent.height - height) / 2
+                                    // parent is null for a moment while a dock item goes away.
+                                    y: ((parent?.height ?? height) - height) / 2
                                     color: Colours.palette.m3primary
 
                                     SequentialAnimation {
@@ -388,7 +389,7 @@ Variants {
                                                 target: light
                                                 property: "x"
                                                 from: 0
-                                                to: Math.max(0, light.parent.width - light.width)
+                                                to: Math.max(0, (light.parent?.width ?? 0) - light.width)
                                                 duration: 1400
                                                 easing.type: Easing.InOutSine
                                             }

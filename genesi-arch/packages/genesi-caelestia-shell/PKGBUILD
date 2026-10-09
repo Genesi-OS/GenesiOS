@@ -789,7 +789,15 @@ pkgver=2.0.3
 # And the launcher's >wallpaper now changes the screen it is open on (its own
 # window's screen, read at the pick), previews there only, and keeps the
 # colours following the first screen (genesi-wallpaper pick).
-pkgrel=59
+# pkgrel 60: the wallpaper map finally loads. GenesiWallpaperState's header
+# comment held a JSON example, and Quickshell ends its search for
+# `pragma Singleton` at the first line with a brace -- so the file loaded as
+# a plain type: >wallpaper picked nothing ("pick is not a function"), the
+# preview never showed, and no screen ever got its own wallpaper (reported
+# 2026-10-09). ci/qml-sanity-test.py now fails on a brace above the pragma.
+# Also: picking for a screen other than the first lets go of the preview's
+# colours, and the dock's flow lights no longer warn while an item goes away.
+pkgrel=60
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
