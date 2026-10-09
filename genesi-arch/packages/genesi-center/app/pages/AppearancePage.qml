@@ -13,6 +13,7 @@
  * installed is not offered.
  */
 import QtQuick
+import QtQuick.Dialogs
 import "../components"
 import ".."
 
@@ -27,6 +28,26 @@ Item {
     readonly property var glass: page.d.transparency || ({})
     readonly property var fonts: page.d.fonts || ({})
     readonly property bool ready: page.d.available === true
+
+    // ── Wallpapers per screen (genesi-wallpaper) ──
+    readonly property var walls: page.d.wallpapers || ({})
+    readonly property var screensList: page.walls.monitors || []
+    readonly property var wallMap: page.walls.screens || ({})
+    readonly property var weItems: page.walls.we || []
+    // Where the next pick goes: "all", or a screen's name.
+    property string wallTarget: "all"
+    property string wallError: ""
+
+    function wallOf(name) {
+        return page.wallMap[name] || page.wallMap["*"] || null;
+    }
+    function wallSet(argv) {
+        page.wallError = "";
+        if (page.backend)
+            page.backend.act(["genesi-wallpaper"].concat(argv).concat(["--monitor", page.wallTarget]),
+                             "appearance");
+    }
+    function fileUrl(p) { return p ? "file://" + p : ""; }
 
     // A scale is stored as a multiplier and shown as a percentage: 1.15 means
     // nothing to anyone, "115%" is a size.
@@ -699,6 +720,225 @@ Item {
                         onTapped: if (page.backend)
                             page.backend.launch(["caelestia", "shell", "drawers",
                                                  "toggle", "launcher"])
+                    }
+                }
+            }
+        }
+
+        // ── A wallpaper per screen, and wallpapers that move ─────────────────
+        Column {
+            width: parent.width
+            spacing: 10
+            visible: page.ready && page.screensList.length > 0
+
+            SectionHead { index: "—"; text: qsTr("Per screen, and moving") }
+
+            FileDialog {
+                id: wallDialog
+                title: qsTr("A picture, a GIF or a video")
+                nameFilters: [qsTr("Wallpapers") + " (*.jpg *.jpeg *.png *.webp *.avif *.gif *.mp4 *.webm *.mkv *.mov)"]
+                onAccepted: page.wallSet(["set", decodeURIComponent(String(selectedFile).replace("file://", ""))])
+            }
+
+            Panel {
+                width: parent.width
+                height: perScreen.implicitHeight + 32
+
+                Column {
+                    id: perScreen
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                    spacing: 12
+
+                    Row {
+                        spacing: 12
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("APPLY TO")
+                            color: Tokens.textFaint
+                            font.family: Tokens.mono
+                            font.pixelSize: Tokens.fsMicro
+                            font.letterSpacing: 1.4
+                        }
+                        Segmented {
+                            options: [{ id: "all", label: qsTr("Every screen") }].concat(
+                                page.screensList.map(m => ({ id: m.name, label: m.name })))
+                            current: page.wallTarget
+                            onPicked: id => page.wallTarget = id
+                        }
+                    }
+
+                    // One row per screen: what it shows now.
+                    Repeater {
+                        model: page.screensList
+                        delegate: Item {
+                            id: srow
+                            required property var modelData
+                            readonly property var w: page.wallOf(modelData.name)
+                            width: perScreen.width
+                            height: 64
+
+                            Rectangle {
+                                id: thumb
+                                width: 104; height: 58
+                                radius: Tokens.radiusSm
+                                color: Tokens.cardHi
+                                border.width: page.wallTarget === srow.modelData.name ? 2 : 1
+                                border.color: page.wallTarget === srow.modelData.name ? Tokens.accent : Tokens.line
+                                clip: true
+                                Image {
+                                    anchors.fill: parent
+                                    anchors.margins: 1
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    sourceSize.width: 208
+                                    source: srow.w ? page.fileUrl(srow.w.kind === "image" ? srow.w.path : (srow.w.still || ""))
+                                                   : page.fileUrl(page.d.wallpaper || "")
+                                }
+                                TapHandler { onTapped: page.wallTarget = srow.modelData.name }
+                            }
+                            Column {
+                                anchors { left: thumb.right; leftMargin: 14; verticalCenter: parent.verticalCenter; right: parent.right }
+                                spacing: 3
+                                Text {
+                                    text: srow.modelData.name + "   " + srow.modelData.width + "×" + srow.modelData.height
+                                          + (srow.modelData.focused ? "   ·   " + qsTr("focused") : "")
+                                    color: Tokens.textHi
+                                    font.pixelSize: 12
+                                }
+                                Text {
+                                    width: parent.width
+                                    elide: Text.ElideMiddle
+                                    text: !srow.w ? qsTr("caelestia's wallpaper (the same as every screen without its own)")
+                                        : (srow.w.kind === "video" ? qsTr("Video") : srow.w.kind === "gif" ? qsTr("GIF") : qsTr("Picture"))
+                                          + " — " + srow.w.path
+                                    color: Tokens.textDim
+                                    font.family: Tokens.mono
+                                    font.pixelSize: 10
+                                }
+                            }
+                        }
+                    }
+
+                    Row {
+                        spacing: 10
+                        Repeater {
+                            model: [
+                                { id: "file", label: qsTr("CHOOSE A FILE…") },
+                                { id: "clear", label: qsTr("BACK TO CAELESTIA'S") }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: btnText.implicitWidth + 28
+                                height: 28
+                                radius: Tokens.radiusSm
+                                color: btnHov.hovered ? Tokens.cardHi : "transparent"
+                                border.width: 1
+                                border.color: btnHov.hovered ? Tokens.accentDim : Tokens.line
+                                Text {
+                                    id: btnText
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    color: Tokens.text
+                                    font.family: Tokens.mono
+                                    font.pixelSize: Tokens.fsMicro
+                                    font.letterSpacing: 1
+                                }
+                                HoverHandler { id: btnHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler {
+                                    onTapped: modelData.id === "file" ? wallDialog.open() : page.wallSet(["clear"])
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: Tokens.textFaint
+                        font.pixelSize: 11
+                        text: qsTr("Pictures, GIFs and videos (mp4, webm, mkv). A video loops silently and pauses while a game or a fullscreen window covers its screen. For every screen, the colours still follow it — they are taken from a still of the video.")
+                    }
+                }
+            }
+
+            // ── Wallpaper Engine ──
+            Panel {
+                width: parent.width
+                height: weCol.implicitHeight + 32
+
+                Column {
+                    id: weCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                    spacing: 12
+
+                    Text {
+                        text: qsTr("WALLPAPER ENGINE")
+                        color: Tokens.textFaint
+                        font.family: Tokens.mono
+                        font.pixelSize: Tokens.fsMicro
+                        font.letterSpacing: 1.4
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: Tokens.textDim
+                        font.pixelSize: 11
+                        text: page.weItems.length > 0
+                            ? qsTr("The items your Steam has downloaded. Video items play here; scene and web items are Wallpaper Engine's own formats and need its renderer, which is not here yet.")
+                            : (page.walls.steam
+                               ? qsTr("No Wallpaper Engine items yet. Install Wallpaper Engine in Steam (Properties → Compatibility → Proton) so Steam downloads what you subscribe to in the Workshop — you do not have to run it.")
+                               : qsTr("Steam was not found. Wallpaper Engine items come from Steam's Workshop folder."))
+                    }
+                    Flow {
+                        width: parent.width
+                        spacing: 10
+                        Repeater {
+                            model: page.weItems
+                            delegate: Rectangle {
+                                id: weCard
+                                required property var modelData
+                                width: 168; height: 128
+                                radius: Tokens.radiusSm
+                                color: weHov.hovered && modelData.playable ? Tokens.cardHi : Tokens.card
+                                border.width: 1
+                                border.color: weHov.hovered && modelData.playable ? Tokens.accentDim : Tokens.line
+                                opacity: modelData.playable ? 1 : 0.55
+                                clip: true
+                                AnimatedImage {
+                                    id: wePrev
+                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 1 }
+                                    height: 92
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    playing: weHov.hovered
+                                    source: page.fileUrl(weCard.modelData.preview)
+                                }
+                                Text {
+                                    anchors { left: parent.left; right: parent.right; top: wePrev.bottom; margins: 6 }
+                                    text: weCard.modelData.title
+                                    elide: Text.ElideRight
+                                    color: Tokens.textHi
+                                    font.pixelSize: 11
+                                }
+                                Rectangle {
+                                    x: 6; y: 6
+                                    width: weTag.implicitWidth + 10; height: 16; radius: 8
+                                    color: Qt.rgba(0, 0, 0, 0.6)
+                                    Text {
+                                        id: weTag
+                                        anchors.centerIn: parent
+                                        text: weCard.modelData.type === "video" ? qsTr("VIDEO") : weCard.modelData.type.toUpperCase()
+                                        color: "white"
+                                        font.family: Tokens.mono
+                                        font.pixelSize: 9
+                                    }
+                                }
+                                HoverHandler { id: weHov; cursorShape: weCard.modelData.playable ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                                TapHandler {
+                                    enabled: weCard.modelData.playable
+                                    onTapped: page.wallSet(["we", "set", weCard.modelData.id])
+                                }
+                            }
+                        }
                     }
                 }
             }

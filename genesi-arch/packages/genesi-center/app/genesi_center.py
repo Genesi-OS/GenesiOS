@@ -49,7 +49,7 @@ ALLOWED = {
     "genesi-snapshots", "genesi-snapshots-gui", "genesi-channel-gui",
     "genesi-ai-mode", "genesi-ai-turbo", "genesi-ai-monitor",
     "genesi-ai-voice", "genesi-ai-key",
-    "genesi-open-usb-mixer",
+    "genesi-open-usb-mixer", "genesi-wallpaper",
     "caelestia", "hyprctl", "hyprshade", "wpctl",
 }
 # ...and the terminal is no longer one of these. A page asks for a COMMAND to

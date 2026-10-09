@@ -89,26 +89,31 @@ Scope {
             readonly property bool fullscreen: win.monitor?.activeWorkspace?.toplevels.values.some(t => t.lastIpcObject.fullscreen > 1) ?? false
             readonly property bool dashboardOpen: Visibilities.getForActive()?.dashboard ?? false
 
-            // Genesi's top bar on this screen, at the top: the island hangs
-            // from its centre pill, in its colour, and the pill itself is the
-            // resting state -- its chip says what the AI is doing.
+            // Genesi's top bar on this screen, at the top: the island takes
+            // its colour, and the pill in the bar shows a chip with what the
+            // AI is doing.
             readonly property var bar: Launcher.GenesiTopBarState.centres[win.screen?.name ?? ""] ?? null
             readonly property bool hangsFromBar: !!(win.bar && win.bar.shown && win.bar.atTop)
 
-            // Shown at all: always, or only around the chat. Under the bar the
-            // card shows only when there is something to show.
-            readonly property bool wanted: win.hangsFromBar ? card.expanded
-                : (win.mode === "always" || card.expanded || (win.live && (win.st.open ?? false)))
+            // Shown at all: always, or only around the chat.
+            readonly property bool wanted: win.mode === "always" || card.expanded || (win.live && (win.st.open ?? false))
             readonly property bool away: win.dashboardOpen || !win.wanted
 
-            readonly property real top: win.hangsFromBar ? win.bar.bottom + 8 : Launcher.GenesiEdges.top
-            readonly property bool attached: !win.hangsFromBar && win.top < 1
-            // The strip along the very top the island leaves to caelestia.
-            readonly property int passStrip: win.attached ? 6 : 0
+            // WHERE is the compositor's job, not ours. The window respects the
+            // space others reserve at the top (ExclusionMode.Normal below), so
+            // Hyprland puts it just under the bar -- or under caelestia's
+            // border, or at the very edge when neither reserves anything.
+            // Copying the bar pill's coordinates across windows instead put
+            // the card mostly ABOVE the screen on real hardware (2026-10-09).
+            readonly property real top: win.hangsFromBar ? 6 : 0
+            readonly property bool attached: !win.hangsFromBar
+            // Under no bar, the top edge leaves a strip to caelestia's
+            // dashboard hover.
+            readonly property int passStrip: win.hangsFromBar ? 0 : 4
 
             visible: !win.fullscreen
 
-            WlrLayershell.exclusionMode: ExclusionMode.Ignore
+            WlrLayershell.exclusionMode: ExclusionMode.Normal
             WlrLayershell.layer: WlrLayer.Top
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             color: "transparent"
@@ -128,9 +133,11 @@ Scope {
             GenesiAiIslandCard {
                 id: card
 
-                x: Math.round(win.hangsFromBar ? Math.min(Math.max(8, win.bar.x + win.bar.w / 2 - width / 2), win.width - width - 8)
-                                        : (win.width - width) / 2)
-                y: win.away ? -height - 12 : win.top
+                // Centred on the screen, like the bar's own centre pill.
+                x: Math.round((win.width - width) / 2)
+                // Hidden by a short rise and a fade, not by flying off the
+                // top: off the top is under the bar, which is on the same layer.
+                y: win.away ? win.top - 14 : win.top
                 width: implicitWidth
                 height: implicitHeight
                 opacity: win.away ? 0 : 1

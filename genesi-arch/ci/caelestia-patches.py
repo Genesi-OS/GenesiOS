@@ -1240,7 +1240,7 @@ LAUNCHER_FILES = ("GenesiContent.qml", "GenesiAppGrid.qml",
                    "GenesiSchemeFlow.qml", "GenesiSchemeState.qml",
                    "GenesiTopBarState.qml", "GenesiEdges.qml",
                    "GenesiSidePanelState.qml", "GenesiWidgetEditState.qml",
-                   "GenesiPluginBus.qml")
+                   "GenesiPluginBus.qml", "GenesiWallpaperState.qml")
 
 # The full-screen colour-scheme picker. Its WINDOW goes in modules/background,
 # which is the one Genesi directory shell.qml already imports -- so putting it
@@ -1296,6 +1296,11 @@ PLUGINS_PAGE = PLUGINS_PAGE_FILES[0]
 # cutting is done by genesi-depth, a CLI in this same package; this file
 # is the layer that draws what it produced.
 DEPTH_FILES = ("GenesiDepth.qml",)
+
+# A wallpaper per screen, and wallpapers that move: the item Background.qml
+# builds instead of caelestia's Wallpaper, and the video player it loads only
+# for a video (the one file that imports QtMultimedia).
+WALLPAPER_FILES = ("GenesiWallpaper.qml", "GenesiWallpaperVideo.qml")
 
 
 def patch_launcher_layout(release):
@@ -2950,7 +2955,7 @@ def patch_edge_layout(release):
 # through its module, not by proximity.
 GENESI_SINGLETONS = ("GenesiEdges", "GenesiSchemeState", "GenesiTopBarState",
                      "GenesiSidePanelState", "GenesiWidgetEditState",
-                     "GenesiPluginBus")
+                     "GenesiPluginBus", "GenesiWallpaperState")
 
 
 def verify_genesi_imports(release):
@@ -3333,6 +3338,33 @@ def patch_scheme_screen(release):
     print("schemes: a full-screen picker, on its own layer")
 
 
+def patch_per_screen_wallpaper(release):
+    """
+    Each screen's background builds GenesiWallpaper instead of caelestia's
+    Wallpaper.
+
+    caelestia shows one wallpaper on every screen. GenesiWallpaper still
+    builds caelestia's Wallpaper inside -- the same picture, the same fade --
+    and only differs where GenesiWallpaperState names a screen: its own
+    picture, or a GIF or a video laid over the picture. A screen nobody named
+    is exactly what it was.
+    """
+    background = os.path.join(release, "modules", "background", "Background.qml")
+    if not os.path.exists(background):
+        fail(f"{background} is gone -- the background module moved.")
+    for name in WALLPAPER_FILES:
+        if os.path.exists(os.path.join(release, "modules", "background", name)):
+            fail(f"upstream now ships its own {name}. Decide by hand.")
+    text = io.open(background, encoding="utf-8").read()
+    old = "                sourceComponent: Wallpaper {}\n"
+    if text.count(old) != 1:
+        fail("Background.qml does not build `Wallpaper {}` where the "
+             "per-screen wallpaper patch expects it.")
+    io.open(background, "w", encoding="utf-8", newline="\n").write(
+        text.replace(old, "                sourceComponent: GenesiWallpaper {}\n", 1))
+    print("wallpaper: one per screen, and it can move")
+
+
 def patch_plugins(release):
     """
     The plugins -- the Game Center and the leaf -- into shell.qml.
@@ -3449,6 +3481,7 @@ def main():
     patch_actions_query(launcher)
     patch_applist_live_model(launcher)
     patch_wallpaper_transition(release)
+    patch_per_screen_wallpaper(release)
     patch_bar_proportions(release)
     patch_frame_opacity(release)
     patch_launcher_position(release)
@@ -3545,6 +3578,14 @@ def main():
                  "build the plugins.")
         shutil.copyfile(src, os.path.join(widget_dest, name))
     print(f"installed {len(ALL_PLUGIN_FILES)} plugin file(s)")
+
+    for name in WALLPAPER_FILES:
+        src = os.path.join(ours, name)
+        if not os.path.exists(src):
+            fail(f"{src} is missing -- Background.qml has already been told "
+                 "to build it.")
+        shutil.copyfile(src, os.path.join(widget_dest, name))
+    print(f"installed {len(WALLPAPER_FILES)} wallpaper file(s)")
     src = os.path.join(ours, PLUGINS_PAGE)
     if not os.path.exists(src):
         fail(f"{src} is missing -- PageCompRegistry has already been told to "

@@ -755,7 +755,23 @@ pkgver=2.0.3
 # click opens the chat; the rest of the pill still opens the dashboard). The
 # card is drawn in the active scheme's colours. And Frost (bar and dock blur)
 # now works: its layerrules lacked `match:`, which Hyprland 0.53+ discards.
-pkgrel=57
+# 58: a wallpaper per screen, and wallpapers that move. Each screen's
+# background builds GenesiWallpaper (patch_per_screen_wallpaper), which keeps
+# caelestia's own Wallpaper inside and differs only where `genesi-wallpaper`
+# named the screen: its own picture, a GIF, or a video (QtMultimedia + ffmpeg,
+# looped, silent, paused while a fullscreen window covers that screen). A
+# GIF/video on every screen is laid over a still of itself, which is what
+# caelestia gets, so the colour scheme still follows the wallpaper. Wallpaper
+# Engine items of type "video" (Steam's workshop folder, every library) play
+# directly; "scene"/"web" items are listed and need WE's renderer. Depth cuts
+# each screen's own picture, and switches off on a moving one.
+# Also: the AI island was drawn mostly ABOVE the screen under the top bar
+# (coordinates copied from the bar's window came out wrong on hardware) and
+# hid itself at rest under the bar even in "always on screen". It now lets
+# Hyprland place it (ExclusionMode.Normal: just under whatever reserves the
+# top -- the bar, caelestia's border, or the edge), centred, shown at rest
+# when the mode says so, and hides with a short fade instead of flying off.
+pkgrel=58
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -764,7 +780,8 @@ depends=('caelestia-cli' 'quickshell' 'ddcutil' 'brightnessctl' 'app2unit' 'libc
          'lm_sensors' 'fish' 'aubio' 'libpipewire' 'glibc' 'gcc-libs' 'ttf-material-symbols-variable'
          'power-profiles-daemon' 'ttf-rubik-vf' 'ttf-cascadia-code-nerd' 'swappy' 'libqalculate' 'bash'
          'qt6-base' 'qt6-declarative' 'qt6-imageformats' 'hyprsunset'
-         'util-linux' 'bluez' 'python' 'python-opencv' 'python-numpy')
+         'util-linux' 'bluez' 'python' 'python-opencv' 'python-numpy'
+         'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'ffmpeg')
 makedepends=('cmake' 'ninja' 'qt6-shadertools')
 # python-rembg is Depth's Fine tier when it happens to be installed: a
 # segmentation network is genuinely better on hair and foliage. Never a
@@ -852,9 +869,17 @@ source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
         "GenesiWrappedStory.qml"
         "GenesiAiIsland.qml"
         "GenesiAiIslandCard.qml"
+        "GenesiWallpaperState.qml"
+        "GenesiWallpaper.qml"
+        "GenesiWallpaperVideo.qml"
+        "genesi-wallpaper"
         "genesi-depth"
         "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
@@ -1046,6 +1071,8 @@ package() {
     DESTDIR="$pkgdir" cmake --install build
     install -Dm755 "${srcdir}/genesi-depth" \
         "${pkgdir}/usr/bin/genesi-depth"
+    install -Dm755 "${srcdir}/genesi-wallpaper" \
+        "${pkgdir}/usr/bin/genesi-wallpaper"
     install -Dm755 "${srcdir}/genesi-shell-doctor" \
         "${pkgdir}/usr/bin/genesi-shell-doctor"
     install -Dm644 LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE

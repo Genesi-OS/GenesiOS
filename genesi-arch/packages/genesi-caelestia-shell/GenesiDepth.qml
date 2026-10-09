@@ -34,10 +34,12 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Effects
+import Quickshell
 import Quickshell.Io
 import Caelestia.Config
 import qs.components
 import qs.services
+import qs.modules.launcher
 
 Item {
     id: root
@@ -46,7 +48,11 @@ Item {
 
     // What to cut. Read once into a property so the Process command and the
     // change handler cannot disagree about which wallpaper is current.
-    readonly property string wallpaper: Wallpapers.current
+    // Per screen: a screen with its own picture is cut from THAT picture,
+    // and a screen showing a GIF or a video has no still subject to cut.
+    readonly property var own: GenesiWallpaperState.forScreen((QsWindow.window as QsWindow)?.screen?.name ?? "")
+    readonly property string wallpaper: !root.own ? Wallpapers.current
+        : root.own.kind === "image" ? (root.own.path ?? "") : ""
 
     // The last cutout that arrived. Cleared on a wallpaper change rather than
     // left behind: the old subject over the new picture is the one failure

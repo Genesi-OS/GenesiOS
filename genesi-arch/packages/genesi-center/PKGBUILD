@@ -186,7 +186,11 @@ pkgver=0.1.0
 # 39: genesi-center-set accepts the top bar's frame form and its eighteen
 # new settings (workspace style and count, window placement, rings, media,
 # volume, brightness, Bluetooth, battery pill, accent, clock and date).
-pkgrel=39
+# 40: Appearance gets a wallpaper per screen and moving wallpapers: pick a
+# picture, GIF or video for every screen or for one, and the Wallpaper Engine
+# items Steam has downloaded (video items play; scene/web are marked). It
+# reads and writes through genesi-wallpaper (genesi-caelestia-shell 58).
+pkgrel=40
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""
+genesi-wallpaper -- a wallpaper per screen, and wallpapers that move.
+
+caelestia shows ONE picture on every screen. This writes the map the shell's
+GenesiWallpaperState reads, so a screen can show its own picture, a GIF or a
+video; a screen not in the map shows caelestia's as before.
+
+    genesi-wallpaper status                       JSON: screens, map, Wallpaper Engine items
+    genesi-wallpaper set FILE [--monitor NAME|all]
+    genesi-wallpaper clear [--monitor NAME|all]
+    genesi-wallpaper we list                      the Wallpaper Engine items Steam downloaded
+    genesi-wallpaper we set ID [--monitor NAME|all]
+
+`all` (the default) means every screen. A picture for all screens goes through
+caelestia itself (`caelestia wallpaper -f`), which is also what derives the
+colour scheme. A GIF or a video for all screens is laid over a still frame of
+it, and that frame is what caelestia gets -- so the colours still follow the
+wallpaper. A wallpaper for ONE screen leaves the colours alone.
+
+Wallpaper Engine: items of type "video" are an ordinary video file in Steam's
+workshop folder and play here directly. "scene" and "web" items are Wallpaper
+Engine's own formats and need its renderer; they are listed, marked, and not
+set.
+"""
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+IMAGE = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".avif", ".tif", ".tiff", ".jxl"}
+GIF = {".gif"}
+VIDEO = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v"}
+WE_APP = "431960"
+
+
+def state_dir():
+    base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    return os.path.join(base, "caelestia")
+
+
+def map_path():
+    return os.path.join(state_dir(), "genesi-wallpapers.json")
+
+
+def thumbs_dir():
+    d = os.path.join(state_dir(), "genesi-wallpaper-thumbs")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def kind_of(path):
+    ext = os.path.splitext(path)[1].lower()
+    if ext in IMAGE:
+        return "image"
+    if ext in GIF:
+        return "gif"
+    if ext in VIDEO:
+        return "video"
+    return ""
+
+
+def load_map():
+    try:
+        with open(map_path(), encoding="utf-8") as fh:
+            d = json.load(fh)
+        screens = d.get("screens") if isinstance(d, dict) else None
+        return dict(screens) if isinstance(screens, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_map(screens):
+    os.makedirs(state_dir(), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".genesi-wallpapers.", dir=state_dir())
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump({"screens": screens}, fh, indent=1, ensure_ascii=False)
+    os.replace(tmp, map_path())
+
+
+def monitors():
+    """The screens Hyprland has: [{name, width, height, focused, description}].
+    GENESI_WALLPAPER_MONITORS (JSON) stands in for hyprctl in the tests."""
+    fake = os.environ.get("GENESI_WALLPAPER_MONITORS")
+    if fake:
+        return json.loads(fake)
+    if not shutil.which("hyprctl"):
+        return []
+    try:
+        out = subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True,
+                             text=True, timeout=5).stdout
+        return [{"name": m.get("name", ""), "width": m.get("width", 0),
+                 "height": m.get("height", 0), "focused": bool(m.get("focused")),
+                 "description": m.get("description", "")}
+                for m in json.loads(out or "[]")]
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+
+
+def caelestia_set(image):
+    """The picture caelestia shows by default, and takes its colours from."""
+    cmd = json.loads(os.environ["GENESI_WALLPAPER_CAELESTIA"]) if os.environ.get(
+        "GENESI_WALLPAPER_CAELESTIA") else ["caelestia", "wallpaper", "-f"]
+    try:
+        return subprocess.run(cmd + [image], capture_output=True, timeout=60).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def still_frame(path):
+    """A still of a GIF or video, for caelestia's picture and its colours, and
+    for the Center's preview. Cached by path and modification time."""
+    try:
+        stamp = "%s:%d" % (os.path.abspath(path), int(os.path.getmtime(path)))
+    except OSError:
+        return ""
+    out = os.path.join(thumbs_dir(), hashlib.sha1(stamp.encode()).hexdigest()[:16] + ".jpg")
+    if os.path.isfile(out):
+        return out
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return ""
+    for seek in ("2", "0"):
+        try:
+            subprocess.run([ffmpeg, "-v", "error", "-y", "-ss", seek, "-i", path,
+                            "-frames:v", "1", "-vf", "scale='min(1920,iw)':-2", out],
+                           capture_output=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        if os.path.isfile(out) and os.path.getsize(out) > 0:
+            return out
+    return ""
+
+
+class Fail(Exception):
+    def __init__(self, code, text):
+        super().__init__(text)
+        self.code, self.text = code, text
+
+
+def set_wallpaper(path, monitor="all"):
+    path = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isfile(path):
+        raise Fail("not-found", "no such file: %s" % path)
+    kind = kind_of(path)
+    if not kind:
+        raise Fail("unsupported", "not a picture, GIF or video: %s" % path)
+    screens = load_map()
+    names = {m["name"] for m in monitors()}
+    if monitor != "all" and names and monitor not in names:
+        raise Fail("no-monitor", "no screen named %s (there is %s)" % (monitor, ", ".join(sorted(names))))
+    entry = {"path": path, "kind": kind}
+    still = path if kind == "image" else still_frame(path)
+    if still and kind != "image":
+        entry["still"] = still
+    if monitor == "all":
+        # One wallpaper everywhere: caelestia's own picture (and colours),
+        # with the moving one, if it moves, laid over every screen.
+        screens = {}
+        if kind != "image":
+            screens["*"] = entry
+        if still:
+            caelestia_set(still)
+    else:
+        screens[monitor] = entry
+    save_map(screens)
+    return {"monitor": monitor, **entry}
+
+
+def clear(monitor="all"):
+    screens = load_map()
+    if monitor == "all":
+        screens = {}
+    else:
+        screens.pop(monitor, None)
+    save_map(screens)
+    return {"monitor": monitor, "cleared": True}
+
+
+# ── Wallpaper Engine ────────────────────────────────────────────────────────
+def steam_roots():
+    home = os.environ.get("HOME") or os.path.expanduser("~")
+    roots = [os.path.join(home, ".local/share/Steam"), os.path.join(home, ".steam/steam"),
+             os.path.join(home, ".var/app/com.valvesoftware.Steam/.local/share/Steam")]
+    extra = os.environ.get("GENESI_WALLPAPER_STEAM")
+    if extra:
+        roots = extra.split(os.pathsep) + roots
+    return [r for r in roots if os.path.isdir(r)]
+
+
+def library_dirs():
+    """Every Steam library: the main one and any on other drives, read from
+    libraryfolders.vdf -- a person with a games disk keeps workshop items there."""
+    libs = []
+    for root in steam_roots():
+        libs.append(root)
+        vdf = os.path.join(root, "steamapps", "libraryfolders.vdf")
+        try:
+            text = open(vdf, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        libs += [p.replace("\\\\", "\\") for p in re.findall(r'"path"\s*"([^"]+)"', text)]
+    seen, out = set(), []
+    for lib in libs:
+        real = os.path.realpath(lib)
+        if real not in seen and os.path.isdir(real):
+            seen.add(real)
+            out.append(real)
+    return out
+
+
+def we_items():
+    items = []
+    for lib in library_dirs():
+        base = os.path.join(lib, "steamapps", "workshop", "content", WE_APP)
+        if not os.path.isdir(base):
+            continue
+        for wid in sorted(os.listdir(base)):
+            folder = os.path.join(base, wid)
+            try:
+                with open(os.path.join(folder, "project.json"), encoding="utf-8", errors="replace") as fh:
+                    proj = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            kind = str(proj.get("type") or "").lower()
+            media = os.path.join(folder, str(proj.get("file") or ""))
+            preview = os.path.join(folder, str(proj.get("preview") or ""))
+            playable = kind == "video" and os.path.isfile(media) and kind_of(media) in ("video", "gif")
+            items.append({
+                "id": wid,
+                "title": str(proj.get("title") or wid),
+                "type": kind or "unknown",
+                "rating": str(proj.get("contentrating") or ""),
+                "preview": preview if os.path.isfile(preview) else "",
+                "file": media if playable else "",
+                "playable": playable,
+            })
+    return items
+
+
+def we_set(wid, monitor="all"):
+    for it in we_items():
+        if it["id"] == wid:
+            if not it["playable"]:
+                raise Fail("needs-scene-engine",
+                           "%s is a Wallpaper Engine %s; only video items play here so far"
+                           % (it["title"], it["type"]))
+            return set_wallpaper(it["file"], monitor)
+    raise Fail("not-found", "no Wallpaper Engine item %s in Steam's workshop folder" % wid)
+
+
+def status():
+    screens = load_map()
+    return {
+        "monitors": monitors(),
+        "screens": screens,
+        "we": we_items(),
+        "steam": bool(steam_roots()),
+        "ffmpeg": bool(shutil.which("ffmpeg")),
+    }
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="genesi-wallpaper", description=__doc__.split("\n\n")[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("status")
+    s = sub.add_parser("set")
+    s.add_argument("file")
+    s.add_argument("--monitor", default="all")
+    c = sub.add_parser("clear")
+    c.add_argument("--monitor", default="all")
+    w = sub.add_parser("we")
+    w.add_argument("action", choices=["list", "set"])
+    w.add_argument("id", nargs="?")
+    w.add_argument("--monitor", default="all")
+    a = p.parse_args(argv)
+    try:
+        if a.cmd == "status":
+            out = status()
+        elif a.cmd == "set":
+            out = set_wallpaper(a.file, a.monitor)
+        elif a.cmd == "clear":
+            out = clear(a.monitor)
+        elif a.action == "list":
+            out = we_items()
+        else:
+            if not a.id:
+                raise Fail("usage", "we set needs an item id")
+            out = we_set(a.id, a.monitor)
+    except Fail as e:
+        print(json.dumps({"error": e.text, "code": e.code}, ensure_ascii=False))
+        return 2
+    print(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -381,6 +381,14 @@ jobs:
         # tiled -- a transparent, workspace-high slab -- while Frost did nothing.
         run: python genesi-arch/ci/hypr-rules-test.py
 
+      - name: a wallpaper per screen, and wallpapers that move
+        # genesi-wallpaper writes the map the shell's GenesiWallpaperState
+        # reads: one screen's wallpaper never touches caelestia's (or the
+        # colours), a moving one for every screen gives caelestia a still of
+        # itself, and Wallpaper Engine video items are found in every Steam
+        # library while scene items are refused by name.
+        run: python genesi-arch/ci/wallpaper-cli-test.py
+
       - name: no QML object sets the same property twice
         # "Property value set multiple times" is a load error: the file, and
         # for a window the whole window, does not exist at run time. A second
