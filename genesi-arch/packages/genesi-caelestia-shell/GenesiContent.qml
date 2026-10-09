@@ -731,6 +731,17 @@ Item {
             return;
         }
 
+        // >ai <question>: asked without opening anything -- the answer comes
+        // back on the AI island (or in the Quick Chat, when there is none).
+        const aiPrefix = root.prefix + "ai ";
+        if (search.text.startsWith(aiPrefix)) {
+            const question = search.text.slice(aiPrefix.length).trim();
+            if (question !== "")
+                Quickshell.execDetached(["genesi-ai-quick", "--ask", question]);
+            root.visibilities.launcher = false;
+            return;
+        }
+
         // Upstream's own accept path, kept identical: these modes are its code
         // and its expectations about what Enter does in them.
         const list = fallback.item?.currentList;

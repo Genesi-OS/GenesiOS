@@ -107,8 +107,9 @@ PLUGINS = [
      "suas horas, seu ritmo, seus recordes.",
      ["estatísticas", "semana"], "plugin-wrapped.jpg"),
     ("ai-island", "Ilha da IA",
-     "A Genesi AI no topo da tela, com a folhinha: mostra cada passo que a "
-     "IA está fazendo, pede permissão ali mesmo e recebe arquivos arrastados.",
+     "A Genesi AI no topo da tela, com a folhinha, em qualquer desktop: "
+     "pergunte ali mesmo, veja cada passo, permita ações e receba ajuda com o "
+     "que você copiou.",
      ["ia", "topo"], "plugin-ai-island.jpg"),
 ]
 

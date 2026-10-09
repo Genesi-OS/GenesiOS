@@ -1639,7 +1639,33 @@ pkgver=1.0.0
 # runtime windowrule is written as `match:class ..., float on, center on,
 # pin on`; the old `float class:...` had no match: and was discarded, which
 # is why the window opened tiled and see-through.
-pkgrel=207
+# pkgrel 208: the AI island on EVERY desktop, and a Quick Chat redesign.
+#
+#   * genesi-ai-island: the island outside caelestia -- KDE Plasma, GNOME,
+#     Xfce, Cinnamon, Budgie, LXDE, COSMIC, Niri. The SAME card caelestia
+#     draws (GenesiAiIslandCard + GenesiLeaf, bundled from the shell package
+#     the way genesi-ui-kit is), in a wlr-layer-shell surface where the
+#     compositor has one and a placed X11 window where it does not (GNOME
+#     goes through XWayland). Started beside the Quick Chat, leaves when
+#     switched off; on by default outside caelestia, in "always" mode.
+#   * Ask ON the island: a click opens an input in the island itself, the
+#     answer comes back there whole (Markdown), with Copy / Ask again /
+#     Continue in chat. One-click asks about the clipboard (explain,
+#     translate, summarize). `genesi-ai-quick --ask TEXT [--clip]`, which is
+#     also what caelestia's launcher `>ai <question>` runs.
+#   * Smart Copy (off until switched on): copy an error or a long text and
+#     the island offers to explain / fix / summarize it. Classified on this
+#     machine; nothing is sent until the person clicks.
+#   * The island's settings in the island (right-click or the ... button)
+#     and in the Quick Chat's settings, one file for every desktop:
+#     ~/.config/genesi/ai-island.json, `genesi-ai-quick --set KEY=VALUE`.
+#   * Quick Chat redesigned: the leaf as its face (its mood is the chat's
+#     state), answers rendered as Markdown with a copy button, the agent's
+#     steps as a timeline, starter chips, an attach button, a real approval
+#     card, segmented settings -- and it follows the desktop's colours live.
+#     Strings in English and Portuguese.
+# Needs layer-shell-qt (the layer surface) -- a small Qt plugin from KDE.
+pkgrel=208
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1661,6 +1687,8 @@ license=('AGPL-3.0-or-later')
 # would also fail) → aborting the whole publish. It's an optdepend for docs.
 # It conflicts with the AUR llama.cpp variants, so those are no longer listed.
 depends=('python' 'python-psutil' 'kirigami' 'pyside6' 'qqc2-desktop-style' 'qt6-svg'
+         # The AI island as a layer surface on KDE / Niri / COSMIC / labwc.
+         'layer-shell-qt'
          # genesi-ai-tray (standalone SNI tray applet) — libappindicator/Gtk, NOT
          # Qt's QSystemTrayIcon (broken with the caelestia/Quickshell bar on Qt 6.11)
          'python-gobject' 'libayatana-appindicator' 'gtk3')
@@ -1676,6 +1704,8 @@ optdepends=(
     'libnotify: desktop notifications from Automations (notify-send)'
     'python-opencv: keep faces unchanged when editing pictures on the Image page'
     'poppler: read the text of PDFs attached to the Quick Chat (pdftotext)'
+    'wl-clipboard: the AI island reads and copies the clipboard on Wayland (Smart Copy, "explain what I copied")'
+    'xclip: the same on X11 desktops'
     # Speech. Neither is required: `genesi-ai-voice install` builds what it needs
     # in its own virtualenv. Having them from pacman makes that install smaller and
     # faster, because the venv is created with --system-site-packages.
@@ -1851,6 +1881,20 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatBubble.qml"
     install -Dm644 "${startdir}/monitor/QuickChat.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/QuickChat.qml"
+    # The AI island outside caelestia, and what it shares with the chat.
+    for _iq in genesi_island_link.py genesi_ai_island.py \
+               IslandStage.qml IslandLayer.qml IslandPlain.qml; do
+        install -Dm644 "${startdir}/monitor/${_iq}" \
+            "$pkgdir/usr/share/genesi-ai-mode/monitor/${_iq}"
+    done
+    install -Dm755 "${startdir}/monitor/genesi-ai-island" \
+        "$pkgdir/usr/local/bin/genesi-ai-island"
+    # The island's card and the leaf are the shell's own files, bundled at
+    # build like genesi-ui-kit: one drawing of the island, on every desktop.
+    for _sq in GenesiAiIslandCard GenesiLeaf; do
+        install -Dm644 "${startdir}/../genesi-caelestia-shell/${_sq}.qml" \
+            "$pkgdir/usr/share/genesi-ai-mode/monitor/${_sq}.qml"
+    done
     # Chat primitives: the Genesi Find result block, the empty-state
     # suggestion card and the pill. A QML file that is not installed is a
     # "Type unavailable" on the user machine and a blank page, which is

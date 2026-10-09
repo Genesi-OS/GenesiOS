@@ -797,7 +797,21 @@ pkgver=2.0.3
 # 2026-10-09). ci/qml-sanity-test.py now fails on a brace above the pragma.
 # Also: picking for a screen other than the first lets go of the preview's
 # colours, and the dock's flow lights no longer warn while an item goes away.
-pkgrel=60
+# pkgrel 61: the AI island grows up (with genesi-ai-mode 208).
+#   * Ask ON the island: a click opens an input in the card, the island takes
+#     the keyboard while it is open (and only then), and the answer comes
+#     back whole, as Markdown, with Copy / Ask again / Continue in chat.
+#     One-click asks about the clipboard; Smart Copy offers to explain an
+#     error you just copied; right-click (or the ... button) opens the
+#     island's own settings. The leaf's eyes follow the pointer.
+#   * One drawing of the island everywhere: GenesiAiIslandCard is bundled by
+#     genesi-ai-mode into its standalone island for KDE, GNOME, Xfce,
+#     Cinnamon, Budgie, LXDE, COSMIC and Niri.
+#   * Its settings now live in ~/.config/genesi/ai-island.json, shared with
+#     the Quick Chat and every desktop (the old state file is still read).
+#   * >ai <question> in the launcher -- Genesi's layout and caelestia's --
+#     asks Genesi AI and answers on the island.
+pkgrel=61
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

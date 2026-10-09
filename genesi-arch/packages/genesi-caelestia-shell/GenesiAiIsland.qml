@@ -31,13 +31,24 @@
 // With Genesi's top bar on, the island hangs under the bar instead of from
 // the edge of the screen (GenesiEdges.top says how tall the bar is).
 //
-// ── Modes ─────────────────────────────────────────────────────────────────
+// ── Asking on the island ──────────────────────────────────────────────────
+//
+// A click opens the card's own input: the island takes the keyboard while it
+// is open (and only then), the question goes to the chat with
+// `genesi-ai-quick --ask`, and the answer comes back here. The same card is
+// the island on every other desktop (genesi-ai-mode's genesi-ai-island);
+// this file is only its caelestia frame.
+//
+// ── Settings ──────────────────────────────────────────────────────────────
 //
 //     caelestia shell aiIsland set mode always      the pill is always there
 //     caelestia shell aiIsland set mode quickchat   only while the chat is open
 //                                                   or the AI is working
 //
-// Saved in ${Paths.state}/genesi-ai-island.json, which this window alone writes.
+// Kept in ~/.config/genesi/ai-island.json -- shared with the Quick Chat's
+// settings and the island's own menu, on every desktop -- and written
+// through `genesi-ai-quick --set`. The old ${Paths.state} file is still read
+// when the shared one does not exist yet.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -76,6 +87,7 @@ Scope {
             id: win
 
             property string mode: "always"
+            property var prefs: ({ mode: "always", smartClip: false })
             property var st: ({})
             property bool live: false
             readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR") || `/tmp/genesi-ai-${Quickshell.env("UID")}`
@@ -115,13 +127,15 @@ Scope {
 
             WlrLayershell.exclusionMode: ExclusionMode.Normal
             WlrLayershell.layer: WlrLayer.Top
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            // The keyboard only while the card's input is open.
+            WlrLayershell.keyboardFocus: card.typing ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             color: "transparent"
 
             anchors.left: true
             anchors.right: true
             anchors.top: true
-            implicitHeight: 260
+            // Room for an answer shown whole (the card caps it at 260 px).
+            implicitHeight: 460
 
             mask: Region {
                 x: card.x
@@ -145,6 +159,7 @@ Scope {
                 live: win.live
                 attached: win.attached
                 pal: Colours.palette
+                prefs: win.prefs
                 fill: win.hangsFromBar ? win.bar.fill : Qt.alpha(Colours.palette.m3surfaceContainer, 0.96)
 
                 Behavior on y {
@@ -161,6 +176,15 @@ Scope {
                 onAttach: (path, request) => Quickshell.execDetached(request
                     ? ["genesi-ai-quick", "--attach", path, "--prompt", request]
                     : ["genesi-ai-quick", "--attach", path])
+                onAsk: (text, withClip) => Quickshell.execDetached(withClip
+                    ? ["genesi-ai-quick", "--ask", text, "--clip"]
+                    : ["genesi-ai-quick", "--ask", text])
+                onSetting: (key, value) => {
+                    if (key === "mode")
+                        win.mode = value;
+                    Quickshell.execDetached(["genesi-ai-quick", "--set", key + "=" + value]);
+                }
+                onCopyText: text => Quickshell.execDetached(["wl-copy", "--", text])
             }
 
             // Tell the bar what to put in its chip, and listen for its click.
@@ -189,22 +213,42 @@ Scope {
                 function onAsked(key: string, value: string): void {
                     if (key === "mode" && (value === "always" || value === "quickchat")) {
                         win.mode = value;
-                        prefs.setText(JSON.stringify({ mode: win.mode }) + "\n");
+                        Quickshell.execDetached(["genesi-ai-quick", "--set", "mode=" + value]);
                     }
                 }
             }
 
-            // ── Its one setting ─────────────────────────────────────────────
+            // ── Its settings ────────────────────────────────────────────────
             FileView {
-                id: prefs
+                id: shared
+
+                path: `${Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config"}/genesi/ai-island.json`
+                printErrors: false
+                watchChanges: true
+                onFileChanged: reload()
+                onLoaded: {
+                    try {
+                        const d = JSON.parse(text());
+                        win.prefs = d;
+                        if (d.mode === "always" || d.mode === "quickchat")
+                            win.mode = d.mode;
+                    } catch (e) {}
+                }
+                onLoadFailed: legacy.reload()
+            }
+            FileView {
+                // Before the settings were shared (pkgrel 56-60).
+                id: legacy
 
                 path: `${Paths.state}/genesi-ai-island.json`
                 printErrors: false
                 onLoaded: {
                     try {
                         const m = JSON.parse(text()).mode;
-                        if (m === "always" || m === "quickchat")
+                        if (m === "always" || m === "quickchat") {
                             win.mode = m;
+                            win.prefs = { mode: m, smartClip: false };
+                        }
                     } catch (e) {}
                 }
             }
@@ -247,7 +291,10 @@ Scope {
                 interval: card.expanded ? 400 : 1500
                 repeat: true
                 running: true
-                onTriggered: chat.reload()
+                onTriggered: {
+                    chat.reload();
+                    shared.reload();
+                }
             }
         }
     }

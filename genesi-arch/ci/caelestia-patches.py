@@ -3338,6 +3338,44 @@ def patch_scheme_screen(release):
     print("schemes: a full-screen picker, on its own layer")
 
 
+def patch_launcher_ai(release):
+    """
+    >ai <question> in caelestia's own launcher layout asks Genesi AI.
+
+    The question goes to the Quick Chat (`genesi-ai-quick --ask`) and the
+    answer comes back on the AI island, without a window opening. Genesi's
+    launcher layout (GenesiContent) does the same in its activate(); this is
+    the same rule for the person who keeps caelestia's layout. Checked before
+    the list's current item, because ">ai anything" matches no action and
+    upstream's accept would otherwise do nothing at all.
+    """
+    content = os.path.join(release, "modules", "launcher", "Content.qml")
+    if not os.path.exists(content):
+        fail(f"{content} is gone -- the launcher's accept moved.")
+    s = io.open(content, encoding="utf-8").read()
+    old = ("            onAccepted: {\n"
+           "                const currentItem = list.currentList?.currentItem;\n")
+    if s.count(old) != 1:
+        fail("Content.qml's onAccepted is not what the >ai patch expects -- "
+             "upstream changed the launcher's accept.")
+    new = ("            onAccepted: {\n"
+           "                // Genesi: >ai <question> -- see patch_launcher_ai.\n"
+           "                const aiPrefix = `${GlobalConfig.launcher.actionPrefix}ai `;\n"
+           "                if (text.startsWith(aiPrefix)) {\n"
+           "                    const question = text.slice(aiPrefix.length).trim();\n"
+           "                    if (question !== \"\")\n"
+           "                        Quickshell.execDetached([\"genesi-ai-quick\", \"--ask\", question]);\n"
+           "                    root.visibilities.launcher = false;\n"
+           "                    return;\n"
+           "                }\n"
+           "                const currentItem = list.currentList?.currentItem;\n")
+    s = s.replace(old, new, 1)
+    if "\nimport Quickshell\n" not in s:
+        s = s.replace("import QtQuick\n", "import QtQuick\nimport Quickshell\n", 1)
+    io.open(content, "w", encoding="utf-8", newline="\n").write(s)
+    print("launcher: >ai asks Genesi AI")
+
+
 def patch_launcher_wallpaper_screen(release):
     """
     The launcher's >wallpaper changes the screen it is open on.
@@ -3573,6 +3611,7 @@ def main():
     patch_per_screen_wallpaper(release)
     patch_idle_inhibitor(release)
     patch_launcher_wallpaper_screen(release)
+    patch_launcher_ai(release)
     patch_bar_proportions(release)
     patch_frame_opacity(release)
     patch_launcher_position(release)

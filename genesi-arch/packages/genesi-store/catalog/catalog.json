@@ -1,6 +1,6 @@
 {
  "version": 1,
- "updated": "2026-10-08",
+ "updated": "2026-10-09",
  "sections": [
   {
    "id": "discover",
@@ -5247,7 +5247,7 @@
    "id": "plugin-ai-island",
    "section": "plugins",
    "name": "AI island",
-   "blurb": "Genesi AI at the top of the screen, with the leaf: every step the AI is taking, permission asked right there, and files you drop on it.",
+   "blurb": "Genesi AI at the top of the screen, with the leaf, on any desktop: ask right there, watch every step, allow actions and get help with what you copied.",
    "author": "Genesi",
    "tags": [
     "ai",
@@ -5265,7 +5265,7 @@
     }
    ],
    "name_pt": "Ilha da IA",
-   "blurb_pt": "A Genesi AI no topo da tela, com a folhinha: mostra cada passo que a IA está fazendo, pede permissão ali mesmo e recebe arquivos arrastados.",
+   "blurb_pt": "A Genesi AI no topo da tela, com a folhinha, em qualquer desktop: pergunte ali mesmo, veja cada passo, permita ações e receba ajuda com o que você copiou.",
    "tags_pt": [
     "ia",
     "topo"

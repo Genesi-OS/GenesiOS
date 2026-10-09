@@ -59,6 +59,9 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
+# Offscreen Qt on Windows ships no fonts: every screenshot would be boxes.
+if sys.platform == "win32":
+    os.environ.setdefault("QT_QPA_FONTDIR", "C:/Windows/Fonts")
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -262,13 +265,20 @@ Item {
             if hasattr(host.property("results"), "toVariant") else host.property("results"):
         check(f"{title}: {name}", cond, detail)
     if shot and SHOTS:
-        for _ in range(20):
+        # Real time, not a number of loops: the cards spring into shape over
+        # ~half a second, and a picture taken before that is a picture of an
+        # animation.
+        import time
+        settle = time.time() + 1.2
+        while time.time() < settle:
             app.processEvents()
+            time.sleep(0.01)
         view.grabWindow().save(os.path.join(SHOTS, shot))
     # Qt on Windows ships no fonts and says so once. That is the machine
     # this was run on, not the game.
     new = [w for w in warnings[before:]
-           if "QFontDatabase: Cannot find font directory" not in w]
+           if "QFontDatabase: Cannot find font directory" not in w
+           and "FT_New_Face failed" not in w]
     check(f"{title}: Qt printed no warnings", not new, "\n         ".join(new))
     view.close()
     view.deleteLater()
@@ -943,6 +953,19 @@ run("ai island", """
         GenesiAiIslandCard { id: shotAsk; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
             st: ({ phase: "approval", pid: 1, turn: 1, approval: { id: "a1", title: "Allow this action?",
                    description: "Genesi AI wants to run a command.", approve: "Allow", detail: "git push origin main" } }) }
+        GenesiAiIslandCard { id: shotTyping; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
+            asking: true; st: ({ phase: "idle", pid: 1, turn: 1, model: "gguf:qwen3-8b-q4_k_m" }) }
+        GenesiAiIslandCard { id: shotAnswer; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
+            st: ({ phase: "done", pid: 1, turn: 2, inline: true, elapsed: 2300, prompt: "Quanto de RAM eu tenho livre?",
+                   answer: "Você tem **9,4 GB livres** de 16 GB.
+
+- O Firefox usa 2,1 GB
+- O Quick Chat usa 310 MB" }) }
+        GenesiAiIslandCard { id: shotHint; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
+            st: ({ phase: "idle", pid: 1, turn: 2, hint: { id: "h1", kind: "error",
+                   preview: "error: failed to push some refs to 'origin'" } }) }
+        GenesiAiIslandCard { id: shotMenu; pal: host.pal; attached: false; width: implicitWidth; height: implicitHeight; live: true
+            menuOpen: true; prefs: ({ mode: "quickchat", smartClip: true }); st: ({ phase: "idle", pid: 1, actionMode: "approval" }) }
     }
     readonly property Item g: island
 """, """
@@ -1006,7 +1029,64 @@ run("ai island", """
         g.offerPath = "/tmp/b.txt";
         g.act("cancel");
         ok("Cancel drops it", attached.length === 2 && g.view === "idle");
-""", size=(620, 420), shot="ai-island.png")
+
+        // ── The island is the chat ──
+        let asked = [], settings = [], copied = [];
+        g.ask.connect((text, clip) => asked.push([text, clip]));
+        g.setting.connect((key, value) => settings.push([key, value]));
+        g.copyText.connect(text => copied.push(text));
+        g.st = ({ phase: "idle", pid: 7, turn: 7 });
+        g.canType = false;
+        g.asking = false;
+        const before = opened;
+        g.act("open");
+        ok("where the host cannot type, the chat window is the way in", opened === before + 1 && g.view === "idle");
+        g.canType = true;
+        g.asking = true;
+        ok("a click opens the input in the island", g.view === "ask" && g.typing && g.expanded);
+        g.act("send");
+        ok("an empty question is not sent", asked.length === 0 && g.view === "ask");
+        g.askNow("quanto de RAM eu tenho?", false);
+        ok("Enter sends what was typed and closes the input",
+           asked.length === 1 && asked[0][0] === "quanto de RAM eu tenho?" && asked[0][1] === false && g.view === "idle");
+        g.asking = true;
+        g.askNow(g.clipAsks[0].prompt, true);
+        ok("a chip asks about the clipboard", asked.length === 2 && asked[1][1] === true);
+        g.asking = true;
+        g.st = ({ phase: "thinking", pid: 7, turn: 8 });
+        ok("work wins over a half-typed question", g.view === "work");
+        g.asking = false;
+        g.st = ({ phase: "done", pid: 7, turn: 8, inline: true, answer: "**9 GB** livres", elapsed: 2300 });
+        ok("an answer asked from the island is shown whole", g.view === "answer" && g.seconds(2300) === "2.3 s");
+        g.act("copy");
+        ok("Copy hands over the answer", copied.length === 1 && copied[0] === "**9 GB** livres");
+        g.act("followup");
+        ok("Ask again goes back to the input", g.view === "ask");
+        g.act("close-ask");
+        ok("Esc closes the input, and the answer stays seen", g.view === "idle");
+
+        // ── Smart Copy ──
+        g.st = ({ phase: "idle", pid: 7, turn: 8, hint: { id: "h9", kind: "error", preview: "Traceback ..." } });
+        ok("a copied error is offered", g.view === "hint");
+        g.act("hint-fix");
+        ok("...and one click asks how to fix it, with the clipboard", asked.length === 3 && asked[2][1] === true
+           && g.view === "idle");
+        g.st = ({ phase: "idle", pid: 7, turn: 8, hint: { id: "h9", kind: "error", preview: "Traceback ..." } });
+        ok("the same offer does not come back", g.view === "idle");
+        g.st = ({ phase: "idle", pid: 7, turn: 8, hint: { id: "h10", kind: "text", preview: "Lorem" } });
+        g.act("dismiss-hint");
+        ok("a dismissed offer goes away", g.view === "idle");
+
+        // ── The menu ──
+        g.menuOpen = true;
+        ok("right-click opens the island's own settings", g.view === "menu");
+        g.setting("mode", "quickchat");
+        ok("a setting is handed to the host", settings.length === 1 && settings[0][0] === "mode");
+        g.act("close-menu");
+        ok("...and the menu closes", g.view === "idle");
+        ok("the peek names the model, not its path", g.modelLabel("gguf:/models/qwen3-8b.gguf") === "qwen3-8b.gguf"
+           && g.modelLabel("") === "");
+""", size=(640, 1180), shot="ai-island.png")
 
 print()
 if fails:

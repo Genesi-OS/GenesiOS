@@ -199,7 +199,8 @@ PageBase {
         FileView {
             id: islandFile
 
-            path: `${Paths.state}/genesi-ai-island.json`
+            // Shared with the Quick Chat and the island's own menu (pkgrel 61).
+            path: `${Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config"}/genesi/ai-island.json`
             printErrors: false
             onLoaded: {
                 try {

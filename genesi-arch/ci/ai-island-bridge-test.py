@@ -13,7 +13,10 @@ plays the island's card; this plays the chat's half:
   * the state file is written whole (atomically), stamped with the pid the
     island checks to tell a live chat from a crashed one;
   * a dropped file becomes text the model can read, cut to size, and a file
-    with no text still goes along by name.
+    with no text still goes along by name;
+  * a question asked ON the island (--ask, --clip) and a setting changed
+    there (--set) reach the chat, and settings land in the shared file every
+    island reads.
 """
 import importlib.util
 import io
@@ -76,7 +79,7 @@ class Emitter:
 class FakeBackend:
     def __init__(self):
         for name in ("showRequested", "hideRequested", "toggleRequested", "islandApproval",
-                     "islandStop", "attachRequested"):
+                     "islandStop", "attachRequested", "askRequested", "settingRequested"):
             setattr(self, name, Emitter())
         self._socket = None
 
@@ -96,15 +99,38 @@ check("stop and hide reach the window", len(fb.islandStop.calls) == 1 and len(fb
 check("attach carries the path and the request; an attach with no path is a toggle",
       fb.attachRequested.calls == [("/tmp/a.pdf", "Resuma")] and len(fb.toggleRequested.calls) == 1,
       (fb.attachRequested.calls, fb.toggleRequested.calls))
+fb.dispatch({"cmd": "ask", "text": "quanto de RAM?", "clip": True})
+fb.dispatch({"cmd": "ask", "text": "   "})
+fb.dispatch({"cmd": "set", "key": "smartClip", "value": "on"})
+fb.dispatch({"cmd": "set"})
+check("a question asked on the island reaches the chat, with or without the clipboard",
+      fb.askRequested.calls == [("quanto de RAM?", True)], fb.askRequested.calls)
+check("an empty question or setting does nothing -- it does not toggle the window either",
+      fb.settingRequested.calls == [("smartClip", "on")] and len(fb.toggleRequested.calls) == 1,
+      (fb.settingRequested.calls, fb.toggleRequested.calls))
+
+# ── Asking about the clipboard ──────────────────────────────────────────────
+prompt = quick.clip_prompt("Explique isto.", "KeyError: 'id'\n")
+check("a clipboard question carries the question and the copied text, fenced",
+      prompt.startswith("Explique isto.") and "```\nKeyError: 'id'\n```" in prompt, prompt)
+check("a huge clipboard is cut, and says so",
+      "cut here" in quick.clip_prompt("q", "z" * (quick.CLIP_LIMIT * 2)))
+done, rest = quick.split_clips(b"first\x1esecond\x1epart")
+check("Smart Copy splits wl-paste's stream into whole copies",
+      done == [b"first", b"second"] and rest == b"part", (done, rest))
+check("the CLI and the islands share one socket path", quick.socket_path() == quick.link.socket_path())
 
 # ── The CLI reaches a running chat ──────────────────────────────────────────
 if hasattr(socket, "AF_UNIX") and sys.platform != "win32":
     live = FakeBackend()
     quick.QuickBackend.listen(live)
     script = os.path.join(MON, "genesi_ai_quick.py")
-    for argv in (["--approve", "abc"], ["--stop"], ["--attach", "rel/file.txt", "--prompt", "oi"], ["--toggle"]):
+    cfg = os.path.join(tmp, "config")
+    env = dict(os.environ, XDG_CONFIG_HOME=cfg)
+    for argv in (["--approve", "abc"], ["--stop"], ["--attach", "rel/file.txt", "--prompt", "oi"],
+                 ["--ask", "o que é isso?", "--clip"], ["--set", "mode=quickchat"], ["--toggle"]):
         done = subprocess.run([sys.executable, script] + argv, capture_output=True, timeout=30,
-                              env=dict(os.environ))
+                              env=env)
         check(f"`genesi-ai-quick {' '.join(argv)}` exits at once when a chat is running",
               done.returncode == 0, done.stderr.decode()[-400:])
     deadline = time.time() + 3
@@ -114,6 +140,14 @@ if hasattr(socket, "AF_UNIX") and sys.platform != "win32":
           live.islandApproval.calls == [("abc", True)] and len(live.islandStop.calls) == 1
           and len(live.attachRequested.calls) == 1 and len(live.toggleRequested.calls) == 1,
           (live.islandApproval.calls, live.islandStop.calls, live.attachRequested.calls))
+    check("--ask carries the question and --clip",
+          live.askRequested.calls == [("o que é isso?", True)], live.askRequested.calls)
+    check("--set reaches the chat AND lands in the shared file every island reads",
+          live.settingRequested.calls == [("mode", "quickchat")]
+          and json.load(io.open(os.path.join(cfg, "genesi", "ai-island.json"), encoding="utf-8"))["mode"] == "quickchat",
+          live.settingRequested.calls)
+    bad = subprocess.run([sys.executable, script, "--set", "mode=sideways"], capture_output=True, timeout=30, env=env)
+    check("a setting nobody knows is refused, not written", bad.returncode == 2)
     check("an attached path is made absolute before it travels",
           live.attachRequested.calls and os.path.isabs(live.attachRequested.calls[0][0])
           and live.attachRequested.calls[0][1] == "oi")

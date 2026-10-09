@@ -30,6 +30,15 @@
   "launcher": {
     "actions": [
       {
+        "name": "Genesi AI",
+        "icon": "eco",
+        "description": "Ask anything — the answer comes back on the AI island",
+        "command": [
+          "autocomplete",
+          "ai"
+        ]
+      },
+      {
         "name": "Calculator",
         "icon": "calculate",
         "description": "Do simple math equations (powered by Qalc)",

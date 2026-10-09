@@ -237,7 +237,9 @@ pkgver=0.1.0
 # 20: a card for the AI island plugin (genesi-caelestia-shell 56), with its
 # picture rendered from the island's own QML.
 # 21: the AI island's picture redrawn in the theme's colours, as it now is.
-pkgrel=21
+# pkgrel 22: the AI island's shelf entry says what it does now -- on any
+# desktop, ask right on it, help with what you copied -- with a new picture.
+pkgrel=22
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

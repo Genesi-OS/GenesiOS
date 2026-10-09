@@ -222,7 +222,10 @@ pkgver=1.0.0
 # Hyprland wakes a screen on the first key or mouse move. Existing users get
 # it through the shell.json fill and the hyprland.conf migration; a person's
 # own idle settings are kept.
-pkgrel=46
+# pkgrel 47: a "Genesi AI" entry at the top of the launcher's actions --
+# `>ai <question>` asks without opening anything, the answer comes back on
+# the AI island. Existing users get it through the actions merge.
+pkgrel=47
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

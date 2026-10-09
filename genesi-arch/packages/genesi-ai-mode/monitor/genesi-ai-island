@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# The AI island on every desktop but caelestia's (which draws its own).
+exec python3 /usr/share/genesi-ai-mode/monitor/genesi_ai_island.py "$@"
