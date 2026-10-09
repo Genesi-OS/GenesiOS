@@ -213,7 +213,16 @@ pkgver=1.0.0
 # pkgrel 45: the Quick Chat rule's section marker reads the same as a regex
 # and as a literal (ci/hypr-migration-test.sh compares it with grep -F); the
 # `\.` in 44 matched at run time but was not the text in the file.
-pkgrel=45
+# pkgrel 46: no automatic suspend. caelestia's default idle ends in
+# `systemctl suspend-then-hibernate` after ten minutes, and Genesi never
+# overrode it: a desktop left alone for a moment slept -- killing any long AI
+# job -- and on NVIDIA over DisplayPort the monitor often did not come back
+# from it (flicker, then black until power-cycled: reported 2026-10-09).
+# Genesi's idle: lock at 10 minutes, screens off at 15, nothing more; and
+# Hyprland wakes a screen on the first key or mouse move. Existing users get
+# it through the shell.json fill and the hyprland.conf migration; a person's
+# own idle settings are kept.
+pkgrel=46
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

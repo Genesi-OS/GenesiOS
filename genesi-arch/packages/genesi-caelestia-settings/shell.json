@@ -8,6 +8,21 @@
       ]
     }
   },
+  "general": {
+    "idle": {
+      "timeouts": [
+        {
+          "timeout": 600,
+          "idleAction": "lock"
+        },
+        {
+          "timeout": 900,
+          "idleAction": "dpms off",
+          "returnAction": "dpms on"
+        }
+      ]
+    }
+  },
   "background": {
     "transition": "zoom",
     "transitionDuration": 900

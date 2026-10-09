@@ -375,8 +375,13 @@ Item {
 
                         Connections {
                             function onLauncherChanged(): void {
-                                if (!root.visibilities.launcher)
+                                if (!root.visibilities.launcher) {
                                     search.text = "";
+                                } else if (GenesiPluginBus.launcherPrefill !== "") {
+                                    search.text = GenesiPluginBus.launcherPrefill;
+                                    GenesiPluginBus.launcherPrefill = "";
+                                    search.cursorPosition = search.text.length;
+                                }
                             }
 
                             function onSessionChanged(): void {
@@ -736,7 +741,8 @@ Item {
         if (fallback.item?.showWallpapers) {
             if (Colours.scheme === "dynamic" && currentItem.modelData.path !== Wallpapers.actualCurrent)
                 Wallpapers.previewColourLock = true;
-            Wallpapers.setWallpaper(currentItem.modelData.path);
+            // On the screen this launcher is open on (GenesiWallpaperState.pick).
+            GenesiWallpaperState.pick(currentItem.modelData.path, (QsWindow.window as QsWindow)?.screen?.name ?? "");
             root.visibilities.launcher = false;
         } else if (search.text.startsWith(root.prefix + "calc ")) {
             currentItem.onClicked();

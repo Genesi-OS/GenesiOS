@@ -771,7 +771,25 @@ pkgver=2.0.3
 # Hyprland place it (ExclusionMode.Normal: just under whatever reserves the
 # top -- the bar, caelestia's border, or the edge), centred, shown at rest
 # when the mode says so, and hides with a short fade instead of flying off.
-pkgrel=58
+# 59: four things reported from real use.
+#   * The dashboard opened only on a click, never on hover. The bar is mapped
+#     above caelestia's drawers on purpose, and its centre pill touched the
+#     screen edge -- the very pixels where the drawers notice a pointer. The
+#     topmost 4 px over the pill are now not the bar's (only while it shows).
+#   * The left panel's edge strip opened it on some logins only: it shared the
+#     Top layer with the drawers, whose remap at startup decided who was on
+#     top. It is on the Overlay layer now, and starts below the bar.
+#   * Keep awake said "on" and the screen still slept. caelestia hung the
+#     inhibitor on a 0x0, unanchored surface Hyprland does not show; it is one
+#     transparent, input-less pixel on the overlay now (patch_idle_inhibitor).
+#     The side panel's tile is qualified to caelestia's IdleInhibitor -- the
+#     bare name could resolve to Quickshell.Wayland's type.
+#   * The side panel's wallpaper button did a random pick, which did nothing
+#     with an empty folder; it opens the launcher's wallpaper picker.
+# And the launcher's >wallpaper now changes the screen it is open on (its own
+# window's screen, read at the pick), previews there only, and keeps the
+# colours following the first screen (genesi-wallpaper pick).
+pkgrel=59
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

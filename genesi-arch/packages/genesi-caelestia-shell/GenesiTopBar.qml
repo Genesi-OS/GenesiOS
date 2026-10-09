@@ -229,6 +229,9 @@ Variants {
         // drawers open below the bar rather than underneath it. Four copies
         // of one formula is four chances for three of them to be right.
         readonly property real strip: GenesiEdges.stripFor(win.cfg)
+        // How many pixels along the top edge stay caelestia's, for the
+        // dashboard's hover.
+        readonly property int dashboardPass: 4
 
         // Where the slab's edges sit. Named rather than written inline four
         // times: a margin that says `form === "fit" ? gap : 0` in three places
@@ -347,11 +350,19 @@ Variants {
             width: win.hiding ? win.width : left.width
             height: win.hiding ? win.height : left.height
 
+            // The topmost pixels over the centre pill are NOT the bar's. That
+            // is where caelestia's drawers notice a pointer and open the
+            // dashboard on hover -- and the bar is deliberately mapped above
+            // the drawers (see `mapped` below), so a centre pill touching the
+            // screen edge swallowed that pointer and the dashboard only opened
+            // on a click (reported 2026-10-09). Only while the bar is shown:
+            // a hidden bar needs the edge to come back.
             Region {
+                readonly property real pass: win.hiding || !win.atTop ? 0 : Math.max(0, win.dashboardPass - centre.y)
                 x: centre.x
-                y: centre.y
+                y: centre.y + pass
                 width: centre.width
-                height: centre.height
+                height: Math.max(0, centre.height - pass)
             }
             Region {
                 x: right.x

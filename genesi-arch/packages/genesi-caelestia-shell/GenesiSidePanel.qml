@@ -48,6 +48,10 @@ import qs.components.containers
 import qs.components.controls
 import qs.services
 import qs.modules.launcher
+// Qualified on purpose: Quickshell.Wayland (imported above) ALSO exports a
+// type named IdleInhibitor -- the raw Wayland object. Unqualified, the Keep
+// awake tile could resolve to it and flip a property on nothing at all.
+import qs.services as Shell
 
 Variants {
     model: Screens.screens
@@ -82,12 +86,20 @@ Variants {
             visible: scope.available && GlobalConfig.sidepanel.edgeHover
 
             WlrLayershell.exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.layer: WlrLayer.Top
+            // OVERLAY, not Top. Within a layer Hyprland stacks surfaces by map
+            // order, and caelestia's drawers window -- which takes input on
+            // the left border -- remaps itself during startup. Whichever came
+            // last won, so the strip opened the panel on some logins and not
+            // on others (reported 2026-10-09). Above every Top surface, four
+            // pixels wide and starting below the bar, it always gets the pointer.
+            WlrLayershell.layer: WlrLayer.Overlay
             color: "transparent"
 
             anchors.left: true
             anchors.top: true
             anchors.bottom: true
+            // Not over the bar: its leftmost pixels are the Genesi mark.
+            margins.top: GenesiEdges.top
             implicitWidth: 4
 
             // Stops short of the bottom-left corner, which is the Game
@@ -297,7 +309,7 @@ Variants {
                             {
                                 icon: "wallpaper",
                                 what: "wallpaper",
-                                tip: qsTr("Next wallpaper")
+                                tip: qsTr("Wallpapers")
                             },
                             {
                                 icon: "palette",
@@ -362,9 +374,18 @@ Variants {
                                     case "depth":
                                         GenesiSidePanelState.openPage("depth");
                                         return;
-                                    case "wallpaper":
-                                        win.run(["caelestia", "wallpaper", "-r"]);
+                                    case "wallpaper": {
+                                        // The launcher's wallpaper picker, on this
+                                        // screen -- not a random pick, which did
+                                        // nothing at all with an empty wallpaper
+                                        // folder (reported 2026-10-09).
+                                        GenesiPluginBus.launcherPrefill = GlobalConfig.launcher.actionPrefix + "wallpaper ";
+                                        const lv = Visibilities.getForActive();
+                                        if (lv)
+                                            lv.launcher = true;
+                                        GenesiSidePanelState.hide();
                                         return;
+                                    }
                                     case "schemes":
                                         GenesiSidePanelState.hide();
                                         GenesiSchemeState.show();
@@ -794,9 +815,9 @@ Variants {
                             Tile {
                                 icon: "coffee"
                                 label: qsTr("Keep awake")
-                                reading: IdleInhibitor.enabled ? qsTr("On") : qsTr("Off")
-                                on: IdleInhibitor.enabled
-                                onTriggered: IdleInhibitor.enabled = !IdleInhibitor.enabled
+                                reading: Shell.IdleInhibitor.enabled ? qsTr("On") : qsTr("Off")
+                                on: Shell.IdleInhibitor.enabled
+                                onTriggered: Shell.IdleInhibitor.enabled = !Shell.IdleInhibitor.enabled
                             }
 
                             Tile {

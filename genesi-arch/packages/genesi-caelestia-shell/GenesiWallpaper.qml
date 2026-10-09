@@ -25,6 +25,11 @@ Item {
     readonly property string path: root.own?.path ?? ""
     readonly property bool moving: root.kind === "video" || root.kind === "gif"
 
+    // The launcher previews a wallpaper while its list is browsed. On the
+    // screen it is open on; the others keep what they show.
+    readonly property bool previewHere: Wallpapers.showPreview
+        && (GenesiWallpaperState.previewScreen === "" || GenesiWallpaperState.previewScreen === root.screenName)
+
     readonly property var monitor: Hypr.monitorFor((QsWindow.window as QsWindow)?.screen)
     readonly property bool covered: root.monitor?.activeWorkspace?.toplevels.values.some(t => t.lastIpcObject.fullscreen > 1) ?? false
 
@@ -32,12 +37,14 @@ Item {
     // shows while the video loads, and if it never does.
     Wallpaper {
         anchors.fill: parent
-        source: root.kind === "image" && root.path !== "" ? root.path : Wallpapers.current
+        source: root.previewHere ? Wallpapers.previewPath
+            : root.kind === "image" && root.path !== "" ? root.path
+            : Wallpapers.actualCurrent
     }
 
     AnimatedImage {
         anchors.fill: parent
-        visible: root.kind === "gif" && status === Image.Ready
+        visible: root.kind === "gif" && status === Image.Ready && !root.previewHere
         source: root.kind === "gif" && root.path !== "" ? `file://${root.path}` : ""
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
@@ -52,6 +59,7 @@ Item {
 
         anchors.fill: parent
         active: root.kind === "video" && root.path !== ""
+        visible: !root.previewHere
         source: "GenesiWallpaperVideo.qml"
     }
 

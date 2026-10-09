@@ -9,6 +9,7 @@ video; a screen not in the map shows caelestia's as before.
     genesi-wallpaper status                       JSON: screens, map, Wallpaper Engine items
     genesi-wallpaper set FILE [--monitor NAME|all]
     genesi-wallpaper clear [--monitor NAME|all]
+    genesi-wallpaper pick FILE --monitor NAME     what the launcher's >wallpaper does
     genesi-wallpaper we list                      the Wallpaper Engine items Steam downloaded
     genesi-wallpaper we set ID [--monitor NAME|all]
 
@@ -172,6 +173,50 @@ def set_wallpaper(path, monitor="all"):
     return {"monitor": monitor, **entry}
 
 
+def base_wallpaper():
+    """caelestia's own picture: what every screen without an entry shows."""
+    try:
+        with open(os.path.join(state_dir(), "wallpaper", "path.txt"), encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def pick(path, monitor):
+    """The launcher's >wallpaper, on the screen the launcher is open on.
+
+    One screen: exactly caelestia's own behaviour, colours and all.
+    Several: only that screen changes. The colour scheme follows the FIRST
+    screen (caelestia's picture is that one's), so picking for it goes through
+    caelestia -- and before that, every other screen that was showing
+    caelestia's picture is pinned to it, so it does not change along."""
+    path = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isfile(path):
+        raise Fail("not-found", "no such file: %s" % path)
+    names = [m["name"] for m in monitors()]
+    if len(names) <= 1 or not monitor or monitor not in names:
+        return set_wallpaper(path, "all")
+    if monitor != names[0]:
+        return set_wallpaper(path, monitor)
+    screens = load_map()
+    base = base_wallpaper()
+    shared = screens.pop("*", None)
+    for name in names[1:]:
+        if name in screens:
+            continue
+        if shared:
+            screens[name] = shared
+        elif base and kind_of(base):
+            screens[name] = {"path": base, "kind": kind_of(base)}
+    screens.pop(names[0], None)
+    save_map(screens)
+    entry = set_wallpaper(path, names[0]) if kind_of(path) != "image" else None
+    if entry is None:
+        caelestia_set(path)
+        return {"monitor": names[0], "path": path, "kind": "image", "colours": True}
+    return entry
+
+
 def clear(monitor="all"):
     screens = load_map()
     if monitor == "all":
@@ -272,6 +317,9 @@ def main(argv=None):
     s = sub.add_parser("set")
     s.add_argument("file")
     s.add_argument("--monitor", default="all")
+    k = sub.add_parser("pick")
+    k.add_argument("file")
+    k.add_argument("--monitor", default="")
     c = sub.add_parser("clear")
     c.add_argument("--monitor", default="all")
     w = sub.add_parser("we")
@@ -286,6 +334,8 @@ def main(argv=None):
             out = set_wallpaper(a.file, a.monitor)
         elif a.cmd == "clear":
             out = clear(a.monitor)
+        elif a.cmd == "pick":
+            out = pick(a.file, a.monitor)
         elif a.action == "list":
             out = we_items()
         else:

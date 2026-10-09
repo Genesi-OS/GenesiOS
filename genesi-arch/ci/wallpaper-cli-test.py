@@ -131,6 +131,37 @@ gw.set_wallpaper(img, "HDMI-A-1")
 gw.clear("DP-1")
 check("clearing one screen keeps the other", list(shell_map()) == ["HDMI-A-1"], shell_map())
 
+# ── The launcher's >wallpaper, on the screen it is open on ──
+gw.clear("all")
+os.makedirs(os.path.join(gw.state_dir(), "wallpaper"), exist_ok=True)
+io.open(os.path.join(gw.state_dir(), "wallpaper", "path.txt"), "w").write(img)
+before = len(calls())
+gw.pick(img2, "HDMI-A-1")
+check("picking on the second screen changes only that screen",
+      shell_map() == {"HDMI-A-1": {"path": img2, "kind": "image"}} and len(calls()) == before, (shell_map(), calls()))
+gw.clear("all")
+before = len(calls())
+gw.pick(img2, "DP-1")
+check("picking on the first screen goes through caelestia (its colours)...",
+      calls()[before:] == [img2], calls()[before:])
+check("...after pinning the other screen to the picture it was showing, so it does not change",
+      shell_map() == {"HDMI-A-1": {"path": img, "kind": "image"}}, shell_map())
+gw.pick(vid, "HDMI-A-1")
+gw.pick(img, "DP-1")
+check("a screen with its own wallpaper keeps it when the first screen changes",
+      shell_map().get("HDMI-A-1", {}).get("kind") == "video" and "DP-1" not in shell_map(), shell_map())
+os.environ["GENESI_WALLPAPER_MONITORS"] = json.dumps([{"name": "DP-1", "width": 2560, "height": 1440, "focused": True}])
+gw.clear("all")
+before = len(calls())
+gw.pick(img2, "DP-1")
+check("with one screen it is exactly caelestia's own pick", calls()[before:] == [img2] and shell_map() == {})
+os.environ["GENESI_WALLPAPER_MONITORS"] = json.dumps([
+    {"name": "DP-1", "width": 2560, "height": 1440, "focused": True},
+    {"name": "HDMI-A-1", "width": 1920, "height": 1080, "focused": False}])
+before = len(calls())
+gw.pick(img, "")
+check("a launcher that cannot say its screen falls back to every screen", calls()[before:] == [img])
+
 # ── Wallpaper Engine ────────────────────────────────────────────────────────
 steam = os.path.join(tmp, "home", ".local", "share", "Steam")
 games = os.path.join(tmp, "GamesDisk", "SteamLibrary")

@@ -21,4 +21,9 @@ import Quickshell
 Singleton {
     // "week" or "month".
     signal wrappedRequested(span: string)
+
+    // What the launcher's search should say when it next opens -- how a
+    // button elsewhere opens it straight onto a mode (">wallpaper "). The
+    // launcher takes it and clears it, so it applies to one opening only.
+    property string launcherPrefill: ""
 }

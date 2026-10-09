@@ -3338,6 +3338,95 @@ def patch_scheme_screen(release):
     print("schemes: a full-screen picker, on its own layer")
 
 
+def patch_launcher_wallpaper_screen(release):
+    """
+    The launcher's >wallpaper changes the screen it is open on.
+
+    caelestia has one wallpaper, so picking one in the launcher changes every
+    screen. With a wallpaper per screen, the launcher opened on a screen
+    picks for THAT screen (GenesiWallpaperState.pick -> genesi-wallpaper
+    pick), and previews there only. The screen is the launcher window's own,
+    read at the moment of the pick: the launcher opens where the pointer is,
+    and moving the pointer elsewhere afterwards cannot redirect it.
+    """
+    launcher = os.path.join(release, "modules", "launcher")
+    item = os.path.join(launcher, "items", "WallpaperItem.qml")
+    content = os.path.join(launcher, "Content.qml")
+    wlist = os.path.join(launcher, "WallpaperList.qml")
+    screen = "(QsWindow.window as QsWindow)?.screen?.name ?? \"\""
+    edits = {
+        item: [("import qs.services\n", "import qs.services\nimport qs.modules.launcher\n"),
+               ("            Wallpapers.setWallpaper(root.modelData.path);\n",
+                "            GenesiWallpaperState.pick(root.modelData.path, %s);\n" % screen)],
+        content: [("import qs.services\n", "import Quickshell\nimport qs.services\nimport qs.modules.launcher\n"),
+                  ("                        Wallpapers.setWallpaper(currentItem.modelData.path);\n",
+                   "                        GenesiWallpaperState.pick(currentItem.modelData.path, %s);\n" % screen)],
+        wlist: [("import qs.services\n", "import qs.services\nimport qs.modules.launcher\n"),
+                ("    Component.onDestruction: Wallpapers.stopPreview()\n",
+                 "    Component.onDestruction: {\n"
+                 "        GenesiWallpaperState.previewScreen = \"\";\n"
+                 "        Wallpapers.stopPreview();\n"
+                 "    }\n"),
+                ("            Wallpapers.preview((currentItem as WallpaperItem).modelData.path);\n",
+                 "        {\n"
+                 "            GenesiWallpaperState.previewScreen = %s;\n"
+                 "            Wallpapers.preview((currentItem as WallpaperItem).modelData.path);\n"
+                 "        }\n" % screen)],
+    }
+    for path, pairs in edits.items():
+        if not os.path.exists(path):
+            fail(f"{path} is gone -- the launcher's wallpaper list moved.")
+        s = io.open(path, encoding="utf-8").read()
+        for old, new in pairs:
+            if s.count(old) != 1:
+                fail(f"{os.path.basename(path)} does not contain what the "
+                     f"per-screen launcher patch expects: {old.strip()[:70]}")
+            s = s.replace(old, new, 1)
+        io.open(path, "w", encoding="utf-8", newline="\n").write(s)
+    print("launcher: >wallpaper changes the screen it is open on")
+
+
+def patch_idle_inhibitor(release):
+    """
+    Keep awake keeps the machine awake.
+
+    caelestia's IdleInhibitor hangs the Wayland inhibitor on a PanelWindow
+    that is 0 by 0 and anchored to nothing. Hyprland honours an inhibitor
+    only while its surface is mapped and visible, and a zero-sized, unanchored
+    layer surface is not something it shows -- so the switch said "on" and
+    the screen still locked and blanked (reported 2026-10-09). One pixel in a
+    corner, on the overlay layer, transparent and taking no input, is a
+    surface Hyprland maps and nobody can see or hit.
+    """
+    path = os.path.join(release, "services", "IdleInhibitor.qml")
+    if not os.path.exists(path):
+        fail(f"{path} is gone -- caelestia's idle inhibitor moved.")
+    s = io.open(path, encoding="utf-8").read()
+    old = ("        window: PanelWindow {\n"
+           "            implicitWidth: 0\n"
+           "            implicitHeight: 0\n"
+           "            color: \"transparent\"\n"
+           "            mask: Region {}\n"
+           "        }\n")
+    if old not in s:
+        fail("IdleInhibitor.qml's window is not the 0x0 PanelWindow this patch "
+             "replaces -- upstream changed it. Check whether it maps now.")
+    new = ("        // Genesi: a surface Hyprland actually maps. See patch_idle_inhibitor.\n"
+           "        window: PanelWindow {\n"
+           "            implicitWidth: 1\n"
+           "            implicitHeight: 1\n"
+           "            anchors.left: true\n"
+           "            anchors.top: true\n"
+           "            WlrLayershell.layer: WlrLayer.Overlay\n"
+           "            WlrLayershell.exclusionMode: ExclusionMode.Ignore\n"
+           "            WlrLayershell.namespace: \"genesi-keep-awake\"\n"
+           "            color: \"transparent\"\n"
+           "            mask: Region {}\n"
+           "        }\n")
+    io.open(path, "w", encoding="utf-8", newline="\n").write(s.replace(old, new, 1))
+    print("idle inhibitor: on a surface Hyprland maps")
+
+
 def patch_per_screen_wallpaper(release):
     """
     Each screen's background builds GenesiWallpaper instead of caelestia's
@@ -3482,6 +3571,8 @@ def main():
     patch_applist_live_model(launcher)
     patch_wallpaper_transition(release)
     patch_per_screen_wallpaper(release)
+    patch_idle_inhibitor(release)
+    patch_launcher_wallpaper_screen(release)
     patch_bar_proportions(release)
     patch_frame_opacity(release)
     patch_launcher_position(release)
