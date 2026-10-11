@@ -445,9 +445,13 @@ Item {
         anchors.leftMargin: 14
         anchors.right: parent.right
         anchors.rightMargin: 18
-        anchors.top: card.view === "ask" || card.view === "menu" || card.view === "answer" ? parent.top : undefined
-        anchors.topMargin: 14
-        anchors.verticalCenter: card.view === "ask" || card.view === "menu" || card.view === "answer" ? undefined : parent.verticalCenter
+        // Placed by y, not by anchors. Switching anchors.top and
+        // anchors.verticalCenter with bindings left the old position behind:
+        // after asking ON the island (top-aligned) the next card -- an
+        // approval -- came out ~50 px low, its buttons below the island
+        // (reported 2026-10-11). A computed y has no state to leave behind.
+        readonly property bool topAligned: card.view === "ask" || card.view === "menu" || card.view === "answer"
+        y: body.topAligned ? 14 : Math.round((card.height - body.implicitHeight) / 2)
         spacing: 7
         opacity: card.expanded ? 1 : 0
         visible: opacity > 0

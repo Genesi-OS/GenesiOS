@@ -814,7 +814,12 @@ pkgver=2.0.3
 # pkgrel 62: the island's "thinking" line stays inside the island -- the
 # agent's activity can be a whole sentence, and it ran out past the edge
 # (two lines at most now, then an ellipsis).
-pkgrel=62
+# pkgrel 63: the island's buttons stay inside the island. After asking ON
+# the island, the next card (an approval) came out ~50 px low with Deny/Allow
+# hanging below it: the card's content switched anchors with bindings, which
+# leaves the old position behind. Placed by a computed y now; plugins-test
+# fails on a toggled anchor in the card.
+pkgrel=63
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

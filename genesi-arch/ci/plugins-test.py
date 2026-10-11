@@ -109,6 +109,15 @@ for name in ("GenesiVinylDeck.qml",):
     imports = re.findall(r"^\s*import\s+(\S+)", body, re.M)
     check(f"{name} imports only QtQuick and its Effects",
           imports == ["QtQuick", "QtQuick.Effects"], imports)
+# The island's card is re-laid-out between very different views. An anchor
+# switched on and off by a binding (`anchors.top: cond ? parent.top :
+# undefined`) leaves its old position behind: after asking on the island the
+# approval card came out 50 px low, buttons under the island (2026-10-11).
+# Positions there are computed (y: ...), never toggled anchors.
+_card = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, "GenesiAiIslandCard.qml"),
+                                         encoding="utf-8").read())
+_toggled = re.findall(r"anchors\.\w+\s*:[^\n]*\?[^\n]*:\s*undefined", _card)
+check("the island card toggles no anchor with a binding", not _toggled, _toggled)
 for name in DRAWN:
     body = re.sub(r"//[^\n]*", "", io.open(os.path.join(SHELL, name),
                                            encoding="utf-8").read())
