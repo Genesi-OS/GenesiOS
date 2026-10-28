@@ -168,6 +168,41 @@ def download_cases():
         check(stage.sha256_of(dest) == __import__("hashlib").sha256(data).hexdigest(), "sha256_of")
 
 
+def network_cases():
+    print("network")
+    # The AppImage's manylinux Python looks for CA certificates where its own
+    # build put them: CERTIFICATE_VERIFY_FAILED on Mint. The distro's bundle
+    # must be found instead.
+    picked = []
+
+    def exists(path):
+        picked.append(path)
+        return path == "/etc/pki/tls/certs/ca-bundle.crt"
+    try:
+        stage.ssl_context(exists)
+    except (OSError, Exception):
+        pass   # the file isn't really there on the runner; which one was tried is the point
+    check(picked[:2] == ["/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt"],
+          "Debian/Ubuntu/Mint's bundle first, then Fedora's (got %r)" % picked[:2])
+    # Cloudflare (R2) answers Python's default user agent with 403.
+    sent = {}
+
+    class Fake:
+        @staticmethod
+        def urlopen(req, timeout=0, context=None):
+            sent["ua"] = req.get_header("User-agent")
+            sent["ctx"] = context
+            return None
+    real = stage.urllib.request.urlopen
+    stage.urllib.request.urlopen = Fake.urlopen
+    try:
+        stage.urlopen(stage.SHA_URL)
+    finally:
+        stage.urllib.request.urlopen = real
+    check((sent.get("ua") or "").startswith("GenesiMigrate/"), "requests carry our user agent, not Python-urllib")
+    check(sent.get("ctx") is not None, "requests use the distro-aware SSL context")
+
+
 def copy_cases():
     print("copy")
     with tempfile.TemporaryDirectory() as tmp:
@@ -374,6 +409,7 @@ def restore_cases():
 if __name__ == "__main__":
     stage_cases()
     download_cases()
+    network_cases()
     copy_cases()
     calamares_cases()
     disk_cases()

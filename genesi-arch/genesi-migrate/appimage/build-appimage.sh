@@ -38,7 +38,9 @@ mv squashfs-root AppDir
 PY="$(ls AppDir/opt/python$PYVER/bin/python$PYVER)"
 
 echo "==> installing $PYSIDE"
-"$PY" -m pip install --quiet --no-warn-script-location --no-cache-dir "$PYSIDE"
+# certifi: the CA bundle of last resort when the distro keeps its own
+# somewhere stage.CA_BUNDLES does not know.
+"$PY" -m pip install --quiet --no-warn-script-location --no-cache-dir "$PYSIDE" certifi
 
 # Only Fusion is used; the other Quick Controls styles are dead weight.
 SITE="$("$PY" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"

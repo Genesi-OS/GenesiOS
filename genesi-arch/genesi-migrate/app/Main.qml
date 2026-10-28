@@ -19,10 +19,18 @@ import "icons.js" as Icons
 
 ApplicationWindow {
     id: win
-    width: 1100
-    height: 740
-    minimumWidth: 920
-    minimumHeight: 640
+    // Sized to the screen, never past it. A fixed 1100x740 with a 920x640
+    // minimum was cut off on an 800x600 VirtualBox guest (no Guest
+    // Additions), and on small laptops: the third card and the right edge of
+    // every page were off-screen, with no way to reach them.
+    width: Math.min(1100, Screen.desktopAvailableWidth - 32)
+    height: Math.min(740, Screen.desktopAvailableHeight - 32)
+    minimumWidth: Math.min(640, Screen.desktopAvailableWidth)
+    minimumHeight: Math.min(480, Screen.desktopAvailableHeight)
+    // Below this the rail shrinks to its numbered dots and the pages use
+    // smaller margins and type.
+    readonly property bool compact: width < 960
+    readonly property int pad: compact ? 20 : 40
     visible: true
     title: "Genesi Migrate"
     color: c.bg0
@@ -160,7 +168,9 @@ ApplicationWindow {
         "f.external.unmounted": "Open the drive in your file manager so we can measure it",
         "f.none": "Don't keep files",
         "f.none.d": "Only apps and settings come along. Your files will be erased.",
-        "f.noExternal": "Plug in an external drive or USB stick with %1 free.",
+        "f.noExternal": "To keep your files, plug in an external drive or USB stick with %1 free.",
+        "f.orAlongside": "Or go back to Disk and pick \"Install next to\": your current system stays, and so do your files.",
+        "f.orOtherDisk": "Or go back to Disk and install Genesi on your other disk: your files stay where they are.",
         "f.rescan": "Look again",
         "e.title": "Your setup",
         "e.sub": "Genesi will start with these, so the installer doesn't ask again.",
@@ -289,7 +299,9 @@ ApplicationWindow {
         "f.external.unmounted": "Abra o disco no gerenciador de arquivos para medirmos o espaço",
         "f.none": "Não manter arquivos",
         "f.none.d": "Só apps e configurações vêm junto. Seus arquivos serão apagados.",
-        "f.noExternal": "Conecte um HD externo ou pendrive com %1 livres.",
+        "f.noExternal": "Para manter seus arquivos, conecte um HD externo ou pendrive com %1 livres.",
+        "f.orAlongside": "Ou volte para Disco e escolha \"Instalar ao lado\": seu sistema atual continua, e seus arquivos também.",
+        "f.orOtherDisk": "Ou volte para Disco e instale o Genesi no seu outro disco: seus arquivos ficam onde estão.",
         "f.rescan": "Procurar de novo",
         "e.title": "Suas configurações",
         "e.sub": "O Genesi já começa assim, e o instalador não pergunta de novo.",
@@ -451,6 +463,11 @@ ApplicationWindow {
             if (strategy === "keep-home" && ss[i].id === "keep-home") return true
             if (ss[i].id === "external" && "external:" + ss[i].device === strategy) return externalOk(ss[i])
         }
+        return false
+    }
+    function otherDiskAvailable() {
+        var d = disks()
+        for (var i = 0; i < d.length; i++) if (!d[i].system && !d[i].home && !d[i].removable) return true
         return false
     }
     function chooseTarget(t) {
@@ -733,7 +750,7 @@ ApplicationWindow {
         property string sub: ""
         spacing: 6
         Layout.fillWidth: true
-        Text { text: parent.title; color: c.textHi; font.pixelSize: 28; font.weight: Font.Bold }
+        Text { text: parent.title; color: c.textHi; font.pixelSize: win.compact ? 22 : 28; font.weight: Font.Bold; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         Text { text: parent.sub; color: c.textMid; font.pixelSize: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
     }
 
@@ -753,17 +770,18 @@ ApplicationWindow {
         // the rail
         Rectangle {
             Layout.fillHeight: true
-            Layout.preferredWidth: 250
+            Layout.preferredWidth: win.compact ? 72 : 250
             color: c.rail
             Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: c.line }
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 24
+                anchors.margins: win.compact ? 14 : 24
                 spacing: 0
 
                 RowLayout {
                     spacing: 12
+                    Layout.alignment: win.compact ? Qt.AlignHCenter : Qt.AlignLeft
                     Rectangle {
                         width: 40; height: 40; radius: 12
                         gradient: Gradient {
@@ -774,6 +792,7 @@ ApplicationWindow {
                         Image { anchors.centerIn: parent; width: 26; height: 26; sourceSize: Qt.size(64, 64); source: Icons.leaf(c.mint.toString()) }
                     }
                     ColumnLayout {
+                        visible: !win.compact
                         spacing: 0
                         Text { text: "Genesi"; color: c.textHi; font.pixelSize: 17; font.weight: Font.Bold }
                         Text { text: "Migrate"; color: c.mint; font.pixelSize: 13; font.weight: Font.DemiBold }
@@ -796,7 +815,7 @@ ApplicationWindow {
                         color: current ? c.cardHi : railMa.containsMouse && clickable ? Qt.rgba(1, 1, 1, 0.03) : "transparent"
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12
+                            anchors.leftMargin: win.compact ? 9 : 12
                             spacing: 12
                             Rectangle {
                                 width: 26; height: 26; radius: 13
@@ -811,6 +830,7 @@ ApplicationWindow {
                                 }
                             }
                             Text {
+                                visible: !win.compact
                                 text: win.tr("step." + modelData)
                                 color: current ? c.textHi : done ? c.textMid : c.textLo
                                 font.pixelSize: 14; font.weight: current ? Font.DemiBold : Font.Normal
@@ -830,7 +850,7 @@ ApplicationWindow {
                 Item { Layout.fillHeight: true }
 
                 Rectangle {
-                    visible: backend.demo
+                    visible: backend.demo && !win.compact
                     Layout.fillWidth: true
                     Layout.preferredHeight: 26
                     Layout.bottomMargin: 12
@@ -842,16 +862,20 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 10
-                    Icon { name: "shield"; tint: c.mint; size: 16; Layout.alignment: Qt.AlignTop }
+                    Icon { name: "shield"; tint: c.mint; size: 16; Layout.alignment: win.compact ? Qt.AlignHCenter : Qt.AlignTop }
                     Text {
+                        visible: !win.compact
                         text: win.tr("rail.safe"); color: c.textLo; font.pixelSize: 12
                         wrapMode: Text.WordWrap; Layout.fillWidth: true; lineHeight: 1.2
                     }
                 }
 
-                RowLayout {
+                GridLayout {
                     Layout.topMargin: 16
-                    spacing: 4
+                    Layout.alignment: win.compact ? Qt.AlignHCenter : Qt.AlignLeft
+                    columns: win.compact ? 1 : 2
+                    rowSpacing: 4
+                    columnSpacing: 4
                     Repeater {
                         model: ["pt", "en"]
                         delegate: Rectangle {
@@ -881,17 +905,26 @@ ApplicationWindow {
 
                 // ── 0 welcome ──────────────────────────────────────────
                 Item {
-                    ColumnLayout {
+                    Flickable {
+                        id: welcomeFlick
                         anchors.fill: parent
-                        anchors.margins: 48
-                        anchors.topMargin: 56
+                        contentHeight: Math.max(height, welcomeCol.implicitHeight + 2 * win.pad)
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    ColumnLayout {
+                        id: welcomeCol
+                        x: win.pad + 8; y: win.pad + 8
+                        width: welcomeFlick.width - 2 * (win.pad + 8)
+                        height: welcomeFlick.contentHeight - 2 * (win.pad + 8)
                         spacing: 0
 
                         Text { text: win.tr("w.eyebrow"); color: c.mint; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 2.2 }
                         Text {
                             Layout.topMargin: 14
                             text: win.tr("w.title"); color: c.textHi
-                            font.pixelSize: 42; font.weight: Font.Bold; lineHeight: 1.05
+                            font.pixelSize: win.compact ? 30 : 42; font.weight: Font.Bold; lineHeight: 1.05
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
                         }
                         Text {
                             Layout.topMargin: 16
@@ -901,16 +934,18 @@ ApplicationWindow {
                             font.pixelSize: 16; wrapMode: Text.WordWrap; lineHeight: 1.25
                         }
 
-                        RowLayout {
-                            Layout.topMargin: 36
+                        GridLayout {
+                            Layout.topMargin: win.compact ? 24 : 36
                             Layout.fillWidth: true
-                            spacing: 16
+                            columns: width >= 640 ? 3 : 1
+                            columnSpacing: 16
+                            rowSpacing: 12
                             Repeater {
                                 model: [["grid", "w.f1", c.accentHi], ["folder", "w.f2", c.blue], ["sliders", "w.f3", c.purple]]
                                 delegate: Card {
                                     required property var modelData
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 170
+                                    Layout.preferredHeight: parent.columns === 1 ? 118 : 170
                                     ColumnLayout {
                                         anchors.fill: parent
                                         anchors.margins: 20
@@ -931,19 +966,26 @@ ApplicationWindow {
                             }
                         }
 
-                        Item { Layout.fillHeight: true }
+                        Item { Layout.fillHeight: true; Layout.minimumHeight: 24 }
 
-                        RowLayout {
+                        GridLayout {
                             Layout.fillWidth: true
-                            spacing: 16
+                            columns: win.compact ? 1 : 2
+                            columnSpacing: 16
+                            rowSpacing: 14
                             RowLayout {
                                 spacing: 10
                                 Layout.fillWidth: true
                                 Icon { name: "lock"; tint: c.textLo; size: 16 }
                                 Text { text: win.tr("w.note"); color: c.textLo; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             }
-                            Btn { primary: true; text: win.tr("w.start"); iconRight: "arrow-right"; implicitHeight: 50; onClicked: win.startScan() }
+                            Btn {
+                                primary: true; text: win.tr("w.start"); iconRight: "arrow-right"; implicitHeight: 50
+                                Layout.alignment: win.compact ? Qt.AlignLeft : Qt.AlignRight
+                                onClicked: win.startScan()
+                            }
                         }
+                    }
                     }
                 }
 
@@ -1042,7 +1084,7 @@ ApplicationWindow {
                 Item {
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 40
+                        anchors.margins: win.pad
                         anchors.bottomMargin: 8
                         spacing: 18
 
@@ -1164,8 +1206,8 @@ ApplicationWindow {
                                             // Fixed, so the arrows line up. A child with fillWidth makes a
                                             // layout fill too, which split the row by text length.
                                             Layout.fillWidth: false
-                                            Layout.minimumWidth: 210
-                                            Layout.maximumWidth: 210
+                                            Layout.minimumWidth: win.compact ? 140 : 210
+                                            Layout.maximumWidth: win.compact ? 140 : 210
                                             Pill { text: row.targetLabel; tone: row.tone; Layout.alignment: Qt.AlignLeft }
                                             Text {
                                                 text: row.target; color: c.textLo; font.pixelSize: 11; font.family: "monospace"
@@ -1205,8 +1247,8 @@ ApplicationWindow {
 
                         ColumnLayout {
                             id: diskCol
-                            x: 40; y: 40
-                            width: diskFlick.width - 80
+                            x: win.pad; y: win.pad
+                            width: diskFlick.width - 2 * win.pad
                             spacing: 14
 
                             PageHeader { title: win.tr("d.title"); sub: win.tr("d.sub") }
@@ -1478,8 +1520,8 @@ ApplicationWindow {
 
                         ColumnLayout {
                             id: filesCol
-                            x: 40; y: 40
-                            width: filesFlick.width - 80
+                            x: win.pad; y: win.pad
+                            width: filesFlick.width - 2 * win.pad
                             spacing: 18
 
                             RowLayout {
@@ -1680,7 +1722,14 @@ ApplicationWindow {
                                     anchors.margins: 16
                                     spacing: 14
                                     Icon { name: "hard-drive"; tint: c.textLo; size: 20 }
-                                    Text { text: win.trf("f.noExternal", win.fmt(win.selectedBytes() * 1.05)); color: c.textMid; font.pixelSize: 13; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                    Text {
+                                        // One disk, one partition, replacing it: the files have
+                                        // nowhere to wait. Say which ways out this machine has.
+                                        text: win.trf("f.noExternal", win.fmt(win.selectedBytes() * 1.05))
+                                              + (win.installTarget === "replace" && win.alongsideInfo().ok ? " " + win.tr("f.orAlongside") : "")
+                                              + (win.otherDiskAvailable() ? " " + win.tr("f.orOtherDisk") : "")
+                                        color: c.textMid; font.pixelSize: 13; Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                    }
                                     Btn { text: win.tr("f.rescan"); icon: "refresh-cw"; implicitHeight: 36; onClicked: win.rescan() }
                                 }
                             }
@@ -1722,8 +1771,8 @@ ApplicationWindow {
 
                         ColumnLayout {
                             id: setCol
-                            x: 40; y: 40
-                            width: setFlick.width - 80
+                            x: win.pad; y: win.pad
+                            width: setFlick.width - 2 * win.pad
                             spacing: 18
 
                             PageHeader { title: win.tr("e.title"); sub: win.tr("e.sub") }
@@ -1872,8 +1921,8 @@ ApplicationWindow {
 
                         ColumnLayout {
                             id: readyCol
-                            x: 40; y: 40
-                            width: readyFlick.width - 80
+                            x: win.pad; y: win.pad
+                            width: readyFlick.width - 2 * win.pad
                             spacing: 18
 
                             PageHeader { title: win.tr("r.title"); sub: win.tr("r.sub") }
@@ -2035,8 +2084,8 @@ ApplicationWindow {
                 Rectangle { width: parent.width; height: 1; color: c.line }
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 40
-                    anchors.rightMargin: 40
+                    anchors.leftMargin: win.pad
+                    anchors.rightMargin: win.pad
                     spacing: 12
                     Btn {
                         text: win.tr("back"); icon: "arrow-left"

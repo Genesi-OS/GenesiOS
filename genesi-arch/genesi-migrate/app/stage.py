@@ -27,6 +27,7 @@ import hashlib
 import json
 import os
 import shutil
+import ssl
 import time
 import urllib.request
 
@@ -178,18 +179,57 @@ def grub_entry(p):
 
 
 # ── the download ────────────────────────────────────────────────────────
-def expected_sha(opener=urllib.request.urlopen):
+# Where each distro keeps its CA bundle. The AppImage's Python was built on
+# manylinux, and its OpenSSL looks for certificates where THAT build put them
+# -- a path that exists on no user's machine -- so every HTTPS request failed
+# with CERTIFICATE_VERIFY_FAILED (first seen on Linux Mint 22.3). The system's
+# own bundle is used instead; certifi, bundled in the AppImage, is the last resort.
+CA_BUNDLES = (
+    "/etc/ssl/certs/ca-certificates.crt",                 # Debian, Ubuntu, Mint, Arch, Gentoo
+    "/etc/pki/tls/certs/ca-bundle.crt",                   # Fedora, RHEL
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  # Fedora, RHEL (newer)
+    "/etc/ssl/ca-bundle.pem",                             # openSUSE
+    "/var/lib/ca-certificates/ca-bundle.pem",             # openSUSE
+    "/etc/ssl/cert.pem",                                  # Alpine, Void, macOS-likes
+)
+
+
+def ssl_context(exists=os.path.isfile):
+    for path in CA_BUNDLES:
+        if exists(path):
+            return ssl.create_default_context(cafile=path)
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+# Cloudflare (R2's public endpoint) answers Python's default
+# "Python-urllib/3.x" user agent with 403 Forbidden, while curl and browsers
+# get the file. Say who we are.
+USER_AGENT = "GenesiMigrate/2 (+https://genesios.org/migrate)"
+
+
+def urlopen(req, timeout=60):
+    if isinstance(req, str):
+        req = urllib.request.Request(req)
+    req.add_header("User-Agent", USER_AGENT)
+    return urllib.request.urlopen(req, timeout=timeout, context=ssl_context())
+
+
+def expected_sha(opener=urlopen):
     with opener(SHA_URL, timeout=30) as r:
         return r.read().decode("ascii", "replace").split()[0].strip().lower()
 
 
-def remote_size(opener=urllib.request.urlopen):
+def remote_size(opener=urlopen):
     req = urllib.request.Request(ISO_URL, method="HEAD")
     with opener(req, timeout=30) as r:
         return int(r.headers.get("Content-Length") or 0)
 
 
-def download(dest, progress, cancelled, opener=urllib.request.urlopen):
+def download(dest, progress, cancelled, opener=urlopen):
     """Download to dest (resuming a .part). progress(done, total, bytes_per_s)."""
     part = dest + ".part"
     done = os.path.getsize(part) if os.path.exists(part) else 0
