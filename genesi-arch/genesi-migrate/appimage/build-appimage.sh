@@ -49,7 +49,7 @@ rm -rf "$SITE/PySide6/Qt/translations" "$SITE"/PySide6/*designer* "$SITE"/PySide
 
 echo "==> adding the app"
 mkdir -p AppDir/usr/share/genesi-migrate AppDir/usr/lib
-cp "$APP"/*.py "$APP"/*.qml "$APP"/*.js AppDir/usr/share/genesi-migrate/
+cp "$APP"/*.py "$APP"/*.qml "$APP"/*.js "$APP"/*.sh "$APP"/*.json AppDir/usr/share/genesi-migrate/
 cp -r "$APP/icons" AppDir/usr/share/genesi-migrate/
 for lib in libxcb-cursor.so.0 libxcb-util.so.1; do
     src="$(ldconfig -p | awk -v l="$lib" '$1 == l { print $NF; exit }')"

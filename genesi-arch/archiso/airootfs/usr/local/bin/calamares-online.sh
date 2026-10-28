@@ -191,6 +191,18 @@ EOF
     # Genesi: neutralize shellprocess@btrfs_snapshot before Calamares starts.
     # See /usr/local/bin/genesi-btrfs-cleanup.sh for rationale.
     sudo /usr/local/bin/genesi-btrfs-cleanup.sh
+    # Genesi Migrate: booted from the old system's one-time GRUB entry, the
+    # installer runs the migration setup (no partitioning page; the plan made
+    # on the old system partitions, then restores). A normal boot has no
+    # genesi.migrate= on the command line and skips this.
+    if grep -q 'genesi\.migrate=' /proc/cmdline && [ -x /usr/local/bin/genesi-migrate-live ]; then
+        # The login autostart normally staged already; clicking the installer
+        # icon first (or a desktop without XDG autostart) must work too.
+        [ -f /run/genesi-migrate/stage/manifest.json ]             || sudo /usr/local/bin/genesi-migrate-live stage >> "$log" 2>&1
+        if ! sudo /usr/local/bin/genesi-migrate-live calamares-config >> "$log" 2>&1; then
+            echo ">>> WARNING: Genesi Migrate setup failed, normal installer instead" >> "$log"
+        fi
+    fi
     exec pkexec-wrapper calamares -D6 >> $log
 }
 

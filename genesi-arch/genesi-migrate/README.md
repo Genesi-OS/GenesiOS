@@ -1,81 +1,100 @@
 # Genesi Migrate
 
-Move from any Linux to Genesi: apps, files and settings. This is the window
-someone opens **on the distro they are leaving** (Ubuntu, Fedora, Mint,
-openSUSE, Arch...). It ships as a single AppImage, so it needs nothing
-installed.
+Move from any Linux to Genesi: apps, files and settings, one restart, no USB
+stick. The app runs **on the distro being left** (Ubuntu, Fedora, Mint,
+openSUSE, Arch...) as a single AppImage.
+
+Download: <https://genesios.org/migrate>, built by
+`.github/workflows/publish-migrate.yml` into the rolling `migrate-latest` release.
+
+## The whole flow
 
 ```
-app/
-  scanner.py        reads the old system (stdlib only, read-only, no root)
-  appmap.py         distro package / snap  ->  pacman / AUR / Flathub
-  genesi_migrate.py PySide6 backend + entry point
-  Main.qml          the screen (self-contained: no Kirigami, no shared kit)
-  icons.js          inline feather icons, coloured without shaders
-  demo-manifest.json synthetic scan for --demo
-appimage/
-  build-appimage.sh builds Genesi-Migrate-x86_64.AppImage
-  AppRun            AppImage entry point
+OLD SYSTEM (the AppImage)                 LIVE ISO                         INSTALLED GENESI
+scan -> choose -> Prepare:                boot from the one-time entry     first boot:
+  where the ISO can wait (stage.py)        genesi-migrate-live stage:        genesi-migrate-restore.service
+  download + SHA-256 (resumable)             stage -> RAM, Wi-Fi up            copy the files back
+  copy files to the external drive         calamares-online.sh:              Flatpaks
+  pkexec helper.sh arm:                      calamares_config.py rewrites   first login:
+    Wi-Fi -> stage                           the setup (no partition page,     AUR apps (paru, in a terminal)
+    /etc/grub.d/42_genesi_migrate            one desktop, name pre-filled)     "what came over" notification
+    grub-reboot genesi-migrate             exec: genesimigratedisk
+-> Restart and migrate                             (partitions from the plan)
+                                                 ... normal Genesi install ...
+                                                 genesimigraterestore
+                                                   (Wi-Fi, repo apps, os-prober)
 ```
 
-## Status: v1, the screen
-
-| Step | Status |
+| Piece | Where |
 |---|---|
-| Scan apps (dpkg/rpm/pacman/xbps + flatpak + snap + CLI tools), files, disks, settings | done |
-| Choose apps, files, **install disk**, where files wait, desktop, Wi-Fi | done |
-| Save the migration plan (`~/.local/share/genesi-migrate/manifest.json`, mode 600) | done |
-| Download the ISO, check its signature, boot it from GRUB (archiso `img_dev`/`img_loop`) | next |
-| Calamares "migration mode": read the plan, pre-fill everything | next |
-| Post-install: reinstall the apps, copy files back | next |
+| Scanner, screen, prepare | `app/` (`scanner.py`, `Main.qml`, `genesi_migrate.py`, `stage.py`, `helper.sh`) |
+| Live launcher | `genesi-arch/archiso/airootfs/usr/local/bin/genesi-migrate-live` (+ autostart, + hook in `calamares-online.sh`) |
+| Calamares setup | `.../usr/lib/genesi-migrate/calamares_config.py` |
+| Calamares jobs | `.../usr/lib/genesi-migrate/calamares/genesimigratedisk`, `genesimigraterestore` |
+| First boot | `.../usr/lib/genesi-migrate/restore.py` |
 
-The screen says the last three are coming, rather than pretending they work.
+The live-side pieces ship in the ISO, so they reach users with the **next ISO
+build**. The ISO boots from a file on disk through archiso's own
+`archiso_loop_mnt` (`img_dev=UUID=... img_loop=...`, the same mechanism as its
+`loopback.cfg`); when that file sits on a partition the install formats or
+shrinks, `copytoram=y` loads it into RAM first (7 GB of RAM required, checked
+before anything is downloaded).
 
-### The install disk
+## Where Genesi goes
 
-* **The system disk** = *replace*: only the partition holding `/` is
-  formatted. Windows, `/home` on its own partition and anything else on that
-  disk stay as they are.
-* **Any other disk** (internal or external) = used **whole**, erased. The
-  screen draws what is on it today and demands an explicit "I understand"
-  before it continues.
-* When Genesi goes to another disk and `/home` is not on that disk, the files
-  simply **stay where they are** and are copied over after the install. No
-  backup drive needed.
-* An encrypted (LUKS) root blocks only *replace*; installing to another disk
-  is fine.
+* **Replace**: only the old system partition is formatted. The EFI partition
+  (Windows' boot manager included) and a separate `/home` are kept.
+* **Alongside (dual boot, v2)**: the old ext4/btrfs system partition is
+  shrunk (`e2fsck` + `resize2fs` / `btrfs filesystem resize`, filesystem cut
+  *below* the new partition size first), Genesi goes in the freed space,
+  os-prober puts the old system in Genesi's GRUB.
+* **Another disk**: used whole, behind an explicit "I understand". Files stay
+  where they are and are copied after the install.
+
+Disks are found again in the live system by WWN/serial + size, partitions by
+filesystem UUID: device names can change order between the two systems.
+
+## What stops it (before anything is changed)
+
+Secure Boot on (the old GRUB won't load Genesi's unsigned kernel), an
+encrypted or LVM system partition for replace/alongside, BIOS + GPT without a
+BIOS boot partition, not enough RAM for `copytoram`, no GRUB on the old
+system, a disk in use.
 
 ## Try it
 
-On any machine with PySide6 (even Windows, for UI work):
-
 ```bash
-python app/genesi_migrate.py --demo          # synthetic data, nothing scanned
-python app/genesi_migrate.py                 # scan this machine (Linux)
-python app/scanner.py > scan.json            # the raw scan, no window
+python app/genesi_migrate.py --demo                 # synthetic data; Prepare is simulated
+python app/genesi_migrate.py                        # scan this machine (Linux)
+python app/scanner.py > scan.json                   # the raw scan
 python app/genesi_migrate.py --manifest scan.json   # replay someone's scan
 ```
 
-## Testing in a VM (before the external SSD)
+## Testing in a VM
 
-1. Build the AppImage on any Linux with network: `appimage/build-appimage.sh`
-   (output in `appimage/out/`). It downloads a manylinux Python and the
-   PySide6-Essentials wheel.
-2. In VMs of **Ubuntu 24.04**, **Fedora 41** and **Linux Mint 22**: copy the
-   AppImage in, `chmod +x`, run it. Try both a Wayland and an X11 session.
-3. Give one VM a **second virtual disk** and attach a **virtual USB disk**,
-   so the Disk step has something to choose between.
-4. Check per VM: the apps you installed are listed with the right Genesi
-   target; folder sizes look right; the disk list matches `lsblk`; the plan
-   saves. Attach `~/.local/share/genesi-migrate/manifest.json` to any report:
-   `--manifest` replays it exactly.
+**The ISO in the VM must be built after these changes**: the live-side pieces
+are part of the ISO.
 
-Nothing in v1 writes outside `~/.local/share/genesi-migrate/`, so the VMs are
-for confidence, not for safety.
+1. VMs of Ubuntu 24.04, Fedora 41, Mint 22, **UEFI with Secure Boot off**,
+   GRUB as bootloader (the default on all three).
+2. Run the AppImage (from the `migrate-latest` release, or build it with
+   `appimage/build-appimage.sh`).
+3. Cover each mode: replace + external USB disk; replace + keep-home (a VM
+   installed with a separate `/home`); alongside; a second virtual disk.
+4. Things to look at: `~/genesi-migrate.log` in the live session,
+   `/var/log/installer` / Calamares' log, `/var/lib/genesi-migrate/` and
+   `journalctl -u genesi-migrate-restore` on the installed system. The
+   manifest replays exactly with `--manifest`.
 
 ## Tests
 
-`ci/migrate-test.py` plays the scanner against fake Ubuntu/Fedora/Arch roots
-(answering like dpkg, rpm, pacman, snap, lsblk and nmcli really do), then
-loads `Main.qml` offscreen and checks the plan it saves, including the
-whole-disk confirmation. Run it with `python genesi-arch/ci/migrate-test.py`.
+* `ci/migrate-test.py`: the scanner against fake Ubuntu/Fedora/Arch roots,
+  and the screen offscreen (disk step, the plan it builds).
+* `ci/migrate-flow-test.py`: everything that formats, shrinks or reboots,
+  as pure plans: where the ISO waits and when it needs RAM, the GRUB entry,
+  resumable download, the file copy, the Calamares setup generated from the
+  real config, every partitioning mode (renamed disks, busy disks, BIOS+GPT,
+  the shrink math), the restore.
+
+Both run in `hygiene-check.yml`; `publish-migrate.yml` runs them again, builds
+the AppImage and starts it offscreen before publishing.

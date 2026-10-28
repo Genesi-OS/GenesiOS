@@ -1,0 +1,76 @@
+# Builds Genesi-Migrate-x86_64.AppImage and publishes it to the rolling
+# `migrate-latest` GitHub release, at a URL that never changes:
+#
+#   https://github.com/Genesi-OS/GenesiOS/releases/download/migrate-latest/Genesi-Migrate-x86_64.AppImage
+#
+# That is the link genesios.org's "Migrate" button points at. Separate from
+# publish-packages.yml on purpose: that pipeline feeds the in-OS update
+# notifier and is not touched by new automation. The AppImage is NOT put in
+# R2 either -- the bucket holds exactly one object, the ISO.
+name: publish-migrate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - genesi-arch/genesi-migrate/**
+      - genesi-arch/ci/migrate-test.py
+      - .github/workflows/publish-migrate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-migrate
+  cancel-in-progress: true
+
+jobs:
+  appimage:
+    # The oldest supported runner: the bundled libxcb-cursor comes from here.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: tests first
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libfontconfig1 fonts-dejavu-core \
+            libxcb-cursor0 libxcb-util1 file
+          python -m pip install --quiet PySide6-Essentials
+          python genesi-arch/ci/migrate-test.py
+
+      - name: build the AppImage
+        run: bash genesi-arch/genesi-migrate/appimage/build-appimage.sh "$PWD/out"
+
+      - name: the AppImage starts
+        # Not just "a file was produced": run it offscreen on demo data and
+        # take a screenshot. A missing Qt plugin or library fails here.
+        env:
+          QT_QPA_PLATFORM: offscreen
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          chmod +x out/Genesi-Migrate-x86_64.AppImage
+          timeout 60 out/Genesi-Migrate-x86_64.AppImage --demo --page 3 --shot "$PWD/out/smoke.png"
+          file out/smoke.png | grep -q PNG
+          sha256sum out/Genesi-Migrate-x86_64.AppImage | sed 's|out/||' > out/Genesi-Migrate-x86_64.AppImage.sha256
+
+      - name: publish to migrate-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view migrate-latest >/dev/null 2>&1; then
+            gh release create migrate-latest --title "Genesi Migrate (latest)" --prerelease \
+              --notes "Move from any Linux to Genesi. Download, chmod +x, run. Built from ${GITHUB_SHA::7}."
+          fi
+          gh release upload migrate-latest --clobber \
+            out/Genesi-Migrate-x86_64.AppImage out/Genesi-Migrate-x86_64.AppImage.sha256
+          gh release edit migrate-latest --notes "Move from any Linux to Genesi. Download, chmod +x, run. Built from ${GITHUB_SHA::7}."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: genesi-migrate-smoke
+          path: out/smoke.png
+          if-no-files-found: ignore

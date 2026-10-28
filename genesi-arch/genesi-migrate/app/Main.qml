@@ -88,6 +88,41 @@ ApplicationWindow {
         "t.pacman": "Genesi", "t.aur": "AUR", "t.flatpak": "Flathub", "t.likely": "We'll check", "t.search": "Search Flathub",
         "src.dpkg": "APT", "src.rpm": "RPM", "src.pacman": "pacman", "src.flatpak": "Flatpak",
         "src.snap": "Snap", "src.cli": "Terminal", "src.system": "System", "src.xbps-query": "XBPS",
+        "d.alongsideTitle": "Install next to %1 (dual boot)",
+        "d.alongsideSub": "%1 shrinks to make room. You pick which one to start every time the PC boots.",
+        "d.alongside": "Genesi gets its own partition next to %1. Nothing is erased; the PC asks which system to start.",
+        "d.alongsideShort": "next to %1, %2",
+        "d.alongsideNo.fs": "Only possible when the system partition is ext4 or btrfs.",
+        "d.alongsideNo.layout": "Not possible with an encrypted or LVM system partition.",
+        "d.alongsideNo.space": "Not enough free space: Genesi needs 30 GB and the current system keeps 10 GB of room.",
+        "d.alongsideNo.unknown": "We couldn't measure the system partition.",
+        "d.keeps": "%1 keeps %2",
+        "d.gets": "Genesi gets %1",
+        "p.space": "Check the free space",
+        "p.download": "Download Genesi",
+        "p.verify": "Check the download (SHA-256)",
+        "p.files": "Copy your files to the external drive",
+        "p.arm": "Prepare the restart (asks for your password)",
+        "p.cancel": "Cancel",
+        "p.later": "Not now",
+        "p.retry": "Try again",
+        "p.reboot": "Restart and migrate",
+        "r.readyTitle": "Ready to restart",
+        "r.readyText": "When the PC restarts it opens the Genesi installer, already filled in with your choices. Only Genesi Migrate's entry is used, once; nothing else in your boot menu changes.",
+        "r.readyTextRam": "When the PC restarts it loads Genesi into memory (a minute or two), then opens the installer already filled in with your choices.",
+        "st.extGone": "The external drive isn't mounted any more. Plug it in, open it in the file manager and try again.",
+        "st.noUuid": "We couldn't identify the partition that would hold the download.",
+        "st.fs": "The partition that would hold the download uses %1, which the boot menu can't read.",
+        "st.ram": "This needs to load Genesi into memory, which takes 7 GB of RAM (this PC has %1 GB). Pick an external drive for your files, or install from a USB stick.",
+        "st.space": "Not enough free space: %1 needed, %2 free.",
+        "st.sha": "The download didn't match its checksum, so it was deleted. Try again.",
+        "st.short": "The download was cut short. Try again: it resumes where it stopped.",
+        "st.net": "No connection to the download server (%1).",
+        "st.auth": "The password prompt was closed. Nothing was changed.",
+        "st.helper": "Preparing the restart failed: %1",
+        "st.cancelled": "Cancelled. What was downloaded is kept, so trying again resumes.",
+        "st.other": "Something went wrong: %1",
+        "warn.secureBoot": "Secure Boot is on. Restarting straight into the installer needs it off: turn it off in the firmware (BIOS) settings, or install from a USB stick.",
         "step.disk": "Disk",
         "d.title": "Where Genesi goes",
         "d.sub": "Pick the disk. Nothing is erased now: the installer still asks one last time.",
@@ -139,7 +174,7 @@ ApplicationWindow {
         "r.sub": "Here's the plan. Check it once more.",
         "r.apps": "apps", "r.files": "of files", "r.settings": "settings", "r.dest": "Files wait on",
         "r.dest.keep": "your /home partition", "r.dest.none": "nowhere — not kept",
-        "r.how": "What happens next",
+        "r.how": "What happens when you click",
         "r.h1": "We save the migration plan", "r.h2": "We download Genesi and check its signature",
         "r.h3": "The PC restarts into the installer, already filled in", "r.h4": "Your apps and files come back on Genesi",
         "r.soon": "next update",
@@ -150,7 +185,6 @@ ApplicationWindow {
         "r.open": "Open folder",
         "r.saveFail": "Couldn't save the plan: %1",
         "warn.luks": "Your disk is encrypted (LUKS). Automatic migration doesn't support encrypted disks yet, for now install from a USB stick.",
-        "warn.secureBoot": "Secure Boot is on. You may need to turn it off in the firmware settings to start the Genesi installer.",
         "warn.windows": "We found a Windows partition. It won't be touched, but double-check the disk choice in the installer.",
         "warn.bootloader": "Your system doesn't boot with GRUB (%1). Restarting into the installer may need a USB stick.",
         "warn.bootloaderUnknown": "We couldn't tell how this computer boots. Restarting into the installer may need a USB stick.",
@@ -183,6 +217,41 @@ ApplicationWindow {
         "a.empty": "Nada por aqui.",
         "t.pacman": "Genesi", "t.aur": "AUR", "t.flatpak": "Flathub", "t.likely": "Vamos conferir", "t.search": "Buscar no Flathub",
         "src.system": "Sistema", "src.cli": "Terminal",
+        "d.alongsideTitle": "Instalar ao lado do %1 (dual boot)",
+        "d.alongsideSub": "O %1 encolhe para abrir espaço. Você escolhe qual iniciar toda vez que liga o PC.",
+        "d.alongside": "O Genesi ganha uma partição própria ao lado do %1. Nada é apagado; o PC pergunta qual sistema iniciar.",
+        "d.alongsideShort": "ao lado do %1, %2",
+        "d.alongsideNo.fs": "Só é possível quando a partição do sistema é ext4 ou btrfs.",
+        "d.alongsideNo.layout": "Não é possível com a partição do sistema criptografada ou em LVM.",
+        "d.alongsideNo.space": "Espaço livre insuficiente: o Genesi precisa de 30 GB e o sistema atual fica com 10 GB de folga.",
+        "d.alongsideNo.unknown": "Não conseguimos medir a partição do sistema.",
+        "d.keeps": "%1 fica com %2",
+        "d.gets": "Genesi fica com %1",
+        "p.space": "Conferir o espaço livre",
+        "p.download": "Baixar o Genesi",
+        "p.verify": "Conferir o download (SHA-256)",
+        "p.files": "Copiar seus arquivos para o disco externo",
+        "p.arm": "Preparar o reinício (pede sua senha)",
+        "p.cancel": "Cancelar",
+        "p.later": "Agora não",
+        "p.retry": "Tentar de novo",
+        "p.reboot": "Reiniciar e migrar",
+        "r.readyTitle": "Pronto para reiniciar",
+        "r.readyText": "Quando o PC reiniciar, ele abre o instalador do Genesi já preenchido com suas escolhas. A entrada do Genesi Migrate é usada uma vez só; nada mais no seu menu de boot muda.",
+        "r.readyTextRam": "Quando o PC reiniciar, ele carrega o Genesi na memória (um ou dois minutos) e abre o instalador já preenchido com suas escolhas.",
+        "st.extGone": "O disco externo não está mais montado. Conecte, abra no gerenciador de arquivos e tente de novo.",
+        "st.noUuid": "Não conseguimos identificar a partição que guardaria o download.",
+        "st.fs": "A partição que guardaria o download usa %1, que o menu de boot não consegue ler.",
+        "st.ram": "Isso precisa carregar o Genesi na memória, o que pede 7 GB de RAM (este PC tem %1 GB). Escolha um disco externo para seus arquivos ou instale pelo pendrive.",
+        "st.space": "Espaço livre insuficiente: precisa de %1, tem %2.",
+        "st.sha": "O download não bateu com o checksum e foi apagado. Tente de novo.",
+        "st.short": "O download foi interrompido. Tente de novo: ele continua de onde parou.",
+        "st.net": "Sem conexão com o servidor de download (%1).",
+        "st.auth": "A janela de senha foi fechada. Nada foi alterado.",
+        "st.helper": "Preparar o reinício falhou: %1",
+        "st.cancelled": "Cancelado. O que já foi baixado fica guardado, então tentar de novo continua de onde parou.",
+        "st.other": "Algo deu errado: %1",
+        "warn.secureBoot": "O Secure Boot está ligado. Reiniciar direto no instalador precisa dele desligado: desligue nas configurações da BIOS ou instale pelo pendrive.",
         "step.disk": "Disco",
         "d.title": "Onde instalar o Genesi",
         "d.sub": "Escolha o disco. Nada é apagado agora: o instalador ainda pede uma última confirmação.",
@@ -234,7 +303,7 @@ ApplicationWindow {
         "r.sub": "Este é o plano. Dá uma última conferida.",
         "r.apps": "apps", "r.files": "de arquivos", "r.settings": "ajustes", "r.dest": "Arquivos esperam em",
         "r.dest.keep": "sua partição /home", "r.dest.none": "lugar nenhum — não serão mantidos",
-        "r.how": "O que acontece agora",
+        "r.how": "O que acontece quando você clicar",
         "r.h1": "Salvamos o plano de migração", "r.h2": "Baixamos o Genesi e conferimos a assinatura",
         "r.h3": "O PC reinicia no instalador, já preenchido", "r.h4": "Seus apps e arquivos voltam no Genesi",
         "r.soon": "próxima versão",
@@ -245,7 +314,6 @@ ApplicationWindow {
         "r.open": "Abrir pasta",
         "r.saveFail": "Não deu para salvar o plano: %1",
         "warn.luks": "Seu disco é criptografado (LUKS). A migração automática ainda não suporta discos criptografados, por enquanto instale pelo pendrive.",
-        "warn.secureBoot": "O Secure Boot está ligado. Talvez você precise desligá-lo na BIOS para iniciar o instalador do Genesi.",
         "warn.windows": "Encontramos uma partição do Windows. Ela não será tocada, mas confira a escolha de disco no instalador.",
         "warn.bootloader": "Seu sistema não inicia pelo GRUB (%1). Reiniciar no instalador pode precisar de um pendrive.",
         "warn.bootloaderUnknown": "Não identificamos como este computador inicia. Reiniciar no instalador pode precisar de um pendrive.",
@@ -266,6 +334,13 @@ ApplicationWindow {
     property string strategy: ""         // "stay" | "keep-home" | "external:/dev/x" | "none"
     property string installTarget: "replace"  // "replace" (today's system partition) | "disk:/dev/x" (whole disk)
     property bool wipeConfirmed: false   // a whole-disk target needs an explicit "I understand"
+    property real genesiBytes: 0         // v2 "alongside": the size Genesi gets
+    // prepare
+    property string prepState: ""        // "" | running | done | failed
+    property var prepFrac: ({})          // step id -> 0..1
+    property var prepDetail: ({})        // step id -> "1.2 / 3.4 GB · 20 MB/s"
+    property string prepError: ""
+    property bool prepRam: false
     property string desktopId: "KDE-Desktop"
     property bool bringWifi: true
     property string savedPath: ""
@@ -321,8 +396,10 @@ ApplicationWindow {
     // ── where Genesi goes, and where the files wait ──────────────────
     function disks() { var _ = rev; return manifest && manifest.machine.disks ? manifest.machine.disks : [] }
     function systemDisk() { var d = disks(); for (var i = 0; i < d.length; i++) if (d[i].system) return d[i]; return null }
+    function alongsideInfo() { var _ = rev; return manifest && manifest.plan.alongside ? manifest.plan.alongside : { ok: false, why: "unknown", min: 0, max: 0 } }
+    function onSystem() { return installTarget === "replace" || installTarget === "alongside" }
     function targetDisk() {
-        if (installTarget === "replace") return systemDisk()
+        if (onSystem()) return systemDisk()
         var d = disks(), dev = installTarget.slice(5)
         for (var i = 0; i < d.length; i++) if (d[i].device === dev) return d[i]
         return null
@@ -331,15 +408,17 @@ ApplicationWindow {
         // a partition is on the target disk when that disk lists it -- not a
         // prefix test, which takes /dev/nvme0n10 for part of /dev/nvme0n1
         var t = targetDisk()
-        if (installTarget === "replace" || !t) return false
+        if (onSystem() || !t) return false
         if (t.device === device) return true
         for (var i = 0; i < t.partitions.length; i++) if (t.partitions[i].device === device) return true
         return false
     }
-    // Genesi on another disk and today's files are not on it: nothing to move.
+    // Genesi on another disk (or next to the old system, which keeps its
+    // partition) and today's files are not erased: nothing to move.
     function stayAvailable() {
+        if (installTarget === "alongside") return true
         var t = targetDisk()
-        return installTarget !== "replace" && t !== null && !t.system && !t.home
+        return !onSystem() && t !== null && !t.system && !t.home
     }
     function strategies() {
         var _ = rev, out = []
@@ -377,14 +456,27 @@ ApplicationWindow {
     function chooseTarget(t) {
         installTarget = t
         wipeConfirmed = false
+        if (t === "alongside") {
+            var a = alongsideInfo()
+            // half of what is free, rounded to 5 GiB, within the limits
+            var g = 5 * 1073741824
+            genesiBytes = Math.max(a.min, Math.min(a.max, Math.round(a.max / 2 / g) * g))
+        }
         pickDefaultStrategy()
         rev++
     }
-    function targetValid() { var _ = rev; return installTarget === "replace" || (targetDisk() !== null && wipeConfirmed) }
+    function targetValid() {
+        var _ = rev
+        if (installTarget === "replace") return true
+        if (installTarget === "alongside") { var a = alongsideInfo(); return a.ok && genesiBytes >= a.min && genesiBytes <= a.max }
+        return targetDisk() !== null && wipeConfirmed
+    }
     function targetLabel() {
         var t = targetDisk()
         if (installTarget === "replace")
             return trf("d.replaceShort", manifest ? manifest.os.name : "Linux") + (t ? "  ·  " + t.model : "")
+        if (installTarget === "alongside")
+            return trf("d.alongsideShort", manifest ? manifest.os.name : "Linux", fmt(genesiBytes)) + (t ? "  ·  " + t.model : "")
         return t ? t.model + "  (" + t.device + ")" : "—"
     }
     function partColor(p) {
@@ -409,7 +501,7 @@ ApplicationWindow {
         var p = manifest.plan
         for (var i = 0; i < p.blockers.length; i++) {
             // an encrypted root only matters when it is the partition replaced
-            if (p.blockers[i] === "luks" && installTarget !== "replace") continue
+            if (p.blockers[i] === "luks" && !onSystem()) continue
             out.push({ blocker: true, key: p.blockers[i] })
         }
         for (var j = 0; j < p.warnings.length; j++) out.push({ blocker: false, key: p.warnings[j] })
@@ -430,13 +522,32 @@ ApplicationWindow {
         for (var j = 0; j < filesModel.count; j++) selFiles[filesModel.get(j).fid] = filesModel.get(j).sel
         for (var a = 0; a < m.apps.length; a++) m.apps[a].selected = !!selApps[m.apps[a].id]
         for (var f = 0; f < m.files.length; f++) m.files[f].selected = !!selFiles[m.files[f].id]
-        var t = targetDisk()
+        var t = targetDisk(), mc = manifest.machine
+        // Device names can change order in the live system: the installer
+        // finds the disk again by serial/WWN + size, partitions by UUID.
+        var install = { mode: installTarget === "replace" || installTarget === "alongside" ? installTarget : "disk",
+                        disk: t ? t.device : "", diskSerial: t ? (t.serial || "") : "", diskWwn: t ? (t.wwn || "") : "",
+                        diskSize: t ? t.size : 0, rootUuid: mc.rootUuid || "", espUuid: mc.espUuid || "",
+                        homeUuid: strategy === "keep-home" ? (mc.homeUuid || "") : "" }
+        if (installTarget === "alongside") install.genesiBytes = genesiBytes
         m.choices = { strategy: strategy, desktop: desktopId, wifi: bringWifi,
-                      install: installTarget === "replace"
-                               ? { mode: "replace", disk: t ? t.device : "", partition: manifest.machine.rootDevice }
-                               : { mode: "disk", disk: installTarget.slice(5) },
+                      install: install,
                       language: pt ? "pt_BR" : "en_US", selectedBytes: selectedBytes() }
         return JSON.stringify(m)
+    }
+
+    function prepSteps() {
+        var _ = rev, out = ["space", "download", "verify"]
+        if (strategy.indexOf("external:") === 0) out.push("files")
+        out.push("arm")
+        return out
+    }
+    function startPrepare() {
+        var m = buildManifest()
+        backend.saveManifest(m)
+        prepFrac = ({}); prepDetail = ({}); prepError = ""
+        prepState = "running"
+        backend.prepare(m)
     }
 
     function canAdvance() {
@@ -474,6 +585,19 @@ ApplicationWindow {
             manifest = m
             if (!strategyValid()) pickDefaultStrategy()
             rev++
+        }
+        function onPrepStep(step, frac, detail) {
+            var f = Object.assign({}, prepFrac); f[step] = frac; prepFrac = f
+            var d = Object.assign({}, prepDetail); d[step] = detail; prepDetail = d
+        }
+        function onPrepFailed(key, argsJson) {
+            var a = JSON.parse(argsJson)
+            prepError = key === "st.cancelled" ? tr("st.cancelled") : trf(key, a[0], a[1])
+            prepState = "failed"
+        }
+        function onPrepDone(planJson) {
+            prepRam = !!JSON.parse(planJson).copytoram
+            prepState = "done"
         }
         function onSaved(ok, msg) {
             if (ok) { savedPath = msg; saveError = "" } else saveError = msg
@@ -1106,7 +1230,7 @@ ApplicationWindow {
                                     id: dc
                                     required property var modelData
                                     readonly property string sid: modelData.system ? "replace" : "disk:" + modelData.device
-                                    readonly property bool chosen: win.installTarget === sid
+                                    readonly property bool chosen: win.installTarget === sid || (modelData.system && win.installTarget === "alongside")
                                     readonly property real total: Math.max(1, modelData.size)
                                     readonly property var bars: modelData.partitions.filter(function (p) { return p.size > 0 && p.type !== "crypt" })
                                     Layout.fillWidth: true
@@ -1155,7 +1279,9 @@ ApplicationWindow {
                                                     Layout.fillWidth: true
                                                     wrapMode: Text.WordWrap
                                                     color: c.textMid; font.pixelSize: 13; lineHeight: 1.15
-                                                    text: dc.modelData.system
+                                                    text: dc.modelData.system && win.installTarget === "alongside"
+                                                          ? win.trf("d.alongside", win.manifest.os.name)
+                                                          : dc.modelData.system
                                                           ? win.trf("d.replace", win.manifest.os.name, win.manifest.machine.rootDevice)
                                                           : dc.modelData.removable ? win.tr("d.wholeExternal") : win.tr("d.whole")
                                                 }
@@ -1181,7 +1307,7 @@ ApplicationWindow {
                                                         width: Math.max(6, (barBox.width - 2 * dc.bars.length) * modelData.size / dc.total)
                                                         color: win.partColor(modelData)
                                                         // what this choice would erase is drawn faded
-                                                        opacity: !dc.chosen ? 1
+                                                        opacity: !dc.chosen || win.installTarget === "alongside" ? 1
                                                                : !dc.modelData.system ? 0.3
                                                                : modelData.mountpoint === "/" ? 0.3 : 1
                                                     }
@@ -1203,6 +1329,95 @@ ApplicationWindow {
                                                 }
                                             }
                                             Text { visible: dc.bars.length === 0; text: win.tr("d.empty"); color: c.textLo; font.pixelSize: 12 }
+                                        }
+
+                                        // v2: next to today's system (dual boot)
+                                        Rectangle {
+                                            id: alongRow
+                                            visible: dc.modelData.system
+                                            readonly property var info: win.alongsideInfo()
+                                            readonly property bool on: win.installTarget === "alongside"
+                                            Layout.fillWidth: true
+                                            Layout.leftMargin: 36
+                                            implicitHeight: alongCol.implicitHeight + 24
+                                            radius: 12
+                                            color: on ? Qt.rgba(0.12, 0.75, 0.42, 0.08) : Qt.rgba(1, 1, 1, 0.02)
+                                            border.width: 1
+                                            border.color: on ? Qt.rgba(0.12, 0.75, 0.42, 0.45) : c.line
+                                            opacity: info.ok ? 1 : 0.55
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: alongRow.info.ok ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                                onClicked: if (alongRow.info.ok) win.chooseTarget(alongRow.on ? "replace" : "alongside")
+                                            }
+                                            ColumnLayout {
+                                                id: alongCol
+                                                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                                                spacing: 10
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 12
+                                                    Check { checked: alongRow.on }
+                                                    ColumnLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: 2
+                                                        Text { text: win.trf("d.alongsideTitle", win.manifest ? win.manifest.os.name : ""); color: c.textHi; font.pixelSize: 14; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                                        Text {
+                                                            text: alongRow.info.ok ? win.trf("d.alongsideSub", win.manifest ? win.manifest.os.name : "") : win.tr("d.alongsideNo." + alongRow.info.why)
+                                                            color: alongRow.info.ok ? c.textLo : c.orange; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                                                        }
+                                                    }
+                                                }
+                                                // the split, to scale: old system | Genesi
+                                                ColumnLayout {
+                                                    visible: alongRow.on
+                                                    Layout.fillWidth: true
+                                                    spacing: 6
+                                                    Item {
+                                                        id: splitBar
+                                                        Layout.fillWidth: true
+                                                        Layout.preferredHeight: 12
+                                                        readonly property real total: Math.max(1, alongRow.info.partSize || 1)
+                                                        Rectangle { width: parent.width; height: 12; radius: 4; color: c.line }
+                                                        Rectangle {
+                                                            width: parent.width * Math.max(0, 1 - win.genesiBytes / splitBar.total) - 2
+                                                            height: 12; radius: 4; color: c.accent
+                                                        }
+                                                        Rectangle {
+                                                            x: parent.width * Math.max(0, 1 - win.genesiBytes / splitBar.total)
+                                                            width: parent.width - x; height: 12; radius: 4; color: c.mint
+                                                        }
+                                                    }
+                                                    Slider {
+                                                        id: sizeSlider
+                                                        Layout.fillWidth: true
+                                                        from: alongRow.info.min
+                                                        to: Math.max(alongRow.info.min + 1, alongRow.info.max)
+                                                        stepSize: 1073741824
+                                                        value: win.genesiBytes
+                                                        onMoved: { win.genesiBytes = value; win.rev++ }
+                                                        background: Rectangle {
+                                                            x: sizeSlider.leftPadding
+                                                            y: sizeSlider.topPadding + sizeSlider.availableHeight / 2 - height / 2
+                                                            width: sizeSlider.availableWidth; height: 4; radius: 2; color: c.lineHi
+                                                            Rectangle { width: sizeSlider.visualPosition * parent.width; height: 4; radius: 2; color: c.mint }
+                                                        }
+                                                        handle: Rectangle {
+                                                            x: sizeSlider.leftPadding + sizeSlider.visualPosition * (sizeSlider.availableWidth - width)
+                                                            y: sizeSlider.topPadding + sizeSlider.availableHeight / 2 - height / 2
+                                                            width: 20; height: 20; radius: 10
+                                                            color: sizeSlider.pressed ? c.mint : c.textHi
+                                                            border.width: 3; border.color: c.accent
+                                                        }
+                                                    }
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        Text { text: win.trf("d.keeps", win.manifest ? win.manifest.os.name : "", win.fmt(Math.max(0, (alongRow.info.partSize || 0) - win.genesiBytes))); color: c.textMid; font.pixelSize: 12 }
+                                                        Item { Layout.fillWidth: true }
+                                                        Text { text: win.trf("d.gets", win.fmt(win.genesiBytes)); color: c.mint; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                                    }
+                                                }
+                                            }
                                         }
 
                                         Banner {
@@ -1748,36 +1963,49 @@ ApplicationWindow {
                                     anchors.margins: 12
                                     spacing: 0
                                     Repeater {
-                                        model: ["r.h1", "r.h2", "r.h3", "r.h4"]
-                                        delegate: RowLayout {
+                                        model: win.prepSteps()
+                                        delegate: ColumnLayout {
                                             required property string modelData
                                             required property int index
-                                            readonly property bool live: index === 0
-                                            readonly property bool doneNow: live && win.savedPath !== ""
+                                            readonly property real frac: win.prepFrac[modelData] === undefined ? -1 : win.prepFrac[modelData]
+                                            readonly property bool doneNow: frac >= 1
+                                            readonly property bool active: frac >= 0 && frac < 1 && win.prepState === "running"
                                             Layout.fillWidth: true
-                                            Layout.preferredHeight: 44
                                             Layout.leftMargin: 6
-                                            spacing: 14
-                                            Rectangle {
-                                                width: 26; height: 26; radius: 13
-                                                color: doneNow ? c.accent : live ? Qt.rgba(0.12, 0.75, 0.42, 0.16) : c.cardHi
-                                                Icon { anchors.centerIn: parent; visible: doneNow; name: "check"; tint: "#06210F"; stroke: 3; size: 13 }
-                                                Text { anchors.centerIn: parent; visible: !doneNow; text: index + 1; color: live ? c.accentHi : c.textLo; font.pixelSize: 12; font.weight: Font.Bold }
+                                            spacing: 4
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: 40
+                                                spacing: 14
+                                                Rectangle {
+                                                    width: 26; height: 26; radius: 13
+                                                    color: doneNow ? c.accent : active ? Qt.rgba(0.12, 0.75, 0.42, 0.16) : c.cardHi
+                                                    Icon { anchors.centerIn: parent; visible: doneNow; name: "check"; tint: "#06210F"; stroke: 3; size: 13 }
+                                                    Text { anchors.centerIn: parent; visible: !doneNow; text: index + 1; color: active ? c.accentHi : c.textLo; font.pixelSize: 12; font.weight: Font.Bold }
+                                                }
+                                                Text { text: win.tr("p." + modelData); color: doneNow || active ? c.textHi : c.textMid; font.pixelSize: 14; Layout.fillWidth: true }
+                                                Text { text: win.prepDetail[modelData] || ""; color: c.textLo; font.pixelSize: 12 }
                                             }
-                                            Text { text: win.tr(modelData); color: live ? c.textHi : c.textMid; font.pixelSize: 14; Layout.fillWidth: true }
-                                            Pill { visible: !live; text: win.tr("r.soon"); tone: c.textLo }
+                                            Rectangle {
+                                                visible: active && frac > 0
+                                                Layout.fillWidth: true
+                                                Layout.leftMargin: 40
+                                                Layout.bottomMargin: 6
+                                                height: 4; radius: 2; color: c.line
+                                                Rectangle { width: parent.width * Math.min(1, frac); height: 4; radius: 2; color: c.mint }
+                                            }
                                         }
                                     }
                                 }
                             }
 
                             Card {
-                                visible: win.savedPath !== ""
+                                visible: win.prepState === "done"
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: savedCol.implicitHeight + 36
+                                Layout.preferredHeight: doneCol.implicitHeight + 36
                                 border.color: Qt.rgba(0.12, 0.75, 0.42, 0.5)
                                 RowLayout {
-                                    id: savedCol
+                                    id: doneCol
                                     anchors.fill: parent
                                     anchors.margins: 18
                                     spacing: 16
@@ -1785,12 +2013,13 @@ ApplicationWindow {
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 6
-                                        Text { text: win.tr("r.savedTitle"); color: c.textHi; font.pixelSize: 16; font.weight: Font.Bold }
-                                        Text { text: win.trf("r.savedText", win.savedPath); color: c.textMid; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true; lineHeight: 1.2 }
+                                        Text { text: win.tr("r.readyTitle"); color: c.textHi; font.pixelSize: 16; font.weight: Font.Bold }
+                                        Text { text: win.tr(win.prepRam ? "r.readyTextRam" : "r.readyText"); color: c.textMid; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true; lineHeight: 1.2 }
                                     }
-                                    Btn { text: win.tr("r.open"); icon: "folder"; implicitHeight: 38; onClicked: backend.openFolder(win.savedPath) }
                                 }
                             }
+                            Banner { visible: win.prepState === "failed"; danger: true; text: win.prepError }
+
                             Banner { visible: win.saveError !== ""; danger: true; text: win.trf("r.saveFail", win.saveError) }
                         }
                     }
@@ -1809,7 +2038,11 @@ ApplicationWindow {
                     anchors.leftMargin: 40
                     anchors.rightMargin: 40
                     spacing: 12
-                    Btn { text: win.tr("back"); icon: "arrow-left"; onClicked: win.page = win.page === 2 ? 0 : win.page - 1 }
+                    Btn {
+                        text: win.tr("back"); icon: "arrow-left"
+                        enabledState: win.prepState !== "running"
+                        onClicked: win.page = win.page === 2 ? 0 : win.page - 1
+                    }
                     Item { Layout.fillWidth: true }
                     Text {
                         visible: win.page === 6 && win.blocked()
@@ -1824,12 +2057,30 @@ ApplicationWindow {
                         onClicked: win.page = win.page + 1
                     }
                     Btn {
-                        visible: win.page === 6
+                        visible: win.page === 6 && win.prepState === "running"
+                        text: win.tr("p.cancel")
+                        icon: "x"
+                        onClicked: backend.cancelPrepare()
+                    }
+                    Btn {
+                        visible: win.page === 6 && win.prepState === "done"
+                        text: win.tr("p.later")
+                        onClicked: { backend.disarm(); win.prepState = ""; win.prepFrac = ({}); win.prepDetail = ({}) }
+                    }
+                    Btn {
+                        visible: win.page === 6 && (win.prepState === "" || win.prepState === "failed")
                         primary: true
-                        text: win.tr("r.go")
+                        text: win.prepState === "failed" ? win.tr("p.retry") : win.tr("r.go")
                         icon: "zap"
-                        enabledState: !win.blocked() && win.strategyValid()
-                        onClicked: backend.saveManifest(win.buildManifest())
+                        enabledState: !win.blocked() && win.strategyValid() && win.targetValid()
+                        onClicked: win.startPrepare()
+                    }
+                    Btn {
+                        visible: win.page === 6 && win.prepState === "done"
+                        primary: true
+                        text: win.tr("p.reboot")
+                        icon: "power"
+                        onClicked: backend.reboot()
                     }
                 }
             }

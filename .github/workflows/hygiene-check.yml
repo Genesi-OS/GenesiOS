@@ -242,6 +242,14 @@ jobs:
         # the plan it saves is checked. PySide6 is installed by the step above.
         run: python genesi-arch/ci/migrate-test.py
 
+      - name: Genesi Migrate's restart, partitioning and restore plan correctly
+        # Each step that formats, shrinks or reboots is a pure planning
+        # function; this plays them against the cases that break them (a disk
+        # renamed in the live system, a busy disk, BIOS+GPT, the shrink math,
+        # an ISO that would sit on the partition being formatted) and runs the
+        # Calamares migration setup against Genesi's real Calamares files.
+        run: python genesi-arch/ci/migrate-flow-test.py
+
       - name: a dropdown pick in Genesi Center lands on the dropdown only
         # The resolution list used to press the rotation button lying under
         # it as well. Runs the real Displays page offscreen; PySide6 is

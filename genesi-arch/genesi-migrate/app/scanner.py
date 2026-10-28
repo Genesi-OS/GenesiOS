@@ -23,7 +23,14 @@ import time
 
 import appmap
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
+
+ESP_GUID = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+GIB = 1024 ** 3
+# v2 "alongside": Genesi gets at least this much, the old system keeps its
+# used space plus this much breathing room.
+ALONGSIDE_MIN_GENESI = 30 * GIB
+ALONGSIDE_OLD_MARGIN = 10 * GIB
 
 # Debian/Ubuntu, Fedora/RHEL, openSUSE, Arch, Void, Gentoo, Solus, Alpine...
 # Read from ID first, then ID_LIKE, the way os-release says to.
@@ -478,7 +485,8 @@ class Scanner:
             items.append({"id": "other", "label": "other", "path": self.home,
                           "bytes": other_bytes, "estimate": other_partial,
                           "selected": True, "group": "files",
-                          "names": other_names[:12], "count": len(other_names)})
+                          "names": other_names[:12], "allNames": other_names,
+                          "count": len(other_names)})
 
         def group(gid, rels, skip=()):
             total, partial, present = 0, False, []
@@ -520,7 +528,8 @@ class Scanner:
             if len(cols) >= 3:
                 rows.append({"source": cols[0],
                              "target": cols[1].replace("\\040", " "),
-                             "fstype": cols[2]})
+                             "fstype": cols[2],
+                             "options": cols[3] if len(cols) > 3 else ""})
         return rows
 
     def mount_for(self, path, mounts):
@@ -534,7 +543,8 @@ class Scanner:
 
     def block_devices(self):
         rc, out = self.run(["lsblk", "-J", "-b", "-o",
-                            "NAME,PATH,TYPE,FSTYPE,MOUNTPOINT,SIZE,FSAVAIL,RM,TRAN,LABEL,MODEL,PKNAME"])
+                            "NAME,PATH,TYPE,FSTYPE,MOUNTPOINT,SIZE,FSAVAIL,FSUSED,RM,TRAN,LABEL,"
+                            "MODEL,PKNAME,UUID,PARTUUID,PARTTYPE,SERIAL,WWN,PTTYPE"])
         if rc != 0 or not out.strip():
             return []
         try:
@@ -578,8 +588,9 @@ class Scanner:
                     home_disk = here[0].get("name")
                 # Windows = its boot manager on an ESP we can see, or a volume
                 # labelled like it. A bare NTFS partition is usually just data.
-                if (mp in ("/boot/efi", "/efi", "/boot") and n.get("fstype") == "vfat"
-                        and os.path.isdir(self.p(mp + "/EFI/Microsoft")))                         or (n.get("label") or "").lower().startswith("windows"):
+                on_esp = (mp in ("/boot/efi", "/efi", "/boot") and n.get("fstype") == "vfat"
+                          and os.path.isdir(self.p(mp + "/EFI/Microsoft")))
+                if on_esp or (n.get("label") or "").lower().startswith("windows"):
                     windows = True
                     windows_disks.add(here[0].get("name"))
                 walk(n.get("children") or [], here)
@@ -605,6 +616,11 @@ class Scanner:
             disks.append({
                 "device": d.get("path") or "/dev/" + d.get("name", ""),
                 "name": d.get("name"),
+                # The live system may name disks in another order (sda <-> sdb):
+                # the installer finds this one again by serial/WWN and size.
+                "serial": (d.get("serial") or "").strip(),
+                "wwn": (d.get("wwn") or "").strip(),
+                "ptType": d.get("pttype") or "",
                 "model": (d.get("model") or "").strip() or d.get("name"),
                 "size": int(d.get("size") or 0),
                 "removable": d.get("rm") in (True, "1", 1) or d.get("tran") == "usb",
@@ -619,6 +635,10 @@ class Scanner:
                     "label": p.get("label") or "",
                     "size": int(p.get("size") or 0),
                     "mountpoint": p.get("mountpoint") or "",
+                    "uuid": p.get("uuid") or "",
+                    "partuuid": p.get("partuuid") or "",
+                    "parttype": (p.get("parttype") or "").lower(),
+                    "used": int(p.get("fsused") or 0) if p.get("fsused") else None,
                 } for p in parts if p.get("type") in ("part", "crypt", "lvm")],
             })
 
@@ -654,6 +674,34 @@ class Scanner:
         except (OSError, AttributeError):
             home_free = 0
 
+        # The partitions the installer has to find again from the live system,
+        # by UUID: the system partition, /home, and the EFI partition.
+        all_parts = {}
+        for d in disks:
+            for prt in d["partitions"]:
+                all_parts[prt["device"]] = dict(prt, disk=d["device"])
+        root_part = all_parts.get(root_m.get("source", ""), {})
+        home_part = all_parts.get(home_m.get("source", ""), {}) if home_m.get("source") != root_m.get("source") else {}
+        esp = {}
+        sys_disk = next((d for d in disks if d["system"]), None)
+        if sys_disk:
+            for prt in sys_disk["partitions"]:
+                if prt["parttype"] == ESP_GUID or (prt["fstype"] == "vfat" and prt["mountpoint"] in ("/boot/efi", "/efi", "/boot")):
+                    esp = prt
+                    break
+        esp_free = None
+        if esp.get("mountpoint"):
+            try:
+                st = os.statvfs(self.p(esp["mountpoint"]))
+                esp_free = st.f_bavail * st.f_frsize
+            except (OSError, AttributeError):
+                pass
+
+        ram = 0
+        m = re.search(r"^MemTotal:\s+(\d+)\s+kB", self.read(self.p("/proc/meminfo")), re.M)
+        if m:
+            ram = int(m.group(1)) * 1024
+
         return {
             "firmware": firmware,
             "secureBoot": secure_boot,
@@ -664,6 +712,18 @@ class Scanner:
             "homeSeparate": bool(home_m) and home_m.get("target") not in ("/", None)
                             and home_m.get("source") != root_m.get("source"),
             "homeFree": home_free,
+            "rootUuid": root_part.get("uuid", ""),
+            "rootPartType": root_part.get("type", ""),
+            "rootPartSize": root_part.get("size", 0),
+            "rootUsed": root_part.get("used"),
+            "rootOptions": root_m.get("options", ""),
+            "homeUuid": home_part.get("uuid", ""),
+            "homeOptions": home_m.get("options", ""),
+            "homeMount": home_m.get("target", ""),
+            "espDevice": esp.get("device", ""),
+            "espUuid": esp.get("uuid", ""),
+            "espFree": esp_free,
+            "ramBytes": ram,
             "luks": luks,
             "windows": windows,
             "bootloader": bootloader,
@@ -786,7 +846,9 @@ def plan(machine, items):
         # The install would have to unlock, keep and re-wrap the disk. Not in v1.
         blockers.append("luks")
     if machine.get("secureBoot"):
-        warnings.append("secureBoot")
+        # The restart goes through this system's own signed GRUB, which will
+        # not load Genesi's (unsigned) kernel while Secure Boot is on.
+        blockers.append("secureBoot")
     if machine.get("windows"):
         warnings.append("windows")
     if machine.get("bootloader") not in ("grub",):
@@ -812,7 +874,29 @@ def plan(machine, items):
             "ok": free is not None and free >= wanted * 1.05,
         })
     return {"blockers": blockers, "warnings": warnings,
-            "strategies": strategies, "wantedBytes": wanted}
+            "strategies": strategies, "wantedBytes": wanted,
+            "alongside": alongside(machine)}
+
+
+def alongside(machine):
+    """Can Genesi go NEXT TO today's system (shrink it), and how big?
+
+    Only a plain ext4/btrfs partition can be shrunk safely from the live
+    system: not LVM, not LUKS, not xfs (cannot shrink at all).
+    """
+    size, used = machine.get("rootPartSize") or 0, machine.get("rootUsed")
+    why = ""
+    if machine.get("rootFs") not in ("ext4", "btrfs"):
+        why = "fs"
+    elif machine.get("luks") or machine.get("rootPartType") != "part":
+        why = "layout"
+    elif used is None or not size:
+        why = "unknown"
+    room = size - (used or 0) - ALONGSIDE_OLD_MARGIN if not why else 0
+    if not why and room < ALONGSIDE_MIN_GENESI:
+        why = "space"
+    return {"ok": not why, "why": why, "min": ALONGSIDE_MIN_GENESI,
+            "max": max(0, room), "partSize": size, "used": used or 0}
 
 
 if __name__ == "__main__":

@@ -19,13 +19,17 @@ genesi_palette, no KDE platform theme.
   --shot FILE      render, save a PNG of the window to FILE, quit
 """
 import argparse
+import getpass
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -41,6 +45,15 @@ except ImportError:
 
 import appmap
 import scanner
+import stage
+
+
+def fmt_bytes(n):
+    n = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return ("%.1f %s" % (n, unit)) if unit in ("GB", "TB") else ("%d %s" % (n, unit))
+        n /= 1024
 
 DATA_DIR = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"),
                         "genesi-migrate")
@@ -58,6 +71,7 @@ class Backend(QObject):
         self._demo = demo or bool(replay)
         self._replay = replay or os.path.join(HERE, "demo-manifest.json")
         self._os = scanner.Scanner().detect_os() if not self._demo else self._replayed()["os"]
+        self._cancel = False
 
     def _replayed(self):
         with open(self._replay, encoding="utf-8") as f:
@@ -122,6 +136,140 @@ class Backend(QObject):
             self.saved.emit(True, MANIFEST)
         except Exception as e:
             self.saved.emit(False, str(e))
+
+    # ── prepare: download, copy, arm the restart ──────────────────────
+    prepStep = Signal(str, float, str)  # step id, 0..1, detail ("1.2 / 3.4 GB · 18 MB/s")
+    prepFailed = Signal(str, str)       # translation key, JSON list of args
+    prepDone = Signal(str)              # JSON: the stage plan
+
+    def _pkexec(self, *args):
+        """Run the root helper through pkexec. The AppImage's FUSE mount is not
+        readable by root, so the helper is copied out to the user's runtime
+        dir first and run by /bin/sh."""
+        rt = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+        helper = os.path.join(rt, "genesi-migrate-helper.sh")
+        shutil.copyfile(os.path.join(HERE, "helper.sh"), helper)
+        os.chmod(helper, 0o700)
+        p = subprocess.run(["pkexec", "/bin/sh", helper] + list(args),
+                           capture_output=True, text=True)
+        if p.returncode in (126, 127) and not p.stderr.strip().startswith("error:"):
+            raise stage.StageError("st.auth")
+        if p.returncode != 0:
+            raise stage.StageError("st.helper", (p.stderr or p.stdout).strip().splitlines()[-1:] or ["?"])
+        return p.stdout
+
+    @Slot(str)
+    def prepare(self, manifest_json):
+        self._cancel = False
+        threading.Thread(target=self._prepare, args=(json.loads(manifest_json),), daemon=True).start()
+
+    @Slot()
+    def cancelPrepare(self):
+        self._cancel = True
+
+    def _prepare(self, manifest):
+        cancelled = lambda: self._cancel  # noqa: E731
+        home = os.path.expanduser("~")
+        try:
+            if self._demo:
+                return self._prepare_demo(manifest, cancelled)
+            self.prepStep.emit("space", 0, "")
+            p = stage.plan(manifest, home)
+            if p["needsRoot"]:
+                self._pkexec("mkdir", p["dir"], getpass.getuser())
+            os.makedirs(p["dir"], exist_ok=True)
+            need = 0 if os.path.exists(p["iso"]) else stage.ISO_ROOM
+            if p["filesDir"]:
+                need += manifest["choices"].get("selectedBytes", 0)
+            free = shutil.disk_usage(p["dir"]).free
+            if free < need:
+                raise stage.StageError("st.space", fmt_bytes(need), fmt_bytes(free))
+            self.prepStep.emit("space", 1, "")
+
+            # download (skipped when a verified ISO is already there)
+            want = stage.expected_sha()
+            ok_marker = p["iso"] + ".ok"
+            if not (os.path.exists(p["iso"]) and os.path.exists(ok_marker)
+                    and open(ok_marker).read().strip() == want):
+                def dl(done, total, speed):
+                    detail = "%s / %s" % (fmt_bytes(done), fmt_bytes(total))
+                    if speed:
+                        detail += " · %s/s" % fmt_bytes(speed)
+                    self.prepStep.emit("download", done / total if total else 0, detail)
+                stage.download(p["iso"], dl, cancelled)
+                self.prepStep.emit("verify", 0, "")
+                got = stage.sha256_of(p["iso"], lambda d, t: self.prepStep.emit("verify", d / t, ""), cancelled)
+                if got != want:
+                    os.remove(p["iso"])
+                    raise stage.StageError("st.sha")
+                with open(ok_marker, "w") as f:
+                    f.write(want)
+            self.prepStep.emit("download", 1, "")
+            self.prepStep.emit("verify", 1, "")
+
+            if p["filesDir"]:
+                pairs = stage.sources(manifest, home)
+                errs = stage.copy_tree(
+                    pairs, p["filesDir"],
+                    lambda d, t: self.prepStep.emit("files", d / t if t else 1,
+                                                    "%s / %s" % (fmt_bytes(d), fmt_bytes(t))),
+                    cancelled, skip={os.path.join(home, s) for s in scanner.SKIP_IN_HOME} | {p["dir"]})
+                if errs:
+                    with open(os.path.join(p["dir"], "copy-errors.txt"), "w") as f:
+                        f.write("\n".join(errs))
+                self.prepStep.emit("files", 1, "%d" % len(errs) if errs else "")
+
+            self.prepStep.emit("arm", 0, "")
+            stage.write_stage(manifest, p, home)
+            entry = os.path.join(p["stage"], "grub-entry.cfg")
+            with open(entry, "w") as f:
+                f.write(stage.grub_entry(p))
+            self._pkexec("arm", p["stage"], entry)
+            self.prepStep.emit("arm", 1, "")
+            self.prepDone.emit(json.dumps(p))
+        except stage.StageError as e:
+            self.prepFailed.emit(e.key, json.dumps([str(a) for a in e.args_]))
+        except urllib.error.URLError as e:
+            self.prepFailed.emit("st.net", json.dumps([str(getattr(e, "reason", e))]))
+        except Exception as e:
+            self.prepFailed.emit("st.other", json.dumps([str(e)]))
+
+    def _prepare_demo(self, manifest, cancelled):
+        # The same steps and pacing as the real thing, nothing downloaded.
+        steps = ["space", "download", "verify"]
+        if manifest["choices"]["strategy"].startswith("external:"):
+            steps.append("files")
+        steps.append("arm")
+        for s in steps:
+            n = 24 if s == "download" else 6
+            for i in range(n + 1):
+                if cancelled():
+                    raise stage.StageError("st.cancelled")
+                total = 3457810432
+                detail = "%s / %s · 42 MB/s" % (fmt_bytes(total * i / n), fmt_bytes(total)) if s == "download" else ""
+                self.prepStep.emit(s, i / n, detail)
+                time.sleep(0.05)
+        self.prepDone.emit(json.dumps({"copytoram": False, "demo": True}))
+
+    @Slot()
+    def disarm(self):
+        if self._demo:
+            return
+        try:
+            self._pkexec("disarm")
+        except stage.StageError:
+            pass
+
+    @Slot()
+    def reboot(self):
+        if self._demo:
+            return
+        for cmd in (["systemctl", "reboot"], ["loginctl", "reboot"], ["pkexec", "systemctl", "reboot"]):
+            try:
+                if subprocess.run(cmd).returncode == 0:
+                    return
+            except OSError:
+                continue
 
     @Slot(str)
     def openFolder(self, path):

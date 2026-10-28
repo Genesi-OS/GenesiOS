@@ -283,6 +283,9 @@ def ui_case():
     print("ui")
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     os.environ["QT_QUICK_BACKEND"] = "software"
+    # as genesi_migrate.main() does: the slider is restyled, which only a
+    # non-native style allows
+    os.environ["QT_QUICK_CONTROLS_STYLE"] = "Fusion"
     data = tempfile.mkdtemp()
     os.environ["XDG_DATA_HOME"] = data
 
@@ -355,7 +358,10 @@ def ui_case():
     plan = json.loads(call("buildManifest"))
     check(not any(a["selected"] for a in plan["apps"]), "deselecting every app reaches the plan")
     check(plan["choices"]["strategy"] == "stay", "the plan keeps the files in place")
-    check(plan["choices"]["install"] == {"mode": "disk", "disk": "/dev/sdb"}, "the install disk is in the plan")
+    inst = plan["choices"]["install"]
+    check(inst["mode"] == "disk" and inst["disk"] == "/dev/sdb", "the install disk is in the plan")
+    check(inst["diskSerial"] == "50026B7783A1B2C3" and inst["diskSize"] > 0,
+          "the disk is identified by serial + size (names can change in the live system)")
     check(plan["choices"]["desktop"] == "GNOME-Desktop", "the suggested desktop is in the plan")
     backend.saveManifest(json.dumps(plan))
     for _ in range(50):

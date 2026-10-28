@@ -1,0 +1,80 @@
+#!/bin/bash
+# Genesi Migrate, on the live ISO.
+#
+# Booted from the one-time GRUB entry Genesi Migrate added on the old system,
+# the kernel command line carries
+#
+#     genesi.migrate=UUID=<filesystem>:<path of the stage on it>
+#
+#   genesi-migrate-live autostart        (login autostart, liveuser) no-op on a
+#                                         normal boot; otherwise stage + open
+#                                         the installer
+#   genesi-migrate-live stage            (root) copy the stage into RAM, bring
+#                                         the saved Wi-Fi up, set the keyboard
+#   genesi-migrate-live calamares-config (root, from calamares-online.sh)
+#                                         rewrite the Calamares setup for the
+#                                         migration
+set -u
+
+RUN=/run/genesi-migrate
+LIB=/usr/lib/genesi-migrate
+LOG=/home/liveuser/genesi-migrate.log
+
+arg() { tr ' ' '\n' </proc/cmdline | sed -n 's/^genesi\.migrate=//p' | head -1; }
+
+case "${1:-}" in
+autostart)
+    [ -n "$(arg)" ] || exit 0
+    [ -e "$RUN/started" ] && exit 0
+    {
+        sudo "$0" stage || { notify-send -a "Genesi Migrate" "Genesi Migrate" \
+            "The migration plan could not be read. See ~/genesi-migrate.log" 2>/dev/null; exit 1; }
+        sudo touch "$RUN/started"
+        exec /usr/local/bin/calamares-online.sh
+    } >>"$LOG" 2>&1
+    ;;
+stage)
+    spec="$(arg)"
+    uuid="${spec#UUID=}"; uuid="${uuid%%:*}"
+    path="${spec#*:}"
+    [ -n "$uuid" ] && [ -n "$path" ] || { echo "genesi.migrate=$spec: bad value"; exit 1; }
+    mkdir -p "$RUN/src"
+    dev="/dev/disk/by-uuid/$uuid"
+    for _ in $(seq 20); do [ -e "$dev" ] && break; sleep 0.5; done
+    fstype="$(blkid -s TYPE -o value "$dev" 2>/dev/null)"
+    opts=ro
+    [ "$fstype" = btrfs ] && opts="ro,subvolid=5"
+    # ntfs: the kernel driver (ntfs3), like archiso's own loop mount
+    [ "$fstype" = ntfs ] && fstype=ntfs3
+    mount -t "$fstype" -o "$opts" "$dev" "$RUN/src" || { echo "cannot mount $dev"; exit 1; }
+    rm -rf "$RUN/stage"
+    cp -a "$RUN/src$path" "$RUN/stage" || { umount "$RUN/src"; echo "no stage at $path"; exit 1; }
+    umount "$RUN/src"
+    chmod 700 "$RUN/stage"
+    [ -f "$RUN/stage/manifest.json" ] || { echo "no manifest in the stage"; exit 1; }
+    echo "stage copied from $dev:$path"
+
+    # Wi-Fi first: the installer downloads packages.
+    if [ -d "$RUN/stage/wifi" ] && ls "$RUN/stage/wifi/"* >/dev/null 2>&1; then
+        install -d -m 700 /etc/NetworkManager/system-connections
+        install -m 600 "$RUN/stage/wifi/"* /etc/NetworkManager/system-connections/
+        nmcli connection reload || true
+        echo "Wi-Fi networks loaded"
+    fi
+    # Keyboard: the installer's keyboard page starts from the session's layout.
+    read -r layout variant < <(python3 -c '
+import json; k = json.load(open("'"$RUN/stage/manifest.json"'"))["settings"]["keyboard"]
+print(k.get("layout") or "us", k.get("variant") or "-")')
+    [ "$variant" = "-" ] && variant=""
+    localectl set-x11-keymap "$layout" "" "$variant" 2>/dev/null || true
+    nm-online -q -t 60 || echo "warning: still offline after 60 s"
+    ;;
+calamares-config)
+    [ -f "$RUN/stage/manifest.json" ] || exit 0
+    python3 "$LIB/calamares_config.py" "$RUN/stage/manifest.json" /etc/calamares
+    ;;
+*)
+    echo "usage: genesi-migrate-live autostart|stage|calamares-config" >&2
+    exit 2
+    ;;
+esac

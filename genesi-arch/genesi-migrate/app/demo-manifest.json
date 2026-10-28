@@ -1,5 +1,5 @@
 {
- "version": 1,
+ "version": 2,
  "created": "2026-10-28T12:00:00-0300",
  "demo": true,
  "os": {
@@ -387,7 +387,7 @@
  ],
  "machine": {
   "firmware": "uefi",
-  "secureBoot": true,
+  "secureBoot": false,
   "rootFs": "ext4",
   "rootDevice": "/dev/nvme0n1p2",
   "homeFs": "ext4",
@@ -426,16 +426,27 @@
       "fstype": "vfat",
       "label": "",
       "size": 536870912,
-      "mountpoint": "/boot/efi"
+      "mountpoint": "/boot/efi",
+      "uuid": "7A3C-11F0",
+      "partuuid": "",
+      "parttype": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+      "used": null
      },
      {
       "device": "/dev/nvme0n1p2",
       "fstype": "ext4",
       "label": "",
       "size": 511530604953,
-      "mountpoint": "/"
+      "mountpoint": "/",
+      "uuid": "5f1e0c2a-9d4b-4e7a-8a51-2b7c0d9e1f33",
+      "partuuid": "",
+      "parttype": "0fc63daf-8483-4772-8e79-3d69d8477de4",
+      "used": null
      }
-    ]
+    ],
+    "serial": "S69ENX0T123456",
+    "wwn": "",
+    "ptType": "gpt"
    },
    {
     "device": "/dev/sdb",
@@ -453,9 +464,16 @@
       "fstype": "ntfs",
       "label": "Dados",
       "size": 480069969510,
-      "mountpoint": ""
+      "mountpoint": "",
+      "uuid": "4C1E2F5A1E2F4062",
+      "partuuid": "",
+      "parttype": "0fc63daf-8483-4772-8e79-3d69d8477de4",
+      "used": null
      }
-    ]
+    ],
+    "serial": "50026B7783A1B2C3",
+    "wwn": "",
+    "ptType": "gpt"
    },
    {
     "device": "/dev/sda",
@@ -473,11 +491,30 @@
       "fstype": "exfat",
       "label": "Seagate Expansion",
       "size": 2000381018112,
-      "mountpoint": "/media/ana/Seagate"
+      "mountpoint": "/media/ana/Seagate",
+      "uuid": "9E4B-77D2",
+      "partuuid": "",
+      "parttype": "0fc63daf-8483-4772-8e79-3d69d8477de4",
+      "used": null
      }
-    ]
+    ],
+    "serial": "NAAB1234",
+    "wwn": "",
+    "ptType": "gpt"
    }
-  ]
+  ],
+  "rootUuid": "5f1e0c2a-9d4b-4e7a-8a51-2b7c0d9e1f33",
+  "rootPartType": "part",
+  "rootPartSize": 511530604953,
+  "rootUsed": 126701535232,
+  "rootOptions": "rw,relatime",
+  "homeUuid": "",
+  "homeOptions": "",
+  "homeMount": "/",
+  "espDevice": "/dev/nvme0n1p1",
+  "espUuid": "7A3C-11F0",
+  "espFree": 429496729,
+  "ramBytes": 17179869184
  },
  "settings": {
   "locale": "pt_BR.UTF-8",
@@ -501,9 +538,7 @@
  },
  "plan": {
   "blockers": [],
-  "warnings": [
-   "secureBoot"
-  ],
+  "warnings": [],
   "strategies": [
    {
     "id": "external",
@@ -515,6 +550,14 @@
     "ok": true
    }
   ],
-  "wantedBytes": 103510859312
+  "wantedBytes": 103510859312,
+  "alongside": {
+   "ok": true,
+   "why": "",
+   "min": 32212254720,
+   "max": 374091651481,
+   "partSize": 511530604953,
+   "used": 126701535232
+  }
  }
 }
