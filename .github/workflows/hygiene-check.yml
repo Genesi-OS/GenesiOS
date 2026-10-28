@@ -235,6 +235,13 @@ jobs:
           python -m pip install --quiet PySide6-Essentials
           python genesi-arch/ci/plugins-test.py
 
+      - name: Genesi Migrate reads other distros, and its screen saves the plan
+        # The migration tool runs on Ubuntu/Fedora/Arch, never on Genesi, so
+        # the scanner is played against fake roots answering like dpkg, rpm,
+        # pacman, snap and lsblk really do; then Main.qml loads offscreen and
+        # the plan it saves is checked. PySide6 is installed by the step above.
+        run: python genesi-arch/ci/migrate-test.py
+
       - name: a dropdown pick in Genesi Center lands on the dropdown only
         # The resolution list used to press the rotation button lying under
         # it as well. Runs the real Displays page offscreen; PySide6 is

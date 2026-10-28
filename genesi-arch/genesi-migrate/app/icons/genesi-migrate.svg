@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#13492F"/>
+      <stop offset="1" stop-color="#0B2A1C"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="60" fill="url(#bg)" stroke="#1F6B47" stroke-width="4"/>
+  <!-- the Genesi leaf (genesi-plymouth/logo.svg), scaled into the tile -->
+  <g transform="translate(128 132) scale(0.62) translate(-128 -137)">
+    <path d="M128 18C76 52 48 104 48 157c0 45 31 76 80 99 49-23 80-54 80-99 0-53-28-105-80-139Z" fill="none" stroke="#8BE8C8" stroke-width="13" stroke-linejoin="round"/>
+    <path d="M128 69v151M128 112 87 138M128 151l-43 28M128 112l41 26M128 151l43 28" fill="none" stroke="#8BE8C8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

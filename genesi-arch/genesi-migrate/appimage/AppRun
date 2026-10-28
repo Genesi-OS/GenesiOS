@@ -1,0 +1,20 @@
+#!/bin/sh
+# Genesi Migrate AppImage entry point.
+HERE="$(dirname "$(readlink -f "$0")")"
+
+# The bundled Python, and nothing of the host's: no user site-packages, no
+# PYTHONPATH/PYTHONHOME pointing at the old distro's own Python.
+unset PYTHONHOME PYTHONPATH
+export PYTHONNOUSERSITE=1
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# Native Wayland when there is a Wayland session, X11 otherwise. The host's
+# QT_QPA_PLATFORMTHEME is for the host's Qt (gtk3, kde...), whose plugin is not
+# in this bundle; Qt would just warn, so drop it.
+if [ -z "$QT_QPA_PLATFORM" ] && [ -n "$WAYLAND_DISPLAY" ]; then
+    export QT_QPA_PLATFORM="wayland;xcb"
+fi
+unset QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE QT_PLUGIN_PATH QML2_IMPORT_PATH
+
+exec "$HERE/opt/python@PYVER@/bin/python@PYVER@" -I \
+    "$HERE/usr/share/genesi-migrate/genesi_migrate.py" "$@"

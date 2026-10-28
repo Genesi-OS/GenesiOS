@@ -1,0 +1,520 @@
+{
+ "version": 1,
+ "created": "2026-10-28T12:00:00-0300",
+ "demo": true,
+ "os": {
+  "id": "ubuntu",
+  "name": "Ubuntu",
+  "pretty": "Ubuntu 24.04 LTS",
+  "version": "24.04",
+  "family": "debian",
+  "logo": "ubuntu-logo"
+ },
+ "managers": [
+  "dpkg",
+  "snap",
+  "flatpak"
+ ],
+ "apps": [
+  {
+   "id": "snap:firefox",
+   "name": "Firefox",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "snap",
+   "package": "firefox",
+   "kind": "pacman",
+   "target": "firefox",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:google-chrome-stable",
+   "name": "Google Chrome",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "google-chrome-stable",
+   "kind": "aur",
+   "target": "google-chrome",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:code",
+   "name": "Visual Studio Code",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "code",
+   "kind": "aur",
+   "target": "visual-studio-code-bin",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "snap:spotify",
+   "name": "Spotify",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "snap",
+   "package": "spotify",
+   "kind": "pacman",
+   "target": "spotify-launcher",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:discord",
+   "name": "Discord",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "discord",
+   "kind": "pacman",
+   "target": "discord",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:steam-installer",
+   "name": "Steam",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "steam-installer",
+   "kind": "pacman",
+   "target": "steam",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:gimp",
+   "name": "GIMP",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "gimp",
+   "kind": "pacman",
+   "target": "gimp",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:obs-studio",
+   "name": "OBS Studio",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "obs-studio",
+   "kind": "pacman",
+   "target": "obs-studio",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:libreoffice-writer",
+   "name": "LibreOffice",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "libreoffice-writer",
+   "kind": "pacman",
+   "target": "libreoffice-fresh",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:vlc",
+   "name": "VLC",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "vlc",
+   "kind": "pacman",
+   "target": "vlc",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "flatpak:org.telegram.desktop",
+   "name": "Telegram",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "flatpak",
+   "package": "org.telegram.desktop",
+   "kind": "flatpak",
+   "target": "org.telegram.desktop",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "flatpak:md.obsidian.Obsidian",
+   "name": "Obsidian",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "flatpak",
+   "package": "md.obsidian.Obsidian",
+   "kind": "flatpak",
+   "target": "md.obsidian.Obsidian",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:zoom",
+   "name": "Zoom",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "zoom",
+   "kind": "flatpak",
+   "target": "us.zoom.Zoom",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "snap:postman",
+   "name": "Postman",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "snap",
+   "package": "postman",
+   "kind": "flatpak",
+   "target": "com.getpostman.Postman",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:kdenlive",
+   "name": "Kdenlive",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "kdenlive",
+   "kind": "pacman",
+   "target": "kdenlive",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "dpkg:stacer",
+   "name": "Stacer",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "dpkg",
+   "package": "stacer",
+   "kind": "pacman",
+   "target": "stacer",
+   "confidence": "likely",
+   "selected": true
+  },
+  {
+   "id": "snap:whatsdesk",
+   "name": "Whatsdesk",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "snap",
+   "package": "whatsdesk",
+   "kind": "flatpak-search",
+   "target": "whatsdesk",
+   "confidence": "likely",
+   "selected": true
+  },
+  {
+   "id": "cli:git",
+   "name": "git",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "cli",
+   "package": "git",
+   "kind": "pacman",
+   "target": "git",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "cli:docker",
+   "name": "docker",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "cli",
+   "package": "docker",
+   "kind": "pacman",
+   "target": "docker",
+   "confidence": "known",
+   "selected": true
+  },
+  {
+   "id": "cli:node",
+   "name": "node",
+   "namePt": "",
+   "comment": "",
+   "icon": "",
+   "source": "cli",
+   "package": "node",
+   "kind": "pacman",
+   "target": "nodejs",
+   "confidence": "known",
+   "selected": true
+  }
+ ],
+ "desktopComponents": 23,
+ "files": [
+  {
+   "id": "documents",
+   "label": "documents",
+   "path": "/home/ana",
+   "bytes": 3435973836,
+   "estimate": false,
+   "selected": true,
+   "group": "files"
+  },
+  {
+   "id": "pictures",
+   "label": "pictures",
+   "path": "/home/ana",
+   "bytes": 19756849561,
+   "estimate": false,
+   "selected": true,
+   "group": "files"
+  },
+  {
+   "id": "music",
+   "label": "music",
+   "path": "/home/ana",
+   "bytes": 6549825126,
+   "estimate": false,
+   "selected": true,
+   "group": "files"
+  },
+  {
+   "id": "videos",
+   "label": "videos",
+   "path": "/home/ana",
+   "bytes": 44775034060,
+   "estimate": false,
+   "selected": true,
+   "group": "files"
+  },
+  {
+   "id": "downloads",
+   "label": "downloads",
+   "path": "/home/ana",
+   "bytes": 10522669875,
+   "estimate": false,
+   "selected": true,
+   "group": "files"
+  },
+  {
+   "id": "desktop",
+   "label": "desktop",
+   "path": "/home/ana",
+   "bytes": 429496729,
+   "estimate": false,
+   "selected": true,
+   "group": "files"
+  },
+  {
+   "id": "other",
+   "label": "other",
+   "path": "/home/ana",
+   "bytes": 13207024435,
+   "estimate": false,
+   "selected": true,
+   "group": "files",
+   "names": [
+    "Projetos",
+    "Jogos",
+    "faculdade"
+   ],
+   "count": 3
+  },
+  {
+   "id": "browsers",
+   "label": "browsers",
+   "path": "/home/ana",
+   "bytes": 2040109465,
+   "estimate": false,
+   "selected": true,
+   "group": "hidden"
+  },
+  {
+   "id": "keys",
+   "label": "keys",
+   "path": "/home/ana",
+   "bytes": 2147483,
+   "estimate": false,
+   "selected": true,
+   "group": "hidden"
+  },
+  {
+   "id": "appconfig",
+   "label": "appconfig",
+   "path": "/home/ana",
+   "bytes": 2791728742,
+   "estimate": false,
+   "selected": true,
+   "group": "hidden"
+  },
+  {
+   "id": "steam",
+   "label": "steam",
+   "path": "/home/ana",
+   "bytes": 199715979264,
+   "estimate": false,
+   "selected": false,
+   "group": "hidden"
+  }
+ ],
+ "machine": {
+  "firmware": "uefi",
+  "secureBoot": true,
+  "rootFs": "ext4",
+  "rootDevice": "/dev/nvme0n1p2",
+  "homeFs": "ext4",
+  "homeDevice": "/dev/nvme0n1p2",
+  "homeSeparate": false,
+  "homeFree": 227633266688,
+  "luks": false,
+  "windows": false,
+  "bootloader": "grub",
+  "externals": [
+   {
+    "device": "/dev/sda1",
+    "label": "Seagate Expansion",
+    "model": "Expansion HDD",
+    "fstype": "exfat",
+    "size": 2000381018112,
+    "free": 1728724336640,
+    "mountpoint": "/media/ana/Seagate"
+   }
+  ],
+  "virtual": false,
+  "disks": [
+   {
+    "device": "/dev/nvme0n1",
+    "name": "nvme0n1",
+    "model": "Samsung SSD 980",
+    "size": 512067475865,
+    "removable": false,
+    "tran": "nvme",
+    "system": true,
+    "home": true,
+    "windows": false,
+    "partitions": [
+     {
+      "device": "/dev/nvme0n1p1",
+      "fstype": "vfat",
+      "label": "",
+      "size": 536870912,
+      "mountpoint": "/boot/efi"
+     },
+     {
+      "device": "/dev/nvme0n1p2",
+      "fstype": "ext4",
+      "label": "",
+      "size": 511530604953,
+      "mountpoint": "/"
+     }
+    ]
+   },
+   {
+    "device": "/dev/sdb",
+    "name": "sdb",
+    "model": "Kingston A400",
+    "size": 480069969510,
+    "removable": false,
+    "tran": "sata",
+    "system": false,
+    "home": false,
+    "windows": false,
+    "partitions": [
+     {
+      "device": "/dev/sdb1",
+      "fstype": "ntfs",
+      "label": "Dados",
+      "size": 480069969510,
+      "mountpoint": ""
+     }
+    ]
+   },
+   {
+    "device": "/dev/sda",
+    "name": "sda",
+    "model": "Seagate Expansion",
+    "size": 2000381018112,
+    "removable": true,
+    "tran": "usb",
+    "system": false,
+    "home": false,
+    "windows": false,
+    "partitions": [
+     {
+      "device": "/dev/sda1",
+      "fstype": "exfat",
+      "label": "Seagate Expansion",
+      "size": 2000381018112,
+      "mountpoint": "/media/ana/Seagate"
+     }
+    ]
+   }
+  ]
+ },
+ "settings": {
+  "locale": "pt_BR.UTF-8",
+  "timezone": "America/Sao_Paulo",
+  "keyboard": {
+   "layout": "br",
+   "variant": "abnt2"
+  },
+  "wifi": [
+   "Casa 5G",
+   "Casa 2.4G",
+   "Trabalho"
+  ],
+  "user": {
+   "name": "ana",
+   "fullName": "Ana Souza",
+   "shell": "bash"
+  },
+  "desktop": "ubuntu:GNOME",
+  "genesiDesktop": "GNOME-Desktop"
+ },
+ "plan": {
+  "blockers": [],
+  "warnings": [
+   "secureBoot"
+  ],
+  "strategies": [
+   {
+    "id": "external",
+    "device": "/dev/sda1",
+    "label": "Seagate Expansion",
+    "free": 1728724336640,
+    "size": 2000381018112,
+    "mounted": true,
+    "ok": true
+   }
+  ],
+  "wantedBytes": 103510859312
+ }
+}

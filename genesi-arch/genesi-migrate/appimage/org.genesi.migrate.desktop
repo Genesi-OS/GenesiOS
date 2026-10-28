@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Migrate
+Name[pt_BR]=Genesi Migrate
+Comment=Move your apps, files and settings to Genesi
+Comment[pt_BR]=Leve seus apps, arquivos e configurações para o Genesi
+Exec=genesi-migrate
+Icon=genesi-migrate
+Categories=System;Utility;
+Terminal=false

@@ -33,6 +33,9 @@ genesi-arch/packages/genesi-center/app/qmldir              text eol=lf
 genesi-arch/packages/genesi-topbar/genesi-topbar-data      text eol=lf
 genesi-arch/packages/genesi-topbar/quickshell/qmldir       text eol=lf
 genesi-arch/packages/genesi-store/app/qmldir               text eol=lf
+# Genesi Migrate's AppImage entry point: exec'd by the AppImage runtime on
+# the user's old distro, where a CRLF shebang is "bad interpreter".
+genesi-arch/genesi-migrate/appimage/AppRun                  text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-aid             text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-mode         text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-kwin-helper  text eol=lf
