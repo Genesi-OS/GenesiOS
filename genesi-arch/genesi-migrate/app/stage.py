@@ -164,13 +164,26 @@ def grub_entry(p):
             GRUB_MODS.get(p["fs"], "ext2")]
     lines = ["menuentry 'Genesi Migrate' --id %s {" % GRUB_ID]
     lines += ["    insmod %s" % mod for mod in mods]
+    # A framebuffer for the kernel. The ISO's own grub.cfg loads all_video and
+    # boots with gfxpayload=keep; this entry runs from the OLD system's GRUB,
+    # which on a BIOS machine is often still in text mode. The kernel then got
+    # no framebuffer at all, simpledrm had nothing to drive, vmwgfx is
+    # blacklisted like in every ISO entry, and the live desktop could not
+    # start: a black screen with a blinking cursor (first VirtualBox run).
+    # On BIOS ask for a VESA mode; on UEFI keep the GOP framebuffer.
     lines += [
+        "    insmod all_video",
+        '    if [ "${grub_platform}" = "pc" ]; then',
+        "        set gfxpayload=1024x768x32,1024x768,auto",
+        "    else",
+        "        set gfxpayload=keep",
+        "    fi",
         "    search --no-floppy --fs-uuid --set=root %s" % p["uuid"],
         "    set isofile='%s'" % p["isoRel"],
         '    loopback loop "$isofile"',
         "    linux (loop)%s archisobasedir=arch img_dev=UUID=%s img_loop=\"$isofile\" "
         "cow_spacesize=10G copytoram=%s genesi.migrate=UUID=%s:%s "
-        "quiet splash module_blacklist=pcspkr,vmwgfx nvme_load=yes"
+        "module_blacklist=pcspkr,vmwgfx nvme_load=yes"
         % (KERNEL, p["uuid"], "y" if p["copytoram"] else "n", p["uuid"], p["stageRel"]),
         "    initrd (loop)%s" % INITRD,
         "}",

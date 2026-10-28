@@ -58,8 +58,8 @@ ApplicationWindow {
     }
 
     // ── language ────────────────────────────────────────────────────────
-    property bool pt: forcedLang ? forcedLang.indexOf("pt") === 0
-                                 : Qt.locale().name.indexOf("pt") === 0
+    // English first, always; Portuguese is one click away on the rail.
+    property bool pt: forcedLang ? forcedLang.indexOf("pt") === 0 : false
     readonly property var dict: pt ? i18nPt : i18nEn
     function tr(k) { var v = dict[k]; return v === undefined ? (i18nEn[k] || k) : v }
     function trf(k, a, b) {
@@ -877,7 +877,7 @@ ApplicationWindow {
                     rowSpacing: 4
                     columnSpacing: 4
                     Repeater {
-                        model: ["pt", "en"]
+                        model: ["en", "pt"]
                         delegate: Rectangle {
                             required property string modelData
                             readonly property bool on: (modelData === "pt") === win.pt

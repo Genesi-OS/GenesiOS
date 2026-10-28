@@ -123,6 +123,20 @@ def stage_cases():
     check("copytoram=y" in entry and "img_dev=UUID=root-uuid" in entry, "archiso gets img_dev + copytoram")
     check("genesi.migrate=UUID=root-uuid:/var/lib/genesi-migrate/stage" in entry, "the live system is told where the stage is")
     check("--id genesi-migrate" in entry, "the entry has the id grub-reboot picks")
+    check("insmod all_video" in entry and "gfxpayload=" in entry
+          and entry.index("gfxpayload=") < entry.index("    linux "),
+          "the kernel gets a framebuffer (black screen on BIOS VMs without it)")
+    check(" quiet" not in entry, "boot messages stay visible: the entry runs once and its text is the only clue")
+    import shutil
+    import subprocess
+    if shutil.which("grub-script-check"):
+        with tempfile.NamedTemporaryFile("w", suffix=".cfg", delete=False, newline="\n") as f:
+            f.write(entry)
+        r = subprocess.run(["grub-script-check", f.name], capture_output=True, text=True)
+        os.unlink(f.name)
+        check(r.returncode == 0, "GRUB parses the entry (%s)" % (r.stderr or r.stdout).strip())
+    else:
+        print("  grub-script-check not installed, GRUB syntax not checked")
     check(stage.KERNEL in entry and stage.INITRD in entry, "kernel and initramfs paths are the ISO's")
     iso_cfg = open(os.path.join(ROOT, "archiso", "grub", "loopback.cfg"), encoding="utf-8").read()
     check("vmlinuz-linux-cachyos-lts" in iso_cfg and "initramfs-linux-cachyos-lts.img" in iso_cfg,
