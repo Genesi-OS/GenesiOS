@@ -349,7 +349,9 @@ def ui_case():
     ids = [x["device"] for x in strategies if x["id"] == "external"]
     check("/dev/sda1" not in ids, "the install disk is not offered as the backup disk")
     call("chooseTarget", "replace")
-    check(win.property("strategy").startswith("external:"), "replacing the system falls back to the USB backup")
+    check(win.property("strategy") == "stay", "native migration keeps home on the source filesystem")
+    native_plan = json.loads(call("buildManifest"))
+    check(native_plan["choices"]["install"]["mode"] == "native", "the default system migration uses the native worker, not format/Calamares")
     call("chooseTarget", "disk:/dev/sdb")
     win.setProperty("wipeConfirmed", True)
     win.setProperty("page", 6)

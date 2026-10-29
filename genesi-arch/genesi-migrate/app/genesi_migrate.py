@@ -46,6 +46,7 @@ except ImportError:
 import appmap
 import scanner
 import stage
+import native
 
 
 def fmt_bytes(n):
@@ -72,6 +73,7 @@ class Backend(QObject):
         self._replay = replay or os.path.join(HERE, "demo-manifest.json")
         self._os = scanner.Scanner().detect_os() if not self._demo else self._replayed()["os"]
         self._cancel = False
+        self._native_task = ""
 
     def _replayed(self):
         with open(self._replay, encoding="utf-8") as f:
@@ -174,6 +176,9 @@ class Backend(QObject):
             if self._demo:
                 return self._prepare_demo(manifest, cancelled)
             self.prepStep.emit("space", 0, "")
+            is_native = manifest["choices"]["install"]["mode"] == "native"
+            if is_native:
+                native.validate_machine(manifest["machine"], native.inventory())
             p = stage.plan(manifest, home)
             if p["needsRoot"]:
                 self._pkexec("mkdir", p["dir"], getpass.getuser())
@@ -188,22 +193,12 @@ class Backend(QObject):
 
             # download (skipped when a verified ISO is already there)
             want = stage.expected_sha()
-            ok_marker = p["iso"] + ".ok"
-            if not (os.path.exists(p["iso"]) and os.path.exists(ok_marker)
-                    and open(ok_marker).read().strip() == want):
-                def dl(done, total, speed):
-                    detail = "%s / %s" % (fmt_bytes(done), fmt_bytes(total))
-                    if speed:
-                        detail += " · %s/s" % fmt_bytes(speed)
-                    self.prepStep.emit("download", done / total if total else 0, detail)
-                stage.download(p["iso"], dl, cancelled)
-                self.prepStep.emit("verify", 0, "")
-                got = stage.sha256_of(p["iso"], lambda d, t: self.prepStep.emit("verify", d / t, ""), cancelled)
-                if got != want:
-                    os.remove(p["iso"])
-                    raise stage.StageError("st.sha")
-                with open(ok_marker, "w") as f:
-                    f.write(want)
+            def dl(done, total, speed):
+                detail = "%s / %s" % (fmt_bytes(done), fmt_bytes(total))
+                if speed:
+                    detail += " · %s/s" % fmt_bytes(speed)
+                self.prepStep.emit("download", done / total if total else 0, detail)
+            stage.verified_download(p["iso"], want, dl, cancelled)
             self.prepStep.emit("download", 1, "")
             self.prepStep.emit("verify", 1, "")
 
@@ -217,10 +212,27 @@ class Backend(QObject):
                 if errs:
                     with open(os.path.join(p["dir"], "copy-errors.txt"), "w") as f:
                         f.write("\n".join(errs))
+                    raise stage.StageError("st.other", "File backup failed; migration was not armed. See copy-errors.txt")
                 self.prepStep.emit("files", 1, "%d" % len(errs) if errs else "")
 
             self.prepStep.emit("arm", 0, "")
+            if cancelled():
+                raise stage.StageError("st.cancelled")
             stage.write_stage(manifest, p, home)
+            if is_native:
+                self.prepStep.emit("build", 0, "")
+                runtime = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+                worker = os.path.join(runtime, "genesi-native-worker.py")
+                shutil.copyfile(os.path.join(HERE, "native.py"), worker)
+                profiles = os.path.join(runtime, "genesi-native-profiles.json")
+                shutil.copyfile(os.path.join(HERE, "native-profiles.json"), profiles)
+                result = self._pkexec("native", worker, os.path.join(p["stage"], "manifest.json"),
+                                      p["iso"], want, profiles)
+                self._native_task = json.loads(result.strip().splitlines()[-1])["task"]
+                self.prepStep.emit("build", 1, "")
+                self.prepStep.emit("arm", 1, "")
+                self.prepDone.emit(json.dumps(dict(p, native=True)))
+                return
             entry = os.path.join(p["stage"], "grub-entry.cfg")
             with open(entry, "w") as f:
                 f.write(stage.grub_entry(p))
@@ -239,6 +251,8 @@ class Backend(QObject):
         steps = ["space", "download", "verify"]
         if manifest["choices"]["strategy"].startswith("external:"):
             steps.append("files")
+        if manifest["choices"]["install"]["mode"] == "native":
+            steps.append("build")
         steps.append("arm")
         for s in steps:
             n = 24 if s == "download" else 6
@@ -251,14 +265,23 @@ class Backend(QObject):
                 time.sleep(0.05)
         self.prepDone.emit(json.dumps({"copytoram": False, "demo": True}))
 
-    @Slot()
+    @Slot(result=bool)
     def disarm(self):
         if self._demo:
-            return
+            return True
         try:
+            if self._native_task:
+                runtime = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+                worker = os.path.join(runtime, "genesi-native-worker.py")
+                shutil.copyfile(os.path.join(HERE, "native.py"), worker)
+                self._pkexec("native-disarm", worker, self._native_task)
+                self._native_task = ""
+                return True
             self._pkexec("disarm")
-        except stage.StageError:
-            pass
+            return True
+        except stage.StageError as exc:
+            self.prepFailed.emit(exc.key, json.dumps([str(a) for a in exc.args_]))
+            return False
 
     @Slot()
     def reboot(self):

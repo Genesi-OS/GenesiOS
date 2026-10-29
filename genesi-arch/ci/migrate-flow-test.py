@@ -169,7 +169,10 @@ def download_cases():
             rng = req.headers.get("Range")
             seen.append(rng)
             start = int(rng.split("=")[1].rstrip("-")) if rng else 0
-            return FakeResp(data[start:], 206 if rng else 200, len(data) - start)
+            response = FakeResp(data[start:], 206 if rng else 200, len(data) - start)
+            if rng:
+                response.headers["Content-Range"] = "bytes %d-%d/%d" % (start, len(data) - 1, len(data))
+            return response
         stage.download(dest, lambda *a: None, lambda: False, opener)
         check(seen == ["bytes=300000-"], "a cut download resumes with Range (got %r)" % seen)
         check(open(dest, "rb").read() == data, "the resumed file is byte-identical")

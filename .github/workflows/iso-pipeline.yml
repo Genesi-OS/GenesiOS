@@ -37,6 +37,10 @@ on:
       - 'genesi-arch/**'
       - '!genesi-arch/packages/**'
       - '!genesi-arch/repo/**'
+      # The standalone AppImage has its own release workflow. Live-side
+      # migration code under archiso/** remains an ISO input.
+      - '!genesi-arch/genesi-migrate/**'
+      - '!genesi-arch/ci/migrate-*.py'
       - '.github/workflows/iso-pipeline.yml'
       - '!**/*.md'
   workflow_dispatch:

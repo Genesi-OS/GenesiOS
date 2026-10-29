@@ -248,7 +248,9 @@ jobs:
         # renamed in the live system, a busy disk, BIOS+GPT, the shrink math,
         # an ISO that would sit on the partition being formatted) and runs the
         # Calamares migration setup against Genesi's real Calamares files.
-        run: python genesi-arch/ci/migrate-flow-test.py
+        run: |
+          python genesi-arch/ci/migrate-flow-test.py
+          python genesi-arch/ci/migrate-inplace-test.py
 
       - name: a dropdown pick in Genesi Center lands on the dropdown only
         # The resolution list used to press the rotation button lying under

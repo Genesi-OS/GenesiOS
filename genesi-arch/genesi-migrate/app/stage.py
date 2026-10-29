@@ -26,8 +26,10 @@ Stdlib only (runs on the old distro).
 import hashlib
 import json
 import os
+import re
 import shutil
 import ssl
+import tempfile
 import time
 import urllib.request
 
@@ -233,7 +235,11 @@ def urlopen(req, timeout=60):
 
 def expected_sha(opener=urlopen):
     with opener(SHA_URL, timeout=30) as r:
-        return r.read().decode("ascii", "replace").split()[0].strip().lower()
+        fields = r.read(4096).decode("ascii", "replace").split()
+        value = fields[0].lower() if fields else ""
+        if not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise StageError("st.sha")
+        return value
 
 
 def remote_size(opener=urlopen):
@@ -251,6 +257,12 @@ def download(dest, progress, cancelled, opener=urlopen):
         req.add_header("Range", "bytes=%d-" % done)
     with opener(req, timeout=60) as r:
         status = getattr(r, "status", 200)
+        if status not in (200, 206):
+            raise StageError("st.net", "Unexpected HTTP status %s" % status)
+        if status == 206:
+            match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", r.headers.get("Content-Range", ""))
+            if not match or int(match[1]) != done or int(match[2]) < done or int(match[2]) >= int(match[3]):
+                raise StageError("st.net", "Invalid download resume range")
         if done and status != 206:   # server ignored the range: start over
             done = 0
         total = done + int(r.headers.get("Content-Length") or 0)
@@ -267,9 +279,29 @@ def download(dest, progress, cancelled, opener=urlopen):
                 done += len(chunk)
                 dt = time.monotonic() - t0
                 progress(done, total, (done - d0) / dt if dt > 0.5 else 0)
+            f.flush()
+            os.fsync(f.fileno())
     if total and done != total:
         raise StageError("st.short")
     os.replace(part, dest)
+
+
+def verified_download(dest, digest, progress, cancelled, opener=urlopen):
+    """Never trust a marker file or publish unverified bytes as the artifact.
+
+    A cut transfer retains .part; a valid existing destination remains intact.
+    Callers must finish this operation before they can arm a migration boot.
+    """
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise StageError("st.sha")
+    if os.path.isfile(dest) and sha256_of(dest, cancelled=cancelled) == digest:
+        return
+    candidate = dest + ".download"
+    download(candidate, progress, cancelled, opener)
+    if sha256_of(candidate, cancelled=cancelled) != digest:
+        os.remove(candidate)
+        raise StageError("st.sha")
+    os.replace(candidate, dest)
 
 
 def sha256_of(path, progress=lambda d, t: None, cancelled=lambda: False):
@@ -306,6 +338,26 @@ def sources(manifest, home):
 
 def copy_tree(pairs, dest_root, progress, cancelled, skip=()):
     """Copy, keeping symlinks as links and times as they were. Returns errors."""
+    dest_root = os.path.abspath(dest_root)
+    # Never let a malformed relative name or a pre-existing destination link
+    # redirect a backup outside its directory.
+    for _, rel in pairs:
+        if os.path.isabs(rel) or rel in ("", ".") or ".." in rel.replace("\\", "/").split("/"):
+            raise StageError("st.other", "Unsafe backup destination")
+
+    def safe_destination(path):
+        absolute = os.path.abspath(path)
+        if os.path.commonpath((dest_root, absolute)) != dest_root:
+            raise OSError("Backup destination escapes its root")
+        current = absolute
+        while True:
+            if os.path.islink(current):
+                raise OSError("Backup destination contains a symbolic link")
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            current = parent
+
     total = 0
     for src, _ in pairs:
         if os.path.isdir(src) and not os.path.islink(src):
@@ -329,18 +381,40 @@ def copy_tree(pairs, dest_root, progress, cancelled, skip=()):
             raise StageError("st.cancelled")
         try:
             if os.path.islink(s):
-                if not os.path.lexists(d):
+                safe_destination(os.path.dirname(d))
+                if os.path.islink(d) and os.readlink(d) == os.readlink(s):
+                    pass
+                elif not os.path.lexists(d):
                     os.symlink(os.readlink(s), d)
+                else:
+                    raise OSError("Backup symbolic link conflicts with existing destination")
                 done += os.lstat(s).st_size      # counted in the total too
             elif os.path.isfile(s):
+                safe_destination(d)
                 # same size + mtime already there: a resumed copy, skip it
                 if os.path.exists(d):
                     a, b = os.stat(s), os.stat(d)
-                    if a.st_size == b.st_size and int(a.st_mtime) == int(b.st_mtime):
+                    if a.st_size == b.st_size and sha256_of(s, cancelled=cancelled) == sha256_of(d, cancelled=cancelled):
                         done += a.st_size
                         progress(done, total)
                         return
-                shutil.copy2(s, d)
+                fd, partial = tempfile.mkstemp(prefix=".genesi-copy-", dir=os.path.dirname(d))
+                os.close(fd)
+                try:
+                    before = os.stat(s)
+                    shutil.copyfile(s, partial)
+                    if sha256_of(s, cancelled=cancelled) != sha256_of(partial, cancelled=cancelled):
+                        raise OSError("Backup verification failed")
+                    after = os.stat(s)
+                    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                        raise OSError("Source changed during backup; retry preparation")
+                    with open(partial, "r+b") as stream:
+                        os.fsync(stream.fileno())
+                    shutil.copystat(s, partial)
+                    os.replace(partial, d)
+                finally:
+                    if os.path.exists(partial):
+                        os.unlink(partial)
                 done += os.path.getsize(s)
         except OSError as e:
             errors.append("%s: %s" % (s, e.strerror or e))
@@ -352,10 +426,17 @@ def copy_tree(pairs, dest_root, progress, cancelled, skip=()):
             for dp, dns, fns in os.walk(src):
                 dns[:] = [d for d in dns if os.path.join(dp, d) not in skip]
                 tgt = os.path.join(dst, os.path.relpath(dp, src))
+                safe_destination(tgt)
                 os.makedirs(tgt, exist_ok=True)
+                for name in list(dns):
+                    source_dir = os.path.join(dp, name)
+                    if os.path.islink(source_dir):
+                        one(source_dir, os.path.join(tgt, name))
+                        dns.remove(name)
                 for fn in fns:
                     one(os.path.join(dp, fn), os.path.join(tgt, fn))
         else:
+            safe_destination(os.path.dirname(dst))
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             one(src, dst)
     return errors

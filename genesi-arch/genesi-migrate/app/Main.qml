@@ -111,6 +111,8 @@ ApplicationWindow {
         "p.verify": "Check the download (SHA-256)",
         "p.files": "Copy your files to the external drive",
         "p.arm": "Prepare the restart (asks for your password)",
+        "p.build": "Build and verify your Genesi system (requires administrator access)",
+        "r.nativeReady": "Genesi is prepared. Restart to run automatic offline maintenance, preserve your home files and switch to Btrfs. The PC then restarts into Genesi. No graphical installer is involved.",
         "p.cancel": "Cancel",
         "p.later": "Not now",
         "p.retry": "Try again",
@@ -134,7 +136,7 @@ ApplicationWindow {
         "step.disk": "Disk",
         "d.title": "Where Genesi goes",
         "d.sub": "Pick the disk. Nothing is erased now: the installer still asks one last time.",
-        "d.replace": "Replace %1: only its system partition (%2) is formatted. The rest of this disk stays as it is.",
+        "d.replace": "Migrate %1 to Genesi on %2. Keep your home files; convert ext4 to Btrfs during offline maintenance. Requires UEFI and a supported disk layout.",
         "d.replaceShort": "replacing %1",
         "d.whole": "Use the whole disk for Genesi. Everything on it will be erased.",
         "d.wholeExternal": "Use the whole external disk. Genesi boots straight from it: great for trying it without touching this PC.",
@@ -145,7 +147,7 @@ ApplicationWindow {
         "d.confirm": "I understand: everything on %1 (%2) will be erased.",
         "d.safety": "Windows and other partitions are never touched unless you pick their whole disk.",
         "f.stay": "They stay where they are",
-        "f.stay.d": "Genesi goes to %1; your files stay on the %2 disk and are copied over after the install.",
+        "f.stay.d": "Your files remain on the %2 disk. Native migration preserves the entire home; another-disk installations copy your selected files.",
         "r.target": "Genesi goes to",
         "r.dest.stay": "the old disk, where they already are",
         "f.title": "Your files",
@@ -159,7 +161,7 @@ ApplicationWindow {
         "appconfig.d": "Each app's preferences", "steam.d": "Steam can download them again",
         "f.whereTitle": "Where your files wait during the switch",
         "f.whereSub": "Installing Genesi formats the system partition. Your files need somewhere safe for those minutes.",
-        "f.whereSubStay": "Genesi goes to another disk, so your files can simply stay where they are.",
+        "f.whereSubStay": "Your personal files remain preserved during migration. Native migration keeps the entire /home, including folders not selected above.",
         "f.keepHome": "Keep my /home partition",
         "f.keepHome.d": "It's already separate (%1). Genesi only formats the system partition.",
         "f.external": "External drive: %1",
@@ -185,8 +187,8 @@ ApplicationWindow {
         "r.apps": "apps", "r.files": "of files", "r.settings": "settings", "r.dest": "Files wait on",
         "r.dest.keep": "your /home partition", "r.dest.none": "nowhere — not kept",
         "r.how": "What happens when you click",
-        "r.h1": "We save the migration plan", "r.h2": "We download Genesi and check its signature",
-        "r.h3": "The PC restarts into the installer, already filled in", "r.h4": "Your apps and files come back on Genesi",
+        "r.h1": "We save the migration plan", "r.h2": "We download Genesi and verify its SHA-256",
+        "r.h3": "Restart to complete the migration", "r.h4": "Start Genesi with your apps and files",
         "r.soon": "next update",
         "r.go": "Prepare migration",
         "r.blocked": "Migration can't continue on this computer yet.",
@@ -242,6 +244,8 @@ ApplicationWindow {
         "p.verify": "Conferir o download (SHA-256)",
         "p.files": "Copiar seus arquivos para o disco externo",
         "p.arm": "Preparar o reinício (pede sua senha)",
+        "p.build": "Montar e verificar seu Genesi (requer acesso de administrador)",
+        "r.nativeReady": "O Genesi esta preparado. Reinicie para a manutencao automatica preservar seus arquivos e concluir a mudanca para Btrfs. Depois o PC reinicia no Genesi, sem instalador grafico.",
         "p.cancel": "Cancelar",
         "p.later": "Agora não",
         "p.retry": "Tentar de novo",
@@ -265,7 +269,7 @@ ApplicationWindow {
         "step.disk": "Disco",
         "d.title": "Onde instalar o Genesi",
         "d.sub": "Escolha o disco. Nada é apagado agora: o instalador ainda pede uma última confirmação.",
-        "d.replace": "Substituir o %1: só a partição do sistema (%2) é formatada. O resto deste disco fica como está.",
+        "d.replace": "Migrar o %1 para Genesi em %2. Seus arquivos pessoais ficam; ext4 sera convertido para Btrfs na manutencao offline. Requer UEFI e layout suportado.",
         "d.replaceShort": "no lugar do %1",
         "d.whole": "Usar o disco inteiro para o Genesi. Tudo que está nele será apagado.",
         "d.wholeExternal": "Usar o disco externo inteiro. O Genesi inicia direto dele: ótimo para testar sem mexer neste PC.",
@@ -276,7 +280,7 @@ ApplicationWindow {
         "d.confirm": "Entendi: tudo em %1 (%2) será apagado.",
         "d.safety": "O Windows e outras partições nunca são tocados, a não ser que você escolha o disco inteiro deles.",
         "f.stay": "Ficam onde estão",
-        "f.stay.d": "O Genesi vai para o %1; seus arquivos continuam no disco do %2 e são copiados depois da instalação.",
+        "f.stay.d": "Seus arquivos continuam no disco do %2. A migracao nativa preserva todo o home; em outro disco, copia os arquivos selecionados.",
         "r.target": "Genesi vai para",
         "r.dest.stay": "o disco antigo, onde já estão",
         "f.title": "Seus arquivos",
@@ -290,7 +294,7 @@ ApplicationWindow {
         "appconfig.d": "As preferências de cada app", "steam.d": "A Steam baixa de novo",
         "f.whereTitle": "Onde seus arquivos esperam durante a troca",
         "f.whereSub": "Instalar o Genesi formata a partição do sistema. Seus arquivos precisam de um lugar seguro nesses minutos.",
-        "f.whereSubStay": "O Genesi vai para outro disco, então seus arquivos podem simplesmente ficar onde estão.",
+        "f.whereSubStay": "Seus arquivos pessoais ficam preservados. A migracao nativa mantem todo o /home, inclusive pastas nao selecionadas acima.",
         "f.keepHome": "Manter minha partição /home",
         "f.keepHome.d": "Ela já é separada (%1). O Genesi só formata a partição do sistema.",
         "f.external": "Disco externo: %1",
@@ -316,8 +320,8 @@ ApplicationWindow {
         "r.apps": "apps", "r.files": "de arquivos", "r.settings": "ajustes", "r.dest": "Arquivos esperam em",
         "r.dest.keep": "sua partição /home", "r.dest.none": "lugar nenhum — não serão mantidos",
         "r.how": "O que acontece quando você clicar",
-        "r.h1": "Salvamos o plano de migração", "r.h2": "Baixamos o Genesi e conferimos a assinatura",
-        "r.h3": "O PC reinicia no instalador, já preenchido", "r.h4": "Seus apps e arquivos voltam no Genesi",
+        "r.h1": "Salvamos o plano de migração", "r.h2": "Baixamos o Genesi e verificamos o SHA-256",
+        "r.h3": "Reinicie para concluir a migracao", "r.h4": "Inicie o Genesi com seus apps e arquivos",
         "r.soon": "próxima versão",
         "r.go": "Preparar migração",
         "r.blocked": "A migração ainda não pode continuar neste computador.",
@@ -428,6 +432,7 @@ ApplicationWindow {
     // Genesi on another disk (or next to the old system, which keeps its
     // partition) and today's files are not erased: nothing to move.
     function stayAvailable() {
+        if (installTarget === "replace") return true
         if (installTarget === "alongside") return true
         var t = targetDisk()
         return !onSystem() && t !== null && !t.system && !t.home
@@ -542,7 +547,7 @@ ApplicationWindow {
         var t = targetDisk(), mc = manifest.machine
         // Device names can change order in the live system: the installer
         // finds the disk again by serial/WWN + size, partitions by UUID.
-        var install = { mode: installTarget === "replace" || installTarget === "alongside" ? installTarget : "disk",
+        var install = { mode: installTarget === "replace" ? "native" : installTarget === "alongside" ? "alongside" : "disk",
                         disk: t ? t.device : "", diskSerial: t ? (t.serial || "") : "", diskWwn: t ? (t.wwn || "") : "",
                         diskSize: t ? t.size : 0, rootUuid: mc.rootUuid || "", espUuid: mc.espUuid || "",
                         homeUuid: strategy === "keep-home" ? (mc.homeUuid || "") : "" }
@@ -555,9 +560,14 @@ ApplicationWindow {
 
     function prepSteps() {
         var _ = rev, out = ["space", "download", "verify"]
+        if (installTarget === "replace") out.push("build")
         if (strategy.indexOf("external:") === 0) out.push("files")
         out.push("arm")
         return out
+    }
+    property string prepCurrent: ""
+    onClosing: function(close) {
+        if (prepState === "running" && installTarget === "replace" && (prepCurrent === "build" || prepCurrent === "arm")) close.accepted = false
     }
     function startPrepare() {
         var m = buildManifest()
@@ -604,6 +614,7 @@ ApplicationWindow {
             rev++
         }
         function onPrepStep(step, frac, detail) {
+            prepCurrent = step
             var f = Object.assign({}, prepFrac); f[step] = frac; prepFrac = f
             var d = Object.assign({}, prepDetail); d[step] = detail; prepDetail = d
         }
@@ -1736,6 +1747,7 @@ ApplicationWindow {
 
                             Card {
                                 id: noneCard
+                                visible: win.installTarget !== "replace"
                                 readonly property bool chosen: win.strategy === "none"
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 74
@@ -2063,7 +2075,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         spacing: 6
                                         Text { text: win.tr("r.readyTitle"); color: c.textHi; font.pixelSize: 16; font.weight: Font.Bold }
-                                        Text { text: win.tr(win.prepRam ? "r.readyTextRam" : "r.readyText"); color: c.textMid; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true; lineHeight: 1.2 }
+                                        Text { text: win.installTarget === "replace" ? win.tr("r.nativeReady") : win.tr(win.prepRam ? "r.readyTextRam" : "r.readyText"); color: c.textMid; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true; lineHeight: 1.2 }
                                     }
                                 }
                             }
@@ -2108,13 +2120,14 @@ ApplicationWindow {
                     Btn {
                         visible: win.page === 6 && win.prepState === "running"
                         text: win.tr("p.cancel")
+                        enabledState: win.installTarget !== "replace" || (win.prepCurrent !== "build" && win.prepCurrent !== "arm")
                         icon: "x"
                         onClicked: backend.cancelPrepare()
                     }
                     Btn {
                         visible: win.page === 6 && win.prepState === "done"
                         text: win.tr("p.later")
-                        onClicked: { backend.disarm(); win.prepState = ""; win.prepFrac = ({}); win.prepDetail = ({}) }
+                        onClicked: { if (backend.disarm()) { win.prepState = ""; win.prepFrac = ({}); win.prepDetail = ({}) } }
                     }
                     Btn {
                         visible: win.page === 6 && (win.prepState === "" || win.prepState === "failed")

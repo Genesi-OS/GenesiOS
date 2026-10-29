@@ -21,9 +21,18 @@ LIB=/usr/lib/genesi-migrate
 LOG=/home/liveuser/genesi-migrate.log
 
 arg() { tr ' ' '\n' </proc/cmdline | sed -n 's/^genesi\.migrate=//p' | head -1; }
+native_arg() { tr ' ' '\n' </proc/cmdline | sed -n 's/^genesi\.native=//p' | head -1; }
 
 case "${1:-}" in
 autostart)
+    if [ -n "$(native_arg)" ]; then
+        # Native migration never opens Calamares. Its root-owned worker was
+        # prepared on the old system and is copied into RAM before conversion.
+        if command -v konsole >/dev/null 2>&1; then
+            exec konsole --hold -e sudo unshare --mount --propagation private "$0" native-offline
+        fi
+        exec sudo unshare --mount --propagation private "$0" native-offline >>"$LOG" 2>&1
+    fi
     [ -n "$(arg)" ] || exit 0
     [ -e "$RUN/started" ] && exit 0
     {
@@ -32,6 +41,29 @@ autostart)
         sudo touch "$RUN/started"
         exec /usr/local/bin/calamares-online.sh
     } >>"$LOG" 2>&1
+    ;;
+native-offline)
+    set -euo pipefail
+    spec="$(native_arg)"
+    uuid="${spec#UUID=}"; uuid="${uuid%%:*}"
+    path="${spec#*:}"
+    [[ "$uuid" =~ ^[a-zA-Z0-9-]+$ ]] || exit 1
+    [[ "$path" =~ ^/[/a-zA-Z0-9_.@-]+$ ]] || exit 1
+    [[ "$path" != *..* ]] || exit 1
+    mkdir -p "$RUN/native-src" "$RUN/native"
+    dev="/dev/disk/by-uuid/$uuid"
+    fs="$(blkid -s TYPE -o value "$dev")"
+    opts=ro,noload
+    [ "$fs" != btrfs ] || opts=ro,nologreplay,subvolid=5
+    mount -o "$opts" "$dev" "$RUN/native-src"
+    for file in state.json native.py; do
+        [ -f "$RUN/native-src$path/$file" ] && [ ! -L "$RUN/native-src$path/$file" ]
+        install -m600 "$RUN/native-src$path/$file" "$RUN/native/$file"
+    done
+    umount "$RUN/native-src"
+    # copytoram must have released the ISO's dependency on the source disk.
+    # If it did not, the worker rejects the still-mounted source partition.
+    python3 "$RUN/native/native.py" offline "$RUN/native"
     ;;
 stage)
     spec="$(arg)"

@@ -1,100 +1,122 @@
 # Genesi Migrate
 
-Move from any Linux to Genesi: apps, files and settings, one restart, no USB
-stick. The app runs **on the distro being left** (Ubuntu, Fedora, Mint,
-openSUSE, Arch...) as a single AppImage.
+The default current-system action now prepares an installed Genesi tree and
+switches through an automatic offline worker. It does not launch Calamares or
+format the source partition. This first native implementation is experimental:
+validate it in a disposable Mint VM before using it on real data.
 
-Download: <https://genesios.org/migrate>, built by
-`.github/workflows/publish-migrate.yml` into the rolling `migrate-latest` release.
+## Native Flow
 
-## The whole flow
+1. Download the maintenance ISO resumably and verify SHA-256.
+2. Under administrator authorization, build the selected Genesi desktop using
+   the ISO's Arch userspace in a private mount namespace. The host's package
+   manager is untouched. Prepare packages, account, kernel and initramfs.
+3. Verify the target tree and remaining space. Build a standalone EFI rescue
+   loader with ext4/Btrfs support. Record the original EFI boot order; the Later
+   button restores it. Mint/Windows EFI files are not overwritten.
+4. The user restarts. The ISO provides a maintenance environment in RAM and
+   automatically runs the staged worker, without opening the installer.
+5. Identify the disk by serial/WWN, size, PARTUUID and filesystem UUID. Require
+   an unmounted source and verify the prepared tree again before conversion.
+6. Check ext4 read-only, then run btrfs-convert --uuid copy. Supported existing
+   Btrfs roots skip conversion. Create Genesi's @ and @genesi-home, copy the
+   prepared system and reflink the entire original home with ownership intact.
+7. Generate fstab/initramfs and validate GRUB before publishing boot-ready.
+   The maintenance environment then automatically restarts into Genesi.
+8. Snapshots initializes at first boot. The existing restoration worker finishes
+   optional Flatpak/AUR work and reports unavailable applications.
 
-```
-OLD SYSTEM (the AppImage)                 LIVE ISO                         INSTALLED GENESI
-scan -> choose -> Prepare:                boot from the one-time entry     first boot:
-  where the ISO can wait (stage.py)        genesi-migrate-live stage:        genesi-migrate-restore.service
-  download + SHA-256 (resumable)             stage -> RAM, Wi-Fi up            copy the files back
-  copy files to the external drive         calamares-online.sh:              Flatpaks
-  pkexec helper.sh arm:                      calamares_config.py rewrites   first login:
-    Wi-Fi -> stage                           the setup (no partition page,     AUR apps (paru, in a terminal)
-    /etc/grub.d/42_genesi_migrate            one desktop, name pre-filled)     "what came over" notification
-    grub-reboot genesi-migrate             exec: genesimigratedisk
--> Restart and migrate                             (partitions from the plan)
-                                                 ... normal Genesi install ...
-                                                 genesimigraterestore
-                                                   (Wi-Fi, repo apps, os-prober)
-```
+Original directories and conversion metadata remain on disk; they are not
+automatically deleted. ext2_saved/image is conversion rollback metadata, not an
+independent backup or a promise that the old OS remains bootable. Do not remove
+it or balance/defragment while rollback matters.
+See [btrfs-convert documentation](https://btrfs.readthedocs.io/en/latest/btrfs-convert.html).
 
-| Piece | Where |
-|---|---|
-| Scanner, screen, prepare | `app/` (`scanner.py`, `Main.qml`, `genesi_migrate.py`, `stage.py`, `helper.sh`) |
-| Live launcher | `genesi-arch/archiso/airootfs/usr/local/bin/genesi-migrate-live` (+ autostart, + hook in `calamares-online.sh`) |
-| Calamares setup | `.../usr/lib/genesi-migrate/calamares_config.py` |
-| Calamares jobs | `.../usr/lib/genesi-migrate/calamares/genesimigratedisk`, `genesimigraterestore` |
-| First boot | `.../usr/lib/genesi-migrate/restore.py` |
+## Initial Supported Layout
 
-The live-side pieces ship in the ISO, so they reach users with the **next ISO
-build**. The ISO boots from a file on disk through archiso's own
-`archiso_loop_mnt` (`img_dev=UUID=... img_loop=...`, the same mechanism as its
-`loopback.cfg`); when that file sits on a partition the install formats or
-shrinks, `copytoram=y` loads it into RAM first (7 GB of RAM required, checked
-before anything is downloaded).
+- Installed x86_64 Linux, UEFI, Secure Boot disabled.
+- Plain ext4/Btrfs root with stable disk identity and PARTUUID.
+- Home, var and boot on that root; an existing FAT ESP on the same disk.
+- At least 8 GB installed RAM and 32 GiB free before privileged preparation.
+  After building the target, its second tree plus 8 GiB reserve must still fit.
+- Existing Btrfs roots named @ are blocked pending subvolume-exchange support.
+  Mint's normal ext4 installation is the first test target.
 
-## Where Genesi goes
+BIOS, LUKS/LVM, separate home/boot/var, other filesystem types and ambiguous
+identities are refused before arming boot. They never silently fall back to
+formatting. Alongside and another-disk choices remain separate legacy flows.
 
-* **Replace**: only the old system partition is formatted. The EFI partition
-  (Windows' boot manager included) and a separate `/home` are kept.
-* **Alongside (dual boot, v2)**: the old ext4/btrfs system partition is
-  shrunk (`e2fsck` + `resize2fs` / `btrfs filesystem resize`, filesystem cut
-  *below* the new partition size first), Genesi goes in the freed space,
-  os-prober puts the old system in Genesi's GRUB.
-* **Another disk**: used whole, behind an explicit "I understand". Files stay
-  where they are and are copied after the install.
+## Failure Handling
 
-Disks are found again in the live system by WWN/serial + size, partitions by
-filesystem UUID: device names can change order between the two systems.
+Interrupted downloads keep a resumable partial file. SHA-256 and verified
+temporary backups are mandatory; marker files and size/mtime cannot bypass
+verification. Copy errors prevent arming the reboot.
 
-## What stops it (before anything is changed)
+State uses atomic rename and fsync under root-owned staging. Artifact, source,
+copy or GRUB failures stop in maintenance instead of rebooting to an incomplete
+target. A completed migration cannot be replayed over the new user's files.
+A source still mounted or held by the ISO cannot be converted.
+Package installation and large offline copies are supervised to retain an
+8 GiB free-space reserve. Space is checked again after restarting, before
+conversion, in case the user created more files after preparation.
 
-Secure Boot on (the old GRUB won't load Genesi's unsigned kernel), an
-encrypted or LVM system partition for replace/alongside, BIOS + GPT without a
-BIOS boot partition, not enough RAM for `copytoram`, no GRUB on the old
-system, a disk in use.
+Recovery remains selectable in the independent EFI menu. In-place conversion
+cannot guarantee survival of power loss or hardware failure; use a VM clone
+for destructive failure testing. No automatic filesystem repair or original
+data cleanup is performed.
 
-## Try it
+Preparation logs: /var/lib/genesi-migrate-native/<task>/prepare.log.
+Offline errors appear in the maintenance terminal. Keep staging for diagnosis.
+
+## Mint VM Test
+
+Use a disposable installed Mint VM with EFI enabled, Secure Boot off, 8-16 GB
+RAM and an 80+ GB virtual disk with at least 40 GB free. Snapshot/clone it first,
+create a document in home and record its SHA-256.
+
+This release requires an ISO containing the genesi.native live hook. There is
+one necessary ISO rebuild for that hook; later standalone worker/AppImage edits
+do not build an ISO. Older ISOs are rejected before boot is armed.
+
+After the AppImage publishing workflow and the new ISO build succeed:
 
 ```bash
-python app/genesi_migrate.py --demo                 # synthetic data; Prepare is simulated
-python app/genesi_migrate.py                        # scan this machine (Linux)
-python app/scanner.py > scan.json                   # the raw scan
-python app/genesi_migrate.py --manifest scan.json   # replay someone's scan
+curl -fL --retry 3 -o Genesi-Migrate-x86_64.AppImage \
+  https://github.com/Genesi-OS/GenesiOS/releases/download/migrate-latest/Genesi-Migrate-x86_64.AppImage
+chmod +x Genesi-Migrate-x86_64.AppImage
+./Genesi-Migrate-x86_64.AppImage
 ```
 
-## Testing in a VM
+Choose the current system, prepare and restart when ready. In Genesi verify:
 
-**The ISO in the VM must be built after these changes**: the live-side pieces
-are part of the ISO.
+```bash
+findmnt -no FSTYPE,FSROOT /
+findmnt -no FSTYPE,FSROOT /home
+sha256sum ~/your-test-document
+systemctl status genesi-migrate-health.service genesi-snapshots-setup.service
+sudo cat /var/lib/genesi-migrate/healthy.json
+```
 
-1. VMs of Ubuntu 24.04, Fedora 41, Mint 22, **UEFI with Secure Boot off**,
-   GRUB as bootloader (the default on all three).
-2. Run the AppImage (from the `migrate-latest` release, or build it with
-   `appimage/build-appimage.sh`).
-3. Cover each mode: replace + external USB disk; replace + keep-home (a VM
-   installed with a separate `/home`); alongside; a second virtual disk.
-4. Things to look at: `~/genesi-migrate.log` in the live session,
-   `/var/log/installer` / Calamares' log, `/var/lib/genesi-migrate/` and
-   `journalctl -u genesi-migrate-restore` on the installed system. The
-   manifest replays exactly with `--manifest`.
+Expected mounts are Btrfs /@ and Btrfs /@genesi-home. Also test interrupted
+downloads, Later cancellation, and selecting maintenance after installation.
+The real Mint conversion and UEFI boot have not been validated by unit tests.
 
-## Tests
+## Development
 
-* `ci/migrate-test.py`: the scanner against fake Ubuntu/Fedora/Arch roots,
-  and the screen offscreen (disk step, the plan it builds).
-* `ci/migrate-flow-test.py`: everything that formats, shrinks or reboots,
-  as pure plans: where the ISO waits and when it needs RAM, the GRUB entry,
-  resumable download, the file copy, the Calamares setup generated from the
-  real config, every partitioning mode (renamed disks, busy disks, BIOS+GPT,
-  the shrink math), the restore.
+```bash
+python genesi-arch/ci/migrate-test.py
+python genesi-arch/ci/migrate-flow-test.py
+python genesi-arch/ci/migrate-inplace-test.py
+python genesi-arch/genesi-migrate/app/genesi_migrate.py --demo
+```
 
-Both run in `hygiene-check.yml`; `publish-migrate.yml` runs them again, builds
-the AppImage and starts it offscreen before publishing.
+Tests mock every conversion/mount/reboot command, covering native UI routing,
+device identity, integrity failures, source-home preservation and reboot order.
+They do not perform disk operations.
+
+app/native-profiles.json is generated from the installer's package lists.
+After changing those lists, regenerate it with PyYAML installed:
+
+```bash
+python genesi-arch/genesi-migrate/build-profiles.py
+```

@@ -15,6 +15,8 @@ on:
     paths:
       - genesi-arch/genesi-migrate/**
       - genesi-arch/ci/migrate-test.py
+      - genesi-arch/ci/migrate-inplace-test.py
+      - genesi-arch/ci/migrate-flow-test.py
       - .github/workflows/publish-migrate.yml
   workflow_dispatch:
 
@@ -40,6 +42,8 @@ jobs:
             libxcb-cursor0 libxcb-util1 file
           python -m pip install --quiet PySide6-Essentials
           python genesi-arch/ci/migrate-test.py
+          python genesi-arch/ci/migrate-inplace-test.py
+          python genesi-arch/ci/migrate-flow-test.py
 
       - name: build the AppImage
         run: bash genesi-arch/genesi-migrate/appimage/build-appimage.sh "$PWD/out"

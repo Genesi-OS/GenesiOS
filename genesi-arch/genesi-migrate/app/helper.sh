@@ -37,6 +37,14 @@ regen() {
 }
 
 case "${1:-}" in
+native-disarm)
+    exec unshare --mount --propagation private /usr/bin/python3 "$2" disarm "$3"
+    ;;
+native)
+    # All mounts belong to a private namespace. Neither the source root nor
+    # any host package/service is replaced while building the target tree.
+    exec unshare --mount --propagation private /usr/bin/python3 "$2" prepare "$3" "$4" "$5" "$6"
+    ;;
 mkdir)
     dir="$2"; user="$3"
     case "$dir" in /var/lib/genesi-migrate) ;; *) die "refusing to create $dir" ;; esac
