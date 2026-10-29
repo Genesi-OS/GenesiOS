@@ -98,8 +98,10 @@ def walk(nodes):
 
 
 def inventory():
-    return json.loads(run("lsblk", "-J", "-b", "-o",
-                          "PATH,TYPE,SIZE,FSTYPE,UUID,PARTUUID,SERIAL,WWN,MOUNTPOINTS"))["blockdevices"]
+    # lsblk only includes children[] when NAME or --tree is requested. Without
+    # that, a partition appears at the top level and has no hardware serial.
+    return json.loads(run("lsblk", "--tree", "-J", "-b", "-o",
+                          "NAME,PATH,TYPE,SIZE,FSTYPE,UUID,PARTUUID,SERIAL,WWN,MOUNTPOINTS"))["blockdevices"]
 
 
 def identify(state, devices):
@@ -127,14 +129,17 @@ def validate_machine(machine, devices):
         raise MigrationError("This filesystem cannot be converted safely; supported roots: ext4, Btrfs")
     if re.search(r"(?:^|,)subvol=/?@(?:,|$)", machine.get("rootOptions", "")):
         raise MigrationError("Existing @ roots require subvolume exchange and are not enabled yet")
-    roots = [(d, p) for d in devices for p in walk([d]) if p.get("uuid") == machine.get("rootUuid")]
+    roots = [(d, p) for d in devices if d.get("type") == "disk"
+             for p in walk(d.get("children", [])) if p.get("uuid") == machine.get("rootUuid")]
     if len(roots) != 1:
         raise MigrationError("Root UUID is not unique")
     disk, root = roots[0]
     if root.get("fstype") != machine["rootFs"]:
         raise MigrationError("Root filesystem changed since the scan")
-    if not (disk.get("wwn") or disk.get("serial")) or not root.get("partuuid"):
-        raise MigrationError("Disk serial/WWN and root PARTUUID are required")
+    if not (disk.get("wwn") or disk.get("serial")):
+        raise MigrationError("The physical/virtual disk exposes no serial or WWN; a stable disk identity is required")
+    if not root.get("partuuid"):
+        raise MigrationError("The root partition exposes no PARTUUID; refresh disk detection before retrying")
     esp = [p for p in walk([disk]) if p.get("uuid") == machine.get("espUuid") and p.get("fstype") == "vfat"]
     if len(esp) != 1:
         raise MigrationError("The EFI partition must be on the source disk")

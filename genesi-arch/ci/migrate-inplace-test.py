@@ -39,6 +39,36 @@ class Preflight(unittest.TestCase):
         changed[0]["children"][1]["path"] = "/dev/sdb2"
         self.assertEqual(native.identify(state, changed)[1]["path"], "/dev/sdb2")
 
+    def test_inventory_requests_tree_and_uses_parent_disk_serial(self):
+        def lsblk(*args):
+            # Reproduce util-linux: PATH alone produces flat JSON; NAME or
+            # --tree is required to preserve disk -> partition relationships.
+            columns = args[args.index("-o") + 1].split(",")
+            tree = "--tree" in args or "NAME" in columns
+            devices = self.devices if tree else [
+                {k: v for k, v in self.devices[0].items() if k != "children"},
+                *self.devices[0]["children"],
+            ]
+            return json.dumps({"blockdevices": devices})
+        with patch.object(native, "run", side_effect=lsblk):
+            result = native.validate_machine(self.manifest["machine"], native.inventory())
+        self.assertEqual(result["serial"], "mint-vm-disk")
+        self.assertEqual(result["partuuid"], "root-part")
+
+    def test_flat_partition_cannot_be_mistaken_for_a_disk(self):
+        with self.assertRaises(native.MigrationError):
+            native.validate_machine(self.manifest["machine"], self.devices[0]["children"])
+
+    def test_truly_missing_identity_still_blocks_migration(self):
+        devices = copy.deepcopy(self.devices)
+        devices[0]["serial"] = None
+        with self.assertRaisesRegex(native.MigrationError, "no serial or WWN"):
+            native.validate_machine(self.manifest["machine"], devices)
+        devices = copy.deepcopy(self.devices)
+        devices[0]["children"][1]["partuuid"] = None
+        with self.assertRaisesRegex(native.MigrationError, "no PARTUUID"):
+            native.validate_machine(self.manifest["machine"], devices)
+
     def test_fail_closed(self):
         for key, value in [("rootFs", "xfs"), ("rootPartType", "lvm"),
                            ("luks", True), ("firmware", "bios"),
