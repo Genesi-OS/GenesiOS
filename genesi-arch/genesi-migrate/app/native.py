@@ -882,7 +882,22 @@ def offline(task_path):
     print("Migration configured. Continuing this boot into Genesi.", flush=True)
 
 
+def refresh_converted_filesystem(device):
+    # udev can still advertise ext4 after btrfs-convert. libmount consumers
+    # such as grub-btrfs must see the new type, not just our explicit -t mounts.
+    if run("blkid", "-p", "-s", "TYPE", "-o", "value", device) != "btrfs":
+        raise MigrationError("Converted root does not probe as Btrfs")
+    run("udevadm", "trigger", "--action=change", "--sysname-match=" + Path(device).name)
+    run("udevadm", "settle", "--timeout=30")
+    properties = run("udevadm", "info", "--query=property", "--name", device)
+    if "ID_FS_TYPE=btrfs" not in properties.splitlines():
+        raise MigrationError("udev still has an outdated root filesystem type; refusing to generate GRUB")
+    if run("arch-chroot", TARGET, "blkid", "-c", "/dev/null", "-s", "TYPE", "-o", "value", device) != "btrfs":
+        raise MigrationError("Installed system does not identify its root as Btrfs")
+
+
 def configure(state, task, device):
+    refresh_converted_filesystem(device)
     _, _, esp = identify(state, inventory())
     fstab = ("UUID=%s / btrfs defaults,noatime,compress=zstd,subvol=@ 0 0\n"
              "UUID=%s /home btrfs defaults,noatime,compress=zstd,subvol=@genesi-home 0 0\n"

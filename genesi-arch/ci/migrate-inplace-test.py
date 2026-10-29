@@ -21,6 +21,22 @@ GIB = native.GIB
 
 
 class Preflight(unittest.TestCase):
+    def test_refresh_filesystem_updates_udev_before_chroot_probe(self):
+        with patch.object(native, "run", side_effect=["btrfs", "", "", "ID_FS_TYPE=btrfs\nID_FS_UUID=test", "btrfs"]) as run:
+            native.refresh_converted_filesystem("/dev/sda3")
+        self.assertEqual(run.call_args_list[1].args,
+                         ("udevadm", "trigger", "--action=change", "--sysname-match=sda3"))
+        self.assertEqual(run.call_args_list[2].args,
+                         ("udevadm", "settle", "--timeout=30"))
+        self.assertEqual(run.call_args_list[-1].args,
+                         ("arch-chroot", native.TARGET, "blkid", "-c", "/dev/null", "-s", "TYPE", "-o", "value", "/dev/sda3"))
+
+    def test_refresh_filesystem_rejects_stale_udev_or_wrong_disk(self):
+        for responses in (["ext4"], ["btrfs", "", "", "ID_FS_TYPE=ext4"],
+                          ["btrfs", "", "", "ID_FS_TYPE=btrfs", "ext4"]):
+            with patch.object(native, "run", side_effect=responses), self.assertRaises(native.MigrationError):
+                native.refresh_converted_filesystem("/dev/sda3")
+
     def setUp(self):
         self.manifest = {"machine": {
             "rootFs": "ext4", "rootPartType": "part", "rootUuid": "abcd-1234",
