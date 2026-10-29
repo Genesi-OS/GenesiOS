@@ -37,6 +37,34 @@ validate it in a disposable Mint VM before using it on real data.
 8. Snapshots initializes at first boot. The existing restoration worker finishes
    optional Flatpak/AUR work and reports unavailable applications.
 
+### Desktop Defaults
+
+Native preparation imports the installer's Genesi artwork without replacing
+newer package-owned assets. Plasma receives the canonical Genesi skel override
+(panel, wallpaper, palette, Klassy/Darkly and first-login helper). Other desktops
+keep their own packaged skel: in particular Hyprland/Caelestia's Qt palette and
+shell configuration are never replaced by the live ISO's Plasma defaults.
+GTK desktops use the same packaged login branding helper as normal installs.
+All nine desktop profiles have an explicit, verified session and display manager;
+missing session files stop preparation before the reboot is armed. Live autologin,
+live migration launchers and the live configuration re-seeder are not imported.
+
+After preserving home, template files replace conflicting old-distro defaults
+instead of being skipped. Unrelated files and application settings are retained;
+replaced files are backed up under the original staging task's
+`desktop-backups/<attempt>/`. Retries create separate backups. First-login theme
+markers are reset so preserved markers cannot skip Genesi branding. No runtime
+daemon continually reapplies the entire skel over the user's preferences.
+
+This change affects new preparations; it does not automatically re-theme a
+migration already completed with an older AppImage.
+
+Run `python3 genesi-arch/ci/migrate-desktop-test.py` on Linux with rsync to check
+all profiles, real template merging/backups, preservation of personal files,
+symlink guards and exclusion of live-session settings in disposable directories.
+These are filesystem integration tests, not certification of every graphical
+desktop on real hardware.
+
 Original directories and conversion metadata remain on disk; they are not
 automatically deleted. ext2_saved/image is conversion rollback metadata, not an
 independent backup or a promise that the old OS remains bootable. Do not remove

@@ -374,7 +374,8 @@ def account(root, name):
         raise MigrationError("The account must have a supported local password")
     run("arch-chroot", root, "groupadd", "-g", str(user.pw_gid), name)
     run("arch-chroot", root, "useradd", "-M", "-u", str(user.pw_uid), "-g", str(user.pw_gid),
-        "-G", "wheel", "-s", "/bin/bash", "-d", user.pw_dir, "-c", user.pw_gecos, name)
+        "-G", "wheel", "-s", "/usr/bin/fish" if (root / "usr/bin/fish").is_file() else "/bin/bash",
+        "-d", user.pw_dir, "-c", user.pw_gecos, name)
     run("arch-chroot", root, "chpasswd", "-e", input=name + ":" + password + "\n")
     sudoers = root / "etc/sudoers.d/10-genesi-wheel"
     sudoers.write_text("%wheel ALL=(ALL:ALL) ALL\n")
@@ -420,6 +421,7 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
     shutil.copyfile(__file__, task / "native.py")
     save(task / "manifest.json", manifest)
     save(task / "state.json", state)
+    state["desktop"] = manifest["choices"]["desktop"]
     profiles = json.loads(Path(profile_path).read_text())
     packages = profiles.get(manifest["choices"]["desktop"])
     if not packages:
@@ -496,6 +498,7 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
                 dest = root / "usr/lib/genesi-migrate"
                 dest.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(finish, dest / "restore.py")
+                prepare_desktop(root, runner, state["desktop"], state["user"]["name"])
     root.joinpath("etc/hostname").write_text("genesi\n")
     release = root / "etc/os-release"
     if release.is_symlink():
@@ -505,11 +508,11 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
     root.joinpath("etc/locale.gen").write_text("en_US.UTF-8 UTF-8\npt_BR.UTF-8 UTF-8\n")
     root.joinpath("etc/locale.conf").write_text("LANG=" + ("pt_BR.UTF-8" if manifest["choices"].get("language") == "pt_BR" else "en_US.UTF-8") + "\n")
     run("chroot", root, "locale-gen")
-    run("systemctl", "--root", root, "enable", "NetworkManager.service")
-    managers = [n for n in ("sddm", "gdm", "lightdm", "lxdm", "cosmic-greeter") if (root / ("usr/lib/systemd/system/" + n + ".service")).exists()]
-    if not managers:
-        raise MigrationError("Selected desktop has no supported display manager")
-    run("systemctl", "--root", root, "enable", managers[0] + ".service")
+    for service in ("NetworkManager", "systemd-resolved", "systemd-timesyncd", "cups",
+                    "avahi-daemon", "power-profiles-daemon", "vboxservice", "vmtoolsd", "firewalld", "fstrim.timer"):
+        unit = service if service.endswith(".timer") else service + ".service"
+        if (root / "usr/lib/systemd/system" / unit).is_file():
+            run("systemctl", "--root", root, "enable", unit)
     default_target = root / "etc/systemd/system/default.target"
     if default_target.exists() or default_target.is_symlink():
         default_target.unlink()
@@ -547,6 +550,127 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
     # Arming is the last write, after all downloads, packages and validation.
     arm(state, task)
     print(json.dumps({"ready": True, "task": str(task)}), flush=True)
+
+
+DESKTOP_SESSIONS = {
+    "KDE-Desktop": ("sddm", ("xsessions/plasmax11.desktop", "wayland-sessions/plasma.desktop")),
+    "Hyprland-Desktop": ("sddm", ("wayland-sessions/hyprland.desktop", "wayland-sessions/hyprland-uwsm.desktop")),
+    "GNOME-Desktop": ("gdm", ("wayland-sessions/gnome.desktop", "xsessions/gnome.desktop")),
+    "Xfce4": ("lightdm", ("xsessions/xfce.desktop",)),
+    "Cinnamon": ("lightdm", ("xsessions/cinnamon.desktop",)),
+    "Budgie-Desktop": ("lightdm", ("xsessions/budgie-desktop.desktop",)),
+    "LXDE-Desktop": ("lightdm", ("xsessions/LXDE.desktop",)),
+    "Cosmic": ("cosmic-greeter", ("wayland-sessions/cosmic.desktop",)),
+    "Niri": ("sddm", ("wayland-sessions/niri.desktop",)),
+}
+
+
+def prepare_desktop(root, source, desktop, user):
+    """Import installer artwork, but use the selected desktop's packaged defaults."""
+    root, source = Path(root), Path(source)
+    if desktop not in DESKTOP_SESSIONS:
+        raise MigrationError("No desktop integration exists for " + desktop)
+    # The live image also contains build-time artwork not owned by a package.
+    # Never replace newer packaged assets with the older source ISO version.
+    assets = ["usr/share/genesi", "usr/share/wallpapers/genesi", "usr/share/plymouth/themes/genesi"]
+    if desktop == "KDE-Desktop":
+        assets += ["usr/share/plasma/desktoptheme/genesi-plasma", "usr/share/plasma/desktoptheme/Ant-Dark",
+                   "usr/share/plasma/look-and-feel/Ant-Dark", "usr/share/Kvantum/Genesi"]
+        assets += [str(p.relative_to(source)) for pattern in ("usr/share/color-schemes/Genesi*", "usr/share/icons/Tela-circle*")
+                   for p in source.glob(pattern)]
+    for relative in assets:
+        origin, target = source / relative, root / relative
+        if origin.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            run("rsync", "-a", "--ignore-existing", str(origin) + "/", str(target) + "/")
+        elif origin.is_file() and not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(origin, target)
+    override = root / "usr/share/genesi/skel-override"
+    skel = root / "etc/skel"
+    skel.mkdir(parents=True, exist_ok=True)
+    if desktop == "KDE-Desktop":
+        if not (override / ".config/kdeglobals").is_file():
+            raise MigrationError("Genesi Plasma defaults are missing; migration was not armed")
+        run("rsync", "-a", "--exclude=/Desktop/calamares.desktop", str(override) + "/", str(skel) + "/")
+    else:
+        # genesi-settings' override is Plasma-specific. Hyprland/Caelestia and
+        # the other WMs already ship their own /etc/skel via their packages.
+        fish = override / ".config/fish"
+        if fish.is_dir():
+            destination = skel / ".config/fish"
+            destination.mkdir(parents=True, exist_ok=True)
+            run("rsync", "-a", str(fish) + "/", str(destination) + "/")
+    if not (root / "usr/share/wallpapers/genesi/wallpaper.png").is_file():
+        raise MigrationError("Genesi wallpaper is missing; migration was not armed")
+    if desktop == "KDE-Desktop":
+        for relative in ("etc/skel/.config/plasma-org.kde.plasma.desktop-appletsrc", "etc/skel/.config/kwinrc",
+                         "etc/skel/.config/klassyrc", "etc/skel/.config/darklyrc",
+                         "etc/skel/.config/autostart/genesi-apply-theme.desktop",
+                         "usr/bin/genesi-apply-theme.sh", "usr/share/color-schemes/Genesi.colors",
+                         "usr/share/plasma/desktoptheme/Ant-Dark", "usr/share/icons/Tela-circle-green-dark"):
+            if not (root / relative).exists():
+                raise MigrationError("Genesi Plasma integration is missing: " + relative)
+    if desktop == "Hyprland-Desktop":
+        for relative in ("etc/skel/.config/hypr/hyprland.conf", "etc/skel/.config/caelestia/shell.json",
+                         "usr/bin/Hyprland", "usr/bin/caelestia"):
+            if not (root / relative).is_file():
+                raise MigrationError("Genesi Hyprland/Caelestia integration is missing: " + relative)
+    if desktop not in ("KDE-Desktop", "Hyprland-Desktop"):
+        for relative in ("usr/bin/genesi-de-apply", "etc/xdg/autostart/genesi-de-branding.desktop"):
+            if not (root / relative).is_file():
+                raise MigrationError("Genesi desktop login integration is missing: " + relative)
+    # A preserved per-user Hidden=true entry would shadow the packaged helper.
+    # Seed only installed Genesi autostarts, retaining their DE restrictions.
+    for entry in (root / "etc/xdg/autostart").glob("genesi-*.desktop"):
+        if entry.name in ("genesi-migrate-live.desktop", "genesi-branding.desktop"):
+            continue
+        destination = skel / ".config/autostart" / entry.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(entry, destination)
+    # Use installed per-DE login helpers, not liveuser's dconf database or the
+    # live branding re-seeder. Neither live autologin nor live services are copied.
+    manager, candidates = DESKTOP_SESSIONS[desktop]
+    session = next((p for p in candidates if (root / "usr/share" / p).is_file()), None)
+    if not session or not (root / "usr/lib/systemd/system" / (manager + ".service")).is_file():
+        raise MigrationError("Selected desktop session/display manager is missing: " + desktop)
+    run("systemctl", "--root", root, "enable", "--force", manager + ".service")
+    accounts = root / "var/lib/AccountsService/users"
+    accounts.mkdir(parents=True, exist_ok=True)
+    contents = "[User]\nSession=" + Path(session).name + "\nSystemAccount=false\n"
+    if session.startswith("xsessions/"):
+        contents += "XSession=" + Path(session).stem + "\n"
+        (skel / ".dmrc").write_text("[Desktop]\nSession=" + Path(session).stem + "\n")
+    (accounts / user).write_text(contents)
+    (accounts / user).chmod(0o600)
+    if (root / "usr/bin/plymouth-set-default-theme").is_file() and (root / "usr/share/plymouth/themes/genesi").is_dir():
+        run("chroot", root, "plymouth-set-default-theme", "genesi")
+    save(root / "var/lib/genesi-migrate/desktop.json", {"desktop": desktop, "session": session, "manager": manager})
+
+
+def apply_desktop_home(prepared, home, state, task):
+    home = Path(home)
+    if home.is_symlink() or any((home / name).is_symlink() for name in (".config", ".local")):
+        raise MigrationError("Desktop configuration directory is a symlink; refusing to overwrite its target")
+    # Only template paths are replaced, never delete unrelated files. Keep a
+    # separate backup per retry; the original source home is also untouched.
+    backup = Path(task) / "desktop-backups" / str(uuid.uuid4())
+    backup.mkdir(parents=True, mode=0o700)
+    run("rsync", "-a", "--backup", "--backup-dir=" + str(backup),
+        "--exclude=/Desktop/calamares.desktop",
+        "--chown=%s:%s" % (state["user"]["uid"], state["user"]["gid"]),
+        str(Path(prepared) / "etc/skel") + "/", str(home) + "/")
+    for relative in (".config/.genesi-theme-applied", ".config/genesi/de-branding.applied"):
+        marker = home / relative
+        try:
+            marker.parent.resolve().relative_to(home.resolve())
+        except ValueError:
+            raise MigrationError("Desktop marker escapes the migrated home")
+        if marker.is_file() or marker.is_symlink():
+            destination = backup / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(marker, destination, follow_symlinks=False)
+            marker.unlink()
 
 
 def recovery_config(state):
@@ -870,8 +994,7 @@ def offline(task_path):
         run("cp", "-a", "--reflink=always", str(source_home) + "/.", TOP / "@genesi-home", reserve_at=TOP)
         new_home = TOP / "@genesi-home" / state["user"]["name"]
         new_home.mkdir(exist_ok=True)
-        run("rsync", "-a", "--ignore-existing", "--chown=%s:%s" % (state["user"]["uid"], state["user"]["gid"]),
-            str(prepared / "etc/skel") + "/", str(new_home) + "/")
+        apply_desktop_home(prepared, new_home, state, task)
         with mounted(device, TARGET, "-t", "btrfs", "-o", "subvol=@"):
             (TARGET / "home").mkdir(exist_ok=True)
             with mounted(device, TARGET / "home", "-t", "btrfs", "-o", "subvol=@genesi-home"):
