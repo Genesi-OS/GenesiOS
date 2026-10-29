@@ -189,6 +189,13 @@ class Backend(QObject):
             free = shutil.disk_usage(p["dir"]).free
             if free < need:
                 raise stage.StageError("st.space", fmt_bytes(need), fmt_bytes(free))
+            if is_native:
+                # The privileged builder works on the current root regardless
+                # of where the download/optional backup is staged. Budget for
+                # the download too when it shares that filesystem.
+                shares_root = os.stat(p["dir"]).st_dev == os.stat("/var/lib").st_dev
+                native.require_free_space("/var/lib", native.MIN_PREP_FREE + (need if shares_root else 0),
+                                          "Native preparation (including pending download/backup)")
             self.prepStep.emit("space", 1, "")
 
             # download (skipped when a verified ISO is already there)

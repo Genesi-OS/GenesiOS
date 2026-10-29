@@ -24,11 +24,24 @@ TOP = Path("/run/genesi-native-top")
 TARGET = Path("/run/genesi-native-target")
 LIVE_MARKER = Path("/run/archiso/bootmnt")
 GIB = 1024 ** 3
+MIN_PREP_FREE = 32 * GIB
 LOG = None
 
 
 class MigrationError(RuntimeError):
     pass
+
+
+def format_space(value):
+    return "%.2f GiB (%.2f GB)" % (value / GIB, value / 10 ** 9)
+
+
+def require_free_space(path, required, purpose):
+    available = shutil.disk_usage(path).free
+    if available < required:
+        raise MigrationError("%s requires %s free on %s; available: %s; missing: %s" %
+                             (purpose, format_space(required), path, format_space(available),
+                              format_space(required - available)))
 
 
 def run(*args, input=None, allowed=(0,), reserve_at=None):
@@ -255,8 +268,7 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
         raise MigrationError("Unsupported source subvolume path")
     if state["sourcePrefix"] == "/@":
         raise MigrationError("Existing @ root requires a subvolume exchange; this layout is not enabled yet")
-    if shutil.disk_usage(BASE).free < 32 * GIB:
-        raise MigrationError("At least 32 GiB free is required for preparation and conversion reserve")
+    require_free_space(BASE, MIN_PREP_FREE, "Preparation and conversion reserve")
     shutil.copyfile(iso_path, task / "genesi.iso")
     if digest(task / "genesi.iso") != checksum:
         raise MigrationError("ISO changed during staging; migration was not armed")
@@ -385,8 +397,7 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
     install_finish(root, manifest, state)
     target_valid(root)
     expanded = sum(p.stat().st_size for p in root.rglob("*") if p.is_file() and not p.is_symlink())
-    if shutil.disk_usage(BASE).free < expanded + 8 * GIB:
-        raise MigrationError("Not enough free space remains for conversion and the final Genesi tree")
+    require_free_space(BASE, expanded + 8 * GIB, "Conversion and final Genesi tree")
     state.update(phase="ready", rootHash=root_hash(root), isoHash=checksum, expandedBytes=expanded)
     save(task / "state.json", state)
     # Arming is the last write, after all downloads, packages and validation.
@@ -432,8 +443,7 @@ def arm(state, task):
         destination = mount / "EFI/GenesiMigrate"
         if destination.exists():
             raise MigrationError("An earlier migration EFI loader exists; inspect it before retrying")
-        if shutil.disk_usage(mount).free < (task / "rescue.efi").stat().st_size + 8 * 1024 ** 2:
-            raise MigrationError("EFI partition has insufficient free space for the recovery loader")
+        require_free_space(mount, (task / "rescue.efi").stat().st_size + 8 * 1024 ** 2, "EFI recovery loader")
         destination.mkdir()
         shutil.copyfile(task / "rescue.efi", destination / "grubx64.efi")
         os.sync()
@@ -542,8 +552,8 @@ def offline(task_path):
         target_valid(source_task / "target-root")
         if root_hash(source_task / "target-root") != state["rootHash"]:
             raise MigrationError("Prepared artifact failed verification before conversion")
-        if state["phase"] == "armed" and shutil.disk_usage(TOP).free < state["expandedBytes"] + 8 * GIB:
-            raise MigrationError("Free space decreased after preparation; refusing conversion")
+        if state["phase"] == "armed":
+            require_free_space(TOP, state["expandedBytes"] + 8 * GIB, "Offline conversion reserve")
     if root.get("fstype") == "ext4":
         # Read-only check. Repairs are not silently accepted on a user's root.
         run("e2fsck", "-f", "-n", device)

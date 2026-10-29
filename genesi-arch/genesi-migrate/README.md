@@ -38,6 +38,10 @@ See [btrfs-convert documentation](https://btrfs.readthedocs.io/en/latest/btrfs-c
 - Plain ext4/Btrfs root with stable disk identity and PARTUUID.
 - Home, var and boot on that root; an existing FAT ESP on the same disk.
 - At least 8 GB installed RAM and 32 GiB free before privileged preparation.
+  32 GiB means 34.36 decimal GB; a disk utility displaying 34 GB may be below
+  this threshold. Space errors report required, available and missing bytes in
+  both units. Pending downloads/backups on the same filesystem are budgeted
+  before downloading, so they do not consume the preparation reserve.
   After building the target, its second tree plus 8 GiB reserve must still fit.
 - Existing Btrfs roots named @ are blocked pending subvolume-exchange support.
   Mint's normal ext4 installation is the first test target.

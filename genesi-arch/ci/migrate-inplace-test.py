@@ -112,6 +112,15 @@ class Response(io.BytesIO):
 
 
 class Preparation(unittest.TestCase):
+    def test_decimal_gb_does_not_satisfy_same_number_of_gib(self):
+        with patch.object(native.shutil, "disk_usage", return_value=Mock(free=34 * 10 ** 9)):
+            with self.assertRaisesRegex(native.MigrationError, r"32.00 GiB \(34.36 GB\).*31.66 GiB \(34.00 GB\)"):
+                native.require_free_space("fake-root", native.MIN_PREP_FREE, "Preparation")
+
+    def test_exact_binary_threshold_is_accepted(self):
+        with patch.object(native.shutil, "disk_usage", return_value=Mock(free=32 * GIB)):
+            native.require_free_space("fake-root", native.MIN_PREP_FREE, "Preparation")
+
     def test_privileged_recheck_rejects_changed_iso_before_arming(self):
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / "manifest.json"
