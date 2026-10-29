@@ -17,6 +17,7 @@ on:
       - genesi-arch/ci/migrate-test.py
       - genesi-arch/ci/migrate-inplace-test.py
       - genesi-arch/ci/migrate-flow-test.py
+      - genesi-arch/ci/migrate-mount-test.py
       - .github/workflows/publish-migrate.yml
   workflow_dispatch:
 
@@ -35,15 +36,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: tests first
+        timeout-minutes: 10
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends \
             libegl1 libgl1 libxkbcommon0 libfontconfig1 fonts-dejavu-core \
-            libxcb-cursor0 libxcb-util1 file
+            libxcb-cursor0 libxcb-util1 file squashfs-tools xorriso
           python -m pip install --quiet PySide6-Essentials
           python genesi-arch/ci/migrate-test.py
           python genesi-arch/ci/migrate-inplace-test.py
           python genesi-arch/ci/migrate-flow-test.py
+          sudo unshare --mount --propagation private python3 genesi-arch/ci/migrate-mount-test.py
 
       - name: build the AppImage
         run: bash genesi-arch/genesi-migrate/appimage/build-appimage.sh "$PWD/out"

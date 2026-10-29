@@ -43,7 +43,7 @@ native-disarm)
 native)
     # All mounts belong to a private namespace. Neither the source root nor
     # any host package/service is replaced while building the target tree.
-    exec unshare --mount --propagation private /usr/bin/python3 "$2" prepare "$3" "$4" "$5" "$6"
+    exec unshare --mount --pid --fork --kill-child=KILL --mount-proc --propagation private /usr/bin/python3 "$2" prepare "$3" "$4" "$5" "$6"
     ;;
 mkdir)
     dir="$2"; user="$3"

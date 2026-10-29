@@ -157,7 +157,8 @@ class Backend(QObject):
         if p.returncode in (126, 127) and not p.stderr.strip().startswith("error:"):
             raise stage.StageError("st.auth")
         if p.returncode != 0:
-            raise stage.StageError("st.helper", (p.stderr or p.stdout).strip().splitlines()[-1:] or ["?"])
+            lines = (p.stderr or p.stdout).strip().splitlines()
+            raise stage.StageError("st.helper", lines[-1] if lines else "Unknown helper error")
         return p.stdout
 
     @Slot(str)

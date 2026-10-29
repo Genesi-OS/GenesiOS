@@ -60,6 +60,11 @@ State uses atomic rename and fsync under root-owned staging. Artifact, source,
 copy or GRUB failures stop in maintenance instead of rebooting to an incomplete
 target. A completed migration cannot be replayed over the new user's files.
 A source still mounted or held by the ISO cannot be converted.
+Preparation also uses a private PID namespace. Before unmounting a chroot,
+only helpers rooted inside that mount and belonging to its private namespace
+are stopped using stable PID handles. Loop devices for the ISO and its embedded
+SquashFS are explicitly detached in child-before-parent order. Cleanup failures
+are logged without replacing an earlier package/build error.
 Package installation and large offline copies are supervised to retain an
 8 GiB free-space reserve. Space is checked again after restarting, before
 conversion, in case the user created more files after preparation.
@@ -117,6 +122,18 @@ python genesi-arch/genesi-migrate/app/genesi_migrate.py --demo
 Tests mock every conversion/mount/reboot command, covering native UI routing,
 device identity, integrity failures, source-home preservation and reboot order.
 They do not perform disk operations.
+
+The separate integration test uses disposable image files, real read-only
+ISO/SquashFS mounts and a background chroot helper. It verifies ordinary and
+error cleanup without touching physical partitions or running conversion:
+
+```bash
+sudo unshare --mount --pid --fork --kill-child=KILL --mount-proc --propagation private python3 genesi-arch/ci/migrate-mount-test.py
+```
+
+Preparation temporarily disables initramfs autodetect and explicitly includes
+ext4/Btrfs drivers. Offline configuration removes that staging override and
+rebuilds the image with normal autodetect on the mounted destination root.
 
 app/native-profiles.json is generated from the installer's package lists.
 After changing those lists, regenerate it with PyYAML installed:

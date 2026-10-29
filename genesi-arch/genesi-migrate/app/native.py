@@ -12,11 +12,13 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import select
 import signal
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 
 BASE = Path("/var/lib/genesi-migrate-native")
@@ -166,10 +168,148 @@ def mounted(source, destination, *options):
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     run("mount", *options, source, destination)
+    primary_error = None
     try:
         yield destination
+    except BaseException as exc:
+        primary_error = exc
+        raise
     finally:
-        run("umount", "-R", destination)
+        try:
+            stop_mount_helpers(destination)
+            unmount(destination)
+        except Exception as cleanup_error:
+            if primary_error is None:
+                raise
+            cleanup_warning(cleanup_error)
+
+
+def cleanup_warning(error):
+    message = "Additional cleanup failure: " + str(error)
+    print(message, file=sys.stderr, flush=True)
+    if LOG is not None:
+        try:
+            with LOG.open("a") as stream:
+                stream.write(message + "\n")
+        except OSError:
+            pass
+
+
+def mount_helper_pids(destination):
+    """Only processes chrooted below this mount in our private namespace."""
+    if sys.platform != "linux":
+        return []
+    namespace = os.readlink("/proc/self/ns/mnt")
+    destination = os.path.realpath(destination)
+    result = []
+    for process in Path("/proc").iterdir():
+        if not process.name.isdecimal() or int(process.name) in (1, os.getpid()):
+            continue
+        try:
+            if os.readlink(process / "ns/mnt") != namespace:
+                continue
+            root = os.readlink(process / "root")
+            if root.endswith(" (deleted)") or os.path.commonpath((destination, root)) != destination:
+                continue
+            result.append(int(process.name))
+        except (OSError, ValueError):
+            continue
+    return result
+
+
+def stop_mount_helpers(destination):
+    # pacman-key leaves gpg-agent/dirmngr running after pacstrap returns. Their
+    # chroot root and /dev handles prevent unmount. Never signal host processes:
+    # require both this namespace and a root beneath the exact owned mount.
+    for pid in mount_helper_pids(destination):
+        try:
+            descriptor = open_pid_handle(pid)
+        except ProcessLookupError:
+            continue
+        try:
+            # Recheck after opening the stable PID handle.
+            if pid not in mount_helper_pids(destination):
+                continue
+            signal_pid_handle(descriptor, signal.SIGTERM)
+            if not select.select([descriptor], [], [], 2)[0]:
+                signal_pid_handle(descriptor, signal.SIGKILL)
+                if not select.select([descriptor], [], [], 2)[0]:
+                    raise MigrationError("A migration chroot helper did not exit: %d" % pid)
+        except ProcessLookupError:
+            pass
+        finally:
+            os.close(descriptor)
+
+
+def pidfd_syscall(number, *arguments):
+    # Older host Pythons (e.g. Ubuntu 20.04's 3.8) lack the wrappers even when
+    # their kernel supports pidfds. Native migration targets x86_64; these ABI
+    # numbers are fixed in asm/unistd_64.h. Never fall back to a racy kill(pid).
+    import ctypes
+    import platform
+    if platform.machine().lower() not in ("x86_64", "amd64"):
+        raise MigrationError("Stable process handles are unavailable on this architecture")
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    result = libc.syscall(ctypes.c_long(number), *(ctypes.c_long(value) for value in arguments))
+    if result < 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    return result
+
+
+def open_pid_handle(pid):
+    wrapper = getattr(os, "pidfd_open", None)
+    return wrapper(pid) if wrapper else pidfd_syscall(434, pid, 0)
+
+
+def signal_pid_handle(descriptor, sig):
+    wrapper = getattr(signal, "pidfd_send_signal", None)
+    return wrapper(descriptor, sig) if wrapper else pidfd_syscall(424, descriptor, sig, 0, 0)
+
+
+def unmount(destination):
+    # Kernel/udev references can briefly outlive an overlay or loop unmount.
+    # Retry ordinary unmounts only; never force/lazy-unmount a source filesystem.
+    for attempt in range(6):
+        try:
+            run("umount", "-R", destination)
+            return
+        except MigrationError:
+            if attempt == 5:
+                raise
+            time.sleep(0.2)
+
+
+@contextlib.contextmanager
+def mounted_image(source, destination):
+    """Own the loop lifetime, releasing child images before their parent ISO.
+
+    mount -o loop relies on autoclear, whose delayed release can keep an ISO
+    busy after its embedded squashfs was unmounted. Explicitly detach our loop
+    and wait for udev before the outer image context is cleaned up.
+    """
+    if not Path(source).is_file():
+        raise MigrationError("Image is not a regular file: " + str(source))
+    loop = run("losetup", "--find", "--show", "--read-only", source)
+    if not re.fullmatch(r"/dev/loop[0-9]+", loop):
+        raise MigrationError("Unexpected loop device: " + loop)
+    primary_error = None
+    try:
+        with mounted(loop, destination, "-o", "ro") as mount:
+            yield mount
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        try:
+            run("losetup", "--detach", loop)
+            if shutil.which("udevadm"):
+                run("udevadm", "settle", "--timeout=3", allowed=(0, 1))
+        except Exception as cleanup_error:
+            if primary_error is None:
+                raise
+            cleanup_warning(cleanup_error)
 
 
 def target_valid(root):
@@ -250,7 +390,7 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
             raise MigrationError("Unsafe application package name")
     if digest(iso_path) != checksum:
         raise MigrationError("ISO checksum changed before privileged preparation")
-    for tool in ("mount", "unshare", "chroot", "efibootmgr"):
+    for tool in ("mount", "losetup", "unshare", "chroot", "efibootmgr"):
         if not shutil.which(tool):
             raise MigrationError("Install required host tool before retrying: " + tool)
     # Root-owned private directory: the old user's writable download stage is
@@ -284,11 +424,12 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
         raise MigrationError("Package profile contains an unsupported token")
     root = task / "target-root"
     root.mkdir()
-    with mounted(task / "genesi.iso", task / "iso", "-o", "loop,ro") as iso:
+    staging_initramfs(root)
+    with mounted_image(task / "genesi.iso", task / "iso") as iso:
         images = list(iso.glob("arch/x86_64/airootfs.sfs"))
         if len(images) != 1:
             raise MigrationError("ISO has no supported archiso root image")
-        with mounted(images[0], task / "lower", "-o", "loop,ro") as lower:
+        with mounted_image(images[0], task / "lower") as lower:
             launcher = lower / "usr/local/bin/genesi-migrate-live"
             if not native_iso_supported(launcher):
                 raise MigrationError("This ISO predates native migration. Wait for the updated ISO and retry")
@@ -307,6 +448,7 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount --rbind /host-dev /dev
+mount --bind /genesi-native/target-root /genesi-native/target-root
 pacman-key --init
 pacman-key --populate
 pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
@@ -324,6 +466,7 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
                 # These commands run inside the ISO userspace with the prepared
                 # root bind-mounted at the same stable path.
                 with mounted(task, runner / "genesi-native", "--bind"):
+                    run("chroot", runner, "mount", "--bind", "/genesi-native/target-root", "/genesi-native/target-root")
                     shutil.copyfile(runner / "etc/pacman.conf", root / "etc/pacman.conf")
                     run("chroot", runner, "arch-chroot", "/genesi-native/target-root", "pacman-key", "--init")
                     run("chroot", runner, "arch-chroot", "/genesi-native/target-root", "pacman-key", "--populate")
@@ -601,6 +744,7 @@ def configure(state, task, device):
              "UUID=%s /home btrfs defaults,noatime,compress=zstd,subvol=@genesi-home 0 0\n"
              "UUID=%s /boot/efi vfat umask=0077 0 2\n") % (state["rootUuid"], state["rootUuid"], state["espUuid"])
     (TARGET / "etc/fstab").write_text(fstab)
+    (TARGET / "etc/mkinitcpio.conf.d/99-genesi-native-staging.conf").unlink(missing_ok=True)
     with mounted(esp["path"], TARGET / "boot/efi"):
         run("arch-chroot", TARGET, "mkinitcpio", "-P")
         run("arch-chroot", TARGET, "grub-install", "--target=x86_64-efi", "--efi-directory=/boot/efi",
@@ -618,6 +762,23 @@ def configure(state, task, device):
     marker.parent.mkdir(parents=True, exist_ok=True)
     os.sync()
     save(marker, {"phase": "boot-ready", "schema": "native-v1"})
+
+
+def staging_initramfs(root):
+    # autodetect cannot resolve the future root through nested preparation
+    # chroots. Build a portable image now; offline configure removes this
+    # drop-in and restores normal autodetect on the real mounted Btrfs root.
+    config = Path(root) / "etc/mkinitcpio.conf.d/99-genesi-native-staging.conf"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text('''_genesi_hooks=()
+for _genesi_hook in "${HOOKS[@]}"; do
+    [[ "$_genesi_hook" == autodetect ]] || _genesi_hooks+=("$_genesi_hook")
+done
+HOOKS=("${_genesi_hooks[@]}")
+MODULES+=(btrfs ext4)
+unset _genesi_hook _genesi_hooks
+''')
+    (Path(root) / "etc/vconsole.conf").write_text("KEYMAP=us\n")
 
 
 def install_finish(root, manifest, state):

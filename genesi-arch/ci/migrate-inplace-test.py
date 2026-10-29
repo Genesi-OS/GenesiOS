@@ -111,6 +111,115 @@ class Response(io.BytesIO):
         self.headers = {"Content-Length": str(len(data))}
 
 
+class MountLifecycle(unittest.TestCase):
+    def test_helper_selection_excludes_host_and_other_namespaces(self):
+        with tempfile.TemporaryDirectory() as directory:
+            proc, destination = Path(directory) / "proc", Path(directory) / "chroot"
+            proc.mkdir()
+            destination.mkdir()
+            links = {"/proc/self/ns/mnt": "mnt:[migration]"}
+            for pid, root, namespace in (
+                (1001, str(destination / "child"), "mnt:[migration]"),
+                (1002, str(destination), "mnt:[host]"),
+                (1003, str(destination) + "-other", "mnt:[migration]"),
+                (1004, str(Path(directory)), "mnt:[migration]"),
+            ):
+                folder = proc / str(pid)
+                folder.mkdir()
+                links[str(folder / "root")] = root
+                links[str(folder / "ns/mnt")] = namespace
+            real_path = Path
+            real_readlink = native.os.readlink
+            with patch.object(native.sys, "platform", "linux"), \
+                 patch.object(native, "Path", side_effect=lambda p: proc if p == "/proc" else real_path(p)), \
+                 patch.object(native.os, "readlink", side_effect=lambda p: links[str(p)] if str(p) in links else real_readlink(p)):
+                self.assertEqual(native.mount_helper_pids(destination), [1001])
+
+    def test_pid_handle_is_rechecked_before_signalling(self):
+        with patch.object(native, "mount_helper_pids", side_effect=[[1234], []]), \
+             patch.object(native, "open_pid_handle", return_value=77), \
+             patch.object(native, "signal_pid_handle") as send, \
+             patch.object(native.os, "close") as close:
+            native.stop_mount_helpers("owned-chroot")
+            send.assert_not_called()
+            close.assert_called_once_with(77)
+
+    def test_older_python_uses_stable_pidfd_syscalls(self):
+        with patch.object(native.os, "pidfd_open", None, create=True), \
+             patch.object(native.signal, "pidfd_send_signal", None, create=True), \
+             patch.object(native, "pidfd_syscall", return_value=77) as syscall:
+            self.assertEqual(native.open_pid_handle(1234), 77)
+            native.signal_pid_handle(77, native.signal.SIGTERM)
+            self.assertEqual(syscall.call_args_list[0].args, (434, 1234, 0))
+            self.assertEqual(syscall.call_args_list[1].args, (424, 77, native.signal.SIGTERM, 0, 0))
+
+    @unittest.skipUnless(sys.platform == "linux", "requires Bash on Linux")
+    def test_staging_initramfs_disables_only_autodetect(self):
+        with tempfile.TemporaryDirectory() as directory:
+            native.staging_initramfs(directory)
+            config = Path(directory) / "etc/mkinitcpio.conf.d/99-genesi-native-staging.conf"
+            output = subprocess.check_output(["bash", "-c", 'HOOKS=(base systemd autodetect block filesystems); MODULES=(); source "$1"; printf "%s\\n" "${HOOKS[*]}" "${MODULES[*]}"', "test", str(config)], text=True)
+            self.assertEqual(output.splitlines(), ["base systemd block filesystems", "btrfs ext4"])
+
+    def test_embedded_loop_is_released_before_outer_iso(self):
+        calls = []
+        devices = iter(("/dev/loop90", "/dev/loop91"))
+
+        def run(*args, **kwargs):
+            calls.append(tuple(str(a) for a in args))
+            if args[:3] == ("losetup", "--find", "--show"):
+                return next(devices)
+            return ""
+
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            iso, squash = base / "iso.img", base / "root.sfs"
+            iso.touch()
+            squash.touch()
+            with patch.object(native, "run", side_effect=run), patch.object(native.shutil, "which", return_value=None):
+                with native.mounted_image(iso, base / "iso"):
+                    with native.mounted_image(squash, base / "lower"):
+                        pass
+            self.assertLess(calls.index(("umount", "-R", str(base / "lower"))),
+                            calls.index(("losetup", "--detach", "/dev/loop91")))
+            self.assertLess(calls.index(("losetup", "--detach", "/dev/loop91")),
+                            calls.index(("umount", "-R", str(base / "iso"))))
+            self.assertEqual(calls[-1], ("losetup", "--detach", "/dev/loop90"))
+
+    def test_cleanup_failure_preserves_original_error(self):
+        def run(*args, **kwargs):
+            if args[0] == "umount":
+                raise native.MigrationError("cleanup busy")
+            return ""
+        with tempfile.TemporaryDirectory() as directory, patch.object(native, "run", side_effect=run), \
+             patch.object(native.time, "sleep"), patch.object(native, "cleanup_warning") as warning:
+            with self.assertRaisesRegex(native.MigrationError, "original package failure"):
+                with native.mounted("fake", directory):
+                    raise native.MigrationError("original package failure")
+            warning.assert_called_once()
+
+    def test_busy_unmount_is_retried_without_force(self):
+        with patch.object(native, "run", side_effect=[native.MigrationError("busy"), ""]) as run, \
+             patch.object(native.time, "sleep"):
+            native.unmount("test-mount")
+        self.assertEqual(run.call_count, 2)
+        self.assertTrue(all(call.args == ("umount", "-R", "test-mount") for call in run.call_args_list))
+
+    def test_loop_detaches_when_mount_fails(self):
+        def run(*args, **kwargs):
+            if args[0] == "mount":
+                raise native.MigrationError("mount failed")
+            return "/dev/loop90" if args[:3] == ("losetup", "--find", "--show") else ""
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.img"
+            source.touch()
+            with patch.object(native, "run", side_effect=run) as command, patch.object(native.shutil, "which", return_value=None):
+                with self.assertRaisesRegex(native.MigrationError, "mount failed"):
+                    with native.mounted_image(source, Path(directory) / "mount"):
+                        self.fail("failed mount was entered")
+            self.assertIn((("losetup", "--detach", "/dev/loop90"),), [tuple([call.args]) for call in command.call_args_list])
+
+
 class Preparation(unittest.TestCase):
     def test_decimal_gb_does_not_satisfy_same_number_of_gib(self):
         with patch.object(native.shutil, "disk_usage", return_value=Mock(free=34 * 10 ** 9)):
