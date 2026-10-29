@@ -172,6 +172,22 @@ def target_valid(root):
         raise MigrationError("Prepared system is not branded as Genesi")
 
 
+def native_iso_supported(launcher):
+    """Recognize the shipped v1 launcher, whose cmdline regex escapes dots.
+
+    Check both argument handling and the offline dispatch, not an unescaped
+    keyword that might only be present in a comment.
+    """
+    launcher = Path(launcher)
+    if not launcher.is_file():
+        return False
+    text = launcher.read_text()
+    return all(token in text for token in (
+        "native_arg()", r"genesi\.native=", "\nnative-offline)",
+        '"$RUN/native/native.py" offline',
+    ))
+
+
 def root_hash(root):
     # Bind all regular-file content and symlink targets to the prepared artifact.
     result = hashlib.sha256()
@@ -262,7 +278,7 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
             raise MigrationError("ISO has no supported archiso root image")
         with mounted(images[0], task / "lower", "-o", "loop,ro") as lower:
             launcher = lower / "usr/local/bin/genesi-migrate-live"
-            if not launcher.is_file() or "genesi.native" not in launcher.read_text():
+            if not native_iso_supported(launcher):
                 raise MigrationError("This ISO predates native migration. Wait for the updated ISO and retry")
             for name in ("upper", "work", "runner"):
                 (task / name).mkdir()

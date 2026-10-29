@@ -69,6 +69,18 @@ class Preflight(unittest.TestCase):
         with self.assertRaisesRegex(native.MigrationError, "no PARTUUID"):
             native.validate_machine(self.manifest["machine"], devices)
 
+    def test_real_iso_launcher_supports_native_protocol(self):
+        launcher = APP.parents[1] / "archiso/airootfs/usr/local/bin/genesi-migrate-live"
+        self.assertTrue(native.native_iso_supported(launcher))
+
+    def test_legacy_iso_or_comment_only_does_not_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            launcher = Path(directory) / "launcher"
+            self.assertFalse(native.native_iso_supported(launcher))
+            for text in ("#!/bin/bash\n# genesi.native is planned\n", "#!/bin/bash\narg() { echo genesi.migrate; }\n"):
+                launcher.write_text(text)
+                self.assertFalse(native.native_iso_supported(launcher))
+
     def test_fail_closed(self):
         for key, value in [("rootFs", "xfs"), ("rootPartType", "lvm"),
                            ("luks", True), ("firmware", "bios"),
