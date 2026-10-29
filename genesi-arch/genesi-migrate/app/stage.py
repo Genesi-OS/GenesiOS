@@ -143,7 +143,7 @@ def plan(manifest, home):
         raise StageError("st.noUuid")
     if loc["fs"] not in GRUB_FS:
         raise StageError("st.fs", loc["fs"] or "?")
-    copytoram = not loc["survives"]
+    copytoram = mode != "native" and not loc["survives"]
     if copytoram and (m.get("ramBytes") or 0) < COPYTORAM_RAM:
         raise StageError("st.ram", round((m.get("ramBytes") or 0) / GIB, 1), round(COPYTORAM_RAM / GIB))
 

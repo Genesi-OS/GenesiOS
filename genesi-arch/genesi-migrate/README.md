@@ -7,22 +7,33 @@ validate it in a disposable Mint VM before using it on real data.
 
 ## Native Flow
 
-1. Download the maintenance ISO resumably and verify SHA-256.
+1. Download the build-source ISO resumably and verify SHA-256. It is used only
+   during preparation, never as the boot environment for native migration.
 2. Under administrator authorization, build the selected Genesi desktop using
    the ISO's Arch userspace in a private mount namespace. The host's package
    manager is untouched. Prepare packages, account, kernel and initramfs.
-3. Verify the target tree and remaining space. Build a standalone EFI rescue
+3. Build a dedicated mkinitcpio maintenance image from the prepared kernel,
+   Python worker, disk tools and storage drivers (no live desktop). The image
+   is limited to 192 MiB compressed and its required tools are checked.
+   Before arming boot, extract it into private staging and execute its Python
+   interpreter and arch-chroot against the prepared tree. This catches missing
+   libraries and incompatible BusyBox replacements while the old OS still runs.
+   The private duplicate ISO is removed after a successful build; the cached
+   verified download remains available for retries.
+   Verify the target tree and remaining space. Build a standalone EFI rescue
    loader with ext4/Btrfs support. Record the original EFI boot order; the Later
    button restores it. Mint/Windows EFI files are not overwritten.
-4. The user restarts. The ISO provides a maintenance environment in RAM and
-   automatically runs the staged worker, without opening the installer.
+4. The user restarts once. GRUB loads only the kernel and dedicated initramfs.
+   It reads the small migration state from the source read-only, unmounts it,
+   and performs the offline switch. No ISO copy-to-RAM or live session runs.
 5. Identify the disk by serial/WWN, size, PARTUUID and filesystem UUID. Require
    an unmounted source and verify the prepared tree again before conversion.
 6. Check ext4 read-only, then run btrfs-convert --uuid copy. Supported existing
    Btrfs roots skip conversion. Create Genesi's @ and @genesi-home, copy the
    prepared system and reflink the entire original home with ownership intact.
 7. Generate fstab/initramfs and validate GRUB before publishing boot-ready.
-   The maintenance environment then automatically restarts into Genesi.
+   mkinitcpio mounts the new root and switches directly into Genesi during
+   this same boot. There is no second restart.
 8. Snapshots initializes at first boot. The existing restoration worker finishes
    optional Flatpak/AUR work and reports unavailable applications.
 
@@ -37,7 +48,7 @@ See [btrfs-convert documentation](https://btrfs.readthedocs.io/en/latest/btrfs-c
 - Installed x86_64 Linux, UEFI, Secure Boot disabled.
 - Plain ext4/Btrfs root with stable disk identity and PARTUUID.
 - Home, var and boot on that root; an existing FAT ESP on the same disk.
-- At least 8 GB installed RAM and 32 GiB free before privileged preparation.
+- At least 2 GB installed RAM and 32 GiB free before privileged preparation.
   32 GiB means 34.36 decimal GB; a disk utility displaying 34 GB may be below
   this threshold. Space errors report required, available and missing bytes in
   both units. Pending downloads/backups on the same filesystem are budgeted
@@ -59,7 +70,7 @@ verification. Copy errors prevent arming the reboot.
 State uses atomic rename and fsync under root-owned staging. Artifact, source,
 copy or GRUB failures stop in maintenance instead of rebooting to an incomplete
 target. A completed migration cannot be replayed over the new user's files.
-A source still mounted or held by the ISO cannot be converted.
+A source still mounted cannot be converted. The native boot has no ISO holders.
 Preparation also uses a private PID namespace. Before unmounting a chroot,
 only helpers rooted inside that mount and belonging to its private namespace
 are stopped using stable PID handles. Loop devices for the ISO and its embedded
@@ -79,15 +90,14 @@ Offline errors appear in the maintenance terminal. Keep staging for diagnosis.
 
 ## Mint VM Test
 
-Use a disposable installed Mint VM with EFI enabled, Secure Boot off, 8-16 GB
+Use a disposable installed Mint VM with EFI enabled, Secure Boot off, 2+ GB
 RAM and an 80+ GB virtual disk with at least 40 GB free. Snapshot/clone it first,
 create a document in home and record its SHA-256.
 
-This release requires an ISO containing the genesi.native live hook. There is
-one necessary ISO rebuild for that hook; later standalone worker/AppImage edits
-do not build an ISO. Older ISOs are rejected before boot is armed.
+The native boot does not depend on an ISO live hook. The standalone AppImage
+builds its own maintenance initramfs; changing Migrate does not rebuild the ISO.
 
-After the AppImage publishing workflow and the new ISO build succeed:
+After the AppImage publishing workflow succeeds:
 
 ```bash
 curl -fL --retry 3 -o Genesi-Migrate-x86_64.AppImage \
@@ -120,7 +130,7 @@ python genesi-arch/genesi-migrate/app/genesi_migrate.py --demo
 ```
 
 Tests mock every conversion/mount/reboot command, covering native UI routing,
-device identity, integrity failures, source-home preservation and reboot order.
+device identity, integrity failures, source-home preservation and same-boot handoff.
 They do not perform disk operations.
 
 The separate integration test uses disposable image files, real read-only
@@ -130,6 +140,26 @@ error cleanup without touching physical partitions or running conversion:
 ```bash
 sudo unshare --mount --pid --fork --kill-child=KILL --mount-proc --propagation private python3 genesi-arch/ci/migrate-mount-test.py
 ```
+
+An opt-in end-to-end QEMU test builds the real maintenance initramfs from an
+official Arch bootstrap verified against its published SHA-256. It uses a new
+24 GiB sparse file, a 2 GiB guest, real ext4-to-Btrfs conversion and a prepared
+system with a preserved home sentinel. No physical disks are passed to QEMU:
+
+```bash
+sudo unshare --mount --pid --fork --kill-child=KILL --mount-proc --propagation private \
+  python3 genesi-arch/ci/migrate-boot-test.py /path/to/archlinux-bootstrap-x86_64.tar.zst SHA256
+```
+
+This slow, network-dependent test is not run on each AppImage publication.
+It complements, rather than replaces, a full Mint-to-Genesi desktop/UEFI test.
+
+Manual QEMU validation exercised real conversion, exact home-file preservation,
+successful GRUB/initramfs generation and a same-boot handoff into systemd with
+2 GiB guest RAM and no attached ISO. A separate installed-root boot reached the
+success service. The initial minimal fixture needed first-boot configuration;
+the fixture now uses the same machine-ID initialization as production. This
+does not certify every desktop, firmware or source-distro layout.
 
 Preparation temporarily disables initramfs autodetect and explicitly includes
 ext4/Btrfs drivers. Offline configuration removes that staging override and

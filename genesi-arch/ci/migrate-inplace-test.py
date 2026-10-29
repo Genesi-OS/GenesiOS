@@ -70,17 +70,13 @@ class Preflight(unittest.TestCase):
         with self.assertRaisesRegex(native.MigrationError, "no PARTUUID"):
             native.validate_machine(self.manifest["machine"], devices)
 
-    def test_real_iso_launcher_supports_native_protocol(self):
-        launcher = APP.parents[1] / "archiso/airootfs/usr/local/bin/genesi-migrate-live"
-        self.assertTrue(native.native_iso_supported(launcher))
-
-    def test_legacy_iso_or_comment_only_does_not_pass(self):
-        with tempfile.TemporaryDirectory() as directory:
-            launcher = Path(directory) / "launcher"
-            self.assertFalse(native.native_iso_supported(launcher))
-            for text in ("#!/bin/bash\n# genesi.native is planned\n", "#!/bin/bash\narg() { echo genesi.migrate; }\n"):
-                launcher.write_text(text)
-                self.assertFalse(native.native_iso_supported(launcher))
+    def test_native_plan_does_not_require_iso_in_ram(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["machine"]["ramBytes"] = 1900 * 1024 ** 2
+        native.validate_machine(manifest["machine"], self.devices)
+        manifest["choices"] = {"install": {"mode": "native"}, "strategy": "stay"}
+        plan = stage.plan(manifest, "/home/mint")
+        self.assertFalse(plan["copytoram"])
 
     def test_fail_closed(self):
         for key, value in [("rootFs", "xfs"), ("rootPartType", "lvm"),
@@ -99,9 +95,20 @@ class Preflight(unittest.TestCase):
         config = native.recovery_config(state)
         self.assertIn("insmod btrfs", config)
         self.assertIn("insmod ext2", config)
-        self.assertIn("genesi.native=", config)
+        self.assertIn("genesi.migrate=UUID=", config)
         self.assertIn("Continue Genesi migration / recovery", config)
-        self.assertNotIn("genesi.migrate=", config)
+        self.assertIn("/migrate-vmlinuz", config)
+        self.assertIn("/migrate-initramfs.img", config)
+        self.assertNotIn("copytoram", config)
+        self.assertNotIn("genesi.iso", config)
+        self.assertNotIn("loopback", config)
+        self.assertIn("  configfile ($root)/@/boot/grub/grub.cfg\nfi", config)
+
+    @unittest.skipUnless(sys.platform == "linux" and native.shutil.which("grub-script-check"), "requires GRUB syntax checker")
+    def test_rescue_configuration_has_valid_grub_syntax(self):
+        state = native.validate_machine(self.manifest["machine"], self.devices)
+        state.update(task="/var/lib/genesi-migrate-native/test", sourcePrefix="")
+        subprocess.run(["grub-script-check"], input=native.recovery_config(state), text=True, capture_output=True, check=True)
 
 
 class Response(io.BytesIO):
@@ -113,6 +120,106 @@ class Response(io.BytesIO):
 
 
 class MountLifecycle(unittest.TestCase):
+    def test_packed_runtime_is_exercised_before_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task, root = Path(directory) / "task", Path(directory) / "root"
+            task.mkdir()
+            calls = []
+
+            def run(*args):
+                calls.append(args)
+                return '{"filesystems": []}' if args[0] == "findmnt" else ""
+
+            with patch.object(native, "run", side_effect=run), \
+                 patch.object(native, "mounted", side_effect=lambda *a, **k: contextlib.nullcontext()):
+                native.verify_maintenance(root, task)
+            self.assertTrue(any("python3" in call and "--help" in call for call in calls))
+            self.assertTrue(any("arch-chroot" in call and "/usr/bin/true" in call for call in calls))
+            self.assertFalse((task / "maintenance-check").exists())
+
+    def test_retry_only_retires_armed_tasks_on_the_same_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            for name, phase, root in (("old", "armed", "source"), ("other", "armed", "other"),
+                                      ("failed", "preparing", "source"), ("done", "configured", "source")):
+                task = base / name
+                task.mkdir()
+                native.save(task / "state.json", {"schema": "native-v1", "phase": phase, "rootUuid": root})
+            with patch.object(native, "BASE", base), patch.object(native, "inventory", return_value=[]), \
+                 patch.object(native, "identify"), patch.object(native, "disarm") as disarm:
+                native.retire_previous_boot_tasks({"rootUuid": "source"})
+            disarm.assert_called_once_with(base / "old")
+
+    @unittest.skipUnless(sys.platform == "linux", "requires Bash on Linux")
+    def test_maintenance_hook_hands_off_without_reboot(self):
+        install, runtime = native.maintenance_hooks()
+        subprocess.run(["bash", "-n"], input=install, text=True, check=True)
+        subprocess.run(["bash", "-n"], input=runtime, text=True, check=True)
+        harness = runtime.replace("/usr/bin/python3", "fixture_python") + '''
+getarg() { echo UUID=test:/var/lib/genesi-migrate-native/test; }
+fixture_python() { echo "WORKER:$*"; }
+mount() { echo "MOUNT:$*"; }
+mkdir() { echo "LAYOUT:$*"; }
+chmod() { echo "MODE:$*"; }
+msg() { :; }
+root=UUID=test
+run_hook
+"$mount_handler" /sysroot
+'''
+        output = subprocess.check_output(["bash", "-c", harness], text=True)
+        self.assertIn("boot-offline UUID=test:", output)
+        self.assertIn("LAYOUT:-p /dev/pts /dev/shm", output)
+        self.assertIn("MODE:1777 /dev/shm", output)
+        self.assertIn("MOUNT:-t btrfs", output)
+        self.assertNotIn("reboot", output)
+        failure = harness.replace('echo "WORKER:$*";', 'return 1;').replace(
+            'root=UUID=test', 'genesi_native_stop() { echo STOPPED; }; root=UUID=test')
+        result = subprocess.run(["bash", "-c", failure], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("STOPPED", result.stdout)
+        self.assertNotIn("MOUNT:", result.stdout)
+
+    def test_offline_environment_rejects_regular_disk_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "marker"
+            marker.write_text(native.MAINTENANCE_VERSION)
+            with patch.object(native, "MAINTENANCE_MARKER", marker), patch.object(native, "run", return_value="ext4"):
+                with self.assertRaisesRegex(native.MigrationError, "independent of all disks"):
+                    native.assert_maintenance()
+
+    def test_maintenance_builder_bounds_image_and_cleans_build_hooks(self):
+        for oversized in (False, True):
+            with self.subTest(oversized=oversized), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                root, task = base / "root", base / "task"
+                (root / "boot").mkdir(parents=True)
+                (root / "boot/vmlinuz-linux").write_bytes(b"test kernel")
+                task.mkdir()
+                native.save(task / "state.json", {"rootUuid": "test", "task": "/var/lib/genesi-migrate-native/test", "sourcePrefix": ""})
+
+                def run(*args, **kwargs):
+                    if "mkinitcpio" in args:
+                        image = root / "boot/genesi-migrate-initramfs.img"
+                        with image.open("wb") as stream:
+                            stream.truncate(native.MAX_MAINTENANCE_IMAGE + 1 if oversized else 1024)
+                    if "lsinitcpio" in args:
+                        return "\n".join(("init", "hooks/genesi_native", "usr/bin/python3", "usr/bin/btrfs-convert",
+                                          "usr/bin/e2fsck", "usr/bin/rsync", "usr/bin/arch-chroot", "usr/bin/realpath",
+                                          "usr/lib/genesi-migrate/native.py", "etc/genesi-native-initramfs"))
+                    return ""
+
+                with patch.object(native, "run", side_effect=run), \
+                     patch.object(native, "verify_maintenance"), \
+                     patch.object(native, "mounted", side_effect=lambda *a, **k: contextlib.nullcontext()):
+                    if oversized:
+                        with self.assertRaisesRegex(native.MigrationError, "192 MiB"):
+                            native.build_maintenance(root, task)
+                    else:
+                        native.build_maintenance(root, task)
+                        self.assertEqual((task / "migrate-vmlinuz").read_bytes(), b"test kernel")
+                self.assertFalse((root / "usr/lib/initcpio/hooks/genesi_native").exists())
+                self.assertFalse((root / "etc/genesi-native-initramfs").exists())
+
     def test_machine_id_has_runtime_mounts_until_command_finishes(self):
         calls = []
 
@@ -359,6 +466,50 @@ class Preparation(unittest.TestCase):
 
 
 class Offline(unittest.TestCase):
+    def test_btrfs_boot_uses_supported_no_replay_rescue_option(self):
+        with tempfile.TemporaryDirectory() as directory:
+            top = Path(directory)
+            with patch.object(native, "TOP", top), patch.object(native, "assert_maintenance"), \
+                 patch.object(native, "assert_offline"), \
+                 patch.object(native, "inventory", return_value=[{"type": "part", "fstype": "btrfs", "uuid": "source", "path": "/dev/fake"}]), \
+                 patch.object(native, "mounted", side_effect=lambda *a, **k: contextlib.nullcontext()) as mount:
+                with self.assertRaises(FileNotFoundError):
+                    native.boot_offline("UUID=source:/var/lib/genesi-migrate-native/missing")
+            mount.assert_called_once_with("/dev/fake", top, "-o", "ro,rescue=nologreplay,subvolid=5")
+
+    def test_boot_reads_state_readonly_and_releases_source_before_worker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            top, ram = Path(directory) / "top", Path(directory) / "ram"
+            task = top / "var/lib/genesi-migrate-native/test"
+            task.mkdir(parents=True)
+            native.save(task / "state.json", {"rootUuid": "source", "sourcePrefix": "", "task": "/var/lib/genesi-migrate-native/test"})
+            active = []
+
+            @contextlib.contextmanager
+            def mounted(source, destination, *options):
+                self.assertEqual(options, ("-o", "ro,noload"))
+                active.append(source)
+                yield destination
+                active.clear()
+
+            def offline(path):
+                self.assertFalse(active)
+                self.assertEqual(path, ram)
+                self.assertEqual(json.loads((ram / "state.json").read_text())["rootUuid"], "source")
+
+            with patch.multiple(native, TOP=top, RAM_STATE=ram), \
+                 patch.object(native, "assert_maintenance"), patch.object(native, "assert_offline"), \
+                 patch.object(native, "inventory", return_value=[{"type": "part", "fstype": "ext4", "uuid": "source", "path": "/dev/fake"}]), \
+                 patch.object(native, "mounted", side_effect=mounted), patch.object(native, "offline", side_effect=offline):
+                native.boot_offline("UUID=source:/var/lib/genesi-migrate-native/test")
+
+    def test_bad_boot_locator_is_rejected_before_mounting(self):
+        with patch.object(native, "assert_maintenance"), patch.object(native, "mounted") as mount:
+            for locator in ("UUID=x:/../state", "UUID=x:/safe/../../state", "arbitrary", "UUID=x:relative"):
+                with self.assertRaises(native.MigrationError):
+                    native.boot_offline(locator)
+            mount.assert_not_called()
+
     def exercise(self, failure=None):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
@@ -397,10 +548,10 @@ class Offline(unittest.TestCase):
                     raise native.MigrationError("simulated boot configuration failure")
 
             source = {"path": "/dev/fake-source", "fstype": "ext4", "mountpoints": []}
-            with patch.multiple(native, TOP=top, TARGET=target, LIVE_MARKER=ram), \
+            with patch.multiple(native, TOP=top, TARGET=target), \
+                 patch.object(native, "assert_maintenance"), \
                  patch.object(native, "inventory", return_value=[]), \
                  patch.object(native, "identify", return_value=({}, source, {})), \
-                 patch.object(native, "release_iso"), \
                  patch.object(native, "mounted", side_effect=mount), \
                  patch.object(native, "target_valid"), \
                  patch.object(native, "root_hash", return_value="corrupt" if failure == "hash" else "verified"), \
@@ -421,7 +572,7 @@ class Offline(unittest.TestCase):
         calls = self.exercise()
         self.assertIn(("btrfs-convert", "--uuid", "copy", "/dev/fake-source"), calls)
         self.assertFalse(any(c[0].startswith(("mkfs", "wipefs", "sfdisk")) for c in calls))
-        self.assertEqual(calls[-1], ("systemctl", "reboot"))
+        self.assertFalse(any(c[0] == "systemctl" for c in calls))
 
     def test_bad_artifact_stops_before_conversion(self):
         calls = self.exercise("hash")

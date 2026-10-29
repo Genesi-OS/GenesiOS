@@ -1,7 +1,8 @@
 """Native migration: prepare an installed tree, then switch offline.
 
 No action runs on import. The root helper invokes prepare in a private mount
-namespace. The live medium invokes offline after copying this file to RAM.
+namespace. A small, dedicated initramfs performs the offline switch during
+the next boot, then mkinitcpio switches directly into the prepared Genesi.
 The initial supported layout is x86_64 UEFI, plain ext4 or Btrfs root, /home
 on that root, and an ESP on the same disk. Unsupported layouts fail closed.
 """
@@ -24,7 +25,10 @@ import uuid
 BASE = Path("/var/lib/genesi-migrate-native")
 TOP = Path("/run/genesi-native-top")
 TARGET = Path("/run/genesi-native-target")
-LIVE_MARKER = Path("/run/archiso/bootmnt")
+RAM_STATE = Path("/run/genesi-native-state")
+MAINTENANCE_MARKER = Path("/etc/genesi-native-initramfs")
+MAINTENANCE_VERSION = "genesi-native-initramfs-v1"
+MAX_MAINTENANCE_IMAGE = 192 * 1024 ** 2
 GIB = 1024 ** 3
 MIN_PREP_FREE = 32 * GIB
 LOG = None
@@ -134,8 +138,8 @@ def identify(state, devices):
 
 
 def validate_machine(machine, devices):
-    if int(machine.get("ramBytes") or 0) < 7 * GIB:
-        raise MigrationError("Native maintenance requires at least 8 GB of installed RAM")
+    if int(machine.get("ramBytes") or 0) < 1800 * 1024 ** 2:
+        raise MigrationError("Native migration requires at least 2 GB of installed RAM")
     if machine.get("firmware") not in ("uefi", "efi") or machine.get("secureBoot"):
         raise MigrationError("Native migration requires UEFI with Secure Boot disabled")
     if machine.get("luks") or machine.get("rootPartType") != "part" or machine.get("homeSeparate"):
@@ -341,22 +345,6 @@ def target_valid(root):
         raise MigrationError("Prepared system is not branded as Genesi")
 
 
-def native_iso_supported(launcher):
-    """Recognize the shipped v1 launcher, whose cmdline regex escapes dots.
-
-    Check both argument handling and the offline dispatch, not an unescaped
-    keyword that might only be present in a comment.
-    """
-    launcher = Path(launcher)
-    if not launcher.is_file():
-        return False
-    text = launcher.read_text()
-    return all(token in text for token in (
-        "native_arg()", r"genesi\.native=", "\nnative-offline)",
-        '"$RUN/native/native.py" offline',
-    ))
-
-
 def root_hash(root):
     # Bind all regular-file content and symlink targets to the prepared artifact.
     result = hashlib.sha256()
@@ -415,6 +403,7 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
         raise MigrationError("Native staging directory is not root-owned")
     BASE.mkdir(mode=0o700, parents=True, exist_ok=True)
     BASE.chmod(0o700)
+    retire_previous_boot_tasks(state)
     task = BASE / str(uuid.uuid4())
     task.mkdir(mode=0o700)
     LOG = task / "prepare.log"
@@ -436,6 +425,8 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
     if not packages:
         raise MigrationError("No native package profile exists for the selected desktop")
     packages = [p.replace("$LOCALE", "en-us") for p in packages]
+    packages = sorted(set(packages) | {"python", "mkinitcpio", "btrfs-progs", "e2fsprogs",
+                                       "rsync", "arch-install-scripts", "grub", "dosfstools"})
     if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9@+_.:-]*", p) for p in packages):
         raise MigrationError("Package profile contains an unsupported token")
     root = task / "target-root"
@@ -446,9 +437,6 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
         if len(images) != 1:
             raise MigrationError("ISO has no supported archiso root image")
         with mounted_image(images[0], task / "lower") as lower:
-            launcher = lower / "usr/local/bin/genesi-migrate-live"
-            if not native_iso_supported(launcher):
-                raise MigrationError("This ISO predates native migration. Wait for the updated ISO and retry")
             for name in ("upper", "work", "runner"):
                 (task / name).mkdir()
             options = "lowerdir=%s,upperdir=%s,workdir=%s" % (lower, task / "upper", task / "work")
@@ -501,20 +489,13 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
                         state["user"] = account(root, manifest["settings"]["user"]["name"])
                     finally:
                         os.environ["PATH"] = old_path
-                # Build a standalone rescue loader with embedded filesystem
-                # modules. It keeps working after ext4 becomes Btrfs.
-                recovery = recovery_config(state)
+                # Carry app restoration from the build source, not its live boot.
                 finish = lower / "usr/lib/genesi-migrate/restore.py"
                 if not finish.is_file():
                     raise MigrationError("ISO has no migration app-restoration worker")
                 dest = root / "usr/lib/genesi-migrate"
                 dest.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(finish, dest / "restore.py")
-                (task / "recovery.cfg").write_text(recovery)
-                with mounted(task, runner / "genesi-native", "--bind", helper_root=runner):
-                    run("chroot", runner, "grub-mkstandalone", "-O", "x86_64-efi",
-                        "--modules=part_gpt part_msdos fat ext2 btrfs search_fs_uuid loopback iso9660 linux normal configfile",
-                        "-o", "/genesi-native/rescue.efi", "boot/grub/grub.cfg=/genesi-native/recovery.cfg")
     root.joinpath("etc/hostname").write_text("genesi\n")
     release = root / "etc/os-release"
     if release.is_symlink():
@@ -555,6 +536,10 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
     setup_machine_id(root)
     install_finish(root, manifest, state)
     target_valid(root)
+    build_maintenance(root, task)
+    # Boot uses only the dedicated kernel/initramfs. Keep the resumable source
+    # download, but release this no-longer-mounted private duplicate.
+    (task / "genesi.iso").unlink()
     expanded = sum(p.stat().st_size for p in root.rglob("*") if p.is_file() and not p.is_symlink())
     require_free_space(BASE, expanded + 8 * GIB, "Conversion and final Genesi tree")
     state.update(phase="ready", rootHash=root_hash(root), isoHash=checksum, expandedBytes=expanded)
@@ -580,20 +565,136 @@ insmod btrfs
 insmod ext2
 search --no-floppy --fs-uuid --set=root %s
 if [ -f ($root)/@/var/lib/genesi-migrate/boot-ready ]; then
-  menuentry 'Genesi OS' {
-    configfile ($root)/@/boot/grub/grub.cfg
-  }
+  configfile ($root)/@/boot/grub/grub.cfg
 fi
 menuentry 'Continue Genesi migration / recovery' {
   search --no-floppy --fs-uuid --set=root %s
-  loopback loop %s/genesi.iso
-  linux (loop)/arch/boot/x86_64/vmlinuz-linux-cachyos-lts archisobasedir=arch img_dev=UUID=%s img_loop=%s/genesi.iso copytoram=y genesi.native=UUID=%s:%s module_blacklist=pcspkr
-  initrd (loop)/arch/boot/x86_64/initramfs-linux-cachyos-lts.img
+  linux ($root)%s/migrate-vmlinuz root=UUID=%s rw rootflags=subvol=@ fsck.mode=skip genesi.migrate=UUID=%s:%s
+  initrd ($root)%s/migrate-initramfs.img
 }
 menuentry 'Original boot menu (before conversion only)' {
   configfile ($root)%s/boot/grub/grub.cfg
 }
-""" % (root_id, root_id, task, root_id, task, root_id, task, prefix)
+""" % (root_id, root_id, task, root_id, root_id, task, task, prefix)
+
+
+def maintenance_hooks():
+    install = r'''#!/bin/bash
+build() {
+    local tool stdlib file
+    for tool in bash python3 btrfs btrfs-convert e2fsck lsblk findmnt mount umount swapon rsync cp chroot arch-chroot unshare udevadm sync blkid realpath readlink mountpoint; do
+        add_binary "$tool" || return 1
+    done
+    stdlib=$(python3 -c 'import sysconfig; print(sysconfig.get_path("stdlib"))') || return 1
+    while IFS= read -r -d '' file; do
+        case "$file" in
+            */site-packages/*|*/__pycache__/*|*/test/*|*/tests/*|*.pyc|*/tkinter/*|*/idlelib/*|*/turtledemo/*|*/_tkinter*.so|*/_test*.so) continue ;;
+            *.so) add_binary "$file" || return 1 ;;
+            *) add_file "$file" || return 1 ;;
+        esac
+    done < <(find "$stdlib" -type f -print0)
+    add_file /usr/lib/genesi-migrate/native.py
+    add_file /etc/genesi-native-initramfs
+    add_runscript
+}
+help() { echo 'Offline Genesi migration before the real root is mounted.'; }
+'''
+    runtime = r'''#!/usr/bin/ash
+run_hook() {
+    mount_handler=genesi_native_mount
+}
+genesi_native_stop() {
+    err 'Genesi migration stopped. No desktop or installer will be started.'
+    err 'Keep this screen and the migration files for diagnosis.'
+    while :; do launch_interactive_shell; done
+}
+genesi_native_mount() {
+    local locator
+    locator=$(getarg genesi.migrate)
+    [ -n "$locator" ] || { genesi_native_stop; return 1; }
+    mkdir -p /dev/pts /dev/shm || { genesi_native_stop; return 1; }
+    chmod 1777 /dev/shm || { genesi_native_stop; return 1; }
+    msg 'Genesi: finishing migration. Do not turn off the computer.'
+    /usr/bin/python3 -B /usr/lib/genesi-migrate/native.py boot-offline "$locator" || { genesi_native_stop; return 1; }
+    mount -t btrfs -o rw,noatime,compress=zstd,subvol=@ "$root" "$1" || { genesi_native_stop; return 1; }
+    msg 'Genesi is ready. Starting your system...'
+}
+'''
+    return install, runtime
+
+
+def build_maintenance(root, task):
+    """Build only an initramfs, never an archiso or a live desktop."""
+    root, task = Path(root), Path(task)
+    kernels = sorted((root / "boot").glob("vmlinuz-*"))
+    if not kernels:
+        raise MigrationError("Prepared system has no maintenance kernel")
+    kernel = kernels[0]
+    install, runtime = maintenance_hooks()
+    files = {
+        root / "etc/genesi-native-initramfs": MAINTENANCE_VERSION + "\n",
+        root / "etc/genesi-native-mkinitcpio.conf":
+            'MODULES=(btrfs ext4)\nBINARIES=()\nFILES=()\n'
+            'HOOKS=(base udev modconf block keyboard filesystems genesi_native)\n'
+            'COMPRESSION="zstd"\n',
+        root / "usr/lib/initcpio/install/genesi_native": install,
+        root / "usr/lib/initcpio/hooks/genesi_native": runtime,
+    }
+    if any(path.exists() or path.is_symlink() for path in files):
+        raise MigrationError("Maintenance build paths already exist")
+    image = root / "boot/genesi-migrate-initramfs.img"
+    try:
+        for path, content in files.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        with mounted("/proc", root / "proc", "--bind", helper_root=root), \
+             mounted("/dev", root / "dev", "--rbind", helper_root=root), \
+             mounted("/sys", root / "sys", "--rbind", helper_root=root):
+            run("chroot", root, "mkinitcpio", "-c", "/etc/genesi-native-mkinitcpio.conf",
+                "-k", "/boot/" + kernel.name, "-g", "/boot/genesi-migrate-initramfs.img", reserve_at=BASE)
+        if not image.is_file() or not 0 < image.stat().st_size <= MAX_MAINTENANCE_IMAGE:
+            raise MigrationError("Maintenance initramfs is missing or exceeds the 192 MiB size limit")
+        listing = set(run("chroot", root, "lsinitcpio", "/boot/genesi-migrate-initramfs.img").splitlines())
+        required = {"init", "hooks/genesi_native", "usr/bin/python3", "usr/bin/btrfs-convert",
+                    "usr/bin/e2fsck", "usr/bin/rsync", "usr/bin/arch-chroot", "usr/bin/realpath",
+                    "usr/lib/genesi-migrate/native.py", "etc/genesi-native-initramfs"}
+        if not required <= {name.lstrip("/") for name in listing}:
+            raise MigrationError("Maintenance initramfs is missing required tools")
+        shutil.copyfile(image, task / "migrate-initramfs.img")
+        shutil.copyfile(kernel, task / "migrate-vmlinuz")
+        (task / "recovery.cfg").write_text(recovery_config(json.loads((task / "state.json").read_text())))
+        with mounted("/proc", root / "proc", "--bind", helper_root=root), \
+             mounted("/dev", root / "dev", "--rbind", helper_root=root), \
+             mounted(task, root / "genesi-native", "--bind", helper_root=root):
+            verify_maintenance(root, task)
+            run("chroot", root, "grub-script-check", "/genesi-native/recovery.cfg")
+            run("chroot", root, "grub-mkstandalone", "-O", "x86_64-efi",
+                "--modules=part_gpt part_msdos fat ext2 btrfs search_fs_uuid linux normal configfile",
+                "-o", "/genesi-native/rescue.efi", "boot/grub/grub.cfg=/genesi-native/recovery.cfg")
+    finally:
+        for path in files:
+            path.unlink(missing_ok=True)
+        image.unlink(missing_ok=True)
+
+
+def verify_maintenance(root, task):
+    """Exercise the packed interpreter and chroot tools before arming boot."""
+    check = task / "maintenance-check"
+    check.mkdir(mode=0o700)
+    run("chroot", root, "bash", "-euc",
+        "cd /genesi-native/maintenance-check; lsinitcpio -x /boot/genesi-migrate-initramfs.img")
+    for name in ("proc", "sys", "dev", "run", "target-root"):
+        (check / name).mkdir(parents=True, exist_ok=True)
+    with mounted("/proc", check / "proc", "--bind", helper_root=check), \
+         mounted("/sys", check / "sys", "--rbind", helper_root=check), \
+         mounted("/dev", check / "dev", "--rbind", helper_root=check), \
+         mounted(root, check / "target-root", "--bind", helper_root=check):
+        run("chroot", check, "python3", "-B", "/usr/lib/genesi-migrate/native.py", "--help")
+        run("chroot", check, "arch-chroot", "/target-root", "/usr/bin/true")
+    mounts = json.loads(run("findmnt", "--json", "--list", "--output", "TARGET"))["filesystems"]
+    if any(m["target"] == str(check) or m["target"].startswith(str(check) + "/") for m in mounts):
+        raise MigrationError("Maintenance self-check still has mounted filesystems; retained for diagnosis")
+    shutil.rmtree(check)
 
 
 def arm(state, task):
@@ -628,6 +729,22 @@ def arm(state, task):
     save(task / "state.json", state)
 
 
+def retire_previous_boot_tasks(current):
+    # Retrying after a failed pre-conversion boot must not leave the old ISO
+    # loader active. Retire only our verified tasks on this exact source disk.
+    for task in sorted(BASE.iterdir()):
+        if task.is_symlink() or not task.is_dir():
+            continue
+        try:
+            previous = json.loads((task / "state.json").read_text())
+        except (OSError, ValueError):
+            continue
+        if (previous.get("schema") == "native-v1" and previous.get("phase") == "armed"
+                and previous.get("rootUuid") == current["rootUuid"]):
+            identify(previous, inventory())
+            disarm(task)
+
+
 def disarm(task_path):
     task = Path(task_path).resolve()
     if task.parent != BASE or task.is_symlink():
@@ -642,6 +759,10 @@ def disarm(task_path):
     entry = state.get("efiEntry", "")
     if not order or not re.fullmatch(r"[0-9A-Fa-f]{4}", entry):
         raise MigrationError("Original EFI order is unavailable")
+    with mounted(esp["path"], task / "esp") as mount:
+        path = mount / "EFI/GenesiMigrate/grubx64.efi"
+        if not path.is_file() or digest(path) != state.get("rescueHash"):
+            raise MigrationError("Previous migration EFI loader changed; refusing to remove it")
     run("efibootmgr", "-o", order[1])
     run("efibootmgr", "-b", entry, "-B")
     with mounted(esp["path"], task / "esp") as mount:
@@ -661,34 +782,44 @@ def assert_offline(root):
         raise MigrationError("Root partition is active swap")
 
 
-def release_iso(state, device):
-    """Release only archiso's source ISO after copytoram, never other mounts."""
-    copies = Path("/run/archiso/copytoram")
-    if not copies.exists() or not any(copies.rglob("airootfs.sfs")):
-        raise MigrationError("Maintenance root was not copied to RAM")
-    # archiso keeps the backing ISO and img_dev mounted in some versions even
-    # after copying the SFS. Unmounting must succeed; a live dependency stops us.
-    boot = "/run/archiso/bootmnt"
-    if subprocess.run(["mountpoint", "-q", boot]).returncode == 0:
-        run("umount", boot)
-    loops = json.loads(run("losetup", "--json", "--output", "NAME,BACK-FILE")).get("loopdevices", [])
-    for loop in loops:
-        backing = loop.get("back-file", "")
-        if backing.endswith(state["task"] + "/genesi.iso"):
-            run("losetup", "--detach", loop["name"])
-    image_mount = "/run/archiso/img_dev"
-    if subprocess.run(["mountpoint", "-q", image_mount]).returncode == 0:
-        mounted_source = run("findmnt", "-n", "-o", "SOURCE", image_mount)
-        if os.path.realpath(mounted_source) != os.path.realpath(device):
-            raise MigrationError("archiso source disk differs from migration disk")
-        run("umount", image_mount)
+def assert_maintenance():
+    if not MAINTENANCE_MARKER.is_file() or MAINTENANCE_MARKER.read_text().strip() != MAINTENANCE_VERSION:
+        raise MigrationError("Offline migration requires the dedicated Genesi migration initramfs")
+    if run("findmnt", "-n", "-o", "FSTYPE", "/") not in ("rootfs", "tmpfs", "ramfs"):
+        raise MigrationError("Maintenance root must be independent of all disks")
+
+
+def boot_offline(locator):
+    """Read only the state into RAM, release the source, then convert offline."""
+    assert_maintenance()
+    match = re.fullmatch(r"UUID=([A-Za-z0-9-]+):(/[A-Za-z0-9_./@-]+)", locator)
+    if not match or ".." in match[2].split("/"):
+        raise MigrationError("Invalid migration boot locator")
+    root_uuid, location = match.groups()
+    sources = [p for p in walk(inventory()) if p.get("type") == "part" and p.get("uuid") == root_uuid]
+    if len(sources) != 1 or sources[0].get("fstype") not in ("ext4", "btrfs"):
+        raise MigrationError("Migration source partition is missing or ambiguous")
+    source = sources[0]
+    assert_offline(source)
+    options = "ro,rescue=nologreplay,subvolid=5" if source["fstype"] == "btrfs" else "ro,noload"
+    with mounted(source["path"], TOP, "-o", options):
+        source_task = TOP / location.lstrip("/")
+        if not source_task.resolve().is_relative_to(TOP.resolve()):
+            raise MigrationError("Migration state escapes the source root")
+        state = json.loads((source_task / "state.json").read_text())
+        if (state.get("rootUuid") != root_uuid
+                or state.get("sourcePrefix", "") + state.get("task", "") != location):
+            raise MigrationError("Migration boot locator differs from verified state")
+        ram = RAM_STATE
+        ram.mkdir(mode=0o700, exist_ok=True)
+        save(ram / "state.json", state)
+    offline(ram)
 
 
 def offline(task_path):
-    if not LIVE_MARKER.exists():
-        raise MigrationError("Offline migration may only run from the archiso maintenance environment")
-    # The ISO and manifest must already be in RAM; conversion must see no
-    # source mounts, loop-device holders or writable filesystem users.
+    assert_maintenance()
+    # Only this small worker and state live in initramfs. The prepared system
+    # remains on disk; there is no ISO, loopback live root or desktop in RAM.
     state = json.loads((Path(task_path) / "state.json").read_text())
     if state.get("schema") != "native-v1" or PurePosixPath(state.get("task", "")).parent != PurePosixPath("/var/lib/genesi-migrate-native"):
         raise MigrationError("Unsupported or invalid migration state")
@@ -697,13 +828,11 @@ def offline(task_path):
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", state.get("user", {}).get("name", "")):
         raise MigrationError("Invalid preserved account")
     _, root, _ = identify(state, inventory())
-    release_iso(state, root["path"])
-    _, root, _ = identify(state, inventory())
     assert_offline(root)
     if state["phase"] not in ("armed", "converted"):
         raise MigrationError("Migration phase requires manual recovery: " + state["phase"])
     device = root["path"]
-    readonly_options = "ro,nologreplay,subvolid=5" if root.get("fstype") == "btrfs" else "ro,noload"
+    readonly_options = "ro,rescue=nologreplay,subvolid=5" if root.get("fstype") == "btrfs" else "ro,noload"
     with mounted(device, TOP, "-o", readonly_options):
         if (TOP / "@/var/lib/genesi-migrate/boot-ready").exists():
             raise MigrationError("Genesi was already configured; choose its normal boot entry. Home will not be overwritten")
@@ -721,7 +850,7 @@ def offline(task_path):
     elif root.get("fstype") != "btrfs":
         raise MigrationError("Source filesystem is neither clean ext4 nor Btrfs")
     run("btrfs", "check", "--readonly", device)
-    with mounted(device, TOP, "-o", "subvolid=5"):
+    with mounted(device, TOP, "-t", "btrfs", "-o", "subvolid=5"):
         task = TOP / state["sourcePrefix"].lstrip("/") / state["task"].lstrip("/")
         prepared = task / "target-root"
         target_valid(prepared)
@@ -743,15 +872,14 @@ def offline(task_path):
         new_home.mkdir(exist_ok=True)
         run("rsync", "-a", "--ignore-existing", "--chown=%s:%s" % (state["user"]["uid"], state["user"]["gid"]),
             str(prepared / "etc/skel") + "/", str(new_home) + "/")
-        with mounted(device, TARGET, "-o", "subvol=@"):
+        with mounted(device, TARGET, "-t", "btrfs", "-o", "subvol=@"):
             (TARGET / "home").mkdir(exist_ok=True)
-            with mounted(device, TARGET / "home", "-o", "subvol=@genesi-home"):
+            with mounted(device, TARGET / "home", "-t", "btrfs", "-o", "subvol=@genesi-home"):
                 configure(state, task, device)
         state["phase"] = "configured"
         save(task / "state.json", state)
     os.sync()
-    print("Migration configured. Reboot to enter Genesi.", flush=True)
-    run("systemctl", "reboot")
+    print("Migration configured. Continuing this boot into Genesi.", flush=True)
 
 
 def configure(state, task, device):
@@ -852,7 +980,7 @@ def health(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("prepare", "offline", "health", "disarm"))
+    parser.add_argument("mode", choices=("prepare", "offline", "boot-offline", "health", "disarm"))
     parser.add_argument("paths", nargs="+")
     args = parser.parse_args()
     if sys.platform != "linux" or os.geteuid() != 0:
@@ -865,6 +993,8 @@ def main():
                 prepare(*args.paths)
             elif args.mode == "offline":
                 offline(*args.paths)
+            elif args.mode == "boot-offline":
+                boot_offline(*args.paths)
             elif args.mode == "disarm":
                 disarm(*args.paths)
             else:
