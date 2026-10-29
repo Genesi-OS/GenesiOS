@@ -1687,7 +1687,28 @@ pkgver=1.0.0
 # hanging below it: the card's content switched anchors with bindings, which
 # leaves the old position behind. Placed by a computed y now; plugins-test
 # fails on a toggled anchor in the card.
-pkgrel=210
+# pkgrel 211: inference settings that looked shipped and never reached the
+# server (audited against llama.cpp's pinned commit, ci/ai-turbo-perf-test.py).
+#   * Turbo states `--parallel 1`. It only passed --parallel when it wanted
+#     MORE slots, and llama-server's own default is "auto" = 4 slots over a
+#     unified KV, so the single-slot choice never applied.
+#   * genesi-aid renices and pins every THREAD of llama-server/ollama. nice and
+#     affinity are per-thread on Linux; the main thread got them, the compute
+#     threads (spawned at load, before the daemon saw the process) did not.
+#   * Hybrid-CPU detection reads the kernel's cpu_core/cpu_atom PMUs instead of
+#     guessing from per-core max frequency, which amd-pstate makes uneven on a
+#     uniform Ryzen (it could put decode on 2-3 threads of a 6-core).
+#   * No default `--prio 2`: an EPERM warning as a user, SCHED_FIFO 80 on every
+#     compute thread as root. GENESI_TURBO_PRIO still passes it through.
+#   * ~/.config/genesi/turbo.env and /etc/genesi-ai-mode/turbo.env are read by
+#     Turbo itself, so GENESI_TURBO_* knobs apply to the Monitor / Quick Chat /
+#     automation launches, not only to the always-warm unit (LAN bind excepted).
+#   * --spec-type values checked against --help; mlock via --load-mode.
+#   * genesi-ai-tune benches the server's real placement (MoE experts in RAM,
+#     thread count swept) and picks ubatch by prefill speed, not decode noise.
+#   * `genesi-ai-mode info` says when Ollama runs a model on the CPU of a GPU
+#     machine (plain `ollama` on Arch is the CPU build) and what to install.
+pkgrel=211
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -119,6 +119,13 @@ Tuning knobs (env vars, no rebuild needed — for on-hardware tuning):
                                  f16 on CPU)
   GENESI_TURBO_NO_TUNE=1         ignore the autotuned per-machine profile written
                                  by genesi-ai-tune (use the built-in heuristics)
+  GENESI_TURBO_PRIO=<-1..3>      pass llama.cpp's --prio through (off by default:
+                                 as a user it is a no-op, as root it is SCHED_FIFO)
+
+Every GENESI_* knob above can also live in ~/.config/genesi/turbo.env or
+/etc/genesi-ai-mode/turbo.env (KEY=value lines). Turbo reads them however it
+is started -- Monitor, Quick Chat, terminal or the always-warm unit; a real
+environment variable still wins.
 """
 import os
 import re
@@ -134,6 +141,59 @@ import urllib.parse
 import urllib.request
 
 TURBO_PORT = 11435
+
+# Knob files: /etc/genesi-ai-mode/turbo.env (system, root-edited) and
+# ~/.config/genesi/turbo.env (per user, no sudo). Only genesi-turbo.service
+# used to read the system file (systemd EnvironmentFile), so every
+# GENESI_TURBO_* written there -- FIT, PARALLEL, CTX, MLOCK... -- reached the
+# always-warm unit and NOTHING else: the Monitor, the Quick Chat and
+# automations all start Turbo as a plain child process, from a desktop session
+# that never sourced the file. A knob that looked set was silently ignored on
+# the path people actually use. Now Turbo reads both files itself, as DEFAULTS:
+# an explicit environment variable still wins, then the user file, then the
+# system one.
+TURBO_ENV_FILES = (os.path.expanduser("~/.config/genesi/turbo.env"),
+                   "/etc/genesi-ai-mode/turbo.env")
+# Binding beyond loopback stays the unit's decision (`genesi-ai-turbo share`):
+# Turbo has no auth, so a server a user's app starts must not inherit a LAN bind
+# meant for the always-warm unit.
+_ENV_FILE_SKIP = ("GENESI_TURBO_HOST",)
+
+
+def load_env_defaults(paths=TURBO_ENV_FILES, environ=None):
+    """Fill GENESI_* knobs from the env files without overriding the real env.
+
+    First file wins among the files (user before system); the live environment
+    beats both. Same syntax systemd's EnvironmentFile accepts for our keys:
+    KEY=value, optional `export `, optional matching quotes, '#' comments.
+    Returns {key: value} of what it filled in (for tests and `status`)."""
+    env = os.environ if environ is None else environ
+    filled = {}
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            st = line.strip()
+            if not st or st.startswith("#") or "=" not in st:
+                continue
+            if st.startswith("export "):
+                st = st[len("export "):].strip()
+            key, val = st.split("=", 1)
+            key, val = key.strip(), val.strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                val = val[1:-1]
+            if (not key.startswith("GENESI_") or key in _ENV_FILE_SKIP
+                    or key in env):
+                continue
+            env[key] = val
+            filled[key] = val
+    return filled
+
+
+load_env_defaults()
 
 # Which address llama-server binds. Loopback by default: Turbo has no auth, and
 # a warm inference server reachable from the LAN is a real exposure.
@@ -1136,36 +1196,56 @@ def cmd_recommend(installed_only=False):
               file=sys.stderr)
 
 
-def _performance_cores(fallback):
+def _cpu_list(text):
+    """'0-3,8,10-11' -> [0, 1, 2, 3, 8, 10, 11]. [] on anything malformed."""
+    out = []
+    try:
+        for part in (text or "").strip().split(","):
+            part = part.strip()
+            if part:
+                lo, _, hi = part.partition("-")
+                out.extend(range(int(lo), int(hi or lo) + 1))
+    except ValueError:
+        return []
+    return sorted(set(out))
+
+
+def _performance_cores(fallback, sys_root="/sys"):
     """Best-effort count of the FAST physical cores for CPU inference.
 
     On Intel hybrid CPUs (P + E cores, e.g. the i5-13420H) spreading llama.cpp
     across the slow E-cores adds cross-core sync stalls and REGRESSES tokens/s,
-    so we count only the top-frequency physical cores (one entry per core_id,
-    HT siblings deduped). Falls back to `fallback` (physical core count) on any
-    machine that doesn't expose the topology (VMs, odd kernels)."""
-    base = "/sys/devices/system/cpu"
+    so we count only the P-cores (HT siblings deduped). Every other CPU returns
+    `fallback` (the physical core count).
+
+    Which cores are P-cores comes from the kernel: a hybrid part registers a
+    `cpu_core` and a `cpu_atom` PMU, each listing its CPUs. This used to be
+    "cores within 5% of the top max frequency", which AMD's preferred-core
+    ranking breaks -- amd-pstate reports different cpuinfo_max_freq per core on
+    a uniform Ryzen, so a 6-core could be told to decode on 2-3 threads."""
     try:
-        core_freq = {}                       # physical core_id -> max freq (kHz)
-        for cpu in os.listdir(base):
-            if not re.fullmatch(r"cpu\d+", cpu):
-                continue
-            try:
-                with open(f"{base}/{cpu}/topology/core_id") as f:
-                    cid = int(f.read().strip())
-                with open(f"{base}/{cpu}/cpufreq/cpuinfo_max_freq") as f:
-                    mf = int(f.read().strip())
-            except (OSError, ValueError):
-                return fallback              # incomplete data -> don't guess
-            core_freq[cid] = max(core_freq.get(cid, 0), mf)
-        if not core_freq:
-            return fallback
-        top = max(core_freq.values())
-        # P-cores sit within ~5% of the top clock; E-cores are well below it.
-        fast = sum(1 for f in core_freq.values() if f >= top * 0.95)
-        return fast if fast >= 1 else fallback
+        with open(f"{sys_root}/devices/cpu_atom/cpus") as f:
+            if not _cpu_list(f.read()):
+                return fallback
+        with open(f"{sys_root}/devices/cpu_core/cpus") as f:
+            p_cpus = _cpu_list(f.read())
     except OSError:
-        return fallback
+        return fallback                      # not hybrid (or no sysfs: a VM)
+    cores = set()
+    for cpu in p_cpus:
+        base = f"{sys_root}/devices/system/cpu/cpu{cpu}/topology"
+        try:
+            with open(f"{base}/core_id") as f:
+                cid = f.read().strip()
+            try:
+                with open(f"{base}/physical_package_id") as f:
+                    pkg = f.read().strip()
+            except OSError:
+                pkg = "0"
+        except OSError:
+            return fallback                  # incomplete data -> don't guess
+        cores.add((pkg, cid))
+    return len(cores) or fallback
 
 
 TUNE_PROFILE_PATHS = (
@@ -1600,14 +1680,21 @@ def server_cmd(main_gguf, draft_gguf):
            "--cache-reuse", str(_env_int("GENESI_TURBO_CACHE_REUSE", 256)),
            "--threads", str(threads)]
 
-    # Enable the extra slots + continuous batching when N > 1. cont-batching is
-    # default-on in recent llama.cpp; add the explicit flag only on builds that
-    # still expose it (older ones default it off), gated on --help so we never
-    # pass a removed argument.
-    if n_parallel > 1:
+    # ALWAYS state the slot count, including 1. Leaving it out does not mean one
+    # slot: llama-server's own default is "auto", which on the pinned build is
+    # FOUR slots over a unified KV cache (tools/server/server.cpp: "n_parallel is
+    # set to auto, using n_parallel = 4 and kv_unified = true"). So the
+    # single-slot decision above -- made because extra slots measurably slowed
+    # single-stream decode -- never reached the server; every spilling, MoE and
+    # CPU run got four. Gated on --help only for builds old enough to predate
+    # the flag, where one slot really was the default.
+    if n_parallel > 1 or "--parallel" in _llama_help():
         cmd += ["--parallel", str(n_parallel)]
-        if "--cont-batching" in _llama_help():
-            cmd += ["--cont-batching"]
+    # cont-batching is default-on in recent llama.cpp; add the explicit flag only
+    # on builds that still expose it (older ones default it off), gated on
+    # --help so we never pass a removed argument.
+    if n_parallel > 1 and "--cont-batching" in _llama_help():
+        cmd += ["--cont-batching"]
            # NOTE: NO --prompt-cache / --prompt-cache-all here. Those are
            # llama-CLI (main) flags; llama-server rejects them with
            #   error: invalid argument: --prompt-cache
@@ -1662,27 +1749,41 @@ def server_cmd(main_gguf, draft_gguf):
     # mlock: pin the model in RAM (no swap/reclaim) for steady CPU inference.
     # Opt-in only — risky on low-RAM machines and the live ISO (RAM-backed fs),
     # so default OFF; enable with GENESI_TURBO_MLOCK=1.
-    if _env_flag("GENESI_TURBO_MLOCK"):
-        cmd += ["--mlock"]
-
     help_txt = _llama_help()
+    # The pinned build deprecates --mlock in favour of `--load-mode mlock`
+    # (still accepted, with a warning); prefer the new spelling so the flag
+    # keeps working the day upstream drops the old one.
+    if _env_flag("GENESI_TURBO_MLOCK"):
+        cmd += (["--load-mode", "mlock"] if "--load-mode" in help_txt
+                else ["--mlock"])
 
-    # CPU decode tuning (GPU-less boxes, where decode is CPU-bound). Two real wins:
+    # CPU decode tuning (GPU-less boxes, where decode is CPU-bound):
     #  - SPLIT the thread counts: --threads stays the fast PHYSICAL cores for
     #    DECODE (memory-bandwidth-bound — SMT siblings / E-cores just add sync
     #    stalls), while --threads-batch uses ALL logical cores for PREFILL
     #    (compute-bound — SMT actually helps there). Reading the prompt gets faster
     #    without slowing generation.
-    #  - --prio 2 (above-normal thread scheduling priority) cuts run-to-run jitter
-    #    from other desktop processes. Both gated on --help (names vary) and
-    #    env-tunable; skip the lot with GENESI_TURBO_NO_CPU_TUNE=1.
+    #  Gated on --help (names vary) and env-tunable; skip with
+    #  GENESI_TURBO_NO_CPU_TUNE=1.
+    #
+    # NO default --prio. It used to pass `--prio 2`, which on Linux means
+    # setpriority(-10) for the process plus SCHED_FIFO 80 for every compute
+    # thread (common.cpp set_process_priority, ggml-cpu.c
+    # ggml_thread_apply_priority). Run as the user -- the Monitor, a terminal --
+    # both calls fail with EPERM and llama.cpp only logs a warning, so the
+    # "priority" never existed. Run as root (genesi-turbo.service) it DID apply:
+    # busy-polling real-time threads on every fast core, which can starve the
+    # compositor on a CPU-only box. genesi-aid now renices every thread of the
+    # server instead (works as root, cannot starve anything). GENESI_TURBO_PRIO
+    # still passes it through for anyone who wants the real-time behaviour.
     if not gpu and not _env_flag("GENESI_TURBO_NO_CPU_TUNE"):
         tb_flag = _pick_flag(help_txt, "--threads-batch", "-tb")
         if tb_flag:
             cmd += [tb_flag, str(_env_int("GENESI_TURBO_THREADS_BATCH",
                                           os.cpu_count() or threads))]
-        if "--prio" in help_txt:
-            cmd += ["--prio", str(_env_int("GENESI_TURBO_PRIO", 2))]
+    prio = os.environ.get("GENESI_TURBO_PRIO", "").strip()
+    if prio and "--prio" in help_txt:
+        cmd += ["--prio", prio]
 
     # Persistent prompt/KV cache to disk (Zero Cold-Start). --slot-save-path
     # enables llama-server's runtime slot save/restore API (/slots?action=save|
@@ -1735,9 +1836,14 @@ def server_cmd(main_gguf, draft_gguf):
         # just wastes VRAM with zero speedup (exactly what we saw). draft-simple
         # is the classic draft-model speculation. Older builds without
         # --spec-type speculate from -md alone, so we only add it when supported.
-        if "--spec-type" in help_txt:
+        # The VALUE is checked too, not just the flag: --spec-type lists its
+        # accepted names in --help, and an unknown name makes llama-server
+        # refuse to start, which on a plain (non-fallback) launch is the
+        # exec'd process -- Turbo would simply never come up.
+        if "--spec-type" in help_txt and "draft-simple" in help_txt:
             cmd += ["--spec-type", "draft-simple"]
-    elif "--spec-type" in help_txt and not _env_flag("GENESI_TURBO_NO_NGRAM"):
+    elif ("--spec-type" in help_txt and "ngram-simple" in help_txt
+          and not _env_flag("GENESI_TURBO_NO_NGRAM")):
         # No draft model: model-free n-gram / prompt-lookup speculation. It
         # speculates from the context's OWN n-grams — no second model, no extra
         # VRAM, negligible compute. HUGE on code / agent / RAG / edit workloads
@@ -1753,6 +1859,50 @@ def server_cmd(main_gguf, draft_gguf):
         cmd += ["--spec-type", "ngram-simple"]
 
     return cmd
+
+
+def placement(main_gguf):
+    """Where server_cmd would put this model, as genesi-ai-tune needs it.
+
+    The tuner used to bench every GPU machine with `-ngl 999`, i.e. the whole
+    model in VRAM. For a model that does not fit -- the MoE "big brain on a
+    small card" case Turbo serves with experts in RAM -- that bench cannot even
+    load, so the models whose speed depends most on tuning (the CPU thread
+    count decides how fast the experts stream) never got a profile. Asking
+    server_cmd keeps one source of truth for the placement.
+
+    Local and heuristic on purpose: no mesh (a bench runs on this machine) and
+    no tuned profile (the tuner must not feed its own previous answer back in).
+    Returns {} when there is no llama-server."""
+    import contextlib
+    saved = {k: os.environ.get(k) for k in ("GENESI_TURBO_NO_MESH",
+                                            "GENESI_TURBO_NO_TUNE")}
+    os.environ["GENESI_TURBO_NO_MESH"] = "1"
+    os.environ["GENESI_TURBO_NO_TUNE"] = "1"
+    try:
+        # server_cmd explains its decisions on stdout; keep stdout for the JSON.
+        with contextlib.redirect_stdout(sys.stderr):
+            cmd = server_cmd(main_gguf, None)
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    if not cmd:
+        return {}
+
+    def val(flag):
+        try:
+            return cmd[cmd.index(flag) + 1]
+        except (ValueError, IndexError):
+            return None
+
+    ncmoe = val("--n-cpu-moe")
+    return {"ngl": val("-ngl"),
+            "n_cpu_moe": int(ncmoe) if ncmoe and ncmoe.isdigit() else None,
+            "cpu_moe": "--cpu-moe" in cmd,
+            "threads": int(val("--threads") or 0) or None}
 
 
 def wait_ready(timeout=900):   # big models on a CPU-only VM can take 5-8 min
@@ -2033,6 +2183,15 @@ def _explain_load_failure(text, code=None, pooled=False):
     return ""
 
 
+def _slots(cmd):
+    """The --parallel value in a server command (1 when absent). The flag is
+    now always present, so its mere presence no longer means "multi-slot"."""
+    try:
+        return int(cmd[cmd.index("--parallel") + 1])
+    except (ValueError, IndexError):
+        return 1
+
+
 def _serve_with_fallback(main_g, draft_g):
     """Launch the Turbo server, degrading GRACEFULLY if an optimisation makes it
     fail to load. Some models load in ollama (its own bundled llama.cpp) but trip
@@ -2065,7 +2224,7 @@ def _serve_with_fallback(main_g, draft_g):
     # per-slot KV could tip a full card into OOM. Continuous batching is a
     # throughput win, never worth failing to start over — so keep a single-slot,
     # no-draft, no-MoE version as the last resort the user always boots into.
-    if any("--parallel" in c for _, c in variants):
+    if any(_slots(c) > 1 for _, c in variants):
         os.environ["GENESI_TURBO_PARALLEL"] = "1"
         os.environ["GENESI_TURBO_NO_MOE"] = "1"
         solo = server_cmd(main_g, None)
@@ -2639,6 +2798,13 @@ def main():
     # risk of the two computing a different VRAM bucket and silently missing.
     if action == "hw-sig":
         print(_hw_sig())
+        return
+    # Where the weights of a GGUF would live (JSON), so genesi-ai-tune benches
+    # the same GPU/CPU split the server will run.
+    if action == "placement":
+        if not rest:
+            sys.exit("usage: genesi-ai-turbo placement <gguf>")
+        print(json.dumps(placement(rest[0])))
         return
     # ── GGUF library (any .gguf on the machine is a usable Turbo model) ──
     # JSON on stdout so the Monitor can consume these directly.

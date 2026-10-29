@@ -199,30 +199,69 @@ def _vulkan_vram_mb():
     return best
 
 
-def _performance_cpu_ids():
-    """Logical CPU ids on the FASTEST physical cores (P-cores + their HT
-    siblings). On a hybrid Intel CPU (P/E) this lets us pin inference to the
-    fast cores so it never lands on the slow E-cores (which add cross-core sync
-    stalls). On a uniform CPU it returns every CPU (so pinning is a no-op).
-    Empty list on boxes that don't expose cpufreq (VMs) → caller skips pinning."""
-    base = "/sys/devices/system/cpu"
-    freqs = {}                                   # logical cpu id -> max freq (kHz)
+HYBRID_P_CPUS = "/sys/devices/cpu_core/cpus"   # Intel hybrid: P-core PMU
+HYBRID_E_CPUS = "/sys/devices/cpu_atom/cpus"   # Intel hybrid: E-core PMU
+
+
+def _parse_cpu_list(text):
+    """'0-3,8,10-11' -> [0, 1, 2, 3, 8, 10, 11]. [] on anything malformed."""
+    out = []
     try:
-        for cpu in os.listdir(base):
-            m = re.fullmatch(r"cpu(\d+)", cpu)
-            if not m:
+        for part in (text or "").strip().split(","):
+            part = part.strip()
+            if not part:
                 continue
-            try:
-                with open(f"{base}/{cpu}/cpufreq/cpuinfo_max_freq") as f:
-                    freqs[int(m.group(1))] = int(f.read().strip())
-            except (OSError, ValueError):
-                return []                        # incomplete data → don't guess
+            lo, _, hi = part.partition("-")
+            out.extend(range(int(lo), int(hi or lo) + 1))
+    except ValueError:
+        return []
+    return sorted(set(out))
+
+
+def _performance_cpu_ids(p_path=HYBRID_P_CPUS, e_path=HYBRID_E_CPUS):
+    """Logical CPU ids of the P-cores (+ HT siblings) on a hybrid Intel CPU, so
+    inference can be pinned off the slow E-cores (which add cross-core sync
+    stalls). Empty list on every other CPU → the caller skips pinning.
+
+    The kernel names the two core types itself: a hybrid part registers a
+    `cpu_core` and a `cpu_atom` PMU, each listing its CPUs. This used to be
+    guessed from cpuinfo_max_freq ("within 5% of the fastest core"), but AMD's
+    preferred-core ranking (amd-pstate) gives the cores of a perfectly uniform
+    Ryzen different max frequencies, so a plain 6-core could read as hybrid and
+    have its inference squeezed onto two or three "fast" cores. That guess was
+    harmless only while the pinning never reached the compute threads."""
+    try:
+        with open(e_path) as f:
+            if not _parse_cpu_list(f.read()):
+                return []
+        with open(p_path) as f:
+            return _parse_cpu_list(f.read())
     except OSError:
-        return []
-    if not freqs:
-        return []
-    top = max(freqs.values())
-    return sorted(i for i, mf in freqs.items() if mf >= top * 0.95)
+        return []                                # not a hybrid CPU
+
+
+def _tune_threads(pid, nice, cpus=None):
+    """Set nice (and, when `cpus` is given, the CPU affinity) on EVERY thread of
+    `pid`. Returns (threads reniced, threads pinned) -- only the ones that
+    actually changed, so a steady state logs nothing. Threads that vanish or
+    refuse mid-walk are skipped; this is best-effort by nature."""
+    reniced = pinned = 0
+    try:
+        tids = [int(t) for t in os.listdir(f"/proc/{pid}/task") if t.isdigit()]
+    except OSError:
+        return 0, 0
+    want = set(cpus) if cpus else None
+    for tid in tids:
+        try:
+            if os.getpriority(os.PRIO_PROCESS, tid) != nice:
+                os.setpriority(os.PRIO_PROCESS, tid, nice)
+                reniced += 1
+            if want is not None and set(os.sched_getaffinity(tid)) != want:
+                os.sched_setaffinity(tid, want)
+                pinned += 1
+        except OSError:
+            continue
+    return reniced, pinned
 
 
 # ── Hardware detection ───────────────────────────────────────────────────────
@@ -1033,16 +1072,14 @@ class AIOptimizer:
         self._restore_io(o.get("io_sched"))
         self._resume_background()
 
+        # Undo per THREAD, the same granularity prioritize_ai_processes applies.
         for proc in self.ai_processes:
             try:
-                proc.nice(0)
-                if self.is_hybrid:
-                    try:
-                        proc.cpu_affinity(list(range(self.hw.logical_cores)))
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
-                        pass
+                pid = proc.pid
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+            _tune_threads(pid, 0, list(range(self.hw.logical_cores))
+                          if self.is_hybrid else None)
 
         self.ai_mode_active = False
         self.throttled = False
@@ -1055,24 +1092,31 @@ class AIOptimizer:
         logger.info("AI Mode disabled")
 
     def prioritize_ai_processes(self):
+        # Every THREAD, not the process. On Linux both nice and CPU affinity are
+        # per-thread: setpriority(PRIO_PROCESS, pid) and sched_setaffinity(pid)
+        # -- which is all psutil's proc.nice()/cpu_affinity() do -- change only
+        # the thread whose tid == pid. llama-server/ollama spawn their compute
+        # threads at load time, BEFORE this loop first sees the process, so the
+        # threads doing the actual matrix work kept nice 0 and the full CPU
+        # mask: the log said "Prioritized" and "Pinned to P-cores" while
+        # inference ran exactly as on any other system. Re-applied each poll,
+        # so threads spawned later (a model reload) are caught too.
         for proc in self.ai_processes:
             try:
-                if proc.nice() != AI_NICE:
-                    proc.nice(AI_NICE)
-                    logger.info(f"Prioritized {proc.name()} (PID {proc.pid})")
-                # On hybrid CPUs, pin inference to the performance cores so it
-                # never gets migrated onto the slow E-cores. No-op on uniform
-                # CPUs (perf_cpus == all CPUs) and VMs (is_hybrid False).
-                if self.is_hybrid:
-                    try:
-                        if set(proc.cpu_affinity()) != set(self.perf_cpus):
-                            proc.cpu_affinity(self.perf_cpus)
-                            logger.info("Pinned %s (PID %s) to P-cores %s",
-                                        proc.name(), proc.pid, self.perf_cpus)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
-                        pass
+                pid, name = proc.pid, proc.name()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+            cpus = self.perf_cpus if self.is_hybrid else None
+            reniced, pinned = _tune_threads(pid, AI_NICE, cpus)
+            if reniced:
+                logger.info("Prioritized %s (PID %s): %d thread(s) -> nice %d",
+                            name, pid, reniced, AI_NICE)
+            # On hybrid CPUs, pin inference to the performance cores so it
+            # never gets migrated onto the slow E-cores. No-op on uniform
+            # CPUs (perf_cpus == all CPUs) and VMs (is_hybrid False).
+            if pinned:
+                logger.info("Pinned %s (PID %s): %d thread(s) to P-cores %s",
+                            name, pid, pinned, self.perf_cpus)
 
     # ── model weights: preload into RAM + tune the disk they live on ─────────
     def _find_model_files(self):

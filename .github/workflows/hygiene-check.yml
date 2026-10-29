@@ -352,6 +352,16 @@ jobs:
         # to github.com must not go red about a URL that is fine.
         run: python genesi-arch/ci/voice-model-test.py
 
+      - name: AI Mode's inference tuning reaches the running server
+        # Each check is a setting that looked shipped and was not: the single
+        # slot Turbo chose but never passed (llama-server's default is 4),
+        # genesi-aid's nice/P-core pinning landing on the main thread only,
+        # turbo.env read by the always-warm unit and nothing else, --prio as
+        # an EPERM no-op, and the autotuner picking ubatch by decode noise.
+        # With network, every flag Turbo emits is held to llama.cpp's pinned
+        # commit; without, that part is skipped.
+        run: python genesi-arch/ci/ai-turbo-perf-test.py
+
       - name: every backend call in the AI Monitor names something that exists
         # The Monitor's pages reach Python by NAME, both ways, and both fail
         # silently: a call to a slot that is not there is a dead button, and a

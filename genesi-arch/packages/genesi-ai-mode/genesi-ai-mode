@@ -97,9 +97,18 @@ if mt:
         vram = f"{vu}/{vt}MB" if vu is not None and vt is not None else "?"
         print(f"  GPU {g.get('vendor')}: {g.get('util','?')}% util, "
               f"VRAM {vram}, {g.get('temp_c','?')}C")
+gpu_vendors = {g.get("vendor") for g in hw.get("gpus", []) if g.get("vram_mb")}
 for mdl in (s.get("ollama") or []):
     sz = f"{mdl['size_mb']}MB" if mdl.get("size_mb") else "?"
     print(f"Ollama  : {mdl.get('name')} ({sz}, {mdl.get('where','?')})")
+    # Arch's plain `ollama` package is CPU-only; the GPU backends are separate
+    # packages. On a GPU machine that is the difference between ~9 and ~40
+    # tokens/s on the same model, and nothing else says so.
+    if mdl.get("where") == "CPU" and gpu_vendors:
+        pkg = ("ollama-cuda" if "nvidia" in gpu_vendors else
+               "ollama-rocm" if "amd" in gpu_vendors else "ollama-vulkan")
+        print(f"          ^ running on the CPU although this machine has a GPU."
+              f" Install {pkg}, or use Turbo (llama-server on the GPU).")
 tps = s.get("tokens_per_second")
 if tps:
     print(f"Speed   : {tps} tokens/s (live)")
