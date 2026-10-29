@@ -164,9 +164,13 @@ def validate_machine(machine, devices):
 
 
 @contextlib.contextmanager
-def mounted(source, destination, *options):
+def mounted(source, destination, *options, helper_root=None):
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
+    helper_scope = os.path.realpath(helper_root or destination)
+    if (Path(helper_scope).parent == Path(helper_scope)
+            or os.path.commonpath((helper_scope, os.path.realpath(destination))) != helper_scope):
+        raise MigrationError("Chroot helper cleanup must stay within its owned mount tree")
     run("mount", *options, source, destination)
     primary_error = None
     try:
@@ -176,7 +180,7 @@ def mounted(source, destination, *options):
         raise
     finally:
         try:
-            stop_mount_helpers(destination)
+            stop_mount_helpers(helper_scope)
             unmount(destination)
         except Exception as cleanup_error:
             if primary_error is None:
@@ -220,7 +224,7 @@ def mount_helper_pids(destination):
 def stop_mount_helpers(destination):
     # pacman-key leaves gpg-agent/dirmngr running after pacstrap returns. Their
     # chroot root and /dev handles prevent unmount. Never signal host processes:
-    # require both this namespace and a root beneath the exact owned mount.
+    # require both this namespace and a root beneath the owned runner/mount.
     for pid in mount_helper_pids(destination):
         try:
             descriptor = open_pid_handle(pid)
@@ -442,7 +446,7 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
                 if resolver.is_symlink():
                     resolver.unlink()
                 shutil.copyfile("/etc/resolv.conf", resolver)
-                with mounted(task, runner / "genesi-native", "--bind"):
+                with mounted(task, runner / "genesi-native", "--bind", helper_root=runner):
                     command = ["chroot", str(runner), "/usr/bin/bash", "-euc"]
                     script = """
 mount -t proc proc /proc
@@ -453,7 +457,7 @@ pacman-key --init
 pacman-key --populate
 pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
 """
-                    with mounted("/dev", runner / "host-dev", "--rbind"):
+                    with mounted("/dev", runner / "host-dev", "--rbind", helper_root=runner):
                         run(*command, script)
                         available = set(run("chroot", runner, "pacman", "-Slq").splitlines())
                         wanted = {a.get("target") for a in manifest.get("apps", []) if a.get("selected") and a.get("kind") == "pacman" and a.get("target")}
@@ -465,7 +469,7 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
                 # Export arch-chroot from the ISO for the remaining target ops.
                 # These commands run inside the ISO userspace with the prepared
                 # root bind-mounted at the same stable path.
-                with mounted(task, runner / "genesi-native", "--bind"):
+                with mounted(task, runner / "genesi-native", "--bind", helper_root=runner):
                     run("chroot", runner, "mount", "--bind", "/genesi-native/target-root", "/genesi-native/target-root")
                     shutil.copyfile(runner / "etc/pacman.conf", root / "etc/pacman.conf")
                     run("chroot", runner, "arch-chroot", "/genesi-native/target-root", "pacman-key", "--init")
@@ -495,7 +499,7 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
                 dest.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(finish, dest / "restore.py")
                 (task / "recovery.cfg").write_text(recovery)
-                with mounted(task, runner / "genesi-native", "--bind"):
+                with mounted(task, runner / "genesi-native", "--bind", helper_root=runner):
                     run("chroot", runner, "grub-mkstandalone", "-O", "x86_64-efi",
                         "--modules=part_gpt part_msdos fat ext2 btrfs search_fs_uuid loopback iso9660 linux normal configfile",
                         "-o", "/genesi-native/rescue.efi", "boot/grub/grub.cfg=/genesi-native/recovery.cfg")

@@ -2,6 +2,7 @@
 import copy
 import contextlib
 import json
+import os
 from pathlib import Path
 import unittest
 import sys
@@ -112,6 +113,26 @@ class Response(io.BytesIO):
 
 
 class MountLifecycle(unittest.TestCase):
+    def test_nested_bind_stops_owned_runner_helpers_before_unmount(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as directory:
+            runner = Path(directory) / "runner"
+            bind = runner / "genesi-native"
+            with patch.object(native, "run"), \
+                 patch.object(native, "stop_mount_helpers", side_effect=lambda root: calls.append(("stop", root))), \
+                 patch.object(native, "unmount", side_effect=lambda path: calls.append(("unmount", path))):
+                with native.mounted("fake", bind, "--bind", helper_root=runner):
+                    pass
+            self.assertEqual(calls, [("stop", os.path.realpath(runner)), ("unmount", bind)])
+
+    def test_helper_scope_cannot_escape_owned_mount_tree(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(native, "run") as run:
+            for scope in (Path(directory).anchor, Path(directory) / "unrelated"):
+                with self.assertRaisesRegex(native.MigrationError, "owned mount tree"):
+                    with native.mounted("fake", Path(directory) / "runner", helper_root=scope):
+                        self.fail("unsafe cleanup scope was accepted")
+            run.assert_not_called()
+
     def test_helper_selection_excludes_host_and_other_namespaces(self):
         with tempfile.TemporaryDirectory() as directory:
             proc, destination = Path(directory) / "proc", Path(directory) / "chroot"

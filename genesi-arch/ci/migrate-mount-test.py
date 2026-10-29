@@ -36,6 +36,55 @@ def check_detached(*images):
             raise AssertionError("Image still attached: " + loops)
 
 
+def check_runner_bind_lifecycle(base, outer, inner):
+    task = base / "task"
+    target = task / "target-root"
+    target.mkdir(parents=True)
+    (target / "sentinel").write_text("preserve staged system\n")
+    runner, upper, work = (task / name for name in ("runner", "upper", "work"))
+    upper.mkdir()
+    work.mkdir()
+    helper = None
+    try:
+        with native.mounted_image(outer, task / "iso") as iso:
+            with native.mounted_image(iso / inner.name, task / "lower") as lower:
+                with native.mounted("overlay", runner, "-t", "overlay", "-o",
+                                    "lowerdir=%s,upperdir=%s,workdir=%s" % (lower, upper, work)):
+                    with native.mounted(task, runner / "genesi-native", "--bind", helper_root=runner):
+                        bound_target = runner / "genesi-native/target-root"
+                        command("mount", "--bind", bound_target, bound_target)
+                        # pacstrap -K starts pacman-key outside the target
+                        # chroot. Its agent can hold the target through its cwd.
+                        helper = subprocess.Popen([
+                            "chroot", str(runner), "/bin/sh", "-c",
+                            "cd /genesi-native/target-root && exec /bin/sleep 60",
+                        ])
+                        for _ in range(100):
+                            if helper.poll() is not None:
+                                raise AssertionError("Runner helper did not start")
+                            if (os.readlink("/proc/%d/root" % helper.pid) == str(runner)
+                                    and os.readlink("/proc/%d/cwd" % helper.pid) == str(bound_target)):
+                                break
+                            time.sleep(0.01)
+                        else:
+                            raise AssertionError("Helper did not enter the runner and target bind")
+                        if helper.pid in native.mount_helper_pids(bound_target):
+                            raise AssertionError("Fixture must reproduce the old cleanup scope mismatch")
+                        if helper.pid not in native.mount_helper_pids(runner):
+                            raise AssertionError("Owned runner helper was not found")
+                    if helper.poll() is None:
+                        raise AssertionError("Inner bind cleanup did not stop the runner helper")
+    finally:
+        if helper is not None:
+            if helper.poll() is None:
+                helper.kill()
+            helper.wait()
+    if (target / "sentinel").read_text() != "preserve staged system\n":
+        raise AssertionError("Bind cleanup modified staged files")
+    check_detached(outer, task / "iso" / inner.name)
+    print("runner helper holding nested target-root bind lifecycle passed")
+
+
 def main():
     if sys.platform != "linux" or os.geteuid() != 0:
         raise SystemExit("This test requires Linux root in a private mount namespace")
@@ -47,15 +96,15 @@ def main():
         payload.mkdir()
         tree.mkdir()
         (payload / "sentinel").write_text("nested image test\n")
-        # Include one dynamically-linked helper so teardown is exercised with
-        # a real background process holding its chroot root inside the image.
-        executable = shutil.which("sleep")
-        dependencies = subprocess.check_output(["ldd", executable], text=True)
-        for source, relative in [(executable, "bin/sleep")] + [(p, p.lstrip("/")) for p in re.findall(r"(/[^\s()]+)", dependencies)]:
-            destination = payload / relative
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, destination)
-            destination.chmod(0o755)
+        # Include dynamically-linked helpers for real chroot lifetime checks.
+        for binary in ("sleep", "sh"):
+            executable = shutil.which(binary)
+            dependencies = subprocess.check_output(["ldd", executable], text=True)
+            for source, relative in [(executable, "bin/" + binary)] + [(p, p.lstrip("/")) for p in re.findall(r"(/[^\s()]+)", dependencies)]:
+                destination = payload / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, destination)
+                destination.chmod(0o755)
         exact = shutil.which("mksquashfs") and shutil.which("xorriso")
         if exact:
             inner = tree / "root.sfs"
@@ -99,6 +148,7 @@ def main():
             # The inner backing file is addressed through the parent mount.
             check_detached(base / "outer" / inner.name)
         print("nested image lifecycle passed (" + ("ISO/SquashFS" if exact else "ext4 image fallback") + ")")
+        check_runner_bind_lifecycle(base, outer, inner)
 
 
 if __name__ == "__main__":
