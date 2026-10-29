@@ -85,6 +85,33 @@ def check_runner_bind_lifecycle(base, outer, inner):
     print("runner helper holding nested target-root bind lifecycle passed")
 
 
+def check_machine_id_setup(base, payload):
+    root = base / "identity-root"
+    shutil.copytree(payload, root)
+    (root / "etc").mkdir()
+    (root / "etc/machine-id").touch()
+    # Enforce the proc-fd requirement even on older CI systemd versions,
+    # then exercise the real systemd utility with its dynamic dependencies.
+    wrapper = root / "bin/systemd-machine-id-setup"
+    wrapper.write_text(
+        '#!/bin/sh\nset -eu\nexec 3</etc/machine-id\n'
+        'test -r /proc/self/fd/3\ntest -c /dev/urandom\n'
+        'exec /usr/libexec/real-machine-id-setup\n'
+    )
+    wrapper.chmod(0o755)
+    host_identity = Path("/etc/machine-id").read_bytes()
+    native.setup_machine_id(root)
+    first_identity = (root / "etc/machine-id").read_text()
+    native.setup_machine_id(root)
+    if (root / "etc/machine-id").read_text() != first_identity:
+        raise AssertionError("Machine ID changed on retry")
+    if Path("/etc/machine-id").read_bytes() != host_identity:
+        raise AssertionError("Host machine ID was modified")
+    if any(os.path.ismount(root / name) for name in ("proc", "dev")):
+        raise AssertionError("Machine ID runtime mounts leaked")
+    print("machine ID initialized and retained with temporary proc/dev mounts")
+
+
 def main():
     if sys.platform != "linux" or os.geteuid() != 0:
         raise SystemExit("This test requires Linux root in a private mount namespace")
@@ -97,10 +124,13 @@ def main():
         tree.mkdir()
         (payload / "sentinel").write_text("nested image test\n")
         # Include dynamically-linked helpers for real chroot lifetime checks.
-        for binary in ("sleep", "sh"):
+        for binary, target in (("sleep", "bin/sleep"), ("sh", "bin/sh"),
+                               ("systemd-machine-id-setup", "usr/libexec/real-machine-id-setup")):
             executable = shutil.which(binary)
+            if not executable:
+                raise AssertionError("Integration fixture requires " + binary)
             dependencies = subprocess.check_output(["ldd", executable], text=True)
-            for source, relative in [(executable, "bin/" + binary)] + [(p, p.lstrip("/")) for p in re.findall(r"(/[^\s()]+)", dependencies)]:
+            for source, relative in [(executable, target)] + [(p, p.lstrip("/")) for p in re.findall(r"(/[^\s()]+)", dependencies)]:
                 destination = payload / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, destination)
@@ -149,6 +179,7 @@ def main():
             check_detached(base / "outer" / inner.name)
         print("nested image lifecycle passed (" + ("ISO/SquashFS" if exact else "ext4 image fallback") + ")")
         check_runner_bind_lifecycle(base, outer, inner)
+        check_machine_id_setup(base, payload)
 
 
 if __name__ == "__main__":

@@ -316,6 +316,18 @@ def mounted_image(source, destination):
             cleanup_warning(cleanup_error)
 
 
+def setup_machine_id(root):
+    root = Path(root)
+    # Recent systemd opens pinned file descriptors through /proc/self/fd.
+    # Package installation's runtime mounts have already been torn down here.
+    with mounted("/proc", root / "proc", "--bind", helper_root=root), \
+         mounted("/dev", root / "dev", "--rbind", helper_root=root):
+        run("chroot", root, "systemd-machine-id-setup")
+    identity = root / "etc/machine-id"
+    if not identity.is_file() or not re.fullmatch(r"[0-9a-f]{32}", identity.read_text().strip()):
+        raise MigrationError("Prepared system has no valid machine ID")
+
+
 def target_valid(root):
     root = Path(root)
     for name in ("etc/os-release", "usr/bin/pacman", "usr/bin/mkinitcpio", "usr/bin/grub-mkconfig"):
@@ -540,7 +552,7 @@ pacman -Sy --noconfirm archlinux-keyring cachyos-keyring genesi-keyring
     keyboard_file.write_text('Section "InputClass"\n Identifier "genesi-keyboard"\n MatchIsKeyboard "on"\n Option "XkbLayout" "%s"\n Option "XkbVariant" "%s"\nEndSection\n' % (layout, variant))
     console_map = {"br": "br-abnt2", "pt": "pt-latin1", "us": "us"}.get(layout, "us")
     (root / "etc/vconsole.conf").write_text("KEYMAP=" + console_map + "\n")
-    run("chroot", root, "systemd-machine-id-setup")
+    setup_machine_id(root)
     install_finish(root, manifest, state)
     target_valid(root)
     expanded = sum(p.stat().st_size for p in root.rglob("*") if p.is_file() and not p.is_symlink())

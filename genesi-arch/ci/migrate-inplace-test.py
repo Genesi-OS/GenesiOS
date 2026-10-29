@@ -113,6 +113,41 @@ class Response(io.BytesIO):
 
 
 class MountLifecycle(unittest.TestCase):
+    def test_machine_id_has_runtime_mounts_until_command_finishes(self):
+        calls = []
+
+        @contextlib.contextmanager
+        def mounted(source, destination, *options, **kwargs):
+            calls.append(("mount", source, destination, options, kwargs))
+            yield destination
+            calls.append(("unmount", destination))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "etc").mkdir()
+
+            def run(*args):
+                self.assertEqual(args, ("chroot", root, "systemd-machine-id-setup"))
+                self.assertEqual([entry[1] for entry in calls], ["/proc", "/dev"])
+                calls.append(("setup",))
+                (root / "etc/machine-id").write_text("a" * 32 + "\n")
+
+            with patch.object(native, "mounted", side_effect=mounted), patch.object(native, "run", side_effect=run):
+                native.setup_machine_id(root)
+            self.assertEqual([entry[0] for entry in calls], ["mount", "mount", "setup", "unmount", "unmount"])
+            self.assertEqual(calls[0][4], {"helper_root": root})
+            self.assertEqual(calls[-2:], [("unmount", root / "dev"), ("unmount", root / "proc")])
+
+    def test_machine_id_failure_is_not_ignored(self):
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(native, "mounted", side_effect=lambda *a, **k: contextlib.nullcontext()), \
+             patch.object(native, "run") as run:
+            with self.assertRaisesRegex(native.MigrationError, "no valid machine ID"):
+                native.setup_machine_id(directory)
+            run.side_effect = native.MigrationError("systemd setup failed")
+            with self.assertRaisesRegex(native.MigrationError, "systemd setup failed"):
+                native.setup_machine_id(directory)
+
     def test_nested_bind_stops_owned_runner_helpers_before_unmount(self):
         calls = []
         with tempfile.TemporaryDirectory() as directory:
