@@ -66,6 +66,11 @@ cp "$HERE/org.genesi.migrate.desktop" AppDir/
 cp "$APP/icons/genesi-migrate.svg" AppDir/genesi-migrate.svg
 cp "$APP/icons/genesi-migrate.svg" AppDir/.DirIcon
 
+# Python AppImage extraction can leave directories owner-only (0700).
+# The distributed application must be readable/traversable by every user;
+# preserve executable files without making all data files executable.
+chmod -R a+rX AppDir
+
 echo "==> packing"
 curl -fsSL -o appimagetool \
     https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
