@@ -39,6 +39,11 @@
     # Genesi's differentiator — local AI. AI Mode (genesi-aid) optimizes the
     # system automatically once any of these is running.
     - ollama
+    # Arch's plain `ollama` runs on the CPU only. On an NVIDIA GPU this is the
+    # build that uses it (it replaces ollama, a normal pacman conflict), and
+    # `cuda` is the toolkit for building CUDA software yourself.
+    - ollama-cuda
+    - cuda
     - alpaca   # GTK Ollama front-end
     - gpt4all-chat
 
@@ -98,15 +103,8 @@
     # tune build options. Binary: cachyos-kernel-manager.
     - cachyos-kernel-manager
 
-# ⚠ DEV / TESTE — não é pra usuário final. Pacotes pra validar o backend CUDA do
-# Genesi Turbo numa máquina NVIDIA com driver proprietário/aberto. Instalar os
-# pacotes NÃO carrega o módulo nem liga nada — na sessão live use o atalho
-# "Genesi DEV: NVIDIA + CUDA" (script genesi-dev-cuda-setup) que faz tudo de uma
-# vez (driver + módulos + CUDA). ollama-cuda substitui o ollama (conflito normal).
-- name: "DEV / TESTE (NVIDIA + CUDA)"
-  packages:
-    - "nvidia-open-dkms dkms"
-    - linux-cachyos-headers
-    - linux-cachyos-lts-headers
-    - ollama-cuda
-    - cuda
+# There was a "DEV / TESTE (NVIDIA + CUDA)" category here: a leftover from
+# validating Turbo's CUDA backend on the live session, in Portuguese, shown to
+# every user. Its useful part (ollama-cuda, cuda) is under AI / Local Models.
+# The rest is not for a menu: the NVIDIA driver is installed by chwd at
+# install time with its KMS config, and nvidia-open-dkms from here skipped that.

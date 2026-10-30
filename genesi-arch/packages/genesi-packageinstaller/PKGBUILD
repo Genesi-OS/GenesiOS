@@ -31,7 +31,11 @@ pkgver=1.6.2
 # checkbox dark-on-dark — the selection box was invisible (reported
 # 2026-07-18). Outlined box / Genesi-green checked / half-fill tri-state,
 # readable on light styles too. Built from the develop branch as before.
-pkgrel=7
+# pkgrel 8: the offline catalog loses the "DEV / TESTE (NVIDIA + CUDA)"
+# category, a live-session test leftover in Portuguese that every user saw;
+# ollama-cuda and cuda moved to AI / Local Models. The online catalog (this
+# same pkglist.yaml, fetched from main) changes as soon as it is pushed.
+pkgrel=8
 pkgdesc='Genesi OS Package Installer - one-click app, gaming and local-AI setup'
 arch=(x86_64 aarch64)
 url='https://github.com/Genesi-OS/genesi-packageinstaller'
