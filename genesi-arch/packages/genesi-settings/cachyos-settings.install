@@ -52,6 +52,14 @@ remove_live_branding_leaks() {
         /usr/local/bin/genesi-branding.sh 2>/dev/null || true
     systemctl disable genesi-branding.service >/dev/null 2>&1 || true
     systemctl daemon-reload >/dev/null 2>&1 || true
+    # The live session's SDDM autologin was copied into installs too: an
+    # autologin for liveuser, who does not exist there, that fought the one the
+    # user sets in System Settings. Removed only while it still names liveuser,
+    # so a user who edited it to their own name keeps their autologin.
+    local al=/etc/sddm.conf.d/01-autologin.conf
+    if [ -f "$al" ] && grep -qx 'User=liveuser' "$al" && ! id liveuser >/dev/null 2>&1; then
+        rm -f "$al"
+    fi
 }
 
 # Apply the new visual defaults to existing users. Fresh and live users receive

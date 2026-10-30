@@ -174,7 +174,11 @@ pkgver=1.3.4
 # pkgrel 56: ships the `genesi` icon (hicolor 48-256) that os-release's LOGO=
 # names. It lived only in the live ISO's airootfs, so installed systems
 # showed a grey "?" in KDE's About this System. ci/os-logo-test.py.
-pkgrel=56
+# pkgrel 57: removes the live session's SDDM autologin (01-autologin.conf,
+# User=liveuser) that the installer copied into every install, where it
+# fought the autologin set in System Settings. Only while it still names
+# liveuser: a file the user edited to their own name is kept.
+pkgrel=57
 epoch=1
 groups=(genesi)
 arch=('any')

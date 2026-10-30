@@ -114,6 +114,11 @@ jobs:
         # and that the ISO does not also carry a copy (pacman file conflict).
         run: python genesi-arch/ci/os-logo-test.py
 
+      - name: The live session's autologin stays on the live ISO
+        # The installer copied the live SDDM autologin (liveuser) into every
+        # install, where it fought the autologin set in System Settings.
+        run: python genesi-arch/ci/live-autologin-test.py
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh
