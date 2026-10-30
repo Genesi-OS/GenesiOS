@@ -108,6 +108,12 @@ jobs:
         # not half of a bilingual pair.
         run: python genesi-arch/ci/stray-portuguese-test.py
 
+      - name: The logo os-release names reaches installed systems
+        # KDE's About this System drew a grey "?" on installs: the `genesi`
+        # icon lived only in the live ISO. Checks it ships in genesi-settings
+        # and that the ISO does not also carry a copy (pacman file conflict).
+        run: python genesi-arch/ci/os-logo-test.py
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh
