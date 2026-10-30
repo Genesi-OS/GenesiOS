@@ -119,6 +119,12 @@ jobs:
         # install, where it fought the autologin set in System Settings.
         run: python genesi-arch/ci/live-autologin-test.py
 
+      - name: An update keeps the colour scheme the user picked
+        shell: bash
+        # genesi-settings' upgrade wrote Genesi colours into every user's
+        # kdeglobals, so another scheme came back half-Genesi after updates.
+        run: bash genesi-arch/ci/settings-upgrade-scheme-test.sh
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh

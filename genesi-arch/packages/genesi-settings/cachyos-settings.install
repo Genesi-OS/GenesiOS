@@ -84,6 +84,7 @@ fix_desktop_visual_defaults() {
         runuser -u "$u" -- kwriteconfig6 --file "$home/.config/kwinrc" --group org.kde.kdecoration2 \
             --key BorderSizeAuto false 2>/dev/null || true
 
+        _on_genesi_scheme "$home" || continue
         runuser -u "$u" -- kwriteconfig6 --file "$home/.config/kdeglobals" --group "Colors:Selection" \
             --key BackgroundNormal "29,158,117" 2>/dev/null || true
         runuser -u "$u" -- kwriteconfig6 --file "$home/.config/kdeglobals" --group "Colors:Selection" \
@@ -159,11 +160,27 @@ migrate_default_shell_fish() {
 # on every `pacman -Syu`. Only the selection foreground keys are touched; the
 # rest of the user's palette is left alone. Takes effect on the next login (or
 # immediately for apps reopened afterwards).
+# Whether this user is still on the Genesi colour scheme. Every colour heal
+# below writes Genesi's own values into kdeglobals; run for a user who picked
+# another scheme, it repainted that scheme half-Genesi on every update ("when
+# you update genesi-settings the color scheme gets messed up, I have to change
+# it back in settings"). Read straight from the file: no session bus as root.
+_on_genesi_scheme() {
+    local f="$1/.config/kdeglobals" s
+    [ -f "$f" ] || return 0
+    s=$(awk -F= '/^\[/ { g = $0 } g == "[General]" && $1 == "ColorScheme" { print $2 }' "$f")
+    case "$s" in
+        ""|Genesi|Genesi-Solid) return 0 ;;
+    esac
+    return 1
+}
+
 fix_selection_contrast() {
     command -v kwriteconfig6 >/dev/null 2>&1 || return 0
     local home u
     for home in /home/*; do
         [ -f "$home/.config/kdeglobals" ] || continue
+        _on_genesi_scheme "$home" || continue
         u=$(stat -c %U "$home" 2>/dev/null) || continue
         id "$u" >/dev/null 2>&1 || continue
         runuser -u "$u" -- kwriteconfig6 --file kdeglobals \
@@ -201,6 +218,7 @@ fix_titlebar_uniformity() {
         u=$(stat -c %U "$home" 2>/dev/null) || continue
         id "$u" >/dev/null 2>&1 || continue
 
+        if _on_genesi_scheme "$home"; then
         # Restore the window GLASS: put the alpha back on every window/view/
         # tooltip/complementary surface and the titlebar ([WM]). Darkly bakes a
         # window's translucency at creation from these alphas ([WM] activeBackground
@@ -230,6 +248,7 @@ fix_titlebar_uniformity() {
                 --key ColorScheme 2>/dev/null)" = "Genesi-Solid" ]; then
             runuser -u "$u" -- kwriteconfig6 --file kdeglobals --group General \
                 --key ColorScheme "Genesi" 2>/dev/null || true
+        fi
         fi
 
         # klassyrc: let the titlebar inherit the (now opaque) [WM] colour and
