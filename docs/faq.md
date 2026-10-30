@@ -208,6 +208,66 @@ exit
 sudo reboot
 ```
 
+### Intel Core Ultra (Meteor Lake and newer)
+
+These fixes come from a user's Core Ultra 7 155H with Arc graphics. We have
+no Core Ultra machine of our own, so they are documented here and not applied
+automatically.
+
+**Black screen right after GRUB on an install from an older ISO.** Earlier
+installers shipped `xf86-video-intel`, an unmaintained Xorg driver that does
+not handle these GPUs, and the login screen never came up. Newer ISOs no
+longer install it. On an affected install, press `Ctrl+Alt+F3` (on some
+laptops `Ctrl+Alt+Fn+F3`), log in, and run:
+
+```bash
+sudo pacman -Rns xf86-video-intel
+sudo reboot
+```
+
+**External monitor (HDMI) keeps blanking.** Turn off three KWin features for
+your user, then log out and back in:
+
+```bash
+mkdir -p ~/.config/environment.d
+printf '%s\n' KWIN_FORCE_SW_CURSOR=1 KWIN_DRM_USE_MODIFIERS=0 KWIN_DRM_NO_AMS=1 > ~/.config/environment.d/kwin.conf
+```
+
+These switch off variable refresh rate (VRR) and HDR, swap the hardware cursor
+for a software one, and cost a little rendering speed, so only use them if
+you have the problem. To undo, delete `~/.config/environment.d/kwin.conf`.
+
+**Optional: the `xe` driver instead of `i915`.** Linux runs these GPUs on
+`i915` by default. The newer `xe` driver can be forced, and some users find it
+better. On Meteor Lake it is still behind a force-probe flag, so treat it as
+experimental. First find your GPU's device ID: the four characters after
+`8086:` in
+
+```bash
+lspci -nn | grep -iE "vga|3d"
+```
+
+For example, `[8086:7d55]` means `7d55`. Edit `/etc/default/grub` and add the
+following to `GRUB_CMDLINE_LINUX_DEFAULT`, using your own ID:
+
+```
+i915.force_probe=!7d55 xe.force_probe=7d55 xe.enable_psr=0
+```
+
+`xe.enable_psr=0` turns off panel self refresh, which can cause flicker but
+also saves battery. Then rebuild the menu and reboot:
+
+```bash
+sudo grub-mkconfig -o /boot/grub/grub.cfg
+sudo reboot
+```
+
+Check it with `lspci -k | grep -A3 -iE "vga|3d"`. It should say
+`Kernel driver in use: xe`. To go back, remove those three options and run
+`grub-mkconfig` again. If the screen stays black after the change, pick the
+entry in GRUB, press `e`, delete the options from the `linux` line, and boot
+with `Ctrl+X`.
+
 ## Development
 
 ### Can I contribute to Genesi OS?
