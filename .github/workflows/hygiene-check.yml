@@ -92,6 +92,14 @@ jobs:
         # scriptlet against a scratch /etc/default/grub.
         run: bash genesi-arch/ci/grub-defaults-test.sh
 
+      - name: A colour scheme the user picks survives a reboot
+        shell: bash
+        # genesi-apply-theme.sh runs at every KDE login, and its repair put the
+        # Genesi scheme back for everyone, so a user's own scheme reverted on
+        # each reboot. Runs the script (from the genesi-settings submodule)
+        # with the desktop tools stubbed.
+        run: bash genesi-arch/ci/apply-theme-test.sh
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh

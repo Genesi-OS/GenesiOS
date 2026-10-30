@@ -162,7 +162,13 @@ pkgver=1.3.4
 # 2026-08-21: license declaration corrected to AGPL-3.0-or-later, matching the
 # repository's LICENSE and the rest of the Genesi packages. GPL-1.0-only was a leftover from a PKGBUILD template -- that is the 1989
 # license, and this is Genesi's own settings app.
-pkgrel=53
+# pkgrel 54: a colour scheme the user picks sticks across reboots. The
+# per-login repair in genesi-apply-theme.sh re-applied Genesi (plus its icons
+# and selection colours) for everyone, so any other scheme reverted at every
+# login. The repair now runs only while the user is still on Genesi, and the
+# icon repair only while they are on Tela. ci/apply-theme-test.sh runs the
+# script with the desktop tools stubbed.
+pkgrel=54
 epoch=1
 groups=(genesi)
 arch=('any')
