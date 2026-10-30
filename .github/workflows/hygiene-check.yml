@@ -85,6 +85,13 @@ jobs:
         shell: bash
         run: bash genesi-arch/ci/bootloader-config-test.sh
 
+      - name: The GRUB menu has no EFI BootNext clutter
+        shell: bash
+        # GRUB 2.16's 31_efi_bootnext adds one entry per firmware boot record,
+        # and a user's menu filled up after the grub update. Runs the theme
+        # scriptlet against a scratch /etc/default/grub.
+        run: bash genesi-arch/ci/grub-defaults-test.sh
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh

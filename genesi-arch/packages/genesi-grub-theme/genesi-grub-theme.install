@@ -29,6 +29,10 @@ _genesi_grub_apply() {
     _genesi_grub_set "$defaults" GRUB_COLOR_NORMAL '"light-gray/black"'
     _genesi_grub_set "$defaults" GRUB_COLOR_HIGHLIGHT '"white/dark-gray"'
 
+    # GRUB 2.16 added 31_efi_bootnext, which turns every firmware boot record
+    # into an "EFI BootNext" menu entry. Users saw a wall of them after the
+    # grub update. Nothing in Genesi uses one-shot firmware entries.
+    _genesi_grub_set "$defaults" GRUB_DISABLE_BOOTNEXT 'true'
 }
 
 _genesi_grub_remove() {
