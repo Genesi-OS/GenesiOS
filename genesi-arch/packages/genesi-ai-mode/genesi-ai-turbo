@@ -2618,25 +2618,25 @@ def cmd_status():
               % (model or "(modelo desconhecido)", TURBO_PORT))
         running = True
     else:
-        print(":: Genesi Turbo   parado")
+        print(":: Genesi Turbo   stopped")
 
     loaded = _ollama_loaded()
     for m in loaded:
         name = m.get("name") or m.get("model") or "?"
         gb = int(m.get("size") or 0) / (1024 ** 3)
-        print(":: Ollama         %s   %.1f GB   %s   até %s"
+        print(":: Ollama         %s   %.1f GB   %s   until %s"
               % (name, gb, _where(m), (m.get("expires_at") or "?")[11:19]))
         running = True
     if not loaded:
-        print(":: Ollama         nada carregado")
+        print(":: Ollama         nothing loaded")
 
     remote = remote_turbo()
     if remote:
-        print(":: Mesh           usando %s (a inferência acontece lá)" % remote)
+        print(":: Mesh           using %s (inference happens there)" % remote)
 
     if running:
         print()
-        print("   Parar tudo o que roda AQUI:  genesi-ai-turbo stop")
+        print("   Stop everything running HERE:  genesi-ai-turbo stop")
     return 0
 
 
@@ -2654,17 +2654,17 @@ def cmd_stop():
                            capture_output=True)
             stopped.append("Genesi Turbo")
         else:
-            print("[!] O Genesi Turbo está rodando como serviço. Para pará-lo:",
+            print("[!] Genesi Turbo is running as a service. To stop it:",
                   file=sys.stderr)
             print("        sudo systemctl stop genesi-turbo", file=sys.stderr)
-            print("    (ou `sudo genesi-mesh serve off` para parar e também "
-                  "deixar de servir a rede)", file=sys.stderr)
+            print("    (or `sudo genesi-mesh serve off` to stop it and also "
+                  "stop serving the network)", file=sys.stderr)
 
     if stopped:
         for s in stopped:
-            print(":: parado — " + s)
+            print(":: stopped — " + s)
     else:
-        print(":: nada rodando aqui")
+        print(":: nothing running here")
     return 0
 
 
@@ -2717,12 +2717,12 @@ def cmd_share(arg):
         held = _ollama_loaded()
         if held:
             print()
-            print("   Ainda carregado por fora do Turbo (keep-alive do Ollama):")
+            print("   Still loaded outside Turbo (Ollama keep-alive):")
             for m in held:
                 print("     %s  %.1f GB  %s"
                       % (m.get("name") or m.get("model") or "?",
                          int(m.get("size") or 0) / (1024 ** 3), _where(m)))
-            print("   Para descarregar agora:  genesi-ai-turbo stop")
+            print("   To unload it now:  genesi-ai-turbo stop")
 
     if on:
         addr = "this machine"

@@ -41,8 +41,17 @@ pacman -Qq genesi-llama-cpp >/dev/null 2>&1 || exit 0   # not even on Vulkan yet
 mkdir -p "$STAMP_DIR" 2>/dev/null || true
 : > "$STAMP" 2>/dev/null || true
 
-TITLE="GPU NVIDIA detectada"
-BODY="Ative o backend CUDA no Modo IA — inferência local ~1.5-2x mais rápida."
+# In the session's language: this used to be pt-BR for everyone.
+case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+    pt*) TITLE="GPU NVIDIA detectada"
+         BODY="Ative o backend CUDA no Modo IA — inferência local ~1.5-2x mais rápida."
+         OPEN="Abrir Modo IA"
+         HINT=" — abra o Modo IA para ativar." ;;
+    *)   TITLE="NVIDIA GPU detected"
+         BODY="Turn on the CUDA backend in AI Mode — local inference ~1.5-2x faster."
+         OPEN="Open AI Mode"
+         HINT=" — open AI Mode to turn it on." ;;
+esac
 
 # Prefer an actionable notification (button opens the Monitor). --action is a
 # newer libnotify feature; if this build lacks it the call errors, so fall back
@@ -50,14 +59,14 @@ BODY="Ative o backend CUDA no Modo IA — inferência local ~1.5-2x mais rápida
 # timed out, which is fine — we're a backgrounded autostart.
 if choice=$(notify-send --app-name="Genesi AI Mode" --icon=cpu \
         --urgency=normal --expire-time=20000 \
-        --action=open="Abrir Modo IA" \
+        --action=open="$OPEN" \
         "$TITLE" "$BODY" 2>/dev/null); then
     if [ "$choice" = "open" ]; then
         command -v genesi-ai-monitor >/dev/null 2>&1 && genesi-ai-monitor >/dev/null 2>&1 &
     fi
 else
     notify-send --app-name="Genesi AI Mode" --icon=cpu \
-        "$TITLE" "$BODY — abra o Modo IA para ativar." 2>/dev/null || true
+        "$TITLE" "$BODY$HINT" 2>/dev/null || true
 fi
 
 exit 0

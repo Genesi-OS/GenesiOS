@@ -67,7 +67,7 @@ PlasmoidItem {
     function runBench() {
         // Long-running and interactive-ish: give it a terminal instead of
         // freezing the panel for the couple of minutes it takes.
-        executable.exec("setsid -f konsole -e sh -c 'genesi-ai-mode bench; echo; read -p \"Enter para fechar...\" _'")
+        executable.exec("setsid -f konsole -e sh -c 'genesi-ai-mode bench; echo; read -p \"Press Enter to close...\" _'")
     }
 
     function readState() {
@@ -311,7 +311,7 @@ PlasmoidItem {
                 PlasmaComponents.Label {
                     text: {
                         var modelText = (root.state.ollama && root.state.ollama.length > 0) 
-                                        ? "Modelo local" : "Nenhum modelo carregado";
+                                        ? "Local model loaded" : "No model loaded";
                         var tokText = root.state.tokens_per_second ? root.state.tokens_per_second + " tok/s" : "";
                         if (tokText) return modelText + " · " + tokText;
                         return modelText;
@@ -334,7 +334,7 @@ PlasmoidItem {
                             return ""
                         var g = root.bench.gain_pct
                         var sign = g > 0 ? "+" : ""
-                        return "Turbo: " + sign + g.toFixed(0) + "% medido  ("
+                        return "Turbo: " + sign + g.toFixed(0) + "% measured  ("
                              + root.bench.off_tps.toFixed(1) + " → "
                              + root.bench.on_tps.toFixed(1) + " tok/s)"
                     }
@@ -346,7 +346,7 @@ PlasmoidItem {
                 }
                 PlasmaComponents.Label {
                     visible: !(root.bench && root.bench.on_tps !== undefined)
-                    text: "Turbo: ganho ainda não medido nesta máquina"
+                    text: "Turbo: gain not measured on this machine yet"
                     opacity: 0.55
                     font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 }
@@ -365,7 +365,7 @@ PlasmoidItem {
             PlasmaComponents.Button {
                 visible: !(root.bench && root.bench.on_tps !== undefined)
                 Layout.fillWidth: true
-                text: "Medir o ganho do Turbo"
+                text: "Measure the Turbo gain"
                 icon.name: "speedometer"
                 onClicked: root.runBench()
             }

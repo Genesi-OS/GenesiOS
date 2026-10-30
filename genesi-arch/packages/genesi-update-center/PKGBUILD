@@ -26,7 +26,10 @@
 # calls.
 pkgname=genesi-update-center
 pkgver=1.0.0
-pkgrel=1
+# pkgrel 2: the apply script's messages follow the system language
+# (/etc/locale.conf, since pkexec strips the environment); they were
+# pt-BR for everyone. Still no input from the GUI reaches it.
+pkgrel=2
 pkgdesc='Privileged helper and polkit action behind the Genesi update UI'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

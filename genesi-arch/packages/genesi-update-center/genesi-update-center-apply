@@ -28,6 +28,41 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# Messages in the system's language. These were pt-BR for everyone. pkexec
+# hands this script a bare environment, so the language comes from the
+# system's own /etc/locale.conf -- not from the GUI, which keeps the rule
+# above: nothing the GUI says reaches this script.
+_lang="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"
+if [ -z "$_lang" ] && [ -r /etc/locale.conf ]; then
+    _lang="$(sed -n 's/^LANG=//p' /etc/locale.conf | tr -d '"' | head -n1)"
+fi
+case "$_lang" in
+    pt*) M_SYNC="Sincronizando as bases de pacotes…"
+         M_SYNC_FAIL1="Não foi possível sincronizar os repositórios."
+         M_SYNC_FAIL2="Isso costuma ser rede ou espelho fora do ar, não o seu sistema."
+         M_NOTHING="Nada a atualizar. O sistema já está em dia."
+         M_UPDATING="Atualizando…"
+         M_SNAP1="(o genesi-snapshots tira um ponto de restauração antes e depois,"
+         M_SNAP2=" então esta operação é reversível)"
+         M_DONE="Atualização concluída."
+         M_FAIL1="A atualização falhou."
+         M_FAIL2="O ponto de restauração anterior continua disponível em"
+         M_FAIL3="Genesi Snapshots, e o sistema não ficou pela metade: o pacman"
+         M_FAIL4="aplica a transação inteira ou nenhuma parte dela." ;;
+    *)   M_SYNC="Syncing the package databases…"
+         M_SYNC_FAIL1="Could not sync the repositories."
+         M_SYNC_FAIL2="This is usually the network or a mirror being down, not your system."
+         M_NOTHING="Nothing to update. The system is up to date."
+         M_UPDATING="Updating…"
+         M_SNAP1="(genesi-snapshots takes a restore point before and after,"
+         M_SNAP2=" so this operation can be undone)"
+         M_DONE="Update finished."
+         M_FAIL1="The update failed."
+         M_FAIL2="The previous restore point is still available in"
+         M_FAIL3="Genesi Snapshots, and the system was not left half-updated: pacman"
+         M_FAIL4="applies the whole transaction or none of it." ;;
+esac
+
 echo "==> Genesi Update Center"
 echo "==> $(date '+%Y-%m-%d %H:%M:%S')"
 echo
@@ -35,11 +70,11 @@ echo
 # Refresh first and report separately from the upgrade: "the mirror is down"
 # and "the upgrade failed" are different problems and the user deserves to know
 # which one they have.
-echo "==> Sincronizando as bases de pacotes…"
+echo "==> $M_SYNC"
 if ! pacman -Sy --noconfirm; then
     echo
-    echo "!!! Não foi possível sincronizar os repositórios." >&2
-    echo "!!! Isso costuma ser rede ou espelho fora do ar, não o seu sistema." >&2
+    echo "!!! $M_SYNC_FAIL1" >&2
+    echo "!!! $M_SYNC_FAIL2" >&2
     exit 1
 fi
 
@@ -47,26 +82,26 @@ fi
 # starts crying wolf. The GUI shows a different, calm state for exit 2.
 if [ -z "$(pacman -Qu 2>/dev/null)" ]; then
     echo
-    echo "==> Nada a atualizar. O sistema já está em dia."
+    echo "==> $M_NOTHING"
     exit 2
 fi
 
 echo
-echo "==> Atualizando…"
-echo "    (o genesi-snapshots tira um ponto de restauração antes e depois,"
-echo "     então esta operação é reversível)"
+echo "==> $M_UPDATING"
+echo "    $M_SNAP1"
+echo "    $M_SNAP2"
 echo
 
 # The whole privileged operation, as a literal. See the header.
 if pacman -Su --noconfirm; then
     echo
-    echo "==> Atualização concluída."
+    echo "==> $M_DONE"
     exit 0
 fi
 
 echo
-echo "!!! A atualização falhou." >&2
-echo "!!! O ponto de restauração anterior continua disponível em" >&2
-echo "!!! Genesi Snapshots, e o sistema não ficou pela metade: o pacman" >&2
-echo "!!! aplica a transação inteira ou nenhuma parte dela." >&2
+echo "!!! $M_FAIL1" >&2
+echo "!!! $M_FAIL2" >&2
+echo "!!! $M_FAIL3" >&2
+echo "!!! $M_FAIL4" >&2
 exit 1

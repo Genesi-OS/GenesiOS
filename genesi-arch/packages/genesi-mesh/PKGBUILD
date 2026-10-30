@@ -154,7 +154,9 @@ pkgver=1.0.0
 # 2026-08-21: license declaration corrected to AGPL-3.0-or-later, matching the
 # repository's LICENSE and the rest of the Genesi packages. Not a relicense: 'AGPL3' is the deprecated identifier for the same thing,
 # and namcap warns on it.
-pkgrel=20
+# pkgrel 21: `genesi-mesh use` printed [NÃO RESPONDE] in an English CLI;
+# now [NOT ANSWERING].
+pkgrel=21
 pkgdesc='Genesi Mesh — pool GPU memory across machines for local inference'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

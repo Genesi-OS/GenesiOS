@@ -100,6 +100,14 @@ jobs:
         # with the desktop tools stubbed.
         run: bash genesi-arch/ci/apply-theme-test.sh
 
+      - name: No Portuguese-only text reaches an English user
+        # pt-BR kept leaking into English sessions with nothing to catch it:
+        # the AI Mode widget, its launcher's notifications, the whole Mesh page,
+        # the Update Center's output, the welcome app. Reads every string in the
+        # UI and CLI code (submodules included) and fails on Portuguese that is
+        # not half of a bilingual pair.
+        run: python genesi-arch/ci/stray-portuguese-test.py
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh

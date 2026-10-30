@@ -283,10 +283,21 @@ echo '>>> Done. You can reboot into the installed system.'
 """
 
 
+def system_lang():
+    """pt-BR for a Portuguese session, English for every other one."""
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(var, "")
+        if value:
+            return "pt-BR" if value.lower().startswith("pt") else "English"
+    return "English"
+
+
 class GenesiWelcome(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.lang = "pt-BR"
+        # The system's language, not always pt-BR: English users opened the
+        # welcome screen in Portuguese. The switch in the app still works.
+        self.lang = system_lang()
         self.live = is_live()
         self.setWindowTitle("Genesi OS")
         self.setMinimumSize(820, 640)
