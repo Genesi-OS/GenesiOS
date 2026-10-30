@@ -147,6 +147,13 @@ jobs:
         # Calamares netinstall groups are an install path.
         run: python genesi-arch/ci/package-reachability-test.py
 
+      - name: No install path ships a driver that blanks the login screen
+        # Both netinstall groups shipped xf86-video-intel. Arch's Xorg picks it
+        # for every Intel GPU, and on a Core Ultra 7 155H the SDDM greeter
+        # never appeared: black on the panel and on HDMI. Older Intel worked,
+        # so nothing caught it. Needs the submodules, like the step above.
+        run: python genesi-arch/ci/installer-graphics-test.py
+
       - name: Every section of the Hyprland migration applies
         shell: bash
         # /etc/skel only seeds NEW accounts, so anything added to hyprland.conf
