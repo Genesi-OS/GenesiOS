@@ -237,6 +237,22 @@ These switch off variable refresh rate (VRR) and HDR, swap the hardware cursor
 for a software one, and cost a little rendering speed, so only use them if
 you have the problem. To undo, delete `~/.config/environment.d/kwin.conf`.
 
+**No sound over HDMI, and the audio card only offers "Pro Audio".** These
+chips use Intel's SOF audio driver, which needs a profile made for the exact
+laptop model. When there is none (common on smaller brands), the sound
+settings offer only "Pro Audio" instead of the usual output profiles, and HDMI
+cannot be picked. Switching to the older HDA driver brings them back:
+
+```bash
+echo 'options snd-intel-dspcfg dsp_driver=1' | sudo tee /etc/modprobe.d/genesi-hda-audio.conf
+sudo reboot
+```
+
+After the reboot, the card's Configuration tab lists "Digital Stereo (HDMI)
+Output" and the rest. The catch: on many laptops the built-in digital
+microphone, and sometimes the speakers, only work through SOF, so check them
+afterwards. To undo, delete `/etc/modprobe.d/genesi-hda-audio.conf` and reboot.
+
 **Optional: the `xe` driver instead of `i915`.** Linux runs these GPUs on
 `i915` by default. The newer `xe` driver can be forced, and some users find it
 better. On Meteor Lake it is still behind a force-probe flag, so treat it as
