@@ -1647,7 +1647,7 @@ pkgver=1.0.0
 #     the way genesi-ui-kit is), in a wlr-layer-shell surface where the
 #     compositor has one and a placed X11 window where it does not (GNOME
 #     goes through XWayland). Started beside the Quick Chat, leaves when
-#     switched off; on by default outside caelestia, in "always" mode.
+#     switched off; off until switched on (pkgrel 213), in "always" mode.
 #   * Ask ON the island: a click opens an input in the island itself, the
 #     answer comes back there whole (Markdown), with Copy / Ask again /
 #     Continue in chat. One-click asks about the clipboard (explain,
@@ -1713,7 +1713,12 @@ pkgver=1.0.0
 # under the same names. The catalog still carried the old sizes and sha256,
 # so every download of them failed the checksum and was deleted. Updated to
 # what the Hub reports now; image-cli-test is what caught it.
-pkgrel=212
+# pkgrel 213: the AI island is off until switched on, on every desktop. It
+# defaulted on outside caelestia, so KDE users got a floating pill over their
+# windows they never asked for. Switch it on in Quick Chat -> settings ->
+# AI ISLAND, or `genesi-ai-quick --set enabled=on`. Anyone who already
+# switched it on keeps it; a running island with no switch file leaves.
+pkgrel=213
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

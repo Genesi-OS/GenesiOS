@@ -132,16 +132,16 @@ def caelestia_session(env=None):
 
 
 def enabled(env=None):
-    """The plugin switch. Written -> what it says. Never written: off inside
-    caelestia (a shell plugin is off until switched on, like every other),
-    ON everywhere else -- there the island is how the chat asks for approval
-    without jumping over what you are doing, and in "always" mode it is a
-    small pill; nobody has to find a switch to get it."""
+    """The plugin switch. Written -> what it says. Never written -> off, on
+    every desktop. It used to default on outside caelestia, and users met a
+    floating pill over their windows they had never asked for. It is switched
+    on from the Quick Chat settings (AI ISLAND) or `genesi-ai-quick --set
+    enabled=on`; with it off, approvals are asked in the chat itself."""
     try:
         with open(plugin_path(), encoding="utf-8") as handle:
             return json.load(handle).get("enabled") is True
     except (OSError, ValueError, AttributeError):
-        return not caelestia_session(env)
+        return False
 
 
 def set_enabled(on):

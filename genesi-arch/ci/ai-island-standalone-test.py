@@ -101,7 +101,7 @@ check("settings parse as the island sends them",
       and link.parse_setting("mode", "x") is None and link.parse_setting("rm", "-rf") is None)
 
 real_which = link.shutil.which
-check("outside caelestia the island is on before anyone touches a switch", link.enabled() is True)
+check("outside caelestia the island is off until switched on", link.enabled() is False)
 os.environ["HYPRLAND_INSTANCE_SIGNATURE"] = "abc"
 link.shutil.which = lambda name: "/usr/bin/caelestia" if name == "caelestia" else real_which(name)
 check("inside caelestia it is a shell plugin: off until switched on", link.enabled() is False)
