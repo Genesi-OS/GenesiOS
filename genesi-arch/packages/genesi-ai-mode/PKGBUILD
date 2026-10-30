@@ -1718,6 +1718,8 @@ pkgver=1.0.0
 # windows they never asked for. Switch it on in Quick Chat -> settings ->
 # AI ISLAND, or `genesi-ai-quick --set enabled=on`. Anyone who already
 # switched it on keeps it; a running island with no switch file leaves.
+# The island's own menu (right-click or ...) also gets Island On/Off, so it
+# is switched off with a click, no terminal.
 pkgrel=213
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')

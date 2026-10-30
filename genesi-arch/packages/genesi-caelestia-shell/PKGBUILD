@@ -819,7 +819,9 @@ pkgver=2.0.3
 # hanging below it: the card's content switched anchors with bindings, which
 # leaves the old position behind. Placed by a computed y now; plugins-test
 # fails on a toggled anchor in the card.
-pkgrel=63
+# pkgrel 64: the island's own menu (right-click or ...) has an Island On/Off
+# row, so it can be switched off without a terminal or the chat's settings.
+pkgrel=64
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

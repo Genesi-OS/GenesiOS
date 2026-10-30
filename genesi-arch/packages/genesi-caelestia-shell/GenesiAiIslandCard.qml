@@ -836,6 +836,14 @@ Item {
                     { key: "smartClip", label: card.t("Smart Copy", "Cópia inteligente"),
                       value: card.prefs.smartClip ? "on" : "off",
                       options: [{ v: "on", t: card.t("On", "Ligada") },
+                                { v: "off", t: card.t("Off", "Desligada") }] },
+                    // Turning the island off from the island itself: nobody
+                    // should need a terminal or the chat's settings for it.
+                    // It is always "on" here, since an island that is off is
+                    // not drawn. Switched back on from the Quick Chat.
+                    { key: "enabled", label: card.t("Island", "Ilha"),
+                      value: "on",
+                      options: [{ v: "on", t: card.t("On", "Ligada") },
                                 { v: "off", t: card.t("Off", "Desligada") }] }
                 ] : []
 

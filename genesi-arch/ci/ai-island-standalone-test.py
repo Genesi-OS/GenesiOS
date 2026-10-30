@@ -152,6 +152,11 @@ check("a setting goes to the chat AND into the file at once",
       msgs[3] == {"cmd": "set", "key": "mode", "value": "always"} and link.read_prefs()["mode"] == "always")
 check("a file goes with its request", msgs[4] == {"cmd": "attach", "path": "/tmp/a.pdf", "prompt": "Resuma"})
 check("the pill's click toggles the chat", msgs[5] == "toggle")
+link.set_enabled(True)
+host.command("set", "enabled=off")
+check("Off in the island's own menu switches it off at once, no chat needed",
+      link.enabled() is False and json.loads(sent[-1]) == {"cmd": "set", "key": "enabled", "value": "off"})
+link.set_enabled(True)
 
 island.link.send = lambda wire, timeout=0.5: False
 island.subprocess.Popen = lambda argv, **kw: started.append(argv)

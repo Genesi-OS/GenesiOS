@@ -193,12 +193,15 @@ class Host(QObject):
         elif cmd == "set":
             key, _, value = arg.partition("=")
             parsed = link.parse_setting(key, value)
-            if parsed and parsed[0] in ("mode", "smartClip"):
+            if parsed and parsed[0] in ("mode", "smartClip", "enabled"):
                 try:
-                    link.write_prefs(**{parsed[0]: parsed[1]})
+                    if parsed[0] == "enabled":
+                        link.set_enabled(parsed[1])
+                    else:
+                        link.write_prefs(**{parsed[0]: parsed[1]})
                 except OSError:
                     pass
-                self.refreshPrefs()
+                self.refreshPrefs()     # switched off -> the island leaves
             message, argv = {"cmd": "set", "key": key, "value": value}, ["--set", arg]
         elif cmd == "attach":
             data = json.loads(arg)
