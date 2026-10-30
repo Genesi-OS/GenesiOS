@@ -104,6 +104,7 @@ class Host(QObject):
         self._palette = json.dumps(material_palette())
         self._place = (0, 0, False)
         self.window = None
+        self._input_rect = None
 
     # ── What the card reads ───────────────────────────────────────────
     @Property(str, notify=changed)
@@ -232,9 +233,23 @@ class Host(QObject):
     def setInputRect(self, x, y, w, h):
         """Only the card takes the pointer: the rest of the window is
         glass the desktop below must still be clickable through."""
-        if self.window is None or w <= 0 or h <= 0:
+        if w <= 0 or h <= 0:
             return
-        self.window.setMask(QRegion(QRect(x, y, w, h)))
+        self._input_rect = QRect(x, y, w, h)
+        self._apply_mask()
+
+    def attach(self, window):
+        """The QML pushes the card's rect while it loads, before the window
+        is ours. Dropping that one left the pill with no mask at all until
+        the card next changed size, which a resting pill never does, so the
+        whole 640x470 window took the pointer and right-clicks on the
+        desktop under it went nowhere. Kept, and applied here."""
+        self.window = window
+        self._apply_mask()
+
+    def _apply_mask(self):
+        if self.window is not None and self._input_rect is not None:
+            self.window.setMask(QRegion(self._input_rect))
 
 
 def main():
@@ -276,7 +291,7 @@ def main():
     if not engine.rootObjects():
         release_instance()
         return 1
-    host.window = engine.rootObjects()[0]
+    host.attach(engine.rootObjects()[0])
 
     # The chat replaces its state file atomically (a rename), which a watch
     # on the FILE would lose; the directory sees every replacement.

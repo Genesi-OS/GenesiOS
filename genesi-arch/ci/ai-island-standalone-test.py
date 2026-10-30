@@ -219,6 +219,15 @@ def settle(seconds):
 
 if roots:
     win = roots[0]
+    host.attach(win)               # what main() does, right after load
+    # The window's real mask, not the calls that set it: the old check
+    # counted setInputRect calls and passed while the first one (pushed
+    # during load, before the host had its window) was dropped, leaving a
+    # resting pill with no mask and the whole window taking the pointer.
+    loaded = win.mask().boundingRect()
+    check("the card's rect from load is the mask as soon as the window is the host's",
+          not loaded.isEmpty() and loaded.width() < 640 and loaded.height() < 470,
+          (loaded.x(), loaded.y(), loaded.width(), loaded.height()))
     settle(0.5)
     check("with the chat closed and nothing going on, 'with the chat' mode hides it",
           win.property("visible") is False)
@@ -237,6 +246,10 @@ if roots:
     host.refresh()
     settle(0.6)
     check("'always' keeps the pill on screen when nothing is going on", win.property("visible") is True)
+    resting = win.mask().boundingRect()
+    check("the resting pill takes the pointer only over itself, the desktop below stays clickable",
+          not resting.isEmpty() and resting.width() < 640 and resting.height() < 470,
+          (resting.x(), resting.y(), resting.width(), resting.height()))
     noisy = [w for w in warnings if "FT_New_Face" not in w and "propagateSizeHints" not in w
              and "does not support" not in w]
     check("Qt printed no warnings", not noisy, "\n         ".join(noisy[:8]))
