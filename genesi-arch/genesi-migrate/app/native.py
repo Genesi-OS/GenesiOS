@@ -142,12 +142,12 @@ def validate_machine(machine, devices):
         raise MigrationError("Native migration requires at least 2 GB of installed RAM")
     if machine.get("firmware") not in ("uefi", "efi") or machine.get("secureBoot"):
         raise MigrationError("Native migration requires UEFI with Secure Boot disabled")
-    if machine.get("luks") or machine.get("rootPartType") != "part" or machine.get("homeSeparate"):
-        raise MigrationError("Encrypted/LVM roots and separate /home are not supported by native migration yet")
+    same_btrfs_home = (machine.get("rootFs") == "btrfs" and machine.get("homeFs") == "btrfs"
+                       and machine.get("homeUuid") == machine.get("rootUuid"))
+    if machine.get("luks") or machine.get("rootPartType") != "part" or (machine.get("homeSeparate") and not same_btrfs_home):
+        raise MigrationError("Encrypted/LVM roots and /home on a different filesystem are not supported by native migration yet")
     if machine.get("rootFs") not in ("ext4", "btrfs"):
         raise MigrationError("This filesystem cannot be converted safely; supported roots: ext4, Btrfs")
-    if re.search(r"(?:^|,)subvol=/?@(?:,|$)", machine.get("rootOptions", "")):
-        raise MigrationError("Existing @ roots require subvolume exchange and are not enabled yet")
     roots = [(d, p) for d in devices if d.get("type") == "disk"
              for p in walk(d.get("children", [])) if p.get("uuid") == machine.get("rootUuid")]
     if len(roots) != 1:
@@ -390,12 +390,18 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
     for path in ("/", "/home", "/var", "/boot"):
         if run("findmnt", "-n", "-o", "UUID", "-T", path) != state["rootUuid"]:
             raise MigrationError("Native migration requires /home, /var and /boot on the root filesystem")
+    for path in ("/var", "/boot"):
+        if run("findmnt", "-n", "-o", "TARGET", "-T", path) != "/":
+            raise MigrationError("Separate /var or /boot mounts are not supported by native migration")
     for app in manifest.get("apps", []):
         if app.get("selected") and app.get("target") and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9@+_.:-]*", app["target"]):
             raise MigrationError("Unsafe application package name")
     if digest(iso_path) != checksum:
         raise MigrationError("ISO checksum changed before privileged preparation")
-    for tool in ("mount", "losetup", "unshare", "chroot", "efibootmgr"):
+    tools = ["mount", "losetup", "unshare", "chroot", "efibootmgr"]
+    if state["originalFs"] == "btrfs":
+        tools.append("btrfs")
+    for tool in tools:
         if not shutil.which(tool):
             raise MigrationError("Install required host tool before retrying: " + tool)
     # Root-owned private directory: the old user's writable download stage is
@@ -412,8 +418,28 @@ def prepare(manifest_path, iso_path, checksum, profile_path):
     state["sourcePrefix"] = run("findmnt", "-n", "-o", "FSROOT", "/").rstrip("/")
     if not re.fullmatch(r"[/a-zA-Z0-9_.@-]*", state["sourcePrefix"]):
         raise MigrationError("Unsupported source subvolume path")
-    if state["sourcePrefix"] == "/@":
-        raise MigrationError("Existing @ root requires a subvolume exchange; this layout is not enabled yet")
+    state["homePrefix"] = filesystem_path("/home")
+    if state["originalFs"] == "btrfs" and state["sourcePrefix"] == "/@":
+        # Capture IDs while the source is still running. Offline exchange only
+        # renames the exact subvolumes observed here, never an unrelated @.
+        state["exchange"] = {"rootId": subvolume_id("/"), "homeSourceId": subvolume_id("/home"),
+                             "rootBackup": "@genesi-previous-" + task.name,
+                             "rootNext": "@genesi-next-root-" + task.name,
+                             "homeNext": "@genesi-next-home-" + task.name}
+        if state["homePrefix"] == "/@genesi-home":
+            state["exchange"].update(homeId=subvolume_id("/home"),
+                                     homeBackup="@genesi-previous-home-" + task.name)
+        validate_exchange(state)
+        with mounted(identify(state, inventory())[1]["path"], task / "layout-check", "-t", "btrfs",
+                     "-o", "ro,rescue=nologreplay,subvolid=5") as layout:
+            exchange = state["exchange"]
+            if subvolume_id(layout / "@") != exchange["rootId"]:
+                raise MigrationError("Running root does not match the top-level @ subvolume")
+            for key in ("rootBackup", "rootNext", "homeNext", "homeBackup"):
+                if key in exchange and (layout / exchange[key]).exists():
+                    raise MigrationError("Reserved migration backup/temporary name is already occupied")
+            if (layout / "@genesi-home").exists() and "homeBackup" not in exchange:
+                raise MigrationError("An unrelated @genesi-home already exists")
     require_free_space(BASE, MIN_PREP_FREE, "Preparation and conversion reserve")
     shutil.copyfile(iso_path, task / "genesi.iso")
     if digest(task / "genesi.iso") != checksum:
@@ -673,12 +699,142 @@ def apply_desktop_home(prepared, home, state, task):
             marker.unlink()
 
 
+def ready_marker(state):
+    return "var/lib/genesi-migrate/boot-ready-" + PurePosixPath(state["task"]).name
+
+
+def filesystem_path(path):
+    info = json.loads(run("findmnt", "--json", "-T", path, "-o", "FSROOT,TARGET"))["filesystems"][0]
+    relative = PurePosixPath(path).relative_to(info["target"])
+    result = str(PurePosixPath(info["fsroot"]) / relative)
+    if not re.fullmatch(r"/[A-Za-z0-9_./@-]*", result) or ".." in PurePosixPath(result).parts:
+        raise MigrationError("Unsupported filesystem-relative source path")
+    return result.rstrip("/")
+
+
+def subvolume_id(path):
+    value = run("btrfs", "inspect-internal", "rootid", path)
+    if not value.isdecimal() or int(value) < 256:
+        raise MigrationError("Source is not a supported Btrfs subvolume")
+    return int(value)
+
+
+def validate_exchange(state):
+    exchange = state.get("exchange")
+    if exchange is None:
+        return
+    suffix = PurePosixPath(state["task"]).name
+    if state.get("originalFs") != "btrfs" or state.get("sourcePrefix") != "/@" or not isinstance(exchange, dict):
+        raise MigrationError("Invalid Btrfs exchange state")
+    names = {"rootBackup": "@genesi-previous-", "rootNext": "@genesi-next-root-", "homeNext": "@genesi-next-home-"}
+    if "homeBackup" in exchange:
+        names["homeBackup"] = "@genesi-previous-home-"
+        if state.get("homePrefix") != "/@genesi-home":
+            raise MigrationError("Unexpected source home exchange")
+    if any(exchange.get(key) != prefix + suffix for key, prefix in names.items()):
+        raise MigrationError("Unsafe Btrfs exchange path")
+    for key in ("rootId", "homeId", "homeSourceId", "targetRootId", "targetHomeId"):
+        if key in exchange and (type(exchange[key]) is not int or exchange[key] < 256):
+            raise MigrationError("Invalid Btrfs subvolume ID")
+    identities = [exchange[key] for key in ("rootId", "homeId", "targetRootId", "targetHomeId") if key in exchange]
+    if len(identities) != len(set(identities)):
+        raise MigrationError("Btrfs exchange subvolumes must have distinct IDs")
+    if "rootId" not in exchange or ("homeBackup" in exchange and "homeId" not in exchange):
+        raise MigrationError("Missing original Btrfs subvolume identity")
+
+
+def source_home(state):
+    prefix = state.get("homePrefix", state["sourcePrefix"] + "/home")
+    exchange = state.get("exchange")
+    if exchange:
+        if "homeBackup" in exchange and (TOP / exchange["homeBackup"]).exists():
+            home = TOP / exchange["homeBackup"]
+            if home.is_symlink() or subvolume_id(home) != exchange["homeId"]:
+                raise MigrationError("Preserved home subvolume identity changed")
+            return home
+        if prefix.startswith(state["sourcePrefix"] + "/"):
+            prefix = source_prefix(state) + prefix[len(state["sourcePrefix"]):]
+    path = TOP / prefix.lstrip("/")
+    if not path.is_dir() or path.is_symlink() or not path.resolve().is_relative_to(TOP.resolve()):
+        raise MigrationError("Preserved home is missing or escapes the source filesystem")
+    if exchange and "homeSourceId" in exchange and subvolume_id(path) != exchange["homeSourceId"]:
+        raise MigrationError("Original home subvolume identity changed")
+    return path
+
+
+def source_prefix(state):
+    exchange = state.get("exchange")
+    if not exchange:
+        return state["sourcePrefix"]
+    backup = TOP / exchange["rootBackup"]
+    source = backup if backup.exists() else TOP / "@"
+    if source.is_symlink() or subvolume_id(source) != exchange["rootId"]:
+        raise MigrationError("Original Btrfs root subvolume identity changed")
+    return "/" + source.name
+
+
+def exchange_subvolumes(state):
+    """Resumable source-preserving renames, with IDs persisted before exchange."""
+    validate_exchange(state)
+    source_prefix(state)
+    source_home(state)
+    exchange = state["exchange"]
+
+    def task_path():
+        return TOP / source_prefix(state).lstrip("/") / state["task"].lstrip("/")
+
+    # Reject existing destinations before creating or renaming anything.
+    if "homeBackup" not in exchange and (TOP / "@genesi-home").exists() and "targetHomeId" not in exchange:
+        raise MigrationError("An unrelated @genesi-home already exists")
+    for key, name in (("Root", "rootNext"), ("Home", "homeNext")):
+        temporary = TOP / exchange[name]
+        destination = TOP / ("@" if key == "Root" else "@genesi-home")
+        identity = "target" + key + "Id"
+        if identity not in exchange:
+            if temporary.exists():
+                raise MigrationError("Unrecorded migration subvolume exists; keep staging for recovery")
+            run("btrfs", "subvolume", "create", temporary)
+            exchange[identity] = subvolume_id(temporary)
+            save(task_path() / "state.json", state)
+        elif temporary.exists():
+            if temporary.is_symlink() or subvolume_id(temporary) != exchange[identity]:
+                raise MigrationError("Migration temporary subvolume identity changed")
+        elif not destination.exists() or destination.is_symlink() or subvolume_id(destination) != exchange[identity]:
+            raise MigrationError("Migration target subvolume is missing or changed")
+    state["phase"] = "converted"
+    save(task_path() / "state.json", state)
+    # The rescue loader knows both paths, including the power-loss interval
+    # after the old @ was moved but before its replacement is published.
+    if not (TOP / exchange["rootBackup"]).exists():
+        source_prefix(state)
+        os.rename(TOP / "@", TOP / exchange["rootBackup"])
+        os.sync()
+    if "homeBackup" in exchange and not (TOP / exchange["homeBackup"]).exists():
+        old_home = TOP / "@genesi-home"
+        if old_home.is_symlink() or subvolume_id(old_home) != exchange["homeId"]:
+            raise MigrationError("Original home subvolume identity changed")
+        os.rename(old_home, TOP / exchange["homeBackup"])
+        os.sync()
+    for name, destination in (("rootNext", "@"), ("homeNext", "@genesi-home")):
+        temporary = TOP / exchange[name]
+        if temporary.exists():
+            if (TOP / destination).exists():
+                raise MigrationError("Refusing to replace an occupied Btrfs destination")
+            os.rename(temporary, TOP / destination)
+            os.sync()
+    return task_path()
+
+
 def recovery_config(state):
     prefix = state["sourcePrefix"]
     task = prefix + state["task"]
     root_id = state["rootUuid"]
     if not re.fullmatch(r"[a-zA-Z0-9-]+", root_id) or not re.fullmatch(r"[/a-zA-Z0-9_.@-]+", task):
         raise MigrationError("Unsafe GRUB path")
+    task_selector = "set genesi_task=" + task + "\n"
+    if state.get("exchange"):
+        fallback = "/" + state["exchange"]["rootBackup"] + state["task"]
+        task_selector += "if [ -f ($root)%s/migrate-vmlinuz ]; then\n  set genesi_task=%s\nfi\n" % (fallback, fallback)
     return """set timeout=8
 insmod all_video
 set gfxmode=1024x768,auto
@@ -688,18 +844,18 @@ set gfxpayload=keep
 insmod btrfs
 insmod ext2
 search --no-floppy --fs-uuid --set=root %s
-if [ -f ($root)/@/var/lib/genesi-migrate/boot-ready ]; then
+if [ -f ($root)/@/%s ]; then
   configfile ($root)/@/boot/grub/grub.cfg
 fi
 menuentry 'Continue Genesi migration / recovery' {
   search --no-floppy --fs-uuid --set=root %s
-  linux ($root)%s/migrate-vmlinuz root=UUID=%s rw rootflags=subvol=@ fsck.mode=skip genesi.migrate=UUID=%s:%s
-  initrd ($root)%s/migrate-initramfs.img
+%s  linux ($root)$genesi_task/migrate-vmlinuz root=UUID=%s rw rootflags=subvol=@ fsck.mode=skip genesi.migrate=UUID=%s:$genesi_task
+  initrd ($root)$genesi_task/migrate-initramfs.img
 }
-menuentry 'Original boot menu (before conversion only)' {
+menuentry 'Original boot menu (before migration only)' {
   configfile ($root)%s/boot/grub/grub.cfg
 }
-""" % (root_id, root_id, task, root_id, root_id, task, task, prefix)
+""" % (root_id, ready_marker(state), root_id, task_selector, root_id, root_id, prefix)
 
 
 def maintenance_hooks():
@@ -931,8 +1087,12 @@ def boot_offline(locator):
         if not source_task.resolve().is_relative_to(TOP.resolve()):
             raise MigrationError("Migration state escapes the source root")
         state = json.loads((source_task / "state.json").read_text())
+        validate_exchange(state)
+        locations = [state.get("sourcePrefix", "") + state.get("task", "")]
+        if state.get("exchange"):
+            locations.append("/" + state["exchange"]["rootBackup"] + state["task"])
         if (state.get("rootUuid") != root_uuid
-                or state.get("sourcePrefix", "") + state.get("task", "") != location):
+                or location not in locations):
             raise MigrationError("Migration boot locator differs from verified state")
         ram = RAM_STATE
         ram.mkdir(mode=0o700, exist_ok=True)
@@ -951,6 +1111,10 @@ def offline(task_path):
         raise MigrationError("Invalid source subvolume path")
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", state.get("user", {}).get("name", "")):
         raise MigrationError("Invalid preserved account")
+    validate_exchange(state)
+    home_prefix = state.get("homePrefix", state["sourcePrefix"] + "/home")
+    if not re.fullmatch(r"/[A-Za-z0-9_./@-]+", home_prefix) or ".." in PurePosixPath(home_prefix).parts:
+        raise MigrationError("Invalid preserved home path")
     _, root, _ = identify(state, inventory())
     assert_offline(root)
     if state["phase"] not in ("armed", "converted"):
@@ -958,9 +1122,14 @@ def offline(task_path):
     device = root["path"]
     readonly_options = "ro,rescue=nologreplay,subvolid=5" if root.get("fstype") == "btrfs" else "ro,noload"
     with mounted(device, TOP, "-o", readonly_options):
-        if (TOP / "@/var/lib/genesi-migrate/boot-ready").exists():
+        legacy_marker = TOP / "@/var/lib/genesi-migrate/boot-ready"
+        completed = (TOP / "@" / ready_marker(state)).exists()
+        if legacy_marker.is_file():
+            completed = completed or not state.get("exchange") or json.loads(legacy_marker.read_text()).get("task") == state["task"]
+        if completed:
             raise MigrationError("Genesi was already configured; choose its normal boot entry. Home will not be overwritten")
-        source_task = TOP / state["sourcePrefix"].lstrip("/") / state["task"].lstrip("/")
+        source_task = TOP / source_prefix(state).lstrip("/") / state["task"].lstrip("/")
+        source_home(state)
         target_valid(source_task / "target-root")
         if root_hash(source_task / "target-root") != state["rootHash"]:
             raise MigrationError("Prepared artifact failed verification before conversion")
@@ -975,12 +1144,15 @@ def offline(task_path):
         raise MigrationError("Source filesystem is neither clean ext4 nor Btrfs")
     run("btrfs", "check", "--readonly", device)
     with mounted(device, TOP, "-t", "btrfs", "-o", "subvolid=5"):
-        task = TOP / state["sourcePrefix"].lstrip("/") / state["task"].lstrip("/")
+        task = TOP / source_prefix(state).lstrip("/") / state["task"].lstrip("/")
         prepared = task / "target-root"
         target_valid(prepared)
         if root_hash(prepared) != state["rootHash"]:
             raise MigrationError("Prepared root changed; refusing to switch")
-        if state["phase"] == "armed":
+        if state.get("exchange"):
+            task = exchange_subvolumes(state)
+            prepared = task / "target-root"
+        elif state["phase"] == "armed":
             if (TOP / "@").exists() or (TOP / "@genesi-home").exists():
                 raise MigrationError("Reserved Genesi subvolumes already exist")
             state["phase"] = "converted"
@@ -990,8 +1162,7 @@ def offline(task_path):
         if not (TOP / "@genesi-home").exists():
             run("btrfs", "subvolume", "create", TOP / "@genesi-home")
         run("rsync", "-aHAX", "--numeric-ids", "--one-file-system", str(prepared) + "/", str(TOP / "@") + "/", reserve_at=TOP)
-        source_home = TOP / state["sourcePrefix"].lstrip("/") / "home"
-        run("cp", "-a", "--reflink=always", str(source_home) + "/.", TOP / "@genesi-home", reserve_at=TOP)
+        run("cp", "-a", "--reflink=always", str(source_home(state)) + "/.", TOP / "@genesi-home", reserve_at=TOP)
         new_home = TOP / "@genesi-home" / state["user"]["name"]
         new_home.mkdir(exist_ok=True)
         apply_desktop_home(prepared, new_home, state, task)
@@ -1043,7 +1214,8 @@ def configure(state, task, device):
     marker = TARGET / "var/lib/genesi-migrate/boot-ready"
     marker.parent.mkdir(parents=True, exist_ok=True)
     os.sync()
-    save(marker, {"phase": "boot-ready", "schema": "native-v1"})
+    save(marker, {"phase": "boot-ready", "schema": "native-v1", "task": state["task"]})
+    save(TARGET / ready_marker(state), {"phase": "boot-ready", "task": state["task"]})
 
 
 def staging_initramfs(root):

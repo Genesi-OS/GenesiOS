@@ -12,6 +12,7 @@ import tempfile
 from unittest.mock import patch
 from unittest.mock import Mock
 import subprocess
+import shutil
 
 APP = Path(__file__).resolve().parents[1] / "genesi-migrate/app"
 sys.path.insert(0, str(APP))
@@ -98,12 +99,66 @@ class Preflight(unittest.TestCase):
         for key, value in [("rootFs", "xfs"), ("rootPartType", "lvm"),
                            ("luks", True), ("firmware", "bios"),
                            ("rootUuid", "../../sda"), ("homeSeparate", True),
-                           ("secureBoot", True), ("rootOptions", "rw,subvol=/@")]:
+                           ("secureBoot", True)]:
             with self.subTest(key=key):
                 changed = copy.deepcopy(self.manifest)
                 changed["machine"][key] = value
                 with self.assertRaises(native.MigrationError):
                     native.validate_machine(changed["machine"], self.devices)
+
+    def test_existing_btrfs_at_root_and_same_volume_home_are_supported(self):
+        machine = dict(self.manifest["machine"], rootFs="btrfs", rootOptions="rw,subvol=/@",
+                       homeSeparate=True, homeFs="btrfs", homeUuid="abcd-1234")
+        devices = copy.deepcopy(self.devices)
+        devices[0]["children"][1]["fstype"] = "btrfs"
+        self.assertEqual(native.validate_machine(machine, devices)["originalFs"], "btrfs")
+        machine["homeUuid"] = "another-volume"
+        with self.assertRaises(native.MigrationError):
+            native.validate_machine(machine, devices)
+
+    def test_recovery_loader_uses_task_marker_and_both_source_locations(self):
+        state = {"rootUuid": "disk", "task": "/var/lib/genesi-migrate-native/test", "sourcePrefix": "/@",
+                 "exchange": {"rootBackup": "@genesi-previous-test"}}
+        text = native.recovery_config(state)
+        self.assertIn("/@/var/lib/genesi-migrate/boot-ready-test", text)
+        self.assertIn("/@genesi-previous-test/var/lib/genesi-migrate-native/test/migrate-vmlinuz", text)
+        self.assertIn("genesi.migrate=UUID=disk:$genesi_task", text)
+        if sys.platform == "linux" and shutil.which("grub-script-check"):
+            subprocess.run(["grub-script-check"], input=text, text=True, capture_output=True, check=True)
+
+    def test_filesystem_path_handles_home_subvolume_and_root_directory(self):
+        for fsroot, target, expected in (("/@", "/", "/@/home"), ("/@home", "/home", "/@home")):
+            with patch.object(native, "run", return_value=json.dumps({"filesystems": [{"fsroot": fsroot, "target": target}]})):
+                self.assertEqual(native.filesystem_path("/home"), expected)
+
+    def test_exchange_state_rejects_path_injection_and_reused_ids(self):
+        state = {"task": "/var/lib/genesi-migrate-native/test", "sourcePrefix": "/@", "originalFs": "btrfs",
+                 "exchange": {"rootId": 256, "rootBackup": "@genesi-previous-test",
+                              "rootNext": "@genesi-next-root-test", "homeNext": "@genesi-next-home-test"}}
+        native.validate_exchange(state)
+        for key, value in (("rootBackup", "../../outside"), ("rootId", True), ("targetRootId", 256)):
+            changed = copy.deepcopy(state)
+            changed["exchange"][key] = value
+            with self.assertRaises(native.MigrationError):
+                native.validate_exchange(changed)
+
+    def test_boot_locator_can_resume_from_renamed_original_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            top, ram = Path(directory) / "top", Path(directory) / "ram"
+            state = {"rootUuid": "source", "task": "/var/lib/genesi-migrate-native/test",
+                     "sourcePrefix": "/@", "originalFs": "btrfs",
+                     "exchange": {"rootId": 256, "rootBackup": "@genesi-previous-test",
+                                  "rootNext": "@genesi-next-root-test", "homeNext": "@genesi-next-home-test"}}
+            location = "/@genesi-previous-test" + state["task"]
+            native.save(top / location.lstrip("/") / "state.json", state)
+            with patch.multiple(native, TOP=top, RAM_STATE=ram), patch.object(native, "assert_maintenance"), \
+                 patch.object(native, "assert_offline"), \
+                 patch.object(native, "inventory", return_value=[{"type": "part", "fstype": "btrfs", "uuid": "source", "path": "/dev/fake"}]), \
+                 patch.object(native, "mounted", side_effect=lambda *a: contextlib.nullcontext(top)), \
+                 patch.object(native, "offline") as offline:
+                native.boot_offline("UUID=source:" + location)
+            offline.assert_called_once_with(ram)
+            self.assertEqual(json.loads((ram / "state.json").read_text())["sourcePrefix"], "/@")
 
     def test_rescue_has_both_filesystems_and_explicit_recovery(self):
         state = native.validate_machine(self.manifest["machine"], self.devices)

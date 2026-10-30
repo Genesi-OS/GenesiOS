@@ -580,11 +580,14 @@ class Scanner:
             for n in nodes:
                 here = chain + [n]
                 mp = n.get("mountpoint")
-                if mp == "/":
+                device_path = n.get("path") or "/dev/" + n.get("name", "")
+                # lsblk's singular MOUNTPOINT may show only /home when root
+                # and home are different Btrfs subvolumes on this partition.
+                if mp == "/" or device_path == root_m.get("source"):
                     root_disk = here[0].get("name")
                     if any(x.get("type") == "crypt" or x.get("fstype") == "crypto_LUKS" for x in here):
                         luks = True
-                if mp and mp == home_target:
+                if (mp and mp == home_target) or device_path == home_m.get("source"):
                     home_disk = here[0].get("name")
                 # Windows = its boot manager on an ESP we can see, or a volume
                 # labelled like it. A bare NTFS partition is usually just data.
@@ -681,7 +684,7 @@ class Scanner:
             for prt in d["partitions"]:
                 all_parts[prt["device"]] = dict(prt, disk=d["device"])
         root_part = all_parts.get(root_m.get("source", ""), {})
-        home_part = all_parts.get(home_m.get("source", ""), {}) if home_m.get("source") != root_m.get("source") else {}
+        home_part = all_parts.get(home_m.get("source", ""), {})
         esp = {}
         sys_disk = next((d for d in disks if d["system"]), None)
         if sys_disk:
@@ -709,8 +712,7 @@ class Scanner:
             "rootDevice": root_m.get("source", ""),
             "homeFs": home_m.get("fstype", ""),
             "homeDevice": home_m.get("source", ""),
-            "homeSeparate": bool(home_m) and home_m.get("target") not in ("/", None)
-                            and home_m.get("source") != root_m.get("source"),
+            "homeSeparate": bool(home_m) and home_m.get("target") not in ("/", None),
             "homeFree": home_free,
             "rootUuid": root_part.get("uuid", ""),
             "rootPartType": root_part.get("type", ""),

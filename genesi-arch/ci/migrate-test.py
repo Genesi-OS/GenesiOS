@@ -386,10 +386,32 @@ def ui_case():
     del engine
 
 
+def btrfs_subvolume_case():
+    print("btrfs subvolumes")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = os.path.join(tmp, "root")
+        write(root, "/proc/self/mounts", "/dev/sda3 / btrfs rw,subvol=/@ 0 0\n/dev/sda3 /home btrfs rw,subvol=/@home 0 0\n")
+        devices = [{"name": "sda", "path": "/dev/sda", "type": "disk", "size": 100000000000,
+                    "serial": "test", "children": [
+                        {"name": "sda2", "path": "/dev/sda2", "type": "part", "fstype": "vfat",
+                         "uuid": "esp", "mountpoint": "/boot/efi", "parttype": scanner.ESP_GUID},
+                        {"name": "sda3", "path": "/dev/sda3", "type": "part", "fstype": "btrfs",
+                         "uuid": "root", "partuuid": "partition", "mountpoint": "/home"}]}]
+        runner = make_runner({"lsblk": lambda c: (0, json.dumps({"blockdevices": devices}))})
+        s = scanner.Scanner(root=root, home="/home/mint", runner=runner, which=which_from(set()),
+                            env={"HOME": "/home/mint", "USER": "mint"})
+        machine = s.machine()
+        check(machine["rootUuid"] == "root" and machine["homeUuid"] == "root", "same-volume Btrfs root/home identities")
+        check(machine["homeSeparate"], "Btrfs home mount is detected even on the same partition")
+        check(machine["espUuid"] == "esp", "ESP is found when lsblk shows /home instead of /")
+        check(any(d["system"] for d in machine["disks"]), "Btrfs source disk is marked as system disk")
+
+
 if __name__ == "__main__":
     ubuntu_case()
     fedora_case()
     arch_case()
+    btrfs_subvolume_case()
     ui_case()
     if FAILS:
         print("\n%d failure(s)" % len(FAILS))

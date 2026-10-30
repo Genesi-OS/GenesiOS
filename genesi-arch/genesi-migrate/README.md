@@ -29,7 +29,9 @@ validate it in a disposable Mint VM before using it on real data.
 5. Identify the disk by serial/WWN, size, PARTUUID and filesystem UUID. Require
    an unmounted source and verify the prepared tree again before conversion.
 6. Check ext4 read-only, then run btrfs-convert --uuid copy. Supported existing
-   Btrfs roots skip conversion. Create Genesi's @ and @genesi-home, copy the
+   Btrfs roots skip conversion. An existing root @ is moved to a unique
+   @genesi-previous-<task> name during offline maintenance, without deleting it.
+   Create Genesi's @ and @genesi-home, copy the
    prepared system and reflink the entire original home with ownership intact.
 7. Generate fstab/initramfs and validate GRUB before publishing boot-ready.
    mkinitcpio mounts the new root and switches directly into Genesi during
@@ -75,17 +77,25 @@ See [btrfs-convert documentation](https://btrfs.readthedocs.io/en/latest/btrfs-c
 
 - Installed x86_64 Linux, UEFI, Secure Boot disabled.
 - Plain ext4/Btrfs root with stable disk identity and PARTUUID.
-- Home, var and boot on that root; an existing FAT ESP on the same disk.
+- Home, var and boot on that filesystem; an existing FAT ESP on the same disk.
+  Btrfs /home subvolumes on the same filesystem (including @home and an
+  existing @genesi-home) are supported. Separate /var or /boot mounts and
+  /home on another filesystem remain unsupported.
 - At least 2 GB installed RAM and 32 GiB free before privileged preparation.
   32 GiB means 34.36 decimal GB; a disk utility displaying 34 GB may be below
   this threshold. Space errors report required, available and missing bytes in
   both units. Pending downloads/backups on the same filesystem are budgeted
   before downloading, so they do not consume the preparation reserve.
   After building the target, its second tree plus 8 GiB reserve must still fit.
-- Existing Btrfs roots named @ are blocked pending subvolume-exchange support.
-  Mint's normal ext4 installation is the first test target.
+- Existing Btrfs roots named @ use a source-preserving exchange. Original root
+  and home IDs are captured before reboot, new target IDs are persisted before
+  any rename, and retries validate IDs instead of overwriting occupied names.
+  The rescue loader can locate its kernel/state under the original or backup
+  root path after an interruption. Boot-ready checks are task-specific, so a
+  previous Genesi installation cannot bypass a new migration.
+  Mint's normal ext4 installation remains a supported test target.
 
-BIOS, LUKS/LVM, separate home/boot/var, other filesystem types and ambiguous
+BIOS, LUKS/LVM, home on another filesystem, separate boot/var mounts, other filesystem types and ambiguous
 identities are refused before arming boot. They never silently fall back to
 formatting. Alongside and another-disk choices remain separate legacy flows.
 
@@ -115,6 +125,17 @@ data cleanup is performed.
 
 Preparation logs: /var/lib/genesi-migrate-native/<task>/prepare.log.
 Offline errors appear in the maintenance terminal. Keep staging for diagnosis.
+
+For an existing @, interrupted renames can be resumed using persisted IDs.
+If a temporary subvolume was created but its ID could not be durably recorded,
+the worker stops for manual diagnosis instead of guessing ownership. Original
+subvolumes and backups are never deleted automatically. This is not dual boot:
+preserving the old tree does not guarantee its original boot entry still works.
+
+The real Btrfs exchange/copy tests use fresh regular-file disks only:
+`sudo unshare --mount --propagation private python3 genesi-arch/ci/migrate-btrfs-test.py`.
+They cover existing @ roots, both home layouts, interrupted rename recovery,
+source identity guards, destination collisions and exact document preservation.
 
 ## Mint VM Test
 
