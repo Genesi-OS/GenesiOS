@@ -1,8 +1,12 @@
 # Maintainer: Genesi OS Team
+#
+# pkgrel 7: Restart and Shut down entries at the end of the boot menu
+# (/etc/grub.d/45_genesi_power, theme icons). GENESI_GRUB_POWER_ENTRIES=false
+# in /etc/default/grub hides them. The pacman hook regenerates the menu.
 
 pkgname=genesi-grub-theme
 pkgver=2.0.0
-pkgrel=6
+pkgrel=7
 pkgdesc="Elegant GRUB theme branded for Genesi OS"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"
@@ -24,6 +28,8 @@ package() {
     "${pkgdir}/usr/bin/genesi-grub-update"
   install -Dm644 "${startdir}/95-genesi-grub.hook" \
     "${pkgdir}/usr/share/libalpm/hooks/95-genesi-grub.hook"
+  install -Dm755 "${startdir}/45_genesi_power" \
+    "${pkgdir}/etc/grub.d/45_genesi_power"
   install -Dm644 "${startdir}/LICENSE.elegant" \
     "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm644 "${startdir}/NOTICE" \
