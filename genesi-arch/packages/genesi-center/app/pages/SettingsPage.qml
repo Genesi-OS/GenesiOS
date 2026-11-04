@@ -110,9 +110,16 @@ Item {
             width: parent.width
             spacing: 10
 
-            SectionHead { index: "—"; text: qsTr("Colours") }
+            // Following the desktop's scheme means caelestia's. On Plasma there
+            // is none to follow, and a switch that can only ever be greyed out
+            // with an apology is not a setting.
+            SectionHead {
+                index: "—"; text: qsTr("Colours")
+                visible: page.caps.caelestia !== false
+            }
 
             Panel {
+                visible: page.caps.caelestia !== false
                 width: parent.width
                 height: paletteCol.implicitHeight + 8
 

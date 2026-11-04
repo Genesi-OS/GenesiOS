@@ -13,3 +13,7 @@ Categories=Settings;DesktopSettings;Qt;
 Keywords=theme;wallpaper;rice;lockscreen;bar;fastfetch;store;tema;papel de parede;loja;
 StartupNotify=true
 StartupWMClass=org.genesi.store
+# Hyprland + caelestia only: what these apps change (the bar, lock screens,
+# desktop widgets) lives in caelestia, so on KDE/GNOME they opened with
+# little that did anything. caelestia launches them from its own menus.
+OnlyShowIn=Hyprland;

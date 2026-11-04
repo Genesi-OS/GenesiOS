@@ -98,7 +98,7 @@ Window {
         {
             index: "02", title: qsTr("Devices"), items: [
                 { id: "displays", keywords: "monitor screen resolution hz refresh scale rotate", label: qsTr("Displays"), tag: "luz", needs: "hyprland" },
-                { id: "input", keywords: "keyboard mouse pointer touchpad layout repeat sensitivity",    label: qsTr("Input"),    tag: "toque" },
+                { id: "input", keywords: "keyboard mouse pointer touchpad layout repeat sensitivity",    label: qsTr("Input"),    tag: "toque", needs: "hyprland" },
                 { id: "audio", keywords: "sound volume speaker microphone mic output input mute",    label: qsTr("Audio"),    tag: "eco" }
             ]
         },
@@ -687,6 +687,7 @@ Window {
                 anchors.fill: parent
                 anchors.topMargin: 8
                 backend: win.backend
+                caps: win.caps
                 visible: win.section === "settings"
             }
         }

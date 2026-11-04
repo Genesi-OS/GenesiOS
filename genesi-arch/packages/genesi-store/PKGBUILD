@@ -239,7 +239,12 @@ pkgver=0.1.0
 # 21: the AI island's picture redrawn in the theme's colours, as it now is.
 # pkgrel 22: the AI island's shelf entry says what it does now -- on any
 # desktop, ask right on it, help with what you copied -- with a new picture.
-pkgrel=22
+# pkgrel 23: the launcher shows only on Hyprland (OnlyShowIn): what the store
+# changes lives in caelestia, so on KDE it opened with little that applied.
+# Also restores the Genesi login screen theme on installs where the
+# installer had copied the live ISO's older one over it (no QtVersion=6:
+# black screen on logout once picked); pacman puts the package's files back.
+pkgrel=23
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

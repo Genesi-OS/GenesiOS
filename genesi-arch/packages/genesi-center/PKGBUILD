@@ -192,7 +192,11 @@ pkgver=0.1.0
 # reads and writes through genesi-wallpaper (genesi-caelestia-shell 58).
 # pkgrel 41: the Local AI page offers the new providers too -- Hugging Face,
 # Cerebras, DeepSeek, Mistral, xAI and NVIDIA NIM (genesi-ai-mode 209).
-pkgrel=41
+# pkgrel 42: on KDE the Hub shows only what works there. Input (Hyprland's
+# input:* options via hyprctl) now declares needs: hyprland like Displays,
+# and Settings hides "follow the desktop's colour scheme" without caelestia
+# instead of showing it greyed out. Hyprland is unchanged.
+pkgrel=42
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

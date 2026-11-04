@@ -125,6 +125,11 @@ jobs:
         # kdeglobals, so another scheme came back half-Genesi after updates.
         run: bash genesi-arch/ci/settings-upgrade-scheme-test.sh
 
+      - name: The installer does not copy the live ISO over package files
+        # copy_genesi runs after the packages install and copied the live
+        # ISO's old SDDM theme over genesi-store's: black screen on logout.
+        run: python genesi-arch/ci/installer-copy-overlap-test.py
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh
