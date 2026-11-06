@@ -543,10 +543,11 @@ class AIOptimizer:
           balanced — fast CPU/mem (governor perf + mem knobs + pause hogs),
                      leaves power/thermal envelope and GPU power untouched
           battery  — lightest: pause hogs + mem knobs only, governor left as-is
-          auto     — max while crunching, balanced when only resident-idle
-                     (releases GPU clock/power locks), battery on battery
+          auto     — max while crunching; when the model is only resident-idle,
+                     the light profile (governor back to the system's), battery
+                     on battery
         An explicit user profile always wins. `activity` ('active'|'warm') only
-        steers the auto path on AC: a loaded-but-idle model eases to balanced.
+        steers the auto path on AC.
         """
         p = self.read_profile()
         if p in ("max", "balanced", "battery"):
@@ -557,6 +558,14 @@ class AIOptimizer:
         # model is merely resident-and-idle so we don't cook the GPU at idle.
         if activity == "warm" and not forced:
             return "balanced"
+        # A model that has sat unused past the idle timeout. Turbo's
+        # llama-server keeps its model until it is stopped, so a model can stay
+        # resident all day, and balanced pins the governor to performance: a
+        # laptop sat at 90 C browsing and watching video hours after its last
+        # chat (user report). The light profile hands the governor back; the
+        # next generation is "active" again and gets max within a poll.
+        if activity == "resident" and not forced:
+            return "battery"
         return "max"
 
     # ── CPU governor ─────────────────────────────────────────────────────────
@@ -1719,8 +1728,10 @@ class AIOptimizer:
                 # short hold after; ease to 'balanced' once the model is merely
                 # resident-idle (releases GPU clock/power locks, keeps governor
                 # responsive). An explicit user profile / force overrides this.
-                tier = ("active" if (now - self._last_crunch_ts) < WARM_DEMOTE_SECONDS
-                        else "warm")
+                since_crunch = now - self._last_crunch_ts
+                tier = ("active" if since_crunch < WARM_DEMOTE_SECONDS
+                        else "warm" if since_crunch < self._idle_timeout()
+                        else "resident")
                 desired = self._effective_profile(force == "on", activity=tier)
 
                 if want and not self.ai_mode_active:

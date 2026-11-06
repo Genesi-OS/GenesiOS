@@ -1729,7 +1729,14 @@ pkgver=1.0.0
 # page was pt-BR only while every other page followed the language switch
 # (now root.tr(en, pt) like the Image page); the CUDA offer notification
 # and Turbo's CLI output were pt-BR for everyone. ci/stray-portuguese-test.py.
-pkgrel=214
+# pkgrel 215: a model left loaded no longer pins the CPU governor all day.
+# Turbo keeps its model until stopped, and a resident model kept AI Mode on
+# the balanced profile (governor: performance) indefinitely: a laptop sat
+# at 90 C browsing hours after its last chat (user report). Past the idle
+# timeout (ai_idle_timeout, 90 s) it now uses the light profile, which hands
+# the governor back; the next generation gets max within a poll. Between
+# chat turns nothing changes.
+pkgrel=215
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

@@ -327,6 +327,31 @@ check("prioritize_ai_processes no longer uses process-level proc.nice()",
       "proc.nice(" not in re.sub(r"#.*", "", body))
 
 
+# ── a model left loaded does not pin the governor all day ───────────────────
+# Turbo keeps its model until stopped, so "a model is resident" can last
+# hours. That mapped to balanced (governor: performance), and a laptop sat at
+# 90 C browsing long after its last chat. Past the idle timeout it is the
+# light profile, which hands the governor back.
+print("\n== resident model ==")
+import types  # noqa: E402
+
+cls = next(v for v in vars(aid).values()
+           if isinstance(v, type) and hasattr(v, "_effective_profile"))
+profile_of = lambda *a, **k: cls._effective_profile(  # noqa: E731
+    types.SimpleNamespace(read_profile=lambda: k.get("user"),
+                          hw=types.SimpleNamespace(on_battery=lambda: k.get("battery", False))),
+    k.get("forced", False), a[0])
+eq("generating: max", profile_of("active"), "max")
+eq("between chat turns: balanced, as before", profile_of("warm"), "balanced")
+eq("resident past the idle timeout: governor handed back", profile_of("resident"), "battery")
+eq("forced ON stays max", profile_of("resident", forced=True), "max")
+eq("a profile the user picked still wins", profile_of("resident", user="max"), "max")
+loop = src_aid[src_aid.index("since_crunch = now - self._last_crunch_ts"):]
+loop = loop[:loop.index("desired =")]
+check("the loop reaches 'resident' after the idle timeout",
+      "_idle_timeout()" in loop and '"resident"' in loop)
+
+
 # ── the autotuner ───────────────────────────────────────────────────────────
 print("\n== autotuner ==")
 
