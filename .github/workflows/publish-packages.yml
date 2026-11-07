@@ -603,7 +603,11 @@ jobs:
             # builder process being killed by SIGUSR1 (exit 138).
             echo "--- diag for $pkg ---"
             id builder || true
-            ls -la "$pkg" | head -10
+            # `|| true`: under pipefail, head closing the pipe early kills ls
+            # with SIGPIPE whenever the package has more than 10 files, and
+            # this diagnostic line failed the whole build (run #608, exit 141,
+            # on genesi-caelestia-shell). It only prints; nothing reads it.
+            ls -la "$pkg" | head -10 || true
             runuser -u builder -- bash -c "id; which makepkg; makepkg --version | head -1" || true
             # If sudo from inside builder is broken (PAM in minimal container),
             # makepkg -s will be killed by SIGUSR1 the moment it tries to call
