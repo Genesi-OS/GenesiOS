@@ -805,11 +805,19 @@ Window {
                 out.append(t)
         return out
 
+    def player_missing(t):
+        # The ONE warning the page is built to survive: the player's own
+        # import failing where QtMultimedia is not installed (the CI runner
+        # has PySide6-Essentials only). Anything else from VideoPlayer.qml,
+        # and everything from VideoPage.qml, still counts.
+        return ("VideoPlayer.qml" in t and "QtMultimedia" in t and "not installed" in t) \
+            or "BrokenPlayer" in t or "NoSuchModule" in t
+
     def errors(since):
         # QML's own warnings name the .qml file; font or multimedia chatter
         # from the platform does not, and is not this page's fault.
         return [t for m_, t in msgs[since:] if m_ in (QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg)
-                and ".qml" in t and "BrokenPlayer" not in t and "NoSuchModule" not in t]
+                and ".qml" in t and not player_missing(t)]
 
     for lang, want in (("en", "Install the engine"), ("pt", "Instale o motor")):
         n0 = len(msgs)
