@@ -166,6 +166,15 @@ class Backend(QObject):
     imagePromptEnhanced = Signal(str, str)  # improved prompt, error text
     imageEngineStatus = Signal(str)   # terminal | installing | ready | failed
     imageLoras = Signal(str)          # JSON array of imported LoRAs
+    # Video page (genesi-ai-video). The engine, its install and the LoRA
+    # store are the Image page's (imageEngineStatus, imageLoras).
+    videoInfo = Signal(str)           # JSON {tool, status, catalog}
+    videoGallery = Signal(str)        # JSON array of made clips, newest first
+    videoPullEvent = Signal(str)      # one JSON event of a model download
+    videoPullDone = Signal(bool, str, str)  # ok, model id, error text
+    videoEvent = Signal(str)          # one JSON event of a run
+    videoBusy = Signal(bool)          # a run is in flight
+    videoPromptEnhanced = Signal(str, str)  # improved prompt, error text
 
     def __init__(self):
         super().__init__()
@@ -3021,12 +3030,13 @@ class Backend(QObject):
                 self._image_json("gallery", "--limit", "60") or []))
         threading.Thread(target=work, daemon=True).start()
 
-    def _image_stream(self, args, on_event, attr):
+    def _image_stream(self, args, on_event, attr, tool=None):
         """Run the tool with --json, handing each event to on_event. Returns
-        the exit code; the Popen is kept in self.<attr> so Cancel can reach it."""
-        tool = self._image_tool()
+        the exit code; the Popen is kept in self.<attr> so Cancel can reach it.
+        `tool` is genesi-ai-image unless the Video page passes its own."""
+        tool = tool or self._image_tool()
         if not tool:
-            on_event({"event": "error", "text": "genesi-ai-image not found"})
+            on_event({"event": "error", "text": "the tool was not found"})
             return 127
         try:
             proc = subprocess.Popen(
@@ -3497,6 +3507,304 @@ class Backend(QObject):
             ok = bool(shutil.which("genesi-sd-cli"))
         self.imageEngineStatus.emit("ready" if ok else "failed")
         self.loadImageInfo()
+        self.loadVideoInfo()
+
+    # ── Video (genesi-ai-video) ─────────────────────────────────────────────
+    # The same shape as the Image page: genesi-ai-video owns the catalog, the
+    # downloads and the runs, and this relays its JSON lines. It runs on the
+    # Image page's engine and shares its LoRA store, so installing the engine
+    # and importing a LoRA go through the image slots above.
+    _VIDEO_ENHANCE_SYSTEM = (
+        "You write prompts for a text-to-video model. The user gives a short "
+        "idea in any language. Reply with ONE prompt in English, as one "
+        "flowing description of at most 80 words: the subject and what it "
+        "DOES (the motion, in order), the setting, the lighting, then the "
+        "camera (static, slow push-in, tracking, handheld...). Keep every "
+        "detail the user gave and invent nothing that contradicts it. No "
+        "preamble, no quotes, no lists -- only the prompt.")
+    _VIDEO_ANIMATE_SYSTEM = (
+        "You write prompts for an image-to-video model that animates a given "
+        "picture. The user says, in any language, what should happen. Reply "
+        "with ONE prompt in English of at most 60 words describing the "
+        "MOTION and the camera, not the picture's contents: what moves, how, "
+        "in what order, and how the camera moves. Keep the people as they "
+        "are. No preamble, no quotes -- only the prompt.")
+    _VIDEO_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/video.json")
+
+    @staticmethod
+    def _video_tool():
+        p = shutil.which("genesi-ai-video")
+        if p:
+            return [p]
+        here = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "genesi-ai-video")
+        return [sys.executable, here] if os.path.exists(here) else None
+
+    def _video_json(self, *args, timeout=30):
+        tool = self._video_tool()
+        if not tool:
+            return None
+        try:
+            r = subprocess.run(tool + list(args) + ["--json"], capture_output=True,
+                               timeout=timeout, encoding="utf-8", errors="replace")
+            lines = [l for l in (r.stdout or "").splitlines() if l.strip()]
+            return json.loads(lines[-1]) if lines else None
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+
+    @Slot(result=str)
+    def videoPrefs(self):
+        """Turbo, low memory and the last model, remembered across launches.
+        Low memory starts ON for cards under 12 GB: a clip that fails at the
+        end of ten minutes is worse than one that takes a little longer."""
+        try:
+            with open(self._VIDEO_CONFIG) as fh:
+                p = json.load(fh)
+        except (OSError, ValueError):
+            p = {}
+        return json.dumps({"turbo": p.get("turbo", True), "model": p.get("model", ""),
+                           "mode": p.get("mode", "text"),
+                           "lowMemory": p.get("lowMemory")})
+
+    @Slot(str)
+    def setVideoPrefs(self, prefs_json):
+        try:
+            with open(self._VIDEO_CONFIG) as fh:
+                prefs = json.load(fh)
+        except (OSError, ValueError):
+            prefs = {}
+        try:
+            prefs.update(json.loads(prefs_json or "{}"))
+            os.makedirs(os.path.dirname(self._VIDEO_CONFIG), exist_ok=True)
+            tmp = self._VIDEO_CONFIG + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(prefs, fh)
+            os.replace(tmp, self._VIDEO_CONFIG)
+        except (OSError, ValueError, TypeError):
+            pass
+
+    @Slot()
+    def loadVideoInfo(self):
+        def work():
+            if not self._video_tool():
+                self.videoInfo.emit(json.dumps({"tool": False}))
+                return
+            status = self._video_json("status") or {}
+            catalog = self._video_json("catalog") or []
+            self._video_output_dir = status.get("output_dir") or ""
+            self.videoInfo.emit(json.dumps(
+                {"tool": True, "status": status, "catalog": catalog}))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def loadVideoGallery(self):
+        def work():
+            self.videoGallery.emit(json.dumps(
+                self._video_json("gallery", "--limit", "60") or []))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _video_task(self, args, attr="_video_pull_proc", model_id=""):
+        def work():
+            state = {"error": ""}
+
+            def on_event(ev):
+                if ev.get("event") == "error":
+                    state["error"] = ev.get("text", "")
+                self.videoPullEvent.emit(json.dumps(ev))
+            rc = self._image_stream(args, on_event, attr, tool=self._video_tool())
+            self.videoPullDone.emit(rc == 0, model_id, state["error"])
+            self.loadVideoInfo()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def pullVideoModel(self, model_id, variant):
+        if getattr(self, "_video_pull_proc", None):
+            return
+        args = ["pull", model_id] + (["--variant", variant] if variant else [])
+        self._video_task(args, model_id=model_id)
+
+    @Slot()
+    def cancelVideoPull(self):
+        self._image_kill(getattr(self, "_video_pull_proc", None))
+
+    @Slot(str, str)
+    def removeVideoModel(self, model_id, variant):
+        args = ["remove", model_id] + (["--variant", variant] if variant else [])
+        self._video_task(args, attr="_video_rm_proc", model_id=model_id)
+
+    @Slot(result=str)
+    def videoLog(self):
+        """The last clip's full engine output -- what "Show details" opens."""
+        path = os.path.join(os.environ.get("XDG_CACHE_HOME")
+                            or os.path.expanduser("~/.cache"),
+                            "genesi-ai-video", "last-run.log")
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            return ""
+        lines = [l for l in re.split(r"[\r\n]+", text) if l.strip()]
+        return "\n".join(lines[-80:])
+
+    @Slot(str, result=str)
+    def prepareVideoInput(self, source):
+        """A video the user picked or dropped (to restyle or continue): kept
+        where it is -- only checked to exist and to look like a video."""
+        path = source or ""
+        if path.startswith("file:"):
+            path = QUrl(path).toLocalFile()
+        if not os.path.isfile(path):
+            return json.dumps({"error": "file not found"})
+        if not path.lower().endswith((".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".gif")):
+            return json.dumps({"error": "not a video Genesi can read"})
+        return json.dumps({"path": path, "name": os.path.basename(path)})
+
+    @Slot(str)
+    def generateVideo(self, opts_json):
+        """opts: {mode, model, variant, prompt, negative, image, endImage,
+        video, seconds, size, aspect, steps, seed, turbo, lowMemory,
+        lightVae, loras, pauseTurbo}. Every event arrives on videoEvent,
+        ending with exactly one `done` or `error`."""
+        if getattr(self, "_video_proc", None):
+            return
+        try:
+            o = json.loads(opts_json or "{}")
+        except ValueError:
+            return
+
+        def local(p):
+            p = p or ""
+            return QUrl(p).toLocalFile() if p.startswith("file:") else p
+        mode = o.get("mode") or "t2v"
+        args = ["generate", "--model", o.get("model") or "wan22-ti2v-5b",
+                "--prompt", o.get("prompt") or "", "--mode", mode]
+        if o.get("variant"):
+            args += ["--variant", o["variant"]]
+        if o.get("image") and mode in ("i2v", "flf2v", "r2v", "v2v"):
+            args += ["--image", local(o["image"])]
+        if o.get("endImage") and mode == "flf2v":
+            args += ["--end-image", local(o["endImage"])]
+        if o.get("video") and mode in ("v2v", "extend"):
+            args += ["--video", local(o["video"])]
+        if o.get("seconds"):
+            args += ["--seconds", str(float(o["seconds"]))]
+        if o.get("size"):
+            args += ["--size", str(o["size"])]
+        if o.get("aspect"):
+            args += ["--aspect", str(o["aspect"])]
+        if int(o.get("steps") or 0) > 0:
+            args += ["--steps", str(int(o["steps"]))]
+        if o.get("seed") is not None and int(o.get("seed")) >= 0:
+            args += ["--seed", str(int(o["seed"]))]
+        if o.get("negative"):
+            args += ["--negative", o["negative"]]
+        if o.get("turbo"):
+            args += ["--turbo"]
+        if o.get("lowMemory"):
+            args += ["--low-memory"]
+        if o.get("lightVae"):
+            args += ["--light-vae"]
+        for lo in (o.get("loras") or []):
+            if lo.get("id"):
+                args += ["--lora", "%s:%g" % (lo["id"], float(lo.get("weight", 0.8)))]
+
+        def work():
+            self.videoBusy.emit(True)
+            # Same as a picture: the chat Turbo's model holds VRAM, so it
+            # steps aside for the clip and comes back with the same model.
+            resume = None
+            if (o.get("pauseTurbo", True) and self._turbo and self._turbo_model
+                    and not self._remote_turbo()):
+                resume = (self._turbo_model, self._turbo_spec)
+                self.videoEvent.emit(json.dumps(
+                    {"event": "status", "text": "pausing the chat Turbo to free the GPU"}))
+                self._stop_turbo()
+            ended = {"v": False}
+
+            def on_event(ev):
+                if ev.get("event") in ("done", "error"):
+                    ended["v"] = True
+                self.videoEvent.emit(json.dumps(ev))
+            try:
+                rc = self._image_stream(args, on_event, "_video_proc", tool=self._video_tool())
+                if not ended["v"]:
+                    self.videoEvent.emit(json.dumps(
+                        {"event": "error",
+                         "text": "cancelled" if rc in (-15, 130, 143)
+                                 else "stopped (exit %s)" % rc}))
+            finally:
+                self.videoBusy.emit(False)
+                if resume:
+                    self.videoEvent.emit(json.dumps(
+                        {"event": "status", "text": "restarting the chat Turbo"}))
+                    self.setTurbo(True, resume[0], resume[1])
+                self.loadVideoGallery()
+                self.loadVideoInfo()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def cancelVideo(self):
+        self._image_kill(getattr(self, "_video_proc", None))
+
+    @Slot(str, str, str)
+    def enhanceVideoPrompt(self, model, text, mode):
+        text = (text or "").strip()
+        if not text:
+            return
+
+        def work():
+            if not model:
+                self.videoPromptEnhanced.emit(
+                    "", "No chat model yet -- download one in Models first.")
+                return
+            system = (self._VIDEO_ANIMATE_SYSTEM if mode in ("i2v", "flf2v", "extend")
+                      else self._VIDEO_ENHANCE_SYSTEM)
+            try:
+                reply = self._chat_once(model, system, text) or ""
+            except Exception as exc:
+                self.videoPromptEnhanced.emit("", str(exc))
+                return
+            reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.S).strip()
+            reply = reply.strip().strip('"“”').strip()
+            self.videoPromptEnhanced.emit(reply, "" if reply else
+                                          "The model returned nothing.")
+        threading.Thread(target=work, daemon=True).start()
+
+    def _in_video_output(self, path):
+        base = getattr(self, "_video_output_dir", "")
+        if not base:
+            return False
+        return os.path.realpath(path).startswith(os.path.realpath(base) + os.sep)
+
+    @Slot(str, result=bool)
+    def deleteVideo(self, path):
+        """Only clips the Video page made, with their poster and notes."""
+        if not self._in_video_output(path) or not path.lower().endswith((".mp4", ".avi", ".webm")):
+            return False
+        stem = os.path.splitext(path)[0]
+        for p in (path, stem + ".json", stem + ".jpg", stem + ".wav"):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        self.loadVideoGallery()
+        return True
+
+    @Slot(str, str, result=bool)
+    def saveVideoAs(self, path, target):
+        dest = QUrl(target).toLocalFile() if target.startswith("file:") else target
+        try:
+            shutil.copyfile(path, dest)
+            return True
+        except OSError:
+            return False
+
+    @Slot()
+    def openVideoFolder(self):
+        base = getattr(self, "_video_output_dir", "")
+        if base:
+            os.makedirs(base, exist_ok=True)
+            self.openImageExternally(base)
 
 
 def main():

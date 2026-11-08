@@ -543,7 +543,9 @@ Kirigami.ApplicationWindow {
                         // bundled into four other apps, and one new key would make
                         // every one of them a new release.
                         { "icon": "icons/image.svg",         "key": "nav.image",
-                          "label": i18n.lang === "pt" ? "Imagem" : "Image" }
+                          "label": i18n.lang === "pt" ? "Imagem" : "Image" },
+                        { "icon": "icons/film.svg",          "key": "nav.video",
+                          "label": i18n.lang === "pt" ? "Vídeo" : "Video" }
                     ]
                     delegate: Rectangle {
                         required property int index
@@ -1537,6 +1539,14 @@ Kirigami.ApplicationWindow {
         // 2 opens Models from several places), so a new page goes at the end.
         ImagePage {
             id: imagePage
+            i18n: i18n
+            chatModel: win.turboModel || win.firstInstalledModel
+        }
+
+        // ───────────────────────── 7. VÍDEO ─────────────────────────
+        // After Image for the same reason: pages are addressed by index.
+        VideoPage {
+            id: videoPage
             i18n: i18n
             chatModel: win.turboModel || win.firstInstalledModel
         }

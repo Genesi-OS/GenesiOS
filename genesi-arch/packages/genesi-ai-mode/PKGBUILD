@@ -1736,7 +1736,19 @@ pkgver=1.0.0
 # timeout (ai_idle_timeout, 90 s) it now uses the light profile, which hands
 # the governor back; the next generation gets max within a poll. Between
 # chat turns nothing changes.
-pkgrel=215
+# pkgrel 216: the Monitor's Video page (genesi-ai-video). Text to video,
+# animate a picture (its face stays the clip's face), a person from a photo
+# in a new scene (VACE), first + last frame, restyle a video, continue one.
+# Built ON genesi-ai-image: same sd.cpp engine (its pinned commit already has
+# vid_gen), same models folder, downloads, LoRA store and out-of-memory
+# retry. Seven models, every size and sha256 checked against the Hub: Wan2.2
+# TI2V 5B (the start, fits 8 GB), Wan2.1 1.3B, Wan2.1 VACE 1.3B/14B, Wan2.2
+# I2V/T2V A14B (two experts, a Lightning LoRA each), LTX-2.3 distilled (with
+# sound, experimental). The catalog marks which keep a face best. Turbo = the
+# distillation LoRA (4-6 steps); low-memory mode (weights in RAM, tiled VAE,
+# 22 MB TAE decoder) is on by default under 12 GB. Wan LoRAs are told apart
+# by size (1.3B/5B/14B) from their tensor widths. ci/video-cli-test.py.
+pkgrel=216
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1774,6 +1786,8 @@ optdepends=(
     'genesi-ttf-rubik-vf: Rubik brand UI font for the Monitor (shipped by default; falls back to the system sans if absent)'
     'libnotify: desktop notifications from Automations (notify-send)'
     'python-opencv: keep faces unchanged when editing pictures on the Image page'
+    'ffmpeg: the Video page saves clips as MP4 and can restyle or continue a video'
+    'qt6-multimedia-ffmpeg: play clips inside the Video page (otherwise they open in your video player)'
     'poppler: read the text of PDFs attached to the Quick Chat (pdftotext)'
     'wl-clipboard: the AI island reads and copies the clipboard on Wayland (Smart Copy, "explain what I copied")'
     'xclip: the same on X11 desktops'
@@ -1798,6 +1812,9 @@ package() {
     # Image generation: catalog, downloads and the sd-cli runs behind the
     # Monitor's Image page.
     install -Dm755 "${startdir}/genesi-ai-image"  "$pkgdir/usr/local/bin/genesi-ai-image"
+    # Video generation, built on genesi-ai-image (it loads that file as a
+    # module from its own directory, so the two must sit side by side).
+    install -Dm755 "${startdir}/genesi-ai-video"  "$pkgdir/usr/local/bin/genesi-ai-video"
     # Spoken answers (Kokoro) and the hosted-model key. Separate tools
     # rather than flags on genesi-ai-mode: each owns a file, each can be
     # run and tested from a terminal, and Genesi Center reads both
@@ -1933,6 +1950,12 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/MeshPage.qml"
     install -Dm644 "${startdir}/monitor/ImagePage.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ImagePage.qml"
+    # The Video page, and its player in a file of its own: a missing
+    # QtMultimedia must cost the player, not the page.
+    for _vq in VideoPage VideoPlayer; do
+        install -Dm644 "${startdir}/monitor/${_vq}.qml" \
+            "$pkgdir/usr/share/genesi-ai-mode/monitor/${_vq}.qml"
+    done
     install -Dm644 "${startdir}/monitor/ChatPage.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatPage.qml"
     install -Dm644 "${startdir}/monitor/AdvisorPage.qml" \

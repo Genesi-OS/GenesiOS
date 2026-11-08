@@ -432,6 +432,18 @@ jobs:
         # Download button that can never work. No network: those are skipped.
         run: python genesi-arch/ci/image-cli-test.py
 
+      - name: the Video page's tool makes clips, and its page loads without a player
+        # genesi-ai-video against a stand-in sd-cli that writes a real MJPG
+        # .avi and a stand-in ffmpeg: every mode's argv (t2v, i2v, first+last
+        # frame, reference, restyle, continue), the two-expert Wan2.2 flags,
+        # Turbo's |high_noise| LoRA, low memory and the out-of-memory retry,
+        # the poster read with no ffmpeg, Wan LoRA sizes. The page loads
+        # offscreen in both languages, and with the player broken (PySide6-
+        # Essentials has no QtMultimedia -- exactly the case it must survive).
+        # With network: flags against the pinned engine, sizes and hashes
+        # against the Hub. Its stand-in downloads never touch the Hub.
+        run: python genesi-arch/ci/video-cli-test.py
+
       - name: an API model runs the agent, and Stop stops a model that has said nothing
         # The agent loop and the automations run on hosted models: a real
         # automation drives a fake provider that asks for a tool, and the tool

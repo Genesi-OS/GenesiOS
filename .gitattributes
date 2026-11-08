@@ -124,6 +124,7 @@ genesi-arch/archiso/airootfs/usr/local/bin/remove-nvidia                   text 
 genesi-arch/archiso/airootfs/usr/local/bin/removeun                        text eol=lf
 genesi-arch/archiso/airootfs/usr/local/bin/removeun-online                 text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-image                       text eol=lf
+genesi-arch/packages/genesi-ai-mode/genesi-ai-video                       text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-quick-shortcuts              text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-ai-tray                         text eol=lf
 genesi-arch/packages/genesi-ai-mode/genesi-automationd                     text eol=lf

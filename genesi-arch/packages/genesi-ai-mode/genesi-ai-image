@@ -671,6 +671,14 @@ def variant_parts(m, v):
     return parts
 
 
+def turbo_loras(m):
+    """The Turbo LoRA component ids a model brings: one, or two for the
+    video models built from two experts (Wan2.2 A14B), whose high-noise
+    half needs its own Lightning LoRA."""
+    t = m.get("turbo") or {}
+    return [t[k] for k in ("lora", "lora_high") if t.get(k)]
+
+
 def variant_downloads(m, v):
     """Component ids this variant has to download (the source of a
     conversion included, since the conversion needs it)."""
@@ -685,9 +693,9 @@ def variant_downloads(m, v):
         for ref in v.get("parts", {}).values():
             if not os.path.isabs(ref) and ref not in ids:
                 ids.append(ref)
-    lora = (m.get("turbo") or {}).get("lora")
-    if lora and lora not in ids:
-        ids.append(lora)
+    for lora in turbo_loras(m):
+        if lora not in ids:
+            ids.append(lora)
     return ids
 
 
@@ -702,8 +710,7 @@ def variant_ready(m, v):
 
 
 def turbo_ready(m):
-    lora = (m.get("turbo") or {}).get("lora")
-    return (not lora) or component_ready(lora)
+    return all(component_ready(lora) for lora in turbo_loras(m))
 
 
 def _variant_size(m, v):
@@ -2008,7 +2015,8 @@ def save_loras(items):
 
 
 def detect_lora_family(path):
-    """sdxl | sd15 | flux | qwen | zimage | '' from a LoRA's tensor names."""
+    """sdxl | sd15 | flux | qwen | zimage | wan-1.3b | wan-5b | wan-14b |
+    '' from a LoRA's tensor names (and, for Wan, their widths)."""
     keys = _safetensors_keys(path)
     joined = "\n".join(keys)
     if "lora_te2_" in joined or "lora_te1_" in joined or "lora_unet_input_blocks_" in joined \
@@ -2026,7 +2034,41 @@ def detect_lora_family(path):
         if re.search(r"transformer_blocks_[2-9]", joined):
             return "sdxl"
         return "sd15"
+    # Wan (the Video page). Checked LAST: its blocks are called plain
+    # `blocks.N`, and `transformer_blocks.N.attn1` (LTX, SDXL in diffusers
+    # form) must not read as Wan -- hence the anchor before `blocks`.
+    if _WAN_LORA.search(joined):
+        return wan_lora_size(path)
     return ""
+
+
+_WAN_LORA = re.compile(r"(?m)(?:^|^diffusion_model\.|^transformer\.|^model\.diffusion_model\.)"
+                       r"blocks\.\d+\.(?:self_attn|cross_attn|attn1|attn2)\."
+                       r"|^lora_unet_blocks_\d+_(?:self_attn|cross_attn)_")
+# Wan's hidden size says which model a LoRA was trained on, and the three do
+# not take each other's LoRAs (the tensors are different widths).
+WAN_DIMS = {1536: "wan-1.3b", 3072: "wan-5b", 5120: "wan-14b"}
+
+
+def wan_lora_size(path):
+    """wan-1.3b | wan-5b | wan-14b from the width of a Wan LoRA's attention
+    tensors (the larger side of lora_down / lora_up is the model's width);
+    'wan' when the width is not one of the three."""
+    try:
+        header = _safetensors_header(path)
+    except (OSError, ValueError, struct.error):
+        return "wan"
+    widths = set()
+    for key, meta in header.items():
+        if not isinstance(meta, dict) or not re.search(r"(?:self_attn|attn1)[._](?:to_)?q[._]", key):
+            continue
+        shape = meta.get("shape") or []
+        if len(shape) == 2:
+            widths.add(max(shape))
+    for w in sorted(widths, reverse=True):
+        if w in WAN_DIMS:
+            return WAN_DIMS[w]
+    return "wan"
 
 
 def lora_by_id(lid):
@@ -2218,9 +2260,7 @@ def _in_use_by_others(skip_model, skip_variant):
                              for r in variant_downloads(other, v) if not os.path.isabs(r))
             if st_ready or st_partial:
                 keep.update(r for r in variant_parts(other, v).values() if not os.path.isabs(r))
-                lora = (other.get("turbo") or {}).get("lora")
-                if lora:
-                    keep.add(lora)
+                keep.update(turbo_loras(other))
     return keep
 
 
@@ -2250,9 +2290,9 @@ def cmd_remove(args, out):
                 continue
             if ref not in keep:
                 targets.append(component_path(ref))
-        lora = (m.get("turbo") or {}).get("lora")
-        if lora and lora not in keep and not args.variant:
-            targets.append(component_path(lora))
+        for lora in turbo_loras(m):
+            if lora not in keep and not args.variant:
+                targets.append(component_path(lora))
         for p in set(targets):
             for q in (p, p + ".part"):
                 try:
@@ -2510,12 +2550,16 @@ def cmd_upscale(args, out):
 
 # ── importing a checkpoint ───────────────────────────────────────────────────
 
-def _safetensors_keys(path):
+def _safetensors_header(path):
     with open(path, "rb") as fh:
         n = struct.unpack("<Q", fh.read(8))[0]
         if n > 200 * 1024 * 1024:
             raise ValueError("header too large")
-        return list(json.loads(fh.read(n).decode("utf-8")).keys())
+        return json.loads(fh.read(n).decode("utf-8"))
+
+
+def _safetensors_keys(path):
+    return list(_safetensors_header(path).keys())
 
 
 def _gguf_tensor_names(path, limit=4000):
