@@ -196,7 +196,10 @@ pkgver=0.1.0
 # input:* options via hyprctl) now declares needs: hyprland like Displays,
 # and Settings hides "follow the desktop's colour scheme" without caelestia
 # instead of showing it greyed out. Hyprland is unchanged.
-pkgrel=42
+# pkgrel 43: settings reach Hyprland 0.57 -- the drop-in gets a Lua twin
+# (genesi-center.lua, loaded by Genesi's hyprland.lua) and the live change
+# goes through `hyprctl eval` there, since 0.57 removed `keyword`.
+pkgrel=43
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

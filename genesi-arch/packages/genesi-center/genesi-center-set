@@ -52,6 +52,31 @@ MAIN_CONF = os.path.join(CONF_DIR, "hyprland.conf")
 DROPIN = os.path.join(CONF_DIR, "genesi-center.conf")
 CAELESTIA = os.path.expanduser("~/.config/caelestia/shell.json")
 
+# Hyprland 0.57 reads only hyprland.lua and has no `hyprctl keyword`. The Lua
+# side lives in genesi-caelestia-settings (it ships the hyprland.lua that loads
+# our twin); without it there is nothing to speak Lua to, and the .conf path
+# below is all there is. Appended, never prepended: a directory first on the
+# path shadows the standard library.
+sys.path.append(os.environ.get("GENESI_LIB", "/usr/lib/genesi"))
+try:
+    import genesi_hypr_lua as hlua
+except ImportError:
+    hlua = None
+
+
+def sync_lua(conf):
+    """Regenerate the Lua twin of a drop-in we just wrote (genesi_hypr_lua)."""
+    if hlua is None:
+        return
+    try:
+        hlua.write_twin(conf)
+    except OSError as e:
+        sys.stderr.write("could not write the Lua copy of %s: %s\n" % (conf, e))
+
+
+def on_lua():
+    return hlua is not None and hlua.lua_session()
+
 MARK = "# Written by genesi-center-set. Edit the app, not this file."
 
 # Added to the user's hyprland.conf once, the first time a setting is changed,
@@ -112,7 +137,8 @@ HYPR = {
     "decoration:blur:size":              ("int", 1, 20),
     "decoration:blur:passes":            ("int", 1, 6),
     "animations:enabled":                ("bool",),
-    "misc:vfr":                          ("bool",),
+    # misc:vfr is gone: no page wrote it, and Hyprland 0.57 moved it to
+    # debug:vfr ("do not turn off unless debugging") -- an unknown key there.
 }
 
 # Where a page may write inside shell.json. A dotted path, so "border.rounding"
@@ -986,6 +1012,7 @@ def hypr_write(option, value):
         fh.write("\n".join(out).rstrip() + "\n")
 
     ensure_sourced()
+    sync_lua(DROPIN)
 
 
 def cmd_hypr(option, raw):
@@ -1001,8 +1028,11 @@ def cmd_hypr(option, raw):
 
     # Applied second: if the write failed we already stopped, and a keyword
     # that lands without the drop-in behind it is the setting that forgets
-    # itself.
-    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+    # itself. On the Lua config (0.57) `keyword` is gone; hl.config is the
+    # same assignment.
+    if on_lua():
+        hlua.run(hlua.config_call(option, value))
+    elif os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
         try:
             subprocess.run(["hyprctl", "keyword", option, str(value)],
                            capture_output=True, timeout=8)
@@ -1207,6 +1237,7 @@ def write_dropin(lines):
     with open(DROPIN, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(lines).rstrip() + "\n")
     ensure_sourced()
+    sync_lua(DROPIN)
 
 
 def drop_bind_block(lines, tag):

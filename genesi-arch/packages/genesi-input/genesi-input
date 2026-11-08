@@ -46,6 +46,31 @@ MAIN_CONF = os.path.join(CONF_DIR, "hyprland.conf")
 SOURCE_MARKER = "# genesi-input"
 SOURCE_LINE = SOURCE_MARKER + "\nsource = " + OUR_CONF + "\n"
 
+# Hyprland 0.57 reads only hyprland.lua and has no `hyprctl keyword`. The Lua
+# side lives in genesi-caelestia-settings (it ships the hyprland.lua that loads
+# our twin); without it there is nothing to speak Lua to, and the .conf path
+# below is all there is. Appended, never prepended: a directory first on the
+# path shadows the standard library.
+sys.path.append(os.environ.get("GENESI_LIB", "/usr/lib/genesi"))
+try:
+    import genesi_hypr_lua as hlua
+except ImportError:
+    hlua = None
+
+
+def sync_lua(conf):
+    """Regenerate the Lua twin of a drop-in we just wrote (genesi_hypr_lua)."""
+    if hlua is None:
+        return
+    try:
+        hlua.write_twin(conf)
+    except OSError as e:
+        sys.stderr.write("could not write the Lua copy of %s: %s\n" % (conf, e))
+
+
+def on_lua():
+    return hlua is not None and hlua.lua_session()
+
 # Hyprland takes -1 .. 1, where 0 is untouched hardware speed. libinput's
 # Accel Speed uses the same range with the same meaning, so one number covers
 # both sessions and the user learns one scale.
@@ -199,6 +224,13 @@ def hypr_current():
 
 
 def hypr_apply(speed=None, accel=None):
+    if on_lua():
+        # Hyprland 0.57: `keyword` is gone, hl.config is the same assignment.
+        if speed is not None:
+            hlua.run(hlua.config_call("input:sensitivity", "%.4f" % speed))
+        if accel is not None:
+            hlua.run(hlua.config_call("input:accel_profile", accel))
+        return
     if speed is not None:
         run(["hyprctl", "keyword", "input:sensitivity", "%.4f" % speed])
     if accel is not None:
@@ -228,6 +260,7 @@ def write_overrides(ov):
         for key in sorted(ov):
             fh.write("input:" + key + " = " + ov[key] + "\n")
     ensure_sourced()
+    sync_lua(OUR_CONF)
 
 
 def ensure_sourced():

@@ -237,7 +237,13 @@ pkgver=1.0.0
 # it fires whichever of the two arrives first. Logout goes through
 # `genesi-hypr exit` (0.57's dispatch takes Lua, older takes a name).
 # ci/hypr-lua-test.py checks the .lua against 0.57.1's own API.
-pkgrel=48
+# pkgrel 49: the settings Genesi Center, genesi-display and genesi-input save
+# reach Hyprland 0.57. Their drop-ins were .conf only and their live change
+# was `hyprctl keyword` (removed), so on 0.57 a setting looked saved and did
+# nothing. genesi_hypr_lua.py (/usr/lib/genesi) writes a Lua twin of each
+# drop-in after every change and applies it with `hyprctl eval`; the
+# migration generates twins for settings saved before the upgrade.
+pkgrel=49
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -307,9 +313,10 @@ depends=(
 install='genesi-caelestia-settings.install'
 source=('genesi-bar' 'hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini' 'genesi-dark.conf'
         'genesi-caelestia-theme-sync' 'genesi-theme-doctor' 'cli.json' 'shell.json'
-        'hyprland.lua' 'genesi-hypr' 'genesi-hypr-lua-migrate' 'genesi-hyprland-lua.hook')
+        'hyprland.lua' 'genesi-hypr' 'genesi-hypr-lua-migrate' 'genesi-hyprland-lua.hook'
+        'genesi_hypr_lua.py')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-            'SKIP' 'SKIP' 'SKIP' 'SKIP')
+            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     # Default Hyprland config for new users. Hyprland reads
@@ -325,6 +332,11 @@ package() {
         "${pkgdir}/etc/skel/.config/hypr/hyprland.lua"
     install -Dm755 "${srcdir}/genesi-hypr-lua-migrate" \
         "${pkgdir}/usr/lib/genesi/genesi-hypr-lua-migrate"
+    # The .conf -> Lua translation genesi-center-set, genesi-display and
+    # genesi-input use for their drop-ins (and the migration, for the ones
+    # saved before 0.57).
+    install -Dm644 "${srcdir}/genesi_hypr_lua.py" \
+        "${pkgdir}/usr/lib/genesi/genesi_hypr_lua.py"
     install -Dm644 "${srcdir}/genesi-hyprland-lua.hook" \
         "${pkgdir}/usr/share/libalpm/hooks/genesi-hyprland-lua.hook"
     # Logout on any Hyprland version (0.57's dispatch takes Lua).

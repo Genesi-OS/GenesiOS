@@ -59,6 +59,31 @@ OUR_CONF = os.path.join(CONF_DIR, "genesi-display.conf")
 SOURCE_MARKER = "# genesi-display: per-monitor overrides"
 SOURCE_LINE = f"{SOURCE_MARKER}\nsource = ~/.config/hypr/genesi-display.conf\n"
 
+# Hyprland 0.57 reads only hyprland.lua and has no `hyprctl keyword`. The Lua
+# side lives in genesi-caelestia-settings (it ships the hyprland.lua that loads
+# our twin); without it there is nothing to speak Lua to, and the .conf path
+# below is all there is. Appended, never prepended: a directory first on the
+# path shadows the standard library.
+sys.path.append(os.environ.get("GENESI_LIB", "/usr/lib/genesi"))
+try:
+    import genesi_hypr_lua as hlua
+except ImportError:
+    hlua = None
+
+
+def sync_lua(conf):
+    """Regenerate the Lua twin of a drop-in we just wrote (genesi_hypr_lua)."""
+    if hlua is None:
+        return
+    try:
+        hlua.write_twin(conf)
+    except OSError as e:
+        sys.stderr.write("could not write the Lua copy of %s: %s\n" % (conf, e))
+
+
+def on_lua():
+    return hlua is not None and hlua.lua_session()
+
 # Hyprland's transform values. 4-7 are the flipped variants, which no UI here
 # offers: someone who wants a mirrored display can write it by hand, and
 # offering it in a menu mostly produces confused users.
@@ -352,6 +377,13 @@ def apply_change(m, scale=None, transform=None, mode=None):
 
 
 def apply_live(line):
+    if on_lua():
+        # Hyprland 0.57: no `keyword`; hl.monitor updates the rule for that
+        # output and re-applies it, the same as the keyword did.
+        ok, out = hlua.run(hlua.monitor_call(line))
+        if not ok:
+            die(f"Hyprland rejected the change:\n  {out}")
+        return
     p = hypr("keyword", "monitor", line, check=False)
     out = (p.stdout + p.stderr).strip()
     if p.returncode != 0 or "invalid" in out.lower() or "error" in out.lower():
@@ -401,6 +433,7 @@ def write_overrides(overrides):
         if "__workspace__" in overrides:
             fh.write(f"workspace = {overrides['__workspace__']}\n")
     ensure_sourced()
+    sync_lua(OUR_CONF)
 
 
 def ensure_sourced():
@@ -674,7 +707,10 @@ def cmd_primary(name):
     if not shutil.which("hyprctl"):
         die("no X11 and no Hyprland here — nothing understands a primary screen", 2)
     rule = f"1, monitor:{m['name']}, default:true"
-    hypr("keyword", "workspace", rule, check=False)
+    if on_lua():
+        hlua.run(hlua.workspace_call(rule))
+    else:
+        hypr("keyword", "workspace", rule, check=False)
     ov = read_overrides()
     ov["__workspace__"] = rule
     write_overrides(ov)

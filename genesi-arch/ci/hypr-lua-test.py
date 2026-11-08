@@ -127,7 +127,22 @@ function hl.bind(keys, d, opts)
     local cmd = d and d.__dsp == "exec_cmd" and d.args[1] or (d and d.__dsp) or "?"
     table.insert(list("binds"), { keys = keys, dsp = d and d.__dsp, cmd = cmd, opts = opts or {} })
 end
+function hl.unbind(keys)
+    if type(keys) ~= "string" then err("hl.unbind needs a key string") end
+    table.insert(list("unbinds"), keys)
+end
+function hl.workspace_rule(t)
+    if type(t.workspace) ~= "string" then err("hl.workspace_rule needs workspace as a string") end
+    for k in pairs(t) do if not WSRULE[k] then err("unknown workspace_rule field " .. k) end end
+    table.insert(list("workspace_rule"), t.workspace)
+end
 hl.notification = { create = function(t) table.insert(list("notifications"), t.text) end }
+-- Anything else on hl is not a 0.57 function: say so instead of a bare
+-- "attempt to call a nil value".
+setmetatable(hl, { __index = function(_, k)
+    if not TOPLEVEL[k] then err("unknown function hl." .. k) end
+    return function() end
+end })
 return rec
 """
 
@@ -149,6 +164,8 @@ def run(confdir):
     g.WEFF = lua_set(rt, API["window_rule_effects"])
     g.LEFF = lua_set(rt, API["layer_rule_effects"])
     g.BINDOPT = lua_set(rt, API["bind_options"])
+    g.WSRULE = lua_set(rt, API["workspace_rule_fields"])
+    g.TOPLEVEL = lua_set(rt, API["toplevel"])
     rec = rt.execute(MOCK)
     # Hyprland puts the config's own directory first on package.path.
     rt.execute('package.path = %s .. "/?.lua;" .. package.path' % json.dumps(confdir.replace("\\", "/")))
@@ -161,7 +178,7 @@ def run(confdir):
               "opts": dict(b["opts"].items())} for b in py("binds")]
     return {"errors": py("errors"), "exec": py("exec"), "binds": binds, "env": py("env"),
             "window_rule": py("window_rule"), "notifications": py("notifications"),
-            "options": py("options")}
+            "options": py("options"), "unbinds": py("unbinds"), "workspace_rule": py("workspace_rule")}
 
 
 def norm_keys(s):
@@ -350,6 +367,209 @@ finally:
     for h in homes:
         shutil.rmtree(h, ignore_errors=True)
 
+# -- the Genesi tools' drop-ins in Lua -----------------------------------------
+#
+# Genesi Center, genesi-display and genesi-input save into hyprlang drop-ins
+# and applied the change with `hyprctl keyword`. On 0.57 neither reaches
+# Hyprland, so a setting looked saved and did nothing. Each tool now writes a
+# Lua twin (genesi_hypr_lua) that hyprland.lua loads. These run the REAL tools'
+# writers, then load what they produced through the shipped hyprland.lua.
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+sys.path.insert(0, PKG)
+import genesi_hypr_lua as hlua  # noqa: E402
+
+TOOLS = os.path.join(HERE, "..", "packages")
+
+
+def load_tool(rel):
+    path = os.path.join(TOOLS, rel)
+    loader = importlib.machinery.SourceFileLoader("tool_" + os.path.basename(rel).replace("-", "_"), path)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    os.environ["GENESI_LIB"] = PKG
+    loader.exec_module(mod)
+    return mod
+
+
+def stmt_ok(stmt):
+    """Run one statement the tools send live (`hyprctl eval`) against the mock."""
+    d = tempfile.mkdtemp(prefix="genesi-hypr-stmt-")
+    try:
+        with open(os.path.join(d, "user.lua"), "w", encoding="utf-8") as f:
+            f.write(stmt + "\n")
+        return run(d)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+print("== Genesi Center, genesi-display and genesi-input reach Hyprland 0.57")
+tdir = tempfile.mkdtemp(prefix="genesi-hypr-tools-")
+open(os.path.join(tdir, "hyprland.conf"), "w").close()  # the tools append their source line here
+try:
+    center = load_tool("genesi-center/genesi-center-set")
+    check(center.hlua is not None, "genesi-center-set finds the Lua translator")
+    unknown = sorted(o for o in center.HYPR if o not in OPTIONS)
+    check(not unknown, "every option Genesi Center writes exists in Hyprland 0.57 (%d)" % len(center.HYPR), unknown)
+    center.DROPIN = os.path.join(tdir, "genesi-center.conf")
+    center.MAIN_CONF = os.path.join(tdir, "hyprland.conf")
+    samples = {"exec": "foot", "workspace": "3", "movetoworkspace": "3", "movetoworkspacesilent": "3",
+               "movefocus": "l", "movewindow": "r", "resizeactive": "20 -20", "layoutmsg": "orientationnext",
+               "togglespecialworkspace": "magic", "fullscreen": "1"}
+    untranslated = [d for d in sorted(center.DISPATCHERS) if hlua.dispatcher(d, samples.get(d, "")) is None]
+    check(not untranslated, "every dispatcher Genesi Center can bind has a 0.57 form", untranslated)
+    for opt, val in (("general:gaps_in", 4), ("input:touchpad:tap-to-click", 1), ("input:kb_layout", "us,br")):
+        center.hypr_write(opt, val)
+    twin = os.path.join(tdir, "genesi-center.lua")
+    check(os.path.exists(twin) and "kb_layout" in open(twin, encoding="utf-8").read(),
+          "saving an option (not just a shortcut) writes the Lua twin")
+    center.cmd_bind("SUPER,V", "SUPER SHIFT,V", "togglefloating", "")
+    keys = iter("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    for d in sorted(center.DISPATCHERS):
+        center.cmd_newbind("SUPER ALT," + next(keys), d, samples.get(d, ""))
+    twin = os.path.join(tdir, "genesi-center.lua")
+    text = open(twin, encoding="utf-8").read() if os.path.exists(twin) else ""
+    check(text.startswith("-- Generated by Genesi"), "a change writes genesi-center.lua beside the .conf")
+    check("not translated" not in text, "every line Genesi Center writes is translated", [l for l in text.splitlines() if "not translated" in l])
+    f = run(tdir)
+    check(not f["errors"] and not f["notifications"], "genesi-center.lua loads clean through hyprland.lua", f["errors"] + f["notifications"])
+    check({"general:gaps_in", "input:touchpad:tap-to-click", "input:kb_layout"} <= set(f["options"]),
+          "...and its options are set")
+    check(f["unbinds"] == ["SUPER + V"], "...a moved shortcut unbinds the shipped one", f["unbinds"])
+    moved = [b for b in f["binds"] if norm_keys(b["keys"]) == norm_keys("SUPER + SHIFT + V")]
+    check(moved and moved[0]["dsp"] == "window.float", "...and binds the new one", moved)
+    check(len([b for b in f["binds"] if "ALT" in b["keys"]]) == len(center.DISPATCHERS), "...and every new shortcut is bound")
+    for opt, val in (("decoration:rounding", 8), ("input:touchpad:tap-to-click", 0)):
+        f = stmt_ok(hlua.config_call(opt, val))
+        check(not f["errors"] and opt in f["options"], "the live change for %s is a valid hl.config" % opt, f["errors"])
+    os.remove(center.DROPIN)
+    os.remove(twin)
+
+    display = load_tool("genesi-display/genesi-display")
+    display.CONF_DIR = tdir
+    display.OUR_CONF = os.path.join(tdir, "genesi-display.conf")
+    display.MAIN_CONF = os.path.join(tdir, "hyprland.conf")
+    mon = {"name": "DP-1", "width": 2560, "height": 1440, "refresh": 143.97, "x": 0, "y": 0, "scale": 1.0, "transform": 0}
+    lines = {"DP-1": display.monitor_line(mon, scale=1.25, transform=1),
+             "HDMI-A-1": display.monitor_line(dict(mon, name="HDMI-A-1"), x=2048),
+             "__workspace__": "1, monitor:DP-1, default:true"}
+    display.write_overrides(lines)
+    text = open(os.path.join(tdir, "genesi-display.lua"), encoding="utf-8").read()
+    check("not translated" not in text, "every line genesi-display writes is translated", text)
+    f = run(tdir)
+    check(not f["errors"] and not f["notifications"], "genesi-display.lua loads clean", f["errors"] + f["notifications"])
+    check(f["workspace_rule"] == ["1"], "...the primary screen's workspace rule is in it", f["workspace_rule"])
+    m = re.search(r'hl\.monitor\(\{ output = "DP-1", mode = "2560x1440@143\.97", position = "0x0", scale = "1\.25", transform = 1 \}\)', text)
+    check(m is not None, "...and the monitor keeps mode, position, scale AND transform", text)
+    f = stmt_ok(hlua.monitor_call(lines["DP-1"]))
+    check(not f["errors"], "the live scale change is a valid hl.monitor", f["errors"])
+    for p in ("genesi-display.conf", "genesi-display.lua"):
+        os.remove(os.path.join(tdir, p))
+
+    inp = load_tool("genesi-input/genesi-input")
+    inp.CONF_DIR = tdir
+    inp.OUR_CONF = os.path.join(tdir, "genesi-input.conf")
+    inp.MAIN_CONF = os.path.join(tdir, "hyprland.conf")
+    inp.write_overrides({"sensitivity": "-0.3500", "accel_profile": "flat"})
+    text = open(os.path.join(tdir, "genesi-input.lua"), encoding="utf-8").read()
+    f = run(tdir)
+    check("not translated" not in text and not f["errors"] and not f["notifications"]
+          and {"input:sensitivity", "input:accel_profile"} <= set(f["options"]),
+          "genesi-input.lua loads clean and sets the pointer speed", f["errors"] + f["notifications"] + [text])
+
+    with open(os.path.join(tdir, "genesi-input.conf"), "a", encoding="utf-8") as fh:
+        fh.write("windowrule = float, class:foo\n")
+    hlua.write_twin(os.path.join(tdir, "genesi-input.conf"))
+    text = open(os.path.join(tdir, "genesi-input.lua"), encoding="utf-8").read()
+    check("-- not translated: windowrule = float, class:foo" in text, "a line it does not know is kept as a visible comment, not guessed")
+    # A statement that raises (a value Hyprland refuses outright) must cost only
+    # itself: each one runs under its own pcall.
+    body = [l for l in text.splitlines() if l.strip() and not l.startswith(("--", "local", "    ", "end"))]
+    check(body and all(l.startswith("apply(") for l in body), "every translated line runs on its own", body)
+    with open(os.path.join(tdir, "genesi-input.lua"), "a", encoding="utf-8") as fh:
+        fh.write('apply("boom", function() error("refused") end)\n'
+                 'apply("after", function() hl.exec_cmd("still-ran") end)\n')
+    f = run(tdir)
+    check(any("boom" in n for n in f["notifications"]) and "still-ran" in f["exec"],
+          "one refused value is reported on screen and costs only itself", f["notifications"])
+finally:
+    shutil.rmtree(tdir, ignore_errors=True)
+
+print("== on a running 0.57 the change applies now, in Lua, never with `keyword`")
+sent, legacy = [], []
+real_session, real_run = hlua.lua_session, hlua.run
+hlua.lua_session = lambda: True
+hlua.run = lambda stmt: (sent.append(stmt), (True, "ok"))[1]
+os.environ["HYPRLAND_INSTANCE_SIGNATURE"] = "genesi-ci"
+
+
+class FakeProc:
+    returncode, stdout, stderr = 0, "ok", ""
+
+
+def fake_run(cmd, *a, **k):
+    if "keyword" in cmd:
+        legacy.append(cmd)
+    return FakeProc()
+
+
+tdir = tempfile.mkdtemp(prefix="genesi-hypr-live-")
+open(os.path.join(tdir, "hyprland.conf"), "w").close()
+real_subrun, real_which = subprocess.run, shutil.which  # the tools share these modules with us
+try:
+    for tool in (center, display, inp):
+        tool.subprocess.run = fake_run
+    center.DROPIN = os.path.join(tdir, "genesi-center.conf")
+    center.MAIN_CONF = os.path.join(tdir, "hyprland.conf")
+    center.cmd_hypr("decoration:rounding", "6")
+    inp.hypr_apply(speed=0.25, accel="flat")
+    display.apply_live(display.monitor_line(mon, scale=1.5))
+    display.CONF_DIR, display.OUR_CONF = tdir, os.path.join(tdir, "genesi-display.conf")
+    display.monitors = lambda: [dict(mon, focused=True, rotation=0, description="", modes=[], mode="")]
+    display.on_x11 = lambda: False
+    display.shutil.which = lambda n: "/usr/bin/" + n
+    display.cmd_primary("DP-1")
+    joined = "\n".join(sent)
+    check("rounding = 6" in joined, "Genesi Center applies an option with hl.config", sent)
+    check("sensitivity = 0.2500" in joined and 'accel_profile = "flat"' in joined,
+          "genesi-input applies the pointer speed with hl.config", sent)
+    check('hl.monitor({ output = "DP-1"' in joined and 'scale = "1.5"' in joined,
+          "genesi-display applies a scale with hl.monitor", sent)
+    check('hl.workspace_rule({ workspace = "1", monitor = "DP-1", default = true })' in joined,
+          "genesi-display sets the primary screen with hl.workspace_rule", sent)
+    check(not legacy, "...and none of them sends `hyprctl keyword`", legacy)
+    errs = [e for s in sent for e in stmt_ok(s)["errors"]]
+    check(not errs, "every statement they send is valid 0.57 Lua", errs)
+finally:
+    hlua.lua_session, hlua.run = real_session, real_run
+    subprocess.run, shutil.which = real_subrun, real_which
+    os.environ.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
+    shutil.rmtree(tdir, ignore_errors=True)
+
+print("== the migration gives settings saved before 0.57 their Lua twins")
+homes = []
+try:
+    saved = "# Written by genesi-display.\nmonitor = DP-1,2560x1440@144,0x0,1.5,transform,0\n"
+    h = home_with(conf=SHIPPED_CONF)
+    homes.append(h)
+    with open(os.path.join(h, ".config", "hypr", "genesi-display.conf"), "w", encoding="utf-8") as fh:
+        fh.write(saved)
+    mine_input = "-- mine\nhl.config({ input = { sensitivity = 0.9 } })\n"
+    with open(os.path.join(h, ".config", "hypr", "genesi-input.conf"), "w", encoding="utf-8") as fh:
+        fh.write("input:sensitivity = 0.1\n")
+    with open(os.path.join(h, ".config", "hypr", "genesi-input.lua"), "w", encoding="utf-8") as fh:
+        fh.write(mine_input)
+    migrate(h, "0.56.2")
+    check(read(h, "genesi-display.lua") is None, "0.56: no twins written (nothing to migrate yet)")
+    r = migrate(h, "0.57.1")
+    dl = read(h, "genesi-display.lua") or ""
+    check('scale = "1.5"' in dl, "0.57: a scale saved before the upgrade survives it", r.stdout + r.stderr + dl)
+    check(read(h, "genesi-input.lua") == mine_input, "...and a genesi-*.lua the user wrote is not overwritten")
+finally:
+    for h in homes:
+        shutil.rmtree(h, ignore_errors=True)
+
 print("== the pacman hook and the package")
 hook = open(os.path.join(PKG, "genesi-hyprland-lua.hook"), encoding="utf-8").read()
 check("Target = hyprland" in hook and "Operation = Upgrade" in hook and "When = PostTransaction" in hook
@@ -357,7 +577,8 @@ check("Target = hyprland" in hook and "Operation = Upgrade" in hook and "When = 
       "a pacman hook runs the migration when hyprland itself is upgraded")
 pkgb = open(os.path.join(PKG, "PKGBUILD"), encoding="utf-8").read()
 for path in ("/etc/skel/.config/hypr/hyprland.lua", "/usr/lib/genesi/genesi-hypr-lua-migrate",
-             "/usr/share/libalpm/hooks/genesi-hyprland-lua.hook", "/usr/bin/genesi-hypr"):
+             "/usr/share/libalpm/hooks/genesi-hyprland-lua.hook", "/usr/bin/genesi-hypr",
+             "/usr/lib/genesi/genesi_hypr_lua.py"):
     check(path in pkgb, "the package installs " + path)
 inst = open(os.path.join(PKG, "genesi-caelestia-settings.install"), encoding="utf-8").read()
 check(inst.count("_migrate_lua\n") >= 2, "the package's upgrade AND install run the migration")
@@ -378,13 +599,9 @@ check("hl.dsp.exit()" in gh and "dispatch exit" in gh, "genesi-hypr exit tries t
 # PENDING lists files not ported yet, by name, so the gap is written down
 # instead of being found by a user -- and a file leaving the list is the only
 # way it can shrink: a listed file that no longer needs listing fails too.
-PENDING = {
-    "genesi-center/genesi-center-set": "Genesi Center's settings: keyword + a hyprlang drop-in",
-    "genesi-display/genesi-display": "display scale/rotation: keyword monitor + a hyprlang drop-in",
-    "genesi-input/genesi-input": "pointer speed: keyword input:* + a hyprlang drop-in",
-}
+PENDING = {}
 LEGACY = re.compile(r"""["']hyprctl["'],\s*["'](keyword|dispatch)["']|hyprctl\s+(keyword|dispatch)\s+[a-z]|hypr\(\s*["']keyword["']|Hyprland\.dispatch\(\s*["'][a-z]""")
-MODERN = re.compile(r"""["']eval["']|hyprctl eval|hl\.dsp\.|usingLua|genesi-hypr""")
+MODERN = re.compile(r"""["']eval["']|hyprctl eval|hl\.dsp\.|usingLua|genesi-hypr|hlua\.run\(""")
 COMMENT = re.compile(r"^\s*(#|//|\*|/\*|--)")
 PKGS = os.path.join(HERE, "..", "packages")
 print("== nothing speaks only the hyprctl that 0.57 removed")
@@ -418,8 +635,9 @@ check(re.search(r'"eval",.*?if lua\.stdout\.strip\(\) == "ok":\s*\n\s*return\s*\
 for rel, why in PENDING.items():
     check(rel in pending_seen, "PENDING still needs listing: %s (%s)" % (rel, why),
           "it no longer uses the old forms -- take it off PENDING")
-print("  note %d tool(s) still write hyprlang settings Hyprland 0.57 ignores: %s"
-      % (len(PENDING), ", ".join(sorted(PENDING))))
+if PENDING:
+    print("  note %d tool(s) still write hyprlang settings Hyprland 0.57 ignores: %s"
+          % (len(PENDING), ", ".join(sorted(PENDING))))
 
 print()
 if failures:

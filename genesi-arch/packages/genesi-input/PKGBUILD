@@ -12,9 +12,12 @@
 # optional), so the X11 path is the common case here rather than the fallback,
 # and a `genesi-input list` that cannot see any device is worse than useless --
 # it is the tool agreeing with the broken slider.
+# pkgrel 2: Hyprland 0.57 -- pointer speed applies through `hyprctl eval`
+# and persists in a Lua twin of genesi-input.conf (0.57 reads neither
+# `keyword` nor .conf).
 pkgname=genesi-input
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Pointer speed and acceleration for Genesi OS, on Hyprland or X11'
 arch=('any')
 groups=('genesi')
