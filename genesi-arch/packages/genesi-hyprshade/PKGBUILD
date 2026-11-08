@@ -146,12 +146,15 @@ check() {
     # The shim is the whole reason this package is not just the AUR build, so
     # confirm it survived into the wheel rather than trusting prepare().
     local f="src/hyprshade/shader/hyprctl.py"
-    grep -q 'decoration:screen_shader' "$f" || {
-        echo "the colon form is missing from $f" >&2
+    # pkgrel 3 inverted the old rule: the Lua call is now REQUIRED (it is the
+    # only form 0.57 accepts) and `keyword` is the fallback for 0.56 and older.
+    # The old "no hl.config" assertion here failed that build.
+    grep -q '"keyword", "decoration:screen_shader"' "$f" || {
+        echo "the keyword fallback (colon form) is missing from $f" >&2
         return 1
     }
-    ! grep -q 'hl.config' "$f" || {
-        echo "the Lua config call is still in $f" >&2
+    grep -q 'hl.config' "$f" && grep -q 'lua.stdout.strip() == "ok"' "$f" || {
+        echo "the Lua call, or the check of its answer, is missing from $f" >&2
         return 1
     }
     ! grep -q 'decoration\.screen_shader' "$f" || {
