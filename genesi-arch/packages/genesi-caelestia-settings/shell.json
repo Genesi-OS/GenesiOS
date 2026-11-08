@@ -2,8 +2,7 @@
   "session": {
     "commands": {
       "logout": [
-        "hyprctl",
-        "dispatch",
+        "genesi-hypr",
         "exit"
       ]
     }
@@ -424,8 +423,7 @@
         "icon": "exit_to_app",
         "description": "Log out of the current session",
         "command": [
-          "hyprctl",
-          "dispatch",
+          "genesi-hypr",
           "exit"
         ],
         "dangerous": true

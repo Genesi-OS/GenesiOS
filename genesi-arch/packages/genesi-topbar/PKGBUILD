@@ -26,7 +26,8 @@
 # gets reviewed like every other surface here.
 pkgname=genesi-topbar
 pkgver=0.1.0
-pkgrel=2
+# pkgrel 3: clicking a workspace works on Hyprland 0.57 (dispatch takes Lua).
+pkgrel=3
 pkgdesc="Genesi's horizontal bar for Hyprland"
 arch=('any')
 groups=('genesi')

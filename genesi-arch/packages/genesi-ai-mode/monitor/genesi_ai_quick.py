@@ -57,6 +57,17 @@ island_path = link.state_path
 send_to_running = link.send
 
 
+def _hyprland_lua():
+    """True when the running Hyprland takes Lua dispatches (0.57+, or 0.55-0.56
+    on a hyprland.lua): `hyprctl eval` answers "ok" only there."""
+    try:
+        out = subprocess.run(["hyprctl", "eval", "return 1"], capture_output=True,
+                             text=True, timeout=2).stdout
+    except Exception:
+        return False
+    return (out or "").strip() == "ok"
+
+
 def start_island():
     """The island on every desktop but caelestia's (which draws its own):
     started beside the chat, and it goes away by itself when switched off.
@@ -285,10 +296,19 @@ class QuickBackend(Backend):
         w = max(1, int(round(width * ratio)))
         h = max(1, int(round(height * ratio)))
         match = "class:^(%s)$" % APP_ID.replace(".", r"\.")
-        for args in (["setfloating", match],
+        if _hyprland_lua():
+            # Hyprland 0.57: dispatch takes Lua, and the old names are errors.
+            sel = json.dumps(match)
+            steps = [["hl.dsp.window.float({ action = 'set', window = %s })" % sel],
+                     ["hl.dsp.window.resize({ x = %d, y = %d, window = %s })" % (w, h, sel)],
+                     ["hl.dsp.window.center({ window = %s })" % sel],
+                     ["hl.dsp.window.pin({ action = 'on', window = %s })" % sel]]
+        else:
+            steps = [["setfloating", match],
                      ["resizewindowpixel", "exact %d %d,%s" % (w, h, match)],
                      ["centerwindow", match],
-                     ["pin", match]):
+                     ["pin", match]]
+        for args in steps:
             try:
                 subprocess.run(["hyprctl", "dispatch"] + args,
                                stdout=subprocess.DEVNULL,

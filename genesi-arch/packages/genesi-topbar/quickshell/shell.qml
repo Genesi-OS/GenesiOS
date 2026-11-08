@@ -152,7 +152,10 @@ ShellRoot {
 
                 onActivated: (what, arg) => {
                     if (what === "workspace")
-                        Hyprland.dispatch("workspace " + arg);
+                        // Hyprland 0.57 dispatches Lua; older takes the name.
+                        Hyprland.dispatch(Hyprland.usingLua
+                                          ? `hl.dsp.focus({ workspace = "${arg}" })`
+                                          : "workspace " + arg);
                     else if (what === "session")
                         Quickshell.execDetached(["caelestia", "shell", "drawers",
                                                  "toggle", "session"]);

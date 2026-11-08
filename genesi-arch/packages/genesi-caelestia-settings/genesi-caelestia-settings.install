@@ -270,8 +270,12 @@ changed = False
 
 # 1. The session drawer's logout. Upstream's `loginctl terminate-user ""` kills
 #    every user process at once and leaves an infinite black screen.
-if not commands.get("logout"):
-    commands["logout"] = ["hyprctl", "dispatch", "exit"]
+# `hyprctl dispatch exit` was the fix, until Hyprland 0.57 made dispatch take
+# Lua: there it is an error and Logout did nothing. genesi-hypr exit works on
+# both, so our own earlier value is replaced too (a command the user chose is
+# not).
+if not commands.get("logout") or commands.get("logout") == ["hyprctl", "dispatch", "exit"]:
+    commands["logout"] = ["genesi-hypr", "exit"]
     changed = True
 
 # 2. The launcher actions.
@@ -346,8 +350,9 @@ if shipped_actions:
 #    command, and it carried the same black-screen `loginctl terminate-user`.
 #    A user who already had an actions list would otherwise keep it forever.
 for a in launcher.get("actions") or []:
-    if isinstance(a, dict) and a.get("name") == "Logout"             and a.get("command") == ["loginctl", "terminate-user", ""]:
-        a["command"] = ["hyprctl", "dispatch", "exit"]
+    if isinstance(a, dict) and a.get("name") == "Logout" \
+            and a.get("command") in (["loginctl", "terminate-user", ""], ["hyprctl", "dispatch", "exit"]):
+        a["command"] = ["genesi-hypr", "exit"]
         changed = True
 
 # 4. Every OTHER setting Genesi ships that this user does not have yet.
@@ -410,8 +415,16 @@ _migrate_all() {
     done < <(getent passwd)
 }
 
+# Hyprland 0.57+ reads only hyprland.lua. The script decides per user and per
+# installed version (it does nothing on 0.56 and older), and the same script
+# runs from a pacman hook on hyprland, for when Hyprland arrives later.
+_migrate_lua() {
+    [ -x /usr/lib/genesi/genesi-hypr-lua-migrate ] && /usr/lib/genesi/genesi-hypr-lua-migrate || true
+}
+
 post_upgrade() {
     _migrate_all || true
+    _migrate_lua
     echo "==> Caelestia/Hyprland config updated for existing users (backup: "
     echo "    ~/.config/hypr/hyprland.conf.genesi-bak). Reload with 'hyprctl reload'"
     echo "    or re-login for the tray icons + fixes to take effect."
@@ -421,4 +434,5 @@ post_install() {
     # Fresh installs get the config straight from /etc/skel; run the migration
     # anyway so a manual `pacman -S` on a pre-existing user is also healed.
     _migrate_all || true
+    _migrate_lua
 }

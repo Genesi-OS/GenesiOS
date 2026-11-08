@@ -821,7 +821,13 @@ pkgver=2.0.3
 # fails on a toggled anchor in the card.
 # pkgrel 64: the island's own menu (right-click or ...) has an Island On/Off
 # row, so it can be switched off without a terminal or the chat's settings.
-pkgrel=64
+# pkgrel 65: Hyprland 0.57 (Lua config only). The top bar's and dock's
+# workspace clicks, the dock's focus-a-window, the side panel's Logout and the
+# Frost blur rule all used `hyprctl dispatch NAME` / `hyprctl keyword`, which
+# 0.57 rejects: they now go through caelestia's Hypr service and pick the form
+# from Hypr.usingLua, so they work on 0.56 and 0.57 alike. genesi-shell-doctor
+# asks its layer-rule question in Lua there too.
+pkgrel=65
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'

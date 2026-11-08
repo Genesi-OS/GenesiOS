@@ -2,6 +2,7 @@
 """Register Ctrl+Alt+Space with the active Genesi desktop session."""
 
 import ast
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -101,12 +102,29 @@ def register_hyprland():
         return False
     # Runtime registration is naturally reset with the compositor, while this
     # helper runs at every login. No user config needs to be edited.
+    if hyprland_lua():
+        # Hyprland 0.57 has no `hyprctl keyword`: the config is Lua, and so is
+        # what can be added to it at runtime. json.dumps makes a valid Lua
+        # string literal for an ASCII command line.
+        run("hyprctl", "eval", "hl.bind('CTRL + ALT + SPACE', hl.dsp.exec_cmd(%s))" % json.dumps(COMMAND))
+        run("hyprctl", "eval",
+            'hl.window_rule({ name = "genesi-ai-quick", match = { class = "^(org\\\\.genesi\\\\.aiquick)$" }, '
+            "float = true, center = true, pin = true })")
+        return True
     run("hyprctl", "keyword", "bind", "CTRL ALT, SPACE, exec, " + COMMAND)
     # `match:` + effect values: the form Hyprland 0.53+ applies. The older
     # `float class:...` had no match: and was silently discarded.
     run("hyprctl", "keyword", "windowrule",
         r"match:class ^(org\.genesi\.aiquick)$, float on, center on, pin on")
     return True
+
+
+def hyprland_lua():
+    """True when the running Hyprland takes Lua (0.55+ with a hyprland.lua,
+    and always from 0.57). `eval` answers "ok" only there; older Hyprland
+    does not know the command, and 0.55-0.56 on a .conf refuse it."""
+    result = run("hyprctl", "eval", "return 1")
+    return bool(result) and (result.stdout or "").strip() == "ok"
 
 
 def register_niri():

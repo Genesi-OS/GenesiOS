@@ -268,13 +268,26 @@ Variants {
             // applies. The old `blur,NS` has no match: and was discarded, so
             // Frost had been a switch that did nothing. A later rule wins
             // over an earlier one, so "off" is a rule too.
-            if (win.frost) {
+            //
+            // Hyprland 0.57 has no `hyprctl keyword` (Lua config only): there
+            // the rule is a named hl.layer_rule, and re-running it with the
+            // same name updates that one rule instead of stacking a new one.
+            if (Hypr.usingLua) {
+                Quickshell.execDetached(["hyprctl", "eval",
+                    `hl.layer_rule({ name = "genesi-frost-${win.ns}", match = { namespace = "^(${win.ns})$" }, blur = ${win.frost}, ignore_alpha = 0 })`]);
+            } else if (win.frost) {
                 Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
                                          `blur on, ignore_alpha 0, match:namespace ^(${win.ns})$`]);
             } else {
                 Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
                                          `blur off, match:namespace ^(${win.ns})$`]);
             }
+        }
+
+        // Through caelestia's Hypr service: the dispatch syntax changed in
+        // Hyprland 0.57 (Lua), and the service knows which one is running.
+        function goToWorkspace(ws: string): void {
+            Hypr.dispatch(Hypr.usingLua ? `hl.dsp.focus({ workspace = "${ws}" })` : `workspace ${ws}`);
         }
 
         onFrostChanged: win.applyFrost()
@@ -1698,8 +1711,7 @@ Variants {
             spacing: win.numbered ? 0 : win.tok.spacing.medium
 
             WheelHandler {
-                onWheel: event => Quickshell.execDetached(["hyprctl", "dispatch", "workspace",
-                                                          event.angleDelta.y > 0 ? "r-1" : "r+1"])
+                onWheel: event => win.goToWorkspace(event.angleDelta.y > 0 ? "r-1" : "r+1")
             }
 
             Repeater {
@@ -1741,8 +1753,7 @@ Variants {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: Quickshell.execDetached(["hyprctl", "dispatch", "workspace",
-                                                            String(num.modelData)])
+                        onClicked: win.goToWorkspace(String(num.modelData))
                     }
                 }
             }
@@ -1780,9 +1791,7 @@ Variants {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: Quickshell.execDetached(
-                            ["hyprctl", "dispatch", "workspace",
-                             String(ws.modelData?.id ?? 1)])
+                        onClicked: win.goToWorkspace(String(ws.modelData?.id ?? 1))
                     }
                 }
             }

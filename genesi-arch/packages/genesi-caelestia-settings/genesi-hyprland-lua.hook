@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = hyprland
+
+[Action]
+Description = Moving Genesi Hyprland desktops to hyprland.lua (Hyprland 0.57+ reads only Lua)...
+When = PostTransaction
+Exec = /usr/lib/genesi/genesi-hypr-lua-migrate

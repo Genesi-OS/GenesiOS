@@ -124,7 +124,14 @@ Variants {
             // applies. The old `blur,NS` has no match: and was discarded, so
             // Frost had been a switch that did nothing. A later rule wins
             // over an earlier one, so "off" is a rule too.
-            if (win.frost) {
+            //
+            // Hyprland 0.57 has no `hyprctl keyword` (Lua config only): there
+            // the rule is a named hl.layer_rule, and re-running it with the
+            // same name updates that one rule instead of stacking a new one.
+            if (Hypr.usingLua) {
+                Quickshell.execDetached(["hyprctl", "eval",
+                    `hl.layer_rule({ name = "genesi-frost-${win.ns}", match = { namespace = "^(${win.ns})$" }, blur = ${win.frost}, ignore_alpha = 0 })`]);
+            } else if (win.frost) {
                 Quickshell.execDetached(["hyprctl", "keyword", "layerrule",
                                          `blur on, ignore_alpha 0, match:namespace ^(${win.ns})$`]);
             } else {
@@ -568,7 +575,8 @@ Variants {
                                 // dock.
                                 onClicked: {
                                     if (slot.modelData.address) {
-                                        Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", `address:${slot.modelData.address}`]);
+                                        const a = `address:${slot.modelData.address}`;
+                                        Hypr.dispatch(Hypr.usingLua ? `hl.dsp.focus({ window = "${a}" })` : `focuswindow ${a}`);
                                         return;
                                     }
                                     Quickshell.execDetached(

@@ -17,7 +17,8 @@
 pkgname=genesi-hyprshade
 _name=hyprshade
 pkgver=5.0.0
-pkgrel=2
+# pkgrel 3: shaders work on Hyprland 0.57 (Lua only) as well as 0.56.
+pkgrel=3
 pkgdesc='Screen shaders for Hyprland (Genesi repackage of hyprshade)'
 arch=('any')
 groups=('genesi')
@@ -59,11 +60,18 @@ prepare() {
     # know: "no such option", not JSON, hence the crash in `ls`. Upstream's own
     # README still documents the colon form.
     #
-    # So: set with `hyprctl keyword`, which is how hyprlang options have always
-    # been written, and read with the colon the compositor answers to. Both
-    # replacements assert on the exact upstream text, so the day hyprshade is
-    # built against a Hyprland with a Lua config this fails the build instead of
-    # quietly shipping a shader command that does nothing again.
+    # Then Hyprland 0.57 removed `hyprctl keyword` -- the config is Lua only --
+    # and our patch, which had swapped upstream's Lua call for `keyword`, became
+    # the thing that broke shaders there. Neither form works on both: 0.56 on a
+    # hyprland.conf ignores `eval`, 0.57 does not know `keyword`. So the patch
+    # now keeps upstream's Lua call and falls back to `keyword` only when the
+    # answer is not "ok" -- hyprctl exits 0 either way, so the answer text is
+    # the only signal. The option is read with the colon, which 0.56 needs and
+    # 0.57 also accepts (its getoption maps either spelling).
+    #
+    # Both replacements assert on the exact upstream text, so a hyprshade that
+    # changed how it talks to Hyprland fails the build instead of quietly
+    # shipping a shader command that does nothing again.
     python - <<'PATCH'
 import io
 import sys
@@ -71,32 +79,60 @@ import sys
 P = "src/hyprshade/shader/hyprctl.py"
 s = io.open(P, encoding="utf-8").read()
 
-OLD_SET = """            [
+OLD_SET = """def set_screen_shader(shader_path: str) -> None:
+    try:
+        subprocess.run(
+            [
                 "hyprctl",
                 "eval",
                 f"hl.config({{ decoration = {{ screen_shader = '{lua_escape_str(shader_path)}' }} }})",
             ],
+            capture_output=True,
+            check=True,
+            encoding="utf-8",
+        )
+    except subprocess.CalledProcessError as e:
+        raise HyprctlError(e) from e
 """
-NEW_SET = """            ["hyprctl", "keyword", "decoration:screen_shader", shader_path],
+NEW_SET = """def set_screen_shader(shader_path: str) -> None:
+    # Genesi: Lua first (Hyprland 0.57+, or 0.55-0.56 on a hyprland.lua), the
+    # hyprlang keyword when the answer is not "ok" (older, or a .conf).
+    try:
+        lua = subprocess.run(
+            [
+                "hyprctl",
+                "eval",
+                f"hl.config({{ decoration = {{ screen_shader = '{lua_escape_str(shader_path)}' }} }})",
+            ],
+            capture_output=True,
+            check=True,
+            encoding="utf-8",
+        )
+        if lua.stdout.strip() == "ok":
+            return
+        subprocess.run(
+            ["hyprctl", "keyword", "decoration:screen_shader", shader_path],
+            capture_output=True,
+            check=True,
+            encoding="utf-8",
+        )
+    except subprocess.CalledProcessError as e:
+        raise HyprctlError(e) from e
 """
 
 OLD_GET = '["hyprctl", "-j", "getoption", "decoration.screen_shader"],'
 NEW_GET = '["hyprctl", "-j", "getoption", "decoration:screen_shader"],'
 
 if OLD_SET not in s:
-    sys.exit("hyprctl.py no longer sets the shader through hl.config -- read "
+    sys.exit("hyprctl.py no longer sets the shader the way 5.0.0 does -- read "
              "what it does now before keeping this patch.")
 if OLD_GET not in s:
     sys.exit("hyprctl.py no longer reads decoration.screen_shader -- read what "
              "it does now before keeping this patch.")
 
 s = s.replace(OLD_SET, NEW_SET, 1).replace(OLD_GET, NEW_GET, 1)
-
-# lua_escape_str is now unused. Left in place rather than deleted: it is
-# upstream's, the patch above is a compatibility shim, and the smaller the
-# diff the easier it is to drop when Hyprland moves.
 io.open(P, "w", encoding="utf-8", newline="\n").write(s)
-print("hyprctl.py: screen_shader is set with keyword and read with a colon")
+print("hyprctl.py: screen_shader is set through Lua, then keyword; read with a colon")
 PATCH
 }
 

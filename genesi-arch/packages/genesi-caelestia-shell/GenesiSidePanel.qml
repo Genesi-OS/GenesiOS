@@ -707,7 +707,8 @@ Variants {
                                 model: [
                                     {
                                         icon: "logout",
-                                        argv: ["hyprctl", "dispatch", "exit"]
+                                        // 0.57+ dispatches Lua; older takes the name.
+                                        argv: ["hyprctl", "dispatch", Hypr.usingLua ? "hl.dsp.exit()" : "exit"]
                                     },
                                     {
                                         icon: "lock",

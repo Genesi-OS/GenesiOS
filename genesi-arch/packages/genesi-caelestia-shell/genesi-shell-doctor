@@ -186,9 +186,16 @@ def layerrules():
         except ValueError:
             pass
     # Asking for the rule is the only reliable test: an unsupported rule is
-    # answered with an error and changes nothing.
-    code, out, err = run(["hyprctl", "keyword", "layerrule",
-                          "order 2, match:namespace ^(caelestia-genesi-topbar)$"])
+    # answered with an error and changes nothing. Hyprland 0.57 has no
+    # `keyword` (Lua config only), so there it is asked as a Lua rule.
+    code, out, err = run(["hyprctl", "eval", "return 1"])
+    if (out or "").strip() == "ok":
+        code, out, err = run(["hyprctl", "eval",
+                              'hl.layer_rule({ name = "genesi-doctor-order", match = { namespace = '
+                              '"^(caelestia-genesi-topbar)$" }, order = 2 })'])
+    else:
+        code, out, err = run(["hyprctl", "keyword", "layerrule",
+                              "order 2, match:namespace ^(caelestia-genesi-topbar)$"])
     answer = (out or err).strip()
     print("  setting it answers: " + (answer[:120] or "(nothing, which is ok)"))
     if "invalid" in answer.lower() or "unknown" in answer.lower():

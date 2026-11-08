@@ -1748,7 +1748,12 @@ pkgver=1.0.0
 # distillation LoRA (4-6 steps); low-memory mode (weights in RAM, tiled VAE,
 # 22 MB TAE decoder) is on by default under 12 GB. Wan LoRAs are told apart
 # by size (1.3B/5B/14B) from their tensor widths. ci/video-cli-test.py.
-pkgrel=216
+# pkgrel 217: Hyprland 0.57 (Lua config only). Ctrl+Alt+Space and the Quick
+# Chat's float/center/pin rule were registered with `hyprctl keyword`, which
+# 0.57 removed, so the shortcut did nothing there; and the window fit used old
+# dispatcher names. Both now ask `hyprctl eval 'return 1'` and speak Lua when
+# the answer is "ok", the old form otherwise.
+pkgrel=217
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

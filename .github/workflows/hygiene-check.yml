@@ -485,6 +485,21 @@ jobs:
         # tiled -- a transparent, workspace-high slab -- while Frost did nothing.
         run: python genesi-arch/ci/hypr-rules-test.py
 
+      - name: the Hyprland desktop loads on 0.57 (Lua only), and on older ones
+        # Hyprland 0.57 reads only hyprland.lua; Genesi desktops that upgraded
+        # came up on Hyprland's placeholder with no caelestia, no bar, no keys.
+        # hyprland.lua runs in a real Lua against a mock built from 0.57.1's
+        # own sources (ci/data/hyprland-api.json), so an unknown option,
+        # dispatcher, rule effect or bind flag fails here instead of becoming a
+        # silent line in `hyprctl configerrors`. It must match hyprland.conf
+        # (0.54 and older read only that). The migration is played against fake
+        # homes per Hyprland version, and no Genesi code may still call the
+        # `hyprctl keyword` / old `dispatch` that 0.57 removed without a Lua
+        # branch beside it.
+        run: |
+          python -m pip install --quiet lupa
+          python genesi-arch/ci/hypr-lua-test.py
+
       - name: a wallpaper per screen, and wallpapers that move
         # genesi-wallpaper writes the map the shell's GenesiWallpaperState
         # reads: one screen's wallpaper never touches caelestia's (or the

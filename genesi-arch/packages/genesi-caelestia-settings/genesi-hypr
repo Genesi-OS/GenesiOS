@@ -1,0 +1,20 @@
+#!/bin/sh
+# genesi-hypr -- Hyprland actions that must work on every Hyprland version.
+#
+# Hyprland 0.57 made `hyprctl dispatch` take Lua (`hl.dsp.exit()`) instead of a
+# dispatcher name (`exit`), and each form is an error on the other version. A
+# fixed command line -- the session drawer's and the launcher's Logout in
+# shell.json -- cannot ask which version is running, so it calls this.
+#
+#   genesi-hypr exit     leave the Hyprland session
+case "$1" in
+    exit)
+        out=$(hyprctl dispatch 'hl.dsp.exit()' 2>&1)
+        case "$out" in ok*) exit 0 ;; esac
+        exec hyprctl dispatch exit
+        ;;
+    *)
+        echo "usage: genesi-hypr exit" >&2
+        exit 2
+        ;;
+esac

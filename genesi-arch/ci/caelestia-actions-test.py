@@ -45,6 +45,11 @@ HYPRCONF = os.path.join(PKG, "hyprland.conf")
 ALWAYS_PRESENT = {
     "sh", "systemctl", "loginctl",   # base / systemd
     "hyprctl", "caelestia",          # hyprland + the shell itself
+    # Shipped by genesi-caelestia-settings, the package that ships this very
+    # shell.json, so it is there whenever the action is. It is how upstream's
+    # own Logout leaves the session on every Hyprland version (0.57 made
+    # dispatch take Lua) -- the action is still upstream's, not a Genesi one.
+    "genesi-hypr",
 }
 
 # Not commands at all: the launcher interprets these itself.
@@ -230,7 +235,7 @@ def main():
         cfg = json.load(fh)
     for a in cfg.get("launcher", {}).get("actions", []):
         if a.get("name") == "Logout":
-            if a.get("command") == ["hyprctl", "dispatch", "exit"]:
+            if a.get("command") == ["genesi-hypr", "exit"]:
                 print("  PASS  the launcher's Logout uses the clean session exit")
             else:
                 print("  FAIL  the launcher's Logout is back to "
