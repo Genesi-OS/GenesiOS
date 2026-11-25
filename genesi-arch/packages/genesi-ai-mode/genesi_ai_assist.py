@@ -226,6 +226,492 @@ def cache_put(key, text):
         pass
 
 
+CLOUD_CONF = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    "genesi", "ai", "cloud.json")
+
+# Where the count of requests lives. STATE, not config: it is written on every
+# request and it is not something anybody edits.
+USAGE_PATH = os.path.join(
+    os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
+    "genesi", "ai", "usage.json")
+
+# ── The hosted models ────────────────────────────────────────────────────────
+#
+#   base URL, default model, DIALECT
+#
+# The dialect is not decoration. This table used to carry a comment saying
+# every endpoint in it speaks the OpenAI chat-completions shape, with
+# `anthropic` sitting in the middle of it -- and Anthropic does not: it takes
+# /v1/messages with an `x-api-key` header and an `anthropic-version`, and it
+# answers with content[0].text rather than choices[0].message.content. So an
+# Anthropic key produced a 404 from `genesi-ai-key test` and, from ask(), a
+# silent fall back to the local model on every single call. It was listed,
+# documented, and had never worked.
+#
+# Gemini genuinely does speak the OpenAI shape, at its own /v1beta/openai
+# endpoint, which is why it needs no dialect of its own.
+#
+# One table, here, because genesi-ai-key WRITES the config and this file READS
+# it, and two tables of provider defaults would be two tables to disagree.
+PROVIDERS = {
+    "openai": ("https://api.openai.com/v1", "gpt-4o-mini", "openai"),
+    "anthropic": ("https://api.anthropic.com/v1", "claude-sonnet-5",
+                  "anthropic"),
+    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai",
+               "gemini-2.5-flash", "openai"),
+    "groq": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile",
+             "openai"),
+    "openrouter": ("https://openrouter.ai/api/v1", "openai/gpt-4o-mini",
+                   "openai"),
+    "together": ("https://api.together.xyz/v1",
+                 "meta-llama/Llama-3.3-70B-Instruct-Turbo", "openai"),
+    # The same set genesi-code offers, and the fast/free ones people ask for
+    # when a local model is too slow: Hugging Face's router (free monthly
+    # credits, gpt-oss-120b on Cerebras hardware), Cerebras itself, and the
+    # big labs that speak the OpenAI shape at their own address.
+    "huggingface": ("https://router.huggingface.co/v1",
+                    "openai/gpt-oss-120b:cerebras", "openai"),
+    "cerebras": ("https://api.cerebras.ai/v1", "gpt-oss-120b", "openai"),
+    "deepseek": ("https://api.deepseek.com/v1", "deepseek-chat", "openai"),
+    "mistral": ("https://api.mistral.ai/v1", "mistral-small-latest", "openai"),
+    "xai": ("https://api.x.ai/v1", "grok-3-mini", "openai"),
+    "nvidia": ("https://integrate.api.nvidia.com/v1",
+               "meta/llama-3.3-70b-instruct", "openai"),
+    "custom": ("", "", "openai"),
+}
+
+# What each provider is called on screen, where its key comes from, and a few
+# models to pick from before the provider's own list has been asked for (it
+# needs a key, and a person adding one wants to see what they are getting).
+# The provider's /models answer is still what the picker trusts once there
+# is a key -- names go stale; these are only the first offer.
+PROVIDER_INFO = {
+    "gemini": ("Google Gemini", "https://aistudio.google.com/apikey",
+               ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash",
+                "gemini-3.5-flash", "gemini-2.5-pro"], "free"),
+    "groq": ("Groq", "https://console.groq.com/keys",
+             ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b",
+              "llama-3.1-8b-instant"], "free"),
+    "huggingface": ("Hugging Face", "https://huggingface.co/settings/tokens",
+                    ["openai/gpt-oss-120b:cerebras", "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+                     "meta-llama/Llama-3.3-70B-Instruct", "meta-llama/Llama-3.1-8B-Instruct"], "free"),
+    "cerebras": ("Cerebras", "https://cloud.cerebras.ai/",
+                 ["gpt-oss-120b", "llama-3.3-70b", "qwen-3-32b"], "free"),
+    "openrouter": ("OpenRouter", "https://openrouter.ai/keys",
+                   ["openai/gpt-4o-mini", "deepseek/deepseek-chat", "meta-llama/llama-3.3-70b-instruct:free",
+                    "google/gemini-2.5-flash"], "free"),
+    "nvidia": ("NVIDIA NIM", "https://build.nvidia.com/",
+               ["meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-r1", "qwen/qwen2.5-coder-32b-instruct"], "free"),
+    "mistral": ("Mistral", "https://console.mistral.ai/api-keys",
+                ["mistral-small-latest", "mistral-medium-latest", "codestral-latest"], "free"),
+    "openai": ("OpenAI · ChatGPT", "https://platform.openai.com/api-keys",
+               ["gpt-4o-mini", "gpt-4.1-mini", "gpt-5.4"], "paid"),
+    "anthropic": ("Anthropic · Claude", "https://console.anthropic.com/settings/keys",
+                  ["claude-sonnet-5", "claude-haiku-4-5", "claude-opus-4-8"], "paid"),
+    "deepseek": ("DeepSeek", "https://platform.deepseek.com/api_keys",
+                 ["deepseek-chat", "deepseek-reasoner"], "paid"),
+    "xai": ("xAI · Grok", "https://console.x.ai/",
+            ["grok-3-mini", "grok-4"], "paid"),
+    "together": ("Together", "https://api.together.xyz/settings/api-keys",
+                 ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "Qwen/Qwen2.5-72B-Instruct-Turbo"], "paid"),
+}
+
+ANTHROPIC_VERSION = "2023-06-01"
+
+
+def _usage_blank():
+    return {"local": {"requests": 0, "errors": 0, "days": {}},
+            "cloud": {}}
+
+
+def usage_read():
+    """Every request this machine has made, local and hosted, kept apart."""
+    try:
+        with open(USAGE_PATH, encoding="utf-8") as fh:
+            d = json.load(fh)
+        if isinstance(d, dict) and "local" in d and "cloud" in d:
+            return d
+    except (OSError, json.JSONDecodeError):
+        pass
+    return _usage_blank()
+
+
+def usage_note(where, provider=None, model=None, ok=True, tokens=(0, 0)):
+    """One request, counted once, where the request is actually made.
+
+    Called from the two places that send one -- the hosted branch below and
+    the local one under it -- and from `genesi-ai-key test`, which really does
+    send a request and really should be counted for it.
+
+    Under a lock, because the passive helpers can fire several times a second
+    in a busy terminal and a read-modify-write without one loses counts. And
+    inside a try that swallows everything: accounting must never be the reason
+    a completion fails.
+    """
+    try:
+        os.makedirs(os.path.dirname(USAGE_PATH), exist_ok=True)
+        day = time.strftime("%Y-%m-%d")
+        lock = USAGE_PATH + ".lock"
+        fd = os.open(lock, os.O_WRONLY | os.O_CREAT, 0o600)
+        try:
+            try:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            except (ImportError, OSError):
+                pass
+            d = usage_read()
+            if where == "cloud":
+                key = provider or "unknown"
+                bucket = d["cloud"].setdefault(
+                    key, {"requests": 0, "errors": 0, "in_tokens": 0,
+                          "out_tokens": 0, "days": {}, "model": None})
+                bucket["model"] = model or bucket.get("model")
+                bucket["in_tokens"] = bucket.get("in_tokens", 0) + int(tokens[0])
+                bucket["out_tokens"] = (bucket.get("out_tokens", 0)
+                                        + int(tokens[1]))
+            else:
+                bucket = d["local"]
+            if ok:
+                bucket["requests"] = bucket.get("requests", 0) + 1
+                days = bucket.setdefault("days", {})
+                days[day] = days.get(day, 0) + 1
+                # A month is as far back as anybody looks, and an unbounded
+                # dict in a file written on every keystroke-triggered helper
+                # is a file that grows for ever.
+                for old in sorted(days)[:-31]:
+                    days.pop(old, None)
+            else:
+                bucket["errors"] = bucket.get("errors", 0) + 1
+            bucket["last"] = int(time.time())
+
+            tmp = USAGE_PATH + ".tmp"
+            wfd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(wfd, "w", encoding="utf-8", newline="\n") as fh:
+                json.dump(d, fh, ensure_ascii=False, indent=2)
+                fh.write("\n")
+            os.replace(tmp, USAGE_PATH)
+        finally:
+            os.close(fd)
+    except Exception:
+        pass
+
+
+def cloud_store():
+    """Every configured provider, in the current shape. Keys included.
+
+    The file used to hold ONE provider, flat:
+
+        {"provider", "base_url", "model", "dialect", "use_for", "key"}
+
+    which meant setting a Groq key forgot the Gemini one. It holds one entry
+    per provider now, plus which is active:
+
+        {"active": "gemini", "use_for": "manual",
+         "providers": {"gemini": {"base_url", "model", "dialect", "key"}}}
+
+    The old shape is read as a store with one provider in it, so a key set
+    before this change keeps working without anybody setting it again.
+    genesi-ai-key writes the new shape the next time it writes at all.
+    """
+    try:
+        with open(CLOUD_CONF, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {"active": None, "use_for": "manual", "providers": {}}
+    if not isinstance(d, dict):
+        return {"active": None, "use_for": "manual", "providers": {}}
+    if "providers" not in d:
+        if d.get("key") and d.get("base_url"):
+            name = d.get("provider") or "custom"
+            return {"active": name, "use_for": d.get("use_for") or "manual",
+                    "providers": {name: {k: d[k] for k in
+                                         ("base_url", "model", "dialect",
+                                          "key") if k in d}}}
+        return {"active": None, "use_for": d.get("use_for") or "manual",
+                "providers": {}}
+    provs = {n: p for n, p in (d.get("providers") or {}).items()
+             if isinstance(p, dict) and p.get("key") and p.get("base_url")}
+    active = d.get("active") if d.get("active") in provs else (
+        sorted(provs)[0] if provs else None)
+    return {"active": active, "use_for": d.get("use_for") or "manual",
+            "providers": provs}
+
+
+def cloud_config(provider=None):
+    """
+    One provider's settings, ready to send with. None when it is not set up.
+
+    `provider` omitted means the active one, which is what ask() uses: the
+    passive helpers never choose, they get whatever was last picked. A chat
+    names its provider explicitly, because a person picked it.
+
+    Written by `genesi-ai-key`, which is also the only thing that should ever
+    create this file: it is 0600 and holds secrets. Read here rather than
+    passed in, because `ask()` is called from half a dozen helpers and none of
+    them should have to know a cloud exists.
+    """
+    store = cloud_store()
+    name = provider or store["active"]
+    p = store["providers"].get(name) if name else None
+    if not p:
+        return None
+    out = dict(p)
+    out["provider"] = name
+    out["use_for"] = store["use_for"]
+    out.setdefault("dialect", (PROVIDERS.get(name) or ("", "", "openai"))[2])
+    return out
+
+
+def cloud_models(cloud, timeout=15):
+    """The model names the provider says this key can use.
+
+    Asked of the provider rather than kept in a list here, because model names
+    are the one part of this that goes stale every few months, and a list
+    shipped in a package is a list that is wrong by the time anybody reads it.
+    Every provider in the table answers GET {base}/models with `data[].id`;
+    Gemini's OpenAI-compatible endpoint prefixes each with "models/", which
+    its own chat endpoint does not want, so that is taken off.
+    """
+    base = cloud["base_url"].rstrip("/")
+    if (cloud.get("dialect") or "openai") == "anthropic":
+        headers = {"x-api-key": cloud["key"],
+                   "anthropic-version": ANTHROPIC_VERSION}
+    else:
+        headers = {"Authorization": "Bearer " + cloud["key"]}
+    req = urllib.request.Request(base + "/models", headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.load(resp)
+    ids = []
+    for item in data.get("data") or []:
+        mid = str(item.get("id") or "")
+        if mid.startswith("models/"):
+            mid = mid[len("models/"):]
+        if mid:
+            ids.append(mid)
+    return sorted(set(ids))
+
+
+def cloud_request(cloud, payload, timeout, on_response=None):
+    """The HTTP request itself, in whichever shape the provider speaks.
+
+    Returns (text, prompt_tokens, completion_tokens). Raises whatever urllib
+    raises -- the caller decides what a failure means, and `genesi-ai-key
+    test` wants the HTTPError so it can say 401 rather than "it failed".
+    """
+    base = cloud["base_url"].rstrip("/")
+    dialect = cloud.get("dialect") or "openai"
+
+    if dialect == "anthropic":
+        # A different URL, a different auth header, a different body and a
+        # different answer. The system prompt is a top-level field rather
+        # than a message, which is the part that silently produces a worse
+        # answer rather than an error if you get it wrong.
+        msgs = [m for m in payload["messages"] if m.get("role") != "system"]
+        system = " ".join(m["content"] for m in payload["messages"]
+                          if m.get("role") == "system")
+        body = {"model": cloud["model"], "messages": msgs,
+                "max_tokens": payload.get("max_tokens", 160)}
+        if system:
+            body["system"] = system
+        req = urllib.request.Request(
+            base + "/messages", data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "x-api-key": cloud["key"],
+                     "anthropic-version": ANTHROPIC_VERSION})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if on_response:
+                on_response(resp)
+            data = json.load(resp)
+        text = "".join(b.get("text", "") for b in data.get("content", [])
+                       if b.get("type") == "text").strip()
+        use = data.get("usage") or {}
+        return text, int(use.get("input_tokens") or 0), \
+            int(use.get("output_tokens") or 0)
+
+    payload = dict(payload)
+    payload["model"] = cloud["model"]
+    req = urllib.request.Request(
+        base + "/chat/completions", data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + cloud["key"]})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        if on_response:
+            on_response(resp)
+        data = json.load(resp)
+    # `.get`, not indexing. A thinking model given a small budget -- Gemini
+    # 2.5 given the eight tokens `genesi-ai-key test` used to ask for -- spends
+    # all of it thinking and answers with a message that has NO content field.
+    # Indexing that raised KeyError, which was reported as "the endpoint
+    # answered, but not in the shape an openai provider answers in" -- for a
+    # key and a model that were both perfectly fine. A reply with a `choices`
+    # list IS the shape; an empty answer is still an answer.
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("no choices in the reply")
+    msg = choices[0].get("message") or {}
+    text = (msg.get("content") or "").strip()
+    use = data.get("usage") or {}
+    return text, int(use.get("prompt_tokens") or 0), \
+        int(use.get("completion_tokens") or 0)
+
+
+def cloud_stream(cloud, payload, timeout, on_token, stop=None,
+                 on_response=None):
+    """Stream a completion, token by token, in whichever shape it speaks.
+
+    Returns (whole text, prompt tokens, completion tokens) and counts ONE
+    request, here, for the same reason the non-streaming path counts here: it
+    is the one place a hosted request is made, so one call is one use by
+    construction rather than by every caller remembering to say so.
+
+    Token counts come back zero on providers that do not volunteer them
+    mid-stream, and that is left alone rather than papered over -- asking for
+    them means sending a provider-specific option, and an unknown field is a
+    400 that would break the chat for the sake of a number on a settings page.
+    The REQUEST count, which is what anybody is actually watching, is exact.
+    """
+    base = cloud["base_url"].rstrip("/")
+    dialect = cloud.get("dialect") or "openai"
+    out = []
+    tin = tout = 0
+
+    if dialect == "anthropic":
+        msgs = [m for m in payload["messages"] if m.get("role") != "system"]
+        system = " ".join(m["content"] for m in payload["messages"]
+                          if m.get("role") == "system")
+        body = {"model": cloud["model"], "messages": msgs, "stream": True,
+                "max_tokens": payload.get("max_tokens", 1024)}
+        if system:
+            body["system"] = system
+        req = urllib.request.Request(
+            base + "/messages", data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "x-api-key": cloud["key"],
+                     "anthropic-version": ANTHROPIC_VERSION})
+    else:
+        body = dict(payload)
+        body["model"] = cloud["model"]
+        body["stream"] = True
+        req = urllib.request.Request(
+            base + "/chat/completions", data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer " + cloud["key"]})
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            # Handed out so a Stop button can cut the socket. Checking `stop`
+            # between lines is not enough on its own: nothing arrives while a
+            # provider is still thinking, so the check never runs.
+            if on_response:
+                on_response(resp)
+            for raw in resp:
+                if stop and stop():
+                    break
+                line = raw.decode("utf-8", "replace").strip()
+                # Server-sent events: `event:` lines and blank separators are
+                # part of the protocol and carry nothing we need.
+                if not line.startswith("data:"):
+                    continue
+                line = line[5:].strip()
+                if line == "[DONE]":
+                    break
+                try:
+                    o = json.loads(line)
+                except ValueError:
+                    continue
+                if dialect == "anthropic":
+                    kind = o.get("type")
+                    if kind == "content_block_delta":
+                        tok = (o.get("delta") or {}).get("text") or ""
+                    elif kind == "message_start":
+                        use = ((o.get("message") or {}).get("usage") or {})
+                        tin = int(use.get("input_tokens") or 0) or tin
+                        tok = ""
+                    elif kind == "message_delta":
+                        use = o.get("usage") or {}
+                        tout = int(use.get("output_tokens") or 0) or tout
+                        tok = ""
+                    elif kind == "error":
+                        raise ValueError(
+                            (o.get("error") or {}).get("message")
+                            or "the provider sent an error event")
+                    else:
+                        tok = ""
+                else:
+                    use = o.get("usage") or {}
+                    if use:
+                        tin = int(use.get("prompt_tokens") or 0) or tin
+                        tout = int(use.get("completion_tokens") or 0) or tout
+                    choices = o.get("choices") or []
+                    tok = ((choices[0].get("delta") or {}).get("content") or ""
+                           ) if choices else ""
+                if tok:
+                    out.append(tok)
+                    if on_token:
+                        on_token(tok)
+    except Exception:
+        usage_note("cloud", cloud.get("provider"), cloud.get("model"),
+                   ok=False)
+        raise
+
+    usage_note("cloud", cloud.get("provider"), cloud.get("model"), ok=True,
+               tokens=(tin, tout))
+    return "".join(out), tin, tout
+
+
+def cloud_complete(cloud, payload, timeout, on_response=None):
+    """One whole answer from a provider, counted as one request.
+
+    For everything that is not a chat bubble filling in token by token: the
+    agent's steps, an automation's AI block, an AI condition, the workflow
+    builder. Each step of an agent loop is its own request and is counted as
+    its own use -- an agent that took four steps to open a file made four
+    requests, and a count that said one would be the count lying.
+
+    Raises on failure, unlike _ask_cloud: an agent or an automation that
+    silently fell back to a local model would be answering from somewhere
+    other than the model it names.
+    """
+    try:
+        text, tin, tout = cloud_request(cloud, payload, timeout,
+                                        on_response=on_response)
+    except Exception:
+        usage_note("cloud", cloud.get("provider"), cloud.get("model"),
+                   ok=False)
+        raise
+    usage_note("cloud", cloud.get("provider"), cloud.get("model"), ok=True,
+               tokens=(tin, tout))
+    return text
+
+
+def _ask_cloud(cloud, payload, timeout):
+    """
+    One completion from the hosted model, or None.
+
+    None on ANY failure, so `ask()` falls back to the local model. That
+    fallback is the point: a settings app can turn the cloud on, but a network
+    that is down or a key that expired must not stop the ghost-text fix in
+    somebody's terminal from working. The local model is always there.
+
+    Counted either way, and counted HERE: this is the one function that sends
+    a hosted request, so one call is one use by construction rather than by
+    every caller remembering to say so. A failure is counted as an error and
+    not as a request -- nobody is billed for a connection that never landed,
+    and a number that says otherwise is a number that stops being read.
+    """
+    try:
+        text, tin, tout = cloud_request(cloud, payload, timeout)
+    except (urllib.error.URLError, OSError, ValueError, KeyError,
+            IndexError, TimeoutError):
+        usage_note("cloud", cloud.get("provider"), cloud.get("model"),
+                   ok=False)
+        return None
+    usage_note("cloud", cloud.get("provider"), cloud.get("model"), ok=True,
+               tokens=(tin, tout))
+    return text or None
+
+
 def ask(system, user, feature="", cache_key=None, conf=None,
         passive=True, max_tokens=None, timeout=None):
     """One small completion against the already-warm model, or None.
@@ -249,25 +735,43 @@ def ask(system, user, feature="", cache_key=None, conf=None,
     if not ok:
         return None
 
-    body = json.dumps({
+    payload = {
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
         "max_tokens": max_tokens or _int(conf, "max_tokens", 160),
         "temperature": 0.1,
         "stream": False,
-    }).encode("utf-8")
+    }
 
-    req = urllib.request.Request(
-        turbo_url() + "/v1/chat/completions", data=body,
-        headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(
-                req, timeout=timeout or _int(conf, "timeout", 6)) as resp:
-            data = json.load(resp)
-        text = data["choices"][0]["message"]["content"].strip()
-    except (urllib.error.URLError, OSError, ValueError, KeyError,
-            IndexError, TimeoutError):
-        return None
+    # A hosted model, when one is configured AND this call is allowed to use
+    # it. `passive` is the gate: the helpers that fire on their own -- the
+    # ghost-text fix after a failed command -- run several times a minute in a
+    # busy terminal, and a hosted model bills per token. They stay local unless
+    # the key was set with `--for all`.
+    text = None
+    cloud = cloud_config()
+    if cloud and (not passive or cloud.get("use_for") == "all"):
+        text = _ask_cloud(cloud, dict(payload),
+                          timeout or _int(conf, "timeout", 6) * 3)
+
+    if text is None:
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            turbo_url() + "/v1/chat/completions", data=body,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(
+                    req, timeout=timeout or _int(conf, "timeout", 6)) as resp:
+                data = json.load(resp)
+            text = data["choices"][0]["message"]["content"].strip()
+        except (urllib.error.URLError, OSError, ValueError, KeyError,
+                IndexError, TimeoutError):
+            # Counted apart from the hosted ones, always. A single total would
+            # answer "how much AI is running here" and hide the only question
+            # worth asking, which is how much of it left the machine.
+            usage_note("local", ok=False)
+            return None
+        usage_note("local", ok=True)
 
     if not text:
         return None

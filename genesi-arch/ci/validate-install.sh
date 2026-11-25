@@ -261,14 +261,48 @@ ok "opt-in groups:            $(wc -l < /tmp/_optin.tsv)"
 # ---------------------------------------------------------------------------
 # LEVEL 1 - dependency dry-run of the HARD (always-installed) sets.
 # ---------------------------------------------------------------------------
+# Resolved against an EMPTY local database -- the disk Calamares installs to
+# and the airootfs mkarchiso builds both start with nothing installed -- and
+# the sync databases just refreshed. Resolving against the CI container's own
+# installed packages tested something no install ever does: on 2026-09-25 the
+# container still had systemd 261.3, Arch had shipped 262 the night before,
+# and `-Sp --needed` upgraded systemd while skipping the installed
+# systemd-sysvcompat, which pins systemd=261.3. The gate failed the ISO over
+# a partial upgrade that existed only inside the runner.
+FRESHDB="$(mktemp -d /tmp/genesi-freshdb.XXXXXX)"
+mkdir -p "$FRESHDB/local"
+cp -a /var/lib/pacman/sync "$FRESHDB/sync"
+FRESH=(--dbpath "$FRESHDB")
+
 dryrun_hard() { # <label> <pkgs...>
   local label="$1"; shift
-  if pacman -Sp --needed --noconfirm "$@" >/dev/null 2>/tmp/_err </dev/null; then
+  if pacman -Sp "${FRESH[@]}" --noconfirm "$@" >/tmp/_err 2>&1 </dev/null; then
     ok "Level 1: $label resolves"
   else
     bad "Level 1: $label FAILED to resolve"
-    grep -iE 'error|unable to satisfy|cannot resolve|target not found|conflict' /tmp/_err \
-      | sed 's/^/      /' | head -20
+    # Everything pacman said, not a guess at which phrasing it used. The
+    # previous filter looked for 'cannot resolve' and 'unable to satisfy',
+    # and pacman writes the useful part as ':: pkg: requires dep' -- so the
+    # gate reported a failure and swallowed its own reason.
+    #
+    # And that line goes to STDOUT, which this used to send to /dev/null
+    # with the download URLs: the ISO run of 2026-09-25 failed saying only
+    # "could not satisfy dependencies", with the dependency thrown away.
+    # Both streams are kept now; the URLs a successful -Sp prints are the
+    # only stdout lines filtered out.
+    #
+    # The one thing held back is the mirror 404 storm: when a CachyOS mirror
+    # is mid-sync every package in the set produces a line, and a hundred of
+    # those bury the one that matters. Counted instead, because "the mirrors
+    # are behind" and "this dependency does not exist" are the two answers
+    # and they have to be told apart at a glance.
+    local fetches
+    fetches="$(grep -c 'failed retrieving file' /tmp/_err || true)"
+    grep -v -e 'failed retrieving file' -e '^[a-z]*://' /tmp/_err | sed 's/^/      /' | head -40
+    if [ "${fetches:-0}" -gt 0 ]; then
+      echo "      (plus ${fetches} mirror download failures -- if those are"
+      echo "       404s, a repository is mid-sync and this is not our problem)"
+    fi
   fi
 }
 
@@ -281,11 +315,11 @@ dryrun_hard "base + default netinstall (critical)" "${BASE[@]}" "${DEFAULT[@]}"
 # only WARN on failure — Calamares continues the install without them, so a
 # transient repo skew here must not block the ISO.
 if [ "${#SOFT[@]}" -gt 0 ]; then
-  if pacman -Sp --needed --noconfirm "${BASE[@]}" "${SOFT[@]}" >/dev/null 2>/tmp/_err </dev/null; then
+  if pacman -Sp "${FRESH[@]}" --noconfirm "${BASE[@]}" "${SOFT[@]}" >/tmp/_err 2>&1 </dev/null; then
     ok "Level 1: base + non-critical netinstall resolves"
   else
     warn "Level 1: non-critical netinstall has unresolved deps (install continues without them — critical:false)"
-    grep -iE 'unable to satisfy|cannot resolve|target not found|conflict' /tmp/_err \
+    grep -iE 'unable to satisfy|cannot resolve|target not found|conflict|requires' /tmp/_err \
       | sed 's/^/      /' | head -10
   fi
 fi
@@ -314,11 +348,11 @@ note "Opt-in groups - dependency dry-run on base+default (conflict=fail; missing
 while IFS=$'\t' read -r gname gcrit gpkgs; do
   [ -n "$gname" ] || continue
   # shellcheck disable=SC2086
-  if pacman -Sp --needed --noconfirm "${BASE[@]}" "${DEFAULT[@]}" $gpkgs >/dev/null 2>/tmp/_err </dev/null; then
+  if pacman -Sp "${FRESH[@]}" --noconfirm "${BASE[@]}" "${DEFAULT[@]}" $gpkgs >/tmp/_err 2>&1 </dev/null; then
     ok "opt-in: $gname resolves"
   elif grep -qiE 'unable to satisfy|could not satisfy|in conflict|cannot resolve.*dependency' /tmp/_err; then
     bad "opt-in: $gname has a DEPENDENCY CONFLICT (install-breaker)"
-    grep -iE 'unable to satisfy|could not satisfy|conflict|cannot resolve' /tmp/_err \
+    grep -iE 'unable to satisfy|could not satisfy|conflict|cannot resolve|requires' /tmp/_err \
       | sed 's/^/      /' | head -10
   elif [ "$gcrit" = "HARD" ]; then
     bad "opt-in: $gname (critical:true) has MISSING packages — would ABORT the install"

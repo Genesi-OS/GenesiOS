@@ -172,6 +172,27 @@ def main():
         sys.stderr.write("genesi-snapshots CLI not found in PATH\n")
 
     engine = QQmlApplicationEngine()
+    # ── The colour scheme ────────────────────────────────────────────────
+    #
+    # Two things, and both are needed. The QPalette is what Qt draws its OWN
+    # widgets from -- popups, scrollbars, menus, Fusion buttons -- and this app
+    # never set one, so those arrived in Fusion's default LIGHT palette. That is
+    # the "dark window with a few white buttons in it" look: not an app half
+    # following the scheme, an app following nothing while Qt filled the gaps.
+    #
+    # The context properties are what the shared UI kit's Theme.qml and
+    # GlassCard.qml paint from. Whether they follow the desktop or keep the
+    # Genesi navy is Genesi Center's one switch; either way the two agree, which
+    # is the part that was broken.
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from genesi_palette import install as _install_palette
+        _install_palette(app, engine)
+    except Exception:
+        # A palette is not worth failing to start over. Without it the app
+        # looks exactly as it did before this existed.
+        pass
+
     backend = Backend()
     engine.rootContext().setContextProperty("backend", backend)
     here = os.path.dirname(os.path.abspath(__file__))

@@ -1,0 +1,488 @@
+# Maintainer: Genesi OS Team
+#
+# genesi-store — where a Genesi desktop gets its looks.
+#
+# The measure was RyoStore: shelves (lockscreens, rices, themes, bar styles,
+# fastfetch, plugins, bundles, decor), a card per item, one click to wear it.
+# What Genesi does differently is the part underneath.
+#
+# ── An item is DATA ─────────────────────────────────────────────────────────
+#
+# Every item in the catalogue is a name, a picture and a list of ACTIONS out
+# of a vocabulary genesi-store implements: set a scheme, set a wallpaper,
+# write this config file, switch the bar, ask pacman for a locker, point the
+# login screen at a theme. There is no field an item can put a command in, and
+# ci/store-test.py fails the build if one appears. A store that runs scripts
+# from its catalogue is a root shell with a nice card around it -- and the day
+# that catalogue comes down from the network rather than out of this package,
+# it is a REMOTE root shell.
+#
+# ── Everything is reversible ────────────────────────────────────────────────
+#
+# Each action returns its own inverse, and `apply` records it. Revert is
+# therefore not "apply the previous thing", it is the undo of what was done --
+# including the case that catches people out, where a config file did not
+# exist before and putting it "back" means deleting it again. The old file is
+# kept under ~/.local/share/genesi/store/backups either way.
+#
+# ── What it may touch ───────────────────────────────────────────────────────
+#
+# Downloads land in ~/.local/share/genesi/store. Writes go to ~/.config,
+# through genesi-center-set where there is a key for it (it validates), or as
+# a whole file with a backup where there is not. Two things need root and both
+# say so before they happen, through genesi-store-helper under pkexec: the
+# login screen (SDDM lives in /etc and /usr/share) and installing a locker.
+# The helper takes a NAME from a fixed list, never a path and never a command.
+#
+# ── The wallpapers ──────────────────────────────────────────────────────────
+#
+# One MIT-licensed collection (D3Ext/aesthetic-wallpapers), so there is a
+# single licence to honour, and every file is recorded with the size and
+# SHA-256 it served at build time: build-catalog.py downloads each one to get
+# them, and the store refuses a file that no longer matches. A dead link is a
+# failed build here rather than a broken card on somebody's desktop.
+#
+# ── Why source=() is empty ──────────────────────────────────────────────────
+#
+# Everything is installed from ${startdir}, the way genesi-center does it.
+# makepkg's source=() takes FILENAMES, not paths: given "catalog/catalog.json"
+# it looks for a file called catalog.json in the build directory, does not
+# find one, and stops with "catalog.json was not found in the build directory
+# and is not a URL" -- which is exactly how this package failed its first
+# build. ci/pkgbuild-syntax-test.py now refuses a source entry with a slash in
+# it, so the next person meets the rule instead of the error.
+pkgname=genesi-store
+pkgver=0.1.0
+# 2: the first version shipped looked wrong on a real machine, in four ways.
+#
+# No icon, because none was installed -- the launcher drew the "no icon"
+# circle. There is one now, and it is the Genesi mark itself (the same outline
+# and five veins as genesi-plymouth's logo and the hicolor icon), on a tile,
+# with a small download badge so a menu full of Genesi apps is not six
+# identical leaves. The leaf the app drew in its own rail was a shape I made
+# up; it is the real mark now as well.
+#
+# The rail's hover labels were drawn UNDER the cards: the rail is an earlier
+# sibling of the shelf, and no z on a child lifts it out of its parent's turn.
+# The window draws that label itself now.
+#
+# The icons were Material Symbols, on the reasoning that every Genesi desktop
+# has that font. A real machine did not find it, so the fallback -- a leaf --
+# was drawn nine times down the rail, one per shelf. They are SVGs shipped in
+# the package now, recoloured at draw time.
+#
+# And the cards were a thumbnail with three rows of form under it. A card is
+# the picture now: the wallpaper's own thumbnail (480px, shipped, so a shelf
+# is a shelf of pictures before anything is downloaded), with a small desktop
+# drawn ON it in the item's real colours. The shelf is a mosaic -- a whole
+# desktop takes four cells, a wallpaper two -- rather than a row of equal
+# rectangles.
+#
+# New with it: a detail sheet that lists what applying something will change,
+# read off the item's own actions, and the Genesi login screen (a real SDDM
+# theme, in sddm/, installed but never switched on by itself).
+#
+# 3: thirty-one login screens that are not ours.
+#
+# Genesi's own greeter is plain on purpose, and what people actually want is
+# the astronaut, the Catppuccin glass card, the caelestia lock screen that
+# matches the desktop they are logging into. Those live on GitHub, so the
+# store now downloads them -- which is a whole Qt application, unpacked into
+# /usr/share by root, drawn before anybody has logged in. Everything new in
+# this release is about that sentence being safe:
+#
+#   * The archives are pinned to a COMMIT and fetched as YOU. Root does no
+#     networking.
+#   * What is checked is a digest of the CONTENT, not of the tarball, because
+#     GitHub builds those on demand and re-compressed them once already. The
+#     helper computes it AFTER unpacking, on files it wrote itself, so the
+#     answer cannot change between the check and the install.
+#   * The helper still takes a NAME: a key into the greeters map in the
+#     catalogue under /usr/share, which only root can write. Every URL, digest
+#     and destination comes from there.
+#   * Only plain files and directories are unpacked -- no symlinks, no paths
+#     that climb out, a cap on what it may write.
+#   * build-catalog.py reads each theme's own QML imports and records the Qt
+#     modules it needs, so they are installed BEFORE the greeter is switched.
+#     A theme importing QtQuick.VirtualKeyboard on a machine without it is a
+#     black screen at boot, not a missing keyboard. A theme that turns out to
+#     be Qt5 fails the build here instead.
+#   * Every card carries a screenshot of the real thing, and the detail page
+#     carries the way back -- the console and the one command -- where it can
+#     be read BEFORE the choice rather than after it.
+#
+# Also: genesi/preview.png, rendered from the greeter's own QML by
+# ci/sddm-shot.py, which is the Screenshot= its metadata always claimed; and
+# SDDM's stock elarun/maldives/maya are off the shelf, because they shipped no
+# picture and a grey card among thirty screenshots is exactly what pkgrel 2
+# set out to stop.
+#
+# pkgrel 4: those screenshots are no longer IN this package. They belong to
+# the people who made the themes, and some of what is inside them was never
+# theirs to license onward -- the astronaut wallpapers are described by their
+# own README as "copied from one user to another", and two are frames of a
+# cartoon and of a commercial game. So a card names its picture and the store
+# fetches it, from the same pinned commit the theme comes from, checked
+# against a digest, cached in ~/.local/share and asked for only when the card
+# is scrolled into view. Genesi now redistributes none of it. Plus a seventh
+# theme, ADIOR-enigma/hypr-sddm, and the author's name on the card itself.
+#
+# pkgrel 5: the session-lock shelf never worked. The Lock button emits a
+# logind signal; hyprlock is not a daemon and does not hear it; hypridle,
+# which does, was never installed or started. Every card applied cleanly
+# and changed nothing. The cards now install hypridle and write a user
+# service that runs it. Also: the detail sheet shows the fetched
+# screenshot (it was drawing the generic one), and a login card shows the
+# archive's size instead of "0 KB".
+#
+# pkgrel 6: the login screens and the session locks are two shelves now --
+# they are two programs at two moments, and only one can lock you out of the
+# machine. Every shelf gains a "Como vem de fábrica" card, because Revert
+# undoes one item and the person looking for this has been clicking for an
+# hour. The bar cards are drawn from each preset's own module list, so the
+# thin one is thin and the one with the clock on top has the clock on top --
+# fifteen cards from one generic picture were fifteen identical cards. Same
+# for fastfetch, which now draws its logo, plus two options that put a real
+# picture there in sixel.
+#
+# pkgrel 7: thirty-five more login screens, from Darkkal44/qylock. That
+# repository is 604 MB of tarball and the Minecraft theme inside it is 200 KB,
+# so a theme can now be described FILE BY FILE instead: its own files, pinned
+# to the same commit, each with its own sha256, fetched by the store as you
+# and checked again by the helper as root before a byte is written. Nineteen
+# of them have an MP4 for a background and no still image at all, so the cards
+# use the author's own animated previews and the shelf moves.
+#
+# pkgrel 9, all of it from one round of testing on a real machine:
+#   * the drop-in is zz-genesi-store.conf now. SDDM reads that directory
+#     alphabetically and the LAST file wins, so "50-" lost to
+#     "genesi-theme.conf" -- which Genesi installs itself -- and to
+#     "kde_settings.conf". Every login screen ever picked in this store was
+#     overruled by a file further down the alphabet.
+#   * a downloaded picture keeps its extension. A file called "picture" with
+#     no suffix is not an image as far as caelestia is concerned, so every
+#     wallpaper failed to apply with an error from a program doing the right
+#     thing.
+#   * applying something now retires what it replaced, instead of both cards
+#     saying "em uso" forever.
+#   * an applied wallpaper is copied into <Pictures>/Wallpapers/Genesi Store,
+#     so it shows up in caelestia's own list afterwards instead of being
+#     reachable only through the store.
+#   * the bar presets no longer set `width` and `spacing`, which are not
+#     caelestia bar properties at all -- so the cards stop promising a
+#     difference that could never appear -- and the factory preset states
+#     every value rather than leaving them out and hoping.
+#
+# pkgrel 10:
+#   * five themes could not be downloaded at all. The store built its
+#     per-file URLs without escaping them, and one of these ships
+#     "font/The Last Shuriken.ttf" -- a space is not legal in a request
+#     line, so Python refused it and the theme died on its fourth file.
+#     build-catalog escaped it when recording the digest and the store did
+#     not when fetching, which is the kind of disagreement that only ever
+#     shows up on somebody else's machine.
+#   * the session lock crashed the shell, and the reason is that caelestia
+#     HAS a lock of its own -- a WlSessionLock, the Wayland protocol exactly
+#     one client may hold. Putting hyprlock in as the session lock on a
+#     desktop that already has one is two programs reaching for the same
+#     single-holder protocol. The locker is a choice now, and it defaults to
+#     caelestia's own.
+#   * thumbnails are 1280px instead of 480. A card is most of the window on
+#     the mosaic shelf, and a 480px JPEG stretched four times looks exactly
+#     as bad as it sounds.
+# pkgrel 13: the session lock was crashing the shell, and the cause was a
+# wrong premise of mine rather than a bug in either program. I believed nothing
+# answered `loginctl lock-session` and installed hypridle to do it. caelestia
+# answers it already -- IdleMonitors.qml wires a LogindManager straight to the
+# session's Lock signal -- so every lock started caelestia's WlSessionLock AND
+# hyprlock on the one Wayland protocol a single client may hold. Every rice
+# included a lock card too, so applying any rice did the same.
+#
+# The hyprlock cards are gone, the rices stop including them, hypridle and
+# the lockers leave the list of things root may install, and the store
+# removes the watcher it installed -- only its own files, and restoring any
+# the older store backed up. A drop-in keeps the old unit from starting even
+# where the store is never opened again.
+#
+# Also: Lang.qml was about to ship registered in qmldir but not installed.
+# 14: the Plugins shelf is not "coming soon" any more. Two cards -- the
+# Game Center and the leaf -- and a way back that turns every plugin off.
+# A plugin card is an ordinary `file` action writing
+# ~/.config/genesi/plugins/<id>.json, which genesi-caelestia-shell reads;
+# revert deletes it. The store gained no power: the code a card switches on
+# is code a signed package already carries. Its pictures are the real QML,
+# drawn by plugin-previews.py. And `build-catalog.py --offline` works again:
+# since the catalogue went bilingual it translated the reused login screens
+# a second time and stopped on 123 "missing" strings.
+# 15: a third plugin card, Live weather -- rain, snow, storms and fog on the
+# wallpaper when the weather outside has them. Its picture is the plugin's
+# own rain drawn over a wallpaper this package already ships.
+# 16: the Game Center card says eight games, and its picture shows them.
+# 17: two more plugin cards -- the Turntable and the Retrospective -- with
+# pictures drawn from the plugins themselves.
+# 18: the Fastfetch shelf, redone. The picture cards were wallpapers
+# squeezed into thirty columns; now seven emblems drawn for the job
+# (fetch-art.py, shipped in /usr/share/genesi-store/fetch-art) with a
+# sectioned layout -- VITALS, SYSTEM, SESSION under rules in the theme's
+# colour, aligned keys, the Genesi channel and the install's age -- and card
+# pictures rendered as the terminal shows them. Plus three whole looks for
+# the top bar on the Bars shelf (Frame, Islands with flow, Notch), written
+# through genesi-center-set with Revert.
+# 19: the Fastfetch shelf is Genesi's own. The first cut copied another
+# distribution's look -- a torii and red sun with a kanji seal as a picture,
+# and uppercase VITALS / SYSTEM / SESSION under long rules -- close enough to
+# read as a copy. The torii is replaced by an Aurora, in the wallpaper's
+# colours, and the layout is Genesi's: machine / software / now marked by a
+# bar, lowercase keys, `installed … days ago`, the palette as squares.
+# 20: a card for the AI island plugin (genesi-caelestia-shell 56), with its
+# picture rendered from the island's own QML.
+# 21: the AI island's picture redrawn in the theme's colours, as it now is.
+# pkgrel 22: the AI island's shelf entry says what it does now -- on any
+# desktop, ask right on it, help with what you copied -- with a new picture.
+# pkgrel 23: the launcher shows only on Hyprland (OnlyShowIn): what the store
+# changes lives in caelestia, so on KDE it opened with little that applied.
+# Also restores the Genesi login screen theme on installs where the
+# installer had copied the live ISO's older one over it (no QtVersion=6:
+# black screen on logout once picked); pacman puts the package's files back.
+# pkgrel 24: back on KDE Plasma, showing only what works there: login
+# screens, fastfetch and wallpapers (plasma-apply-wallpaperimage, with the
+# previous picture kept for revert). Items that need caelestia (bars,
+# schemes, plugins, lock screen) are not offered on Plasma and are refused
+# if asked. Hyprland sees exactly what it saw before.
+pkgrel=24
+pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
+arch=('any')
+url='https://github.com/Genesi-OS/GenesiOS'
+license=('AGPL-3.0-or-later')
+# python-pyside6 for the window; the rest are what the ACTIONS reach for, and
+# every one of them is already on a Genesi Hyprland install.
+# qt6-svg because every icon in the window is an SVG (see Glyph.qml: a font
+# that turned out not to be installed is why they are files), and sddm because
+# the login screen this ships a theme for is the one it themes.
+depends=('python' 'pyside6' 'polkit' 'qt6-svg')
+optdepends=(
+    'genesi-caelestia-cli: colour schemes and wallpapers'
+    'genesi-caelestia-settings: the fifteen bar arrangements'
+    'genesi-center: the settings writer the store applies keys through'
+    'fastfetch: the terminal greeting the Fastfetch shelf configures'
+    'sddm: the login screen the Genesi greeter replaces'
+)
+source=()
+sha256sums=()
+
+check() {
+    # The two halves that run as scripts. A syntax error in either is a store
+    # that opens and can do nothing, or a helper that fails under pkexec after
+    # the password has been typed.
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-store',encoding='utf-8').read())"
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-store-helper',encoding='utf-8').read())"
+    python -c "import ast,io;ast.parse(io.open('${startdir}/app/genesi_store_app.py',encoding='utf-8').read())"
+
+    # ...and the catalogue, which is the thing this package actually ships.
+    # Parsing is not enough: an item whose action the CLI does not implement
+    # is a card that fails when somebody presses it, so the shelves, the ids
+    # and the vocabulary are checked here, at build time, against the CLI in
+    # this same directory.
+    python - "${startdir}" <<'CHECKCATALOG'
+import io, json, os, re, sys
+root = sys.argv[1]
+catalog = json.load(io.open(root + "/catalog/catalog.json", encoding="utf-8"))
+cli = io.open(root + "/genesi-store", encoding="utf-8").read()
+vocab = set(re.findall(r'^\s+"(\w+)": act_\w+,', cli, re.M))
+sections = {s["id"] for s in catalog["sections"]}
+items = catalog["items"]
+if len(items) < 40:
+    raise SystemExit("the catalogue has only %d items" % len(items))
+seen = set()
+for item in items:
+    if item["id"] in seen:
+        raise SystemExit("repeated id: " + item["id"])
+    seen.add(item["id"])
+    if item["section"] not in sections:
+        raise SystemExit("%s is on a shelf that does not exist" % item["id"])
+    for action in item.get("actions", []):
+        if action["action"] not in vocab:
+            raise SystemExit("%s asks for %r, which genesi-store cannot do"
+                             % (item["id"], action["action"]))
+# A login item names a theme DIRECTORY. Genesi's own has to be in this
+# package; anything else has to be one SDDM itself ships. A name that is
+# neither is a login screen that does not come up, and that is not a thing to
+# find out by rebooting.
+for item in items:
+    for action in item.get("actions", []):
+        if action.get("action") != "login":
+            continue
+        theme = action.get("theme")
+        if theme == "genesi":
+            if not os.path.isdir(os.path.join(root, "sddm")):
+                raise SystemExit("the catalogue offers the Genesi login "
+                                 "screen and this package does not ship it")
+        elif theme not in ("breeze", "elarun", "maldives", "maya"):
+            raise SystemExit("unknown login theme: %r" % theme)
+
+# The downloaded login screens. These are the only items that fetch a whole
+# application and run it as root before anybody has logged in, so what the
+# catalogue claims about them is checked here as well as in
+# ci/store-test.py -- this one runs on the machine doing the building, with
+# the helper that will do the installing sitting next to it.
+greeters = catalog.get("greeters") or {}
+helper = io.open(root + "/genesi-store-helper", encoding="utf-8").read()
+allowed = set(re.findall(r'"([a-z0-9-]+)",',
+                         re.search(r"INSTALLABLE = \((.*?)\)", helper,
+                                   re.S).group(1)))
+for item in items:
+    for action in item.get("actions", []):
+        if action.get("action") != "greeter":
+            continue
+        spec = greeters.get(action.get("key"))
+        if not spec:
+            raise SystemExit("%s asks for the login screen %r, which the "
+                             "catalogue does not describe"
+                             % (item["id"], action.get("key")))
+        conf = action.get("conf")
+        if conf and conf not in spec.get("confs", []):
+            raise SystemExit("%s asks for %s, which %s does not ship"
+                             % (item["id"], conf, action["key"]))
+for key, spec in greeters.items():
+    if not re.fullmatch(r"[0-9a-f]{64}", spec.get("tree", "")):
+        raise SystemExit("%s has no content digest, so nothing would check "
+                         "what gets unpacked into /usr/share" % key)
+    # Two shapes: a repository holding one theme arrives as an archive, and a
+    # repository holding forty is described file by file (qylock is 604 MB of
+    # tarball for a 200 KB login screen). Both have to be pinned to a commit,
+    # and in the second case every file has to carry its own digest, because
+    # there is no archive checksum standing in for them.
+    if spec.get("files"):
+        if not re.search(r"^https://[a-z0-9.]+/.*/[0-9a-f]{40}/",
+                         spec.get("base", "")):
+            raise SystemExit("%s is not pinned to a commit" % key)
+        for entry in spec["files"]:
+            path = entry.get("path", "")
+            if not path or path.startswith("/") or ".." in path.split("/"):
+                raise SystemExit("%s lists the path %r, which climbs out of "
+                                 "the theme" % (key, path))
+            if not re.fullmatch(r"[0-9a-f]{64}", entry.get("sha256", "")):
+                raise SystemExit("%s has no checksum for %s" % (key, path))
+    elif not re.search(r"^https://[a-z0-9.]+/.*/tar\.gz/[0-9a-f]{40}$",
+                       spec.get("url", "")):
+        raise SystemExit("%s is not pinned to a commit" % key)
+    unknown = set(spec.get("needs") or []) - allowed
+    if unknown:
+        raise SystemExit("%s needs %s, which the helper will not install"
+                         % (key, ", ".join(sorted(unknown))))
+
+# Every picture the catalogue names has to be a file this package installs.
+# A card whose preview is missing is the grey rectangle this shelf was rebuilt
+# to stop being.
+for item in items:
+    thumb = (item.get("preview") or {}).get("thumb")
+    if thumb and not os.path.isfile(os.path.join(root, "catalog", "thumbs",
+                                                 thumb)):
+        raise SystemExit("%s names the picture %s, which is not here"
+                         % (item["id"], thumb))
+
+# ...and a downloaded login screen names its picture instead of carrying it,
+# with the checksum that makes fetching it safe. A card that names neither is
+# a grey rectangle; a card that carries one is this package redistributing
+# somebody else's screenshot.
+for item in items:
+    if not any(a.get("action") == "greeter" for a in item.get("actions", [])):
+        continue
+    shot = (item.get("preview") or {}).get("shot") or {}
+    if len(shot.get("sha256", "")) != 64 or not shot.get("url", "").startswith("https://"):
+        raise SystemExit("%s has no checksummed picture to fetch" % item["id"])
+    if (item.get("preview") or {}).get("thumb"):
+        raise SystemExit("%s ships a screenshot that is not ours" % item["id"])
+
+print("catalogue: %d items, %d shelves, %d login screens, every action "
+      "implemented" % (len(items), len(sections), len(greeters)))
+CHECKCATALOG
+}
+
+package() {
+    # The one command. With arguments it is the data plane; with none it opens
+    # the window, because that is what a person means when they type it.
+    install -Dm755 "${startdir}/genesi-store" "${pkgdir}/usr/bin/genesi-store"
+
+    # The privileged half, deliberately NOT on PATH: it is started by pkexec
+    # from the store and by nothing else.
+    install -Dm755 "${startdir}/genesi-store-helper" \
+        "${pkgdir}/usr/lib/genesi-store/genesi-store-helper"
+    install -Dm644 "${startdir}/org.genesi.store.policy" \
+        "${pkgdir}/usr/share/polkit-1/actions/org.genesi.store.policy"
+
+    # The catalogue, and the script that built it -- shipped so the provenance
+    # of every link travels with the data.
+    install -Dm644 "${startdir}/catalog/catalog.json" \
+        "${pkgdir}/usr/share/genesi-store/catalog.json"
+    install -Dm644 "${startdir}/catalog_en.py" \
+        "${pkgdir}/usr/share/genesi-store/catalog_en.py"
+    install -Dm644 "${startdir}/build-catalog.py" \
+        "${pkgdir}/usr/share/genesi-store/build-catalog.py"
+    install -Dm644 "${startdir}/fetch_themes.py" \
+        "${pkgdir}/usr/share/genesi-store/fetch_themes.py"
+
+    # The Fastfetch shelf's emblems. Shipped rather than downloaded, and the
+    # configs name them where they are: a fetch whose logo is a path to a
+    # file that failed to download prints an error where the picture was.
+    for f in "${startdir}"/fetch-art/*.png; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/fetch-art/$(basename "$f")"
+    done
+
+    # The window.
+    install -Dm755 "${startdir}/app/genesi_store_app.py" \
+        "${pkgdir}/usr/share/genesi-store/app/genesi_store_app.py"
+    # Every QML file at the root, by glob. They used to be listed one by
+    # one, which is how Lang.qml -- registered in qmldir -- nearly shipped
+    # without the file qmldir names: a window that does not open at all.
+    for f in "${startdir}"/app/*.qml; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/app/$(basename "$f")"
+    done
+    install -Dm644 "${startdir}/app/qmldir" \
+        "${pkgdir}/usr/share/genesi-store/app/qmldir"
+    for f in "${startdir}"/app/components/*.qml; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/app/components/$(basename "$f")"
+    done
+    for f in "${startdir}"/app/icons/*.svg; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/app/icons/$(basename "$f")"
+    done
+
+    # The pictures the shelves are made of. Shipped, not downloaded: a store
+    # whose cards are grey rectangles until you press something is a list.
+    for f in "${startdir}"/catalog/thumbs/*.jpg; do
+        install -Dm644 "$f" \
+            "${pkgdir}/usr/share/genesi-store/thumbs/$(basename "$f")"
+    done
+
+    # ── The login screen ────────────────────────────────────────────────────
+    #
+    # A theme for SDDM, the greeter every Genesi Hyprland install gets.
+    # Installing it changes NOTHING on its own: SDDM keeps using whatever
+    # /etc/sddm.conf.d says until somebody picks this one in the store, which
+    # is the only moment a password is asked for.
+    install -Dm644 "${startdir}/sddm/Main.qml" \
+        "${pkgdir}/usr/share/sddm/themes/genesi/Main.qml"
+    install -Dm644 "${startdir}/sddm/theme.conf" \
+        "${pkgdir}/usr/share/sddm/themes/genesi/theme.conf"
+    install -Dm644 "${startdir}/sddm/metadata.desktop" \
+        "${pkgdir}/usr/share/sddm/themes/genesi/metadata.desktop"
+    # The Screenshot= its metadata has always declared. Rendered from this
+    # very QML by ci/sddm-shot.py, so the picture on its card in the store is
+    # the login screen this package installs rather than a drawing of it.
+    install -Dm644 "${startdir}/sddm/preview.png" \
+        "${pkgdir}/usr/share/sddm/themes/genesi/preview.png"
+
+    # Retires the lock watcher older versions wrote into ~/.config. See the
+    # file itself for why; the store also removes the unit when it runs.
+    install -Dm644 "${startdir}/systemd/genesi-lock.service.d/10-retired.conf" \
+        "${pkgdir}/usr/lib/systemd/user/genesi-lock.service.d/10-retired.conf"
+    install -Dm644 "${startdir}/genesi-store.svg" \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/genesi-store.svg"
+
+    install -Dm644 "${startdir}/org.genesi.store.desktop" \
+        "${pkgdir}/usr/share/applications/org.genesi.store.desktop"
+}

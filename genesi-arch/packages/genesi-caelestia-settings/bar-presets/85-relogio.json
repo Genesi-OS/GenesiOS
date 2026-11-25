@@ -1,0 +1,49 @@
+{
+  "name": "Clock first · Relógio",
+  "description": "The time at the top with its date, everything else below it",
+  "bar": {
+    "entries": [
+      {
+        "id": "clock",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "workspaces",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "tray",
+        "enabled": true
+      },
+      {
+        "id": "statusIcons",
+        "enabled": true
+      },
+      {
+        "id": "power",
+        "enabled": true
+      }
+    ],
+    "clock": {
+      "showDate": true,
+      "background": true,
+      "showIcon": false
+    },
+    "workspaces": {
+      "showWindows": false
+    }
+  },
+  "border": {
+    "thickness": 22,
+    "rounding": 44,
+    "smoothing": 24
+  }
+}

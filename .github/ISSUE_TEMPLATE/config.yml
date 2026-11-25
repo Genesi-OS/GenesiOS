@@ -1,0 +1,14 @@
+# Blank issues stay ON: genesi-report opens `issues/new?title=…&body=…`
+# with no template, and with blank issues off GitHub sends that URL to the
+# template picker and the report it carried is lost.
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and ideas
+    url: https://forum.genesios.org
+    about: How do I…? Is it possible to…? Ask on the forum.
+  - name: Security vulnerability
+    url: https://github.com/Genesi-OS/GenesiOS/blob/main/SECURITY.md
+    about: Please report security issues privately, never in a public issue -- SECURITY.md says how.
+  - name: Documentation
+    url: https://github.com/Genesi-OS/GenesiOS/tree/main/docs
+    about: Installation guide, FAQ and roadmap.

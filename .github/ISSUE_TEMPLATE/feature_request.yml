@@ -1,0 +1,44 @@
+name: Feature request
+description: Something Genesi OS could do, or do better.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas that are still taking shape are welcome on [the forum](https://forum.genesios.org)
+        first — that is where they get discussed. This form is for when you know what you want.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what gets in the way today.
+      placeholder: I switch between two monitor layouts every day, and each time…
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+      description: How you picture it working. A sketch or a screenshot from somewhere else helps.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: desktop
+    attributes:
+      label: Desktop
+      options:
+        - KDE Plasma
+        - Hyprland + caelestia
+        - Any desktop
+        - Another desktop
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do now instead
+      description: Workarounds, other tools, how other systems handle it.

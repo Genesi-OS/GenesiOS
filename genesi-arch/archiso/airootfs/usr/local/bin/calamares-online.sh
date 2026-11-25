@@ -11,7 +11,46 @@ main() {
     sudo pacman -Sy --noconfirm archlinux-keyring cachyos-keyring
     # Also populate the keys, before starting the Installer, to avoid above issue
     sudo pacman-key --init
-    sudo pacman-key --populate archlinux cachyos
+    # `genesi` too, and this is not cosmetic. `--populate` with explicit names
+    # populates ONLY those, so shipping genesi.gpg on the ISO while naming just
+    # archlinux and cachyos here would leave the key present and untrusted --
+    # the file sitting right there, doing nothing, which is the most confusing
+    # possible failure. `pacman-init.service` calls --populate with no
+    # arguments (all keyrings) and would have covered it; this script
+    # re-initialises from scratch and would have undone that.
+    sudo pacman-key --populate archlinux cachyos genesi
+
+    # ── Do not start an install without a keyring ────────────────────────────
+    #
+    # genesi-prepare-pacman.sh does NOT build the target's keyring. It copies
+    # this one:
+    #
+    #     cp -a /etc/pacman.d/gnupg "$ROOT/etc/pacman.d/" 2>/dev/null
+    #
+    # An empty source plus a silenced error is an installed machine with no
+    # keyring at all — which is what a VM install produced on 2026-08-29:
+    # `pacman-key --list-keys` failed even under sudo, and genesi-keyring's
+    # scriptlet (guarded on `pacman-key -l` working) silently skipped, so the
+    # Genesi signing key never got imported. A whole distribution's trust
+    # anchor, lost to a `2>/dev/null`.
+    #
+    # So: check, and if it did not take, say so and try once more. Everything
+    # after this point assumes the keyring is real.
+    if ! sudo pacman-key --list-keys >/dev/null 2>&1; then
+        echo ">>> WARNING: the pacman keyring did not initialise — retrying"
+        sudo rm -rf /etc/pacman.d/gnupg
+        sudo pacman-key --init
+        sudo pacman-key --populate archlinux cachyos genesi
+        if ! sudo pacman-key --list-keys >/dev/null 2>&1; then
+            echo ">>> ERROR: still no usable pacman keyring."
+            echo ">>> The installed system would come out unable to verify any"
+            echo ">>> package, and would never import the Genesi signing key."
+            echo ">>> Fix it on the installed system afterwards with:"
+            echo ">>>   sudo pacman-key --init && sudo pacman-key --populate archlinux cachyos genesi"
+        fi
+    else
+        echo ">>> pacman keyring ready ($(sudo pacman-key --list-keys 2>/dev/null | grep -c '^pub') keys)"
+    fi
     # Also use timedatectl to sync the time with the hardware clock
     # There has been a bunch of reports, that the keyring was created in the future
     # Syncing appears to fix it
@@ -32,7 +71,12 @@ main() {
     local ISO_VERSION="$(cat /etc/version-tag)"
     echo "USING ISO VERSION: ${ISO_VERSION}"
 
-    sudo pacman -Sy --noconfirm cachyos-calamares-next
+    # genesi-calamares, not cachyos-calamares-next. This line runs at the
+    # moment the user clicks "Install Genesi OS", so leaving it would drag the
+    # broken CachyOS build back in and undo the package-list fix silently --
+    # the ISO would ship correct and break on the one click that matters.
+    # See packages_desktop.x86_64 for the boost soname story.
+    sudo pacman -Sy --noconfirm genesi-calamares
 
     # Copy Genesi OS Calamares configuration (overwrite CachyOS defaults)
     echo ">>> Applying Genesi OS Calamares configuration..."
@@ -147,6 +191,18 @@ EOF
     # Genesi: neutralize shellprocess@btrfs_snapshot before Calamares starts.
     # See /usr/local/bin/genesi-btrfs-cleanup.sh for rationale.
     sudo /usr/local/bin/genesi-btrfs-cleanup.sh
+    # Genesi Migrate: booted from the old system's one-time GRUB entry, the
+    # installer runs the migration setup (no partitioning page; the plan made
+    # on the old system partitions, then restores). A normal boot has no
+    # genesi.migrate= on the command line and skips this.
+    if grep -q 'genesi\.migrate=' /proc/cmdline && [ -x /usr/local/bin/genesi-migrate-live ]; then
+        # The login autostart normally staged already; clicking the installer
+        # icon first (or a desktop without XDG autostart) must work too.
+        [ -f /run/genesi-migrate/stage/manifest.json ]             || sudo /usr/local/bin/genesi-migrate-live stage >> "$log" 2>&1
+        if ! sudo /usr/local/bin/genesi-migrate-live calamares-config >> "$log" 2>&1; then
+            echo ">>> WARNING: Genesi Migrate setup failed, normal installer instead" >> "$log"
+        fi
+    fi
     exec pkexec-wrapper calamares -D6 >> $log
 }
 

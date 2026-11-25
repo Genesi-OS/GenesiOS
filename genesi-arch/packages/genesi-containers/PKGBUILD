@@ -54,7 +54,7 @@ pkgver=1.0.0
 # adding genesi-containers.svg and the SNI host read a stale cache. Add an
 # install scriptlet that runs gtk-update-icon-cache (matches genesi-ai-mode,
 # whose tray icon already resolved because it ships one).
-pkgrel=8
+pkgrel=9
 pkgdesc='Plasma 6 widget + tray applet to monitor and control Docker/Podman containers'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

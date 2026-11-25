@@ -1,0 +1,309 @@
+# Maintainer: Genesi OS Team
+#
+# genesi-center — the desktop's control surface.
+#
+# Roadmap 7.4: "a Genesi settings app with real art direction". The bar it was
+# measured against is Ryoku's, and the useful half of what they do is the
+# architecture rather than the look:
+#
+#   * a data plane that is a CLI printing JSON (`ryoku-hub keybinds`,
+#     `hypr get`), and a front end that only draws
+#   * one file per page, one rail that owns navigation
+#   * a written design contract every page obeys
+#
+# Genesi already had the first of those everywhere -- genesi-display,
+# genesi-bar, genesi-ai-mode all print JSON for a GUI to read -- so this app is
+# the same shape: `genesi-center-data` reads the machine, the QML draws it, and
+# neither knows the other's business. What it does NOT copy is the appearance:
+# Ryoku's is warm bone on black, and wearing it would make Genesi look like
+# Ryoku. app/Tokens.qml is where ours is decided, and it says why.
+#
+# The other apps here derive their colours from the system scheme through the
+# shared genesi-ui-kit. This one deliberately does not, so it is not bundled:
+# Center is the brand surface, and a control centre that restates itself in
+# whatever hue the wallpaper produced has no identity to recognise.
+pkgname=genesi-center
+pkgver=0.1.0
+# 2: the rail, the animations and the artwork all landed while this stayed
+# at 1, so the repository held the newest code under a version every machine
+# already had and `genesi update` correctly did nothing. ci/pkgrel-bump-test.py
+# now fails the build on it.
+# 3: the Displays page, and primary read from genesi-display rather than
+# inferred from a monitor sitting at 0,0.
+# 4: the Bar page, and the rail hides what the running session cannot do --
+# a control that appears to work and changes nothing is worse than a
+# missing page.
+# 16: the cards have a face. Sixty-two hairline rectangles down a page read
+# as a form, not as an instrument: correct, legible and anonymous. Panel
+# now carries diagonal corner ticks and an optional micro tag, SectionHead
+# finally draws the rule it was named for, and Fact ticks each reading --
+# three shared components, so the change lands on all sixteen pages at
+# once. Then the flat tiles individually: the launcher's groups set their
+# count as a reading, Settings' tool cards name the command they run, and
+# the colour schemes are marked and set as the identifiers they are.
+# 17: the Launcher page grows a "look" section, because the launcher grew a
+# second body. Two cards pick between caelestia's and Genesi's, and everything
+# under them -- the picture behind it, how far that picture reaches, its dim,
+# the number of columns, and the clock, weather, selection card and mode
+# buttons -- applies to the Genesi one and is hidden next to the other, since a
+# page of controls that quietly do nothing is worse than a page with a shape.
+# 18: the colour schemes are drawn, not listed -- and they were not even
+# listed. `caelestia scheme list` prints ONE line of JSON; this read it as text
+# and took the first whitespace-separated token, which is the string
+# {"caelestia": -- so the page offered exactly one scheme, named after a JSON
+# fragment, and picking it did nothing. It parses the JSON now, which hands us
+# the colours as well as the names, so each scheme is a card painted in its own
+# surface, ink and accents. A colour scheme is the one setting whose value IS a
+# picture. The flavour is set with the name: catppuccin alone has four, and
+# setting the name alone leaves whichever flavour was in use, which would make
+# the card look like it lied.
+# 19: the Widgets page grows the fourteen Genesi adds to the wallpaper, drawn
+# from one list rather than fourteen hand-written blocks -- a page that repeats
+# itself fourteen times is a page where the fifteenth row comes out subtly
+# different. Position and size appear only once a widget is on, because a
+# control for something that is not drawn is a control that appears to do
+# nothing.
+# 20: shortcuts you make yourself. The page could MOVE a shortcut and not add
+# one, and the answer to "I want a new one" was to edit hyprland.conf -- the
+# exact file this app promises never to touch. genesi-center-set grew newbind
+# and delbind, writing a two-line block (no unbind: nothing shipped that
+# combination, and unbinding a combination nobody bound would silently kill it
+# if the user later added their own). ci/center-binds-test.py exercises the
+# drop-in writer, with a neighbouring line under every block, because the skip
+# counts are where an off-by-one eats somebody else's shortcut in silence.
+# 21: the dock, and free widget positions. The Widgets page grew a section for
+# the dock (on, icon size, the flow, hide-when-empty, and the whole look: the
+# bar on or off, how solid, its corners, the icons corners, spacing, padding),
+# and the widget position list grew "Where you dropped it" -- which is not a
+# choice you make here but what a widget becomes when it is dragged on the
+# desktop, and it is in the list so a dragged widget says where it is rather
+# than showing a blank.
+# 22: this app can follow the desktop's colour scheme.
+#
+# Every other window follows it now, and a control centre that is the one
+# thing still painted its own colour is the exception that makes the rule
+# look like an accident. Emerald on near-black is still the DEFAULT -- the
+# identity does not leave in an update -- and the switch is on the Settings
+# page. The three accent shades are DERIVED from the scheme's one primary
+# rather than mapped onto secondary and tertiary, which are different hues
+# in most schemes and would give the app an accent nobody chose.
+# 23: genesi-center-set took ONE key per invocation and wrote through a
+# scratch file at a fixed path. A widget drop sets three keys, so it was
+# three processes each rewriting the whole of shell.json from its own copy
+# -- two of the three changes lost, and when they overlapped the scratch
+# file was truncated mid-write and what landed was two JSON documents
+# spliced together. That one bug is the widget that snapped back, the
+# widget toggles that stopped working, the JSON error at the next login,
+# and the settings pages that came up empty. Pairs now, one write, a
+# private scratch file; a damaged shell.json is salvaged up to the point
+# it stops parsing instead of being read as "no configuration at all".
+# 24: a place to set the weather location. The widget, the forecast
+# and the launcher's header all read one key and nothing in Genesi
+# could write it, so caelestia fell back to guessing from the IP --
+# and when that guess fails, every temperature on the desktop reads
+# "--" with nothing anywhere saying why.
+# 25: the Bar page stops asking WHICH SHELL runs. That question only existed
+# because the top bar used to be a second Quickshell process, and picking it
+# killed caelestia. The top bar is a window inside caelestia now, so this app
+# keeps exactly one control for it -- the switch that turns it on -- and
+# everything else about it is on the bar's own panel, where you can see what
+# you are changing.
+# 26: following the desktop's colour scheme is this app's default too,
+# for the same reason the other six flipped. Emerald on near-black is
+# still one switch away on the Settings page.
+# 27: the writer learns the bar's form and the dock's style.
+# `topbar.islands` is gone -- a bar has a shape and it is not a
+# yes-or-no -- and in its place are topbar.form (five), dock.style
+# (four), frost on both, and the dock's media chip. The studio in the
+# shell is a second front end on this writer, and until now nothing
+# checked its hundred and eighty rows against what the writer accepts;
+# ci/center-wiring-test.py does, the same way it checks this app's own
+# pages.
+# 28: the writer learns the side panel -- sidepanel.* and the mark's
+# icon. The shell's studio is where they are set; this holds the
+# validation and the file format, as it does for the other hundred and
+# seventy.
+# 29: the writer learns topbar.margin -- how far the bar sits from the
+# screen edge, which is not the same setting as the gap around its
+# islands.
+# 30: four QML warnings the shell log was printing on every start.
+# `page.voice.ready` and `page.cloud.configured` on the AI page and
+# `page.clock.enabled` on the Widgets page are read before the data
+# plane has answered, and a missing key on a section that defaults to
+# {} is `undefined` -- which Qt refuses to assign to `visible` and
+# complains about, once per page, for ever. Compared against true now.
+# 31: the AI page can set an API key, and says what has been sent where.
+#
+# It used to show whether a key was set and offer no way to set one, on the
+# reasoning that a secret typed into a settings window is a secret in a
+# screenshot. That reasoning stops at the field: dots are not screenshottable,
+# and the alternative -- telling somebody to open a terminal and redirect a
+# file into a command -- is not privacy, it is an unusable feature with a good
+# excuse. So there is a provider picker, a masked field, and a SAVE that hands
+# the key to `genesi-ai-key set` on STDIN. It never goes in argv, so it never
+# reaches a shell history or `ps`, which is the part that actually mattered.
+#
+# And two numbers: requests made on this machine, and requests sent to a
+# provider. Never one total -- the whole point of the split is that the
+# helpers which fire on their own stay local, and a combined figure would hide
+# exactly that.
+# 32: the TEST button opened an empty terminal and did nothing.
+#
+# It ran `foot genesi-ai-key test`, which ran, printed one line, and exited --
+# and the window closed with it. What you see is a terminal flashing open.
+# Two bugs, and the second one is worse: `foot` was named literally, so a
+# session without foot got no window at all and one line on this app's own
+# stderr.
+#
+# The test answers on the page now -- it is one sentence, and 401 versus 404
+# is exactly the sentence worth reading. And anything that really does need a
+# terminal (the Kokoro install: a download plus a pip install) goes through
+# inTerminal, which uses whichever terminal is installed and keeps the window
+# open when the command ends.
+# 33: a list of providers, and the voice's language.
+#
+# One key per provider now, so the AI page lists them: each with the model it
+# answers with (typed as the provider names it, saved on Enter), USE to make it
+# the one a chat starts on, its own TEST whose answer is drawn under it, and
+# REMOVE. Adding another key keeps the ones already set. And a Voice language
+# row, with the voices that language has -- all of them run from the files the
+# install already fetched.
+# 34: genesi-center-set takes what the desktop widget editor writes -- a style,
+# an opacity, a colour mode and two #rrggbb colours per widget, the new digital
+# clock, and sizes up to 250%.
+# 35: the desktop clock can be dropped anywhere -- position takes "free" and
+# x/y are fractions of the screen, the same shape the widgets already used.
+# 36: the rail stops speaking Japanese. The tags down its side were borrowed
+# from the app this one was measured against; they are Genesi's own words now,
+# the desktop as something that grows -- raiz, tronco, seiva, flor, anel,
+# semente -- and the Overview's ornament is a line of ours, set on its side.
+# The CJK font hunt that existed to avoid a column of empty boxes goes too.
+# 37: genesi-center-set accepts topbar.showTray, the top bar's new tray.
+# 38: a pick in a dropdown lands on the dropdown only. Its rows used a
+# TapHandler, which takes a passive grab and lets the press through to what
+# is underneath -- picking a resolution also pressed the rotation button it
+# lay over. MouseAreas now, and ci/center-select-test.py clicks it.
+# 39: genesi-center-set accepts the top bar's frame form and its eighteen
+# new settings (workspace style and count, window placement, rings, media,
+# volume, brightness, Bluetooth, battery pill, accent, clock and date).
+# 40: Appearance gets a wallpaper per screen and moving wallpapers: pick a
+# picture, GIF or video for every screen or for one, and the Wallpaper Engine
+# items Steam has downloaded (video items play; scene/web are marked). It
+# reads and writes through genesi-wallpaper (genesi-caelestia-shell 58).
+# pkgrel 41: the Local AI page offers the new providers too -- Hugging Face,
+# Cerebras, DeepSeek, Mistral, xAI and NVIDIA NIM (genesi-ai-mode 209).
+# pkgrel 42: on KDE the Hub shows only what works there. Input (Hyprland's
+# input:* options via hyprctl) now declares needs: hyprland like Displays,
+# and Settings hides "follow the desktop's colour scheme" without caelestia
+# instead of showing it greyed out. Hyprland is unchanged.
+# pkgrel 43: settings reach Hyprland 0.57 -- the drop-in gets a Lua twin
+# (genesi-center.lua, loaded by Genesi's hyprland.lua) and the live change
+# goes through `hyprctl eval` there, since 0.57 removed `keyword`.
+# pkgrel 44: Displays and Input on KDE Plasma. Displays goes through
+# genesi-display's new kscreen-doctor path; Input writes where KWin keeps
+# each setting (kcminputrc, kwinrc, kxkbrc, and per-device properties on
+# org.kde.KWin.InputDevice) and reads them back in the Hyprland keys, so
+# the pages are unchanged. Hyprland takes the same path as before.
+pkgrel=44
+pkgdesc='Genesi control centre — system overview, resources and settings'
+arch=('any')
+groups=('genesi')
+license=('AGPL-3.0-or-later')
+url='https://github.com/Genesi-OS/GenesiOS'
+# pyside6 for the engine; qqc2-desktop-style so plain Qt Quick Controls do not
+# fall back to the Basic style. coreutils for `du`, which the storage ring
+# needs and which is not worth reimplementing in Python.
+# qt6-svg: the brand mark is drawn from art/genesi-leaf.svg, and without
+# the SVG image plugin an Image with an .svg source silently renders
+# nothing -- the mark would simply be absent, with no error.
+# noto-fonts-cjk: the rail's tag column is Japanese. Nothing else on a
+# Genesi install guarantees a font that can draw it, and Qt answers a
+# missing glyph with a box rather than an error -- which is what the
+# reporter saw. A design that uses a script has to ship the script.
+depends=('python' 'pyside6' 'qqc2-desktop-style' 'qt6-svg' 'coreutils'
+         'noto-fonts-cjk')
+# What the pages OPEN. genesi-update-center is not here any more: the app used
+# to offer a card that ran a command by that name, and no such command exists --
+# the package is a polkit helper and a Plasma applet.
+optdepends=('genesi-snapshots: the Snapshots page and its quick tool'
+            'genesi-channel: the update-channel tool the Settings page opens'
+            'genesi-ai-mode: the Local AI page and the System Monitor tool'
+            'genesi-code: the editor quick tool')
+source=()
+
+check() {
+    # The data plane must parse and must answer every section it advertises.
+    # A GUI that starts and shows dashes is the failure this catches, and it
+    # cannot be caught from the QML side.
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-center-data',encoding='utf-8').read())"
+    # The writer is the half that TOUCHES a config. A syntax error in it
+    # is a settings page whose every control fails, so it is parsed here
+    # too rather than discovered on a desk.
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-center-set',encoding='utf-8').read())"
+    python -c "import ast,io;ast.parse(io.open('${startdir}/genesi-console',encoding='utf-8').read())"
+    python -c "import ast,io;ast.parse(io.open('${startdir}/app/genesi_center.py',encoding='utf-8').read())"
+    sh -n "${startdir}/genesi-center"
+    # ...and every section must actually ANSWER. Parsing proves the file
+    # is Python; this proves a page that asks for `resources` gets JSON
+    # rather than a traceback on stderr and {} in the window. Sections
+    # whose tools are absent in the build container return
+    # {"available": false}, which is a valid answer and the point.
+    # Written without line continuations on purpose. The first version of this
+    # loop was generated through a heredoc that turned every "backslash +
+    # newline" into a literal \n, so the shell read `\n` as the word `n` and
+    # asked the data plane for a section by that name. It failed the build --
+    # loudly, which is the good outcome -- but it is a trap worth not laying
+    # again in a file that is only ever run in CI.
+    _sections="session telemetry core storage activity system resources input"
+    _sections="$_sections audio appearance launcher windows shortcuts ai"
+    _sections="$_sections snapshots console desktop"
+    for _s in $_sections; do
+        if ! python "${startdir}/genesi-center-data" "$_s" | python -c "import json,sys;json.load(sys.stdin)"; then
+            echo "genesi-center-data $_s did not answer with JSON" >&2
+            return 1
+        fi
+    done
+}
+
+package() {
+    install -Dm755 "${startdir}/genesi-center" \
+        "${pkgdir}/usr/bin/genesi-center"
+    install -Dm755 "${startdir}/genesi-console" \
+        "${pkgdir}/usr/bin/genesi-console"
+    install -Dm755 "${startdir}/genesi-center-set" \
+        "${pkgdir}/usr/bin/genesi-center-set"
+    install -Dm755 "${startdir}/genesi-center-data" \
+        "${pkgdir}/usr/bin/genesi-center-data"
+
+    install -Dm644 "${startdir}/app/genesi_center.py" \
+        "${pkgdir}/usr/share/genesi-center/app/genesi_center.py"
+    install -Dm644 "${startdir}/app/Main.qml" \
+        "${pkgdir}/usr/share/genesi-center/app/Main.qml"
+    install -Dm644 "${startdir}/app/Tokens.qml" \
+        "${pkgdir}/usr/share/genesi-center/app/Tokens.qml"
+    install -Dm644 "${startdir}/app/qmldir" \
+        "${pkgdir}/usr/share/genesi-center/app/qmldir"
+
+    install -Dm644 "${startdir}/app/components/"*.qml \
+        -t "${pkgdir}/usr/share/genesi-center/app/components/"
+    install -Dm644 "${startdir}/app/pages/"*.qml \
+        -t "${pkgdir}/usr/share/genesi-center/app/pages/"
+
+    # The art is optional on purpose: OverviewPage falls back to a procedural
+    # glow, so a build without the asset still looks finished rather than
+    # showing an empty rectangle where the tree belongs.
+    if compgen -G "${startdir}/app/art/*" > /dev/null; then
+        install -Dm644 "${startdir}/app/art/"* \
+            -t "${pkgdir}/usr/share/genesi-center/app/art/"
+    fi
+
+    install -Dm644 "${startdir}/org.genesi.center.desktop" \
+        "${pkgdir}/usr/share/applications/org.genesi.center.desktop"
+
+    # The .desktop says Icon=genesi-center and nothing installed a file by that
+    # name, so the launcher had nothing to draw: a blank tile in the menu and in
+    # the taskbar, with no error anywhere. The same silent shape as a launcher
+    # action whose binary was never installed.
+    install -Dm644 "${startdir}/app/art/genesi-leaf.svg" \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/genesi-center.svg"
+}

@@ -1,0 +1,51 @@
+{
+  "name": "Airy · Arejado",
+  "description": "Wide and loosely spaced, with room around every icon",
+  "bar": {
+    "entries": [
+      {
+        "id": "logo",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "workspaces",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "tray",
+        "enabled": true
+      },
+      {
+        "id": "clock",
+        "enabled": true
+      },
+      {
+        "id": "power",
+        "enabled": true
+      }
+    ],
+    "workspaces": {
+      "shown": 5,
+      "showWindows": false
+    },
+    "clock": {
+      "background": true
+    },
+    "tray": {
+      "background": true
+    }
+  },
+  "border": {
+    "thickness": 12,
+    "rounding": 28,
+    "smoothing": 20
+  }
+}

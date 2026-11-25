@@ -1,0 +1,67 @@
+{
+  "name": "Dock · Painel",
+  "description": "A wide panel: every reading and every open window at once",
+  "bar": {
+    "entries": [
+      {
+        "id": "logo",
+        "enabled": true
+      },
+      {
+        "id": "workspaces",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "activeWindow",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "tray",
+        "enabled": true
+      },
+      {
+        "id": "clock",
+        "enabled": true
+      },
+      {
+        "id": "statusIcons",
+        "enabled": true
+      },
+      {
+        "id": "power",
+        "enabled": true
+      }
+    ],
+    "clock": {
+      "showDate": true,
+      "background": true
+    },
+    "tray": {
+      "background": true
+    },
+    "workspaces": {
+      "showWindows": true,
+      "maxWindowIcons": 6,
+      "realWindowIcons": true,
+      "occupiedBg": true
+    },
+    "status": {
+      "showAudio": true,
+      "showMicrophone": true,
+      "showKbLayout": true
+    }
+  },
+  "border": {
+    "thickness": 12,
+    "rounding": 28,
+    "smoothing": 20
+  }
+}

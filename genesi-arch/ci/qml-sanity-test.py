@@ -169,6 +169,10 @@ def direct_bindings(body):
     declared = {m.group(1) for m in
                 re.finditer(r"\bproperty\s+(?:alias\s+|[\w.<>]+\s+)(\w+)", body)}
     declared |= {m.group(1) for m in re.finditer(r"\bsignal\s+(\w+)", body)}
+    # `component Hand: Item { ... }` declares an inline component; the name
+    # before the colon is not a binding.
+    declared |= {m.group(1) for m in
+                 re.finditer(r"\bcomponent\s+(\w+)\s*:", body)}
 
     out, depth = [], 0
     for m in re.finditer(r"[{}()\[\]]|(?<![\w.])([A-Za-z_]\w*)\s*:(?!:)", body):
@@ -192,6 +196,21 @@ for path in sorted(PACKAGES.rglob("*.qml")):
     code = strip(raw)
     rel = path.relative_to(PACKAGES)
     checked += 1
+
+    # Quickshell looks for `pragma Singleton` only in the file's header, and
+    # the header ends at the first line containing "{" -- a comment's
+    # included. Past that, the file loads as a plain type: no instance, and
+    # every call on it "is not a function" (GenesiWallpaperState, pkgrel 59).
+    raw_lines = raw.splitlines()
+    for n, text in enumerate(raw_lines):
+        if text.strip() == "pragma Singleton":
+            early = [i for i in range(n) if "{" in raw_lines[i]]
+            if early:
+                failures.append(
+                    f"{rel}:{early[0] + 1}: a '{{' above `pragma Singleton` "
+                    f"(line {n + 1}) ends Quickshell's header scan -- the "
+                    f"file would load as a plain type, not a singleton")
+            break
 
     # How is each module imported here: qualified (as X) or plain?
     qualifier = {}
@@ -221,6 +240,33 @@ for path in sorted(PACKAGES.rglob("*.qml")):
                     failures.append(
                         f"{rel}:{line}: `{m.group(1)}.{typ}....` is qualified but "
                         f"{module} is imported plainly -> write `{typ}....`")
+
+    # ── A property named like a signal handler ──────────────────────────────
+    # `property color onAccent: ...` does not reliably declare a property. QML
+    # reads a name that is `on` followed by a capital as a signal handler, and
+    # what happens next depends on the value -- both outcomes verified under
+    # Qt 6.11:
+    #
+    #   a literal     -> LOAD ERROR, "Cannot assign a value to a signal
+    #                    (expecting a script to be run)", which takes the whole
+    #                    file down. In a singleton of design tokens that is
+    #                    every component importing it.
+    #   an expression -> loads, the property exists, and the binding is
+    #                    SILENTLY DROPPED. The property keeps its default: an
+    #                    invalid colour, which paints black.
+    #
+    # The second is why this check exists. genesi-ui-kit's GButton carried
+    # `readonly property color onAccent` computing a contrast colour, and every
+    # filled button had been drawing its label in flat black instead -- nobody
+    # noticed, because black is what that expression returns on a light accent.
+    for m in re.finditer(r"^[ \t]*(?:readonly\s+)?property\s+\w+\s+"
+                         r"(on[A-Z]\w*)\s*:", code, re.M):
+        line = code[:m.start()].count("\n") + 1
+        failures.append(
+            f"{rel}:{line}: `{m.group(1)}` is parsed as a handler for a signal "
+            f"called `{m.group(1)[2].lower() + m.group(1)[3:]}`, not as a "
+            f"property -> rename it (would fail at load with 'Cannot assign a "
+            f"value to a signal')")
 
     # ── Unknown property assigned to a LOCAL component ──────────────────────
     # QML resolves properties at LOAD time, so `FIcon { theme: ... }` on a
@@ -264,6 +310,122 @@ for path in sorted(PACKAGES.rglob("*.qml")):
     # both use `id: lbl` (genesi-netinspect does), and a JS object literal like
     # `{ id: id, name: … }` is not an id declaration at all (AutomationCanvas
     # does). Getting that right needs a real parser; a naive rule only cries wolf.
+
+# ── Every QML file the Monitor uses must be INSTALLED ───────────────────────
+#
+# A .qml that exists in the source tree but is missing from the PKGBUILD loads
+# fine here and is "Type unavailable" on the user's machine, which blanks the
+# page that referenced it. That is exactly how pkgrel 135 shipped a Monitor
+# with no Automations tab, and it is invisible to every other check because the
+# file itself is perfectly valid.
+_mon = PACKAGES / "genesi-ai-mode" / "monitor"
+_pkgbuild = (PACKAGES / "genesi-ai-mode" / "PKGBUILD").read_text(encoding="utf-8")
+for _f in sorted(_mon.glob("*.qml")):
+    if _f.stem not in _pkgbuild:
+        failures.append("%s is not installed by the PKGBUILD" % _f.name)
+
+# ── The Automations family's theme must define what that family uses ───────
+#
+# Those files get a CanvasTheme (a self-contained graphite palette, no
+# dependency on the shared Theme.qml) passed in as `theme`. `violet` was
+# referenced by two of them and defined only in the SHARED theme, so the icons
+# were handed `undefined` as a colour and drew nothing -- invisible on a dark
+# background, and the only trace was a QML warning nobody sees without running
+# the app.
+_CANVAS_FAMILY = ["AutomationsPage.qml", "AutomationCanvas.qml",
+                  "AutomationConfigPanel.qml", "CanvasNode.qml", "PaletteItem.qml"]
+_mondir = PACKAGES / "genesi-ai-mode" / "monitor"
+_ct = (_mondir / "CanvasTheme.qml").read_text(encoding="utf-8")
+_defined = set(re.findall(r"property\s+\w+\s+(\w+)\s*:", _ct))
+_defined |= set(re.findall(r"function\s+(\w+)\s*\(", _ct))
+for _name in _CANVAS_FAMILY:
+    _f = _mondir / _name
+    if not _f.exists():
+        continue
+    _used = set(re.findall(r"theme\.(\w+)", _f.read_text(encoding="utf-8")))
+    for _miss in sorted(_used - _defined):
+        failures.append("%s uses theme.%s, which CanvasTheme.qml does not define"
+                        % (_name, _miss))
+
+# ── `theme: theme` binds a property to ITSELF ──────────────────────────────
+#
+# QML resolves a bare name on the right-hand side against the object's OWN
+# properties before the enclosing scope's ids. So in
+#
+#     GButton { theme: theme; accent: theme.green }
+#
+# the component is handed `undefined`, and the sibling binding reading
+# theme.green throws. It is invisible without running the app — the only trace
+# is a QML warning — and it shipped in genesi-snapshots (every Restore and
+# Delete button in the list unstyled), genesi-ports, genesi-sandboxes and the
+# Monitor's AdvisorPage. Qualify it (`theme: root.theme`) or name the id
+# something the property cannot shadow (`appTheme`).
+_SELF_BIND = re.compile(r"(?<![.\w])theme:\s*theme(?![.\w])")
+for _f in sorted(PACKAGES.rglob("*.qml")):
+    _txt = _f.read_text(encoding="utf-8", errors="replace")
+    for _n, _line in enumerate(_txt.splitlines(), 1):
+        if _line.lstrip().startswith("//"):
+            continue
+        if _SELF_BIND.search(_line):
+            # The path, not just the basename: five of these files are called
+            # Main.qml, and "Main.qml:228" tells you nothing about which app.
+            failures.append("%s:%d writes `theme: theme`, which binds the "
+                            "property to itself"
+                            % (_f.relative_to(PACKAGES).as_posix(), _n))
+
+# ── A StyledSlider that is read like a QtQuick Slider writes nothing ───────
+#
+# caelestia's StyledSlider extends QtQuick.Templates.Slider but does not use
+# it: a MouseArea of its own drives `pos`, a 0-to-1 position, and hands that
+# position back through `interaction`. The template's `value` and `pressed`
+# are never touched by a drag.
+#
+# So a row written the obvious way --
+#
+#     value: someConfigValue
+#     onPressedChanged: if (!pressed) write(value)
+#
+# loads clean, animates its handle, snaps back on release and writes nothing.
+# A handler for a property that never changes is not an error anywhere. That
+# shipped, and it was every slider in the shell studio at once.
+#
+# The check runs on the COMMENT-STRIPPED source, because the paragraph above
+# this one names both of the strings it is looking for, and three Genesi
+# guards have already passed on the bug they existed to catch by matching
+# their own prose.
+_SLIDER = re.compile(r"\bStyledSlider\s*\{")
+for _f in sorted(PACKAGES.rglob("*.qml")):
+    _code = strip(_f.read_text(encoding="utf-8", errors="replace"))
+    _rel = _f.relative_to(PACKAGES).as_posix()
+    for _m in _SLIDER.finditer(_code):
+        _body = block_body(_code, _m.end() - 1)
+        if _body is None:
+            continue
+        _line = _code[:_m.start()].count(chr(10)) + 1
+        if "onPressedChanged" in _body:
+            failures.append("%s:%d a StyledSlider watching `pressed` -- the "
+                            "template's pressed stays false, the custom "
+                            "MouseArea is what handles the drag"
+                            % (_rel, _line))
+        if "onInteraction" not in _body:
+            failures.append("%s:%d a StyledSlider with no `onInteraction` -- "
+                            "nothing else tells you the handle moved"
+                            % (_rel, _line))
+
+# ── a method whose name starts upper-case ───────────────────────────────────
+#
+# "Method names cannot begin with an upper case letter" is a LOAD error: the
+# whole component refuses to compile. The Monitor's Image page shipped a
+# `function L(o)` helper for exactly one review; only an offscreen load caught
+# it. Comments and strings are stripped first, so prose cannot trip it.
+_UPPER_FN = re.compile(r"(?<![.\w])function\s+([A-Z]\w*)\s*\(")
+for _f in sorted(PACKAGES.rglob("*.qml")):
+    _code = strip(_f.read_text(encoding="utf-8", errors="replace"))
+    for _m in _UPPER_FN.finditer(_code):
+        failures.append("%s:%d `function %s` -- QML refuses a method name that "
+                        "starts upper-case (load error)"
+                        % (_f.relative_to(PACKAGES).as_posix(),
+                           _code[:_m.start()].count(chr(10)) + 1, _m.group(1)))
 
 print(f"checked {checked} QML files")
 if failures:

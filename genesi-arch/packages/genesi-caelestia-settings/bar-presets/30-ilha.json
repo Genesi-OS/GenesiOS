@@ -1,0 +1,51 @@
+{
+  "name": "Island · Ilha",
+  "description": "A floating desktop with heavily rounded corners, the bar on its edge",
+  "bar": {
+    "entries": [
+      {
+        "id": "logo",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "workspaces",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "tray",
+        "enabled": true
+      },
+      {
+        "id": "clock",
+        "enabled": true
+      },
+      {
+        "id": "power",
+        "enabled": true
+      }
+    ],
+    "workspaces": {
+      "showWindows": false,
+      "shown": 5
+    },
+    "clock": {
+      "background": true
+    },
+    "tray": {
+      "background": true
+    }
+  },
+  "border": {
+    "thickness": 22,
+    "rounding": 44,
+    "smoothing": 24
+  }
+}

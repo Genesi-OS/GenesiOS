@@ -1,0 +1,55 @@
+{
+  "name": "Numbered · Números",
+  "description": "Workspaces as numbers instead of dots",
+  "bar": {
+    "entries": [
+      {
+        "id": "logo",
+        "enabled": true
+      },
+      {
+        "id": "workspaces",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "activeWindow",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "tray",
+        "enabled": true
+      },
+      {
+        "id": "clock",
+        "enabled": true
+      },
+      {
+        "id": "statusIcons",
+        "enabled": true
+      },
+      {
+        "id": "power",
+        "enabled": true
+      }
+    ],
+    "workspaces": {
+      "label": "",
+      "occupiedLabel": "",
+      "activeLabel": "",
+      "showWindows": false
+    }
+  },
+  "border": {
+    "thickness": 6,
+    "rounding": 12,
+    "smoothing": 10
+  }
+}

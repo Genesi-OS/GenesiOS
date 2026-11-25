@@ -16,6 +16,11 @@ Item {
     property string body: ""
     property string stats: ""
     property bool thinking: false
+    // Only when there is something to speak WITH. The page asks
+    // genesi-ai-voice once and passes the answer down; without it the control
+    // is not drawn at all.
+    property bool canSpeak: false
+    signal speak(string text)
 
     readonly property bool isUser: role === "user"
     readonly property bool isError: role === "error"
@@ -106,15 +111,61 @@ Item {
                 width: bubble.width - 28
                 spacing: 8
 
-                QQC2.Label {
+                // A TextEdit, not a Label, so the answer can be SELECTED and
+                // copied. Reading an answer you cannot take out of the window
+                // is half an answer. readOnly keeps it a bubble rather than an
+                // input; lineHeight goes because TextEdit has no such property
+                // (the Column spacing carries the rhythm instead).
+                TextEdit {
                     id: txt
                     width: parent.width
                     visible: !b.thinking
                     text: b.body
+                    readOnly: true
+                    selectByMouse: true
+                    persistentSelection: true
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
                     color: b.isError ? "#F1B0A8" : b._txt
-                    lineHeight: 1.15
+                    selectionColor: b._accent
+                    selectedTextColor: "#ffffff"
+                }
+
+                // Hear it. Genesi's AI runs on this machine and so does the
+                // voice -- the answer is synthesised here and goes nowhere.
+                Row {
+                    visible: b.canSpeak && !b.thinking && !b.isUser
+                             && !b.isError && b.body.length > 0
+                    height: visible ? 20 : 0
+                    spacing: 6
+
+                    Rectangle {
+                        width: listenTxt.implicitWidth + 22
+                        height: 20
+                        radius: 10
+                        color: listenArea.containsMouse ? b._a(b._accent, 0.18)
+                                                        : "transparent"
+                        border.width: 1
+                        border.color: listenArea.containsMouse
+                                      ? b._a(b._accent, 0.55) : b._line
+
+                        QQC2.Label {
+                            id: listenTxt
+                            anchors.centerIn: parent
+                            text: "Listen"
+                            font.pixelSize: 10
+                            font.bold: true
+                            color: listenArea.containsMouse ? b._txt : b._txtMid
+                        }
+
+                        MouseArea {
+                            id: listenArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: b.speak(b.body)
+                        }
+                    }
                 }
 
                 Row {
@@ -199,6 +250,11 @@ Item {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
                                 readonly property bool turbo: b.statsData && b.statsData.mode === "turbo"
+                                // An answer from a provider said "Ollama" on
+                                // its badge, because the badge knew two
+                                // transports and called everything that was
+                                // not Turbo by the other name.
+                                readonly property bool cloud: b.statsData && b.statsData.mode === "cloud"
                                 radius: 7; height: 22
                                 width: badgeRow.implicitWidth + 16
                                 color: turbo ? Qt.rgba(230/255, 126/255, 34/255, 0.18)
@@ -216,7 +272,12 @@ Item {
                                     QQC2.Label {
                                         id: badgeLbl
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: modeBadge.turbo ? "Turbo" : "Ollama"
+                                        text: modeBadge.turbo ? "Turbo"
+                                            : (modeBadge.cloud
+                                               ? ((b.statsData.provider || "API")
+                                                  + (b.statsData.model
+                                                     ? " · " + b.statsData.model : ""))
+                                               : "Ollama")
                                         font.pixelSize: 10; font.bold: true
                                         color: modeBadge.turbo ? "#F8B24D" : b._accent
                                     }
@@ -226,6 +287,10 @@ Item {
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 4
+                                // No rate for a hosted answer: the provider
+                                // does not report one, and "undefined tok/s"
+                                // is what printing a missing number looks like.
+                                visible: b.statsData && b.statsData.rate !== undefined
                                 QQC2.Label {
                                     text: b.statsData ? b.statsData.rate : ""
                                     font.bold: true; font.pixelSize: 17

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Genesi OS: Restart and Shut down at the end of the GRUB menu, so the machine
+# can be turned off or restarted from the boot menu without picking a system
+# and waiting for it, or holding the power button (suggested by a user).
+#
+# A file of our own rather than lines appended to 40_custom: that one is the
+# user's, and appending from a package would add the entries again on every
+# upgrade. The theme draws them with its restart/shutdown icons.
+#
+# To hide them, set GENESI_GRUB_POWER_ENTRIES=false in /etc/default/grub and
+# run grub-mkconfig. A chmod -x would be undone by the next package upgrade.
+set -e
+
+defaults=${GENESI_GRUB_DEFAULTS:-/etc/default/grub}
+if [ -r "$defaults" ]; then
+    . "$defaults"
+fi
+[ "${GENESI_GRUB_POWER_ENTRIES:-true}" = false ] && exit 0
+
+cat <<'EOF'
+menuentry "Restart" --class restart --id genesi-restart {
+    reboot
+}
+menuentry "Shut down" --class shutdown --id genesi-shutdown {
+    halt
+}
+EOF

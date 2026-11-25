@@ -1,0 +1,1212 @@
+#!/usr/bin/env python3
+"""
+genesi-store — the catalogue behind Genesi Store, and the thing that applies it.
+
+One command, JSON on stdout, the same split every other Genesi tool uses: this
+knows what a look IS and how to put it on, the app only draws. So a look can be
+installed from a terminal, from the app, or from an automation, and all three
+do exactly the same thing.
+
+  genesi-store sections            the shelves, with how much is on each
+  genesi-store catalog [--section] every item, annotated with its state
+  genesi-store show <id>           one item, in full
+  genesi-store install <id>        fetch whatever it needs. Changes nothing.
+  genesi-store apply <id>          put it on
+  genesi-store revert <id>         put back what was there before
+  genesi-store state               what is applied right now
+  genesi-store remove <id>         delete what install fetched
+  genesi-store refresh             re-read the catalogue from disk
+
+── What this is allowed to touch ───────────────────────────────────────────
+
+Everything it downloads lands in ~/.local/share/genesi/store, and everything it
+applies is either a user config file (backed up first, restorable by `revert`)
+or a key handed to `genesi-center-set`, which validates it. Nothing here writes
+outside $HOME.
+
+Two things on a desktop cannot be changed from a user account -- the login
+screen, which lives in /etc and /usr/share, and installing a package -- and
+they are the two the store refuses to do quietly. They go through
+genesi-store-helper under pkexec: the system asks for a password, in its own
+dialog, and the helper accepts a fixed vocabulary of arguments rather than a
+path or a command from the catalogue.
+
+── Why an `actions` list and not a script per item ─────────────────────────
+
+An item is data: a list of actions out of a vocabulary this file implements.
+A store whose items carried shell would be a store that runs code somebody
+else wrote, on a machine that trusted it because it came from the catalogue --
+and the first time that catalogue is fetched from the network rather than read
+out of the package, that is a remote root hole with a friendly card around it.
+
+Each action knows how to undo itself. That is what makes Revert honest: it is
+not "apply the previous item", it is the inverse of what was done.
+"""
+import argparse
+import hashlib
+import io
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+APP = "genesi-store"
+CATALOG_DIRS = [
+    "/usr/share/genesi-store",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalog"),
+]
+
+
+def home(*parts):
+    base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return os.path.join(base, "genesi", "store", *parts)
+
+
+def conf(*parts):
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return os.path.join(base, *parts)
+
+
+STATE_PATH = home("state.json")
+BACKUP_DIR = home("backups")
+ASSET_DIR = home("assets")
+SHOT_DIR = home("previews")
+
+# Where an asset may come from. Not a formality: an item is data, and data
+# that can name any URL is data that can point the downloader at a LAN address
+# or a file:// path. Raw hosts only, https only, and the host list is here
+# rather than in the catalogue so that a catalogue cannot widen it.
+ALLOWED_HOSTS = (
+    "raw.githubusercontent.com",
+    "github.com",
+    "objects.githubusercontent.com",   # where GitHub redirects release assets
+    "codeload.github.com",             # where a repository's tarball comes from
+    "codeberg.org",
+    "gitlab.com",
+    "w.wallhaven.cc",
+    "cdn.jsdelivr.net",
+)
+
+MAX_ASSET_BYTES = 40 * 1024 * 1024        # a wallpaper, not a distro image
+# A login screen is a whole theme -- QML, fonts, backgrounds, sometimes a short
+# video -- so it is allowed to be bigger than a picture. The largest in the
+# catalogue is about 20 MB; the helper refuses anything over 96 MB as well, so
+# raising this number here alone changes nothing.
+MAX_GREETER_BYTES = 96 * 1024 * 1024
+MAX_TEXT_BYTES = 512 * 1024
+# A screenshot. The largest in the catalogue is 2.7 MB.
+MAX_SHOT_BYTES = 16 * 1024 * 1024
+
+# Long enough to read a password dialog, type into it, and let pacman fetch
+# a Qt module on a bad connection.
+PKEXEC_TIMEOUT = 1800
+
+# What a file has to start with to be the thing it claims to be. A "wallpaper"
+# that is really an HTML error page is the most common way a broken link ends
+# up on somebody's desktop.
+MAGIC = {
+    "image/png": [b"\x89PNG\r\n\x1a\n"],
+    "image/jpeg": [b"\xff\xd8\xff"],
+    "image/webp": [b"RIFF"],
+}
+
+
+def die(msg, code=1):
+    sys.stderr.write("%s: %s\n" % (APP, msg))
+    sys.exit(code)
+
+
+def note(msg):
+    sys.stderr.write("%s: %s\n" % (APP, msg))
+
+
+# ── The catalogue ───────────────────────────────────────────────────────────
+
+
+def catalog_path():
+    for d in CATALOG_DIRS:
+        p = os.path.join(d, "catalog.json")
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def load_catalog():
+    p = catalog_path()
+    if not p:
+        die("no catalogue found -- genesi-store is installed without its data")
+    try:
+        with io.open(p, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as exc:
+        die("the catalogue does not parse: %s" % exc)
+    items = data.get("items") or []
+    seen = set()
+    for item in items:
+        ident = item.get("id")
+        if not ident or ident in seen:
+            die("the catalogue has a missing or repeated id: %r" % ident)
+        seen.add(ident)
+    return data
+
+
+def item_by_id(cat, ident):
+    for item in cat.get("items", []):
+        if item.get("id") == ident:
+            return item
+    die("no item called %r" % ident)
+
+
+# ── What is applied, and what was there before ──────────────────────────────
+
+
+def read_state():
+    try:
+        with io.open(STATE_PATH, encoding="utf-8") as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        state = {}
+    state.setdefault("applied", {})     # id -> {"at": ..., "undo": [...]}
+    state.setdefault("installed", {})   # id -> {"assets": [...]}
+    return state
+
+
+def write_state(state):
+    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
+    tmp = STATE_PATH + ".tmp-%d" % os.getpid()
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(state, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    os.replace(tmp, STATE_PATH)
+
+
+# ── Fetching ────────────────────────────────────────────────────────────────
+
+
+def check_url(url):
+    if not url.startswith("https://"):
+        die("%s is not https -- the store only fetches over https" % url)
+    host = url.split("/", 3)[2].split("@")[-1].split(":")[0].lower()
+    if host not in ALLOWED_HOSTS:
+        die("%s is not a host the store fetches from" % host)
+    return host
+
+
+def fetch(url, dest, expect_type=None, sha256=None, cap=MAX_ASSET_BYTES,
+          advisory=False):
+    """Download one asset. Returns the path, or dies with a plain reason."""
+    check_url(url)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + ".part"
+    request = urllib.request.Request(url, headers={"User-Agent": "genesi-store"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            size = int(response.headers.get("Content-Length") or 0)
+            if size > cap:
+                die("%s is %d MB; the store stops at %d MB"
+                    % (url, size // (1 << 20), cap // (1 << 20)))
+            got = 0
+            digest = hashlib.sha256()
+            with io.open(tmp, "wb") as fh:
+                while True:
+                    chunk = response.read(64 * 1024)
+                    if not chunk:
+                        break
+                    got += len(chunk)
+                    if got > cap:
+                        fh.close()
+                        os.unlink(tmp)
+                        die("%s is larger than the store's limit" % url)
+                    digest.update(chunk)
+                    fh.write(chunk)
+    except urllib.error.HTTPError as exc:
+        die("could not download %s: HTTP %s" % (url, exc.code))
+    except urllib.error.URLError as exc:
+        die("could not download %s: %s" % (url, exc.reason))
+    except OSError as exc:
+        die("could not write %s: %s" % (dest, exc))
+
+    if sha256 and digest.hexdigest() != sha256:
+        if not advisory:
+            os.unlink(tmp)
+            die("%s did not match its checksum -- refusing it" % url)
+        # For a greeter the archive's checksum is a hint, not the guard:
+        # GitHub builds those tarballs on demand and has re-compressed them
+        # before, which changes every byte without changing a single file.
+        # What decides is the digest of the CONTENT, checked by the helper
+        # after extraction, on files it has just written itself.
+        note("%s was re-packed since this catalogue was built; the check that "
+             "matters happens after it is unpacked" % url)
+
+    if expect_type in MAGIC:
+        with io.open(tmp, "rb") as fh:
+            head = fh.read(16)
+        if not any(head.startswith(m) for m in MAGIC[expect_type]):
+            os.unlink(tmp)
+            die("%s is not %s -- the link is broken or it answered with a page"
+                % (url, expect_type))
+
+    os.replace(tmp, dest)
+    return dest
+
+
+# ── Running things ──────────────────────────────────────────────────────────
+
+
+def run(argv, check=True, timeout=120):
+    """Two minutes is right for asking caelestia what scheme is on.
+
+    It is NOT right for anything behind pkexec: the person has to read a
+    dialog and type a password, and on the other side of it pacman may be
+    downloading a Qt module over whatever connection they have. A timeout
+    there does not stop the work -- it only makes the store report a failure
+    while the install carries on without it, which is the worst of both.
+    """
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True,
+                              timeout=timeout)
+    except FileNotFoundError:
+        if check:
+            die("%s is not installed" % argv[0])
+        return 127, ""
+    except subprocess.TimeoutExpired:
+        if check:
+            die("%s did not finish" % argv[0])
+        return 124, ""
+    if proc.returncode and check:
+        detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+        die("%s failed: %s" % (argv[0], detail[-1] if detail else proc.returncode))
+    return proc.returncode, (proc.stdout or "")
+
+
+# ── The action vocabulary ───────────────────────────────────────────────────
+#
+# Every action takes the item, its own arguments and the asset paths, DOES the
+# thing, and returns the inverse action -- what `revert` will run to put things
+# back. An action that cannot describe its own inverse returns None, and the
+# item then reverts as far as it can and says which part it could not.
+
+
+def backup_file(path):
+    """Copy a file aside before it is replaced. Returns the copy, or None when
+    there was nothing there -- which is itself the thing to restore to."""
+    if not os.path.exists(path):
+        return None
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = os.path.join(BACKUP_DIR, "%s.%s" % (os.path.basename(path), stamp))
+    shutil.copy2(path, dest)
+    return dest
+
+
+def act_file(item, args, assets):
+    """Write a text file into a user path, keeping what was there."""
+    target = os.path.expanduser(args["path"])
+    if not target.startswith(os.path.expanduser("~")):
+        die("%s writes outside your home" % item["id"])
+    text = args.get("text")
+    if text is None and args.get("asset"):
+        with io.open(assets[args["asset"]], encoding="utf-8") as fh:
+            text = fh.read()
+    if text is None:
+        die("%s has a file action with nothing to write" % item["id"])
+    # A config that needs to name a downloaded file -- a fastfetch logo, say --
+    # cannot know where it landed until it has landed. So the catalogue writes
+    # {{asset:picture}} and this puts the real path in.
+    #
+    # Substitution, not templating: the only thing that may be substituted is
+    # the path of an asset THIS item declared, which the store chose and
+    # checksummed. An item still cannot name a path of its own.
+    for name, path in (assets or {}).items():
+        text = text.replace("{{asset:%s}}" % name, path)
+    left = re.search(r"\{\{asset:([A-Za-z0-9_-]+)\}\}", text)
+    if left:
+        die("%s asks for the asset %r, which it does not have"
+            % (item["id"], left.group(1)))
+    if len(text.encode("utf-8")) > MAX_TEXT_BYTES:
+        die("%s wants to write a file larger than the store allows" % item["id"])
+    kept = backup_file(target)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with io.open(target, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    return {"action": "restore", "path": args["path"], "from": kept}
+
+
+def act_restore(item, args, assets):
+    target = os.path.expanduser(args["path"])
+    kept = args.get("from")
+    if kept and os.path.exists(kept):
+        shutil.copy2(kept, target)
+    elif os.path.exists(target):
+        os.unlink(target)
+    return None
+
+
+def act_scheme(item, args, assets):
+    _, before = run(["caelestia", "scheme", "get"], check=False)
+    name = args["name"]
+    argv = ["caelestia", "scheme", "set", "-n", name]
+    if args.get("flavour"):
+        argv += ["-f", args["flavour"]]
+    if args.get("mode"):
+        argv += ["-m", args["mode"]]
+    run(argv)
+    previous = (before or "").strip().split()
+    if len(previous) >= 1 and previous[0]:
+        return {"action": "scheme", "name": previous[0],
+                "flavour": previous[1] if len(previous) > 1 else None}
+    return None
+
+
+def pictures_dir():
+    """Where caelestia looks for wallpapers: <Pictures>/Wallpapers.
+
+    Read from xdg-user-dirs when it is there, because Pictures is "Imagens" on
+    a machine installed in Portuguese and hardcoding the English name would
+    quietly put every wallpaper somewhere nothing looks.
+    """
+    base = ""
+    code, out = run(["xdg-user-dir", "PICTURES"], check=False)
+    if code == 0:
+        base = (out or "").strip()
+    if not base or not os.path.isdir(base):
+        base = os.path.expanduser("~/Pictures")
+    return os.path.join(base, "Wallpapers")
+
+
+def shelve_wallpaper(item, path):
+    """Put a downloaded wallpaper where caelestia will offer it again.
+
+    Applying one used to point caelestia straight at the store's own asset
+    directory, which works once and then the picture is invisible: it is not
+    under <Pictures>/Wallpapers, so it never appears in `>wallpapers` and
+    there is no way back to it except through the store.
+
+    A subdirectory, because caelestia reads the folder under Wallpapers as a
+    CATEGORY -- so everything the store fetched arrives grouped instead of
+    loose among whatever else is in there.
+    """
+    folder = os.path.join(pictures_dir(), "Genesi Store")
+    name = item.get("name") or item["id"]
+    safe = re.sub(r"[^\w .()-]", "", name).strip() or item["id"]
+    dest = os.path.join(folder, safe + os.path.splitext(path)[1])
+    try:
+        os.makedirs(folder, exist_ok=True)
+        if not os.path.exists(dest) or os.path.getsize(dest) != os.path.getsize(path):
+            shutil.copy2(path, dest)
+        return dest
+    except OSError as exc:
+        # Not fatal: the wallpaper still applies from where it was
+        # downloaded. It just will not be in the list afterwards.
+        note("could not add this to your wallpapers folder (%s)" % exc)
+        return path
+
+
+def act_wallpaper(item, args, assets):
+    path = assets.get(args.get("asset")) if args.get("asset") else args.get("path")
+    if not path:
+        die("%s has a wallpaper action with no picture" % item["id"])
+    path = os.path.expanduser(path)
+    if args.get("asset"):
+        path = shelve_wallpaper(item, path)
+    if session_desktop() == "plasma":
+        return plasma_wallpaper(path)
+    _, before = run(["caelestia", "wallpaper", "-p"], check=False)
+    run(["caelestia", "wallpaper", "-f", path])
+    before = (before or "").strip()
+    if before and os.path.exists(before):
+        return {"action": "wallpaper", "path": before}
+    return None
+
+
+def plasma_current_wallpaper():
+    """The picture Plasma's desktop shows now, read from its own config: the
+    first image the org.kde.image plugin is set to. Empty when unknown."""
+    path = conf("plasma-org.kde.plasma.desktop-appletsrc")
+    try:
+        with io.open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return ""
+    in_image = False
+    for line in text.splitlines():
+        if line.startswith("["):
+            in_image = line.rstrip().endswith("[Wallpaper][org.kde.image][General]")
+        elif in_image and line.startswith("Image="):
+            value = line.split("=", 1)[1].strip()
+            return value[len("file://"):] if value.startswith("file://") else value
+    return ""
+
+
+def plasma_wallpaper(path):
+    before = plasma_current_wallpaper()
+    run(["plasma-apply-wallpaperimage", path])
+    if before and os.path.exists(before) and before != path:
+        return {"action": "wallpaper", "path": before}
+    return None
+
+
+def act_config(item, args, assets):
+    """Settings, through the writer that validates them."""
+    pairs = args.get("set") or {}
+    if not pairs:
+        return None
+    before = {}
+    for key in pairs:
+        code, value = run(["genesi-center-set", "caelestia", key], check=False)
+        if code == 0:
+            before[key] = value.strip().split("= ", 1)[-1].strip().strip('"')
+    argv = ["genesi-center-set", "caelestia"]
+    for key, value in pairs.items():
+        argv += [key, str(value)]
+    run(argv)
+    return {"action": "config", "set": before} if before else None
+
+
+def act_login(item, args, assets):
+    """The screen before the session. Root, and it says so."""
+    theme = args.get("theme")
+    if not theme or not re.fullmatch(r"[a-z0-9-]{1,48}", theme):
+        die("%s names a login theme the store does not recognise" % item["id"])
+    helper = helper_path()
+    code, _ = run(["pkexec", helper, "login-theme", theme], check=False,
+                  timeout=PKEXEC_TIMEOUT)
+    if code != 0:
+        die("the login screen was not changed (the password prompt was refused "
+            "or the helper failed)")
+    return {"action": "login", "theme": "breeze"}
+
+
+def greeter_spec(key):
+    """One entry out of the catalogue's greeters map.
+
+    The map is the reason a downloaded login screen is still DATA: the item
+    carries a key, and the key resolves -- here, and again in the helper,
+    which reads the copy in /usr/share that only root can write -- to a URL,
+    a digest and a destination the catalogue decided. There is no field an
+    item can put a path or a command in.
+    """
+    spec = (CATALOG.get("greeters") or {}).get(key) if CATALOG else None
+    if not isinstance(spec, dict):
+        die("%r is not a login screen this catalogue offers" % key)
+    return spec
+
+
+def greeter_archive(key):
+    """Where a greeter's download lives. The helper builds this same path from
+    the key and the account that asked, so it is never passed to root."""
+    return os.path.join(ASSET_DIR, "greeter-%s.tar.gz" % key)
+
+
+def greeter_files_dir(key):
+    """Where the per-file themes are staged, one directory per theme."""
+    return os.path.join(ASSET_DIR, "greeter-%s.d" % key)
+
+
+def ensure_greeter(key):
+    """Get the theme onto the disk, as you, before root is asked for anything.
+
+    Two shapes, because two kinds of repository exist.
+
+    A repository that holds ONE theme is downloaded as a tarball, which is one
+    request and one checksum. A repository that holds forty of them is not:
+    qylock is 604 MB of tarball for a theme that is 200 KB, and downloading
+    six hundred megabytes to install a Minecraft login screen is not a thing
+    to do to somebody's connection.
+
+    So the catalogue can instead list the theme's FILES -- five to fifteen of
+    them -- each pinned to the same commit and each with its own sha256. The
+    rules do not change: https, a host on the list, a digest per file, a cap
+    on the total, and the helper checking every one of them again as root.
+    """
+    spec = greeter_spec(key)
+    files = spec.get("files")
+    if not files:
+        dest = greeter_archive(key)
+        if os.path.exists(dest):
+            return dest
+        note("fetching %s (%.0f MB)"
+             % (spec["url"], (spec.get("bytes") or 0) / float(1 << 20)))
+        return fetch(spec["url"], dest, sha256=spec.get("sha256"),
+                     cap=MAX_GREETER_BYTES, advisory=True)
+
+    base = (spec.get("base") or "").rstrip("/")
+    check_url(base + "/")
+    total = sum(int(f.get("bytes") or 0) for f in files)
+    if total > MAX_GREETER_BYTES:
+        die("%s is %.0f MB; the store stops at %d MB"
+            % (key, total / float(1 << 20), MAX_GREETER_BYTES // (1 << 20)))
+    folder = greeter_files_dir(key)
+    todo = [f for f in files
+            if not os.path.exists(os.path.join(folder, f["path"]))]
+    if todo:
+        note("fetching %s (%d files, %.1f MB)"
+             % (key, len(files), total / float(1 << 20)))
+    for entry in files:
+        rel = entry.get("path") or ""
+        if rel.startswith("/") or ".." in rel.split("/") or "\\" in rel:
+            die("%s lists a file path that climbs out of itself" % key)
+        dest = os.path.join(folder, rel)
+        if os.path.exists(dest):
+            continue
+        # The path has to be escaped for the URL and NOT for the disk. One of
+        # these themes ships "font/The Last Shuriken.ttf", and a space in a
+        # request line is not a URL at all -- Python refuses it outright, so
+        # the whole theme failed on its fourth file. build-catalog quoted it
+        # when it recorded the digest; this did not, which is exactly the kind
+        # of disagreement that only shows up on somebody's machine.
+        fetch(base + "/" + urllib.parse.quote(rel), dest,
+              sha256=entry.get("sha256"), cap=MAX_GREETER_BYTES)
+    return folder
+
+
+def act_greeter(item, args, assets):
+    """A login screen somebody else wrote, downloaded and put in /usr/share.
+
+    The theme is fetched as YOU -- root does no networking -- either as one
+    archive or, for a repository too big to download whole, as its own files.
+    Then one pkexec call does the privileged half: install the QML modules the theme's
+    own imports need (a greeter that imports QtQuick.VirtualKeyboard on a
+    machine without it is a black screen at boot, not a missing keyboard),
+    unpack it, check that what arrived hashes to what the catalogue describes,
+    and swap it in. One call, so one password, and the list of modules comes
+    out of the catalogue in /usr/share rather than off the command line.
+    """
+    key = args.get("key")
+    if not key or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,47}", key):
+        die("%s names a login screen the store does not recognise" % item["id"])
+    spec = greeter_spec(key)
+    conf = args.get("conf") or ""
+    if conf and conf not in (spec.get("confs") or []):
+        die("%s asks for a configuration %s does not have" % (item["id"], key))
+
+    ensure_greeter(key)
+    helper = helper_path()
+    argv = ["pkexec", helper, "greeter", key]
+    if conf:
+        argv.append(conf)
+    code, _ = run(argv, check=False, timeout=PKEXEC_TIMEOUT)
+    if code != 0:
+        die("the login screen was not changed (the password prompt was refused "
+            "or the theme did not pass its check)")
+    return {"action": "login", "theme": "breeze"}
+
+
+def act_bar(item, args, assets):
+    """The bar's arrangement, through the tool that owns it."""
+    _, before = run(["genesi-bar", "current"], check=False)
+    run(["genesi-bar", "apply", args["preset"]])
+    before = (before or "").strip()
+    if before and before != "custom":
+        return {"action": "bar", "preset": before}
+    return None
+
+
+def _ours(path):
+    """Did the store write this file? Only then may the store delete it."""
+    try:
+        with io.open(path, encoding="utf-8", errors="replace") as fh:
+            head = fh.read(600)
+    except OSError:
+        return False
+    return "written by genesi store" in head.lower()
+
+
+def _watcher_backup(state):
+    """Where an older store kept the hypridle.conf it overwrote, if anywhere."""
+    for entry in (state or {}).get("applied", {}).values():
+        for step in entry.get("undo") or []:
+            if step.get("action") == "unlocker" and step.get("conf_from"):
+                return step["conf_from"]
+    return None
+
+
+def retire_lock_watcher(state=None):
+    """Undo the session-lock watcher older versions of the store installed.
+
+    For about a week the store shipped hypridle, as a user service, to answer
+    `loginctl lock-session` with hyprlock. The premise was that nothing else
+    answered it. That was wrong: caelestia's own IdleMonitors.qml has a
+    LogindManager wired straight to the session's Lock signal, so every lock
+    request started TWO lockers -- caelestia's WlSessionLock and hyprlock --
+    on the Wayland ext-session-lock protocol, which exactly one client may
+    hold. The shell is what fell over when the session unlocked.
+
+    So this runs on every invocation and is cheap when there is nothing to
+    do. It touches only what the store itself put there: the unit is ours by
+    name, and hypridle.conf only if it carries the store's marker -- a
+    hypridle.conf somebody wrote by hand is left exactly where it is. Where an
+    older store backed up a file before overwriting it, that file comes back.
+
+    The package also ships a drop-in that stops the unit from ever starting
+    again, so a machine where the store is never opened is covered at its
+    next login; this is the half that stops it NOW.
+    """
+    unit = conf("systemd", "user", "genesi-lock.service")
+    watcher = conf("hypr", "hypridle.conf")
+    have_unit = os.path.exists(unit)
+    have_conf = os.path.exists(watcher) and _ours(watcher)
+    if not have_unit and not have_conf:
+        return False
+    run(["systemctl", "--user", "disable", "--now", "genesi-lock.service"],
+        check=False)
+    if have_unit:
+        try:
+            os.remove(unit)
+        except OSError:
+            pass
+    if have_conf:
+        kept = _watcher_backup(state)
+        try:
+            if kept and os.path.exists(kept):
+                shutil.copy2(kept, watcher)
+            else:
+                os.remove(watcher)
+        except OSError:
+            pass
+    run(["systemctl", "--user", "daemon-reload"], check=False)
+    note("removed the lock-screen watcher an older version of the store set "
+         "up; caelestia's own lock handles locking by itself")
+    return True
+
+
+def act_unlocker(item, args, assets):
+    """The lock shelf's way back: caelestia's own lock, and nothing on top.
+
+    Kept as an action, rather than folded into retire_lock_watcher alone,
+    because state files written by older stores carry it as an UNDO step
+    with the paths of what they backed up -- and those backups are somebody's
+    own files that deserve to come back.
+    """
+    retire_lock_watcher({"applied": {"_": {"undo": [dict(args,
+                                                          action="unlocker")]}}})
+    return None
+
+
+def act_package(item, args, assets):
+    """Something the desktop needs and pacman has.
+
+    The list of what may be installed is HERE, not in the catalogue, and it
+    is the same list the helper enforces as root.
+    """
+    name = args.get("name")
+    if name not in INSTALLABLE:
+        die("%s asks for the package %r, which the store does not install"
+            % (item["id"], name))
+    if shutil.which(args.get("binary") or name):
+        return None
+    helper = helper_path()
+    code, _ = run(["pkexec", helper, "install", name], check=False,
+                  timeout=PKEXEC_TIMEOUT)
+    if code != 0:
+        die("%s was not installed (the password prompt was refused, or pacman "
+            "failed)" % name)
+    # Deliberately no inverse: removing a package somebody may now rely on,
+    # because a look was reverted, is not an undo -- it is a surprise.
+    return None
+
+
+# Packages the store may install, and nothing else. Every one of them is a
+# thing a LOOK needs to work at all, and each is in the Arch repositories.
+#
+# This list must not drift from the one in genesi-store-helper: a name that is
+# here and not there is a card that asks for a password and then fails, and a
+# name that is there and not here is a privilege nothing uses. ci/store-test.py
+# compares the two.
+INSTALLABLE = (
+    "qt6-5compat",
+    "qt6-declarative",
+    "qt6-multimedia",
+    "qt6-svg",
+    "qt6-virtualkeyboard",
+)
+
+
+def helper_path():
+    found = shutil.which("genesi-store-helper")
+    if found:
+        return found
+    fallback = "/usr/lib/genesi-store/genesi-store-helper"
+    if os.path.exists(fallback):
+        return fallback
+    die("the store's system helper is not installed")
+    return ""
+
+
+ACTIONS = {
+    "file": act_file,
+    "bar": act_bar,
+    "package": act_package,
+    "unlocker": act_unlocker,
+    "restore": act_restore,
+    "scheme": act_scheme,
+    "wallpaper": act_wallpaper,
+    "config": act_config,
+    "login": act_login,
+    "greeter": act_greeter,
+}
+
+# ── which desktop this is, and what works on it ─────────────────────────────
+#
+# The store began as caelestia's (Hyprland). On Plasma most of what it applies
+# has no meaning -- a caelestia bar, a caelestia scheme, a shell plugin -- and
+# offering those is a button that does nothing. So on Plasma each item says
+# whether every step it takes has a Plasma way of doing it, and only those are
+# shown. Everywhere else nothing is filtered: Hyprland sees exactly what it
+# always saw.
+
+def session_desktop(env=None):
+    env = os.environ if env is None else env
+    desk = (env.get("XDG_CURRENT_DESKTOP") or "").lower()
+    if env.get("HYPRLAND_INSTANCE_SIGNATURE") or "hyprland" in desk:
+        return "hyprland"
+    if "kde" in desk or "plasma" in desk:
+        return "plasma"
+    return "other"
+
+
+# What an action needs on Plasma. Absent means it has no Plasma form yet.
+PLASMA_ACTIONS = {"wallpaper", "login", "greeter", "package", "file", "restore"}
+# Files only caelestia reads: a shell plugin's switch does nothing elsewhere.
+CAELESTIA_ONLY_PATHS = ("~/.config/genesi/plugins/",)
+
+
+def step_works_on_plasma(step):
+    kind = step.get("action")
+    if kind not in PLASMA_ACTIONS:
+        return False
+    if kind in ("file", "restore") and str(step.get("path", "")).startswith(
+            CAELESTIA_ONLY_PATHS):
+        return False
+    return True
+
+
+def works_here(cat, item, desktop=None, _seen=None):
+    """Whether this item does what it says on the running desktop. Only Plasma
+    is filtered; a rice or bundle works when everything it includes does."""
+    if (desktop or session_desktop()) != "plasma":
+        return True
+    seen = _seen or set()
+    if item.get("id") in seen:
+        return False
+    seen = seen | {item.get("id")}
+    steps = item.get("actions") or []
+    included = [item_by_id(cat, i) for i in item.get("includes") or []]
+    if not steps and not included:
+        return False
+    return (all(step_works_on_plasma(st) for st in steps)
+            and all(works_here(cat, i, "plasma", seen) for i in included))
+
+
+# The catalogue the running command was started with. act_greeter needs it --
+# a greeter action carries a key, and the key means nothing without the map it
+# indexes -- and threading it through every action's signature to reach one of
+# them would be worse than saying so here.
+CATALOG = None
+
+
+# ── install / apply / revert ────────────────────────────────────────────────
+
+
+def assets_of(item):
+    return item.get("assets") or {}
+
+
+def greeters_of(item):
+    """The greeter archives an item will need, if any.
+
+    Kept apart from assets_of because one archive serves many items -- the ten
+    astronaut looks are ten cards over one download -- so it is stored under
+    the greeter's key rather than under the id of whichever card asked first.
+    """
+    return [step["key"] for step in item.get("actions", [])
+            if step.get("action") == "greeter" and step.get("key")]
+
+
+# What a downloaded asset is called on disk. The name in the catalogue is a
+# ROLE -- "picture" -- and a file called "picture" with no extension is a file
+# that several things refuse to open:
+#
+#     caelestia failed: ValueError: ".../assets/wall-golden-mountains/picture"
+#     is not a valid image
+#
+# caelestia decides what it will accept by the extension, so every wallpaper
+# in the store failed to apply, with an error from a program that was doing
+# exactly the right thing.
+SUFFIX = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
+          "image/gif": ".gif"}
+
+
+def asset_filename(name, asset):
+    kind = asset.get("type") or ""
+    ext = SUFFIX.get(kind)
+    if not ext:
+        # Fall back to what the URL says, and only to something short and
+        # plainly an extension -- a URL is not ours to trust for a filename.
+        tail = os.path.splitext(asset.get("url", "").split("?")[0])[1].lower()
+        ext = tail if re.fullmatch(r"\.[a-z0-9]{2,5}", tail) else ""
+    return name + ext
+
+
+def do_install(cat, ident, state):
+    item = item_by_id(cat, ident)
+    paths = {}
+    for name, asset in assets_of(item).items():
+        dest = os.path.join(ASSET_DIR, ident, asset_filename(name, asset))
+        stale = os.path.join(ASSET_DIR, ident, name)
+        if stale != dest and os.path.exists(stale):
+            # Downloaded before the store knew to keep the extension. Move it
+            # rather than fetch it again.
+            try:
+                os.replace(stale, dest)
+            except OSError:
+                pass
+        if os.path.exists(dest) and not asset.get("always"):
+            paths[name] = dest
+            continue
+        note("fetching %s" % asset["url"])
+        paths[name] = fetch(asset["url"], dest, asset.get("type"),
+                            asset.get("sha256"))
+    for key in greeters_of(item):
+        ensure_greeter(key)
+    state["installed"][ident] = {"assets": paths, "at": int(time.time())}
+    write_state(state)
+    return paths
+
+
+def slots_of(item):
+    """What an item OCCUPIES, so the store knows what it replaces.
+
+    "Applied" was a list of ids that only ever grew. Put on the Terminal bar,
+    then put back the default, and both said "em uso" -- because applying the
+    second never retired the first. Same on every shelf: two login screens in
+    use, two lock screens, two fastfetch cards.
+
+    A slot is the thing an action changes, named coarsely enough that two
+    items which cannot both be true share one. Two cards that write the same
+    config file, or both set the bar, or both set the login screen, are the
+    same slot; a card that only downloads a wallpaper occupies nothing and
+    retires nobody.
+    """
+    out = set()
+    for action in item.get("actions", []):
+        kind = action.get("action")
+        if kind in ("file", "restore"):
+            out.add("file:" + (action.get("path") or ""))
+        elif kind in ("login", "greeter"):
+            out.add("login")
+        elif kind in ("locker", "unlocker"):
+            out.add("locker")
+        elif kind in ("bar", "scheme", "wallpaper"):
+            out.add(kind)
+        elif kind == "config":
+            for key in (action.get("set") or {}):
+                out.add("config:" + str(key))
+    return out
+
+
+def retire_superseded(cat, ident, state):
+    """Drop anything the item being applied has just taken over from.
+
+    Deliberately not "clear the whole shelf": a collection applies a theme, a
+    wallpaper and a bar at once, and each of those has to retire its own
+    predecessor without touching the other two.
+    """
+    taking = slots_of(item_by_id(cat, ident))
+    if not taking:
+        return
+    for other in list(state.get("applied", {})):
+        if other == ident:
+            continue
+        try:
+            if slots_of(item_by_id(cat, other)) & taking:
+                del state["applied"][other]
+        except SystemExit:
+            # An id that is no longer in the catalogue cannot be in use.
+            del state["applied"][other]
+
+
+def do_apply(cat, ident, state):
+    item = item_by_id(cat, ident)
+    if not works_here(cat, item):
+        die("%s is made for Hyprland + caelestia and has no effect on this "
+            "desktop" % ident)
+    paths = state.get("installed", {}).get(ident, {}).get("assets") or {}
+    if set(assets_of(item)) - set(paths):
+        paths = do_install(cat, ident, state)
+
+    undo = []
+    for step in item.get("actions", []):
+        kind = step.get("action")
+        if kind not in ACTIONS:
+            die("%s asks for %r, which the store does not know how to do"
+                % (ident, kind))
+        inverse = ACTIONS[kind](item, step, paths)
+        if inverse:
+            undo.insert(0, inverse)
+
+    retire_superseded(cat, ident, state)
+    state["applied"][ident] = {"at": int(time.time()), "undo": undo}
+    write_state(state)
+    return undo
+
+
+def do_revert(cat, ident, state):
+    entry = state.get("applied", {}).get(ident)
+    if not entry:
+        die("%s is not applied" % ident)
+    item = item_by_id(cat, ident)
+    missed = 0
+    for step in entry.get("undo", []):
+        kind = step.get("action")
+        if kind not in ACTIONS:
+            missed += 1
+            continue
+        ACTIONS[kind](item, step, {})
+    del state["applied"][ident]
+    write_state(state)
+    return missed
+
+
+def do_remove(cat, ident, state):
+    if ident in state.get("applied", {}):
+        do_revert(cat, ident, state)
+    path = os.path.join(ASSET_DIR, ident)
+    if os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+    item = item_by_id(cat, ident)
+    for key in greeters_of(item):
+        # The download is yours, so it goes without asking. The installed
+        # theme is in /usr/share, so it does not: the helper refuses to delete
+        # the one the machine is about to boot into, and asks for a password
+        # for the rest.
+        archive = greeter_archive(key)
+        if os.path.exists(archive):
+            os.unlink(archive)
+        if still_wanted(cat, state, key, ident):
+            continue
+        run(["pkexec", helper_path(), "greeter-remove", key], check=False,
+            timeout=PKEXEC_TIMEOUT)
+    state.get("installed", {}).pop(ident, None)
+    write_state(state)
+
+
+def still_wanted(cat, state, key, dropping):
+    """Is some OTHER applied card still wearing this greeter?
+
+    Ten astronaut looks share one installed theme directory. Removing one card
+    must not take the login screen out from under the other nine.
+    """
+    for other in state.get("applied", {}):
+        if other == dropping:
+            continue
+        for item in cat.get("items", []):
+            if item.get("id") == other and key in greeters_of(item):
+                return True
+    return False
+
+
+# ── Reporting ───────────────────────────────────────────────────────────────
+
+
+def annotate(cat, state):
+    out = []
+    for item in cat.get("items", []):
+        if not works_here(cat, item):
+            continue
+        ident = item["id"]
+        copy = dict(item)
+        copy["installed"] = ident in state.get("installed", {})
+        copy["applied"] = ident in state.get("applied", {})
+        copy["needs_download"] = ((bool(assets_of(item)) and not copy["installed"])
+                                  or any(not os.path.exists(greeter_archive(k))
+                                         for k in greeters_of(item)))
+        out.append(copy)
+    return out
+
+
+def cmd_sections(cat, state, args):
+    counts = {}
+    for item in cat.get("items", []):
+        if not works_here(cat, item):
+            continue
+        counts[item.get("section", "discover")] = \
+            counts.get(item.get("section", "discover"), 0) + 1
+    plasma = session_desktop() == "plasma"
+    sections = []
+    for section in cat.get("sections", []):
+        entry = dict(section)
+        entry["count"] = counts.get(section["id"], 0)
+        # Discover is empty by design (it is drawn from the other shelves);
+        # any other shelf that has nothing for Plasma is not shown there.
+        if plasma and entry["count"] == 0 and section["id"] != "discover":
+            continue
+        sections.append(entry)
+    print(json.dumps({"sections": sections}, ensure_ascii=False))
+
+
+def cmd_catalog(cat, state, args):
+    items = annotate(cat, state)
+    if args.section:
+        items = [i for i in items if i.get("section") == args.section]
+    if args.search:
+        needle = args.search.lower()
+        items = [i for i in items
+                 if needle in json.dumps(i, ensure_ascii=False).lower()]
+    print(json.dumps({"updated": cat.get("updated"),
+                      "count": len(items),
+                      "items": items}, ensure_ascii=False))
+
+
+def cmd_show(cat, state, args):
+    for item in annotate(cat, state):
+        if item["id"] == args.id:
+            print(json.dumps(item, ensure_ascii=False, indent=2))
+            return
+    die("no item called %r" % args.id)
+
+
+def cmd_state(cat, state, args):
+    print(json.dumps({"applied": state.get("applied", {}),
+                      "installed": sorted(state.get("installed", {}))},
+                     ensure_ascii=False))
+
+
+def open_window():
+    """`genesi-store` with nothing after it is what a person types when they
+    mean the shop, not the data plane."""
+    for app in ("/usr/share/genesi-store/app/genesi_store_app.py",
+                os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "app", "genesi_store_app.py")):
+        if os.path.exists(app):
+            os.execv(sys.executable, [sys.executable, app])
+    die("the store's window is not installed; the commands still work "
+        "(try `genesi-store sections`)")
+
+
+def do_motion(cat, ident):
+    """Fetch an item's ANIMATED preview, which is a separate, larger file.
+
+    Kept apart from the still on purpose: the still is what a card shows and
+    is worth fetching as soon as the card is drawn, while the animation is
+    only worth fetching for the one card somebody is pointing at. Thirty-five
+    of these is seventy megabytes of GIF nobody asked to watch.
+    """
+    item = item_by_id(cat, ident)
+    motion = ((item.get("preview") or {}).get("shot") or {}).get("motion")
+    if not motion:
+        die("%s has no animation to fetch" % ident)
+    ext = ".gif" if motion.get("type") == "image/gif" else ".png"
+    dest = os.path.join(SHOT_DIR, ident + "-motion" + ext)
+    if os.path.exists(dest):
+        return dest
+    fetch(motion["url"], dest, expect_type=motion.get("type"),
+          sha256=motion.get("sha256"), cap=MAX_SHOT_BYTES)
+    return dest
+
+
+def do_preview(cat, ident):
+    """Fetch an item's screenshot into the cache. Returns the path.
+
+    The screenshots of the downloaded login screens are not shipped in the
+    package -- they belong to the people who made those themes, and some of
+    what is IN them belongs to somebody else again. So the card names its
+    picture and this fetches it, once, from the same pinned commit the theme
+    comes from, checked against the same kind of digest.
+
+    Nothing here is required for the store to work. A card whose picture has
+    not arrived draws the plain login screen instead, which is what it did
+    before any of these existed.
+    """
+    item = item_by_id(cat, ident)
+    shot = (item.get("preview") or {}).get("shot")
+    if not shot:
+        die("%s does not have a picture to fetch" % ident)
+    ext = ".png" if shot.get("type") == "image/png" else ".jpg"
+    dest = os.path.join(SHOT_DIR, ident + ext)
+    if os.path.exists(dest):
+        return dest
+    fetch(shot["url"], dest, expect_type=shot.get("type"),
+          sha256=shot.get("sha256"), cap=MAX_SHOT_BYTES)
+    return dest
+
+
+def main():
+    if len(sys.argv) == 1:
+        return open_window()
+    parser = argparse.ArgumentParser(prog=APP, add_help=True)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("sections")
+    p = sub.add_parser("catalog")
+    p.add_argument("--section")
+    p.add_argument("--search")
+    p = sub.add_parser("show")
+    p.add_argument("id")
+    for name in ("install", "apply", "revert", "remove"):
+        p = sub.add_parser(name)
+        p.add_argument("id")
+    p = sub.add_parser("preview")
+    p.add_argument("id")
+    p = sub.add_parser("motion")
+    p.add_argument("id")
+    sub.add_parser("state")
+    sub.add_parser("refresh")
+
+    args = parser.parse_args()
+    global CATALOG
+    cat = CATALOG = load_catalog()
+    state = read_state()
+    # Clean up after the lock watcher older versions installed. Every command
+    # runs it, because the app calls this CLI the moment it opens, and cheap
+    # when there is nothing to clean: two stat() calls.
+    if retire_lock_watcher(state):
+        state["applied"] = {k: v for k, v in state.get("applied", {}).items()
+                            if not k.startswith("lock-")}
+        write_state(state)
+
+    if args.cmd == "sections":
+        return cmd_sections(cat, state, args)
+    if args.cmd == "catalog":
+        return cmd_catalog(cat, state, args)
+    if args.cmd == "show":
+        return cmd_show(cat, state, args)
+    if args.cmd == "state":
+        return cmd_state(cat, state, args)
+    if args.cmd == "preview":
+        print(json.dumps({"path": do_preview(cat, args.id)}))
+        return None
+    if args.cmd == "motion":
+        print(json.dumps({"path": do_motion(cat, args.id)}))
+        return None
+    if args.cmd == "refresh":
+        print(json.dumps({"updated": cat.get("updated"),
+                          "items": len(cat.get("items", []))}))
+        return None
+    if args.cmd == "install":
+        do_install(cat, args.id, state)
+        print(json.dumps({"installed": args.id}))
+        return None
+    if args.cmd == "apply":
+        do_apply(cat, args.id, state)
+        print(json.dumps({"applied": args.id}))
+        return None
+    if args.cmd == "revert":
+        missed = do_revert(cat, args.id, state)
+        print(json.dumps({"reverted": args.id, "not_undone": missed}))
+        return None
+    if args.cmd == "remove":
+        do_remove(cat, args.id, state)
+        print(json.dumps({"removed": args.id}))
+        return None
+    return None
+
+
+if __name__ == "__main__":
+    main()

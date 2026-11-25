@@ -1,0 +1,365 @@
+#!/usr/bin/env python3
+"""
+center-wiring-test.py — every page must ask for something that exists.
+
+Genesi Center is three programs that only meet at run time: QML pages, a data
+plane that prints JSON, and a writer that touches configs. Nothing checks that
+they agree, and each way they can disagree fails in silence:
+
+  * a page asking for a section the data plane does not have gets "{}" back.
+    Every field reads undefined, the page draws em-dashes, and it looks like a
+    machine with nothing to report rather than a typo.
+  * a page running a binary the backend does not allow is refused on stderr.
+    Nobody is looking at stderr; the control simply does nothing.
+  * a page writing an option the writer does not accept dies inside a
+    subprocess whose output is discarded. The slider snaps back on the next
+    read and reads as a bug in the slider.
+  * a page listening for a signal the backend does not emit never updates at
+    all. `ignoreUnknownSignals: true` is on every one of these Connections --
+    it has to be, so the pages still render in the offscreen harness -- and it
+    means a renamed signal is silently ignored.
+
+All four are the shape this project keeps meeting: something that appears to
+work and changes nothing. They are cheap to check statically, so they are.
+"""
+import ast
+import io
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
+PKG = os.path.join(ROOT, "genesi-arch", "packages", "genesi-center")
+PAGES = os.path.join(PKG, "app", "pages")
+DATA = os.path.join(PKG, "genesi-center-data")
+SETTER = os.path.join(PKG, "genesi-center-set")
+BACKEND = os.path.join(PKG, "app", "genesi_center.py")
+
+
+# Commands that come from OUTSIDE this repository, with the package that
+# provides each. A page may launch one of these; anything else has to be a
+# binary some PKGBUILD here installs.
+#
+# This list is the point of the check. `genesi-update-center` was on the
+# Settings page as a card you could click, and no PKGBUILD installs a binary by
+# that name -- only a polkit helper called genesi-update-center-apply. The card
+# opened nothing, silently, which is the failure this whole app argues against
+# and which shipped inside it.
+EXTERNAL = {
+    "hyprctl": "hyprland",
+    "hyprshade": "genesi-hyprshade",
+    "caelestia": "caelestia-cli",
+    "wpctl": "wireplumber",
+    "foot": "foot",
+    "xdg-open": "xdg-utils",
+}
+
+
+def installed_binaries(root):
+    """Every command name a PKGBUILD in this repo installs into a bin dir."""
+    out = set()
+    pkgdir = os.path.join(root, "genesi-arch", "packages")
+    if not os.path.isdir(pkgdir):
+        return out
+    for d in os.listdir(pkgdir):
+        p = os.path.join(pkgdir, d, "PKGBUILD")
+        if not os.path.exists(p):
+            continue
+        with io.open(p, encoding="utf-8", errors="replace") as fh:
+            src = fh.read()
+        # usr/bin/x, usr/local/bin/x -- both are on PATH, and Genesi uses both.
+        out |= set(re.findall(r"usr/(?:local/)?bin/([A-Za-z0-9_.-]+)", src))
+    return out
+
+
+def read(path):
+    with io.open(path, encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+def strip_qml_comments(src):
+    """
+    QML with its comments gone.
+
+    Three guards in this repository have already passed on the very bug they
+    existed to catch, because the fix's own comment contained the string being
+    searched for. A page's comments talk about sections and commands
+    constantly, so this is not hypothetical here.
+    """
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return re.sub(r"^\s*//.*$", "", src, flags=re.M)
+
+
+def strip_prose(src):
+    """
+    Python with its comments AND docstrings gone.
+
+    String literals stay: the declaration this looks for is inside one, since
+    that is how a patch injects it into a C++ header.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return src
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)) and ast.get_docstring(node):
+            node.body = node.body[1:]
+    return ast.unparse(tree)
+
+
+def strip_py_comments(src):
+    return re.sub(r"^\s*#.*$", "", src, flags=re.M)
+
+
+def main():
+    print("== genesi center wiring ==")
+    for p in (PAGES, DATA, SETTER, BACKEND):
+        if not os.path.exists(p):
+            print(f"  FAIL  {p} does not exist")
+            return 1
+
+    data_src = strip_py_comments(read(DATA))
+    m = re.search(r"SECTIONS = \{(.*?)\n\}", data_src, re.S)
+    if not m:
+        print("  FAIL  genesi-center-data no longer declares SECTIONS")
+        return 1
+    sections = set(re.findall(r'"([^"]+)":', m.group(1)))
+
+    backend_src = strip_py_comments(read(BACKEND))
+    m = re.search(r"ALLOWED = \{(.*?)\}", backend_src, re.S)
+    if not m:
+        print("  FAIL  the backend no longer declares ALLOWED")
+        return 1
+    allowed = set(re.findall(r'"([^"]+)"', m.group(1)))
+
+    # Signals the backend emits, so a page cannot listen for one that is gone.
+    signals = set(re.findall(r"^\s*(\w+)\s*=\s*Signal\(", backend_src, re.M))
+    # Slots a page may call.
+    slots = set(re.findall(r"@Slot\([^)]*\)\s*\n\s*def\s+(\w+)", backend_src))
+
+    setter_src = strip_py_comments(read(SETTER))
+    hypr_opts = set(re.findall(r'^\s*"([^"]+)":\s*\(',
+                               re.search(r"HYPR = \{(.*?)\n\}", setter_src,
+                                         re.S).group(1), re.M))
+    cael_opts = set(re.findall(r'^\s*"([^"]+)":\s*\(',
+                               re.search(r"CAELESTIA_PATHS = \{(.*?)\n\}",
+                                         setter_src, re.S).group(1), re.M))
+
+    # Settings the writer accepts that exist only because a Genesi patch adds
+    # them. Each names the declaration to look for.
+    m = re.search(r"GENESI_ONLY = \{(.*?)\n\}", setter_src, re.S)
+    genesi_only = {}
+    if m:
+        genesi_only = dict(re.findall(
+            r'"([^"]+)":\s*\n?\s*[\'"](.+?)[\'"],', m.group(1)))
+
+    bad = []
+    files = sorted(f for f in os.listdir(PAGES) if f.endswith(".qml"))
+    asked, ran, wrote = set(), set(), set()
+
+    for fn in files:
+        src = strip_qml_comments(read(os.path.join(PAGES, fn)))
+
+        for sec in re.findall(r"\.ask\(\s*\"([^\"]+)\"", src):
+            asked.add(sec)
+            if sec not in sections:
+                bad.append((fn, f'asks for the section "{sec}", which '
+                                "genesi-center-data does not have -- it would "
+                                "get {} and draw dashes for ever"))
+
+        # Every command a page names, wherever it names it.
+        #
+        # NOT `\.act\(` -- almost every page wraps act() in a local helper
+        # (`page.act([...])`, `function set(...)`), so a receiver-anchored
+        # pattern matched almost nothing. The first version of this check
+        # passed on a page calling `pactl` instead of `wpctl`, which is
+        # precisely the bug it was written for.
+        # Any Genesi command NAMED anywhere in the page, not only at a call
+        # site. SettingsPage builds its cards from a model and launches
+        # `modelData.run`, so a call-site pattern saw nothing at all -- and the
+        # card for `genesi-update-center`, a binary that does not exist,
+        # shipped. Second time a pattern anchored on the call has missed the
+        # bug it was written for; the name is the honest thing to look for.
+        for named in re.findall(r"\"(genesi-[a-z0-9][a-z0-9-]*)\"", src):
+            ran.add(named)
+
+        for first in re.findall(r"\b(?:act|launch)\(\s*\[\s*\"([^\"]+)\"",
+                                src):
+            ran.add(first)
+            if first not in allowed:
+                bad.append((fn, f"runs {first!r}, which the backend's ALLOWED "
+                                "list refuses -- the control would do nothing"))
+
+        # `act([...], "section")` re-reads afterwards; that name has to exist.
+        for then in re.findall(r"\bact\(\s*\[.*?\]\s*,\s*\"([^\"]+)\"",
+                               src, re.S):
+            if then not in sections:
+                bad.append((fn, f're-reads "{then}" after acting, which is not '
+                                "a section"))
+        for then in re.findall(r"\bact\(\s*\w+\s*,\s*\"([^\"]+)\"", src):
+            if then not in sections:
+                bad.append((fn, f're-reads "{then}" after acting, which is not '
+                                "a section"))
+
+        # Every option written through the setter must be one it accepts.
+        #
+        # A page with fourteen of something builds the path instead of writing
+        # it out -- `set("background.widgets." + name + ".enabled", v)` -- and
+        # what lands here is the PREFIX. Refusing those outright would push the
+        # page into forty-two hand-written calls; ignoring them would let a page
+        # write into a namespace the shell has never heard of. So a literal
+        # ending in "." is a prefix write, and it has to match at least one
+        # setting the setter accepts. The individual keys are still checked
+        # against the patcher below, through the setter's own table.
+        for kind, opt in re.findall(
+                r'"genesi-center-set"\s*,\s*"(hypr|caelestia)"\s*,\s*"([^"]+)"',
+                src):
+            table = hypr_opts if kind == "hypr" else cael_opts
+            if opt.endswith("."):
+                matched = [k for k in table if k.startswith(opt)]
+                if not matched:
+                    bad.append((fn, f"builds {kind} paths under {opt!r}, and "
+                                    "genesi-center-set accepts nothing there"))
+                wrote.update(matched)
+                continue
+            wrote.add(opt)
+            if opt not in table:
+                bad.append((fn, f"writes {kind} {opt!r}, which "
+                                "genesi-center-set refuses"))
+        # ...including the ones passed as a variable through a page helper.
+        for kind, var in re.findall(
+                r'"genesi-center-set"\s*,\s*"(hypr|caelestia)"\s*,\s*(\w+)\s*,',
+                src):
+            table = hypr_opts if kind == "hypr" else cael_opts
+            for opt in re.findall(r'\b%s\(\s*"([^"]+)"' % re.escape("set"), src):
+                # Same prefix rule as above: a page that builds fourteen paths
+                # from one literal is not a page writing into nowhere.
+                if opt.endswith("."):
+                    matched = [k for k in table if k.startswith(opt)]
+                    if not matched:
+                        bad.append((fn, f"builds {kind} paths under {opt!r} "
+                                        "through set(), and genesi-center-set "
+                                        "accepts nothing there"))
+                    wrote.update(matched)
+                    continue
+                wrote.add(opt)
+                if opt not in table:
+                    bad.append((fn, f"writes {kind} {opt!r} through set(), "
+                                    "which genesi-center-set refuses"))
+
+        for sig in re.findall(r"function on([A-Z]\w*)\s*\(", src):
+            name = sig[0].lower() + sig[1:]
+            if name not in signals:
+                bad.append((fn, f"handles the signal {name!r}, which the "
+                                "backend does not emit -- with "
+                                "ignoreUnknownSignals the page would simply "
+                                "never update"))
+
+        for call in re.findall(r"backend\.(\w+)\(", src):
+            if call not in slots:
+                bad.append((fn, f"calls backend.{call}(), which is not a Slot"))
+
+    # A Genesi-only setting must still be created by the patch that claims to
+    # create it. Read from the patcher with its prose stripped: three guards in
+    # this repository have passed on the bug they existed to catch because the
+    # fix's own comment held the string being searched for, and the docstring
+    # above a patch is exactly where someone explains the property it adds.
+    patcher = os.path.join(ROOT, "genesi-arch", "ci", "caelestia-patches.py")
+    if genesi_only and os.path.exists(patcher):
+        psrc = strip_prose(read(patcher))
+        for path, decl in sorted(genesi_only.items()):
+            if decl not in psrc:
+                bad.append(("caelestia-patches.py",
+                            f"no patch declares {path!r}, but genesi-center-set "
+                            "writes it -- the value would land in shell.json "
+                            "and nothing would read it"))
+
+    # ...and every command a page names has to EXIST. Being on the backend's
+    # allow-list only means the backend will run it; it says nothing about
+    # whether anything installs it.
+    have = installed_binaries(ROOT)
+    for cmd in sorted(ran):
+        if cmd in EXTERNAL or cmd in have:
+            continue
+        bad.append(("app/pages",
+                    f"launches {cmd!r}, which no PKGBUILD in this repository "
+                    "installs and which is not a known external tool -- the "
+                    "control opens nothing"))
+
+    print(f"  pages: {len(files)}   sections asked: {len(asked)}/{len(sections)}")
+    print(f"  genesi-only settings: {len(genesi_only)}")
+    print(f"  tools run: {len(ran)}   options written: {len(wrote)}")
+
+    # A section nobody asks for is dead weight, not a failure -- `all` and the
+    # tick use several of these. Reported, not failed.
+    unused = sorted(sections - asked - {"session", "telemetry", "core",
+                                        "storage", "activity"})
+    if unused:
+        print(f"  note  no page asks for: {', '.join(unused)}")
+
+    # ── The shell studio's rows ───────────────────────────────────────────
+    #
+    # GenesiStudio.qml is a second front end on the same writer -- a hundred
+    # and eighty rows, each naming a section and a key the way a page names an
+    # option -- and nothing checked it. `topbar.islands` became `topbar.form`
+    # in the config and the writer, and the studio would have gone on sending
+    # a key that no longer exists: a control that responds and changes
+    # nothing, which is the exact failure the rest of this file was written
+    # to stop.
+    #
+    # Read off the comment-stripped source, because half these rows are
+    # explained in a comment that names the key it replaced.
+    studio = os.path.join(ROOT, "genesi-arch", "packages",
+                          "genesi-caelestia-shell", "GenesiStudio.qml")
+    if os.path.exists(studio):
+        rows = strip_qml_comments(read(studio))
+        pairs = re.findall(r'section:\s*"(\w+)"\s*,\s*key:\s*"([\w.]+)"', rows)
+        seen = set()
+        for section, key in pairs:
+            path = f"{section}.{key}"
+            if path in seen:
+                continue
+            seen.add(path)
+            if path not in cael_opts:
+                bad.append(("GenesiStudio.qml",
+                            f'a row reads and writes "{path}", which '
+                            "genesi-center-set does not accept -- the control "
+                            "draws, responds, and the write is refused"))
+        # ...and the studio has to be able to READ it. sectionOf() is a
+        # switch over the sections it knows how to reach in the config, and a
+        # row naming one that is missing from it gets undefined for every
+        # value on the page: switches drawn off, sliders at their minimum, no
+        # warning anywhere. The Panel page shipped that way for one render.
+        m = re.search(r"function sectionOf.*?\n            \}", rows, re.S)
+        reachable = set(re.findall(r'case "(\w+)":', m.group(0))) if m else set()
+        for section in sorted({sec for sec, _ in pairs}):
+            if section not in reachable:
+                bad.append(("GenesiStudio.qml",
+                            f'rows name the section "{section}", which '
+                            "sectionOf() cannot reach -- every value on that "
+                            "page reads undefined"))
+
+        print(f"  studio rows: {len(seen)} distinct keys, all in the writer"
+              if not any(f == "GenesiStudio.qml" for f, _ in bad)
+              else f"  studio rows: {len(seen)} distinct keys")
+
+    if bad:
+        print(f"  FAIL  {len(bad)} problem(s):")
+        for fn, why in bad:
+            print(f"          {fn}: {why}")
+        print()
+        print("        Every one of these fails in SILENCE at run time: the")
+        print("        page renders, the control responds, and nothing")
+        print("        happens. That is the failure this app was written to")
+        print("        stop repeating.")
+        return 1
+
+    print("  PASS  every page asks, runs and writes only what exists")
+    print("\ngenesi center wiring: OK")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

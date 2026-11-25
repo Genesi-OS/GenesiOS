@@ -31,10 +31,34 @@ Item {
     visible: false
     width: 0; height: 0
 
+    // ── Which palette, and where it comes from ─────────────────────
+    //
+    // genesiPalette and genesiFollowing are set by genesi_palette.install()
+    // before the QML loads. `typeof` rather than a plain read: a context
+    // property that was never set is a ReferenceError, and an app that has not
+    // adopted the helper yet must still start.
+    //
+    // Following is OFF unless Genesi Center's one switch says otherwise, so
+    // the pinned Genesi look does not quietly leave in an update -- and when it
+    // is on, the surfaces below come from the desktop's scheme rather than from
+    // the six hex literals this file used to end at.
+    readonly property var pal: (typeof genesiPalette !== "undefined" && genesiPalette) ? genesiPalette : ({})
+    readonly property bool following: (typeof genesiFollowing !== "undefined") && genesiFollowing === true
+
+    function fromScheme(key, fallback) {
+        return (t.following && t.pal[key]) ? t.pal[key] : fallback
+    }
+
     // ── System inputs (live from the active scheme) ────────────────
-    readonly property color sysBg:     Kirigami.Theme.backgroundColor
-    readonly property color sysText:   Kirigami.Theme.textColor
-    readonly property color sysAccent: Kirigami.Theme.highlightColor
+    //
+    // Kirigami.Theme second, not first. On a Plasma session it reflects the
+    // active colour scheme; under Hyprland it reflects whatever KDE resolved,
+    // which is the thing that was landing on Breeze. The scheme file is the
+    // same source genesi-caelestia-theme-sync reads, so preferring it means
+    // these apps and the shell cannot disagree about what the scheme is.
+    readonly property color sysBg:     t.fromScheme("surface", Kirigami.Theme.backgroundColor)
+    readonly property color sysText:   t.fromScheme("onSurface", Kirigami.Theme.textColor)
+    readonly property color sysAccent: t.fromScheme("primary", Kirigami.Theme.highlightColor)
     readonly property real  sysLum:    0.299 * sysBg.r + 0.587 * sysBg.g + 0.114 * sysBg.b
     readonly property bool  dark:      !(sysLum >= 0.5)
 
@@ -62,9 +86,14 @@ Item {
     // (bg/card/line) and text still derive from the scheme, so the app keeps the
     // system's dark background while the brand colour stays put. (sysAccent above
     // is retained for `dark`/luminance helpers but no longer drives the accent.)
-    readonly property color accent:      "#1FBE6A"
-    readonly property color green:       "#1FBE6A"   // primary emerald
-    readonly property color greenBright: "#34D989"   // gauges, dots, active text
+    //
+    // 2026-09: and then the switch. "Every window follows the theme" has to
+    // mean every window, so when Genesi Center's one switch is on, the accent
+    // is the scheme's primary and the surfaces below are the scheme's too.
+    // Off -- the default -- these are exactly the values above, unchanged.
+    readonly property color accent:      t.fromScheme("primary", "#1FBE6A")
+    readonly property color green:       t.accent
+    readonly property color greenBright: t.fromScheme("secondary", "#34D989")
     readonly property color greenDeep:   "#0F7A47"   // logo/brand-mark gradient foot
 
     // Legible accent text for use ON an accent-TINTED surface (a chip/badge/nav
@@ -101,17 +130,60 @@ Item {
     // elev/sep above stay defined for the accent helpers; they no longer drive
     // these surfaces.) GlassCard.qml pins the same #040b17 base so its cards land on
     // ~#0d1623 too.
-    readonly property color bgBottom: "#040b17"   // window / scroll base
-    readonly property color bgTop:    "#0a1220"   // header / raised base
-    readonly property color card:     "#0d1623"   // sidebar, panels, card base
-    readonly property color cardHi:   "#16223a"   // hover / raised chips, search fields
-    readonly property color line:     "#1b2740"   // subtle separators / borders
-    readonly property color lineHi:   "#27374f"   // stronger borders
+    //
+    // 2026-09: pinned until the switch says otherwise. The mapping is the
+    // Material You elevation ladder, so a scheme's own idea of "one step up
+    // from the window" is used rather than a lightening of its background --
+    // which is what made every followed app look washed out rather than
+    // themed.
+    readonly property color bgBottom: t.fromScheme("surface", "#040b17")
+    readonly property color bgTop:    t.fromScheme("surfaceContainerLow", "#0a1220")
+    readonly property color card:     t.fromScheme("surfaceContainer", "#0d1623")
+    readonly property color cardHi:   t.fromScheme("surfaceContainerHigh", "#16223a")
+    readonly property color line:     t.fromScheme("surfaceContainerHighest", "#1b2740")
+    readonly property color lineHi:   t.fromScheme("outline", "#27374f")
 
     // ── Text (from the system foreground) ──────────────────────────
     readonly property color textHi:   sysText
     readonly property color textMid:  mix(sysText, sysBg, 0.35)
     readonly property color textLo:   mix(sysText, sysBg, 0.58)
+
+    // ── Shape, rhythm and type scale (2026-08: the modern/minimal pass) ──
+    //
+    // Before this every app picked its own radii and paddings inline, so two
+    // cards side by side rounded differently and nothing lined up on a grid.
+    // These are the whole vocabulary: if a value is not here, it is probably
+    // the wrong value. Numbers, not Kirigami.Units, because the design is a
+    // fixed pixel rhythm rather than a font-relative one -- a card that grows
+    // with the user's font size stops being the shape it was drawn as.
+    readonly property int rSm:   8     // chips, small fields
+    readonly property int rMd:   12    // buttons, list rows
+    readonly property int rLg:   16    // cards, panels
+    readonly property int rXl:   22    // hero surfaces, the composer
+    readonly property int rPill: 999   // fully round ends
+
+    readonly property int sp1: 4
+    readonly property int sp2: 8
+    readonly property int sp3: 12
+    readonly property int sp4: 16
+    readonly property int sp5: 24
+    readonly property int sp6: 36
+
+    // One type scale for every app. Display is for a single hero line only.
+    readonly property int fsDisplay: 30
+    readonly property int fsTitle:   19
+    readonly property int fsHead:    15
+    readonly property int fsBody:    13
+    readonly property int fsSmall:   11
+    readonly property int fsMicro:   10
+
+    // A 1px separator that reads as a hairline rather than a drawn border.
+    readonly property color hairline: a(white, dark ? 0.07 : 0.10)
+    // The faint tint under a hovered row: visible, never a block of colour.
+    readonly property color hover:    a(white, dark ? 0.05 : 0.06)
+    // Card fill for the minimal look: barely lifted off the background, with
+    // the hairline doing the separating instead of a heavy fill.
+    readonly property color surface:  a(white, dark ? 0.035 : 0.55)
 
     readonly property string mono: "monospace"
 

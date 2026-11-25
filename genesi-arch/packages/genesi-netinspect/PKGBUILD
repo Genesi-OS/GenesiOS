@@ -88,7 +88,39 @@ pkgver=1.0.0
 # pkgrel 19: pick up the pinned dark mockup palette (#040b17 bg / #0d1623 cards)
 # from the shared kit, so the Inspector matches the redesigned AI Mode Monitor.
 # pkgrel 20: shared GButton uses opaque tonal fills for VM-safe contrast.
-pkgrel=22
+# 2026-08-26 (23): three layout cycles, and panes that said nothing.
+# QT ABORTED THE LAYOUT PASS, THREE TIMES PER RELAYOUT. Three children sized
+# themselves from their own parent LAYOUT (Layout.preferredWidth: parent.width
+# * 0.46, and two more like it). That is a cycle -- the layout measures the
+# child, the child asks the layout -- and Qt does not resolve it: it logs
+# "Detected recursive rearrange", stops after two iterations and keeps whatever
+# it had. So the 46/54 and 42/58 splits were never reliably those splits.
+# Stretch factors say the same thing without the cycle.
+# EVERY RAW PANE WAS A BLACK RECTANGLE WHEN EMPTY -- and on a fresh proxy with
+# no traffic yet, that is most of the window. RawView takes a placeholder now,
+# so the request, response, repeater and intruder views each say what would put
+# something in them. Set on the component, not at six call sites.
+# 25: follows the desktop's colour scheme when Genesi Center's switch
+# says to, through the shared genesi_palette bridge -- which also sets
+# the application QPalette. That second half is what was missing: Qt
+# draws popups, scrollbars and Fusion buttons from a palette no Genesi
+# app ever set, so they arrived in Fusion's default LIGHT one. A dark
+# window with a few white controls in it was not an app half following
+# the scheme, it was an app following nothing while Qt filled the gaps.
+# 26: follows the desktop's colour scheme by DEFAULT. It was the other
+# way round, on the reasoning that an identity should not leave in an
+# update -- but that reasoning is about the identity, not about the
+# desktop. "Every window follows the theme" cannot be true by default
+# in an OS whose default is that its own six windows do not. The
+# emerald is one switch away, on the same switch, and it is what you
+# ask for now rather than what you get.
+# 2026-09-12: rebuilt for the shared I18n.qml, which gained the two
+# labels the AI chat's new speaker switch reads. This package does not
+# use them -- it is bumped because it BUNDLES that file at build time,
+# and pacman compares versions rather than contents: republished at the
+# same version the new copy would sit in the repository as 'nothing to
+# do' on every machine that already has it.
+pkgrel=27
 pkgdesc='Genesi API Inspector — native Burp-style HTTP/HTTPS interception workbench (mitmproxy)'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -115,6 +147,12 @@ package() {
     # Native GUI app (PySide6 + Kirigami over mitmproxy's addon API)
     install -Dm644 "${startdir}/app/genesi_netinspect.py" \
         "$pkgdir/usr/share/genesi-netinspect/app/genesi_netinspect.py"
+
+    # The shared colour bridge, bundled from genesi-ui-kit the same way the
+    # kit's QML is -- and beside the app's own module, because that is the
+    # directory the app puts on sys.path to import it.
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/genesi_palette.py" \
+        "$pkgdir/usr/share/genesi-netinspect/app/genesi_palette.py"
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-netinspect/app/Main.qml"
     # Theme + GlassCard come from the shared Genesi UI kit (one canonical source,

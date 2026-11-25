@@ -44,4 +44,5 @@ file_permissions=(
   ["/usr/local/bin/genesi-aid"]="0:0:755"
   ["/usr/local/bin/genesi-add-aimode-widget.sh"]="0:0:755"
   ["/usr/local/bin/genesi-dev-cuda-setup"]="0:0:755"
+  ["/usr/local/bin/genesi-migrate-live"]="0:0:755"
 )

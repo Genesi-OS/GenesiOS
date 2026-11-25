@@ -44,3 +44,494 @@ jobs:
             exit 1
           fi
           echo "OK: no tooling/editor state under any skel-override/"
+
+  keyring-wiring:
+    # The signing key and the packages that reference it have to move together.
+    # This is a text check with no build, so it runs on every push and PR and
+    # catches the ordering mistake — a dependency on a package CI is still
+    # skipping — before it can reach the ISO pipeline or a real install.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: genesi-keyring wiring is consistent
+        shell: bash
+        run: bash genesi-arch/ci/keyring-wiring-test.sh
+
+  bootloader-and-boot-test:
+    # Both are static/no-build, so they run on every push and PR. The bootloader
+    # check catches a menu pointing at an entry that does not exist in a second;
+    # the selftest keeps iso-boot-test.sh's polling logic honest, and that logic
+    # decides whether an ISO gets published.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # The Calamares netinstall groups are an install path, and
+          # package-reachability-test.py cannot answer correctly without them:
+          # every package reachable only through netinstall would look like an
+          # orphan. It refuses to run rather than report that, so this is not
+          # optional.
+          submodules: true
+          # pkgrel-bump-test.py reads `git log` to find the commit the current
+          # repo/x86_64 was built from. A shallow checkout has no such log and
+          # the guard would skip itself in silence, which is the one outcome a
+          # guard must never have.
+          fetch-depth: 0
+
+      - name: Boot menus point at entries that exist
+        shell: bash
+        run: bash genesi-arch/ci/bootloader-config-test.sh
+
+      - name: The GRUB menu has no EFI BootNext clutter
+        shell: bash
+        # GRUB 2.16's 31_efi_bootnext adds one entry per firmware boot record,
+        # and a user's menu filled up after the grub update. Runs the theme
+        # scriptlet against a scratch /etc/default/grub.
+        run: bash genesi-arch/ci/grub-defaults-test.sh
+
+      - name: A colour scheme the user picks survives a reboot
+        shell: bash
+        # genesi-apply-theme.sh runs at every KDE login, and its repair put the
+        # Genesi scheme back for everyone, so a user's own scheme reverted on
+        # each reboot. Runs the script (from the genesi-settings submodule)
+        # with the desktop tools stubbed.
+        run: bash genesi-arch/ci/apply-theme-test.sh
+
+      - name: No Portuguese-only text reaches an English user
+        # pt-BR kept leaking into English sessions with nothing to catch it:
+        # the AI Mode widget, its launcher's notifications, the whole Mesh page,
+        # the Update Center's output, the welcome app. Reads every string in the
+        # UI and CLI code (submodules included) and fails on Portuguese that is
+        # not half of a bilingual pair.
+        run: python genesi-arch/ci/stray-portuguese-test.py
+
+      - name: The logo os-release names reaches installed systems
+        # KDE's About this System drew a grey "?" on installs: the `genesi`
+        # icon lived only in the live ISO. Checks it ships in genesi-settings
+        # and that the ISO does not also carry a copy (pacman file conflict).
+        run: python genesi-arch/ci/os-logo-test.py
+
+      - name: The live session's autologin stays on the live ISO
+        # The installer copied the live SDDM autologin (liveuser) into every
+        # install, where it fought the autologin set in System Settings.
+        run: python genesi-arch/ci/live-autologin-test.py
+
+      - name: An update keeps the colour scheme the user picked
+        shell: bash
+        # genesi-settings' upgrade wrote Genesi colours into every user's
+        # kdeglobals, so another scheme came back half-Genesi after updates.
+        run: bash genesi-arch/ci/settings-upgrade-scheme-test.sh
+
+      - name: The installer does not copy the live ISO over package files
+        # copy_genesi runs after the packages install and copied the live
+        # ISO's old SDDM theme over genesi-store's: black screen on logout.
+        run: python genesi-arch/ci/installer-copy-overlap-test.py
+
+      - name: Displays and Input work on KDE Plasma, Hyprland unchanged
+        # genesi-display through kscreen-doctor, and the Hub's Input page
+        # through KWin, each against a fake; both also check that a Hyprland
+        # session never takes the Plasma path.
+        run: |
+          python genesi-arch/ci/display-plasma-test.py
+          python genesi-arch/ci/center-plasma-input-test.py
+
+      - name: The ISO boot test's own logic
+        shell: bash
+        run: bash genesi-arch/ci/iso-boot-test-selftest.sh
+
+      # A gate that answers "false" skips the ISO and reports success, so the
+      # download page can go stale for a week while every build looks green.
+      # The step's own shell is executed here against a stubbed `gh`.
+      - name: The ISO pipeline's gate decides correctly
+        shell: bash
+        run: python genesi-arch/ci/iso-gate-test.py
+
+      # The per-build archive has taken the pipeline down twice -- once by
+      # failing, once by hanging -- and both times it skipped the step that
+      # republishes the download page. Its contract (exit 0 whatever the
+      # uploads do, inside a budget, never leave a half archive) is asserted
+      # here against a stubbed `gh`.
+      - name: A flaky archive upload cannot take the ISO down
+        shell: bash
+        run: python genesi-arch/ci/iso-archive-test.py
+
+      - name: genesi-report does not leak the reporter
+        shell: bash
+        run: bash genesi-arch/ci/report-redaction-test.sh
+
+      - name: genesi-report looks where Genesi installs its config
+        shell: bash
+        run: python3 genesi-arch/ci/report-sees-our-config-test.py
+
+      - name: Bar presets describe a bar that can exist
+        shell: bash
+        run: python3 genesi-arch/ci/bar-presets-test.py
+
+      - name: A changed package carries a new version
+        shell: bash
+        # Needs history: it compares the tree against the commit the current
+        # repo/x86_64 was built from, which the publish commit records.
+        run: python3 genesi-arch/ci/pkgrel-bump-test.py
+
+      - name: The ISO's systemd enable symlinks are symlinks
+        shell: bash
+        run: bash genesi-arch/ci/systemd-enable-test.sh
+
+      - name: The caelestia launcher actions have not drifted
+        shell: bash
+        # Without the upstream tarball it checks the half it can: that Genesi's
+        # own actions are still there and that the launcher's Logout is still
+        # the clean session exit rather than the black-screen command. The full
+        # drift check runs in genesi-caelestia-shell's prepare(), where their
+        # source is on disk.
+        run: python genesi-arch/ci/caelestia-actions-test.py
+
+      - name: Every package we build reaches a machine
+        # Twice a package has been written, built, published and signed, and
+        # then installed on nobody, because the one line that pulls it in was
+        # never added: genesi-display (six launcher actions that did nothing
+        # when clicked) and genesi-update-kcm (KDE had no update page at all
+        # while Hyprland had one). Neither produced an error anywhere.
+        #
+        # Needs the submodules, which this job already checks out: the
+        # Calamares netinstall groups are an install path.
+        run: python genesi-arch/ci/package-reachability-test.py
+
+      - name: No install path ships a driver that blanks the login screen
+        # Both netinstall groups shipped xf86-video-intel. Arch's Xorg picks it
+        # for every Intel GPU, and on a Core Ultra 7 155H the SDDM greeter
+        # never appeared: black on the panel and on HDMI. Older Intel worked,
+        # so nothing caught it. Needs the submodules, like the step above.
+        run: python genesi-arch/ci/installer-graphics-test.py
+
+      - name: Every section of the Hyprland migration applies
+        shell: bash
+        # /etc/skel only seeds NEW accounts, so anything added to hyprland.conf
+        # reaches existing users through the .install migration or not at all.
+        # It reached them not at all: a hand-maintained "already up to date"
+        # gate returned before the new section, so the display keybinds were
+        # written, shipped, installed and never applied to a single config.
+        # Nothing errored. This reads the section markers out of the scriptlet
+        # itself, so a new section is covered without anyone remembering.
+        run: bash genesi-arch/ci/hypr-migration-test.sh
+
+      - name: GTK widgets are not built before GTK exists
+        # All four tray applets segfaulted at login with the same stack: the
+        # menu is built in Tray.__init__ and Gtk.main() -- which used to be
+        # what initialised GTK -- only runs afterwards. PyGObject stopped
+        # initialising Gtk implicitly on import. The symptom is three tray
+        # icons that simply are not there, with the reason only in a coredump.
+        # This found a fifth tray with the same bug that nobody had reported.
+        run: python genesi-arch/ci/gtk-init-order-test.py
+
+      - name: Screen shaders are in the shape Hyprland accepts
+        # Hyprland leaves the screen untouched when a shader fails to compile
+        # and reports it nowhere the user looks, so a typo ships as a launcher
+        # entry that appears to do nothing. This is the structural half --
+        # right dialect, right uniforms; genesi-shaders' own check() runs the
+        # real compiler at build time.
+        run: python genesi-arch/ci/shader-sanity-test.py
+
+      - name: systemd units point at units that exist
+        # Genesi rebrands CachyOS material with a blanket
+        # `sed s/cachyos/genesi/g` over the package. That is right for text and
+        # wrong for identifiers: it rewrote a .path unit's trigger to a service
+        # that does not exist while leaving the service file's NAME alone, and
+        # the failure appeared on every boot in the journal and nowhere else.
+        run: python genesi-arch/ci/systemd-unit-refs-test.py
+
+      # ── Guards that were written and never wired up ────────────────────────
+      #
+      # These five existed for months and no workflow ran any of them, which
+      # makes them documentation rather than guards: they only ever fired when
+      # somebody remembered to run them by hand, and the bugs they describe
+      # shipped anyway. They are pure stdlib Python and take seconds.
+
+      - name: Genesi Center asks, runs and writes only what exists
+        # Every page's data section, every command it shells out to, and every
+        # shell.json key it writes, checked against the programs and the
+        # patcher that have to carry them. A page can otherwise write a key
+        # nothing reads, for ever, in silence.
+        run: python genesi-arch/ci/center-wiring-test.py
+
+      - name: the Updates page knows about an update it did not start
+        # Closing the Nexus window lost track of a running update, and the
+        # reopened page offered "Update now" again beside it.
+        run: python genesi-arch/ci/updates-page-test.py
+
+      - name: every command the Displays page sends runs in genesi-display
+        # `genesi-display mode` could never run -- it counted its own name
+        # among its arguments -- and the page throws the output away, so a
+        # resolution pick did nothing, silently. Runs each verb the page can
+        # send against a fake Hyprland.
+        run: python genesi-arch/ci/display-cli-test.py
+
+      - name: shell.json survives concurrent writers
+        # A widget drop used to be three processes rewriting one JSON file
+        # through one shared scratch path. Two of the three changes were lost
+        # and the file came out spliced -- which read to the user as "the
+        # widget snaps back", "the settings pages are empty" and "JSON error at
+        # login", three symptoms of one bug.
+        run: python genesi-arch/ci/center-set-atomic-test.py
+
+      - name: the keybind drop-in writer
+        run: python genesi-arch/ci/center-binds-test.py
+
+      - name: the theme sync writes what each toolkit reads
+        run: python genesi-arch/ci/theme-sync-test.py
+
+      - name: the Game Center's games load, and play by their rules
+        # The games are plain QtQuick so that this can load them offscreen
+        # and PLAY them: 2048 merging a tile twice in one move, a snake
+        # chasing its own tail, a first click in Minesweeper landing on a
+        # mine. Any Qt warning while they load or play fails it too.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libfontconfig1 fonts-dejavu-core
+          python -m pip install --quiet PySide6-Essentials
+          python genesi-arch/ci/plugins-test.py
+
+      - name: Genesi Migrate reads other distros, and its screen saves the plan
+        # The migration tool runs on Ubuntu/Fedora/Arch, never on Genesi, so
+        # the scanner is played against fake roots answering like dpkg, rpm,
+        # pacman, snap and lsblk really do; then Main.qml loads offscreen and
+        # the plan it saves is checked. PySide6 is installed by the step above.
+        run: python genesi-arch/ci/migrate-test.py
+
+      - name: Genesi Migrate's restart, partitioning and restore plan correctly
+        # Each step that formats, shrinks or reboots is a pure planning
+        # function; this plays them against the cases that break them (a disk
+        # renamed in the live system, a busy disk, BIOS+GPT, the shrink math,
+        # an ISO that would sit on the partition being formatted) and runs the
+        # Calamares migration setup against Genesi's real Calamares files.
+        run: |
+          python genesi-arch/ci/migrate-flow-test.py
+          python genesi-arch/ci/migrate-inplace-test.py
+
+      - name: a dropdown pick in Genesi Center lands on the dropdown only
+        # The resolution list used to press the rotation button lying under
+        # it as well. Runs the real Displays page offscreen; PySide6 is
+        # already installed by the step above.
+        run: python genesi-arch/ci/center-select-test.py
+
+      - name: QML that cannot be compiled is at least sane
+        # Nothing in the build compiles the shell's QML -- CMake installs it as
+        # plain files -- so a green build says nothing about whether the
+        # desktop loads at all.
+        run: python genesi-arch/ci/qml-sanity-test.py
+
+      - name: every QML file the patcher installs is in the shell's source=()
+        # Two lists that have to agree and nothing checked that they did. Add a
+        # file to the patcher and not to the PKGBUILD and the package builds
+        # Calamares, materialyoucolor and half of Qt first, then dies in
+        # prepare() thirteen minutes in with "that file is missing".
+        run: python genesi-arch/ci/caelestia-sources-test.py
+
+      - name: every Genesi app follows the scheme, or Genesi's, coherently
+        # A Genesi app paints from two places: the UI kit's Theme.qml for what
+        # it draws itself, and the application QPalette for what Qt draws --
+        # popups, scrollbars, Fusion buttons. No app ever set the second, so
+        # those arrived in Fusion's default LIGHT palette: a dark navy window
+        # with a handful of white controls in it.
+        run: python genesi-arch/ci/app-palette-test.py
+
+      - name: a patcher precondition describes upstream, not us
+        # caelestia-patches.py is written as pairs: what upstream says today,
+        # and what it will say once we are done. The first is asserted before
+        # the second is written, so an expired override fails the build with a
+        # specific message instead of shipping a silently wrong shell.
+        #
+        # That only works while the two halves stay on their own sides. A
+        # `.replace()` meant for the replacement landed on the precondition
+        # once, and the patch then asserted that upstream already mentioned a
+        # property that patch adds. It cannot -- so the build stopped with a
+        # message blaming upstream for a change upstream had not made, twenty
+        # minutes in.
+        run: python genesi-arch/ci/patcher-sanity-test.py
+
+      - name: every PKGBUILD parses as bash
+        # One apostrophe cost a full build. `optdepends=('... for Depth's Fine
+        # tier')` closes its own single-quoted string, so bash read the rest of
+        # the file in the wrong quoting context and reported a syntax error a
+        # hundred and forty lines lower, in a line that was fine -- and makepkg
+        # failed to source the PKGBUILD at all, after the runner had installed
+        # a hundred dependencies to get there.
+        #
+        # `bash -n` parses without running anything and takes milliseconds.
+        # With extglob on, because makepkg runs with it and a vendored CachyOS
+        # PKGBUILD uses `rm -r !(test)`.
+        run: python genesi-arch/ci/pkgbuild-syntax-test.py
+
+      - name: Depth cuts a subject out, and admits when there is not one
+        # Three lists of the same words -- the tiers in genesi-depth, the
+        # enums genesi-center-set accepts, and the switch statements in
+        # GenesiDepth.qml that turn a name into an opacity or a blur. A word
+        # in two of the three is a setting that saves, applies to nothing and
+        # produces no error.
+        #
+        # And the cut itself, on pictures made for it: two with an obvious
+        # subject, the same two with a photograph's grain over the whole frame,
+        # and three with no subject -- a flat gradient, a busy texture and a
+        # ground region. Otsu always splits SOMETHING, so the judgement is the
+        # feature: a flat gradient once produced a "subject" covering a third
+        # of the frame and the shell would have drawn it over the clock.
+        #
+        # The thresholds are checked against the table of PHOTOGRAPHS they
+        # were measured on, which is the part a drawn fixture cannot stand in
+        # for: the accept/reject number was once fitted to three drawn
+        # pictures and turned out to separate nothing on a real one.
+        run: |
+          python -m pip install --quiet opencv-python-headless numpy
+          python genesi-arch/ci/depth-test.py
+
+      - name: a hosted model is reached in the shape it actually speaks
+        # `anthropic` sat in the provider table under a comment saying every
+        # endpoint in it speaks the OpenAI chat-completions shape. It does
+        # not -- it takes /v1/messages with an x-api-key header -- so an
+        # Anthropic key answered 404 to `genesi-ai-key test` and fell back to
+        # the local model on every ask(). Listed, documented, never working,
+        # and invisible because no test had ever sent a request.
+        #
+        # This sends one, to a fake endpoint that knows which shape each
+        # provider really speaks and refuses the other. It also checks that
+        # one request counts as one use, that a request which never landed is
+        # not counted as one, and that local and hosted are counted apart.
+        run: python genesi-arch/ci/ai-cloud-test.py
+
+      - name: the speech model's downloads are actually there
+        # The installer built its environment correctly, resolved every
+        # dependency, and then answered 404: the release tag was written from
+        # memory. Everything checkable locally was right; the one thing that
+        # was not is the one thing that was wrong.
+        #
+        # A 4xx fails this. A network error does NOT -- a runner with no route
+        # to github.com must not go red about a URL that is fine.
+        run: python genesi-arch/ci/voice-model-test.py
+
+      - name: AI Mode's inference tuning reaches the running server
+        # Each check is a setting that looked shipped and was not: the single
+        # slot Turbo chose but never passed (llama-server's default is 4),
+        # genesi-aid's nice/P-core pinning landing on the main thread only,
+        # turbo.env read by the always-warm unit and nothing else, --prio as
+        # an EPERM no-op, and the autotuner picking ubatch by decode noise.
+        # With network, every flag Turbo emits is held to llama.cpp's pinned
+        # commit; without, that part is skipped.
+        run: python genesi-arch/ci/ai-turbo-perf-test.py
+
+      - name: every backend call in the AI Monitor names something that exists
+        # The Monitor's pages reach Python by NAME, both ways, and both fail
+        # silently: a call to a slot that is not there is a dead button, and a
+        # handler for a signal that is not emitted is simply never run. The
+        # Monitor needs Kirigami to load, so no offscreen harness here can load
+        # it -- this reads both sides as text instead.
+        run: python genesi-arch/ci/monitor-slots-test.py
+
+      - name: the Image page's tool downloads, draws and reports what it did
+        # genesi-ai-image against a stand-in sd-cli and a local HTTP server:
+        # resumed and Range-ignoring downloads, a checksum mismatch deleting
+        # the file, shared files surviving a model's removal, the argv each
+        # mode hands the engine, and the progress events the page draws. With
+        # network, it also holds every flag to genesi-sd-cpp's PINNED commit
+        # and every catalog URL to its size -- a gated or moved file is a
+        # Download button that can never work. No network: those are skipped.
+        run: python genesi-arch/ci/image-cli-test.py
+
+      - name: the Video page's tool makes clips, and its page loads without a player
+        # genesi-ai-video against a stand-in sd-cli that writes a real MJPG
+        # .avi and a stand-in ffmpeg: every mode's argv (t2v, i2v, first+last
+        # frame, reference, restyle, continue), the two-expert Wan2.2 flags,
+        # Turbo's |high_noise| LoRA, low memory and the out-of-memory retry,
+        # the poster read with no ffmpeg, Wan LoRA sizes. The page loads
+        # offscreen in both languages, and with the player broken (PySide6-
+        # Essentials has no QtMultimedia -- exactly the case it must survive).
+        # With network: flags against the pinned engine, sizes and hashes
+        # against the Hub. Its stand-in downloads never touch the Hub.
+        run: python genesi-arch/ci/video-cli-test.py
+
+      - name: an API model runs the agent, and Stop stops a model that has said nothing
+        # The agent loop and the automations run on hosted models: a real
+        # automation drives a fake provider that asks for a tool, and the tool
+        # the provider asked for has to be the one that ran.
+        #
+        # Stop used to set a flag that was only read between lines of a reply,
+        # so a model still loading or thinking -- or any non-streaming agent
+        # step -- ran to the end regardless. The test holds a request open
+        # with nothing sent and requires Stop to cut it at once, AND the
+        # server to see the connection go, which is what makes it stop
+        # generating rather than merely stop being listened to.
+        run: |
+          python genesi-arch/ci/ai-agent-cloud-test.py
+          python genesi-arch/ci/ai-stop-test.py
+
+      - name: the Quick Chat feeds the AI island, and the island's answers reach it
+        # The island (a shell plugin) only reads a state file the Quick Chat
+        # writes and answers through `genesi-ai-quick --approve ID` & co. over
+        # the chat's socket: every command has to arrive, the file has to be
+        # written whole, and a dropped file has to become text the model reads.
+        run: python genesi-arch/ci/ai-island-bridge-test.py
+
+      - name: the AI island works on every desktop, not only in caelestia
+        # genesi-ai-island draws the same card in its own window: layer-shell
+        # where the compositor has it, X11 where it does not. Pins the choice
+        # per desktop, the shared settings and switch, Smart Copy's rules
+        # (never a token), every button's message, and the window itself.
+        run: python genesi-arch/ci/ai-island-standalone-test.py
+
+      - name: the agent asks a local model for what it can actually do
+        # Thinking switched off, a context window that fits the tool
+        # catalogue, a capped reply, and no <think> block in what is parsed --
+        # "local AI is slow and does not work right" was the request.
+        run: python genesi-arch/ci/ai-agent-local-test.py
+
+      - name: every Hyprland rule Genesi writes is one Hyprland applies
+        # Since Hyprland 0.53 a rule with no `match:` is silently discarded.
+        # Three generations of Genesi rules were, and the Quick Chat opened
+        # tiled -- a transparent, workspace-high slab -- while Frost did nothing.
+        run: python genesi-arch/ci/hypr-rules-test.py
+
+      - name: the Hyprland desktop loads on 0.57 (Lua only), and on older ones
+        # Hyprland 0.57 reads only hyprland.lua; Genesi desktops that upgraded
+        # came up on Hyprland's placeholder with no caelestia, no bar, no keys.
+        # hyprland.lua runs in a real Lua against a mock built from 0.57.1's
+        # own sources (ci/data/hyprland-api.json), so an unknown option,
+        # dispatcher, rule effect or bind flag fails here instead of becoming a
+        # silent line in `hyprctl configerrors`. It must match hyprland.conf
+        # (0.54 and older read only that). The migration is played against fake
+        # homes per Hyprland version, and no Genesi code may still call the
+        # `hyprctl keyword` / old `dispatch` that 0.57 removed without a Lua
+        # branch beside it.
+        run: |
+          python -m pip install --quiet lupa
+          python genesi-arch/ci/hypr-lua-test.py
+
+      - name: a wallpaper per screen, and wallpapers that move
+        # genesi-wallpaper writes the map the shell's GenesiWallpaperState
+        # reads: one screen's wallpaper never touches caelestia's (or the
+        # colours), a moving one for every screen gives caelestia a still of
+        # itself, and Wallpaper Engine video items are found in every Steam
+        # library while scene items are refused by name.
+        run: python genesi-arch/ci/wallpaper-cli-test.py
+
+      - name: no QML object sets the same property twice
+        # "Property value set multiple times" is a load error: the file, and
+        # for a window the whole window, does not exist at run time. A second
+        # Component.onCompleted nearly shipped in Quick Chat, and qml-sanity
+        # had no check for it.
+        run: python genesi-arch/ci/qml-duplicates-test.py
+
+      # The store applies things to a desktop from a catalogue. This checks
+      # the catalogue offline -- no item may carry a command, every download
+      # is checksummed and allow-listed -- and then runs apply/revert to prove
+      # that undoing a look puts back exactly what was there.
+      - name: the store's catalogue is data, and revert really reverts
+        shell: bash
+        run: python genesi-arch/ci/store-test.py
+
+      - name: every shebang script is pinned to LF
+        # An extensionless script committed with CRLF is `bad interpreter: no
+        # such file or directory` on the installed system and nowhere else.
+        run: python genesi-arch/ci/eol-test.py

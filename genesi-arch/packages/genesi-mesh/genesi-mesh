@@ -802,7 +802,7 @@ def cmd_use(arg):
             elif _turbo_answers(o["url"]):
                 state = color("  [ok]", GREEN)
             else:
-                state = color("  [NÃO RESPONDE]", RED)
+                state = color("  [NOT ANSWERING]", RED)
                 unreachable.append(o)
             print("  %s %-18s %-24s %s%s"
                   % (mark, o["key"], model, color(o["url"], DIM), state))

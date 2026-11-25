@@ -35,6 +35,22 @@ Item {
     }
 
     readonly property bool isProjectList: filter === "all" || filter === "recent" || filter === "starred"
+    readonly property string sectionTitle: {
+        if (filter === "recent")       return "Recent"
+        if (filter === "starred")      return "Starred"
+        if (filter === "templates")    return "Templates"
+        if (filter === "integrations") return "Integrations"
+        if (filter === "settings")     return "Settings"
+        return "Projects"
+    }
+    readonly property string sectionSubtitle: {
+        if (filter === "recent")       return "What you opened last."
+        if (filter === "starred")      return "The ones you keep coming back to."
+        if (filter === "templates")    return "Start a new project from a known-good layout."
+        if (filter === "integrations") return "Where Forge talks to the outside world."
+        if (filter === "settings")     return "How Forge behaves on this machine."
+        return "All your repositories in one place."
+    }
 
     function countProvider(name) {
         var c = 0
@@ -186,9 +202,14 @@ Item {
                             spacing: 14
                             ColumnLayout {
                                 spacing: 3
-                                QQC2.Label { text: "Projects"; color: root.theme.textHi
+                                // The header was hardcoded to the Projects
+                                // section, so Templates, Integrations and
+                                // Settings all announced themselves as
+                                // "Projects — all your repositories in one
+                                // place" with four project counters underneath.
+                                QQC2.Label { text: root.sectionTitle; color: root.theme.textHi
                                     font.family: root.theme.display; font.pixelSize: 28; font.bold: true }
-                                QQC2.Label { text: "All your repositories in one place."; color: root.theme.textMid; font.pixelSize: 13 }
+                                QQC2.Label { text: root.sectionSubtitle; color: root.theme.textMid; font.pixelSize: 13 }
                             }
                             Item { Layout.fillWidth: true }
                             Rectangle {
@@ -235,6 +256,11 @@ Item {
 
                         // Stat tiles
                         RowLayout {
+                            // These count PROJECTS. On the Templates,
+                            // Integrations and Settings pages they were still
+                            // sitting under the heading, counting something the
+                            // page was not about.
+                            visible: root.isProjectList
                             Layout.fillWidth: true
                             spacing: 14
                             StatTile { theme: root.theme; icon: "folder";     accent: root.theme.green;  value: String(root.stats.total);   label: "Total Projects" }
@@ -245,6 +271,13 @@ Item {
 
                         // Section header
                         RowLayout {
+                            // On the project lists this says something the page
+                            // title does not ("Discovered Projects", "Recently
+                            // Opened") and carries the repo count and the
+                            // refresh. On Templates / Integrations / Settings it
+                            // repeated the page title word for word, one line
+                            // below it, and the refresh beside it did nothing.
+                            visible: root.isProjectList
                             Layout.fillWidth: true
                             spacing: 12
                             QQC2.Label {
@@ -293,6 +326,14 @@ Item {
                                     project: modelData
                                     Layout.fillWidth: true
                                     Layout.preferredWidth: 1
+                                    // A grid column with nothing beside it takes
+                                    // the whole row, so one project (or just the
+                                    // import tile, on a fresh install) stretched
+                                    // to 1300px and its content ended up marooned
+                                    // at opposite ends of a card designed to be
+                                    // 268 wide. Cap it at the pitch the column
+                                    // count is computed from.
+                                    Layout.maximumWidth: 268
                                     Layout.preferredHeight: 208
                                     onOpened: root.openProject(modelData)
                                     onStarToggled: backend.toggleStar(modelData.path)
@@ -302,6 +343,7 @@ Item {
                                 theme: root.theme
                                 Layout.fillWidth: true
                                 Layout.preferredWidth: 1
+                                Layout.maximumWidth: 268
                                 Layout.preferredHeight: 208
                                 onBrowse: folderDialog.open()
                             }

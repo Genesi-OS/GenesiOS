@@ -1,0 +1,59 @@
+{
+  "name": "Compact · Compacto",
+  "description": "Tighter icons and fewer workspaces",
+  "bar": {
+    "entries": [
+      {
+        "id": "logo",
+        "enabled": true
+      },
+      {
+        "id": "workspaces",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "activeWindow",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "tray",
+        "enabled": true
+      },
+      {
+        "id": "clock",
+        "enabled": true
+      },
+      {
+        "id": "statusIcons",
+        "enabled": true
+      },
+      {
+        "id": "power",
+        "enabled": true
+      }
+    ],
+    "workspaces": {
+      "shown": 3,
+      "showWindows": false
+    },
+    "tray": {
+      "compact": true
+    },
+    "activeWindow": {
+      "compact": true
+    }
+  },
+  "border": {
+    "thickness": 0,
+    "rounding": 0,
+    "smoothing": 0
+  }
+}

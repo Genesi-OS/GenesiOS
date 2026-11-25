@@ -248,17 +248,127 @@ def _bench(binp, gguf, extra):
         return []
 
 
+def _is_tg(r):
+    """Text-generation row (n_gen > 0, n_prompt == 0): decode speed."""
+    try:
+        return int(r.get("n_gen", 0)) > 0 and int(r.get("n_prompt", 0)) == 0
+    except Exception:
+        return False
+
+
+def _is_pp(r):
+    """Prompt-processing row (n_prompt > 0, n_gen == 0): prefill speed."""
+    try:
+        return int(r.get("n_prompt", 0)) > 0 and int(r.get("n_gen", 0)) == 0
+    except Exception:
+        return False
+
+
 def _tg_rows(rows):
-    """Keep only the text-generation rows (n_gen > 0, n_prompt == 0): decode
-    tokens/s is what the user feels; prefill (pp) is a separate concern."""
-    out = []
+    return [r for r in rows if _is_tg(r)]
+
+
+def _row_cfg(r, with_threads):
+    """The server knobs a llama-bench row measured, in tune.json's vocabulary.
+    None for a row server_cmd could not reproduce (it sets ONE KV type for both
+    k and v, so an unmatched pair is never a valid winner)."""
+    if r.get("type_k") and r.get("type_v") and r["type_k"] != r["type_v"]:
+        return None
+    cfg = {}
+    # llama-bench reports flash_attn as an int and KV types as strings.
+    if "flash_attn" in r:
+        cfg["fa"] = "on" if int(r.get("flash_attn") or 0) > 0 else "off"
+    if r.get("type_k"):
+        cfg["kv"] = str(r["type_k"])
+    if with_threads and r.get("n_threads"):
+        cfg["threads"] = int(r["n_threads"])
+    return cfg
+
+
+def pick_winner(rows, with_threads):
+    """Choose each knob by the speed it actually moves.
+
+    Decode (tg) is memory-bound: flash-attn, the KV type and -- when weights
+    sit in RAM -- the thread count decide it. n_ubatch does NOT: it is the
+    physical PROMPT batch, and a 128-token decode never fills even the smallest
+    one. The old picker chose the whole config, ubatch included, by decode
+    speed, so the saved ubatch was whichever value happened to win the run's
+    noise. Now: the decode knobs by mean decode speed, then ubatch by prefill
+    speed among the rows with those knobs.
+
+    Returns (decode_tok_s, cfg) or None when nothing usable was measured."""
+    by_cfg = {}                       # frozen decode-knob cfg -> [tg tok/s]
     for r in rows:
-        try:
-            if int(r.get("n_gen", 0)) > 0 and int(r.get("n_prompt", 0)) == 0:
-                out.append(r)
-        except Exception:
-            pass
-    return out
+        if not _is_tg(r):
+            continue
+        ts = float(r.get("avg_ts") or 0.0)
+        cfg = _row_cfg(r, with_threads)
+        if ts <= 0 or cfg is None:
+            continue
+        by_cfg.setdefault(tuple(sorted(cfg.items())), []).append(ts)
+    if not by_cfg:
+        return None
+    key, speeds = max(by_cfg.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
+    best = dict(key)
+    tg_speed = sum(speeds) / len(speeds)
+
+    pp_best = None                    # (prefill tok/s, ubatch)
+    for r in rows:
+        if not _is_pp(r) or _row_cfg(r, with_threads) != best:
+            continue
+        ts = float(r.get("avg_ts") or 0.0)
+        if ts > 0 and r.get("n_ubatch") and (pp_best is None or ts > pp_best[0]):
+            pp_best = (ts, int(r["n_ubatch"]))
+    if pp_best:
+        best["ubatch"] = pp_best[1]
+    return tg_speed, best
+
+
+def _placement(gguf):
+    """Ask genesi-ai-turbo where the server would put this model's weights
+    ({ngl, n_cpu_moe, cpu_moe, threads}), or {} if it cannot say."""
+    turbo = _which("genesi-ai-turbo")
+    if not turbo:
+        return {}
+    try:
+        r = subprocess.run([turbo, "placement", gguf], capture_output=True,
+                           text=True, timeout=60)
+        lines = (r.stdout or "").strip().splitlines()
+        return json.loads(lines[-1]) if lines else {}
+    except Exception:
+        return {}
+
+
+def gpu_matrix(place, ncpu):
+    """llama-bench sweeps for a GPU machine, built on the SERVER's placement.
+
+    Fully in VRAM: ubatch x flash-attn x KV, as before. MoE with experts in RAM
+    (n_cpu_moe / cpu_moe): the same -ncmoe the server uses, and the CPU thread
+    count joins the sweep because the experts stream through the CPU -- it is
+    the decode lever there. A dense model that spills (-ngl auto) returns []:
+    llama-bench has no equivalent of the server's memory fit, and a guessed
+    layer count would tune for a split the server never runs.
+
+    KV is swept as MATCHED k==v pairs because server_cmd applies one type to
+    both -- an unmatched combo could never be reproduced."""
+    ngl = (place or {}).get("ngl") or "999"
+    if ngl == "auto":
+        return []
+    base = ["-ngl", ngl]
+    ncmoe = (place or {}).get("n_cpu_moe")
+    if (place or {}).get("cpu_moe"):
+        ncmoe = 999                   # every layer's experts on the CPU
+    if ncmoe:
+        p = (place or {}).get("threads") or max(1, ncpu // 2)
+        threads = ",".join(str(t) for t in sorted({p, max(1, ncpu // 2), ncpu}))
+        base += ["-ncmoe", str(ncmoe), "-t", threads]
+        ubs = "512,2048"
+        fas = "1"                     # attention is on the GPU; FA is the win
+    else:
+        ubs = "512,1024,2048"
+        fas = "0,1"
+    return [base + ["-ub", ubs, "-fa", fas, "-ctk", kv, "-ctv", kv]
+            for kv in ("f16", "q8_0")]
 
 
 def tune(gguf):
@@ -270,62 +380,41 @@ def tune(gguf):
     print(f":: tuning {os.path.basename(gguf)}  ({'GPU' if gpu else 'CPU'})",
           flush=True)
 
-    best = None                           # (tokens_per_s, config-dict)
+    ncpu = os.cpu_count() or 8
     if gpu:
-        # GPU: sweep physical batch (n_ubatch) x flash-attn x KV type, full
-        # offload. Each is a real bandwidth/compute trade the GPU decides. KV is
-        # swept as MATCHED k==v pairs (two runs) because server_cmd applies one
-        # type to both — an unmatched llama-bench combo (q8_0/f16) can't be
-        # reproduced, so we never generate one.
-        matrix = [
-            ["-ngl", "999", "-ub", "512,1024,2048", "-fa", "0,1",
-             "-ctk", "f16", "-ctv", "f16"],
-            ["-ngl", "999", "-ub", "512,1024,2048", "-fa", "0,1",
-             "-ctk", "q8_0", "-ctv", "q8_0"],
-        ]
+        place = _placement(gguf)
+        matrix = gpu_matrix(place, ncpu)
+        if not matrix:
+            print(":: this model spills out of VRAM as dense layers — the "
+                  "server sizes that split itself and llama-bench cannot "
+                  "reproduce it, so there is nothing reliable to tune. A "
+                  "smaller quant (or GENESI_TURBO_FIT=1) runs it fully on "
+                  "the GPU.", flush=True)
+            return None
+        with_threads = any("-t" in m for m in matrix)
+        print(f":: placement: {place or 'full offload (assumed)'}", flush=True)
     else:
         # CPU: sweep thread count x physical batch; KV/flash-attn stay at the
         # llama.cpp defaults (q8_0 KV + forced FA REGRESS on CPU).
-        ncpu = os.cpu_count() or 8
         half = max(1, ncpu // 2)
         matrix = [
             ["-ngl", "0", "-t", f"{half},{ncpu}", "-ub", "256,512"],
         ]
+        with_threads = True
 
     rows = []
     for extra in matrix:
         rows += _bench(binp, gguf, extra)
-    tg = _tg_rows(rows)
-    if not tg:
+    if not _tg_rows(rows):
         sys.exit("no usable benchmark results — try `genesi-ai-tune --force` "
                  "manually to see llama-bench's output.")
 
-    for r in tg:
-        ts = float(r.get("avg_ts") or 0.0)
-        if ts <= 0:
-            continue
-        # Only trust rows we can actually reproduce: server_cmd sets one KV type
-        # for both k and v, so ignore any unmatched pair.
-        if r.get("type_k") and r.get("type_v") and r["type_k"] != r["type_v"]:
-            continue
-        cfg = {}
-        if r.get("n_ubatch"):
-            cfg["ubatch"] = int(r["n_ubatch"])
-        # llama-bench reports flash_attn as bool/int and KV types as strings.
-        if "flash_attn" in r:
-            cfg["fa"] = "on" if int(r.get("flash_attn") or 0) else "off"
-        if r.get("type_k"):
-            cfg["kv"] = str(r["type_k"])
-        if not gpu and r.get("n_threads"):
-            cfg["threads"] = int(r["n_threads"])
-        if best is None or ts > best[0]:
-            best = (ts, cfg)
-
-    if not best:
+    won = pick_winner(rows, with_threads)
+    if not won:
         sys.exit("benchmark rows had no positive tokens/s — nothing to save.")
 
-    ts, cfg = best
-    print(f":: winner: {ts:.1f} tok/s  ->  {cfg}", flush=True)
+    ts, cfg = won
+    print(f":: winner: {ts:.1f} tok/s decode  ->  {cfg}", flush=True)
     _save(gguf, cfg, ts)
     return cfg
 

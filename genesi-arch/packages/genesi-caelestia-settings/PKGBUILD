@@ -123,12 +123,158 @@ pkgver=1.0.0
 # tray is its ONLY form here, the KDE plasmoid needing plasmashell — simply
 # never appeared on caelestia. Migrated into existing users' configs like the
 # other trays.
-pkgrel=18
+# pkgrel 19: put display controls in the launcher, and fix a logout that was
+# only half-fixed.
+#
+# caelestia reads its `>` actions from GlobalConfig.launcher.actions -- config,
+# not code -- so Scale 100/125/150/200%, Rotate screen and Reset display are
+# added with no new app, no new package and no QML override. They call
+# genesi-display, which is Hyprland-level and works on any shell.
+#
+# The catch, and why ci/caelestia-actions-test.py now exists: that property is a
+# single QVariantList, so setting it REPLACES upstream's thirteen defaults
+# instead of merging. Our file has to carry all of them, and the day caelestia
+# adds a fourteenth, Genesi users silently lose it. The check fails the build on
+# that, on our own actions vanishing, and on the Logout regressing.
+#
+# And the Logout: pkgrel 17 fixed the SESSION DRAWER's `loginctl terminate-user`
+# -- the infinite black screen -- but the launcher has its own copy of that
+# command and was never covered. Two doors to the same room, one of them still
+# open. Now both use `hyprctl dispatch exit`.
+# pkgrel 20: the launcher actions never reached anyone who already had a
+# home directory. shell.json ships through /etc/skel, which only ever seeds a
+# NEW user -- so `>` showed no display controls even with the package installed,
+# because the file it wanted to deliver was never delivered. This is the same
+# lesson as the panel widget migration, learned again in a new place.
+#
+# The .install now merges launcher.actions for existing users, reading the list
+# from the shipped /etc/skel copy rather than duplicating it in the scriptlet,
+# so the two cannot drift. A user with their own actions keeps them untouched;
+# the point is to reach people who never had the key.
+#
+# It also repairs the launcher's OWN Logout action if it still carries
+# `loginctl terminate-user ""` -- the black screen fixed for the session drawer
+# in pkgrel 17. Someone who already had an actions list would have kept the
+# broken one forever otherwise.
+# 33: genesi-bar speaks JSON, so a settings page can draw each preset's
+# entry order rather than describing it.
+# 34: fourteen bar presets that differ in SHAPE, not only in contents --
+# bar.width and bar.spacing are new, so a preset can change the silhouette.
+# 35: `genesi-bar shell` switches between caelestia's rail and Genesi's own
+# top bar, hyprland.conf starts whichever is remembered, and the migration
+# rewrites existing configs to ask rather than to name one.
+# 38: every window follows the scheme, not just the shell.
+#
+# KDE/KF6 apps -- Dolphin, Ark, and all six Genesi apps built on the
+# shared UI kit -- read ~/.config/kdeglobals, never qt6ct. That file
+# shipped carrying nothing but [Icons], so every one of them fell back
+# to Breeze and sat there in blue while the rest of the desktop followed
+# the wallpaper. That is what "the apps do not follow the theme" was.
+# theme-sync writes the seven colour groups now, by MERGE: [Icons] and
+# anything else in there is somebody's.
+#
+# And GTK was missing two dependencies. caelestia's apply_gtk dconf-writes
+# gtk-theme='adw-gtk3-dark'; without `dconf` that raises inside a
+# @log_exception wrapper -- swallowed, so GTK theming did nothing and said
+# nothing -- and without `adw-gtk3` it selects a theme that is not there.
+# 39: genesi-theme-doctor. Every link in the theming chain fails in
+# SILENCE -- Qt ignores a platform theme whose plugin is not installed
+# and quietly uses its default palette, a missing kdeglobals key falls
+# back to Breeze, caelestia's GTK step raises inside a swallowed
+# exception. One symptom, a dozen causes, none of them announced. This
+# walks the whole chain and names the broken link, instead of another
+# round of guessing from a description of what a window looks like.
+# 40: the doctor stops reading files and MEASURES. Every check it had
+# passed on a machine where nothing followed the scheme, which means the
+# files were never the question. It now starts a real Qt application and
+# asks it for the palette it resolved -- there is no chain of reasoning
+# between that answer and the truth. It also compares kdeglobals against
+# the ACTIVE scheme rather than counting its sections, because a
+# kdeglobals written for a scheme you have since changed away from passes
+# "all seven groups are present" and gives every KDE app the wrong colours.
+# 41: the colour scheme kdeglobals NAMES now exists as a file.
+# There was no .colors anywhere called what [General] ColorScheme
+# asked for, and a name that resolves to nothing does not mean
+# "leave the palette alone" -- it means Breeze, which is light.
+# That is Dolphin opening white, being fixed by hand by setting its
+# colours to Default (which reads the groups), and reverting on the
+# next launch (which resolves the name).
+# 42: genesi-bar's withdrawn "genesi" shell entry says what actually
+# happened. It asked which of two Quickshell PROCESSES should run, so
+# picking Genesi's killed caelestia; the top bar exists again as a WINDOW
+# inside caelestia instead. The entry stays only so a machine with "genesi"
+# left in its state file still resolves to caelestia at the next login.
+# pkgrel 44: the Genesi windowrules in the form Hyprland applies --
+# `windowrule = match:class RE, float on, ...`. The lines from pkgrel 6-8 had
+# no `match:` and were discarded, so the Quick Chat opened tiled: a
+# transparent, workspace-high slab ("opens full screen and goes see-through"
+# when the AI asked for permission). The migration deletes every old form of
+# OUR rules and appends the working ones; a person's own rules are untouched.
+# pkgrel 45: the Quick Chat rule's section marker reads the same as a regex
+# and as a literal (ci/hypr-migration-test.sh compares it with grep -F); the
+# `\.` in 44 matched at run time but was not the text in the file.
+# pkgrel 46: no automatic suspend. caelestia's default idle ends in
+# `systemctl suspend-then-hibernate` after ten minutes, and Genesi never
+# overrode it: a desktop left alone for a moment slept -- killing any long AI
+# job -- and on NVIDIA over DisplayPort the monitor often did not come back
+# from it (flicker, then black until power-cycled: reported 2026-10-09).
+# Genesi's idle: lock at 10 minutes, screens off at 15, nothing more; and
+# Hyprland wakes a screen on the first key or mouse move. Existing users get
+# it through the shell.json fill and the hyprland.conf migration; a person's
+# own idle settings are kept.
+# pkgrel 47: a "Genesi AI" entry at the top of the launcher's actions --
+# `>ai <question>` asks without opening anything, the answer comes back on
+# the AI island. Existing users get it through the actions merge.
+# pkgrel 48: Hyprland 0.57 reads ONLY hyprland.lua -- hyprland.conf support
+# was removed upstream -- so every Genesi Hyprland desktop that upgraded came
+# up on Hyprland's autogenerated placeholder: no caelestia, no bar, no keys
+# (user report). Ships hyprland.lua (the same desktop, line for line; Genesi
+# tool drop-ins and a user.lua loaded last). genesi-hypr-lua-migrate writes it
+# for existing users ONLY on 0.57+ (0.55/0.56 would prefer it over a .conf
+# that still works, losing edits), replaces only Hyprland's own placeholder,
+# never a hyprland.lua the user wrote, and lists their own .conf lines in
+# user.lua. It runs from this upgrade AND from a pacman hook on hyprland, so
+# it fires whichever of the two arrives first. Logout goes through
+# `genesi-hypr exit` (0.57's dispatch takes Lua, older takes a name).
+# ci/hypr-lua-test.py checks the .lua against 0.57.1's own API.
+# pkgrel 49: the settings Genesi Center, genesi-display and genesi-input save
+# reach Hyprland 0.57. Their drop-ins were .conf only and their live change
+# was `hyprctl keyword` (removed), so on 0.57 a setting looked saved and did
+# nothing. genesi_hypr_lua.py (/usr/lib/genesi) writes a Lua twin of each
+# drop-in after every change and applies it with `hyprctl eval`; the
+# migration generates twins for settings saved before the upgrade.
+pkgrel=49
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
 license=('GPL-3.0-or-later')
 depends=(
+    # genesi-caelestia-theme-sync and genesi-bar are both
+    # `#!/usr/bin/env python3`. This was missing: they worked only
+    # because something else on the machine happened to pull python
+    # in, which is not a dependency, it is a coincidence.
+    'python'
+    # The launcher actions and the keybinds shipped here CALL this. Without
+    # the dependency the package installs, the entries appear, and clicking
+    # them does nothing at all -- which is exactly what happened: genesi-display
+    # was published and nothing pulled it in, so `Quickshell.execDetached` was
+    # launching a binary that was not on the machine and failing silently.
+    'genesi-display'
+    'genesi-input'
+    # Screen shaders, called by the launcher entries this package ships.
+    'genesi-hyprshade'
+    # The shader collection itself. hyprshade ships two; these are the rest.
+    'genesi-shaders'
+    # Genesi's own horizontal bar. `genesi-bar shell` switches between it
+    # and caelestia's rail, and hyprland.conf starts whichever is chosen --
+    # so the switcher shipping without the bar would be a control that
+    # names something nobody has.
+    'genesi-topbar'
+    # The volume keybinds shipped here run wpctl. It happens to be installed
+    # today because the ISO package list carries wireplumber -- but this
+    # package is what BINDS the keys, so this package is what should require
+    # it. Found by the same check that found genesi-display missing.
+    'wireplumber'
     'hyprland'
     'caelestia-shell'
     'genesi-settings'          # ships /usr/share/wallpapers/genesi/wallpaper.png
@@ -146,13 +292,31 @@ depends=(
     'wl-clipboard'
     'brightnessctl'
     'qt6ct'
+    # The GTK half of the theme, and it was missing entirely.
+    #
+    # caelestia's `apply_gtk` writes gtk.css for GTK3 and GTK4 and then dconf
+    # writes gtk-theme='adw-gtk3-dark'. Without `dconf` that call raises
+    # FileNotFoundError inside a @log_exception wrapper -- swallowed, so GTK
+    # theming did nothing at all and said nothing about it. Without `adw-gtk3`
+    # the theme it selects does not exist, so GTK3 apps fall back to Adwaita
+    # and stay light while the rest of the desktop follows the wallpaper.
+    # NAME: the theme is `adw-gtk-theme` in [extra]. `adw-gtk3` is what the
+    # AUR calls it, it is not in any repo the CI container has, and pacman
+    # answers a missing target with `target not found` twenty-five minutes into
+    # a build. The package ships /usr/share/themes/adw-gtk3-dark, which is the
+    # directory caelestia's dconf write actually selects.
+    'dconf'
+    'adw-gtk-theme'
     'papirus-icon-theme'       # app icons for the launcher/menus (no icon theme
                                # shipped before -> magenta "missing icon" squares)
 )
 install='genesi-caelestia-settings.install'
-source=('hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini' 'genesi-dark.conf'
-        'genesi-caelestia-theme-sync' 'cli.json' 'shell.json')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+source=('genesi-bar' 'hyprland.conf' 'qt6ct.conf' 'kdeglobals' 'gtk-settings.ini' 'genesi-dark.conf'
+        'genesi-caelestia-theme-sync' 'genesi-theme-doctor' 'cli.json' 'shell.json'
+        'hyprland.lua' 'genesi-hypr' 'genesi-hypr-lua-migrate' 'genesi-hyprland-lua.hook'
+        'genesi_hypr_lua.py')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
+            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     # Default Hyprland config for new users. Hyprland reads
@@ -160,6 +324,23 @@ package() {
     # module (Calamares) copies it into /home/<user> at account creation.
     install -Dm644 "${srcdir}/hyprland.conf" \
         "${pkgdir}/etc/skel/.config/hypr/hyprland.conf"
+    # The same desktop in Lua: the only format Hyprland 0.57+ reads (0.55-0.56
+    # prefer it, 0.54 and older ignore it). Existing users get it from
+    # genesi-hypr-lua-migrate, run by this package's upgrade and by a pacman
+    # hook when hyprland itself is upgraded -- whichever comes first.
+    install -Dm644 "${srcdir}/hyprland.lua" \
+        "${pkgdir}/etc/skel/.config/hypr/hyprland.lua"
+    install -Dm755 "${srcdir}/genesi-hypr-lua-migrate" \
+        "${pkgdir}/usr/lib/genesi/genesi-hypr-lua-migrate"
+    # The .conf -> Lua translation genesi-center-set, genesi-display and
+    # genesi-input use for their drop-ins (and the migration, for the ones
+    # saved before 0.57).
+    install -Dm644 "${srcdir}/genesi_hypr_lua.py" \
+        "${pkgdir}/usr/lib/genesi/genesi_hypr_lua.py"
+    install -Dm644 "${srcdir}/genesi-hyprland-lua.hook" \
+        "${pkgdir}/usr/share/libalpm/hooks/genesi-hyprland-lua.hook"
+    # Logout on any Hyprland version (0.57's dispatch takes Lua).
+    install -Dm755 "${srcdir}/genesi-hypr" "${pkgdir}/usr/bin/genesi-hypr"
 
     # Icon theme for new users (Papirus-Dark). Set it for Qt6 (qt6ct is the
     # platform theme via QT_QPA_PLATFORMTHEME in hyprland.conf), for Quickshell/
@@ -186,6 +367,13 @@ package() {
     install -Dm755 "${srcdir}/genesi-caelestia-theme-sync" \
         "${pkgdir}/usr/local/bin/genesi-caelestia-theme-sync"
 
+    # The diagnostic. Six toolkits read six different files and every one of
+    # them fails in silence, so "the apps do not follow the theme" is a dozen
+    # possible causes behind one symptom. This walks the chain and names the
+    # link that is broken, instead of another round of guessing.
+    install -Dm755 "${srcdir}/genesi-theme-doctor" \
+        "${pkgdir}/usr/local/bin/genesi-theme-doctor"
+
     # caelestia-cli config: disable terminal colour-sequence application so a
     # scheme/wallpaper change doesn't spam the "system message" notification with
     # raw OSC rgb sequences (see the pkgrel 13 note). New users get it from skel;
@@ -202,4 +390,23 @@ package() {
     # hibernate keep upstream defaults (systemctl — those are fine).
     install -Dm644 "${srcdir}/shell.json" \
         "${pkgdir}/etc/skel/.config/caelestia/shell.json"
+
+    # Bar presets, and the CLI that applies them.
+    #
+    # caelestia's bar is configuration rather than code already: `bar.entries`
+    # is an ORDERED list of ids with `spacer` among them, so most "can the bar
+    # look like X" questions are answered by shell.json. What was missing is
+    # that nobody edits JSON to try a look, so the arrangements are named and
+    # switchable from `>bar`.
+    #
+    # The presets are read from ${startdir} rather than listed in source=().
+    # makepkg's source=() takes files and URLs, never a directory and never a
+    # subpath -- genesi-shaders learned that the hard way and had to go flat --
+    # and ten JSON files flattened beside the PKGBUILD would be worse than a
+    # directory this build can read, the way genesi-caelestia-shell already
+    # reads ../../ci.
+    install -Dm755 "${srcdir}/genesi-bar" "${pkgdir}/usr/bin/genesi-bar"
+    install -dm755 "${pkgdir}/usr/share/genesi/caelestia-bar-presets"
+    install -Dm644 "${startdir}/bar-presets/"*.json \
+        -t "${pkgdir}/usr/share/genesi/caelestia-bar-presets/"
 }

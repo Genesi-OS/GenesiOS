@@ -1,0 +1,4 @@
+#!/bin/sh
+# Genesi Center launcher. A shim, so the .desktop file and a terminal both
+# start the same thing and the Python module keeps its own directory.
+exec python3 /usr/share/genesi-center/app/genesi_center.py "$@"

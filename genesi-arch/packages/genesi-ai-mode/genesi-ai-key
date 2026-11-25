@@ -1,0 +1,501 @@
+#!/usr/bin/env python3
+"""
+genesi-ai-key — use a hosted model instead of (or alongside) the local one.
+
+Genesi runs AI on your machine, and that stays the default. This is for the
+times the local model is not enough: a key here lets `ask()` send a prompt to
+OpenAI, Anthropic, Gemini, Groq or anything else that speaks one of those two
+shapes.
+
+  genesi-ai-key status                  what is configured (never a key)
+  genesi-ai-key set [--provider P] [--model M] [--base-url U] [--for WHEN]
+                                        reads the key from STDIN; one key per
+                                        provider, and the last set is active
+  genesi-ai-key use P                   make P the active provider
+  genesi-ai-key model P M               the model P answers with
+  genesi-ai-key models [P] [--json]     ask P which models the key can use
+  genesi-ai-key remove P                forget P's key
+  genesi-ai-key for manual|all          change what it is used for
+  genesi-ai-key test [P]                one real request, to prove it works
+  genesi-ai-key usage [--json] [--reset]
+                                        how many requests have gone where
+  genesi-ai-key clear                   forget it
+
+── The key never goes in argv ───────────────────────────────────────────────
+
+`genesi-ai-key set sk-...` would put the secret in your shell history, in
+`ps` output for every user on the machine, and in any terminal recording. It
+is read from stdin instead:
+
+    genesi-ai-key set --provider gemini < key.txt
+    pass show openai/key | genesi-ai-key set --provider openai
+
+Genesi Center's AI page has a field for it, and that field pipes what you type
+to this on stdin for the same reason. The file is written 0600 in a 0700
+directory, and nothing ever prints it back -- `status` shows the last four
+characters so you can tell WHICH key it is without the key being on screen.
+
+── Two shapes, not one ──────────────────────────────────────────────────────
+
+Most providers speak OpenAI's /chat/completions. Anthropic does not: it takes
+/v1/messages with an `x-api-key` header, and it puts the system prompt in a
+field of its own. The provider table records which dialect each one speaks --
+it used to claim they all spoke OpenAI's, with `anthropic` listed in the
+middle of it, and an Anthropic key had therefore never once worked.
+
+That table lives in genesi_ai_assist, next to the code that sends the request,
+because this writes the config and that reads it and two tables of provider
+defaults are two tables to disagree.
+
+── When it is used ──────────────────────────────────────────────────────────
+
+`--for manual` (the default) means only the things you invoke yourself: the
+chat, the explainer you asked for. The passive helpers -- the ghost-text fix
+that fires on a failed command, the ones that run on their own -- stay local.
+
+That is not caution for its own sake. Those helpers fire without you asking,
+several times a minute in a busy terminal, and a hosted model bills per token.
+`--for all` opts into that deliberately; nothing else turns it on.
+
+── What counts as a use ─────────────────────────────────────────────────────
+
+One request is one use, counted where the request is made, and local and
+hosted are counted separately. `usage` prints both. A request that never
+landed is counted as an error rather than as a use -- nobody is billed for a
+connection that failed -- and `test` sends a real request, so `test` counts.
+"""
+import argparse
+import json
+import os
+import stat
+import sys
+import urllib.error
+
+sys.path.insert(0, "/usr/share/genesi-ai-mode")
+try:
+    import genesi_ai_assist as assist   # noqa: E402
+except ImportError:                     # pragma: no cover
+    assist = None
+
+CONF_DIR = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    "genesi", "ai")
+CLOUD = os.path.join(CONF_DIR, "cloud.json")
+
+WHEN = ("manual", "all")
+
+
+def die(msg):
+    sys.stderr.write("genesi-ai-key: " + msg + "\n")
+    sys.exit(1)
+
+
+def providers():
+    if assist is None:
+        die("genesi-ai-mode's shared module is missing from "
+            "/usr/share/genesi-ai-mode — reinstall the package")
+    return assist.PROVIDERS
+
+
+def load():
+    try:
+        with open(CLOUD, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save(d):
+    os.makedirs(CONF_DIR, exist_ok=True)
+    os.chmod(CONF_DIR, stat.S_IRWXU)
+    tmp = CLOUD + ".tmp"
+    # Created 0600 BEFORE anything is written to it. Writing first and
+    # chmod-ing after leaves a window where the key is world-readable, which is
+    # the whole thing this is trying not to do.
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(d, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.replace(tmp, CLOUD)
+
+
+def usage_summary():
+    """(local requests, hosted requests, per-provider) — never the key."""
+    if assist is None:
+        return 0, 0, {}
+    u = assist.usage_read()
+    local = int((u.get("local") or {}).get("requests") or 0)
+    cloud = u.get("cloud") or {}
+    hosted = sum(int((v or {}).get("requests") or 0) for v in cloud.values())
+    return local, hosted, cloud
+
+
+def store():
+    """Every provider, in the current shape, via the module that reads it."""
+    if assist is None:
+        die("genesi-ai-mode's shared module is missing from "
+            "/usr/share/genesi-ai-mode — reinstall the package")
+    return assist.cloud_store()
+
+
+def save_store(st):
+    save({"active": st.get("active"), "use_for": st.get("use_for") or "manual",
+          "providers": st.get("providers") or {}})
+
+
+def tail(key):
+    # Enough to tell two keys apart, not enough to be one.
+    return ("…" + key[-4:]) if key and len(key) >= 4 else None
+
+
+def pick(st, name):
+    """The named provider, or the active one; dies with the choices if absent."""
+    name = name or st.get("active")
+    if not name or name not in st["providers"]:
+        have = ", ".join(sorted(st["providers"])) or "none"
+        die(f"no key set for {name or 'any provider'} (set: {have})")
+    return name
+
+
+def cmd_status(as_json=False):
+    st = store()
+    local, hosted, _per = usage_summary()
+    active = st.get("active")
+    rows = []
+    for name in sorted(st["providers"]):
+        p = st["providers"][name]
+        rows.append({
+            "provider": name,
+            "model": p.get("model") or None,
+            "dialect": p.get("dialect") or "openai",
+            "base_url": p.get("base_url") or None,
+            "key_tail": tail(p.get("key") or ""),
+            "active": name == active,
+        })
+    act = next((r for r in rows if r["active"]), {})
+    out = {
+        "configured": bool(rows),
+        "active": active,
+        "use_for": st.get("use_for") or "manual",
+        "providers": rows,
+        # What each provider is called and what model it starts on, for a
+        # page offering to add one. Never a key.
+        "known": [{"id": n, "model": providers()[n][1],
+                   "dialect": providers()[n][2]}
+                  for n in sorted(providers()) if n != "custom"],
+        # The active provider's fields, flat, as they were before there could
+        # be more than one -- so anything still reading the old shape keeps
+        # reading the right thing.
+        "provider": act.get("provider"),
+        "model": act.get("model"),
+        "base_url": act.get("base_url"),
+        "dialect": act.get("dialect") or "openai",
+        "key_tail": act.get("key_tail"),
+        "path": CLOUD,
+        "requests_local": local,
+        "requests_cloud": hosted,
+    }
+    if as_json:
+        json.dump(out, sys.stdout, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return
+    if not rows:
+        print("no cloud model configured — everything runs locally")
+        print(f"  {local} local request(s) so far")
+        print("  set one with:  genesi-ai-key set --provider gemini < key.txt")
+        return
+    for r in rows:
+        print(f"{'*' if r['active'] else ' '} {r['provider']:<11} "
+              f"{r['model'] or '?':<34} key {r['key_tail']}")
+    print(f"used for  {out['use_for']}"
+          + ("  (only what you invoke yourself)" if out["use_for"] == "manual"
+             else "  (including the helpers that fire on their own)"))
+    print(f"requests  {hosted} hosted, {local} local")
+
+
+def valid_model(model):
+    model = (model or "").strip()
+    # Whatever the provider calls it -- `gpt-4.1-mini`, `claude-sonnet-5`,
+    # `meta-llama/Llama-3.3-70B-Instruct-Turbo` -- so nothing about its shape
+    # is checked except that it is one plausible token.
+    if not model or len(model) > 200 or any(c.isspace() for c in model):
+        die(f"{model!r} does not look like a model name")
+    return model
+
+
+def cmd_set(args):
+    if sys.stdin.isatty():
+        die("the key is read from stdin, so it never lands in your shell "
+            "history or in `ps`.\n"
+            "                 genesi-ai-key set --provider gemini < key.txt")
+    key = sys.stdin.read().strip()
+    if not key:
+        die("nothing arrived on stdin")
+    if "\n" in key or len(key) > 400:
+        die("that does not look like an API key")
+
+    table = providers()
+    prov = args.provider or "custom"
+    if prov not in table:
+        die(f"unknown provider {prov!r}. Choose: " + ", ".join(sorted(table))
+            + ", or use --base-url")
+    base, model, dialect = table[prov]
+    st = store()
+    had = st["providers"].get(prov) or {}
+    base = (args.base_url or had.get("base_url") or base).rstrip("/")
+    # Setting a new key keeps the model already chosen for that provider --
+    # replacing an expired key should not quietly put somebody back on the
+    # default model.
+    model = valid_model(args.model or had.get("model") or model) \
+        if (args.model or had.get("model") or model) else ""
+    if not base:
+        die("a custom provider needs --base-url")
+    if not model:
+        die("a custom provider needs --model")
+    if args.use_for and args.use_for not in WHEN:
+        die("--for must be " + " or ".join(WHEN))
+
+    st["providers"][prov] = {"base_url": base, "model": model,
+                             "dialect": dialect, "key": key}
+    st["active"] = prov
+    if args.use_for:
+        st["use_for"] = args.use_for
+    save_store(st)
+    print(f"{prov} · {model}")
+    print(f"stored 0600 in {CLOUD}")
+    others = sorted(n for n in st["providers"] if n != prov)
+    if others:
+        print("also set: " + ", ".join(others))
+    print("check it reaches anything with:  genesi-ai-key test")
+
+
+def cmd_use(name):
+    st = store()
+    st["active"] = pick(st, name)
+    save_store(st)
+    p = st["providers"][st["active"]]
+    print(f"using {st['active']} · {p.get('model')}")
+
+
+def cmd_model(name, model):
+    st = store()
+    name = pick(st, name)
+    st["providers"][name]["model"] = valid_model(model)
+    save_store(st)
+    print(f"{name} · {st['providers'][name]['model']}")
+
+
+def cmd_remove(name):
+    st = store()
+    name = pick(st, name)
+    del st["providers"][name]
+    if st.get("active") == name:
+        st["active"] = sorted(st["providers"])[0] if st["providers"] else None
+    if st["providers"]:
+        save_store(st)
+        print(f"removed {name}; using {st['active']}")
+    else:
+        try:
+            os.remove(CLOUD)
+        except OSError:
+            pass
+        print(f"removed {name} — everything runs locally again")
+
+
+def cmd_models(name, as_json):
+    """What the provider says this key can use. Nothing is kept; it is asked."""
+    st = store()
+    name = pick(st, name)
+    cloud = assist.cloud_config(name)
+    try:
+        ids = assist.cloud_models(cloud)
+    except urllib.error.HTTPError as e:
+        die(f"{name} answered {e.code} {e.reason} when asked for its models")
+    except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
+        die(f"could not ask {name} for its models: {e}")
+    if as_json:
+        json.dump({"provider": name, "models": ids}, sys.stdout,
+                  ensure_ascii=False)
+        sys.stdout.write("\n")
+        return
+    for mid in ids:
+        print(mid)
+
+
+def cmd_for(when):
+    """Change what the key is used for, without retyping the key.
+
+    `set` reads from stdin, which is right for a secret and wrong for a
+    setting: a settings page toggling "let the automatic helpers use this"
+    would otherwise have to ask for the key again, or hold one to send back --
+    and holding a key in order to re-send it is the thing this tool exists to
+    avoid.
+    """
+    if when not in WHEN:
+        die("must be " + " or ".join(WHEN))
+    st = store()
+    if not st["providers"]:
+        die("no key configured")
+    st["use_for"] = when
+    save_store(st)
+    print("used for " + when
+          + ("  (only what you invoke yourself)" if when == "manual"
+             else "  (including the helpers that fire on their own)"))
+
+
+def cmd_clear():
+    if not os.path.exists(CLOUD):
+        print("nothing to clear")
+        return
+    os.remove(CLOUD)
+    print("cleared every key — everything runs locally again")
+
+
+def cmd_test(name=None):
+    st = store()
+    name = pick(st, name)
+    d = assist.cloud_config(name)
+    payload = {
+        "messages": [{"role": "user", "content": "Reply with the word: ok"}],
+        # Enough that a thinking model has something left to answer with. At
+        # eight, Gemini 2.5 spent all of it thinking and replied with no text,
+        # which read as a broken key.
+        "max_tokens": 32,
+        "stream": False,
+    }
+    try:
+        text, tin, tout = assist.cloud_request(d, payload, 30)
+    except urllib.error.HTTPError as e:
+        assist.usage_note("cloud", name, d.get("model"), ok=False)
+        # The status is the useful part: 401 is a wrong key, 404 a wrong model,
+        # 429 a rate limit. "it failed" would send someone to the wrong place.
+        die(f"{name} answered {e.code} {e.reason}. "
+            + {400: f"The request was refused — often a model name "
+                    f"{d['model']!r} this provider does not have.",
+               401: "The key is wrong or expired.",
+               403: "The key is not allowed to use this model.",
+               404: f"There is no model called {d['model']!r} at that "
+                    "endpoint.",
+               429: "Rate limited — the key works, the account is busy."}
+              .get(e.code, "Check the endpoint and the model name."))
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        assist.usage_note("cloud", name, d.get("model"), ok=False)
+        die(f"could not reach {d['base_url']}: {e}")
+    except (ValueError, KeyError, IndexError):
+        assist.usage_note("cloud", name, d.get("model"), ok=False)
+        die(f"{name} answered, but not in the shape a "
+            f"{d.get('dialect', 'openai')} provider answers in")
+    # A real request, so a real use. Counted here rather than quietly
+    # excluded: a test that did not appear in the count would make the count
+    # wrong by exactly the amount somebody was checking.
+    assist.usage_note("cloud", name, d.get("model"), ok=True,
+                      tokens=(tin, tout))
+    if text:
+        print(f"{name} · {d['model']} works — it answered: {text[:60]}")
+    else:
+        # A 200 with a well-formed reply and no text: the key and the model are
+        # both fine, the model just spent its budget before it said anything.
+        print(f"{name} · {d['model']} works — the key and the model are "
+              "accepted (the reply was empty)")
+
+
+def cmd_usage(as_json, reset):
+    if assist is None:
+        die("genesi-ai-mode's shared module is missing")
+    if reset:
+        try:
+            os.remove(assist.USAGE_PATH)
+        except OSError:
+            pass
+        print("usage cleared")
+        return
+    u = assist.usage_read()
+    if as_json:
+        json.dump(u, sys.stdout, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return
+    loc = u.get("local") or {}
+    print(f"local     {loc.get('requests', 0)} request(s), "
+          f"{loc.get('errors', 0)} failed  — on this machine, nothing left it")
+    cloud = u.get("cloud") or {}
+    if not cloud:
+        print("hosted    none")
+        return
+    for name in sorted(cloud):
+        b = cloud[name] or {}
+        print(f"hosted    {name:<12} {b.get('requests', 0)} request(s), "
+              f"{b.get('errors', 0)} failed, "
+              f"{b.get('in_tokens', 0)}/{b.get('out_tokens', 0)} tokens "
+              f"in/out  ({b.get('model') or '?'})")
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    sub = ap.add_subparsers(dest="cmd")
+
+    p = sub.add_parser("set", add_help=False)
+    p.add_argument("--provider")
+    p.add_argument("--model")
+    p.add_argument("--base-url", dest="base_url")
+    p.add_argument("--for", dest="use_for", default="")
+
+    s_ = sub.add_parser("status", add_help=False)
+    s_.add_argument("--json", action="store_true")
+
+    u = sub.add_parser("usage", add_help=False)
+    u.add_argument("--json", action="store_true")
+    u.add_argument("--reset", action="store_true")
+
+    f = sub.add_parser("for", add_help=False)
+    f.add_argument("when", nargs="?", default="")
+
+    us = sub.add_parser("use", add_help=False)
+    us.add_argument("provider")
+    mo = sub.add_parser("model", add_help=False)
+    mo.add_argument("provider")
+    mo.add_argument("model")
+    ms = sub.add_parser("models", add_help=False)
+    ms.add_argument("provider", nargs="?", default=None)
+    ms.add_argument("--json", action="store_true")
+    rm = sub.add_parser("remove", add_help=False)
+    rm.add_argument("provider")
+    t = sub.add_parser("test", add_help=False)
+    t.add_argument("provider", nargs="?", default=None)
+
+    sub.add_parser("clear", add_help=False)
+
+    try:
+        args = ap.parse_args()
+    except SystemExit:
+        print(__doc__.strip())
+        return 2
+
+    if args.cmd == "set":
+        cmd_set(args)
+    elif args.cmd == "use":
+        cmd_use(args.provider)
+    elif args.cmd == "model":
+        cmd_model(args.provider, args.model)
+    elif args.cmd == "models":
+        cmd_models(args.provider, args.json)
+    elif args.cmd == "remove":
+        cmd_remove(args.provider)
+    elif args.cmd == "clear":
+        cmd_clear()
+    elif args.cmd == "test":
+        cmd_test(args.provider)
+    elif args.cmd == "for":
+        cmd_for(args.when)
+    elif args.cmd == "usage":
+        cmd_usage(args.json, args.reset)
+    elif args.cmd == "status":
+        cmd_status(args.json)
+    else:
+        print(__doc__.strip())
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

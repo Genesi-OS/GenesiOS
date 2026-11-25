@@ -53,3 +53,12 @@ genesi-arch/packages/*/src/
 # The bare git clone a VCS PKGBUILD caches next to itself (llama.cpp is
 # gigabytes of upstream history).
 genesi-arch/packages/*/llama.cpp/
+
+# Private key material. genesi-keygen.sh writes its backup to $HOME, never into
+# the tree, but a maintainer moving it around must not be able to commit it by
+# accident: a signing key in git history is compromised permanently, and the
+# only remedy is rotating the key on every installed machine.
+*.private.asc
+genesi-signing-key-*.asc
+secring.gpg
+*.gnupg/

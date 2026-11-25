@@ -19,7 +19,44 @@
 # (a backend can expose dozens of endpoints) instead of overflowing it.
 pkgname=genesi-ports
 pkgver=1.0.0
-pkgrel=6
+# 2026-08-26 (7): the design pass, built against devtools/preview.py.
+# THE INSPECTOR HAD NO EMPTY STATE. With nothing selected it was a heading and
+# a paragraph at the top of a full-height card, and eight hundred pixels of
+# nothing underneath. It is a centred state now, and it steps aside entirely
+# below 1150px, where the list needs the room more than it does.
+# THE TWO FILTER LISTS WERE DIFFERENT CONTROLS. PROTOCOL was chips with dots,
+# EXPOSURE was plain text rows -- the same job, "pick one of a set", drawn two
+# ways, so the second read as a list of links rather than a filter. They match.
+# StudioTheme gains the shape/rhythm/type scale, mirroring the shared Theme
+# token for token: three themes in this codebase inventing three sets of radii
+# is the thing those tokens exist to stop. The palettes differ on purpose; the
+# geometry should not.
+# `theme: theme` binds the property TO ITSELF -- QML resolves a bare name on
+# the right-hand side against the object's own properties before the enclosing
+# scope's ids -- so every GButton/StudioCard/StatusBanner written that way was
+# handed `undefined` and rendered unstyled. Swept here too; the id is
+# `appTheme` now. ci/qml-sanity-test.py fails on the pattern from now on.
+# 11: follows the desktop's colour scheme when Genesi Center's switch
+# says to, through the shared genesi_palette bridge -- which also sets
+# the application QPalette. That second half is what was missing: Qt
+# draws popups, scrollbars and Fusion buttons from a palette no Genesi
+# app ever set, so they arrived in Fusion's default LIGHT one. A dark
+# window with a few white controls in it was not an app half following
+# the scheme, it was an app following nothing while Qt filled the gaps.
+# 12: follows the desktop's colour scheme by DEFAULT. It was the other
+# way round, on the reasoning that an identity should not leave in an
+# update -- but that reasoning is about the identity, not about the
+# desktop. "Every window follows the theme" cannot be true by default
+# in an OS whose default is that its own six windows do not. The
+# emerald is one switch away, on the same switch, and it is what you
+# ask for now rather than what you get.
+# 2026-09-12: rebuilt for the shared I18n.qml, which gained the two
+# labels the AI chat's new speaker switch reads. This package does not
+# use them -- it is bumped because it BUNDLES that file at build time,
+# and pacman compares versions rather than contents: republished at the
+# same version the new copy would sit in the repository as 'nothing to
+# do' on every machine that already has it.
+pkgrel=13
 pkgdesc='Genesi PortScope: native ports/processes dashboard, Plasma widget and tray applet'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -43,6 +80,12 @@ package() {
 
     install -Dm644 "${startdir}/app/genesi_ports.py" \
         "$pkgdir/usr/share/genesi-ports/app/genesi_ports.py"
+
+    # The shared colour bridge, bundled from genesi-ui-kit the same way the
+    # kit's QML is -- and beside the app's own module, because that is the
+    # directory the app puts on sys.path to import it.
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/genesi_palette.py" \
+        "$pkgdir/usr/share/genesi-ports/app/genesi_palette.py"
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-ports/app/Main.qml"
     for comp in Theme GlassCard StudioTheme StudioCard GButton StatusBanner I18n; do

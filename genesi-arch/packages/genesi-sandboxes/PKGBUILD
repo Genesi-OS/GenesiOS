@@ -120,7 +120,42 @@ pkgver=1.0.0
 # pkgrel 20: pick up the pinned dark mockup palette (#040b17 bg / #0d1623 cards)
 # from the shared kit, so Sandboxes matches the redesigned AI Mode Monitor.
 # pkgrel 21: shared GButton uses opaque tonal fills for VM-safe contrast.
-pkgrel=23
+# `theme: theme` binds the property TO ITSELF -- QML resolves a bare name on
+# the right-hand side against the object's own properties before the enclosing
+# scope's ids -- so every GButton/StudioCard/StatusBanner written that way was
+# handed `undefined` and rendered unstyled. Swept here too; the id is
+# `appTheme` now. ci/qml-sanity-test.py fails on the pattern from now on.
+# 2026-08-26 (25): the design pass.
+# THREE BUTTONS OPENED THE SAME DIALOG. "New workspace" was in the sidebar, in
+# the header beside the page title, AND in a floating circle in the bottom
+# right corner that sat on top of the last row of the list. One now, beside the
+# title -- plus one inside the empty state, which is where an empty state that
+# names the next step should offer it. The floating button is a phone pattern
+# and it is gone.
+# AND THE FILTER WAS ON SCREEN TWICE: All / Running / Stopped as tabs above the
+# list, three inches from All workspaces / Running / Stopped in the sidebar --
+# which also carries the counts, so it is the better of the two. The tabs are
+# gone.
+# A 400px GAP THAT BELONGED TO NOTHING sat between the stats row and the search
+# row, and it was the largest single thing on the screen. Qt defaults
+# Layout.fillHeight to TRUE for a nested layout and false for everything else,
+# so the column of four status banners -- all of them hidden on a healthy
+# machine -- was silently swallowing every spare pixel on the page.
+# 27: follows the desktop's colour scheme when Genesi Center's switch
+# says to, through the shared genesi_palette bridge -- which also sets
+# the application QPalette. That second half is what was missing: Qt
+# draws popups, scrollbars and Fusion buttons from a palette no Genesi
+# app ever set, so they arrived in Fusion's default LIGHT one. A dark
+# window with a few white controls in it was not an app half following
+# the scheme, it was an app following nothing while Qt filled the gaps.
+# 28: follows the desktop's colour scheme by DEFAULT. It was the other
+# way round, on the reasoning that an identity should not leave in an
+# update -- but that reasoning is about the identity, not about the
+# desktop. "Every window follows the theme" cannot be true by default
+# in an OS whose default is that its own six windows do not. The
+# emerald is one switch away, on the same switch, and it is what you
+# ask for now rather than what you get.
+pkgrel=28
 pkgdesc='Isolated developer workspaces (Distrobox) with ready-made stack templates'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -147,6 +182,12 @@ package() {
     # GUI app (PySide6 + Kirigami) — main window + shared Genesi UI kit
     install -Dm644 "${startdir}/app/genesi_sandboxes.py" \
         "$pkgdir/usr/share/genesi-sandboxes/app/genesi_sandboxes.py"
+
+    # The shared colour bridge, bundled from genesi-ui-kit the same way the
+    # kit's QML is -- and beside the app's own module, because that is the
+    # directory the app puts on sys.path to import it.
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/genesi_palette.py" \
+        "$pkgdir/usr/share/genesi-sandboxes/app/genesi_palette.py"
     install -Dm644 "${startdir}/app/Main.qml" \
         "$pkgdir/usr/share/genesi-sandboxes/app/Main.qml"
     # Shared Genesi UI kit — one canonical source, bundled in at build (see

@@ -1,0 +1,5 @@
+---
+type:       "job"
+name:       "genesimigraterestore"
+interface:  "python"
+script:     "main.py"

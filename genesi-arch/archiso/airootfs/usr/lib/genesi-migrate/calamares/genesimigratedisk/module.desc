@@ -1,0 +1,5 @@
+---
+type:       "job"
+name:       "genesimigratedisk"
+interface:  "python"
+script:     "main.py"

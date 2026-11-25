@@ -1,0 +1,1010 @@
+#!/usr/bin/env python3
+"""
+genesi-display — monitor scale and rotation for Hyprland and KDE Plasma.
+
+── Why a CLI and not a panel ────────────────────────────────────────────────
+
+Genesi offers nine desktops and, on Hyprland, more than one shell. A control
+built into caelestia would not exist on a future genesi-hyprland, and one
+built into a Quickshell widget would not exist for anyone using waybar. So the
+logic lives here, once, and every front-end is a thin caller — exactly how
+genesi-snapshots' GUI delegates to its CLI, with the CLI as the single source
+of truth.
+
+── The part that is easy to get wrong ───────────────────────────────────────
+
+`hyprctl keyword monitor` takes the WHOLE monitor line. Setting a scale means
+re-stating resolution, refresh rate, position and transform in the same
+breath, so anything not read back correctly is silently reset — a user changes
+the scale and their second screen jumps to the wrong place. Every value here
+is read from `hyprctl monitors -j` first and passed through untouched.
+
+And `hyprctl keyword` is runtime-only: it is gone on the next reload. Real
+persistence means writing config, which is why this also maintains
+~/.config/hypr/genesi-display.conf and makes sure the user's hyprland.conf
+sources it. That file holds nothing but our overrides, so it can be deleted
+whole without touching anything the user wrote.
+
+Usage:
+  genesi-display list                 what is connected, as JSON
+  genesi-display show                 the same, readable
+  genesi-display scale <name> <n>     1, 1.25, 1.5, 2 …, or "up"/"down"
+  genesi-display rotate <name> <deg>  0, 90, 180, 270, or "cycle"
+  genesi-display mode <name> <mode>   WxH@Hz as `list` reports it, or WxH
+  genesi-display modes <name>         every mode the panel offers, as JSON
+  genesi-display position <a> <where> <b>
+                                      put <a> left-of/right-of/above/below <b>
+  genesi-display place <name> <x> <y> exact position, snapped to neighbours
+  genesi-display primary <name>       the screen the desktop starts on
+  genesi-display reset [name]         drop our override (all, or one)
+
+A <name> of "-" means the monitor currently in use, which is what a keybind
+or a launcher entry needs: those carry a fixed command and cannot know the
+name of the screen you are looking at.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+CONF_DIR = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "hypr")
+MAIN_CONF = os.path.join(CONF_DIR, "hyprland.conf")
+OUR_CONF = os.path.join(CONF_DIR, "genesi-display.conf")
+
+# The line we add to the user's config, once, marked so it can be recognised
+# and never duplicated.
+SOURCE_MARKER = "# genesi-display: per-monitor overrides"
+SOURCE_LINE = f"{SOURCE_MARKER}\nsource = ~/.config/hypr/genesi-display.conf\n"
+
+# Hyprland 0.57 reads only hyprland.lua and has no `hyprctl keyword`. The Lua
+# side lives in genesi-caelestia-settings (it ships the hyprland.lua that loads
+# our twin); without it there is nothing to speak Lua to, and the .conf path
+# below is all there is. Appended, never prepended: a directory first on the
+# path shadows the standard library.
+sys.path.append(os.environ.get("GENESI_LIB", "/usr/lib/genesi"))
+try:
+    import genesi_hypr_lua as hlua
+except ImportError:
+    hlua = None
+
+
+def sync_lua(conf):
+    """Regenerate the Lua twin of a drop-in we just wrote (genesi_hypr_lua)."""
+    if hlua is None:
+        return
+    try:
+        hlua.write_twin(conf)
+    except OSError as e:
+        sys.stderr.write("could not write the Lua copy of %s: %s\n" % (conf, e))
+
+
+def on_lua():
+    return hlua is not None and hlua.lua_session()
+
+# Hyprland's transform values. 4-7 are the flipped variants, which no UI here
+# offers: someone who wants a mirrored display can write it by hand, and
+# offering it in a menu mostly produces confused users.
+DEG_TO_TRANSFORM = {0: 0, 90: 1, 180: 2, 270: 3}
+TRANSFORM_TO_DEG = {v: k for k, v in DEG_TO_TRANSFORM.items()}
+
+# The ladder `scale up` / `scale down` walks. Only values that divide common
+# resolutions into whole pixels: Hyprland refuses the rest outright, and a
+# keybind that errors every other press is worse than one that stops at the end.
+SCALE_STEPS = [1.0, 1.25, 1.5, 1.75, 2.0]
+
+# How close a dragged edge has to get before it is pulled flush against a
+# neighbour, in logical pixels. Generous on purpose: the alternative is a
+# one-pixel gap between screens that nobody can see and everybody feels.
+SNAP = 120
+
+
+def die(msg, code=1):
+    sys.stderr.write(f"genesi-display: {msg}\n")
+    sys.exit(code)
+
+
+def hypr(*args, check=True):
+    if not shutil.which("hyprctl"):
+        die("hyprctl not found — is this a Hyprland session?", 2)
+    p = subprocess.run(["hyprctl", *args], capture_output=True, text=True)
+    if check and p.returncode != 0:
+        die((p.stderr or p.stdout).strip() or "hyprctl failed")
+    return p
+
+
+MODE_RE = re.compile(r"^(\d+)x(\d+)@([\d.]+)")
+
+
+def on_x11():
+    """
+    Whether xrandr is the right tool here, rather than whether it exists.
+
+    This used to be `DISPLAY is set and xrandr is installed`, and that is true
+    inside a Hyprland session: Hyprland runs XWayland, so DISPLAY points at it
+    and xrandr talks to XWayland's virtual outputs -- which Hyprland itself
+    ignores completely. `genesi-display primary` therefore ran, exited 0,
+    printed success, and changed nothing at all. Reported as "setting the main
+    screen does not work", which is exactly what it looked like.
+
+    A Wayland compositor is the answer to "what am I on", not the presence of
+    a compatibility layer for X clients.
+    """
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return False
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return False
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+        return False
+    return bool(os.environ.get("DISPLAY")) and bool(shutil.which("xrandr"))
+
+
+def primary_name():
+    """
+    Which screen is the main one, or None.
+
+    Hyprland has no primary flag, so what we set is the default workspace
+    binding -- and what we set is therefore what we can read back. The rule
+    lives in our own override file, so this reports the state THIS TOOL
+    established and never guesses.
+
+    Without it a settings page has nothing to draw: the button could be
+    pressed and the page could not show that anything had happened, which on
+    its own reads as "it did not work".
+    """
+    if on_x11():
+        out = ""
+        try:
+            out = subprocess.run(["xrandr", "--query"], capture_output=True,
+                                 text=True, timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            return None
+        for line in out.splitlines():
+            if " connected primary" in line:
+                return line.split()[0]
+        return None
+    rule = read_overrides().get("__workspace__", "")
+    m = re.search(r"monitor:([^,\s]+)", rule)
+    return m.group(1) if m else None
+
+
+def modes_of(raw):
+    """
+    The modes a monitor advertises, newest-first by area then refresh.
+
+    Deduplicated on the rounded refresh rate: a panel commonly lists
+    59.94 and 59.95 as separate modes, and two entries a person cannot tell
+    apart in a dropdown are worse than one.
+    """
+    seen = {}
+    for entry in raw.get("availableModes", []) or []:
+        m = MODE_RE.match(str(entry))
+        if not m:
+            continue
+        w, h, r = int(m.group(1)), int(m.group(2)), round(float(m.group(3)), 2)
+        seen[(w, h, r)] = {"width": w, "height": h, "refresh": r,
+                           "id": f"{w}x{h}@{r}"}
+    return [v for _, v in sorted(seen.items(),
+                                 key=lambda kv: (-kv[0][0] * kv[0][1], -kv[0][2]))]
+
+
+def monitors():
+    """Current state, straight from the compositor."""
+    p = hypr("monitors", "-j")
+    try:
+        raw = json.loads(p.stdout)
+    except json.JSONDecodeError:
+        die("could not read hyprctl monitors -j")
+    out = []
+    # Resolved once, not per monitor: on X11 it shells out to xrandr.
+    prim = primary_name()
+    for m in raw:
+        out.append({
+            "name": m.get("name", ""),
+            "description": m.get("description", ""),
+            "width": m.get("width", 0),
+            "height": m.get("height", 0),
+            "refresh": round(float(m.get("refreshRate", 0)), 2),
+            "x": m.get("x", 0),
+            "y": m.get("y", 0),
+            "scale": round(float(m.get("scale", 1)), 6),
+            "transform": int(m.get("transform", 0)),
+            "rotation": TRANSFORM_TO_DEG.get(int(m.get("transform", 0))),
+            "focused": bool(m.get("focused", False)),
+            "disabled": bool(m.get("disabled", False)),
+            # `focused` is where the pointer is RIGHT NOW and changes as the
+            # mouse moves; `primary` is where the desktop starts. Drawing a
+            # main-screen control from `focused` would light up whichever
+            # screen the mouse happened to be on, which is a confident lie.
+            "primary": m.get("name") == prim,
+            # Every mode the panel will accept, so a settings page can offer a
+            # list instead of a free-text box. hyprctl reports them as
+            # "2560x1440@74.97Hz"; they are normalised here because the string
+            # a page shows and the string this tool accepts must be the same
+            # one, or a resolution picked from the list would be rejected when
+            # it was applied back.
+            "modes": modes_of(m),
+            "mode": f'{m.get("width", 0)}x{m.get("height", 0)}'
+                    f'@{round(float(m.get("refreshRate", 0)), 2)}',
+        })
+    return out
+
+
+def find(name):
+    """
+    Resolve a monitor name, where "-" means "the one being used right now".
+
+    That alias exists for the launcher. A `>scale 150%` entry is a FIXED
+    command -- caelestia's launcher actions cannot carry an argument typed by
+    the user -- so there has to be a way to say "this screen" without knowing
+    its name at the time the action was written.
+    """
+    mons = monitors()
+    if name in ("-", "focused", ""):
+        for m in mons:
+            if m["focused"]:
+                return m
+        if mons:
+            return mons[0]
+        die("no monitors reported by Hyprland")
+    for m in mons:
+        if m["name"] == name:
+            return m
+    die(f"no monitor named {name!r}. Try: genesi-display show")
+
+
+def monitor_line(m, scale=None, transform=None, x=None, y=None, mode=None):
+    """
+    Rebuild the full monitor line, changing only what was asked for.
+
+    Everything else is passed through from what the compositor reports. This
+    is the whole reason the tool reads state first: a line that omits the
+    position moves the display, and a user who changed the scale would find
+    their second screen has jumped.
+    """
+    s = m["scale"] if scale is None else scale
+    t = m["transform"] if transform is None else transform
+    px = m["x"] if x is None else x
+    py = m["y"] if y is None else y
+    # Trailing zeros in the scale make Hyprland's parser unhappy in some
+    # versions; normalise to the shortest exact form.
+    s_str = f"{s:.6f}".rstrip("0").rstrip(".")
+    res = mode if mode else f"{m['width']}x{m['height']}@{m['refresh']}"
+    return (f"{m['name']},{res},"
+            f"{px}x{py},{s_str},transform,{t}")
+
+
+def logical_size(m, scale=None, transform=None, mode=None):
+    """
+    The size a monitor occupies in the shared coordinate space.
+
+    This is what neighbours are positioned against, and it is NOT the
+    resolution: scaling 2560px by 1.25 makes the monitor 2048 wide as far as
+    every other monitor is concerned. Rotating swaps the two.
+    """
+    s = m["scale"] if scale is None else scale
+    t = m["transform"] if transform is None else transform
+    w, h = m["width"], m["height"]
+    if mode:
+        mm = MODE_RE.match(mode)
+        if mm:
+            # A mode change moves the neighbour by the difference in width,
+            # exactly as a scale change does. Missing this would leave the
+            # second screen overlapping after every resolution change.
+            w, h = int(mm.group(1)), int(mm.group(2))
+    if t in (1, 3, 5, 7):          # 90° / 270°, and their flipped forms
+        w, h = h, w
+    return int(round(w / s)), int(round(h / s))
+
+
+def side_by_side(mons):
+    """
+    Were these monitors laid out in a plain row, touching, before we changed
+    anything?
+
+    Only then is it safe to move them. Someone who stacked a screen above
+    another, or left a deliberate gap, arranged that by hand and would not
+    thank us for straightening it out.
+    """
+    if len(mons) < 2:
+        return False
+    row = sorted(mons, key=lambda m: m["x"])
+    if len({m["y"] for m in row}) != 1:
+        return False
+    x = row[0]["x"]
+    for m in row:
+        if m["x"] != x:
+            return False
+        x += logical_size(m)[0]
+    return True
+
+
+def apply_change(m, scale=None, transform=None, mode=None):
+    """
+    Apply a change to one monitor, and leave the whole desktop consistent.
+
+    Two things go wrong if only the changed monitor is touched, and both were
+    reported from a real two-monitor desk:
+
+      * The other screen keeps rendering its old contents until something
+        happens on it. Hyprland reconfigures the output it is given a line
+        for; the untouched one is never told anything happened.
+
+      * Changing a scale changes the monitor's LOGICAL width, so a neighbour
+        positioned right after it now overlaps it or floats away from it by
+        the difference.
+
+    So every monitor is re-applied, and when they were sitting in a plain
+    touching row they are re-packed to stay touching. A deliberate arrangement
+    (stacked, or spaced apart) is left exactly where the user put it.
+
+    Returns the lines that need persisting: the changed monitor, plus anything
+    we moved -- and nothing else, so a screen the user never touched does not
+    silently acquire an override.
+    """
+    mons = monitors()
+    repack = side_by_side(mons)
+
+    lines = {}
+    to_persist = {}
+    x = None
+    for mon in sorted(mons, key=lambda mm: mm["x"]):
+        changed = mon["name"] == m["name"]
+        sc = scale if changed else None
+        tr = transform if changed else None
+        md = mode if changed else None
+        new_x = mon["x"]
+        if repack:
+            if x is None:
+                x = mon["x"]          # keep the leftmost where it is
+            new_x = x
+            x += logical_size(mon, sc, tr, md)[0]
+        moved = new_x != mon["x"]
+        line = monitor_line(mon, scale=sc, transform=tr, x=new_x, mode=md)
+        lines[mon["name"]] = line
+        if changed or moved:
+            to_persist[mon["name"]] = line
+
+    # The changed monitor first: if Hyprland rejects the scale we want to fail
+    # before having moved anybody.
+    apply_live(lines[m["name"]])
+    for name, line in lines.items():
+        if name != m["name"]:
+            apply_live(line)
+    return to_persist
+
+
+def apply_live(line):
+    if on_lua():
+        # Hyprland 0.57: no `keyword`; hl.monitor updates the rule for that
+        # output and re-applies it, the same as the keyword did.
+        ok, out = hlua.run(hlua.monitor_call(line))
+        if not ok:
+            die(f"Hyprland rejected the change:\n  {out}")
+        return
+    p = hypr("keyword", "monitor", line, check=False)
+    out = (p.stdout + p.stderr).strip()
+    if p.returncode != 0 or "invalid" in out.lower() or "error" in out.lower():
+        # Hyprland refuses scales that do not divide into whole pixels. That is
+        # a real answer, not a glitch, and the user needs to see it rather than
+        # a silent no-op.
+        die(f"Hyprland rejected the change:\n  {out}\n"
+            f"  A scale must divide the resolution into whole pixels — try 1, 1.25, 1.5 or 2.")
+
+
+def read_overrides():
+    """Our persisted lines, as {monitor: line}."""
+    result = {}
+    if not os.path.exists(OUR_CONF):
+        return result
+    with open(OUR_CONF, "r", encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            w = re.match(r"workspace\s*=\s*(.+)$", line)
+            if w:
+                result["__workspace__"] = w.group(1).strip()
+                continue
+            m = re.match(r"monitor\s*=\s*(.+)$", line)
+            if m:
+                value = m.group(1).strip()
+                result[value.split(",")[0].strip()] = value
+    return result
+
+
+def write_overrides(overrides):
+    os.makedirs(CONF_DIR, exist_ok=True)
+    with open(OUR_CONF, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Written by genesi-display. Safe to delete: it holds only\n"
+                 "# per-monitor overrides, and nothing you wrote by hand.\n"
+                 "#\n"
+                 "# Hyprland applies later monitor= lines over earlier ones, so\n"
+                 "# this is sourced at the END of hyprland.conf to win over the\n"
+                 "# catch-all default.\n\n")
+        for name in sorted(overrides):
+            if name == "__workspace__":
+                continue
+            fh.write(f"monitor = {overrides[name]}\n")
+        # Not a monitor line: which screen the desktop starts on. It lives in
+        # the same file so `reset` clears everything this tool ever set.
+        if "__workspace__" in overrides:
+            fh.write(f"workspace = {overrides['__workspace__']}\n")
+    ensure_sourced()
+    sync_lua(OUR_CONF)
+
+
+def ensure_sourced():
+    """
+    Make the user's config pull ours in — once, and never twice.
+
+    Appending is deliberate: Hyprland applies later monitor= lines over
+    earlier ones, so our overrides have to come after the catch-all
+    `monitor = , preferred, auto, 1` that Genesi ships.
+    """
+    if not os.path.exists(MAIN_CONF):
+        # No config to edit. The live change already applied; say what will
+        # not survive rather than failing after the fact.
+        sys.stderr.write(
+            f"genesi-display: {MAIN_CONF} does not exist, so the change is not\n"
+            f"                persisted. It will be lost on the next reload.\n")
+        return
+    with open(MAIN_CONF, "r", encoding="utf-8", errors="replace") as fh:
+        content = fh.read()
+    if SOURCE_MARKER in content or "genesi-display.conf" in content:
+        return
+    with open(MAIN_CONF, "a", encoding="utf-8", newline="\n") as fh:
+        fh.write(f"\n{SOURCE_LINE}")
+
+
+def cmd_list():
+    print(json.dumps(monitors(), indent=2))
+
+
+def cmd_show():
+    ov = read_overrides()
+    for m in monitors():
+        mark = " *" if m["focused"] else "  "
+        rot = m["rotation"]
+        rot_s = f"{rot}°" if rot is not None else f"transform {m['transform']}"
+        pinned = " (pinned by genesi-display)" if m["name"] in ov else ""
+        main = "  [main]" if m.get("primary") else ""
+        print(f"{mark} {m['name']}  {m['width']}x{m['height']}@{m['refresh']}Hz"
+              f"  scale {m['scale']:g}  {rot_s}{main}{pinned}")
+        if m["description"]:
+            print(f"     {m['description']}")
+
+
+def cmd_scale(name, value):
+    m = find(name)
+    # A keybind cannot carry a number -- SUPER+= means "a bit bigger", not
+    # "1.25". So up/down walk a ladder from wherever the screen currently is,
+    # which also means the two keys stay correct after someone picks a value
+    # from the launcher.
+    if value in ("up", "down"):
+        cur = m["scale"]
+        nearest = min(range(len(SCALE_STEPS)),
+                      key=lambda i: abs(SCALE_STEPS[i] - cur))
+        idx = nearest + (1 if value == "up" else -1)
+        if idx < 0 or idx >= len(SCALE_STEPS):
+            # Already at an end. Say so instead of failing: a keybind that
+            # prints an error when you press it once too often teaches people
+            # the feature is broken.
+            print(f"{m['name']}: already at {cur:g}x "
+                  f"({'largest' if value == 'up' else 'smallest'})")
+            return
+        scale = SCALE_STEPS[idx]
+        value = str(scale)
+    else:
+        try:
+            scale = float(value)
+        except ValueError:
+            die(f"{value!r} is not a number, and not 'up' or 'down'")
+    if not (0.1 <= scale <= 10):
+        die(f"scale {scale} is out of range (0.1 – 10)")
+    ov = read_overrides()
+    # Keyed on the monitor's REAL name, never on the `-` the caller typed.
+    # `ov["-"]` does not collide with the "DP-1" key a re-read produces, so a
+    # second change wrote a SECOND line for the same monitor -- and Hyprland
+    # applies the last matching line, which was the stale one. The change
+    # reverted itself on the next reload, silently.
+    ov.update(apply_change(m, scale=scale))
+    write_overrides(ov)
+    print(f"{m['name']}: scale {scale:g}")
+
+
+def cmd_rotate(name, value):
+    m = find(name)
+    # "cycle" is what a keybind or a single launcher entry wants: one action
+    # that keeps turning, instead of four entries the user has to choose
+    # between while holding a laptop sideways.
+    if value == "cycle":
+        current = TRANSFORM_TO_DEG.get(m["transform"], 0)
+        deg = (current + 90) % 360
+    else:
+        try:
+            deg = int(value) % 360
+        except ValueError:
+            die(f"{value!r} is not a number of degrees, and not 'cycle'")
+    if deg not in DEG_TO_TRANSFORM:
+        die(f"rotation must be 0, 90, 180, 270 or 'cycle' (got {value})")
+    ov = read_overrides()
+    ov.update(apply_change(m, transform=DEG_TO_TRANSFORM[deg]))
+    write_overrides(ov)
+    print(f"{m['name']}: rotated {deg}°")
+
+
+def cmd_position(name, where, other_name):
+    """
+    Put one screen next to another, in words rather than in pixels.
+
+    Nobody thinks in coordinates -- they think "the DP one is on the left".
+    The position is computed from the neighbour's LOGICAL size, so it stays
+    right when either screen is scaled or rotated, which is exactly where
+    hand-typed coordinates go wrong.
+    """
+    if where not in ("left-of", "right-of", "above", "below"):
+        die(f"position must be left-of, right-of, above or below (got {where!r})")
+    m = find(name)
+    other = find(other_name)
+    if m["name"] == other["name"]:
+        die("a monitor cannot be positioned relative to itself")
+
+    ow, oh = logical_size(other)
+    mw, mh = logical_size(m)
+    if where == "right-of":
+        x, y = other["x"] + ow, other["y"]
+    elif where == "left-of":
+        x, y = other["x"] - mw, other["y"]
+    elif where == "below":
+        x, y = other["x"], other["y"] + oh
+    else:
+        x, y = other["x"], other["y"] - mh
+
+    # Everything is then shifted so the leftmost/topmost edge sits at 0,0.
+    # Hyprland accepts negative coordinates, but a desktop whose origin drifts
+    # further negative every time it is rearranged eventually confuses every
+    # app that asks where a window is.
+    placed = [{"name": m["name"], "x": x, "y": y}]
+    for mm in monitors():
+        if mm["name"] != m["name"]:
+            placed.append({"name": mm["name"], "x": mm["x"], "y": mm["y"]})
+    dx = -min(q["x"] for q in placed)
+    dy = -min(q["y"] for q in placed)
+
+    by_name = {mm["name"]: mm for mm in monitors()}
+    ov = read_overrides()
+    for q in placed:
+        line = monitor_line(by_name[q["name"]], x=q["x"] + dx, y=q["y"] + dy)
+        apply_live(line)
+        ov[q["name"]] = line
+    write_overrides(ov)
+    print(f"{m['name']}: {where.replace('-', ' ')} {other['name']}")
+
+
+def cmd_place(name, x_str, y_str):
+    """
+    Put a screen at an exact position, then tidy up.
+
+    This is what a drag produces: a drag does not mean "left of the other one",
+    it means a pair of coordinates. Three things happen afterwards, because a
+    raw drop is almost never quite what the person meant:
+
+      * Edges within SNAP logical pixels of a neighbour's edge are pulled flush
+        to it. Nobody wants a four-pixel seam between two screens, and nobody
+        can hit zero by hand.
+      * The whole arrangement is shifted so its top-left corner is 0,0.
+      * Every monitor is re-applied, so the ones that did not move still
+        reconfigure -- the same reason scale changes re-apply everything.
+    """
+    try:
+        x, y = int(round(float(x_str))), int(round(float(y_str)))
+    except ValueError:
+        die(f"place needs two numbers, got {x_str!r} and {y_str!r}")
+
+    m = find(name)
+    others = [mm for mm in monitors() if mm["name"] != m["name"]]
+    w, h = logical_size(m)
+
+    # Snap to whichever neighbour edge is closest, per axis and independently:
+    # a screen dragged below and slightly right of another should snap its left
+    # edge without also being dragged up.
+    for axis, pos, size, key in ((0, x, w, "x"), (1, y, h, "y")):
+        best = None
+        for o in others:
+            ow, oh = logical_size(o)
+            osize = ow if axis == 0 else oh
+            opos = o[key]
+            # Flush against either side, or aligned edge-to-edge.
+            for candidate in (opos - size, opos + osize, opos,
+                              opos + osize - size):
+                d = abs(candidate - pos)
+                if d <= SNAP and (best is None or d < best[0]):
+                    best = (d, candidate)
+        if best is not None:
+            if axis == 0:
+                x = best[1]
+            else:
+                y = best[1]
+
+    placed = [{"name": m["name"], "x": x, "y": y}]
+    for o in others:
+        placed.append({"name": o["name"], "x": o["x"], "y": o["y"]})
+    dx = -min(q["x"] for q in placed)
+    dy = -min(q["y"] for q in placed)
+
+    by_name = {mm["name"]: mm for mm in monitors()}
+    ov = read_overrides()
+    for q in placed:
+        line = monitor_line(by_name[q["name"]], x=q["x"] + dx, y=q["y"] + dy)
+        apply_live(line)
+        ov[q["name"]] = line
+    write_overrides(ov)
+    print(f"{m['name']}: at {x + dx},{y + dy}")
+
+
+def cmd_mode(name, wanted):
+    """
+    Set a monitor's resolution and refresh rate.
+
+    Only a mode the panel actually advertises is accepted. Hyprland will take
+    an arbitrary string and then fail to light the output, which on a
+    single-screen desk means a black display and no way to read the error --
+    so the check happens here, against what the compositor itself reported,
+    before anything is applied.
+    """
+    m = find(name)
+    ids = [x["id"] for x in m["modes"]]
+    if wanted not in ids:
+        # Accept a bare resolution too: "1920x1080" means its highest refresh,
+        # which is what a person means when they say it.
+        matches = [i for i in ids if i.split("@")[0] == wanted]
+        if matches:
+            wanted = matches[0]
+        else:
+            die(f"{m['name']} does not offer {wanted}.\n"
+                "  It offers: " + ", ".join(ids[:8])
+                + (" …" if len(ids) > 8 else ""))
+    if wanted == m["mode"]:
+        print(f"{m['name']} is already at {wanted}")
+        return
+    ov = read_overrides()
+    ov.update(apply_change(m, mode=wanted))
+    write_overrides(ov)
+    print(f"{m['name']} -> {wanted}")
+
+
+def cmd_modes(name):
+    """Every mode a monitor advertises, as JSON, for a settings page."""
+    print(json.dumps(find(name)["modes"], indent=2))
+
+
+def cmd_primary(name):
+    """
+    Which screen is "the main one".
+
+    The two sessions mean genuinely different things by this, so the tool does
+    the right thing for each instead of pretending one concept covers both:
+
+      X11       a real flag. `xrandr --primary` is what panels, full-screen
+                games and Steam read to decide where they belong.
+
+      Hyprland  has no primary flag at all. What people mean by it -- where the
+                desktop starts, where workspace 1 is, where the bar goes -- is
+                the default workspace binding, so that is what gets set, and
+                the tool says so rather than claiming more than it did.
+    """
+    m = find(name)
+    if on_x11():
+        p = subprocess.run(["xrandr", "--output", m["name"], "--primary"],
+                           capture_output=True, text=True)
+        if p.returncode != 0:
+            die((p.stderr or p.stdout).strip() or "xrandr failed")
+        print(f"{m['name']}: primary")
+        return
+    if not shutil.which("hyprctl"):
+        die("no X11 and no Hyprland here — nothing understands a primary screen", 2)
+    rule = f"1, monitor:{m['name']}, default:true"
+    if on_lua():
+        hlua.run(hlua.workspace_call(rule))
+    else:
+        hypr("keyword", "workspace", rule, check=False)
+    ov = read_overrides()
+    ov["__workspace__"] = rule
+    write_overrides(ov)
+    print(f"{m['name']}: primary (workspace 1 lives here)")
+    print("  Hyprland has no primary flag; this is the setting that decides")
+    print("  where the desktop starts, which is what 'primary' means in use.")
+
+
+def cmd_reset(name=None):
+    ov = read_overrides()
+    if name:
+        if name not in ov:
+            print(f"{name}: no override to remove")
+            return
+        del ov[name]
+    else:
+        ov = {}
+    write_overrides(ov)
+    # Reload so the compositor forgets what we told it and falls back to the
+    # config. Without this the live state keeps the value we just deleted, and
+    # the user sees nothing happen.
+    hypr("reload", check=False)
+    print("reset" + (f" {name}" if name else " all monitors"))
+
+
+
+# ── Plasma ───────────────────────────────────────────────────────────────────
+#
+# On KDE Plasma the same commands go through kscreen-doctor, which is what
+# Plasma's own Display settings use. KScreen keeps its own per-setup config,
+# so there is no override file to maintain and nothing to source: a change
+# made here is exactly as if it had been made in System Settings, and it
+# survives a reboot the same way. `list` prints the same record the Hyprland
+# path does, so the Displays page and every launcher entry work unchanged.
+
+# KScreen's rotation is a bit flag: None 1, Left 2, Inverted 4, Right 8.
+# Left is 90 degrees counter-clockwise, the same turn as Hyprland's
+# transform 1, so "rotate 90" means the same screen on both desktops.
+KSCREEN_ROT_TO_DEG = {1: 0, 2: 90, 4: 180, 8: 270}
+DEG_TO_KSCREEN = {0: "normal", 90: "left", 180: "inverted", 270: "right"}
+
+
+def on_plasma(env=None):
+    env = os.environ if env is None else env
+    if env.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return False
+    desk = (env.get("XDG_CURRENT_DESKTOP") or "").lower()
+    return "kde" in desk or "plasma" in desk
+
+
+def kscreen(*args, check=True):
+    if not shutil.which("kscreen-doctor"):
+        die("kscreen-doctor not found (install libkscreen)", 2)
+    p = subprocess.run(["kscreen-doctor", *args], capture_output=True, text=True)
+    if check and p.returncode != 0:
+        die((p.stderr or p.stdout).strip() or "kscreen-doctor failed")
+    return p
+
+
+def plasma_raw():
+    p = kscreen("-j")
+    try:
+        return json.loads(p.stdout).get("outputs", [])
+    except (json.JSONDecodeError, AttributeError):
+        die("could not read kscreen-doctor -j")
+
+
+def plasma_modes(raw):
+    seen = {}
+    for entry in raw.get("modes", []) or []:
+        size = entry.get("size") or {}
+        w, h = int(size.get("width", 0)), int(size.get("height", 0))
+        r = round(float(entry.get("refreshRate", 0)), 2)
+        if w and h:
+            seen[(w, h, r)] = {"width": w, "height": h, "refresh": r,
+                               "id": f"{w}x{h}@{r}", "kscreen": str(entry.get("id"))}
+    return [v for _, v in sorted(seen.items(),
+                                 key=lambda kv: (-kv[0][0] * kv[0][1], -kv[0][2]))]
+
+
+def plasma_monitors():
+    out = []
+    for o in plasma_raw():
+        if not o.get("connected", True):
+            continue
+        modes = plasma_modes(o)
+        cur = next((m for m in modes if m["kscreen"] == str(o.get("currentModeId"))),
+                   None)
+        w = cur["width"] if cur else int((o.get("size") or {}).get("width", 0))
+        h = cur["height"] if cur else int((o.get("size") or {}).get("height", 0))
+        rate = cur["refresh"] if cur else 0
+        rot = KSCREEN_ROT_TO_DEG.get(int(o.get("rotation", 1)), 0)
+        pos = o.get("pos") or {}
+        # Plasma 6 says "priority" (1 = the main screen); Plasma 5 said "primary".
+        primary = (o.get("priority") == 1) if "priority" in o else bool(o.get("primary"))
+        out.append({
+            "name": o.get("name", ""),
+            "description": " ".join(x for x in (o.get("vendor"), o.get("model"))
+                                    if x) or o.get("name", ""),
+            "width": w, "height": h, "refresh": rate,
+            "x": int(pos.get("x", 0)), "y": int(pos.get("y", 0)),
+            "scale": round(float(o.get("scale", 1)), 6),
+            "transform": DEG_TO_TRANSFORM.get(rot, 0),
+            "rotation": rot,
+            # Plasma has no "screen under the pointer" to report; the main
+            # screen is the honest answer to "the one in use".
+            "focused": primary,
+            "disabled": not o.get("enabled", True),
+            "primary": primary,
+            "modes": [{k: v for k, v in m.items() if k != "kscreen"} for m in modes],
+            "mode": f"{w}x{h}@{rate}",
+        })
+    return out
+
+
+def plasma_find(name):
+    mons = plasma_monitors()
+    if name == "-":
+        for m in mons:
+            if m["primary"]:
+                return m
+        if mons:
+            return mons[0]
+    for m in mons:
+        if m["name"] == name:
+            return m
+    die(f"no monitor called {name!r}. Connected: "
+        + ", ".join(m["name"] for m in mons))
+
+
+def plasma_logical(m):
+    w, h = m["width"], m["height"]
+    if m["rotation"] in (90, 270):
+        w, h = h, w
+    return round(w / m["scale"]), round(h / m["scale"])
+
+
+def plasma_main(cmd, rest):
+    if cmd == "list":
+        print(json.dumps(plasma_monitors(), indent=2))
+    elif cmd == "show":
+        for m in plasma_monitors():
+            print(f"{m['name']}: {m['mode']}  scale {m['scale']:g}  "
+                  f"rotated {m['rotation']}°  at {m['x']},{m['y']}"
+                  + ("  (main)" if m["primary"] else ""))
+    elif cmd == "scale":
+        if len(rest) != 2:
+            die("usage: genesi-display scale <monitor> <factor>")
+        m, value = plasma_find(rest[0]), rest[1]
+        if value in ("up", "down"):
+            cur = m["scale"]
+            i = min(range(len(SCALE_STEPS)), key=lambda k: abs(SCALE_STEPS[k] - cur))
+            i += 1 if value == "up" else -1
+            if i < 0 or i >= len(SCALE_STEPS):
+                print(f"{m['name']}: already at {cur:g}x "
+                      f"({'largest' if value == 'up' else 'smallest'})")
+                return
+            scale = SCALE_STEPS[i]
+        else:
+            try:
+                scale = float(value)
+            except ValueError:
+                die(f"{value!r} is not a number, and not 'up' or 'down'")
+        if not (0.1 <= scale <= 10):
+            die(f"scale {scale} is out of range (0.1 – 10)")
+        kscreen(f"output.{m['name']}.scale.{scale:g}")
+        print(f"{m['name']}: scale {scale:g}")
+    elif cmd == "rotate":
+        if len(rest) != 2:
+            die("usage: genesi-display rotate <monitor> <degrees>")
+        m, value = plasma_find(rest[0]), rest[1]
+        if value == "cycle":
+            deg = (m["rotation"] + 90) % 360
+        else:
+            try:
+                deg = int(value) % 360
+            except ValueError:
+                die(f"{value!r} is not a number of degrees, and not 'cycle'")
+        if deg not in DEG_TO_KSCREEN:
+            die(f"rotation must be 0, 90, 180, 270 or 'cycle' (got {value})")
+        kscreen(f"output.{m['name']}.rotation.{DEG_TO_KSCREEN[deg]}")
+        print(f"{m['name']}: rotated {deg}°")
+    elif cmd in ("mode", "modes"):
+        if (cmd == "mode" and len(rest) != 2) or (cmd == "modes" and len(rest) != 1):
+            die("usage: genesi-display mode <monitor> <WxH@Hz | WxH>"
+                if cmd == "mode" else "usage: genesi-display modes <monitor>")
+        raw = next((o for o in plasma_raw() if o.get("name") == plasma_find(rest[0])["name"]), {})
+        modes = plasma_modes(raw)
+        if cmd == "modes":
+            print(json.dumps([{k: v for k, v in x.items() if k != "kscreen"}
+                              for x in modes], indent=2))
+            return
+        wanted = rest[1]
+        match = [x for x in modes if x["id"] == wanted] or \
+                [x for x in modes if f"{x['width']}x{x['height']}" == wanted]
+        if not match:
+            die(f"{wanted!r} is not a mode {rest[0]} offers. Try: genesi-display modes {rest[0]}")
+        kscreen(f"output.{raw.get('name')}.mode.{match[0]['kscreen']}")
+        print(f"{raw.get('name')}: {match[0]['id']}")
+    elif cmd == "position":
+        if len(rest) != 3:
+            die("usage: genesi-display position <monitor> "
+                "left-of|right-of|above|below <other monitor>")
+        a, where, b = plasma_find(rest[0]), rest[1], plasma_find(rest[2])
+        if a["name"] == b["name"]:
+            die("a monitor cannot be placed next to itself")
+        aw, ah = plasma_logical(a)
+        bw, bh = plasma_logical(b)
+        spots = {"left-of": (b["x"] - aw, b["y"]), "right-of": (b["x"] + bw, b["y"]),
+                 "above": (b["x"], b["y"] - ah), "below": (b["x"], b["y"] + bh)}
+        if where not in spots:
+            die("where must be left-of, right-of, above or below")
+        x, y = spots[where]
+        kscreen(f"output.{a['name']}.position.{x},{y}")
+        print(f"{a['name']}: {where} {b['name']} at {x},{y}")
+    elif cmd == "place":
+        if len(rest) != 3:
+            die("usage: genesi-display place <monitor> <x> <y>")
+        m = plasma_find(rest[0])
+        try:
+            x, y = int(float(rest[1])), int(float(rest[2]))
+        except ValueError:
+            die("x and y must be numbers")
+        kscreen(f"output.{m['name']}.position.{x},{y}")
+        print(f"{m['name']}: at {x},{y}")
+    elif cmd == "primary":
+        if len(rest) != 1:
+            die("usage: genesi-display primary <monitor>")
+        m = plasma_find(rest[0])
+        kscreen(f"output.{m['name']}.priority.1")
+        print(f"{m['name']}: main screen")
+    elif cmd == "reset":
+        # KScreen has no "our override" to drop: it keeps one config per set
+        # of screens, the same one System Settings edits. Resetting means the
+        # defaults that config started from: scale 1, no rotation.
+        mons = [plasma_find(rest[0])] if rest else plasma_monitors()
+        for m in mons:
+            kscreen(f"output.{m['name']}.scale.1", f"output.{m['name']}.rotation.normal")
+        print("reset" + (f" {rest[0]}" if rest else " all monitors"))
+    else:
+        die(f"unknown command {cmd!r}. Try: genesi-display --help", 2)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return 0
+    cmd, rest = args[0], args[1:]
+    if on_plasma():
+        plasma_main(cmd, rest)
+        return 0
+    if cmd == "list":
+        cmd_list()
+    elif cmd == "show":
+        cmd_show()
+    elif cmd == "scale":
+        if len(rest) != 2:
+            die("usage: genesi-display scale <monitor> <factor>")
+        cmd_scale(*rest)
+    elif cmd == "rotate":
+        if len(rest) != 2:
+            die("usage: genesi-display rotate <monitor> <degrees>")
+        cmd_rotate(*rest)
+    elif cmd == "position":
+        if len(rest) != 3:
+            die("usage: genesi-display position <monitor> "
+                "left-of|right-of|above|below <other monitor>")
+        cmd_position(*rest)
+    elif cmd == "place":
+        if len(rest) != 3:
+            die("usage: genesi-display place <monitor> <x> <y>")
+        cmd_place(*rest)
+    elif cmd == "mode":
+        # `rest`, not `args`: `args` still holds the word "mode", so the
+        # count was never 2 and every resolution change died on its usage
+        # line -- the Displays page's picker did nothing at all.
+        if len(rest) != 2:
+            die("usage: genesi-display mode <monitor> <WxH@Hz | WxH>")
+        cmd_mode(*rest)
+    elif cmd == "modes":
+        if len(rest) != 1:
+            die("usage: genesi-display modes <monitor>")
+        cmd_modes(*rest)
+    elif cmd == "primary":
+        if len(rest) != 1:
+            die("usage: genesi-display primary <monitor>")
+        cmd_primary(*rest)
+    elif cmd == "reset":
+        cmd_reset(rest[0] if rest else None)
+    else:
+        die(f"unknown command {cmd!r}. Try: genesi-display --help", 2)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

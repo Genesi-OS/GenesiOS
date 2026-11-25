@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi
+GenericName=Control Centre
+GenericName[pt_BR]=Central de Controle
+Comment=System overview, resources and settings
+Comment[pt_BR]=Visão geral do sistema, recursos e configurações
+Exec=genesi-center
+Icon=genesi-center
+Terminal=false
+Categories=System;Settings;
+Keywords=genesi;system;settings;dashboard;
+Keywords[pt_BR]=genesi;sistema;configurações;painel;
+StartupNotify=true
+StartupWMClass=genesi-center

@@ -7,7 +7,22 @@ if status is-interactive
     if not set -q GENESI_FASTFETCH_SHOWN
         set -gx GENESI_FASTFETCH_SHOWN 1
         if type -q fastfetch
-            fastfetch --config /usr/share/genesi/fastfetch/genesi.jsonc
+            # The store's Fastfetch shelf writes config.jsonc into the user's
+            # own config directory. Passing --config unconditionally meant
+            # that file was never read, so every card on that shelf applied
+            # cleanly and changed nothing you would ever see -- the same shape
+            # of bug as the lock screens writing a config for a program
+            # nobody started.
+            set -l own "$XDG_CONFIG_HOME"
+            if test -z "$own"
+                set own "$HOME/.config"
+            end
+            set own "$own/fastfetch/config.jsonc"
+            if test -f "$own"
+                fastfetch --config "$own"
+            else
+                fastfetch --config /usr/share/genesi/fastfetch/genesi.jsonc
+            end
         end
     end
 end

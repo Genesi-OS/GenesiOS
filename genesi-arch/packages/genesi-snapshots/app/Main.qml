@@ -19,9 +19,12 @@ QQC2.ApplicationWindow {
     width: 980; height: 740
     minimumWidth: 760; minimumHeight: 580
     title: "Genesi Snapshots"
-    color: theme.bgBottom
+    color: appTheme.bgBottom
 
-    StudioTheme { id: theme }
+    // appTheme, not `theme`: a component that HAS a `theme` property
+    // (GButton, StudioCard, StatusBanner) resolves a bare `theme` on the
+    // right-hand side to its own unset property, not to this id.
+    StudioTheme { id: appTheme }
     I18n  { id: i18n }
 
     // ── state (driven by the backend) ──────────────────────────────
@@ -36,8 +39,8 @@ QQC2.ApplicationWindow {
     // locked and the recovery card drives the one-click way back.
     readonly property bool inRecovery: rec.recovery === true
     readonly property bool protectedOk: st.btrfs && st.configured
-    readonly property color protColor: !st.btrfs ? theme.red
-                                      : (st.configured ? theme.green : theme.turbo)
+    readonly property color protColor: !st.btrfs ? appTheme.red
+                                      : (st.configured ? appTheme.green : appTheme.turbo)
 
     Connections {
         target: backend
@@ -53,9 +56,9 @@ QQC2.ApplicationWindow {
     // Snapshot "type" → colour + label. snap-pac writes pre/post around each
     // pacman transaction; manual/baseline are 'single'.
     function typeColor(s) {
-        if (s.type === "pre")  return theme.turbo
-        if (s.type === "post") return theme.green
-        return theme.blue
+        if (s.type === "pre")  return appTheme.turbo
+        if (s.type === "post") return appTheme.green
+        return appTheme.blue
     }
     function typeLabel(s) {
         if (s.description && s.description.toLowerCase().indexOf("baseline") >= 0) return i18n.t("snap.baseline")
@@ -68,8 +71,8 @@ QQC2.ApplicationWindow {
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: theme.bgTop }
-            GradientStop { position: 1.0; color: theme.bgBottom }
+            GradientStop { position: 0.0; color: appTheme.bgTop }
+            GradientStop { position: 1.0; color: appTheme.bgBottom }
         }
     }
 
@@ -92,11 +95,11 @@ QQC2.ApplicationWindow {
 
                 Rectangle {
                     width: 48; height: 48; radius: 8
-                    color: theme.a(theme.green, 0.16)
-                    border.width: 1; border.color: theme.a(theme.green, 0.34)
+                    color: appTheme.a(appTheme.green, 0.16)
+                    border.width: 1; border.color: appTheme.a(appTheme.green, 0.34)
                     Kirigami.Icon {
                         anchors.centerIn: parent; width: 26; height: 26
-                        source: "security-high"; color: theme.green
+                        source: "security-high"; color: appTheme.green
                     }
                 }
                 ColumnLayout {
@@ -104,26 +107,26 @@ QQC2.ApplicationWindow {
                     QQC2.Label {
                         text: "SYSTEM RECOVERY"
                         font.pixelSize: 9; font.bold: true
-                        color: theme.accentText
+                        color: appTheme.accentText
                     }
                     QQC2.Label {
                         text: "Genesi Snapshots"
                         font.pixelSize: 22; font.bold: true
-                        font.family: theme.display; color: theme.textHi
+                        font.family: appTheme.display; color: appTheme.textHi
                     }
                     QQC2.Label {
                         text: i18n.t("snap.subtitle")
-                        font.pixelSize: 12; color: theme.textLo
+                        font.pixelSize: 12; color: appTheme.textLo
                     }
                 }
                 Item { Layout.fillWidth: true }
 
                 GButton {
-                    theme: theme; kind: "ghost"; text: i18n.code
+                    theme: appTheme; kind: "ghost"; text: i18n.code
                     tooltip: i18n.t("lang.tooltip"); onClicked: i18n.toggle()
                 }
                 GButton {
-                    theme: theme; kind: "ghost"; iconSource: "view-refresh"
+                    theme: appTheme; kind: "ghost"; iconSource: "view-refresh"
                     tooltip: i18n.t("snap.refresh"); enabled: !win.busy
                     onClicked: backend.refresh()
                 }
@@ -138,7 +141,7 @@ QQC2.ApplicationWindow {
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.preferredHeight: recCol.implicitHeight + Kirigami.Units.largeSpacing * 3
                 visible: win.inRecovery
-                accent: theme.blue
+                accent: appTheme.blue
                 active: true
                 wash: true
 
@@ -155,11 +158,11 @@ QQC2.ApplicationWindow {
                         Rectangle {
                             Layout.alignment: Qt.AlignTop
                             width: 76; height: 76; radius: 8
-                            color: theme.a(theme.blue, 0.14)
-                            border.width: 1; border.color: theme.a(theme.blue, 0.4)
+                            color: appTheme.a(appTheme.blue, 0.14)
+                            border.width: 1; border.color: appTheme.a(appTheme.blue, 0.4)
                             Kirigami.Icon {
                                 anchors.centerIn: parent; width: 42; height: 42
-                                source: "clock"; color: theme.blue
+                                source: "clock"; color: appTheme.blue
                             }
                         }
 
@@ -169,27 +172,27 @@ QQC2.ApplicationWindow {
                             QQC2.Label {
                                 text: i18n.t("rec.title")
                                 font.pixelSize: 22; font.bold: true
-                                font.family: theme.display; color: theme.textHi
+                                font.family: appTheme.display; color: appTheme.textHi
                             }
                             QQC2.Label {
                                 Layout.fillWidth: true
                                 text: i18n.t("rec.body")
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 13; color: theme.textMid
+                                font.pixelSize: 13; color: appTheme.textMid
                             }
                             // which snapshot we're inside
                             Rectangle {
                                 Layout.topMargin: 6
                                 implicitWidth: recChip.implicitWidth + 20
                                 implicitHeight: 28; radius: 7
-                                color: theme.a(theme.blue, 0.14)
-                                border.width: 1; border.color: theme.a(theme.blue, 0.4)
+                                color: appTheme.a(appTheme.blue, 0.14)
+                                border.width: 1; border.color: appTheme.a(appTheme.blue, 0.4)
                                 RowLayout {
                                     id: recChip; anchors.centerIn: parent; spacing: 6
-                                    Kirigami.Icon { width: 13; height: 13; source: "document-open-recent"; color: theme.blue }
+                                    Kirigami.Icon { width: 13; height: 13; source: "document-open-recent"; color: appTheme.blue }
                                     QQC2.Label {
                                         text: i18n.t("rec.snapshot") + "  #" + win.rec.number
-                                        font.pixelSize: 12; font.bold: true; color: theme.textHi
+                                        font.pixelSize: 12; font.bold: true; color: appTheme.textHi
                                     }
                                 }
                             }
@@ -202,12 +205,12 @@ QQC2.ApplicationWindow {
                         spacing: Kirigami.Units.largeSpacing
                         Item { Layout.fillWidth: true }
                         GButton {
-                            theme: theme; kind: "ghost"; iconSource: "system-reboot"
+                            theme: appTheme; kind: "ghost"; iconSource: "system-reboot"
                             text: i18n.t("rec.reboot"); enabled: !win.busy
                             onClicked: backend.reboot()
                         }
                         GButton {
-                            theme: theme; kind: "filled"; accent: theme.blue
+                            theme: appTheme; kind: "filled"; accent: appTheme.blue
                             text: i18n.t("rec.restore"); iconSource: "edit-undo"
                             tooltip: i18n.t("rec.restoreTip")
                             enabled: !win.busy
@@ -238,8 +241,8 @@ QQC2.ApplicationWindow {
                     Rectangle {
                         Layout.alignment: Qt.AlignVCenter
                         width: 76; height: 76; radius: 8
-                        color: theme.a(win.protColor, 0.14)
-                        border.width: 1; border.color: theme.a(win.protColor, 0.4)
+                        color: appTheme.a(win.protColor, 0.14)
+                        border.width: 1; border.color: appTheme.a(win.protColor, 0.4)
                         Kirigami.Icon {
                             anchors.centerIn: parent; width: 42; height: 42
                             source: win.protectedOk ? "security-high"
@@ -256,7 +259,7 @@ QQC2.ApplicationWindow {
                                 : (win.st.configured ? i18n.t("snap.stProtected")
                                                      : i18n.t("snap.stArming"))
                             font.pixelSize: 22; font.bold: true
-                            font.family: theme.display; color: theme.textHi
+                            font.family: appTheme.display; color: appTheme.textHi
                         }
                         QQC2.Label {
                             Layout.fillWidth: true
@@ -264,7 +267,7 @@ QQC2.ApplicationWindow {
                                 : (win.st.configured ? i18n.t("snap.stProtectedSub")
                                                      : i18n.t("snap.stArmingSub"))
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 13; color: theme.textMid
+                            font.pixelSize: 13; color: appTheme.textMid
                         }
 
                         // capability chips
@@ -278,19 +281,19 @@ QQC2.ApplicationWindow {
                                 property bool on: false
                                 implicitWidth: chipRow.implicitWidth + 20
                                 implicitHeight: 28; radius: 7
-                                color: on ? theme.a(theme.green, 0.14) : theme.a(theme.textLo, 0.10)
+                                color: on ? appTheme.a(appTheme.green, 0.14) : appTheme.a(appTheme.textLo, 0.10)
                                 border.width: 1
-                                border.color: on ? theme.a(theme.green, 0.4) : theme.a(theme.textLo, 0.18)
+                                border.color: on ? appTheme.a(appTheme.green, 0.4) : appTheme.a(appTheme.textLo, 0.18)
                                 RowLayout {
                                     id: chipRow; anchors.centerIn: parent; spacing: 6
                                     Kirigami.Icon {
                                         width: 13; height: 13
                                         source: on ? "checkmark" : "dialog-cancel"
-                                        color: on ? theme.accentText : theme.textLo
+                                        color: on ? appTheme.accentText : appTheme.textLo
                                     }
                                     QQC2.Label {
                                         text: label; font.pixelSize: 12; font.bold: true
-                                        color: on ? theme.accentText : theme.textLo
+                                        color: on ? appTheme.accentText : appTheme.textLo
                                     }
                                 }
                             }
@@ -303,7 +306,7 @@ QQC2.ApplicationWindow {
                     // primary action
                     GButton {
                         Layout.alignment: Qt.AlignVCenter
-                        theme: theme; kind: "filled"; accent: theme.green
+                        theme: appTheme; kind: "filled"; accent: appTheme.green
                         text: i18n.t("snap.create"); iconSource: "list-add"
                         enabled: win.protectedOk && !win.busy
                         onClicked: createDialog.open()
@@ -315,13 +318,17 @@ QQC2.ApplicationWindow {
             // Suppressed in recovery: we are demonstrably on a Btrfs snapshot
             // there (the recovery card proves it), and a transient empty status
             // read must not flash a misleading "Root isn't Btrfs" over it.
+            // The hero above already says this, in the same words. Two red
+            // boxes stacked on each other saying "root is not Btrfs" is not
+            // twice as clear; the remedy that used to live down here has moved
+            // into the hero's subtitle, where the diagnosis already was.
             StatusBanner {
-                theme: theme; accent: theme.red
-                icon: "drive-harddisk"; visible: !win.st.btrfs && !win.inRecovery
+                theme: appTheme; accent: appTheme.red
+                icon: "drive-harddisk"; visible: false
                 title: i18n.t("snap.noBtrfsTitle"); body: i18n.t("snap.noBtrfsBody")
             }
             StatusBanner {
-                theme: theme; accent: theme.turbo
+                theme: appTheme; accent: appTheme.turbo
                 icon: "clock"; busy: win.busy
                 visible: win.st.btrfs && !win.st.configured && !win.inRecovery
                 title: i18n.t("snap.armingTitle"); body: i18n.t("snap.armingBody")
@@ -336,12 +343,12 @@ QQC2.ApplicationWindow {
                 visible: win.protectedOk
                 QQC2.Label {
                     text: i18n.t("snap.timeline")
-                    font.pixelSize: 13; font.bold: true; color: theme.textMid
+                    font.pixelSize: 13; font.bold: true; color: appTheme.textMid
                 }
                 Item { Layout.fillWidth: true }
                 QQC2.Label {
                     text: win.snaps.length + " RESTORE POINTS"
-                    font.pixelSize: 10; font.bold: true; color: theme.textLo
+                    font.pixelSize: 10; font.bold: true; color: appTheme.textLo
                 }
             }
 
@@ -353,7 +360,7 @@ QQC2.ApplicationWindow {
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 text: i18n.t("rec.actionsLocked")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12; color: theme.textLo
+                font.pixelSize: 12; color: appTheme.textLo
                 visible: win.inRecovery && win.protectedOk
             }
 
@@ -363,7 +370,7 @@ QQC2.ApplicationWindow {
                 Layout.margins: Kirigami.Units.largeSpacing * 1.5
                 horizontalAlignment: Text.AlignHCenter
                 visible: win.protectedOk && win.snaps.length === 0
-                text: i18n.t("snap.empty"); color: theme.textLo; font.pixelSize: 13
+                text: i18n.t("snap.empty"); color: appTheme.textLo; font.pixelSize: 13
             }
 
             // ── snapshot list ──────────────────────────────────────
@@ -386,14 +393,14 @@ QQC2.ApplicationWindow {
                         // number badge
                         Rectangle {
                             width: 48; height: 48; radius: 8
-                            color: theme.a(win.typeColor(modelData), 0.14)
-                            border.width: 1; border.color: theme.a(win.typeColor(modelData), 0.35)
+                            color: appTheme.a(win.typeColor(modelData), 0.14)
+                            border.width: 1; border.color: appTheme.a(win.typeColor(modelData), 0.35)
                             Layout.alignment: Qt.AlignVCenter
                             QQC2.Label {
                                 anchors.centerIn: parent
                                 text: "#" + modelData.number
                                 font.pixelSize: 14; font.bold: true
-                                color: theme.textHi
+                                color: appTheme.textHi
                             }
                         }
                         // type dot + info
@@ -409,26 +416,26 @@ QQC2.ApplicationWindow {
                                 }
                                 QQC2.Label {
                                     text: win.typeLabel(modelData)
-                                    font.pixelSize: 13; font.bold: true; color: theme.textHi
+                                    font.pixelSize: 13; font.bold: true; color: appTheme.textHi
                                 }
                             }
                             QQC2.Label {
                                 Layout.fillWidth: true
                                 text: (modelData.description || "—") + "   ·   " + (modelData.date || "")
                                 elide: Text.ElideRight
-                                font.pixelSize: 12; color: theme.textLo
+                                font.pixelSize: 12; color: appTheme.textLo
                             }
                         }
                         // actions
                         GButton {
-                            theme: theme; kind: "tonal"; accent: theme.green
+                            theme: appTheme; kind: "tonal"; accent: appTheme.green
                             text: i18n.t("snap.restore"); iconSource: "edit-undo"
                             enabled: !win.busy && modelData.number > 0 && !win.inRecovery
                             tooltip: i18n.t("snap.restoreTip")
                             onClicked: { confirm.num = modelData.number; confirm.desc = modelData.description || ""; confirm.open() }
                         }
                         GButton {
-                            theme: theme; kind: "danger"; iconSource: "user-trash"
+                            theme: appTheme; kind: "danger"; iconSource: "user-trash"
                             enabled: !win.busy && modelData.number > 0 && !win.inRecovery
                             tooltip: i18n.t("snap.delete")
                             onClicked: backend.deleteSnapshot(modelData.number)
@@ -447,10 +454,10 @@ QQC2.ApplicationWindow {
         anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: Kirigami.Units.largeSpacing * 2
         width: toastLbl.implicitWidth + 40; height: 44; radius: 12
-        color: theme.card; border.width: 1; border.color: theme.a(theme.green, 0.4)
+        color: appTheme.card; border.width: 1; border.color: appTheme.a(appTheme.green, 0.4)
         QQC2.Label {
             id: toastLbl; anchors.centerIn: parent
-            text: win.toast; color: theme.textHi; font.pixelSize: 13
+            text: win.toast; color: appTheme.textHi; font.pixelSize: 13
         }
     }
 
@@ -461,7 +468,7 @@ QQC2.ApplicationWindow {
         modal: true; focus: true
         width: 420
         padding: 0
-        background: StudioCard { accent: theme.green; active: true; interactive: false }
+        background: StudioCard { accent: appTheme.green; active: true; interactive: false }
 
         ColumnLayout {
             width: parent.width
@@ -473,7 +480,7 @@ QQC2.ApplicationWindow {
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 text: i18n.t("snap.createTitle")
-                font.pixelSize: 16; font.bold: true; color: theme.textHi
+                font.pixelSize: 16; font.bold: true; color: appTheme.textHi
             }
             QQC2.TextField {
                 id: descField
@@ -481,11 +488,11 @@ QQC2.ApplicationWindow {
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 placeholderText: i18n.t("snap.createPlaceholder")
-                color: theme.textHi
+                color: appTheme.textHi
                 selectByMouse: true
                 background: Rectangle {
-                    radius: 8; color: theme.cardHi
-                    border.width: 1; border.color: descField.activeFocus ? theme.green : theme.line
+                    radius: 8; color: appTheme.cardHi
+                    border.width: 1; border.color: descField.activeFocus ? appTheme.green : appTheme.line
                 }
             }
             RowLayout {
@@ -494,9 +501,9 @@ QQC2.ApplicationWindow {
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.bottomMargin: Kirigami.Units.largeSpacing * 1.5
                 Item { Layout.fillWidth: true }
-                GButton { theme: theme; kind: "ghost"; text: i18n.t("snap.cancel"); onClicked: createDialog.close() }
+                GButton { theme: appTheme; kind: "ghost"; text: i18n.t("snap.cancel"); onClicked: createDialog.close() }
                 GButton {
-                    theme: theme; kind: "filled"; accent: theme.green
+                    theme: appTheme; kind: "filled"; accent: appTheme.green
                     text: i18n.t("snap.create"); iconSource: "list-add"
                     onClicked: { backend.createSnapshot(descField.text); descField.text = ""; createDialog.close() }
                 }
@@ -512,7 +519,7 @@ QQC2.ApplicationWindow {
         anchors.centerIn: parent
         modal: true; focus: true
         width: 460; padding: 0
-        background: StudioCard { accent: theme.turbo; active: true; interactive: false }
+        background: StudioCard { accent: appTheme.turbo; active: true; interactive: false }
 
         ColumnLayout {
             width: parent.width
@@ -522,10 +529,10 @@ QQC2.ApplicationWindow {
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 spacing: Kirigami.Units.largeSpacing
-                Kirigami.Icon { source: "edit-undo"; width: 28; height: 28; color: theme.turbo }
+                Kirigami.Icon { source: "edit-undo"; width: 28; height: 28; color: appTheme.turbo }
                 QQC2.Label {
                     text: i18n.t("snap.rollbackTitle") + " #" + confirm.num
-                    font.pixelSize: 16; font.bold: true; color: theme.textHi
+                    font.pixelSize: 16; font.bold: true; color: appTheme.textHi
                 }
             }
             QQC2.Label {
@@ -533,7 +540,7 @@ QQC2.ApplicationWindow {
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 text: i18n.t("snap.rollbackBody")
-                wrapMode: Text.WordWrap; font.pixelSize: 13; color: theme.textMid
+                wrapMode: Text.WordWrap; font.pixelSize: 13; color: appTheme.textMid
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -541,9 +548,9 @@ QQC2.ApplicationWindow {
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.bottomMargin: Kirigami.Units.largeSpacing * 1.5
                 Item { Layout.fillWidth: true }
-                GButton { theme: theme; kind: "ghost"; text: i18n.t("snap.cancel"); onClicked: confirm.close() }
+                GButton { theme: appTheme; kind: "ghost"; text: i18n.t("snap.cancel"); onClicked: confirm.close() }
                 GButton {
-                    theme: theme; kind: "filled"; accent: theme.turbo
+                    theme: appTheme; kind: "filled"; accent: appTheme.turbo
                     text: i18n.t("snap.rollbackConfirm"); iconSource: "edit-undo"
                     onClicked: { backend.rollback(confirm.num); confirm.close() }
                 }
@@ -557,7 +564,7 @@ QQC2.ApplicationWindow {
         anchors.centerIn: parent
         modal: true; focus: true
         width: 480; padding: 0
-        background: StudioCard { accent: theme.blue; active: true; interactive: false }
+        background: StudioCard { accent: appTheme.blue; active: true; interactive: false }
 
         ColumnLayout {
             width: parent.width
@@ -567,10 +574,10 @@ QQC2.ApplicationWindow {
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 spacing: Kirigami.Units.largeSpacing
-                Kirigami.Icon { source: "edit-undo"; width: 28; height: 28; color: theme.blue }
+                Kirigami.Icon { source: "edit-undo"; width: 28; height: 28; color: appTheme.blue }
                 QQC2.Label {
                     text: i18n.t("rec.confirmTitle") + "  #" + win.rec.number
-                    font.pixelSize: 16; font.bold: true; color: theme.textHi
+                    font.pixelSize: 16; font.bold: true; color: appTheme.textHi
                 }
             }
             QQC2.Label {
@@ -578,7 +585,7 @@ QQC2.ApplicationWindow {
                 Layout.leftMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 text: i18n.t("rec.confirmBody")
-                wrapMode: Text.WordWrap; font.pixelSize: 13; color: theme.textMid
+                wrapMode: Text.WordWrap; font.pixelSize: 13; color: appTheme.textMid
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -586,9 +593,9 @@ QQC2.ApplicationWindow {
                 Layout.rightMargin: Kirigami.Units.largeSpacing * 1.5
                 Layout.bottomMargin: Kirigami.Units.largeSpacing * 1.5
                 Item { Layout.fillWidth: true }
-                GButton { theme: theme; kind: "ghost"; text: i18n.t("snap.cancel"); onClicked: recConfirm.close() }
+                GButton { theme: appTheme; kind: "ghost"; text: i18n.t("snap.cancel"); onClicked: recConfirm.close() }
                 GButton {
-                    theme: theme; kind: "filled"; accent: theme.blue
+                    theme: appTheme; kind: "filled"; accent: appTheme.blue
                     text: i18n.t("rec.confirmBtn"); iconSource: "edit-undo"
                     onClicked: { backend.restoreBooted(); recConfirm.close() }
                 }

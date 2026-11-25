@@ -21,9 +21,12 @@ QQC2.ApplicationWindow {
     height: 620
     minimumWidth: 560
     minimumHeight: 360
-    color: theme.bgBottom
+    color: appTheme.bgBottom
 
-    Theme { id: theme }
+    // appTheme, not `theme`: a component that HAS a `theme` property
+    // (GButton, GlassCard, StatusBanner) resolves a bare `theme` on the
+    // right-hand side to its own UNSET property, not to this id.
+    Theme { id: appTheme }
     I18n { id: i18n }
 
     property var results: []
@@ -78,7 +81,7 @@ QQC2.ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: askColumn.implicitHeight + 36
-            color: theme.bgTop
+            color: appTheme.bgTop
 
             ColumnLayout {
                 id: askColumn
@@ -92,8 +95,8 @@ QQC2.ApplicationWindow {
 
                     Text {
                         text: i18n.t("find.title")
-                        color: theme.textHi
-                        font.family: theme.display
+                        color: appTheme.textHi
+                        font.family: appTheme.display
                         font.pixelSize: 20
                         font.weight: Font.DemiBold
                     }
@@ -101,8 +104,8 @@ QQC2.ApplicationWindow {
                     Text {
                         visible: win.scope.length > 0
                         text: i18n.t("find.scope") + "  " + win.scopeLabel()
-                        color: theme.textLo
-                        font.family: theme.mono
+                        color: appTheme.textLo
+                        font.family: appTheme.mono
                         font.pixelSize: 12
                         elide: Text.ElideMiddle
                         Layout.maximumWidth: 380
@@ -117,9 +120,9 @@ QQC2.ApplicationWindow {
                         Layout.fillWidth: true
                         implicitHeight: 44
                         radius: 10
-                        color: theme.cardHi
+                        color: appTheme.cardHi
                         border.width: 1
-                        border.color: field.activeFocus ? theme.accent : theme.line
+                        border.color: field.activeFocus ? appTheme.accent : appTheme.line
 
                         QQC2.TextField {
                             id: field
@@ -127,9 +130,9 @@ QQC2.ApplicationWindow {
                             anchors.leftMargin: 14
                             anchors.rightMargin: 14
                             background: null
-                            color: theme.textHi
+                            color: appTheme.textHi
                             placeholderText: i18n.t("find.placeholder")
-                            placeholderTextColor: theme.textLo
+                            placeholderTextColor: appTheme.textLo
                             font.pixelSize: 14
                             verticalAlignment: Text.AlignVCenter
                             onAccepted: backend.search(text)
@@ -138,7 +141,7 @@ QQC2.ApplicationWindow {
                     }
 
                     GButton {
-                        theme: theme
+                        theme: appTheme
                         kind: "filled"
                         text: win.busy ? i18n.t("find.searching") : i18n.t("find.search")
                         enabled: !win.busy && field.text.trim().length > 0
@@ -148,7 +151,7 @@ QQC2.ApplicationWindow {
             }
         }
 
-        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.line }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: appTheme.line }
 
         // ════════════ RESULTS ════════════
         QQC2.ScrollView {
@@ -163,89 +166,25 @@ QQC2.ApplicationWindow {
             ListView {
                 id: list
                 model: win.results
-                spacing: 2
+                // The cards are cards now, so they need a gap; at 2px they read
+                // as one striped block.
+                spacing: appTheme.sp2
+                clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
-                delegate: Rectangle {
+                delegate: FileCard {
                     required property var modelData
-                    required property int index
-
+                    // The same card the Monitor's chat shows for the same data.
+                    // The old row opened only on a DOUBLE tap, with nothing on
+                    // screen saying it was clickable at all, and no way to
+                    // reveal the file in a file manager -- which is the thing
+                    // you usually want after finding it.
                     width: list.width
-                    height: 58
-                    color: hover.hovered ? theme.cardHi : "transparent"
-
-                    HoverHandler { id: hover }
-                    TapHandler {
-                        onDoubleTapped: backend.openPath(modelData.path)
-                    }
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 18
-                        anchors.rightMargin: 12
-                        spacing: 14
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                Layout.fillWidth: true
-                                text: modelData.name
-                                color: theme.textHi
-                                font.pixelSize: 14
-                                font.weight: Font.DemiBold
-                                elide: Text.ElideMiddle
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: modelData.dir
-                                color: theme.textLo
-                                font.family: theme.mono
-                                font.pixelSize: 11
-                                elide: Text.ElideMiddle
-                            }
-                        }
-
-                        Text {
-                            text: modelData.age + "  ·  " + modelData.hsize
-                            color: theme.textLo
-                            font.pixelSize: 11
-                            horizontalAlignment: Text.AlignRight
-                        }
-
-                        RowLayout {
-                            spacing: 6
-                            opacity: hover.hovered ? 1 : 0
-                            Behavior on opacity { NumberAnimation { duration: 120 } }
-
-                            GButton {
-                                theme: theme
-                                kind: "tonal"
-                                text: i18n.t("find.open")
-                                onClicked: backend.openPath(modelData.path)
-                            }
-                            GButton {
-                                theme: theme
-                                kind: "ghost"
-                                text: i18n.t("find.reveal")
-                                onClicked: backend.revealPath(modelData.path)
-                            }
-                            GButton {
-                                theme: theme
-                                kind: "ghost"
-                                text: i18n.t("find.copyPath")
-                                onClicked: backend.copyPath(modelData.path)
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        anchors.bottom: parent.bottom
-                        width: parent.width
-                        height: 1
-                        color: theme.line
-                        visible: index < win.results.length - 1
-                    }
+                    path: modelData.path || ""
+                    name: modelData.name || ""
+                    dir: modelData.dir || ""
+                    age: modelData.age || ""
+                    hsize: modelData.hsize || ""
                 }
             }
         }
@@ -257,16 +196,42 @@ QQC2.ApplicationWindow {
             Layout.fillHeight: true
             visible: win.results.length === 0
 
-            Text {
+            // The three states this window has -- searching, found nothing,
+            // not asked yet -- were one line of grey text floating in the
+            // middle of a large empty rectangle. Same three strings, given a
+            // shape.
+            ColumnLayout {
                 anchors.centerIn: parent
-                width: parent.width - 80
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-                color: theme.textLo
-                font.pixelSize: 14
-                text: win.busy ? i18n.t("find.searching")
-                               : (win.searched ? i18n.t("find.empty")
-                                               : i18n.t("find.hint"))
+                width: Math.min(parent.width - 80, 420)
+                spacing: appTheme.sp3
+                Rectangle {
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 46; height: 46; radius: appTheme.rMd
+                    color: appTheme.a(appTheme.green, 0.12)
+                    border.width: 1
+                    border.color: appTheme.a(appTheme.green, 0.28)
+                    FIcon {
+                        anchors.centerIn: parent
+                        name: win.busy ? "clock" : "search"
+                        size: 20
+                        color: appTheme.greenBright
+                        RotationAnimation on rotation {
+                            running: win.busy
+                            loops: Animation.Infinite
+                            from: 0; to: 360; duration: 1400
+                        }
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    color: appTheme.textLo
+                    font.pixelSize: 14
+                    text: win.busy ? i18n.t("find.searching")
+                                   : (win.searched ? i18n.t("find.empty")
+                                                   : i18n.t("find.hint"))
+                }
             }
         }
 
@@ -274,7 +239,7 @@ QQC2.ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 30
-            color: theme.bgTop
+            color: appTheme.bgTop
             visible: win.searched && !win.busy
 
             RowLayout {
@@ -285,22 +250,22 @@ QQC2.ApplicationWindow {
 
                 Text {
                     text: win.results.length + " " + i18n.t("find.results")
-                    color: theme.textLo
+                    color: appTheme.textLo
                     font.pixelSize: 11
                 }
                 Text {
                     Layout.fillWidth: true
                     text: win.filterLabel().length > 0
                           ? i18n.t("find.filter") + ":  " + win.filterLabel() : ""
-                    color: theme.textLo
-                    font.family: theme.mono
+                    color: appTheme.textLo
+                    font.family: appTheme.mono
                     font.pixelSize: 11
                     elide: Text.ElideRight
                 }
                 Text {
                     text: win.plan.source === "model" ? i18n.t("find.byModel")
                                                       : i18n.t("find.byParser")
-                    color: win.plan.source === "model" ? theme.accentText : theme.textLo
+                    color: win.plan.source === "model" ? appTheme.accentText : appTheme.textLo
                     font.pixelSize: 11
                 }
             }

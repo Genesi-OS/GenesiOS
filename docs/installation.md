@@ -20,20 +20,28 @@ This guide will walk you through installing Genesi OS on your computer.
 
 ## 📥 Step 1: Download Genesi OS
 
-1. Go to [Releases](https://github.com/Genesi-OS/GenesiOS/releases/latest)
-2. Download `genesi-*.iso` (latest version)
-3. Download `genesi-*.iso.sha256` (checksum)
+Genesi ships **one ISO**, rebuilt from `main` and replaced in place — so the
+link below is always the current build and never changes.
+
+```bash
+aria2c -x16 -s16 https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso
+```
+
+`aria2c` is the fast, resumable option; `wget` or a browser work just as well.
+The [Download page](https://github.com/Genesi-OS/GenesiOS/releases/tag/rolling)
+has the same link, the checksum, and the changelog for the build you are getting.
 
 ### Verify Download (Optional but Recommended)
 
 **Linux/macOS:**
 ```bash
-sha256sum -c genesi-*.iso.sha256
+curl -O https://pub-917a3befc9e640f0acf8eb3d52633fe2.r2.dev/genesi-os-latest.iso.sha256
+sha256sum -c genesi-os-latest.iso.sha256
 ```
 
 **Windows (PowerShell):**
 ```powershell
-Get-FileHash genesi-*.iso -Algorithm SHA256
+Get-FileHash genesi-os-latest.iso -Algorithm SHA256
 ```
 
 ## 💾 Step 2: Create Bootable USB
@@ -45,7 +53,7 @@ Get-FileHash genesi-*.iso -Algorithm SHA256
 lsblk
 
 # Create bootable USB (replace /dev/sdX with your USB)
-sudo dd if=genesi-*.iso of=/dev/sdX bs=4M status=progress oflag=sync
+sudo dd if=genesi-os-latest.iso of=/dev/sdX bs=4M status=progress oflag=sync
 ```
 
 ### macOS
@@ -58,7 +66,7 @@ diskutil list
 diskutil unmountDisk /dev/diskX
 
 # Create bootable USB
-sudo dd if=genesi-*.iso of=/dev/rdiskX bs=1m
+sudo dd if=genesi-os-latest.iso of=/dev/rdiskX bs=1m
 ```
 
 ### Windows

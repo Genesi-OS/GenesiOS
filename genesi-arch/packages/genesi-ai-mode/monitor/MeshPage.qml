@@ -34,6 +34,10 @@ Item {
     // está mentindo.
     readonly property real overheadMb: 1.2 * 1024
 
+    // Every line on this page was pt-BR only while the rest of the app follows
+    // the language switch in the top bar. Same helper as the Image page.
+    function tr(en, pt) { return root.i18n && root.i18n.lang === "pt" ? pt : en }
+
     function refresh() {
         available = backend.meshAvailable()
         if (!available)
@@ -67,7 +71,7 @@ Item {
     function vramText(o) {
         if (!o) return "—"
         if (!knowsFree(o)) return (o.vram_mb || 0) + " MiB"
-        return o.free_mb + " livres de " + (o.vram_mb || 0) + " MiB"
+        return o.free_mb + root.tr(" free of ", " livres de ") + (o.vram_mb || 0) + " MiB"
     }
 
     function admin(cmd, arg) {
@@ -102,28 +106,109 @@ Item {
                 wrapMode: Text.WordWrap
                 color: theme.a(theme.white, 0.65)
                 font.pixelSize: 12
-                text: "Junte a memória de vídeo de várias máquinas para rodar um modelo "
-                      + "que não caberia em nenhuma delas sozinha."
+                // Was hardcoded pt-BR while the rest of the app switches
+                // language from the top bar, so an English user read this page
+                // in Portuguese.
+                text: root.i18n ? root.i18n.t("mesh.subtitle")
+                                : "Pool the video memory of several machines to run a model that would not fit on any one of them."
             }
 
             // ── genesi-mesh ausente ──────────────────────────────────────────
+            //
+            // NOT an error. This was a red box with a red border, which is what
+            // the app says when something has gone WRONG — and the only thing
+            // that has happened is that an optional package is not installed.
+            // Painting "you have not installed this yet" red is how people
+            // learn to ignore red. It is an invitation: what it is, why you
+            // would want it, and the command, ready to copy.
             Rectangle {
                 visible: !root.available
                 Layout.fillWidth: true
-                implicitHeight: 64
-                radius: 12
-                color: theme.a(theme.red, 0.12)
+                implicitHeight: missingCol.implicitHeight + theme.sp5 * 2
+                radius: theme.rLg
+                color: theme.surface
                 border.width: 1
-                border.color: theme.a(theme.red, 0.5)
-                QQC2.Label {
-                    anchors.fill: parent
-                    anchors.margins: 14
-                    wrapMode: Text.WordWrap
-                    verticalAlignment: Text.AlignVCenter
-                    color: theme.white
-                    font.pixelSize: 12
-                    text: "O pacote genesi-mesh não está instalado.\n"
-                          + "Instale com:  sudo pacman -S genesi-mesh"
+                border.color: theme.hairline
+
+                ColumnLayout {
+                    id: missingCol
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: theme.sp5; anchors.rightMargin: theme.sp5
+                    spacing: theme.sp3
+
+                    Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        width: 46; height: 46; radius: theme.rMd
+                        color: theme.a(theme.green, 0.12)
+                        border.width: 1
+                        border.color: theme.a(theme.green, 0.28)
+                        FIcon {
+                            anchors.centerIn: parent
+                            name: "layers"; size: 20; color: theme.greenBright
+                        }
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        text: root.i18n ? root.i18n.t("mesh.missingTitle")
+                                        : "Mesh is not installed on this machine"
+                        color: theme.textHi
+                        font.pixelSize: theme.fsHead
+                        font.bold: true
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: root.i18n ? root.i18n.t("mesh.missingBody")
+                                        : "It is an optional package. Install it on every machine you want to pool, then come back here."
+                        color: theme.textLo
+                        font.pixelSize: theme.fsSmall
+                    }
+
+                    Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.topMargin: theme.sp1
+                        implicitWidth: cmdRow.implicitWidth + theme.sp4
+                        implicitHeight: 38
+                        radius: theme.rMd
+                        color: theme.a(theme.textHi, 0.05)
+                        border.width: 1
+                        border.color: theme.hairline
+                        RowLayout {
+                            id: cmdRow
+                            anchors.centerIn: parent
+                            spacing: theme.sp3
+                            QQC2.Label {
+                                text: "sudo pacman -S genesi-mesh"
+                                color: theme.textMid
+                                font.family: theme.mono
+                                font.pixelSize: theme.fsSmall
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 26
+                                Layout.preferredHeight: 26
+                                radius: theme.rSm
+                                color: cpMa.containsMouse ? theme.a(theme.green, 0.18)
+                                                          : "transparent"
+                                FIcon {
+                                    anchors.centerIn: parent
+                                    name: "copy"; size: 13
+                                    color: cpMa.containsMouse ? theme.accentText : theme.textLo
+                                }
+                                MouseArea {
+                                    id: cpMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: backend.copyToClipboard("sudo pacman -S genesi-mesh")
+                                    QQC2.ToolTip.visible: containsMouse
+                                    QQC2.ToolTip.text: root.i18n ? root.i18n.t("find.copy") : "Copy path"
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -154,25 +239,25 @@ Item {
                     spacing: 6
 
                     QQC2.Label {
-                        text: root.usage.pooling ? "Turbo está usando o mesh"
-                                                 : "Turbo está rodando local"
+                        text: root.usage.pooling ? root.tr("Turbo is using the mesh", "Turbo está usando o mesh")
+                                                 : root.tr("Turbo is running locally", "Turbo está rodando local")
                         color: root.usage.pooling ? theme.greenBright : theme.white
                         font.pixelSize: 14
                         font.bold: true
                     }
 
                     QQC2.Label {
-                        visible: root.usage.pooling
+                        visible: !!root.usage.pooling
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: theme.white
                         font.pixelSize: 11
-                        text: "Camadas do modelo estão na GPU de: "
+                        text: root.tr("Model layers are on the GPU of: ", "Camadas do modelo estão na GPU de: ")
                               + root.usage.endpoints.join(", ")
                     }
 
                     QQC2.Label {
-                        visible: root.usage.pooling
+                        visible: !!root.usage.pooling
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: theme.a(theme.white, 0.55)
@@ -180,9 +265,11 @@ Item {
                         // O trade-off precisa aparecer junto do estado, ou o
                         // usuário conclui que o mesh deixou tudo mais lento sem
                         // motivo. Ele deixa mesmo — em troca de rodar.
-                        text: "As ativações atravessam a rede a cada token, então "
-                              + "isso troca velocidade pela possibilidade de rodar "
-                              + "um modelo que não caberia aqui."
+                        text: root.tr("Activations cross the network on every token, so this trades "
+                                      + "speed for being able to run a model that would not fit here.",
+                                      "As ativações atravessam a rede a cada token, então "
+                                      + "isso troca velocidade pela possibilidade de rodar "
+                                      + "um modelo que não caberia aqui.")
                     }
 
                     QQC2.Label {
@@ -194,9 +281,12 @@ Item {
                         // Sem isto, "rodando local" com um worker à vista parece
                         // defeito. Quase sempre não é.
                         text: root.peers.length === 0
-                              ? "Nenhuma outra máquina visível — o mesh não tinha como entrar."
-                              : "O modelo coube nesta máquina, ou nenhum worker tinha "
-                                + "VRAM livre suficiente. O diagnóstico abaixo diz qual dos dois."
+                              ? root.tr("No other machine is visible, so the mesh had nothing to join.",
+                                        "Nenhuma outra máquina visível — o mesh não tinha como entrar.")
+                              : root.tr("The model fit on this machine, or no worker had enough free "
+                                        + "VRAM. The diagnostics below say which.",
+                                        "O modelo coube nesta máquina, ou nenhum worker tinha "
+                                        + "VRAM livre suficiente. O diagnóstico abaixo diz qual dos dois.")
                     }
                 }
             }
@@ -219,7 +309,7 @@ Item {
                     spacing: 8
 
                     QQC2.Label {
-                        text: "Esta máquina"
+                        text: root.tr("This machine", "Esta máquina")
                         color: theme.white
                         font.pixelSize: 14
                         font.bold: true
@@ -235,7 +325,9 @@ Item {
                         QQC2.Label {
                             color: root.st.updated ? theme.greenBright : theme.red
                             font.pixelSize: 11
-                            text: root.st.updated ? "ativo" : "parado — sudo systemctl enable --now genesi-meshd"
+                            text: root.st.updated ? root.tr("running", "ativo")
+                                                 : root.tr("stopped — sudo systemctl enable --now genesi-meshd",
+                                                           "parado — sudo systemctl enable --now genesi-meshd")
                         }
 
                         QQC2.Label { text: "GPU"; color: theme.a(theme.white, 0.55); font.pixelSize: 11 }
@@ -248,21 +340,26 @@ Item {
                                    ? theme.red : theme.white
                             font.pixelSize: 11
                             text: (root.st.backend || "?") + " · " + root.vramText(root.st)
-                                  + (root.st.integrated ? "  (integrada — é RAM do sistema)" : "")
+                                  + (root.st.integrated ? root.tr("  (integrated — it is system RAM)", "  (integrada — é RAM do sistema)") : "")
                         }
 
-                        QQC2.Label { text: "Endereço"; color: theme.a(theme.white, 0.55); font.pixelSize: 11 }
+                        QQC2.Label { text: root.tr("Address", "Endereço"); color: theme.a(theme.white, 0.55); font.pixelSize: 11 }
                         QQC2.Label { text: root.st.addr || "—"; color: theme.white; font.pixelSize: 11 }
 
                         QQC2.Label { text: "Backend RPC"; color: theme.a(theme.white, 0.55); font.pixelSize: 11 }
                         QQC2.Label {
                             font.pixelSize: 11
-                            readonly property bool ok: root.st.capabilities
+                            // !! because `a && a.b` is UNDEFINED, not false,
+                            // when `a` is missing -- and QML cannot coerce
+                            // undefined to bool: it warns and keeps whatever
+                            // the property held before.
+                            readonly property bool ok: !!(root.st.capabilities
                                                        && root.st.capabilities.rpc_server
-                                                       && root.st.capabilities.rpc_flag
+                                                       && root.st.capabilities.rpc_flag)
                             color: ok ? theme.greenBright : theme.red
-                            text: ok ? "disponível"
-                                     : "ausente — instale genesi-llama-cpp (ou -cuda)"
+                            text: ok ? root.tr("available", "disponível")
+                                     : root.tr("missing — install genesi-llama-cpp (or -cuda)",
+                                               "ausente — instale genesi-llama-cpp (ou -cuda)")
                         }
                     }
 
@@ -278,13 +375,13 @@ Item {
                             color: theme.a(theme.white, 0.75)
                             font.pixelSize: 11
                             text: root.st.worker
-                                  ? "Compartilhando esta GPU em " + (root.st.rpc_bind || "?")
+                                  ? root.tr("Sharing this GPU on ", "Compartilhando esta GPU em ") + (root.st.rpc_bind || "?")
                                     + ":" + (root.st.rpc_port || "?")
-                                  : "Esta máquina NÃO está emprestando a GPU."
+                                  : root.tr("This machine is NOT lending its GPU.", "Esta máquina NÃO está emprestando a GPU.")
                         }
 
                         QQC2.Button {
-                            text: root.st.worker ? "Parar de compartilhar" : "Compartilhar GPU"
+                            text: root.st.worker ? root.tr("Stop sharing", "Parar de compartilhar") : root.tr("Share GPU", "Compartilhar GPU")
                             enabled: root.busyText === ""
                             onClicked: root.admin("worker", root.st.worker ? "off" : "on")
                         }
@@ -293,13 +390,15 @@ Item {
                     // rpc-server tem ZERO autenticação. Dizer isso onde o botão está,
                     // não numa doc que ninguém abre.
                     QQC2.Label {
-                        visible: root.st.worker
+                        visible: !!root.st.worker
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: theme.turboBright
                         font.pixelSize: 10
-                        text: "O servidor RPC não tem autenticação nenhuma. Só compartilhe "
-                              + "numa rede que você controla (LAN de casa ou VPN)."
+                        text: root.tr("The RPC server has no authentication at all. Only share "
+                                      + "on a network you control (home LAN or VPN).",
+                                      "O servidor RPC não tem autenticação nenhuma. Só compartilhe "
+                                      + "numa rede que você controla (LAN de casa ou VPN).")
                     }
 
                     // Compartilhar o Turbo inteiro por HTTP. É a outra forma de
@@ -316,28 +415,33 @@ Item {
                             color: theme.a(theme.white, 0.75)
                             font.pixelSize: 11
                             text: root.st.turbo_serving
-                                  ? "Servindo o Turbo para a rede"
+                                  ? root.tr("Serving Turbo to the network", "Servindo o Turbo para a rede")
                                     + (root.st.turbo_model ? " — " + root.st.turbo_model : "")
-                                  : "Esta máquina NÃO está servindo o Turbo. Prefira isto a "
-                                    + "emprestar VRAM quando o modelo couber aqui: o pool "
-                                    + "manda ativação de camada a cada token, isto manda texto."
+                                  : root.tr("This machine is NOT serving Turbo. Prefer this to lending "
+                                            + "VRAM when the model fits here: the pool sends layer "
+                                            + "activations on every token, this sends text.",
+                                            "Esta máquina NÃO está servindo o Turbo. Prefira isto a "
+                                            + "emprestar VRAM quando o modelo couber aqui: o pool "
+                                            + "manda ativação de camada a cada token, isto manda texto.")
                         }
 
                         QQC2.Button {
-                            text: root.st.turbo_serving ? "Parar de servir" : "Servir Turbo"
+                            text: root.st.turbo_serving ? root.tr("Stop serving", "Parar de servir") : root.tr("Serve Turbo", "Servir Turbo")
                             enabled: root.busyText === ""
                             onClicked: root.admin("serve", root.st.turbo_serving ? "off" : "on")
                         }
                     }
 
                     QQC2.Label {
-                        visible: root.st.turbo_serving
+                        visible: !!root.st.turbo_serving
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: theme.turboBright
                         font.pixelSize: 10
-                        text: "O Turbo também não tem autenticação. Quem alcançar a porta "
-                              + "11435 usa esta GPU."
+                        text: root.tr("Turbo has no authentication either. Anyone who can reach port "
+                                      + "11435 uses this GPU.",
+                                      "O Turbo também não tem autenticação. Quem alcançar a porta "
+                                      + "11435 usa esta GPU.")
                     }
                 }
             }
@@ -366,7 +470,7 @@ Item {
                     spacing: 6
 
                     QQC2.Label {
-                        text: "Rodando nesta máquina agora"
+                        text: root.tr("Running on this machine now", "Rodando nesta máquina agora")
                         color: theme.white
                         font.pixelSize: 14
                         font.bold: true
@@ -390,7 +494,7 @@ Item {
                             font.pixelSize: 11
                             text: "Ollama — " + modelData.name + "  ·  "
                                   + modelData.gb + " GB  ·  " + modelData.where
-                                  + (modelData.until ? "  ·  até " + modelData.until : "")
+                                  + (modelData.until ? root.tr("  ·  until ", "  ·  até ") + modelData.until : "")
                         }
                     }
 
@@ -404,13 +508,15 @@ Item {
                             wrapMode: Text.WordWrap
                             color: theme.a(theme.white, 0.6)
                             font.pixelSize: 10
-                            text: "O Ollama segura o modelo por 15 minutos depois do "
-                                  + "último pedido, mesmo com o chat fechado."
+                            text: root.tr("Ollama keeps the model loaded for 15 minutes after the "
+                                          + "last request, even with the chat closed.",
+                                          "O Ollama segura o modelo por 15 minutos depois do "
+                                          + "último pedido, mesmo com o chat fechado.")
                         }
 
                         QQC2.Button {
                             visible: (root.local_.ollama || []).length > 0
-                            text: "Descarregar"
+                            text: root.tr("Unload", "Descarregar")
                             enabled: root.busyText === ""
                             onClicked: {
                                 root.output = backend.stopLocalInference()
@@ -449,7 +555,7 @@ Item {
                     spacing: 8
 
                     QQC2.Label {
-                        text: "Onde a IA roda"
+                        text: root.tr("Where the AI runs", "Onde a IA roda")
                         color: theme.white
                         font.pixelSize: 14
                         font.bold: true
@@ -460,8 +566,9 @@ Item {
                         wrapMode: Text.WordWrap
                         color: theme.a(theme.white, 0.6)
                         font.pixelSize: 11
-                        text: "Escolha qual Turbo os apps DESTA máquina usam. "
-                              + "Em uso agora: " + (root.turbo.url || "—")
+                        text: root.tr("Choose which Turbo the apps on THIS machine use. In use now: ",
+                                      "Escolha qual Turbo os apps DESTA máquina usam. Em uso agora: ")
+                              + (root.turbo.url || "—")
                     }
 
                     Repeater {
@@ -483,14 +590,14 @@ Item {
                                 color: modelData.available ? theme.white
                                                            : theme.a(theme.white, 0.4)
                                 font.pixelSize: 11
-                                text: (modelData.key === "local" ? "Esta máquina"
+                                text: (modelData.key === "local" ? root.tr("This machine", "Esta máquina")
                                                                  : modelData.label)
                                       + (modelData.model ? " — " + modelData.model : "")
-                                      + (modelData.available ? "" : "  (não está servindo)")
+                                      + (modelData.available ? "" : root.tr("  (not serving)", "  (não está servindo)"))
                             }
 
                             QQC2.Button {
-                                text: modelData.selected ? "em uso" : "usar"
+                                text: modelData.selected ? root.tr("in use", "em uso") : root.tr("use", "usar")
                                 enabled: root.busyText === "" && !modelData.selected
                                          && modelData.available
                                 onClicked: root.admin("use", modelData.key)
@@ -509,14 +616,16 @@ Item {
                             color: theme.a(theme.white, 0.6)
                             font.pixelSize: 10
                             text: root.turbo.source === "auto"
-                                  ? "Automático: usa o Turbo desta máquina se houver, "
-                                    + "senão o de um peer que esteja servindo."
-                                  : "Fixado em \"" + root.turbo.source + "\"."
+                                  ? root.tr("Automatic: uses this machine's Turbo if there is one, "
+                                            + "otherwise one from a peer that is serving.",
+                                            "Automático: usa o Turbo desta máquina se houver, "
+                                            + "senão o de um peer que esteja servindo.")
+                                  : root.tr("Pinned to \"", "Fixado em \"") + root.turbo.source + "\"."
                         }
 
                         QQC2.Button {
                             visible: root.turbo.source !== "auto"
-                            text: "Voltar ao automático"
+                            text: root.tr("Back to automatic", "Voltar ao automático")
                             enabled: root.busyText === ""
                             onClicked: root.admin("use", "auto")
                         }
@@ -543,7 +652,7 @@ Item {
                     spacing: 8
 
                     QQC2.Label {
-                        text: "Máquinas (" + root.peers.length + ")"
+                        text: root.tr("Machines (", "Máquinas (") + root.peers.length + ")"
                         color: theme.white
                         font.pixelSize: 14
                         font.bold: true
@@ -583,9 +692,9 @@ Item {
                                 font.pixelSize: 11
                                 text: (modelData.backend || "?") + " · "
                                       + root.vramText(modelData)
-                                      + (modelData.integrated ? "  [integrada]" : "")
-                                      + (modelData.worker ? "" : "  (não compartilha)")
-                                      + (noRoom ? "  [sem espaço agora]" : "")
+                                      + (modelData.integrated ? root.tr("  [integrated]", "  [integrada]") : "")
+                                      + (modelData.worker ? "" : root.tr("  (not sharing)", "  (não compartilha)"))
+                                      + (noRoom ? root.tr("  [no room now]", "  [sem espaço agora]") : "")
                             }
                         }
                     }
@@ -598,11 +707,16 @@ Item {
                         font.pixelSize: 11
                         // The exact trap a real test hit: everything configured
                         // correctly, list empty, and no hint that this is normal.
-                        text: "Nenhuma outra máquina encontrada.\n\n"
-                              + "A descoberta automática usa multicast, que NÃO atravessa VPN. "
-                              + "Se as máquinas estão em redes diferentes (Tailscale/WireGuard), "
-                              + "isso é esperado — registre o endereço da outra abaixo e as duas "
-                              + "passam a se enxergar."
+                        text: root.tr("No other machine found.\n\n"
+                                      + "Automatic discovery uses multicast, which does NOT cross a VPN. "
+                                      + "If the machines are on different networks (Tailscale/WireGuard), "
+                                      + "that is expected: register the other one's address below and the "
+                                      + "two will see each other.",
+                                      "Nenhuma outra máquina encontrada.\n\n"
+                                      + "A descoberta automática usa multicast, que NÃO atravessa VPN. "
+                                      + "Se as máquinas estão em redes diferentes (Tailscale/WireGuard), "
+                                      + "isso é esperado — registre o endereço da outra abaixo e as duas "
+                                      + "passam a se enxergar.")
                     }
 
                     // Registrar peer por endereço (o caminho que funciona em VPN)
@@ -613,11 +727,11 @@ Item {
                         QQC2.TextField {
                             id: peerAddr
                             Layout.fillWidth: true
-                            placeholderText: "IP da outra máquina (ex.: 100.64.1.2)"
+                            placeholderText: root.tr("Other machine's IP (e.g. 100.64.1.2)", "IP da outra máquina (ex.: 100.64.1.2)")
                             font.pixelSize: 12
                         }
                         QQC2.Button {
-                            text: "Registrar máquina"
+                            text: root.tr("Register machine", "Registrar máquina")
                             enabled: peerAddr.text.trim() !== "" && root.busyText === ""
                             onClicked: { root.admin("peer", peerAddr.text.trim()); peerAddr.text = "" }
                         }
@@ -627,7 +741,7 @@ Item {
                         wrapMode: Text.WordWrap
                         color: theme.a(theme.white, 0.45)
                         font.pixelSize: 10
-                        text: "Faça isso nas DUAS máquinas."
+                        text: root.tr("Do this on BOTH machines.", "Faça isso nas DUAS máquinas.")
                     }
                 }
             }
@@ -651,7 +765,7 @@ Item {
                     spacing: 8
 
                     QQC2.Label {
-                        text: "Rede confiável"
+                        text: root.tr("Trusted network", "Rede confiável")
                         color: theme.white; font.pixelSize: 14; font.bold: true
                     }
                     QQC2.Label {
@@ -659,20 +773,23 @@ Item {
                         wrapMode: Text.WordWrap
                         color: theme.a(theme.white, 0.65)
                         font.pixelSize: 11
-                        text: "Todas as máquinas compartilham UM segredo — é ele que faz "
-                              + "uma reconhecer a outra. Crie na primeira, e cole nas demais. "
-                              + "Ele autentica só a descoberta."
+                        text: root.tr("All machines share ONE secret: it is how they recognise each "
+                                      + "other. Create it on the first one and paste it on the rest. "
+                                      + "It only authenticates discovery.",
+                                      "Todas as máquinas compartilham UM segredo — é ele que faz "
+                                      + "uma reconhecer a outra. Crie na primeira, e cole nas demais. "
+                                      + "Ele autentica só a descoberta.")
                     }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
                         QQC2.Button {
-                            text: "Criar mesh aqui"
+                            text: root.tr("Create mesh here", "Criar mesh aqui")
                             enabled: root.busyText === ""
                             onClicked: root.admin("init", "")
                         }
                         QQC2.Button {
-                            text: "Ver segredo"
+                            text: root.tr("Show secret", "Ver segredo")
                             enabled: root.busyText === ""
                             onClicked: root.admin("show-secret", "")
                         }
@@ -683,11 +800,11 @@ Item {
                         QQC2.TextField {
                             id: secretField
                             Layout.fillWidth: true
-                            placeholderText: "cole aqui o segredo da primeira máquina"
+                            placeholderText: root.tr("paste the first machine's secret here", "cole aqui o segredo da primeira máquina")
                             font.pixelSize: 12
                         }
                         QQC2.Button {
-                            text: "Entrar"
+                            text: root.tr("Join", "Entrar")
                             enabled: secretField.text.trim().length >= 32 && root.busyText === ""
                             onClicked: { root.admin("join", secretField.text.trim()); secretField.text = "" }
                         }
@@ -722,7 +839,7 @@ Item {
                 Layout.bottomMargin: 20
                 spacing: 8
                 QQC2.Button {
-                    text: "Diagnóstico"
+                    text: root.tr("Diagnostics", "Diagnóstico")
                     onClicked: root.output = backend.meshDoctor()
                 }
                 Item { Layout.fillWidth: true }

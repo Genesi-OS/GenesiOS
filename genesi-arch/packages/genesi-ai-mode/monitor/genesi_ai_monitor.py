@@ -19,6 +19,7 @@ import socket
 import tempfile
 import threading
 import subprocess
+import urllib.error
 import urllib.request
 import uuid
 
@@ -49,6 +50,26 @@ except ImportError:
 
 STATE_FILE = "/run/genesi-ai-mode/state.json"
 OLLAMA = "http://127.0.0.1:11434"
+
+# The shared gate, for the hosted-model half of it: the provider table, the
+# two dialects, the streaming, and the request counting all live there,
+# because genesi-ai-key writes the config that module reads and two places
+# that know how Anthropic differs from OpenAI is one too many.
+#
+# Optional, the same way genesi-find treats it: the Monitor has to start on a
+# machine where /usr/share is not what we think it is, and then the cloud
+# simply is not offered.
+sys.path.insert(0, "/usr/share/genesi-ai-mode")
+try:
+    import genesi_ai_assist as assist
+except ImportError:                                  # pragma: no cover
+    assist = None
+
+# What a hosted model looks like in a model string. The same idea as
+# `gguf:<stem>`: the picker, Quick Chat, the saved sessions and an
+# automation's config all keep treating a model as a string, and none of them
+# has to learn what a cloud is.
+CLOUD_PREFIX = "cloud:"
 def _turbo_base():
     """Where Turbo is, for THIS machine: the mesh's answer, or loopback.
 
@@ -75,6 +96,15 @@ BRIDGE = "http://127.0.0.1:11436"     # genesi-mempalace recall bridge (opt-in)
 # palace (same pattern Genesi Code uses with ~/.config/genesi-code/sessions).
 SESSIONS_DIR = os.path.expanduser("~/.config/genesi-ai-monitor/sessions")
 AGENT_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/agent.json")
+# Spoken answers, on or off, remembered. Its own file rather than a key in
+# agent.json: that one is about the agent loop, and a setting saved in the
+# wrong file is a setting that vanishes the next time the other one's shape
+# changes.
+VOICE_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/voice.json")
+# Local or API, remembered. The Monitor and Quick Chat share it, so choosing
+# the API in one is choosing it in both -- two switches that disagree about
+# where your question goes is worse than one.
+SOURCE_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/source.json")
 # Automations: this Backend only EDITS the graphs; genesi-automationd runs them.
 AUTOMATIONS_DIR = os.path.expanduser("~/.config/genesi-ai-monitor/automations")
 AUTOMATION_STATUS = os.path.join(
@@ -92,7 +122,13 @@ class Backend(QObject):
     chatToken = Signal(str)      # one streamed token
     chatDone = Signal(str)       # verbose stats line ("" if none)
     chatError = Signal(str)
+    chatStopped = Signal()       # Stop was pressed; the run is over, say nothing
     modelsLoaded = Signal(str)   # JSON array of model names
+    allModelsLoaded = Signal(str)  # local names AND cloud refs, for automations
+    cloudLoaded = Signal(str)    # JSON {active, providers:[{provider, model}]}
+    cloudModelsListed = Signal(str, str)  # provider, JSON array of model ids
+    chatSourceChanged = Signal(str)       # "local" or "api"
+    voiceLanguagesLoaded = Signal(str)    # JSON from genesi-ai-voice languages
     pullStatus = Signal(str)     # human-readable download progress
     pullDone = Signal(bool)      # finished (ok?)
     turboStatus = Signal(str)    # Turbo (speculative decoding) state text
@@ -111,23 +147,57 @@ class Backend(QObject):
     sessionsChanged = Signal()     # a chat session was saved/removed -> refresh HISTORY
     approvalRequested = Signal(str)  # JSON action awaiting the user's decision
     agentActivity = Signal(str)      # JSON status for the non-blocking UI indicator
+    speakAnswersChanged = Signal(bool)  # spoken answers turned on or off
+    voiceReadyChanged = Signal(bool)    # Kokoro became available, or went
     agentModeChanged = Signal(str)
+    findStatus = Signal(str)          # human-readable progress for Genesi Find
+    findResults = Signal(str)         # JSON: {query, results[], error}
     automationStatusChanged = Signal(str)  # JSON run state/logs from the daemon
     hotkeyCaptured = Signal(str)     # captured "ctrl+alt+a" combo ("" on cancel)
     workflowGenerated = Signal(str)   # JSON: {status, note, name, graph}
     noticeToast = Signal(str)         # a one-line message for the canvas
+    # Image page (genesi-ai-image)
+    imageInfo = Signal(str)           # JSON {tool, status, catalog}
+    imageGallery = Signal(str)        # JSON array of made pictures, newest first
+    imagePullEvent = Signal(str)      # one JSON event of a model download
+    imagePullDone = Signal(bool, str, str)  # ok, model id, error text
+    imageEvent = Signal(str)          # one JSON event of a generate/edit/upscale run
+    imageBusy = Signal(bool)          # a run is in flight
+    imagePromptEnhanced = Signal(str, str)  # improved prompt, error text
+    imageEngineStatus = Signal(str)   # terminal | installing | ready | failed
+    imageLoras = Signal(str)          # JSON array of imported LoRAs
+    # Video page (genesi-ai-video). The engine, its install and the LoRA
+    # store are the Image page's (imageEngineStatus, imageLoras).
+    videoInfo = Signal(str)           # JSON {tool, status, catalog}
+    videoGallery = Signal(str)        # JSON array of made clips, newest first
+    videoPullEvent = Signal(str)      # one JSON event of a model download
+    videoPullDone = Signal(bool, str, str)  # ok, model id, error text
+    videoEvent = Signal(str)          # one JSON event of a run
+    videoBusy = Signal(bool)          # a run is in flight
+    videoPromptEnhanced = Signal(str, str)  # improved prompt, error text
 
     def __init__(self):
         super().__init__()
         self._stop = False
+        # Every HTTP response a generation is reading from right now, so Stop
+        # can cut them. See _abort_live for why that is a shutdown().
+        self._live = set()
+        self._live_lock = threading.Lock()
+        self._speech = None
         self._turbo = False          # route chat to the Turbo server?
         self._turbo_proc = None      # the genesi-ai-turbo serve subprocess
         self._turbo_model = None
         self._turbo_log = None       # captured stderr of the serve subprocess
         self._turbo_spec = False     # is the running Turbo using speculative decoding?
+        self._turbo_busy = False     # a start/stop we asked for is in flight
         self._bench_running = False  # a benchmark is in flight (guard re-entry)
         self._recall = False         # route chat through the mempalace recall bridge?
         self._agent_mode = self._load_agent_mode()
+        self._speak = self._load_speak()
+        # Asked once and cached: `genesi-ai-voice status` builds a subprocess
+        # to look inside its virtualenv, and the answer changes only when
+        # somebody installs it.
+        self._voice_ready = None
         self._agent_pending = {}
         self._agent_lock = threading.Lock()
         self._agent_job_lock = threading.Lock()
@@ -137,11 +207,35 @@ class Backend(QObject):
 
     @Slot(result=str)
     def state(self):
+        """The daemon's state, plus whether Turbo is ACTUALLY serving.
+
+        The Turbo switch used to show intent: it went on when you flipped it and
+        stayed off when anything else started Turbo — an automation, the CLI, a
+        Mesh peer, a leftover server from the last session. So the machine could
+        be serving a model with the switch sitting at off, which is the UI
+        telling the user something untrue about their own computer.
+
+        The probe is the same one the rest of the stack uses, and it costs a
+        loopback /health with a 1s timeout every couple of seconds.
+        """
         try:
             with open(STATE_FILE) as f:
-                return f.read()
-        except OSError:
-            return "{}"
+                data = json.load(f)
+        except (OSError, ValueError):
+            data = {}
+        try:
+            running = bool(turbo_ctl.turbo_alive())
+            data["turbo_running"] = running
+            data["turbo_model"] = (turbo_ctl.current_model() or "") if running else ""
+        except Exception:
+            # A probe that fails must not blank the switch: say nothing rather
+            # than claim Turbo is off.
+            pass
+        # While we are starting or stopping it ourselves, our own intent is the
+        # truth — the server is not answering yet, and syncing off the probe
+        # would flick the switch back under the user's finger.
+        data["turbo_busy"] = bool(getattr(self, "_turbo_busy", False))
+        return json.dumps(data)
 
     # ── Genesi Mesh ──────────────────────────────────────────────────────────
     # The daemon already publishes everything the UI needs as JSON, and the CLI
@@ -298,6 +392,13 @@ class Backend(QObject):
             r = subprocess.run(["genesi-ai-mode", "advise"],
                                capture_output=True, text=True, timeout=10)
             return (r.stdout or r.stderr or "").strip()
+        except FileNotFoundError:
+            # The CLI is not on this machine. That is not a failure to report
+            # in red -- it is simply nothing to say, and the page has an empty
+            # state for exactly that. Returning the raw OSError text put
+            # "[Errno 2] No such file or directory" on screen as the advisor's
+            # ANSWER, which is the worst of both readings.
+            return ""
         except Exception as e:
             return f"error querying the advisor: {e}"
 
@@ -476,13 +577,283 @@ class Backend(QObject):
             except Exception:
                 names = []
             names += [g["ref"] for g in turbo_ctl.list_gguf_models()]
+            # Local models only. The hosted ones used to be appended here, and
+            # a provider sitting in the middle of a list of files on this disk
+            # is the wrong shape for the choice: "which model on my machine"
+            # and "my machine or somebody's API" are two questions. The second
+            # is the source switch, and loadCloud() feeds it.
             self.modelsLoaded.emit(json.dumps(names))
         threading.Thread(target=work, daemon=True).start()
+
+    # ── speech ───────────────────────────────────────────────────────────────
+
+    @Slot(result=bool)
+    def voiceReady(self):
+        """Is there a synthesiser to speak with?
+
+        Asked when the chat opens, so a machine without Kokoro shows no
+        speaker at all rather than one that does nothing. `--json` rather than
+        a look at the filesystem: genesi-ai-voice is what knows that a model
+        on disk with no environment built is not ready.
+
+        Cached, because answering costs a subprocess that starts a second
+        interpreter to look inside a virtualenv, and the answer changes only
+        when somebody installs it. `recheckVoice` is how it changes.
+        """
+        if self._voice_ready is None:
+            self._voice_ready = self._ask_voice_ready()
+        return bool(self._voice_ready)
+
+    @Slot()
+    def recheckVoice(self):
+        """Ask again, after an install."""
+        def work():
+            was = self._voice_ready
+            self._voice_ready = self._ask_voice_ready()
+            if self._voice_ready != was:
+                self.voiceReadyChanged.emit(bool(self._voice_ready))
+        threading.Thread(target=work, daemon=True).start()
+
+    @staticmethod
+    def _ask_voice_ready():
+        try:
+            r = subprocess.run(["genesi-ai-voice", "status", "--json"],
+                               capture_output=True, text=True, timeout=25)
+            return bool(json.loads(r.stdout or "{}").get("ready"))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return False
+
+    @Slot()
+    def loadVoiceLanguages(self):
+        """The languages Kokoro speaks and which one is set, from the tool.
+
+        From genesi-ai-voice rather than a list here, because that file is the
+        one that knows which voice ids are in the voices file -- and every one
+        of these languages runs from files the install already fetched, so
+        offering all of them costs nobody anything.
+        """
+        def work():
+            try:
+                r = subprocess.run(["genesi-ai-voice", "languages", "--json"],
+                                   capture_output=True, text=True, timeout=20)
+                payload = r.stdout.strip() or "{}"
+                json.loads(payload)
+            except (OSError, subprocess.SubprocessError, ValueError):
+                payload = "{}"
+            self.voiceLanguagesLoaded.emit(payload)
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    def setVoiceLanguage(self, language):
+        def work():
+            try:
+                subprocess.run(["genesi-ai-voice", "set", "--language",
+                                str(language)],
+                               capture_output=True, text=True, timeout=20)
+            except (OSError, subprocess.SubprocessError):
+                pass
+            self.loadVoiceLanguages()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    def speak(self, text):
+        """Say an answer out loud, on this machine.
+
+        Detached and fire-and-forget: synthesis takes a second or two and the
+        window must not freeze for it, and there is nothing to report back --
+        either the room hears it or genesi-ai-voice has already said why on
+        its own stderr.
+
+        Capped, because an agent answer can be two thousand words and nobody
+        asked to be read a book. The cut is at a sentence end when there is
+        one within reach, so it stops rather than trails off mid-word.
+        """
+        text = (text or "").strip()
+        if not text:
+            return
+        if len(text) > 900:
+            head = text[:900]
+            stop = max(head.rfind(". "), head.rfind("! "), head.rfind("? "))
+            text = head[:stop + 1] if stop > 300 else head
+        try:
+            self._speech = subprocess.Popen(["genesi-ai-voice", "say", text],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError:
+            pass
+
+    def _cloud_config(self, provider=None):
+        """One provider's settings, or the active one's. None when not set."""
+        if assist is None:
+            return None
+        c = assist.cloud_config(provider or None)
+        return c if c and c.get("key") and c.get("base_url") else None
+
+    @staticmethod
+    def _key_tool(argv):
+        """Run genesi-ai-key. It is the one thing that writes the key file."""
+        try:
+            r = subprocess.run(["genesi-ai-key"] + [str(a) for a in argv],
+                               capture_output=True, text=True, timeout=30)
+            return r.returncode == 0, (r.stdout or r.stderr or "").strip()
+        except (OSError, subprocess.SubprocessError) as e:
+            return False, str(e)
+
+    @Slot()
+    def loadAllModels(self):
+        """Local models and every configured provider, in one list.
+
+        For the automations and the workflow builder, where the model is a
+        saved setting on a block rather than a live Local | API choice: the
+        chat keeps them apart, and a block just needs to name one. Cloud refs
+        come last and are labelled "(API)" -- a block that fires on a schedule
+        bills on every run, and that should be visible where it is chosen.
+        """
+        def work():
+            names = []
+            if self._ensure_ollama():
+                try:
+                    with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=4) as r:
+                        data = json.loads(r.read().decode())
+                    names = [m.get("name") for m in data.get("models", [])
+                             if m.get("name")]
+                except Exception:
+                    names = []
+            names += [g["ref"] for g in turbo_ctl.list_gguf_models()]
+            if assist is not None:
+                names += [CLOUD_PREFIX + p
+                          for p in sorted(assist.cloud_store()["providers"])]
+            self.allModelsLoaded.emit(json.dumps(names))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def loadCloud(self):
+        """Which providers have a key, and the model each is set to -- and
+        every provider Genesi knows (`known`), so a picker can offer one that
+        has no key yet, with where to get the key and a few models to start."""
+        def work():
+            out = {"active": None, "providers": [], "known": []}
+            if assist is not None:
+                st = assist.cloud_store()
+                out["active"] = st.get("active")
+                for name in sorted(st["providers"]):
+                    p = st["providers"][name]
+                    out["providers"].append({
+                        "provider": name, "model": p.get("model") or "",
+                        "ref": CLOUD_PREFIX + name})
+                info = getattr(assist, "PROVIDER_INFO", {})
+                for name, row in info.items():
+                    label, key_url, suggested, tier = row
+                    out["known"].append({
+                        "provider": name, "label": label, "keyUrl": key_url,
+                        "suggested": suggested, "tier": tier,
+                        "default": (assist.PROVIDERS.get(name) or ("", "", ""))[1],
+                        "configured": name in st["providers"]})
+            self.cloudLoaded.emit(json.dumps(out))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def setCloudKey(self, provider, key):
+        """Store an API key for a provider, piped to genesi-ai-key on stdin --
+        never on a command line, where `ps` would show it to every user."""
+        key = (key or "").strip()
+        provider = str(provider)
+        if not key or not provider:
+            return
+
+        def work():
+            try:
+                done = subprocess.run(["genesi-ai-key", "set", "--provider", provider],
+                                      input=key, capture_output=True, text=True, timeout=20)
+                if done.returncode != 0:
+                    self.chatError.emit((done.stderr or done.stdout or "").strip()
+                                        .replace("genesi-ai-key: ", ""))
+            except (OSError, subprocess.SubprocessError) as e:
+                self.chatError.emit(str(e))
+            self.loadCloud()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def setCloudModel(self, provider, model):
+        """Point a provider at another model -- typed, as the company names it."""
+        def work():
+            model_ = str(model).strip()
+            if model_:
+                ok, msg = self._key_tool(["model", provider, model_])
+                if not ok:
+                    self.chatError.emit(msg.replace("genesi-ai-key: ", ""))
+            self.loadCloud()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    def useCloudProvider(self, provider):
+        """Make it the active provider, which is also what ask() then uses."""
+        def work():
+            self._key_tool(["use", provider])
+            self.loadCloud()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    def listCloudModels(self, provider):
+        """Ask the provider which models the key can use. Nothing is kept."""
+        def work():
+            c = self._cloud_config(provider)
+            ids = []
+            if c:
+                try:
+                    ids = assist.cloud_models(c)
+                except Exception:                      # noqa: BLE001
+                    ids = []
+            self.cloudModelsListed.emit(str(provider), json.dumps(ids))
+        threading.Thread(target=work, daemon=True).start()
+
+    @staticmethod
+    def _load_source():
+        try:
+            with open(SOURCE_CONFIG) as handle:
+                v = json.load(handle).get("source", "local")
+        except Exception:
+            v = "local"
+        return v if v in ("local", "api") else "local"
+
+    @Slot(result=str)
+    def chatSource(self):
+        return self._load_source()
+
+    @Slot(str)
+    def setChatSource(self, source):
+        if source not in ("local", "api"):
+            return
+        try:
+            os.makedirs(os.path.dirname(SOURCE_CONFIG), exist_ok=True)
+            tmp = SOURCE_CONFIG + ".tmp"
+            with open(tmp, "w") as handle:
+                json.dump({"source": source}, handle)
+            os.replace(tmp, SOURCE_CONFIG)
+        except OSError:
+            pass
+        self.chatSourceChanged.emit(source)
+
+    @Slot(str, result=bool)
+    def isCloudModel(self, model):
+        """Is this reference a hosted provider rather than a local model?"""
+        return str(model).startswith(CLOUD_PREFIX)
 
     @Slot(str, result=str)
     def modelLabel(self, model):
         """Human-readable name for a model reference, for pickers and headers.
-        Ollama tags pass through unchanged; a GGUF ref becomes its real name."""
+        Ollama tags pass through unchanged; a GGUF ref becomes its real name;
+        a cloud ref becomes the provider and the model it is set to, because
+        "cloud:gemini" tells you who and not what."""
+        model = str(model)
+        if model.startswith(CLOUD_PREFIX):
+            who = model[len(CLOUD_PREFIX):]
+            c = self._cloud_config(who) or {}
+            what = c.get("model") or ""
+            # "(API)" on the end: in a list that mixes both -- an automation's
+            # model picker -- a request that bills should say so.
+            return (f"{who} · {what} (API)" if what else f"{who} (API)")
         return turbo_ctl.model_label(model)
 
     @Slot(str, result=bool)
@@ -617,6 +988,35 @@ class Backend(QObject):
         except OSError:
             pass
 
+    @staticmethod
+    def _load_speak():
+        try:
+            with open(VOICE_CONFIG) as handle:
+                return bool(json.load(handle).get("speak", False))
+        except Exception:
+            return False
+
+    def _save_speak(self):
+        try:
+            os.makedirs(os.path.dirname(VOICE_CONFIG), exist_ok=True)
+            temporary = VOICE_CONFIG + ".tmp"
+            with open(temporary, "w") as handle:
+                json.dump({"speak": bool(self._speak)}, handle)
+            os.replace(temporary, VOICE_CONFIG)
+        except OSError:
+            pass
+
+    @Slot(result=bool)
+    def speakAnswers(self):
+        """Should an answer be read out when it finishes?"""
+        return bool(self._speak)
+
+    @Slot(bool)
+    def setSpeakAnswers(self, on):
+        self._speak = bool(on)
+        self._save_speak()
+        self.speakAnswersChanged.emit(bool(on))
+
     @Slot(result=str)
     def agentMode(self):
         return self._agent_mode
@@ -663,6 +1063,18 @@ class Backend(QObject):
             # Same transport rule as chat: a local GGUF has to be loaded into
             # llama-server before the tool loop can talk to it. Already on a
             # worker thread, so blocking here is safe.
+            if str(model).startswith(CLOUD_PREFIX):
+                # A hosted model runs the SAME loop: the tools, the approval
+                # gate and the step limit are all on this machine, and only
+                # the "what should I do next" reply comes from the provider.
+                # Nothing to load, so no transport to prepare.
+                if not self._cloud_config(str(model)[len(CLOUD_PREFIX):]):
+                    msg = "No API key is set for that provider."
+                    self._agent_status("error", error=msg)
+                    self.chatError.emit(msg)
+                    return
+                self._agent_work(model, messages, mode)
+                return
             _, ok, err = self._prepare_transport(model)
             if not ok:
                 self._agent_status("error", error=err or "could not start the model")
@@ -714,8 +1126,43 @@ class Backend(QObject):
             self._agent_pending.pop(request_id, None)
         return bool(pending["approved"] and not self._stop)
 
+    def _cloud_reply(self, model, messages, max_tokens):
+        """One step's reply from a provider, stoppable, counted."""
+        provider = str(model)[len(CLOUD_PREFIX):]
+        cloud = self._cloud_config(provider)
+        if not cloud:
+            raise RuntimeError(f"No API key is set for {provider}.")
+        return assist.cloud_complete(
+            cloud, {"messages": messages, "max_tokens": max_tokens,
+                    "temperature": 0.2},
+            900, on_response=self._track)
+
+    # Local models in the agent loop (reported 2026-10-09: "slow as hell and
+    # does not work right"). Three things made a local step far worse than it
+    # had to be:
+    #   * thinking models (Qwen3, DeepSeek-R1, gpt-oss) reasoned out loud
+    #     before EVERY step -- hundreds of tokens per action, at a few dozen a
+    #     second -- and nothing asked them not to;
+    #   * Ollama was given no context size, so the ~1.3k-token tool catalogue
+    #     plus the conversation could overflow its default window and be cut
+    #     from the FRONT -- the instructions went first, and the model stopped
+    #     answering in the action format;
+    #   * no output cap and no temperature on the Ollama path.
+    # Thinking is switched off where the server understands the request, the
+    # window is sized for the prompt, and any <think> block that still comes
+    # back is removed before the reply is parsed.
+    AGENT_CTX = 8192
+
+    @staticmethod
+    def _strip_thinking(text):
+        text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S)
+        # A cut-off reply can leave the block open.
+        return re.sub(r"^\s*<think>.*", "", text, flags=re.S).strip() or (text or "").strip()
+
     def _agent_model_reply(self, model, messages):
         payload_messages = [{"role": "system", "content": agent_system_prompt()}, *messages]
+        if str(model).startswith(CLOUD_PREFIX):
+            return self._cloud_reply(model, payload_messages, 1024)
         # A GGUF is served by llama-server, so the agent loop must use the Turbo
         # transport for it even when the Turbo switch is off (same rule as chat).
         if self._turbo or turbo_ctl.is_gguf_ref(model):
@@ -723,7 +1170,11 @@ class Backend(QObject):
                 "messages": payload_messages,
                 "stream": False,
                 "max_tokens": 768,
+                "temperature": 0.2,
                 "cache_prompt": True,
+                # Templates that know the switch (Qwen3 & co.) skip the
+                # thinking; the rest ignore an argument they do not use.
+                "chat_template_kwargs": {"enable_thinking": False},
             }).encode()
             base = BRIDGE if self._recall else _turbo_base()
             req = urllib.request.Request(
@@ -734,22 +1185,36 @@ class Backend(QObject):
             choices = obj.get("choices") or []
             if not choices:
                 raise RuntimeError("Turbo returned no assistant response.")
-            return (choices[0].get("message") or {}).get("content", "")
+            return self._strip_thinking((choices[0].get("message") or {}).get("content", ""))
 
         if not self._ensure_ollama():
             raise RuntimeError("Ollama isn't running (systemctl start ollama)")
-        body = json.dumps({
+        request = {
             "model": model,
             "messages": payload_messages,
             "stream": False,
             "keep_alive": "15m",
-        }).encode()
-        req = urllib.request.Request(
-            OLLAMA + "/api/chat", data=body,
-            headers={"Content-Type": "application/json"},
-        )
-        obj = json.loads(self._read_agent_response(req).decode())
-        return (obj.get("message") or {}).get("content", "")
+            "think": False,
+            "options": {"num_ctx": self.AGENT_CTX, "num_predict": 768, "temperature": 0.2},
+        }
+
+        def ask(payload):
+            req = urllib.request.Request(
+                OLLAMA + "/api/chat", data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            return json.loads(self._read_agent_response(req).decode())
+
+        try:
+            obj = ask(request)
+        except urllib.error.HTTPError as e:
+            # An older Ollama, or a model with no thinking switch, may refuse
+            # the field: ask again without it rather than fail the request.
+            if e.code != 400:
+                raise
+            request.pop("think", None)
+            obj = ask(request)
+        return self._strip_thinking((obj.get("message") or {}).get("content", ""))
 
     def _read_agent_response(self, request):
         response = urllib.request.urlopen(request, timeout=900)
@@ -758,12 +1223,14 @@ class Backend(QObject):
                 response.close()
                 raise RuntimeError("Agent request stopped.")
             self._agent_response = response
+        self._track(response)
         try:
             return response.read()
         finally:
             with self._agent_job_lock:
                 if self._agent_response is response:
                     self._agent_response = None
+            self._untrack(response)
             response.close()
 
     def _agent_work(self, model, messages, mode):
@@ -774,7 +1241,6 @@ class Backend(QObject):
         try:
             for _step in range(8):
                 if self._stop:
-                    self.chatDone.emit("")
                     self._agent_status("stopped")
                     return
                 was_direct = bool(direct_action)
@@ -785,7 +1251,6 @@ class Backend(QObject):
                 else:
                     response = self._agent_model_reply(model, messages).strip()
                     if self._stop:
-                        self.chatDone.emit("")
                         self._agent_status("stopped")
                         return
                     action = parse_agent_action(response)
@@ -831,7 +1296,6 @@ class Backend(QObject):
                 presentation = action_presentation(action)
                 approved = mode != "approval" or self._wait_for_approval(action)
                 if self._stop:
-                    self.chatDone.emit("")
                     self._agent_status("stopped", id=action_id, tool=action["tool"],
                                        title=presentation["title"], icon=presentation["icon"])
                     return
@@ -845,7 +1309,6 @@ class Backend(QObject):
                                        description=presentation["description"], icon=presentation["icon"])
                     result = self._tool_executor.execute(action["tool"], action["arguments"])
                     if self._stop:
-                        self.chatDone.emit("")
                         self._agent_status("stopped", id=action_id, tool=action["tool"],
                                            title=presentation["title"], icon=presentation["icon"])
                         return
@@ -885,7 +1348,6 @@ class Backend(QObject):
             self._agent_status("limit-reached")
         except Exception as exc:
             if self._stop:
-                self.chatDone.emit("")
                 self._agent_status("stopped")
             else:
                 self.chatError.emit("Agent: " + str(exc))
@@ -935,6 +1397,13 @@ class Backend(QObject):
             messages = []
 
         def work():
+            # A hosted model needs no transport prepared: nothing to load,
+            # nothing to free, no VRAM to think about. Checked before
+            # _prepare_transport rather than inside it, because that function
+            # is about which local server to bring up and a cloud is neither.
+            if str(model).startswith(CLOUD_PREFIX):
+                self._chat_cloud(messages, str(model)[len(CLOUD_PREFIX):])
+                return
             use_turbo, ok, err = self._prepare_transport(model)
             if not ok:
                 self.chatError.emit(err or "could not start the model")
@@ -943,6 +1412,53 @@ class Backend(QObject):
                 return
             (self._chat_turbo if use_turbo else self._chat_ollama)(model, messages)
         threading.Thread(target=work, daemon=True).start()
+
+    def _chat_cloud(self, messages, provider=None):
+        """Stream an answer from the hosted provider.
+
+        No fallback to the local model here, deliberately, and that is the
+        difference from ask(): a passive helper that silently falls back is
+        doing somebody a favour, and a chat that silently answers from a
+        different model than the one named in the picker is lying about where
+        the answer came from. A failure is shown.
+        """
+        cloud = self._cloud_config(provider)
+        if not cloud:
+            self.chatError.emit(
+                f"no API key is set for {provider or 'a provider'} — "
+                "Genesi Center → Local AI, or "
+                "`genesi-ai-key set`")
+            return
+        payload = {"messages": messages, "max_tokens": 1024,
+                   "temperature": 0.7}
+        try:
+            _text, tin, tout = assist.cloud_stream(
+                cloud, payload, 900,
+                on_token=lambda t: self.chatToken.emit(t),
+                stop=lambda: self._stop,
+                on_response=self._track)
+        except urllib.error.HTTPError as e:
+            self.chatError.emit(
+                f"{cloud.get('provider')} answered {e.code} {e.reason}. "
+                + {401: "The key is wrong or expired.",
+                   403: "The key is not allowed to use this model.",
+                   404: f"There is no model called "
+                        f"{cloud.get('model')!r} at that endpoint.",
+                   429: "Rate limited — the key works, the account is busy."}
+                  .get(e.code, "Check the model name in genesi-ai-key."))
+            return
+        except Exception as e:                           # noqa: BLE001
+            self.chatError.emit(f"{cloud.get('provider')}: {e}")
+            return
+        # The same stats shape the local transports emit, so the bubble's
+        # panel needs no idea where the answer came from.
+        self.chatDone.emit(json.dumps({
+            "mode": "cloud",
+            "provider": cloud.get("provider") or "",
+            "model": cloud.get("model") or "",
+            "eval": tout,
+            "prompt": tin,
+        }))
 
     def _chat_ollama(self, model, messages):
         if not self._ensure_ollama():
@@ -955,9 +1471,10 @@ class Backend(QObject):
                                      headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=600) as r:
+                self._track(r)
                 for raw in r:
                     if self._stop:
-                        break
+                        return
                     raw = raw.strip()
                     if not raw:
                         continue
@@ -968,9 +1485,13 @@ class Backend(QObject):
                     if obj.get("done"):
                         self.chatDone.emit(self._stats(obj))
                         return
-            self.chatDone.emit("")
+            if not self._stop:
+                self.chatDone.emit("")
         except Exception as e:
-            self.chatError.emit(str(e))
+            if not self._stop:
+                self.chatError.emit(str(e))
+        finally:
+            self._untrack_all_closed()
 
     def _chat_turbo(self, model, messages):
         # Talk to llama-server's OpenAI-compatible /v1/chat/completions so the
@@ -995,9 +1516,10 @@ class Backend(QObject):
         timings = {}
         try:
             with urllib.request.urlopen(req, timeout=900) as r:
+                self._track(r)
                 for raw in r:
                     if self._stop:
-                        break
+                        return
                     line = raw.decode().strip()
                     if not line or not line.startswith("data:"):
                         continue
@@ -1027,14 +1549,72 @@ class Backend(QObject):
                     "prompt_s": round(pms / 1000.0, 2),
                     "total_s": round((pms + gms) / 1000.0, 2),
                 }))
-            else:
+            elif not self._stop:
                 self.chatDone.emit("")
         except Exception as e:
-            self.chatError.emit("Turbo: " + str(e))
+            if not self._stop:
+                self.chatError.emit("Turbo: " + str(e))
+        finally:
+            self._untrack_all_closed()
+
+    def _track(self, response):
+        with self._live_lock:
+            self._live.add(response)
+            stopped = self._stop
+        if stopped:
+            self._abort_live()
+
+    def _untrack_all_closed(self):
+        """Forget responses that are finished; they have nothing left to cut."""
+        with self._live_lock:
+            self._live = {r for r in self._live
+                          if not getattr(r, "closed", True)}
+
+    def _untrack(self, response):
+        with self._live_lock:
+            self._live.discard(response)
+
+    def _abort_live(self):
+        """Cut every connection a generation is reading from.
+
+        shutdown(), not close(). The reader is another thread blocked in
+        recv(), and closing a socket under a blocked recv() on Linux does not
+        wake it -- the read sits there until the server sends the next byte,
+        which for a model still loading or thinking is tens of seconds away,
+        and for a non-streaming agent request is the end of the whole answer.
+        That is "the stop button does not stop it". shutdown() wakes the
+        reader immediately, and the server sees the client go and stops
+        generating: Ollama and llama-server both cancel a request whose
+        connection is gone.
+        """
+        import socket as _socket
+        with self._live_lock:
+            live = list(self._live)
+        for resp in live:
+            try:
+                sock = resp.fp.raw._sock
+                sock.shutdown(_socket.SHUT_RDWR)
+            except Exception:
+                pass
+            # No resp.close() here. The reader closes it in its own `with`
+            # once shutdown() has woken it, and close() from THIS thread waits
+            # on the reader's buffer lock -- which, before shutdown existed,
+            # froze the window for as long as the model took to answer.
 
     @Slot()
     def stopChat(self):
         self._stop = True
+        self._abort_live()
+        # And the voice, if an answer is being read out. Stop means stop.
+        speech = self._speech
+        if speech is not None and speech.poll() is None:
+            try:
+                os.killpg(speech.pid, signal.SIGTERM)
+            except Exception:
+                try:
+                    speech.terminate()
+                except Exception:
+                    pass
         self._tool_executor.cancel()
         with self._agent_job_lock:
             response = self._agent_response
@@ -1046,6 +1626,13 @@ class Backend(QObject):
         with self._agent_lock:
             for pending in self._agent_pending.values():
                 pending["event"].set()
+        # Release the window NOW. It used to wait for the worker to notice and
+        # emit chatDone, which for a request that had not produced its first
+        # token yet was never soon -- so the button looked like it did nothing.
+        # chatStopped rather than chatDone: a finished answer is read aloud,
+        # and one cut off by Stop should not be.
+        self.chatStopped.emit()
+        self._agent_status("stopped")
 
     # ── chat history (local sessions) + MemPalace long-term memory ───────────
     # Each conversation is one JSON file under SESSIONS_DIR. The HISTORY rail
@@ -1244,10 +1831,17 @@ class Backend(QObject):
     # ── Turbo (speculative decoding via genesi-ai-turbo) ─────────────────────
     @Slot(bool, str, bool)
     def setTurbo(self, on, model, spec=False):
-        if on:
-            self._start_turbo(model, spec)
-        else:
-            self._stop_turbo()
+        # Marked busy for the whole operation: starting a server takes seconds,
+        # and until it answers /health the probe in state() would read "off" and
+        # flick the switch back while the user is still looking at it.
+        self._turbo_busy = True
+        try:
+            if on:
+                self._start_turbo(model, spec)
+            else:
+                self._stop_turbo()
+        finally:
+            self._turbo_busy = False
 
     def _stop_turbo(self):
         self._turbo = False
@@ -2069,6 +2663,10 @@ class Backend(QObject):
         """
         messages = [{"role": "system", "content": system},
                     {"role": "user", "content": user}]
+        # The workflow builder, on a hosted model: a design request is exactly
+        # where a large model earns its fee.
+        if str(model).startswith(CLOUD_PREFIX):
+            return self._cloud_reply(model, messages, 1600)
         if self._turbo or turbo_ctl.is_gguf_ref(model):
             body = json.dumps({"messages": messages, "stream": False,
                                "max_tokens": 1600, "cache_prompt": True}).encode()
@@ -2098,6 +2696,99 @@ class Backend(QObject):
             self.noticeToast.emit("Copied " + (text or ""))
         except Exception:
             pass
+
+    # ── Genesi Find, in the chat ───────────────────────────────────────────
+    #
+    # genesi-find is the single source of truth for the search (see its header:
+    # the model only ever turns a sentence into a FILTER, and the filter is
+    # validated and executed locally). The GUI is a front end over its --json,
+    # exactly like genesi-find-ui and the Dolphin action, so the chat cannot
+    # drift into a second, weaker implementation of the same search.
+    @Slot(str)
+    def findFiles(self, query):
+        """Search the user's files by description. Answers on findResults."""
+        text = (query or "").strip()
+        if not text:
+            self.findResults.emit(json.dumps({"query": "", "results": []}))
+            return
+        threading.Thread(target=self._find_worker, args=(text,),
+                         daemon=True).start()
+
+    def _find_worker(self, text):
+        exe = shutil.which("genesi-find")
+        if not exe:
+            self.findResults.emit(json.dumps(
+                {"query": text, "results": [],
+                 "error": "genesi-find is not installed"}))
+            return
+        self.findStatus.emit(text)
+        try:
+            # A walk over a home directory has a ceiling but not a small one,
+            # and the model step can add a few seconds on a cold engine.
+            done = subprocess.run([exe, "--json", "-n", "8", text],
+                                  capture_output=True, text=True, timeout=180)
+            payload = json.loads(done.stdout or "{}")
+        except subprocess.TimeoutExpired:
+            payload = {"query": text, "results": [],
+                       "error": "the search took too long and was stopped"}
+        except (OSError, ValueError) as exc:
+            payload = {"query": text, "results": [],
+                       "error": "search failed: %s" % exc}
+        payload.setdefault("query", text)
+        payload.setdefault("results", [])
+        # The plan is interesting to a developer and noise to everyone else.
+        payload.pop("plan", None)
+        payload.pop("roots", None)
+        self.findResults.emit(json.dumps(payload, ensure_ascii=False))
+
+    @Slot(str)
+    def openPath(self, path):
+        """Open a file with whatever the desktop uses for it."""
+        target = os.path.expanduser(path or "")
+        if not target or not os.path.exists(target):
+            self.noticeToast.emit("That file is no longer there")
+            return
+        try:
+            subprocess.Popen(["xdg-open", target], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError as exc:
+            self.noticeToast.emit("Could not open it: %s" % exc)
+
+    @Slot(str)
+    def revealPath(self, path):
+        """Show a file in the file manager, SELECTED rather than just opening
+        its folder.
+
+        org.freedesktop.FileManager1.ShowItems is the interface every desktop
+        file manager implements for exactly this, and Dolphin, Nautilus and
+        Thunar all honour it. Opening the parent directory is the fallback when
+        no file manager is on the bus -- it is worse (the file is not
+        highlighted) but it is never nothing.
+        """
+        target = os.path.expanduser(path or "")
+        if not target or not os.path.exists(target):
+            self.noticeToast.emit("That file is no longer there")
+            return
+        uri = "file://" + urllib.request.pathname2url(target)
+        if shutil.which("dbus-send"):
+            try:
+                done = subprocess.run(
+                    ["dbus-send", "--session", "--print-reply",
+                     "--dest=org.freedesktop.FileManager1",
+                     "/org/freedesktop/FileManager1",
+                     "org.freedesktop.FileManager1.ShowItems",
+                     "array:string:" + uri, "string:"],
+                    capture_output=True, timeout=8)
+                if done.returncode == 0:
+                    return
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        try:
+            subprocess.Popen(["xdg-open", os.path.dirname(target)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError as exc:
+            self.noticeToast.emit("Could not open the folder: %s" % exc)
 
     @Slot(result=str)
     def nodeOutputCatalogue(self):
@@ -2205,6 +2896,17 @@ class Backend(QObject):
             target=lambda: self._automation_cmd({"cmd": "run-now", "id": aid}),
             daemon=True).start()
 
+    @Slot(str)
+    def clearAutomationLog(self, aid):
+        """Empty the run log the daemon keeps for this automation.
+
+        Clearing only the ListModel would look right for half a second and then
+        refill: the canvas rebuilds that model from status.json on every poll.
+        """
+        threading.Thread(
+            target=lambda: self._automation_cmd({"cmd": "clear-log", "id": aid}),
+            daemon=True).start()
+
     @Slot(str, bool)
     def resolveAutomationApproval(self, req_id, approved):
         cmd = "approve" if approved else "deny"
@@ -2229,6 +2931,880 @@ class Backend(QObject):
                                          timeout=20)
             self.hotkeyCaptured.emit(reply.get("combo", "") if reply.get("ok") else "")
         threading.Thread(target=work, daemon=True).start()
+
+    # ── Image (genesi-ai-image) ─────────────────────────────────────────────
+    # The Image page is a front end over `genesi-ai-image --json`, the same
+    # split as Genesi Find: the tool owns the catalog, the downloads, the
+    # engine and the warm server, and this only relays its JSON lines to the
+    # page. A run is its own process group so Cancel stops sd-cli too; the warm
+    # server is NOT in that group -- it outlives a run on purpose, and stops
+    # itself after a few idle minutes (or on "Free the GPU").
+    _IMAGE_ENHANCE_SYSTEM = (
+        "You write prompts for a text-to-image model. The user gives a short "
+        "idea in any language. Reply with ONE prompt in English: the subject "
+        "first, then setting, lighting, style and camera or medium, as one "
+        "flowing description of at most 70 words. Keep every detail the user "
+        "gave and invent nothing that contradicts it. No preamble, no quotes, "
+        "no lists -- only the prompt.")
+    _IMAGE_EDIT_SYSTEM = (
+        "You write instructions for an image-editing model. The user describes "
+        "a change to a picture in any language. Reply with ONE short instruction "
+        "in English that says exactly what to change and what to keep, at most "
+        "40 words. No preamble, no quotes -- only the instruction.")
+    _IMAGE_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/image.json")
+
+    @staticmethod
+    def _image_tool():
+        p = shutil.which("genesi-ai-image")
+        if p:
+            return [p]
+        # A source checkout: the tool sits one directory up from the Monitor.
+        here = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "genesi-ai-image")
+        return [sys.executable, here] if os.path.exists(here) else None
+
+    def _image_json(self, *args, timeout=30):
+        tool = self._image_tool()
+        if not tool:
+            return None
+        try:
+            r = subprocess.run(tool + list(args) + ["--json"], capture_output=True,
+                               timeout=timeout, encoding="utf-8", errors="replace")
+            lines = [l for l in (r.stdout or "").splitlines() if l.strip()]
+            return json.loads(lines[-1]) if lines else None
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+
+    def _image_prefs(self):
+        try:
+            with open(self._IMAGE_CONFIG) as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            return {}
+
+    def _save_image_prefs(self, **kw):
+        prefs = self._image_prefs()
+        prefs.update(kw)
+        try:
+            os.makedirs(os.path.dirname(self._IMAGE_CONFIG), exist_ok=True)
+            tmp = self._IMAGE_CONFIG + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(prefs, fh)
+            os.replace(tmp, self._IMAGE_CONFIG)
+        except OSError:
+            pass
+
+    @Slot(result=str)
+    def imagePrefs(self):
+        """Turbo on/off and the last model, remembered across launches.
+        Turbo defaults ON: it is the fast path and it gives the GPU back by
+        itself after a few idle minutes."""
+        p = self._image_prefs()
+        return json.dumps({"turbo": p.get("turbo", True), "model": p.get("model", ""),
+                           "mode": p.get("mode", "generate")})
+
+    @Slot(str)
+    def setImagePrefs(self, prefs_json):
+        try:
+            self._save_image_prefs(**json.loads(prefs_json or "{}"))
+        except (ValueError, TypeError):
+            pass
+
+    @Slot()
+    def loadImageInfo(self):
+        def work():
+            if not self._image_tool():
+                self.imageInfo.emit(json.dumps({"tool": False}))
+                return
+            status = self._image_json("status") or {}
+            catalog = self._image_json("catalog") or []
+            self._image_output_dir = status.get("output_dir") or ""
+            self.imageInfo.emit(json.dumps(
+                {"tool": True, "status": status, "catalog": catalog}))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def loadImageGallery(self):
+        def work():
+            self.imageGallery.emit(json.dumps(
+                self._image_json("gallery", "--limit", "60") or []))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _image_stream(self, args, on_event, attr, tool=None):
+        """Run the tool with --json, handing each event to on_event. Returns
+        the exit code; the Popen is kept in self.<attr> so Cancel can reach it.
+        `tool` is genesi-ai-image unless the Video page passes its own."""
+        tool = tool or self._image_tool()
+        if not tool:
+            on_event({"event": "error", "text": "the tool was not found"})
+            return 127
+        try:
+            proc = subprocess.Popen(
+                tool + list(args) + ["--json"], stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, encoding="utf-8", errors="replace",
+                start_new_session=True)
+        except OSError as e:
+            on_event({"event": "error", "text": str(e)})
+            return 127
+        setattr(self, attr, proc)
+        try:
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    on_event(json.loads(line))
+                except ValueError:
+                    pass
+            return proc.wait()
+        finally:
+            setattr(self, attr, None)
+
+    @staticmethod
+    def _image_kill(proc):
+        if proc and proc.poll() is None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except (OSError, AttributeError):
+                try:
+                    proc.terminate()
+                except OSError:
+                    pass
+
+    def _image_task(self, args, attr="_image_pull_proc", model_id=""):
+        """A download, removal, import or optimization: events on
+        imagePullEvent, the end on imagePullDone, then a catalog refresh."""
+        def work():
+            state = {"error": ""}
+
+            def on_event(ev):
+                if ev.get("event") == "error":
+                    state["error"] = ev.get("text", "")
+                self.imagePullEvent.emit(json.dumps(ev))
+            rc = self._image_stream(args, on_event, attr)
+            self.imagePullDone.emit(rc == 0, model_id, state["error"])
+            self.loadImageInfo()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def pullImageModel(self, model_id, variant):
+        if getattr(self, "_image_pull_proc", None):
+            return
+        args = ["pull", model_id] + (["--variant", variant] if variant else [])
+        self._image_task(args, model_id=model_id)
+
+    @Slot()
+    def cancelImagePull(self):
+        self._image_kill(getattr(self, "_image_pull_proc", None))
+
+    @Slot(str, str)
+    def removeImageModel(self, model_id, variant):
+        args = ["remove", model_id] + (["--variant", variant] if variant else [])
+        self._image_task(args, attr="_image_rm_proc", model_id=model_id)
+
+    @Slot(str)
+    def importImageModel(self, source):
+        path = QUrl(source).toLocalFile() if source.startswith("file:") else source
+        self._image_task(["import", path], attr="_image_pull_proc", model_id="")
+
+    @Slot(str, str)
+    def optimizeImageModel(self, model_id, qtype):
+        if getattr(self, "_image_pull_proc", None):
+            return
+        self._image_task(["optimize", model_id, "--type", qtype or "q8_0"],
+                         model_id=model_id)
+
+    @Slot()
+    def loadImageLoras(self):
+        def work():
+            self.imageLoras.emit(json.dumps(self._image_json("lora", "list") or []))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str, str)
+    def importImageLora(self, source, name, trigger):
+        """A LoRA the user downloaded. The tool refuses anything but
+        .safetensors (a .ckpt/.pt is a pickle that can run code) and says
+        which base it was trained for."""
+        path = QUrl(source).toLocalFile() if source.startswith("file:") else source
+        args = ["lora", "import", path]
+        if name.strip():
+            args += ["--name", name.strip()]
+        if trigger.strip():
+            args += ["--trigger", trigger.strip()]
+
+        def work():
+            state = {"error": "", "ok": False}
+
+            def on_event(ev):
+                if ev.get("event") == "error":
+                    state["error"] = ev.get("text", "")
+                self.imagePullEvent.emit(json.dumps(ev))
+            rc = self._image_stream(args, on_event, "_image_lora_proc")
+            self.imagePullDone.emit(rc == 0, "lora", state["error"])
+            self.loadImageLoras()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str)
+    def removeImageLora(self, lora_id):
+        def work():
+            self._image_json("lora", "remove", lora_id, timeout=30)
+            self.loadImageLoras()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(result=str)
+    def imageMaskPath(self):
+        """Where the page's mask canvas saves itself: a fresh file each time,
+        so an old mask is never picked up by a later edit."""
+        cache = os.path.join(os.environ.get("XDG_CACHE_HOME")
+                             or os.path.expanduser("~/.cache"), "genesi-ai-image")
+        os.makedirs(cache, exist_ok=True)
+        for old in os.listdir(cache):
+            if old.startswith("paint-") and old.endswith(".png"):
+                try:
+                    os.unlink(os.path.join(cache, old))
+                except OSError:
+                    pass
+        return os.path.join(cache, "paint-%s.png" % uuid.uuid4().hex[:10])
+
+    @Slot(str, str, bool, result=str)
+    def writeImageMask(self, strokes_json, ref, invert):
+        """The area painted on the page, as the mask file the tool reads:
+        white = change, black = keep, at the SOURCE picture's own size.
+
+        The page keeps its strokes in 0..1 picture coordinates and only draws
+        them for show; the file is drawn here with QPainter, because the QML
+        Canvas's own save() is not reliable on every scene-graph backend."""
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QImage, QImageReader, QPainter, QColor, QPen
+        try:
+            strokes = json.loads(strokes_json or "[]")
+        except ValueError:
+            return ""
+        path = QUrl(ref).toLocalFile() if ref.startswith("file:") else ref
+        size = QImageReader(path).size()
+        if not strokes or not size.isValid() or size.isEmpty():
+            return ""
+        w, h = size.width(), size.height()
+        change = QColor(0, 0, 0) if invert else QColor(255, 255, 255)
+        keep = QColor(255, 255, 255) if invert else QColor(0, 0, 0)
+        img = QImage(w, h, QImage.Format_Grayscale8)
+        img.fill(keep)
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.Antialiasing)
+        side = min(w, h)
+        for st in strokes:
+            pts = [QPointF(float(x) * w, float(y) * h) for x, y in (st.get("pts") or [])]
+            if not pts:
+                continue
+            color = keep if st.get("erase") else change
+            width = max(1.0, float(st.get("size", 0.05)) * side)
+            if len(pts) == 1:
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(color)
+                painter.drawEllipse(pts[0], width / 2, width / 2)
+                continue
+            pen = QPen(color, width)
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPolyline(pts)
+        painter.end()
+        out = self.imageMaskPath()
+        return out if img.save(out) else ""
+
+    @Slot()
+    def stopImageServer(self):
+        def work():
+            self._image_json("server", "stop", timeout=30)
+            self.loadImageInfo()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(result=str)
+    def imageLog(self):
+        """The last run's full engine output -- what "Show details" opens."""
+        path = os.path.join(os.environ.get("XDG_CACHE_HOME")
+                            or os.path.expanduser("~/.cache"),
+                            "genesi-ai-image", "last-run.log")
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            return ""
+        # The tail is where the reason is; a bar redrawn 4000 times is not.
+        lines = [l for l in re.split(r"[\r\n]+", text) if l.strip()]
+        return "\n".join(lines[-80:])
+
+    @Slot(str)
+    def copyText(self, text):
+        QGuiApplication.clipboard().setText(text or "")
+
+    @Slot(str)
+    def generateImage(self, opts_json):
+        """opts: {mode: generate|edit|img2img|upscale, model, variant, prompt,
+        negative, ref, strength, width, height, steps, seed, turbo,
+        pauseTurbo}. Every event of the run arrives on imageEvent, ending with
+        exactly one `done` or `error`."""
+        if getattr(self, "_image_proc", None):
+            return
+        try:
+            o = json.loads(opts_json or "{}")
+        except ValueError:
+            return
+        mode = o.get("mode") or "generate"
+        if mode == "upscale":
+            args = ["upscale", "--in", o.get("ref") or "",
+                    "--model", o.get("model") or "upscaler"]
+        else:
+            args = ["generate", "--model", o.get("model") or "flux2-klein",
+                    "--prompt", o.get("prompt") or "", "--mode", mode]
+            if o.get("variant"):
+                args += ["--variant", o["variant"]]
+            if mode in ("edit", "img2img") and o.get("ref"):
+                args += ["--ref", o["ref"]]
+            if mode == "img2img" and o.get("strength") is not None:
+                args += ["--strength", str(float(o["strength"]))]
+            if o.get("negative"):
+                args += ["--negative", o["negative"]]
+            for key, flag in (("width", "--width"), ("height", "--height"),
+                              ("steps", "--steps")):
+                if int(o.get(key) or 0) > 0:
+                    args += [flag, str(int(o[key]))]
+            if o.get("seed") is not None and int(o.get("seed")) >= 0:
+                args += ["--seed", str(int(o["seed"]))]
+            if o.get("turbo"):
+                args += ["--turbo"]
+            if o.get("vary"):
+                args += ["--vary"]
+            # Pictures 2, 3...: references the prompt can point at.
+            for ref in (o.get("refs") or []):
+                if ref:
+                    args += ["--extra-ref", QUrl(ref).toLocalFile() if str(ref).startswith("file:") else ref]
+            # Only on an edit: a mask or kept faces need a source picture.
+            if mode in ("edit", "img2img") and o.get("mask"):
+                args += ["--mask", o["mask"]]
+            if mode in ("edit", "img2img") and o.get("protectFaces"):
+                args += ["--protect-faces"]
+            for lo in (o.get("loras") or []):
+                if lo.get("id"):
+                    args += ["--lora", "%s:%g" % (lo["id"], float(lo.get("weight", 0.8)))]
+
+        def work():
+            self.imageBusy.emit(True)
+            # Turbo's llama-server holds its model in VRAM for as long as it
+            # runs. Generating beside it still works -- sd-cli fits what it
+            # can and spills the rest to RAM -- but several times slower, so by
+            # default it steps aside and comes back with the same model.
+            resume = None
+            if (o.get("pauseTurbo", True) and mode != "upscale" and self._turbo
+                    and self._turbo_model and not self._remote_turbo()):
+                resume = (self._turbo_model, self._turbo_spec)
+                self.imageEvent.emit(json.dumps(
+                    {"event": "status", "text": "pausing the chat Turbo to free the GPU"}))
+                self._stop_turbo()
+            ended = {"v": False}
+
+            def on_event(ev):
+                if ev.get("event") in ("done", "error"):
+                    ended["v"] = True
+                self.imageEvent.emit(json.dumps(ev))
+            try:
+                rc = self._image_stream(args, on_event, "_image_proc")
+                if not ended["v"]:
+                    self.imageEvent.emit(json.dumps(
+                        {"event": "error",
+                         "text": "cancelled" if rc in (-15, 130, 143)
+                                 else "stopped (exit %s)" % rc}))
+            finally:
+                self.imageBusy.emit(False)
+                if resume:
+                    self.imageEvent.emit(json.dumps(
+                        {"event": "status", "text": "restarting the chat Turbo"}))
+                    self.setTurbo(True, resume[0], resume[1])
+                self.loadImageGallery()
+                self.loadImageInfo()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def cancelImage(self):
+        self._image_kill(getattr(self, "_image_proc", None))
+
+    @Slot(str, str, str)
+    def enhanceImagePrompt(self, model, text, mode):
+        text = (text or "").strip()
+        if not text:
+            return
+
+        def work():
+            if not model:
+                self.imagePromptEnhanced.emit(
+                    "", "No chat model yet -- download one in Models first.")
+                return
+            system = (self._IMAGE_EDIT_SYSTEM if mode == "edit"
+                      else self._IMAGE_ENHANCE_SYSTEM)
+            try:
+                reply = self._chat_once(model, system, text) or ""
+            except Exception as exc:
+                self.imagePromptEnhanced.emit("", str(exc))
+                return
+            # Reasoning models think out loud before answering.
+            reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.S).strip()
+            reply = reply.strip().strip('"“”').strip()
+            self.imagePromptEnhanced.emit(reply, "" if reply else
+                                          "The model returned nothing.")
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, result=str)
+    def prepareImageInput(self, source):
+        """Any picture the user picked or dropped, as an RGB PNG sd-cli reads.
+
+        sd-cli reads PNG and JPEG (WebP support is not built in), ignores EXIF
+        rotation, and a 6000px phone photo would be scaled down anyway -- so
+        every input is normalised here once: rotated upright, flattened onto
+        white if it has transparency, at most 2048 on the long side."""
+        from PySide6.QtGui import QImage, QImageReader, QPainter, QColor
+        path = source or ""
+        if path.startswith("file:"):
+            path = QUrl(path).toLocalFile()
+        if not os.path.isfile(path):
+            return json.dumps({"error": "file not found"})
+        reader = QImageReader(path)
+        reader.setAutoTransform(True)
+        img = reader.read()
+        if img.isNull():
+            return json.dumps({"error": "not an image Genesi can read"})
+        if max(img.width(), img.height()) > 2048:
+            img = img.scaled(2048, 2048, Qt.KeepAspectRatio,
+                             Qt.SmoothTransformation)
+        if img.hasAlphaChannel():
+            flat = QImage(img.size(), QImage.Format_RGB32)
+            flat.fill(QColor("white"))
+            painter = QPainter(flat)
+            painter.drawImage(0, 0, img)
+            painter.end()
+            img = flat
+        img = img.convertToFormat(QImage.Format_RGB888)
+        cache = os.path.join(os.environ.get("XDG_CACHE_HOME")
+                             or os.path.expanduser("~/.cache"), "genesi-ai-image")
+        os.makedirs(cache, exist_ok=True)
+        out = os.path.join(cache, "input-%s.png" % uuid.uuid4().hex[:12])
+        if not img.save(out, "PNG"):
+            return json.dumps({"error": "could not write " + out})
+        return json.dumps({"path": out, "width": img.width(),
+                           "height": img.height(), "name": os.path.basename(path)})
+
+    def _in_image_output(self, path):
+        base = getattr(self, "_image_output_dir", "")
+        if not base:
+            return False
+        p = os.path.realpath(path)
+        return p.startswith(os.path.realpath(base) + os.sep)
+
+    @Slot(str, result=bool)
+    def deleteImage(self, path):
+        """Only pictures the Image page made: anything else in that folder,
+        or anywhere else, is the user's and stays."""
+        if not self._in_image_output(path) or not path.lower().endswith(".png"):
+            return False
+        for p in (path, os.path.splitext(path)[0] + ".json"):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        self.loadImageGallery()
+        return True
+
+    @Slot(str)
+    def copyImage(self, path):
+        from PySide6.QtGui import QImage
+        img = QImage(path)
+        if not img.isNull():
+            QGuiApplication.clipboard().setImage(img)
+
+    @Slot(str, str, result=bool)
+    def saveImageAs(self, path, target):
+        dest = QUrl(target).toLocalFile() if target.startswith("file:") else target
+        try:
+            shutil.copyfile(path, dest)
+            return True
+        except OSError:
+            return False
+
+    @Slot(str)
+    def openImageExternally(self, path):
+        try:
+            subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+    @Slot()
+    def openImageFolder(self):
+        base = getattr(self, "_image_output_dir", "")
+        if base:
+            os.makedirs(base, exist_ok=True)
+            self.openImageExternally(base)
+
+    @Slot(str)
+    def installImageEngine(self, kind):
+        """The image engine from [genesi-image]: the Vulkan build (any GPU) or
+        the CUDA build (NVIDIA + proprietary driver, the fast one). Both own
+        the same files, so switching removes the other first -- with -Rdd, as
+        Turbo's backend switch does, since nothing hard-depends on either.
+        In a terminal the user can read; pkexec when there is no terminal."""
+        kind = "cuda" if str(kind).lower() == "cuda" else "vulkan"
+        pkg = "genesi-sd-cpp-cuda" if kind == "cuda" else "genesi-sd-cpp"
+        other = "genesi-sd-cpp" if kind == "cuda" else "genesi-sd-cpp-cuda"
+        # A running warm server holds the old engine's files open.
+        self._image_json("server", "stop", timeout=30)
+        script = (
+            "#!/bin/bash\n"
+            "echo '== Genesi AI Mode — installing the image engine (%s) =='\n"
+            "echo\n"
+            "sudo pacman -Sy\n"
+            "sudo sh -c \"pacman -Rdd --noconfirm %s 2>/dev/null; "
+            "pacman -S --needed %s\"\n"
+            "status=$?\necho\n"
+            "if [ $status -eq 0 ]; then echo '✓ Done — go back to the Monitor.'; "
+            "else echo \"✗ pacman exited with code $status — scroll up for the "
+            "reason.\"; fi\n"
+            "echo 'Press Enter to close this window.'; read -r\n"
+            "exit $status\n") % (kind.upper(), other, pkg)
+        proc = self._spawn_install_terminal(script)
+
+        def wait_terminal():
+            try:
+                proc.wait(timeout=7200)
+            except Exception:
+                pass
+            self._image_engine_result(pkg)
+
+        def via_pkexec():
+            self.imageEngineStatus.emit("installing")
+            try:
+                subprocess.run(["pkexec", "sh", "-c",
+                                "pacman -Rdd --noconfirm %s 2>/dev/null; "
+                                "pacman -Sy --needed --noconfirm %s" % (other, pkg)],
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=3600)
+            except (OSError, subprocess.SubprocessError):
+                pass
+            self._image_engine_result(pkg)
+
+        if proc is not None:
+            self.imageEngineStatus.emit("terminal")
+            threading.Thread(target=wait_terminal, daemon=True).start()
+        elif shutil.which("pkexec"):
+            threading.Thread(target=via_pkexec, daemon=True).start()
+        else:
+            self.imageEngineStatus.emit("failed")
+
+    def _image_engine_result(self, pkg):
+        try:
+            ok = subprocess.run(["pacman", "-Qq", pkg], capture_output=True,
+                                timeout=10).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            ok = bool(shutil.which("genesi-sd-cli"))
+        self.imageEngineStatus.emit("ready" if ok else "failed")
+        self.loadImageInfo()
+        self.loadVideoInfo()
+
+    # ── Video (genesi-ai-video) ─────────────────────────────────────────────
+    # The same shape as the Image page: genesi-ai-video owns the catalog, the
+    # downloads and the runs, and this relays its JSON lines. It runs on the
+    # Image page's engine and shares its LoRA store, so installing the engine
+    # and importing a LoRA go through the image slots above.
+    _VIDEO_ENHANCE_SYSTEM = (
+        "You write prompts for a text-to-video model. The user gives a short "
+        "idea in any language. Reply with ONE prompt in English, as one "
+        "flowing description of at most 80 words: the subject and what it "
+        "DOES (the motion, in order), the setting, the lighting, then the "
+        "camera (static, slow push-in, tracking, handheld...). Keep every "
+        "detail the user gave and invent nothing that contradicts it. No "
+        "preamble, no quotes, no lists -- only the prompt.")
+    _VIDEO_ANIMATE_SYSTEM = (
+        "You write prompts for an image-to-video model that animates a given "
+        "picture. The user says, in any language, what should happen. Reply "
+        "with ONE prompt in English of at most 60 words describing the "
+        "MOTION and the camera, not the picture's contents: what moves, how, "
+        "in what order, and how the camera moves. Keep the people as they "
+        "are. No preamble, no quotes -- only the prompt.")
+    _VIDEO_CONFIG = os.path.expanduser("~/.config/genesi-ai-monitor/video.json")
+
+    @staticmethod
+    def _video_tool():
+        p = shutil.which("genesi-ai-video")
+        if p:
+            return [p]
+        here = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "genesi-ai-video")
+        return [sys.executable, here] if os.path.exists(here) else None
+
+    def _video_json(self, *args, timeout=30):
+        tool = self._video_tool()
+        if not tool:
+            return None
+        try:
+            r = subprocess.run(tool + list(args) + ["--json"], capture_output=True,
+                               timeout=timeout, encoding="utf-8", errors="replace")
+            lines = [l for l in (r.stdout or "").splitlines() if l.strip()]
+            return json.loads(lines[-1]) if lines else None
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+
+    @Slot(result=str)
+    def videoPrefs(self):
+        """Turbo, low memory and the last model, remembered across launches.
+        Low memory starts ON for cards under 12 GB: a clip that fails at the
+        end of ten minutes is worse than one that takes a little longer."""
+        try:
+            with open(self._VIDEO_CONFIG) as fh:
+                p = json.load(fh)
+        except (OSError, ValueError):
+            p = {}
+        return json.dumps({"turbo": p.get("turbo", True), "model": p.get("model", ""),
+                           "mode": p.get("mode", "text"),
+                           "lowMemory": p.get("lowMemory")})
+
+    @Slot(str)
+    def setVideoPrefs(self, prefs_json):
+        try:
+            with open(self._VIDEO_CONFIG) as fh:
+                prefs = json.load(fh)
+        except (OSError, ValueError):
+            prefs = {}
+        try:
+            prefs.update(json.loads(prefs_json or "{}"))
+            os.makedirs(os.path.dirname(self._VIDEO_CONFIG), exist_ok=True)
+            tmp = self._VIDEO_CONFIG + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(prefs, fh)
+            os.replace(tmp, self._VIDEO_CONFIG)
+        except (OSError, ValueError, TypeError):
+            pass
+
+    @Slot()
+    def loadVideoInfo(self):
+        def work():
+            if not self._video_tool():
+                self.videoInfo.emit(json.dumps({"tool": False}))
+                return
+            status = self._video_json("status") or {}
+            catalog = self._video_json("catalog") or []
+            self._video_output_dir = status.get("output_dir") or ""
+            self.videoInfo.emit(json.dumps(
+                {"tool": True, "status": status, "catalog": catalog}))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def loadVideoGallery(self):
+        def work():
+            self.videoGallery.emit(json.dumps(
+                self._video_json("gallery", "--limit", "60") or []))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _video_task(self, args, attr="_video_pull_proc", model_id=""):
+        def work():
+            state = {"error": ""}
+
+            def on_event(ev):
+                if ev.get("event") == "error":
+                    state["error"] = ev.get("text", "")
+                self.videoPullEvent.emit(json.dumps(ev))
+            rc = self._image_stream(args, on_event, attr, tool=self._video_tool())
+            self.videoPullDone.emit(rc == 0, model_id, state["error"])
+            self.loadVideoInfo()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def pullVideoModel(self, model_id, variant):
+        if getattr(self, "_video_pull_proc", None):
+            return
+        args = ["pull", model_id] + (["--variant", variant] if variant else [])
+        self._video_task(args, model_id=model_id)
+
+    @Slot()
+    def cancelVideoPull(self):
+        self._image_kill(getattr(self, "_video_pull_proc", None))
+
+    @Slot(str, str)
+    def removeVideoModel(self, model_id, variant):
+        args = ["remove", model_id] + (["--variant", variant] if variant else [])
+        self._video_task(args, attr="_video_rm_proc", model_id=model_id)
+
+    @Slot(result=str)
+    def videoLog(self):
+        """The last clip's full engine output -- what "Show details" opens."""
+        path = os.path.join(os.environ.get("XDG_CACHE_HOME")
+                            or os.path.expanduser("~/.cache"),
+                            "genesi-ai-video", "last-run.log")
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            return ""
+        lines = [l for l in re.split(r"[\r\n]+", text) if l.strip()]
+        return "\n".join(lines[-80:])
+
+    @Slot(str, result=str)
+    def prepareVideoInput(self, source):
+        """A video the user picked or dropped (to restyle or continue): kept
+        where it is -- only checked to exist and to look like a video."""
+        path = source or ""
+        if path.startswith("file:"):
+            path = QUrl(path).toLocalFile()
+        if not os.path.isfile(path):
+            return json.dumps({"error": "file not found"})
+        if not path.lower().endswith((".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".gif")):
+            return json.dumps({"error": "not a video Genesi can read"})
+        return json.dumps({"path": path, "name": os.path.basename(path)})
+
+    @Slot(str)
+    def generateVideo(self, opts_json):
+        """opts: {mode, model, variant, prompt, negative, image, endImage,
+        video, seconds, size, aspect, steps, seed, turbo, lowMemory,
+        lightVae, loras, pauseTurbo}. Every event arrives on videoEvent,
+        ending with exactly one `done` or `error`."""
+        if getattr(self, "_video_proc", None):
+            return
+        try:
+            o = json.loads(opts_json or "{}")
+        except ValueError:
+            return
+
+        def local(p):
+            p = p or ""
+            return QUrl(p).toLocalFile() if p.startswith("file:") else p
+        mode = o.get("mode") or "t2v"
+        args = ["generate", "--model", o.get("model") or "wan22-ti2v-5b",
+                "--prompt", o.get("prompt") or "", "--mode", mode]
+        if o.get("variant"):
+            args += ["--variant", o["variant"]]
+        if o.get("image") and mode in ("i2v", "flf2v", "r2v", "v2v"):
+            args += ["--image", local(o["image"])]
+        if o.get("endImage") and mode == "flf2v":
+            args += ["--end-image", local(o["endImage"])]
+        if o.get("video") and mode in ("v2v", "extend"):
+            args += ["--video", local(o["video"])]
+        if o.get("seconds"):
+            args += ["--seconds", str(float(o["seconds"]))]
+        if o.get("size"):
+            args += ["--size", str(o["size"])]
+        if o.get("aspect"):
+            args += ["--aspect", str(o["aspect"])]
+        if int(o.get("steps") or 0) > 0:
+            args += ["--steps", str(int(o["steps"]))]
+        if o.get("seed") is not None and int(o.get("seed")) >= 0:
+            args += ["--seed", str(int(o["seed"]))]
+        if o.get("negative"):
+            args += ["--negative", o["negative"]]
+        if o.get("turbo"):
+            args += ["--turbo"]
+        if o.get("lowMemory"):
+            args += ["--low-memory"]
+        if o.get("lightVae"):
+            args += ["--light-vae"]
+        for lo in (o.get("loras") or []):
+            if lo.get("id"):
+                args += ["--lora", "%s:%g" % (lo["id"], float(lo.get("weight", 0.8)))]
+
+        def work():
+            self.videoBusy.emit(True)
+            # Same as a picture: the chat Turbo's model holds VRAM, so it
+            # steps aside for the clip and comes back with the same model.
+            resume = None
+            if (o.get("pauseTurbo", True) and self._turbo and self._turbo_model
+                    and not self._remote_turbo()):
+                resume = (self._turbo_model, self._turbo_spec)
+                self.videoEvent.emit(json.dumps(
+                    {"event": "status", "text": "pausing the chat Turbo to free the GPU"}))
+                self._stop_turbo()
+            ended = {"v": False}
+
+            def on_event(ev):
+                if ev.get("event") in ("done", "error"):
+                    ended["v"] = True
+                self.videoEvent.emit(json.dumps(ev))
+            try:
+                rc = self._image_stream(args, on_event, "_video_proc", tool=self._video_tool())
+                if not ended["v"]:
+                    self.videoEvent.emit(json.dumps(
+                        {"event": "error",
+                         "text": "cancelled" if rc in (-15, 130, 143)
+                                 else "stopped (exit %s)" % rc}))
+            finally:
+                self.videoBusy.emit(False)
+                if resume:
+                    self.videoEvent.emit(json.dumps(
+                        {"event": "status", "text": "restarting the chat Turbo"}))
+                    self.setTurbo(True, resume[0], resume[1])
+                self.loadVideoGallery()
+                self.loadVideoInfo()
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def cancelVideo(self):
+        self._image_kill(getattr(self, "_video_proc", None))
+
+    @Slot(str, str, str)
+    def enhanceVideoPrompt(self, model, text, mode):
+        text = (text or "").strip()
+        if not text:
+            return
+
+        def work():
+            if not model:
+                self.videoPromptEnhanced.emit(
+                    "", "No chat model yet -- download one in Models first.")
+                return
+            system = (self._VIDEO_ANIMATE_SYSTEM if mode in ("i2v", "flf2v", "extend")
+                      else self._VIDEO_ENHANCE_SYSTEM)
+            try:
+                reply = self._chat_once(model, system, text) or ""
+            except Exception as exc:
+                self.videoPromptEnhanced.emit("", str(exc))
+                return
+            reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.S).strip()
+            reply = reply.strip().strip('"“”').strip()
+            self.videoPromptEnhanced.emit(reply, "" if reply else
+                                          "The model returned nothing.")
+        threading.Thread(target=work, daemon=True).start()
+
+    def _in_video_output(self, path):
+        base = getattr(self, "_video_output_dir", "")
+        if not base:
+            return False
+        return os.path.realpath(path).startswith(os.path.realpath(base) + os.sep)
+
+    @Slot(str, result=bool)
+    def deleteVideo(self, path):
+        """Only clips the Video page made, with their poster and notes."""
+        if not self._in_video_output(path) or not path.lower().endswith((".mp4", ".avi", ".webm")):
+            return False
+        stem = os.path.splitext(path)[0]
+        for p in (path, stem + ".json", stem + ".jpg", stem + ".wav"):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        self.loadVideoGallery()
+        return True
+
+    @Slot(str, str, result=bool)
+    def saveVideoAs(self, path, target):
+        dest = QUrl(target).toLocalFile() if target.startswith("file:") else target
+        try:
+            shutil.copyfile(path, dest)
+            return True
+        except OSError:
+            return False
+
+    @Slot()
+    def openVideoFolder(self):
+        base = getattr(self, "_video_output_dir", "")
+        if base:
+            os.makedirs(base, exist_ok=True)
+            self.openImageExternally(base)
 
 
 def main():
@@ -2284,6 +3860,27 @@ def main():
         pass
 
     engine = QQmlApplicationEngine()
+    # ── The colour scheme ────────────────────────────────────────────────
+    #
+    # Two things, and both are needed. The QPalette is what Qt draws its OWN
+    # widgets from -- popups, scrollbars, menus, Fusion buttons -- and this app
+    # never set one, so those arrived in Fusion's default LIGHT palette. That is
+    # the "dark window with a few white buttons in it" look: not an app half
+    # following the scheme, an app following nothing while Qt filled the gaps.
+    #
+    # The context properties are what the shared UI kit's Theme.qml and
+    # GlassCard.qml paint from. Whether they follow the desktop or keep the
+    # Genesi navy is Genesi Center's one switch; either way the two agree, which
+    # is the part that was broken.
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from genesi_palette import install as _install_palette
+        _install_palette(app, engine)
+    except Exception:
+        # A palette is not worth failing to start over. Without it the app
+        # looks exactly as it did before this existed.
+        pass
+
     backend = Backend()
     app.aboutToQuit.connect(backend._stop_turbo)   # don't leave llama-server up
     engine.rootContext().setContextProperty("backend", backend)

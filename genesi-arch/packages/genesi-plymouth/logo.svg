@@ -1,4 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+<!--
+  viewBox is shifted down by 9, not 0, and that is the whole point.
+
+  The leaf outline ends at y=256 — exactly the old viewBox edge — and it is
+  a 13px STROKE, which paints 6.5px either side of the path. So the bottom
+  of the leaf reached y=262.5 and was clipped by the viewBox: the tip came
+  out flat on the boot splash.
+
+  With the stroke counted, the real ink runs y=11.5 to y=262.5 (251 tall,
+  centred on y=137). A 256-tall box starting at y=9 holds it with 2.5px to
+  spare top and bottom. Keeping the box 256 square means the rendered logo
+  stays exactly the size it is today — only the clipping goes away.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 9 256 256" fill="none">
   <path d="M128 18C76 52 48 104 48 157c0 45 31 76 80 99 49-23 80-54 80-99 0-53-28-105-80-139Z" stroke="#8BE8C8" stroke-width="13" stroke-linejoin="round"/>
   <path d="M128 69v151M128 112 87 138M128 151l-43 28M128 112l41 26M128 151l43 28" stroke="#8BE8C8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

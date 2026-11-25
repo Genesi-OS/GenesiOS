@@ -37,6 +37,10 @@ on:
       - 'genesi-arch/**'
       - '!genesi-arch/packages/**'
       - '!genesi-arch/repo/**'
+      # The standalone AppImage has its own release workflow. Live-side
+      # migration code under archiso/** remains an ISO input.
+      - '!genesi-arch/genesi-migrate/**'
+      - '!genesi-arch/ci/migrate-*.py'
       - '.github/workflows/iso-pipeline.yml'
       - '!**/*.md'
   workflow_dispatch:
@@ -60,24 +64,36 @@ jobs:
   # Non-push events (workflow_run / tag / manual) always proceed.
   gate:
     runs-on: ubuntu-latest
-    # A checkout and one `git diff`. Real runs take 3 seconds to under two
-    # minutes; ten is a stall, not a slow day. Without this, a hung step runs to
-    # GitHub's 6-hour default — which is exactly what happened on 2026-08-20,
-    # when actions/checkout wedged and this job sat "in progress" for over an
-    # hour before anyone looked at it. Every job below is capped for the same
-    # reason: a hang should cost minutes and say so, not burn an afternoon of
-    # Actions minutes pretending to work.
-    timeout-minutes: 10
+    # Two API calls at most. Real runs are seconds; five minutes is a stall,
+    # not a slow day. Without a cap a hung step runs to GitHub's 6-hour
+    # default, which is what happened on 2026-08-20 when actions/checkout
+    # wedged and this job sat "in progress" for over an hour. The checkout it
+    # was capping is gone (see below) after it wedged a second time on
+    # 2026-09-17, so the cap is now here for the API calls alone. Every job
+    # below is capped for the same reason: a hang should cost minutes and say
+    # so, not burn an afternoon of Actions minutes pretending to work.
+    timeout-minutes: 5
     outputs:
       run: ${{ steps.decide.outputs.run }}
     steps:
-      - name: 📥 Checkout
-        if: github.event_name == 'push'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      # No checkout. This job's whole job is to name the files a push touched,
+      # and it used to clone the entire repository with fetch-depth: 0 to do
+      # it -- so the ISO pipeline's first act was the heaviest git operation in
+      # it, for one `git diff --name-only`.
+      #
+      # That fetch has now wedged twice. The comment above the timeout records
+      # 2026-08-20; on 2026-09-17 it hung again, ten minutes inside `git fetch
+      # --prune`, and the timeout cancelled the run -- so the fix for the boot
+      # test never even got a build. The API answers the same question in one
+      # request with nothing to clone and nothing to hang, and the pipeline no
+      # longer has a git clone in front of it.
+      #
+      # On any doubt this decides run=true. A wrong `true` costs one ISO built
+      # slightly early; a wrong `false` means no ISO at all, silently.
       - name: Decidir se a ISO deve rodar agora
         id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           # Only branch pushes get the defer-to-publish treatment. Tag pushes
@@ -87,12 +103,24 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           BEFORE="${{ github.event.before }}"
-          RANGE="${BEFORE}..${{ github.sha }}"
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
-             || ! git rev-parse "$BEFORE" >/dev/null 2>&1; then
-            RANGE="${{ github.sha }}~1..${{ github.sha }}"
+          CHANGED=""
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            # --paginate: the compare endpoint returns 300 files per page.
+            CHANGED="$(gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/compare/${BEFORE}...${GITHUB_SHA}" \
+              --jq '.files[].filename' 2>/dev/null || true)"
           fi
-          CHANGED="$(git diff --name-only "$RANGE" 2>/dev/null || git show --name-only --pretty=format: "${{ github.sha }}")"
+          # A forced push or a new branch has no usable `before`; the commit
+          # itself still names its files.
+          if [ -z "$CHANGED" ]; then
+            CHANGED="$(gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/commits/${GITHUB_SHA}" \
+              --jq '.files[].filename' 2>/dev/null || true)"
+          fi
+          if [ -z "$CHANGED" ]; then
+            echo "::warning::could not list the files this push touched — building the ISO anyway"
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           echo "Arquivos alterados neste push:"; echo "$CHANGED"
           if echo "$CHANGED" | grep -qE '^genesi-arch/(packages|repo)/'; then
             echo "→ push também mexeu em packages/repo: adiando a ISO para o run pós-publish (workflow_run)."
@@ -156,6 +184,31 @@ jobs:
           mv /etc/pacman.conf.bak /etc/pacman.conf
           pacman-key --init || true
           pacman-key --populate archlinux cachyos || true
+
+          # ── Trust the Genesi key IN THIS CONTAINER ───────────────────────
+          #
+          # Once [genesi] is signed, mkarchiso and pacstrap install genesi-*
+          # packages from it, and `SigLevel = Optional TrustAll` rejects a
+          # signature whose key the container has never seen -- so the ISO
+          # build would die with `key ... is unknown`, exactly the way every
+          # machine's `pacman -Sy` did on 2026-08-29. Nothing would have caught
+          # it until the first build after signing was switched on.
+          #
+          # No chicken-and-egg: the PUBLIC key is a file in this checkout, not
+          # something fetched from the repository we are about to verify.
+          # Harmless before signing exists -- it just trusts a key nothing is
+          # signed with yet.
+          if [ -f genesi-arch/packages/genesi-keyring/genesi.gpg ]; then
+            pacman-key --add genesi-arch/packages/genesi-keyring/genesi.gpg || true
+            while IFS=: read -r _fpr _rest; do
+              if [ -n "${_fpr}" ]; then
+                pacman-key --lsign-key "${_fpr}" || true
+              fi
+            done < genesi-arch/packages/genesi-keyring/genesi-trusted
+            echo "Trusted the Genesi signing key in this container."
+          else
+            echo "No Genesi signing key in the checkout yet — nothing to trust."
+          fi
           # Validation tools (now verify against the fresh keyring). If a verified
           # sync STILL trips (db caught mid-rotation), retry once with
           # SigLevel=Never — acceptable for CI build/validation tooling.
@@ -243,6 +296,31 @@ jobs:
           pacman-key --init || true
           pacman-key --populate archlinux cachyos || true
 
+          # ── Trust the Genesi key IN THIS CONTAINER ───────────────────────
+          #
+          # Once [genesi] is signed, mkarchiso and pacstrap install genesi-*
+          # packages from it, and `SigLevel = Optional TrustAll` rejects a
+          # signature whose key the container has never seen -- so the ISO
+          # build would die with `key ... is unknown`, exactly the way every
+          # machine's `pacman -Sy` did on 2026-08-29. Nothing would have caught
+          # it until the first build after signing was switched on.
+          #
+          # No chicken-and-egg: the PUBLIC key is a file in this checkout, not
+          # something fetched from the repository we are about to verify.
+          # Harmless before signing exists -- it just trusts a key nothing is
+          # signed with yet.
+          if [ -f genesi-arch/packages/genesi-keyring/genesi.gpg ]; then
+            pacman-key --add genesi-arch/packages/genesi-keyring/genesi.gpg || true
+            while IFS=: read -r _fpr _rest; do
+              if [ -n "${_fpr}" ]; then
+                pacman-key --lsign-key "${_fpr}" || true
+              fi
+            done < genesi-arch/packages/genesi-keyring/genesi-trusted
+            echo "Trusted the Genesi signing key in this container."
+          else
+            echo "No Genesi signing key in the checkout yet — nothing to trust."
+          fi
+
           # mkarchiso roda como root; prepare-and-build.sh espera um usuário
           # NÃO-root + sudo (recusa rodar como root). Criamos esse usuário.
           # archiso + the host tools the profile's bootmodes need:
@@ -301,9 +379,116 @@ jobs:
           echo "ISO_PATH=$ISO" >> "$GITHUB_ENV"
           echo "✅ ISO produzida: $ISO ($(du -h "$ISO" | cut -f1))"
 
+      # ── Can the binaries inside actually run? ────────────────────────
+      #
+      # Between "the packages resolve" (job 1) and "the image boots" (the QEMU
+      # test below) there was a gap wide enough to publish an ISO that booted
+      # perfectly and could not install anything: calamares was linked against
+      # libboost_python314.so.1.91.0 while the image carried 1.92.0. Package
+      # NAMES resolved, so the dry-run was happy. The image booted, so the boot
+      # test was happy. Nobody asked whether the binaries could start.
+      #
+      # Reads ELF headers straight out of the built airootfs — no chroot, no
+      # emulation, a few seconds. Runs BEFORE the boot test because it is
+      # cheaper and its answer is more specific.
+      - name: 🔗 Bibliotecas dos binários da ISO
+        shell: bash
+        run: |
+          set -uo pipefail
+          rc=0
+          python3 genesi-arch/ci/airootfs-linkage-test.py             genesi-arch/build/x86_64/airootfs || rc=$?
+          case "${rc}" in
+            0) echo "✅ Todo binário achou suas bibliotecas." ;;
+            2) echo "::warning::não deu pra verificar a linkagem (airootfs já limpo) — publicação segue" ;;
+            *) echo "::error::a ISO contém binário que não inicia — publicação bloqueada"; exit 1 ;;
+          esac
+
       - name: 📊 Checksum da ISO
         run: |
           sha256sum "$ISO_PATH" | tee "$ISO_PATH.sha256"
+
+      # ── Does the image actually turn on? ─────────────────────────────────
+      #
+      # Deliberately placed HERE: after the ISO exists, before ANY publish step.
+      # The R2 upload replaces one fixed object, so without a gate in this exact
+      # position an unbootable build reaches the public download link with
+      # nothing in between. validate-install (job 1) proves the package set
+      # resolves and pacstraps; it cannot see anything downstream of "the image
+      # starts", which is where this project's real failures have all lived.
+      #
+      # Installed non-fatally and in its own step: a package rename in qemu or
+      # edk2 must be able to weaken the test, never to stop Genesi shipping.
+      - name: 🧰 Instalar QEMU para o teste de boot
+        continue-on-error: true
+        shell: bash
+        run: |
+          # Retried, because the sync is the flaky part and not the install.
+          # Build #697 died of `cachyos-extra-v3: signature from "CachyOS" is
+          # invalid` -- which is a truncated or stale database on the mirror,
+          # not a trust problem: -Syy re-downloads every db instead of reusing
+          # the broken one. Without the retry a mirror hiccup upstream left the
+          # runner with no qemu, and the boot test then reported itself
+          # untestable, which (see the next step) was taking the whole build
+          # down with it.
+          pkgs="qemu-system-x86 edk2-ovmf libarchive"
+          for attempt in 1 2 3; do
+            if pacman -Syy --noconfirm --needed $pkgs; then
+              echo "qemu ready (attempt $attempt)"
+              exit 0
+            fi
+            echo "::warning::pacman could not install QEMU/OVMF (attempt $attempt/3)"
+            # A genuinely rotated key needs the keyrings, and asking for them
+            # costs one download on a run that is already failing.
+            pacman -S --noconfirm --needed archlinux-keyring cachyos-keyring \
+              2>/dev/null || true
+            sleep 15
+          done
+          echo "::warning::could not install QEMU/OVMF — the boot test will report itself untestable"
+
+      - name: 🔌 Teste de boot da ISO (QEMU)
+        # `shell: bash` is not enough on its own, which cost build #697.
+        #
+        # The comment that used to sit here said this line was what let exit 2
+        # ("could not be tested") stay a warning instead of blocking the
+        # publish. It is not: GitHub runs `shell: bash` as
+        # `bash --noprofile --norc -e -o pipefail`, so -e is still on, and the
+        # script exiting 2 aborted the step before `rc=$?` on the next line
+        # ever ran. The `case` below has therefore never executed on a
+        # non-zero exit. A CachyOS mirror served one bad database, qemu did
+        # not install, the test said "untestable" -- and a build whose ISO was
+        # fine stopped before it reached R2.
+        #
+        # `|| rc=$?` is what actually reads the status: a command whose
+        # failure is handled by `||` does not trip -e.
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p /tmp/bootlogs
+          # No KVM on a standard runner means TCG, which is roughly an order of
+          # magnitude slower — hence the generous per-stage budget. It is spent
+          # only when something is wrong; a healthy boot matches its marker and
+          # moves on.
+          if [ -r /dev/kvm ]; then echo "KVM available"; else echo "No /dev/kvm — falling back to TCG"; fi
+          rc=0
+          bash genesi-arch/ci/iso-boot-test.sh "$ISO_PATH" \
+            --timeout 600 --logs /tmp/bootlogs || rc=$?
+          case "$rc" in
+            0) echo "✅ A ISO bootou." ;;
+            2) echo "::warning::O teste de boot não pôde rodar — a ISO NÃO foi provada bootável, mas a publicação segue." ;;
+            *) echo "::error::A ISO construída NÃO boota — publicação bloqueada."; exit 1 ;;
+          esac
+
+      # The serial consoles are the only record of what the machine actually
+      # did. Keep them even when the test passed: the run where something
+      # starts booting slowly is the one you want to compare against.
+      - name: 📤 Upload dos logs de boot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iso-boot-serial-logs
+          path: /tmp/bootlogs/**
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: 📤 Upload ISO (artifact)
         uses: actions/upload-artifact@v4
@@ -369,6 +554,72 @@ jobs:
             --s3-no-check-bucket
 
           echo "✅ Uploaded single-file ISO to R2 (one object, overwritten — \$0 storage)"
+
+          # ── Prove it. ────────────────────────────────────────────────────
+          #
+          # "It overwrites a fixed key" is a property of the line above, and
+          # every line above has been correct right up until the day it wasn't.
+          # The bucket is on a 10 GB free tier and the ISO is ~3.2 GB, so THREE
+          # of them is a bill. Nothing was checking; this checks.
+          #
+          # Reports, never deletes: extra objects are the user's data, and a
+          # pipeline that quietly removes things from a bucket is a worse
+          # problem than the one it is solving. The incomplete-multipart
+          # cleanup above is the only thing here allowed to remove anything,
+          # because an aborted upload is not data — it is debris.
+          echo
+          echo "🔎 Conferindo que o bucket tem UMA ISO só…"
+          if listing="$(rclone lsjson "R2:${R2_BUCKET}" --s3-no-check-bucket 2>/dev/null)"; then
+            # `rclone lsjson` pretty-prints, so there is whitespace around the
+            # colons. A pattern assuming "Name":"..." matched nothing at all and
+            # cheerfully reported zero ISOs -- it would have waved through a
+            # bucket holding ten of them. Caught by running it against a sample
+            # listing before it ever saw the real bucket.
+            isos="$(printf '%s' "${listing}" \
+              | grep -oE '"Name"[[:space:]]*:[[:space:]]*"[^"]*\.iso"' \
+              | sed -E 's/.*"([^"]*\.iso)"$/\1/' || true)"
+            n_isos="$(printf '%s\n' "${isos}" | sed '/^$/d' | wc -l | tr -d ' ')"
+            total_bytes="$(printf '%s' "${listing}" \
+              | grep -oE '"Size"[[:space:]]*:[[:space:]]*[0-9]+' \
+              | grep -oE '[0-9]+$' \
+              | awk '{s+=$1} END {print s+0}')"
+            total_gb="$(awk -v b="${total_bytes}" 'BEGIN{printf "%.2f", b/1073741824}')"
+
+            # A listing with objects in it but zero ISOs parsed is not "the
+            # bucket is clean" — it is "the parser stopped understanding the
+            # output", which is the failure this check was JUST rewritten to
+            # fix. Reading it as clean is how a guard becomes decoration.
+            n_objs="$(printf '%s' "${listing}" | grep -cE '"Name"[[:space:]]*:' || true)"
+            if [ "${n_objs:-0}" -gt 0 ] && [ "${n_isos}" -eq 0 ]; then
+              echo "::error::o bucket tem ${n_objs} objeto(s) mas nenhum foi lido como .iso —"
+              echo "::error::a leitura da listagem quebrou; NÃO trate isso como bucket limpo."
+              printf '%s' "${listing}" | head -20
+              exit 1
+            fi
+
+            echo "   objetos .iso no bucket: ${n_isos}"
+            printf '%s\n' "${isos}" | sed 's/^/     - /'
+            echo "   tamanho total do bucket: ${total_gb} GB (free tier: 10 GB)"
+
+            if [ "${n_isos}" -gt 1 ]; then
+              echo "::error::O bucket tem ${n_isos} ISOs. Só pode existir UMA (genesi-os-latest.iso),"
+              echo "::error::sobrescrita a cada build. Cada extra são ~3.2 GB contra o free tier de 10 GB."
+              echo "::error::Apague as sobrando à mão — este passo não remove dados do bucket de propósito."
+              exit 1
+            fi
+            if [ "${n_isos}" -eq 1 ] && ! printf '%s' "${isos}" | grep -qx 'genesi-os-latest.iso'; then
+              echo "::error::a única ISO não se chama genesi-os-latest.iso — o link de download aponta para esse nome"
+              exit 1
+            fi
+            # 6 GB: bem acima de uma ISO + sidecar (~3.2 GB), bem abaixo do teto.
+            # Se passar disso, algo está acumulando antes de virar cobrança.
+            if awk -v b="${total_bytes}" 'BEGIN{exit !(b > 6442450944)}'; then
+              echo "::warning::o bucket está em ${total_gb} GB — bem acima de uma ISO só. Verifique o que está acumulando."
+            fi
+            echo "   ✅ uma ISO, sobrescrita no lugar"
+          else
+            echo "::warning::não consegui listar o bucket para conferir — o upload em si deu certo"
+          fi
 
       # ── GitHub Release (tags only) ─────────────────────────────────────────
       # The full ISO lives on Cloudflare R2 as ONE file (no 2GB cap, $0 egress).
@@ -571,23 +822,86 @@ jobs:
           } > CHANGELOG_BUILD.md
           echo "----- changelog build -----"; cat CHANGELOG_BUILD.md
 
+      # Uploaded one part at a time, with retries, and never fatal.
+      #
+      # Build #696 died here: "Error saving asset" thirteen minutes into a
+      # 1.9GB part, with the ISO already built, boot-tested and uploaded to R2.
+      # A GitHub-side upload hiccup on the ARCHIVE then skipped the three steps
+      # after it -- including the one that republishes the download page -- so
+      # a flake in the least important artefact of the run left the page dated
+      # two builds ago. The parts are ~1.9GB each and that upload will fail
+      # again sooner or later; the only question is what it takes down with it.
+      #
+      # So: `gh` instead of the action, because it can retry a single asset
+      # (--clobber makes a retry idempotent), the step is best-effort like the
+      # prune below it, and an archive that is STILL incomplete is deleted
+      # rather than left on the Releases page as a build whose ISO cannot be
+      # rejoined.
+      #
+      # ── Every wait here is BOUNDED, which the first version was not ────────
+      #
+      # Retrying an upload that hangs instead of failing is just a longer hang:
+      # #698 spent 69 of the job's 90 minutes inside this step, was cancelled
+      # by the job timeout, and skipped the download-page republish exactly the
+      # way #696 had. A healthy upload of the whole set takes about a minute
+      # (measured on the builds before these), so five minutes for one part is
+      # a wedged connection, not a slow one, and the step gives up on the
+      # archive after twenty -- leaving the job's remaining hour to the steps
+      # that matter more than it does.
+      #
+      # --prerelease is what keeps `rolling` the repo's "Latest" and the
+      # Releases page readable -- without it a dozen CI builds compete with the
+      # actual download.
       - name: 🗃️ Create per-build archive release (main)
         if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.BUILD_TAG }}
-          name: ${{ env.BUILD_NAME }}
-          # Keep `rolling` as the repo's "Latest"; these are the browsable history.
-          # prerelease: true is what makes GitHub badge them "Pre-release" and keeps
-          # the Releases page readable — without it, 12 CI builds visually compete
-          # with the actual download and the page reads like build noise.
-          prerelease: true
-          make_latest: false
-          body_path: CHANGELOG_BUILD.md
-          files: |
-            parts/genesi-os.iso.part*
-            parts/genesi-os.iso.sha256
-            parts/REJOIN.txt
+        # SECONDS, for the budget below, is a bash thing.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pacman -Sy --noconfirm --needed github-cli || true
+          R="$GITHUB_REPOSITORY"
+          gh release view "$BUILD_TAG" -R "$R" >/dev/null 2>&1 \
+            || gh release create "$BUILD_TAG" -R "$R" \
+                 --title "$BUILD_NAME" \
+                 --notes-file CHANGELOG_BUILD.md \
+                 --target "$GITHUB_SHA" \
+                 --prerelease \
+            || { echo "::warning::could not create $BUILD_TAG -- no archive for this build"; exit 0; }
+
+          deadline=$(( SECONDS + ${ARCHIVE_BUDGET:-1200} ))
+          for f in parts/*; do
+            for attempt in 1 2 3; do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::warning::out of time for the archive — leaving the rest"
+                break
+              fi
+              timeout "${ARCHIVE_UPLOAD_TIMEOUT:-300}" \
+                gh release upload "$BUILD_TAG" "$f" --clobber -R "$R" && break
+              echo "::warning::upload of $(basename "$f") failed or stalled (attempt $attempt/3)"
+              sleep 15
+            done
+          done
+
+          # The RELEASE is asked what it holds, rather than the exit codes
+          # being trusted: an upload killed by its timeout can leave a
+          # truncated asset behind, and an archive short of a byte is one
+          # nobody can rejoin. Name and size, against the files on disk.
+          have="$(gh release view "$BUILD_TAG" -R "$R" --json assets \
+                    --jq '.assets[] | "\(.name) \(.size)"' 2>/dev/null || true)"
+          missing=""
+          for f in parts/*; do
+            if ! printf '%s\n' "$have" | grep -qxF "$(basename "$f") $(stat -c%s "$f")"; then
+              missing="$missing $(basename "$f")"
+            fi
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::warning::archive $BUILD_TAG is incomplete (missing:$missing) -- dropping it"
+            gh release delete "$BUILD_TAG" -R "$R" --cleanup-tag -y || true
+          else
+            echo "archive $BUILD_TAG holds every part"
+          fi
 
       # ── Retention: prune old build-<sha> archive releases (main) ───────────
       # The per-build releases above accumulate forever otherwise. Keep the 12

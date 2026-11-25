@@ -28,9 +28,19 @@ import org.kde.kirigami as Kirigami
 Rectangle {
     id: card
 
-    // Pinned to the mockup's window base (#040b17); the elevation gradient below
-    // lifts it to ~#0d1623 for the card body. (Matches Theme.qml's fixed palette.)
-    readonly property color sysBg: "#040b17"
+    // The window base the elevation gradient below lifts to the card body.
+    //
+    // Pinned to the mockup's #040b17 until Genesi Center's switch says to
+    // follow the desktop, and then it is the scheme's own surface -- the same
+    // decision Theme.qml makes, made the same way, because a card that stayed
+    // navy on a themed window is worse than one that never followed.
+    //
+    // `typeof` because genesiPalette is a context property the app sets before
+    // the QML loads, and a card must still draw in an app that has not adopted
+    // that yet.
+    readonly property var _pal: (typeof genesiPalette !== "undefined" && genesiPalette) ? genesiPalette : ({})
+    readonly property bool _following: (typeof genesiFollowing !== "undefined") && genesiFollowing === true
+    readonly property color sysBg: (card._following && card._pal.surface) ? card._pal.surface : "#040b17"
     readonly property bool dark: !((0.299 * sysBg.r + 0.587 * sysBg.g + 0.114 * sysBg.b) >= 0.5)
 
     // Elevation/separator helpers (kept local so the card takes no `theme`).
@@ -41,7 +51,7 @@ Rectangle {
     function _elev(p) { return _mix(sysBg, _white, p) }
     function _sep(p)  { return dark ? _mix(sysBg, _white, p) : _mix(sysBg, _black, p) }
 
-    property color accent: Kirigami.Theme.highlightColor
+    property color accent: (card._following && card._pal.primary) ? card._pal.primary : Kirigami.Theme.highlightColor
     property bool active: false
     property bool interactive: true
     property bool wash: false
@@ -60,7 +70,10 @@ Rectangle {
     property real _hb: (interactive && hov.hovered) ? 1 : 0
     Behavior on _hb { NumberAnimation { duration: 160 } }
 
-    radius: 18
+    // 16, matching Theme.rLg — the kit's one card radius. It was 18 here and
+    // 18/14/12/10 elsewhere in the same window, so two cards side by side
+    // rounded differently.
+    radius: 16
 
     // Surface: a soft top→bottom elevation gradient (premium depth, shader-free).
     gradient: Gradient {
@@ -69,7 +82,12 @@ Rectangle {
     }
 
     border.width: 1
-    border.color: active ? accent
+    // An ACTIVE card used the raw accent at full saturation, which on the
+    // Dashboard's Turbo card read as a warning box rather than "this is on" —
+    // a saturated orange rectangle is the loudest thing in the window and it
+    // was competing with the numbers, which are the content. Tinted, it still
+    // reads as on at a glance without shouting.
+    border.color: active ? Qt.rgba(accent.r, accent.g, accent.b, 0.30)
                 : (interactive && hov.hovered ? _sep(dark ? 0.20 : 0.16) : _sep(dark ? 0.12 : 0.10))
     Behavior on border.color { ColorAnimation { duration: 180 } }
 
@@ -85,7 +103,10 @@ Rectangle {
     layer.effect: MultiEffect {
         shadowEnabled: true
         shadowColor: card.active
-            ? Qt.rgba(card.accent.r, card.accent.g, card.accent.b, 0.50)
+            // 0.22, not 0.50: the halo was the loudest thing on the
+            // Dashboard, and on the Turbo card a saturated orange glow
+            // around a saturated orange border read as an alarm.
+            ? Qt.rgba(card.accent.r, card.accent.g, card.accent.b, 0.22)
             : Qt.rgba(0, 0, 0, card.dark ? 0.50 : 0.26)
         shadowBlur: card.active ? 0.9 : 0.55
         shadowVerticalOffset: card.active ? 0 : 5
@@ -101,7 +122,9 @@ Rectangle {
         radius: parent.radius + 1.5
         color: "transparent"
         border.width: 1.5
-        border.color: Qt.rgba(card.accent.r, card.accent.g, card.accent.b, card.active ? 0.28 : 0.0)
+        // ...and the halo outside it, for the same reason: an active card
+        // already says so with its icon chip, its switch and its badge.
+        border.color: Qt.rgba(card.accent.r, card.accent.g, card.accent.b, card.active ? 0.12 : 0.0)
         Behavior on border.color { ColorAnimation { duration: 200 } }
         z: -1
     }

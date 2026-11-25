@@ -47,7 +47,9 @@ pkgver=1.0.0
 # what the system actually reports, so cancelling the password prompt or a
 # testing repo that does not answer leaves the box telling the truth. Hidden on
 # the live ISO, where the setting would die with the session.
-pkgrel=10
+# pkgrel 11: opens in the system's language. It always opened in pt-BR,
+# so English users met the welcome screen in Portuguese.
+pkgrel=11
 pkgdesc="Welcome application for Genesi OS"
 arch=('any')
 url="https://github.com/Genesi-OS/GenesiOS"

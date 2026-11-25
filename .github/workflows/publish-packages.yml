@@ -10,6 +10,23 @@ on:
       - '!genesi-arch/packages/genesi-code/**'
       - '.github/workflows/publish-packages.yml'
       - '.gitmodules'
+      # genesi-caelestia-shell's prepare() RUNS these two. They are not tests
+      # from this workflow's point of view -- they are part of the build, and
+      # caelestia-patches.py decides what the shipped QML and the plugin's C++
+      # actually contain.
+      #
+      # Without these paths a patcher fix is committed, CI never fires, and
+      # `repo/x86_64` keeps the package built from the previous version of the
+      # patch -- the same shape as the submodule-gitlink problem above.
+      # Reproduced 2026-09-09: a one-line fix to a compile error in the patcher
+      # was pushed and produced no run at all.
+      #
+      # Listed one by one rather than as `genesi-arch/ci/**`, because the rest
+      # of that directory is guards that run in the hygiene workflow, and a
+      # fifty-minute rebuild of every package is a steep price for editing a
+      # test's error message.
+      - 'genesi-arch/ci/caelestia-patches.py'
+      - 'genesi-arch/ci/caelestia-actions-test.py'
       # Submodule gitlinks. PKGBUILDs source from these via
       # `source=("git+https://github.com/Genesi-OS/genesi-*.git")` (cloning
       # HEAD of the submodule's upstream branch), so a bare submodule
@@ -115,6 +132,20 @@ jobs:
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Before the 25-minute build, not after: a key that is configured but does
+      # not match the keyring we ship is a hard error, and there is no reason to
+      # spend half an hour discovering it.
+      - name: Import the repository signing key
+        id: signing
+        uses: ./.github/actions/signing-key
+        with:
+          # A repository VARIABLE, not a secret, and separate from the key:
+          # the key existing is not permission to use it.
+          enabled:        ${{ vars.GENESI_SIGNING_ENABLED }}
+          signing_key:    ${{ secrets.GENESI_SIGNING_KEY }}
+          signing_key_id: ${{ secrets.GENESI_SIGNING_KEY_ID }}
+          passphrase:     ${{ secrets.GENESI_SIGNING_KEY_PASSPHRASE }}
+
       - name: Install build deps
         # Avoid `pacman -Syu`: upgrading pacman itself mid-CI can deadlock or
         # break the running container. We only need DB refresh + missing deps.
@@ -196,21 +227,80 @@ jobs:
           # us.cachyos.org was 523 (origin down), and the single -Sy kept
           # re-requesting the gone r96. Forcing the DB re-download lets pacman
           # pick up the current version once any mirror is consistent again.
+          # Two different failures land here, and waiting cures only one of
+          # them.
+          #
+          # The CDN one is above: 404/5xx, "failed to retrieve some files",
+          # and a later attempt against a caught-up mirror succeeds.
+          #
+          # The other is repo SKEW, where waiting does nothing at all. Run #485
+          # (2026-09-04) met cachyos-extra-v3 carrying hyprland 0.56.2, which
+          # needs libaquamarine.so=14-64, beside an aquamarine still providing
+          # the previous soname. pacman answered
+          #   error: failed to prepare transaction (could not satisfy dependencies)
+          #   :: unable to satisfy dependency 'libaquamarine.so=14-64' required by hyprland
+          # and threw away the ENTIRE transaction over that one package. The
+          # loop then retried the identical command seven times at 30s
+          # intervals -- an upstream repo becomes consistent again in hours,
+          # never in seconds -- and reported it as a CDN fault, which is the
+          # part that actually costs time: the log named a cause that was not
+          # the cause.
+          #
+          # So read the reason back instead of guessing it. When a package
+          # cannot be satisfied, --ignore that package and retry at once.
+          # Nothing built in this pipeline LINKS against hyprland: genesi-
+          # display is a Python script and genesi-caelestia-settings installs
+          # config files, and both merely declare it so the INSTALLED machine
+          # pulls it in. A package we only name in depends=() has no business
+          # stopping every other package from building. If an ignored package
+          # really was needed to compile something, makepkg fails on it later
+          # and says which -- a better failure than this one, under its own
+          # name rather than the CDN's.
+          SKIP=""
           install_deps() {
+            # shellcheck disable=SC2086
             pacman -Syy --noconfirm && \
-            pacman -S --needed --noconfirm --overwrite='*' \
+            pacman -S --needed --noconfirm --overwrite='*' $SKIP \
               base-devel git sudo rust \
               systemd systemd-sysvcompat \
               python-requests python-packaging \
               $DEPS
           }
           for attempt in 1 2 3 4 5 6 7; do
-            if install_deps; then
+            if install_deps 2>&1 | tee /tmp/build-deps.log; then
               echo "build deps installed (attempt $attempt)"
               break
             fi
+
+            # Every package pacman named as unsatisfiable, from its own words.
+            UNSAT=$(sed -n "s/.*unable to satisfy dependency '[^']*' required by \([^[:space:]]*\).*/\1/p" \
+                      /tmp/build-deps.log | sort -u | tr '\n' ' ')
+            NEW=""
+            for p in $UNSAT; do
+              case " $SKIP " in
+                *" --ignore $p "*) ;;
+                *) NEW="$NEW --ignore $p" ;;
+              esac
+            done
+
+            if [ -n "$NEW" ]; then
+              SKIP="$SKIP$NEW"
+              echo "::warning::build-deps attempt $attempt hit an inconsistent repo:" \
+                   "$(echo "$UNSAT" | tr -s ' ') cannot be satisfied right now." \
+                   "Retrying without it — these are runtime dependencies of the" \
+                   "packages we ship, not build dependencies."
+              continue
+            fi
+
             if [ "$attempt" = 7 ]; then
-              echo "::error::build deps failed after 7 attempts (CachyOS mirror/CDN inconsistent)"
+              if grep -q "could not satisfy dependencies" /tmp/build-deps.log; then
+                echo "::error::build deps failed: the repos are internally" \
+                     "inconsistent and pacman did not name a package we could" \
+                     "skip. See the transaction error above — this is upstream," \
+                     "not a PKGBUILD."
+              else
+                echo "::error::build deps failed after 7 attempts (CachyOS mirror/CDN inconsistent)"
+              fi
               exit 1
             fi
             echo "::warning::build-deps attempt $attempt failed (CachyOS CDN 404/5xx); refreshing DBs, retry in 30s"
@@ -314,7 +404,9 @@ jobs:
       - name: Build packages
         shell: bash
         env:
-          DB: ${{ steps.channel.outputs.db }}
+          DB:           ${{ steps.channel.outputs.db }}
+          SIGN_ENABLED: ${{ steps.signing.outputs.enabled }}
+          SIGN_KEYID:   ${{ steps.signing.outputs.keyid }}
         run: |
           set -euo pipefail
           useradd -m -G wheel builder
@@ -336,12 +428,45 @@ jobs:
           chown builder:builder "$GITHUB_WORKSPACE/.ci-sources"
 
           PACKAGES=(
+            # The trust anchor. First because it is a pure-data leaf with no
+            # build deps, and because everything after it is only meaningful if
+            # machines can eventually verify it. Skipped automatically while no
+            # key exists — see the guard in the loop below.
+            "genesi-keyring"
             "genesi-settings"
             "genesi-kde-settings"
             "genesi-ai-mode"
             "genesi-mempalace"
             "genesi-update"
             "genesi-channel"
+            # The return path: collect diagnostics, redact them, open a
+            # pre-filled issue. Pure bash, so it costs nothing to build and it
+            # still runs on the boot where the desktop did not come up.
+            "genesi-report"
+            # The shared privileged half of the update UI: one root-owned
+            # script, one polkit action. Both front-ends call it, and having
+            # one path to root instead of two is the point.
+            "genesi-update-center"
+            # The update page inside Plasma System Settings. Proven to compile
+            # AND to land in plasma/kcms/systemsettings by test-update-kcm.yml
+            # before being added here -- a KCM that installs somewhere else
+            # builds green and never appears in the settings app.
+            "genesi-update-kcm"
+            # Phase 7.2: monitor scale and rotation. Hyprland-level, not
+            # shell-level, so it works on caelestia today and on whatever
+            # shell comes next -- which is the whole reason 7.2 is built as
+            # CLIs with thin front-ends rather than as panels.
+            "genesi-display"
+            # Phase 7.2: pointer speed. Same shape and same reason as
+            # genesi-display -- and it carries the X11 path, which is the
+            # common case on Genesi's KDE installs (they default to the X11
+            # session), not a fallback.
+            "genesi-input"
+            "genesi-audio"
+            # Screen shaders. Hyprland-only, so it is a genesi-caelestia-settings
+            # dependency rather than a genesi-desktop one.
+            "genesi-hyprshade"
+            "genesi-shaders"
             "genesi-calamares"
             "genesi-calamares-branding"
             "genesi-welcome"
@@ -395,6 +520,11 @@ jobs:
             # + grub-btrfs) + a branded manager app. Self-contained (its deps are
             # all real repo packages), so it slots in with the other dev tools.
             "genesi-snapshots"
+            # Genesi Store — the shop for looks: themes, wallpapers, bars,
+            # lock screens and whole desktops. Self-contained (a Python CLI, a
+            # PySide6 window and a JSON catalogue), and ci/store-test.py has
+            # already checked that catalogue offline before this runs.
+            "genesi-store"
             # Studio Mode — focus one app, freeze the rest, restore after.
             # Self-contained (Python + QML + a GNOME extension, no compiled
             # parts), and its check() runs the freeze-safety tests at build
@@ -418,6 +548,9 @@ jobs:
             "genesi-ttf-rubik-vf"
             "genesi-caelestia-cli"
             "genesi-caelestia-shell"
+            # Genesi's own bar. Before the settings package, which now
+            # depends on it.
+            "genesi-topbar"
             "genesi-caelestia-settings"
             # Genesi Mesh — pools GPU memory across machines on the LAN. Pure
             # Python + a systemd unit, so it is cheap to build; it needs a
@@ -429,6 +562,10 @@ jobs:
             # release-hosted [genesi-apps] repo by publish-apps.yml instead.
             # llama.cpp (Vulkan) — backs Genesi Turbo's `llama-server`. Verified
             # green via test-llama-cpp.yml (~10min, well under the 25-min budget).
+            # Roadmap 7.4: the control centre. Config and QML only, so it is
+            # cheap, but it must be built BEFORE genesi-desktop, which now
+            # depends on it.
+            "genesi-center"
             # Kept LAST so if its build ever flakes it can't block the others.
             "genesi-llama-cpp"
             # Meta-package (depends on all the above). Built with `makepkg -d`
@@ -444,6 +581,18 @@ jobs:
               echo "::endgroup::"
               continue
             fi
+            # genesi-keyring's payload IS the key, and the key is generated once
+            # by hand (devtools/genesi-keygen.sh), not by CI. Until that has
+            # happened the package has nothing to install, so skip it instead of
+            # failing the run — a distribution that cannot publish updates is a
+            # worse outcome than one that is not yet signed. The matching
+            # "key configured but keyring empty" case is a hard error, caught
+            # much earlier by the verify step.
+            if [ "$pkg" = "genesi-keyring" ] && [ ! -f "$pkg/genesi.gpg" ]; then
+              echo "::warning::genesi-keyring has no public key yet — skipping (run devtools/genesi-keygen.sh)"
+              echo "::endgroup::"
+              continue
+            fi
             # 25-min ceiling per package so a hang fails loudly instead of
             # eating the whole 6h GitHub job timeout in silence.
             # PACMAN env adds --overwrite='*' so missing-dep installs by makepkg
@@ -454,7 +603,11 @@ jobs:
             # builder process being killed by SIGUSR1 (exit 138).
             echo "--- diag for $pkg ---"
             id builder || true
-            ls -la "$pkg" | head -10
+            # `|| true`: under pipefail, head closing the pipe early kills ls
+            # with SIGPIPE whenever the package has more than 10 files, and
+            # this diagnostic line failed the whole build (run #608, exit 141,
+            # on genesi-caelestia-shell). It only prints; nothing reads it.
+            ls -la "$pkg" | head -10 || true
             runuser -u builder -- bash -c "id; which makepkg; makepkg --version | head -1" || true
             # If sudo from inside builder is broken (PAM in minimal container),
             # makepkg -s will be killed by SIGUSR1 the moment it tries to call
@@ -477,7 +630,7 @@ jobs:
             # install-time resolution from the genesi repo still applies.
             MAKEPKG_NODEPS=""
             case "$pkg" in
-              genesi-desktop|genesi-gaming|genesi-plymouth|genesi-snapshots|genesi-caelestia-cli|genesi-caelestia-shell|genesi-caelestia-settings)
+              genesi-desktop|genesi-gaming|genesi-plymouth|genesi-snapshots|genesi-caelestia-cli|genesi-caelestia-shell|genesi-caelestia-settings|genesi-update-kcm)
                 MAKEPKG_NODEPS="-d" ;;
             esac
 
@@ -536,8 +689,9 @@ jobs:
               exit 1
             fi
 
-            # Install just-built LEAF packages that LATER packages need at BUILD
-            # time. caelestia-shell's plugin/CMakeLists.txt runs
+            # Install just-built LEAF packages that LATER packages need, either
+            # at BUILD time or to resolve a RUNTIME dependency makepkg checks
+            # before it will start. caelestia-shell's plugin/CMakeLists.txt runs
             # pkg_check_modules(cava), which needs libcava's cava.pc on disk at
             # configure time. genesi-libcava is built earlier in THIS run but
             # isn't in any repo, and caelestia-shell builds with -d, so without
@@ -546,8 +700,20 @@ jobs:
             # provides= and conflict with nothing pre-installed, so installing
             # them into the build container is safe. The loop body runs as root
             # (only makepkg drops to `builder`), so pacman -U works here.
+            #
+            # genesi-hyprshade is here for the second reason: genesi-shaders
+            # declares it as a runtime dependency, and makepkg refuses to start
+            # on an unresolvable one. Both are new in the same run, so the
+            # dependency cannot come from a repo that does not carry it yet --
+            # run #480 failed exactly there. Once a package is published the
+            # requirement lapses on its own, which is what
+            # ci/package-reachability-test.py checks.
+            #
+            # genesi-center is the same case again: genesi-desktop lists it and
+            # it is new in this run, so nothing can resolve it yet. genesi-store
+            # joined it on 2026-09-18 for exactly the same reason.
             case "$pkg" in
-              genesi-app2unit|genesi-libcava|genesi-materialyoucolor|genesi-ttf-rubik-vf)
+              genesi-app2unit|genesi-libcava|genesi-materialyoucolor|genesi-ttf-rubik-vf|genesi-hyprshade|genesi-shaders|genesi-center|genesi-store|genesi-topbar)
                 builtpkg=$(ls -1t "repo/$pkg"-*.pkg.tar.zst 2>/dev/null | grep -v -- '-debug-' | head -1)
                 if [ -n "$builtpkg" ]; then
                   echo "Installing $builtpkg into the build container (build-time dep for caelestia)"
@@ -588,10 +754,97 @@ jobs:
           # would silently publish an unusable database over the STABLE channel.
           : "${DB:?the channel step did not provide a repo db name}"
           # Clear BOTH names, not just ours: a branch that used to publish the
-          # wrong one must not leave it behind for pacman to find.
+          # wrong one must not leave it behind for pacman to find. The db/files
+          # patterns already sweep up their own .sig files; the package
+          # signatures need their own line, or a .sig from a previous run could
+          # outlive the package it covers.
           rm -f genesi.db* genesi.files* genesi-testing.db* genesi-testing.files*
-          repo-add "${DB}.db.tar.gz" *.pkg.tar.zst
+          rm -f ./*.pkg.tar.zst.sig
+
+          # ── Sign every package, THEN index ──────────────────────────────────
+          #
+          # Order is load-bearing: repo-add records a package's signature in the
+          # database only if the .sig is already on disk beside it. Signing after
+          # repo-add produces signatures pacman never learns about, and a repo
+          # that looks signed on the mirror but unsigned to the client.
+          REPO_ADD_SIGN=()
+          if [ "${SIGN_ENABLED:-0}" = "1" ]; then
+            GPG_ARGS=(--batch --yes --no-tty --detach-sign --local-user "${SIGN_KEYID}")
+            # ${GNUPGHOME:-} so `set -u` cannot bite if the env ever arrives
+            # without it; the no-passphrase case is the normal one.
+            if [ -f "${GNUPGHOME:-}/passphrase" ]; then
+              GPG_ARGS+=(--pinentry-mode loopback --passphrase-file "${GNUPGHOME}/passphrase")
+            fi
+
+            echo "::group::Signing $(ls -1 ./*.pkg.tar.zst | wc -l) package(s) with ${SIGN_KEYID}"
+            for p in ./*.pkg.tar.zst; do
+              gpg "${GPG_ARGS[@]}" --output "${p}.sig" "${p}"
+            done
+            echo "::endgroup::"
+
+            # Verify what we just produced. A signature that does not verify is
+            # a package that will be REJECTED on every machine the moment
+            # SigLevel becomes Required, and there is no reason to discover that
+            # anywhere but here.
+            for p in ./*.pkg.tar.zst; do
+              gpg --batch --quiet --verify "${p}.sig" "${p}" 2>/dev/null \
+                || { echo "::error::signature does not verify: ${p}"; exit 1; }
+            done
+            echo "All package signatures verified."
+
+            REPO_ADD_SIGN=(--sign --key "${SIGN_KEYID}")
+            export GPGKEY="${SIGN_KEYID}"
+          else
+            echo "::warning::no signing key — the published repository will be UNSIGNED"
+          fi
+
+          # `${a[@]+"${a[@]}"}` rather than `"${a[@]}"`: under `set -u` an empty
+          # array is an unbound variable on older bash, and the unsigned path is
+          # exactly the one that must never break.
+          repo-add ${REPO_ADD_SIGN[@]+"${REPO_ADD_SIGN[@]}"} "${DB}.db.tar.gz" ./*.pkg.tar.zst
+
+          # The database signature is what stops an attacker swapping the whole
+          # index (and with it every package's recorded checksum), so its
+          # absence is a silent downgrade rather than a cosmetic gap.
+          if [ "${SIGN_ENABLED:-0}" = "1" ] && [ ! -f "${DB}.db.tar.gz.sig" ]; then
+            echo "::error::repo-add did not produce ${DB}.db.tar.gz.sig"
+            exit 1
+          fi
           ls -lh
+
+          # ── The question the pipeline never asked ────────────────────────
+          #
+          # Everything above verifies the repository from the point of view of
+          # someone HOLDING the key. On 2026-08-29 that was all green while the
+          # publish broke `pacman -Sy` on every installed machine, because the
+          # opposite question went unasked: can a machine WITHOUT the key still
+          # use this? Asked here, against the freshly built repo, before a
+          # single byte is committed.
+          cd "$GITHUB_WORKSPACE"
+          # `rc=0; cmd || rc=$?`, NOT `if ! cmd; then rc=$?`. Inside the branch
+          # of an `if !`, $? is the status of the negation (always 0), so the
+          # untestable case (2) would have been read as 0 and fallen through to
+          # the error — a missing pacman would have BLOCKED the publish. That is
+          # the one thing this pipeline must never do.
+          #
+          # Which machine to impersonate follows the signing switch. Unsigned:
+          # one with no key, because a stray signature would lock it out.
+          # Signed: one that HAS genesi-keyring -- because once signing is
+          # deliberately on, a keyring-less machine is MEANT to be rejected, and
+          # keeping the old assumption would make this gate block every publish
+          # forever.
+          CONSUMABLE_ARGS=()
+          if [ "${SIGN_ENABLED:-0}" = "1" ]; then
+            CONSUMABLE_ARGS=(--with-key)
+          fi
+          rc=0
+          bash genesi-arch/ci/repo-consumable-test.sh             "$GITHUB_WORKSPACE/genesi-arch/packages/repo" --db "${DB}"             ${CONSUMABLE_ARGS[@]+"${CONSUMABLE_ARGS[@]}"} || rc=$?
+          case "${rc}" in
+            0) ;;
+            2) echo "::warning::could not verify the repo is consumable — publishing anyway" ;;
+            *) echo "::error::refusing to publish a repository machines in the field cannot use"
+               exit 1 ;;
+          esac
 
       - name: Commit packages to in-repo registry
         shell: bash
@@ -622,19 +875,33 @@ jobs:
           # subscribes to BOTH repos and pacman installs whichever is newer.
           : "${DB:?the channel step did not provide a repo db name}"
           mkdir -p genesi-arch/repo/x86_64
+          # *.pkg.tar.zst.sig is matched by the first pattern's own glob only if
+          # it is spelled out, and a signature left behind from a previous run
+          # would claim to cover a package that is no longer there.
           rm -f genesi-arch/repo/x86_64/*.pkg.tar.zst \
+                genesi-arch/repo/x86_64/*.pkg.tar.zst.sig \
                 genesi-arch/repo/x86_64/genesi.* \
                 genesi-arch/repo/x86_64/genesi-testing.*
           cp genesi-arch/packages/repo/*.pkg.tar.zst genesi-arch/repo/x86_64/ || true
+          cp genesi-arch/packages/repo/*.pkg.tar.zst.sig genesi-arch/repo/x86_64/ 2>/dev/null || true
           cp "genesi-arch/packages/repo/${DB}.db.tar.gz" genesi-arch/repo/x86_64/ || true
           cp "genesi-arch/packages/repo/${DB}.files.tar.gz" genesi-arch/repo/x86_64/ || true
+          cp "genesi-arch/packages/repo/${DB}.db.tar.gz.sig" genesi-arch/repo/x86_64/ 2>/dev/null || true
+          cp "genesi-arch/packages/repo/${DB}.files.tar.gz.sig" genesi-arch/repo/x86_64/ 2>/dev/null || true
           # Pacman expects unsuffixed pointers as well. Use copies (not
           # symlinks) — raw.githubusercontent.com serves git symlinks as
           # plaintext (the link target path), which would break pacman when
           # a client points at the GitHub-raw URL.
+          #
+          # The signatures need the same treatment: pacman fetches
+          # "<repo>.db.sig", not "<repo>.db.tar.gz.sig". Publishing the database
+          # without moving its signature across would make every client see a
+          # signed-then-unsigned repo and silently fall back to trusting it.
           ( cd genesi-arch/repo/x86_64 && \
             cp -f "${DB}.db.tar.gz"    "${DB}.db" && \
-            cp -f "${DB}.files.tar.gz" "${DB}.files" )
+            cp -f "${DB}.files.tar.gz" "${DB}.files" && \
+            { [ -f "${DB}.db.tar.gz.sig" ]    && cp -f "${DB}.db.tar.gz.sig"    "${DB}.db.sig"    || true; } && \
+            { [ -f "${DB}.files.tar.gz.sig" ] && cp -f "${DB}.files.tar.gz.sig" "${DB}.files.sig" || true; } )
 
           git config user.email "actions@github.com"
           git config user.name  "Genesi Bot"
@@ -692,3 +959,8 @@ jobs:
           echo "Channel: ${{ steps.channel.outputs.name }}"
           echo "Branch:  ${{ steps.channel.outputs.branch }}"
           echo "Packages published to genesi-arch/repo/x86_64 on branch ${{ steps.channel.outputs.branch }}"
+          if [ "${{ steps.signing.outputs.enabled }}" = "1" ]; then
+            echo "Signed:  yes (key ${{ steps.signing.outputs.keyid }})"
+          else
+            echo "Signed:  NO — set GENESI_SIGNING_KEY (genesi-arch/devtools/genesi-keygen.sh)"
+          fi

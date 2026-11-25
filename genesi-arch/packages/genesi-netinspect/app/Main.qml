@@ -128,6 +128,12 @@ ApplicationWindow {
         id: rv
         property alias text: ta.text
         property bool editable: false
+        // What to say when there is nothing to show. Every one of these panes
+        // was a black rectangle when empty -- and on a fresh proxy with no
+        // traffic yet, that is most of the window. Set on RawView rather than
+        // at each call site so the request, response, repeater and intruder
+        // views all get one.
+        property string placeholder: ""
         color: theme.bgBottom
         radius: 8
         border.width: 1
@@ -149,6 +155,17 @@ ApplicationWindow {
                 background: null
                 placeholderText: ""
             }
+        }
+
+        Label {
+            anchors.centerIn: parent
+            width: parent.width - 48
+            visible: rv.placeholder !== "" && ta.text.length === 0
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            text: rv.placeholder
+            color: theme.textLo
+            font.pixelSize: 12
         }
     }
 
@@ -442,6 +459,7 @@ ApplicationWindow {
                             }
                             RawView {
                                 id: interceptEdit
+                                placeholder: "Nothing held. Turn Intercept on and the next request through the proxy will pause here for you to edit before it goes out."
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 editable: true
@@ -456,7 +474,14 @@ ApplicationWindow {
                         spacing: 12
 
                         StudioCard {
-                            Layout.preferredWidth: parent.width * 0.46
+                            // A stretch factor, not `parent.width * 0.46`:
+                            // sizing a child from its own parent LAYOUT is a
+                            // cycle (the layout measures the child, the child
+                            // asks the layout), and Qt aborts the rearrange
+                            // rather than resolve it -- which it was doing on
+                            // every relayout of this window.
+                            Layout.fillWidth: true
+                            Layout.horizontalStretchFactor: 46
                             Layout.fillHeight: true
                             ColumnLayout {
                                 anchors.fill: parent
@@ -532,6 +557,8 @@ ApplicationWindow {
 
                         StudioCard {
                             Layout.fillWidth: true
+                            // ...and its share. Without a factor here the split would be 46:1.
+                            Layout.horizontalStretchFactor: 54
                             Layout.fillHeight: true
                             ColumnLayout {
                                 anchors.fill: parent
@@ -569,8 +596,8 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     currentIndex: win.detailTab
-                                    RawView { id: detailReq }
-                                    RawView { id: detailResp }
+                                    RawView { id: detailReq; placeholder: "Pick a request on the left to see it raw — method, headers and body exactly as it went out." }
+                                    RawView { id: detailResp; placeholder: "Pick a request on the left to see what came back." }
                                 }
                             }
                         }
@@ -609,7 +636,7 @@ ApplicationWindow {
                                 anchors.margins: 10
                                 spacing: 6
                                 Text { text: "Request"; color: theme.textMid; font.pixelSize: 12 }
-                                RawView { id: repeaterEdit; Layout.fillWidth: true; Layout.fillHeight: true; editable: true }
+                                RawView { id: repeaterEdit; Layout.fillWidth: true; Layout.fillHeight: true; editable: true; placeholder: "Send a captured request here from the Proxy tab, then edit it and fire it again." }
                             }
                         }
                         StudioCard {
@@ -624,7 +651,7 @@ ApplicationWindow {
                                     Item { Layout.fillWidth: true }
                                     Text { id: repeaterMeta; text: ""; color: theme.greenBright; font.pixelSize: 12; font.family: theme.mono }
                                 }
-                                RawView { id: repeaterResp; Layout.fillWidth: true; Layout.fillHeight: true }
+                                RawView { id: repeaterResp; Layout.fillWidth: true; Layout.fillHeight: true; placeholder: "Send the request on the left and the response lands here." }
                             }
                         }
                     }
@@ -660,28 +687,33 @@ ApplicationWindow {
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: parent.height * 0.42
+                        // Same cycle, vertically. 42 against the sibling's 58.
+                        Layout.fillHeight: true
+                        Layout.verticalStretchFactor: 42
                         spacing: 12
                         StudioCard {
                             Layout.fillWidth: true
+                            Layout.horizontalStretchFactor: 66
                             Layout.fillHeight: true
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: 10
                                 spacing: 6
                                 Text { text: "Request template (wrap the payload position in §…§)"; color: theme.textMid; font.pixelSize: 12 }
-                                RawView { id: intruderTpl; Layout.fillWidth: true; Layout.fillHeight: true; editable: true }
+                                RawView { id: intruderTpl; Layout.fillWidth: true; Layout.fillHeight: true; editable: true; placeholder: "Send a request here from the Proxy tab, then wrap the part you want to vary in § markers." }
                             }
                         }
                         StudioCard {
-                            Layout.preferredWidth: parent.width * 0.34
+                            // Third instance of the same cycle in this file.
+                            Layout.fillWidth: true
+                            Layout.horizontalStretchFactor: 34
                             Layout.fillHeight: true
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: 10
                                 spacing: 6
                                 Text { text: "Payloads (one per line)"; color: theme.textMid; font.pixelSize: 12 }
-                                RawView { id: payloadBox; Layout.fillWidth: true; Layout.fillHeight: true; editable: true }
+                                RawView { id: payloadBox; Layout.fillWidth: true; Layout.fillHeight: true; editable: true; placeholder: "One payload per line." }
                             }
                         }
                     }

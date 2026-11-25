@@ -1,0 +1,362 @@
+#!/usr/bin/env python3
+"""
+genesi-bar — switch the caelestia bar between shipped presets.
+
+caelestia's bar is unusually configurable already: `bar.entries` is an ORDERED
+list of ids, `spacer` is one of them, and the components carry a couple of
+dozen toggles besides. Almost every "can the bar look like X" question is
+therefore a question about shell.json rather than about QML.
+
+What was missing is that nobody edits JSON to try a look. So the arrangements
+are named, shipped, and switchable from the launcher -- `>bar` lists them the
+same way `>shader` lists the shaders.
+
+A preset REPLACES the whole `bar` section, deliberately. A preset is a complete
+arrangement, not a patch: merging would leave whatever the last one set, and
+"minimal" would quietly inherit the dense one's clock. Everything outside `bar`
+in shell.json is untouched.
+
+Written as a CLI for the same reason genesi-display is: the launcher entries,
+a keybind and a terminal all end up wanting the same behaviour, and a settings
+page should call this rather than reimplement it.
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+PRESET_DIR = "/usr/share/genesi/caelestia-bar-presets"
+CONFIG = os.path.expanduser("~/.config/caelestia/shell.json")
+
+# Exactly the ids Bar.qml's DelegateChooser answers to. An id outside this set
+# is dropped in silence -- no error, no gap, the entry simply is not there --
+# so it is checked here and again at build time.
+VALID_ENTRIES = {"spacer", "logo", "workspaces", "activeWindow", "tray",
+                 "clock", "statusIcons", "power"}
+
+
+def die(msg):
+    print(f"genesi-bar: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def load_presets():
+    """Every shipped preset, by name, in display order."""
+    presets = {}
+    if not os.path.isdir(PRESET_DIR):
+        die(f"{PRESET_DIR} does not exist -- the presets are not installed.")
+    for fn in sorted(os.listdir(PRESET_DIR)):
+        if not fn.endswith(".json"):
+            continue
+        path = os.path.join(PRESET_DIR, fn)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                p = json.load(fh)
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"genesi-bar: skipping {fn}: {e}", file=sys.stderr)
+            continue
+        p["_id"] = os.path.splitext(fn)[0]
+        presets[p["_id"]] = p
+    if not presets:
+        die("no presets found")
+    return presets
+
+
+def read_config():
+    try:
+        with open(CONFIG, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_config(data):
+    """
+    Replace the file atomically.
+
+    caelestia watches shell.json and reloads on change. A plain truncate-then-
+    write is briefly a partial file, and the watcher is entirely capable of
+    reading it in that window and finding invalid JSON -- which on a config
+    file means the shell falls back to defaults in front of the user. Rename
+    is atomic, so the watcher sees the old file or the new one.
+    """
+    d = os.path.dirname(CONFIG)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".shell.json.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(tmp, CONFIG)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def current_name(presets, cfg):
+    """
+    Which preset is applied, comparing the whole look.
+
+    Comparing only `bar` would call two presets identical when they differ
+    solely in the frame around the desktop -- which is the most visible thing
+    about them.
+    """
+    bar = cfg.get("bar")
+    if not isinstance(bar, dict):
+        return None
+    for pid, p in presets.items():
+        if p.get("bar") != bar:
+            continue
+        if p.get("border", None) != cfg.get("border", None):
+            continue
+        return pid
+    return None
+
+
+def cmd_list(presets):
+    cfg = read_config()
+    cur = current_name(presets, cfg)
+    for pid, p in presets.items():
+        mark = " *" if pid == cur else "  "
+        print(f"{mark} {pid:<14} {p.get('name', pid)}")
+        desc = p.get("description")
+        if desc:
+            print(f"      {desc}")
+    if cur is None and isinstance(cfg.get("bar"), dict):
+        print("\n   (the current bar matches no preset -- it has been edited by hand)")
+
+
+# Sections a preset may own. `bar` is the bar itself; `border` is the frame the
+# whole desktop sits inside -- its thickness and rounding are what make a bar
+# read as flush to the screen edge or as a floating panel, and that is a bigger
+# visual difference than anything inside the bar.
+#
+# Deliberately a list rather than "whatever the preset contains": a preset is a
+# LOOK, and a look that could quietly rewrite the launcher or the session
+# commands is a preset nobody should trust enough to try.
+LOOK_SECTIONS = ("bar", "border")
+
+
+def cmd_apply(presets, name):
+    p = presets.get(name)
+    if p is None:
+        die(f"no preset called {name!r}. `genesi-bar list` shows them all.")
+
+    bar = p.get("bar")
+    if not isinstance(bar, dict):
+        die(f"preset {name!r} carries no bar section")
+
+    bad = [e.get("id") for e in bar.get("entries", [])
+           if isinstance(e, dict) and e.get("id") not in VALID_ENTRIES]
+    if bad:
+        die(f"preset {name!r} names entries the bar does not know: "
+            + ", ".join(str(b) for b in bad))
+
+    stray = [k for k in p if k in ("session", "launcher", "background")]
+    if stray:
+        die(f"preset {name!r} tries to set {', '.join(stray)}, which is not "
+            "part of a bar look")
+
+    cfg = read_config()
+    for section in LOOK_SECTIONS:
+        if section in p:
+            cfg[section] = p[section]
+        elif section != "bar":
+            # A preset that does not mention the frame RESTORES the default
+            # rather than inheriting the last one. Otherwise switching from a
+            # floating look to a flush one would leave the frame behind, and
+            # the second preset would be blamed for it.
+            cfg.pop(section, None)
+    write_config(cfg)
+    print(f"{p.get('name', name)}")
+
+
+SHELLS = {
+    "caelestia": {
+        "name": "Side rail · Barra lateral",
+        "desc": "caelestia's own bar, down the left edge",
+        "start": ["caelestia", "shell", "-d"],
+        "stop": ["pkill", "-f", "qs -c genesi-topbar"],
+    },
+    # WITHDRAWN, and it is not coming back -- the question it answered turned
+    # out to be the wrong question.
+    #
+    # It asked which of two Quickshell PROCESSES should run, so switching to
+    # Genesi's ran `pkill -f caelestia`. That does not disable a bar. It kills
+    # the shell, and the launcher, the drawers, the notification daemon, the
+    # wallpaper, the theme bridge and the CLI go with it.
+    #
+    # The top bar exists again as a WINDOW inside caelestia (Config.topbar,
+    # drawn by GenesiTopBar.qml), which is the same process, the same config
+    # and nothing to kill. Turning it on sets caelestia's own BarWrapper
+    # `disabled` flag, so the rail collapses and every drawer reflows.
+    #
+    # This entry stays only so a machine with "genesi" left in its state file
+    # still resolves to caelestia at the next login. Nothing offers it.
+    "genesi": {
+        "name": "Genesi bar · Barra Genesi",
+        "desc": "Genesi's own bar, across the top",
+        "start": ["qs", "-c", "genesi-topbar", "-d"],
+        "stop": ["pkill", "-f", "caelestia"],
+        "available": False,
+    },
+}
+
+
+def available_shells():
+    return {k: v for k, v in SHELLS.items() if v.get("available", True)}
+SHELL_STATE = os.path.expanduser("~/.config/genesi/bar-shell")
+
+
+def current_shell():
+    """
+    The bar to run, which is never one that has been withdrawn.
+
+    A machine that switched to the top bar has "genesi" in this file and a
+    broken desktop at every login. Checking AVAILABILITY rather than mere
+    existence is what makes that heal on its own: the next login starts
+    caelestia, and nobody has to know a state file exists to get their
+    desktop back.
+    """
+    try:
+        with open(SHELL_STATE, encoding="utf-8") as fh:
+            v = fh.read().strip()
+        return v if v in available_shells() else "caelestia"
+    except OSError:
+        return "caelestia"
+
+
+def cmd_shell_start():
+    """
+    Start whichever bar is remembered. Run once, at login.
+
+    Without this the switch lasts until the session ends and then quietly
+    reverts, which is worse than not offering it: a setting that forgets itself
+    reads as a bug in the setting rather than a missing feature.
+
+    hyprland.conf calls this instead of naming a bar, so the choice lives in
+    one state file rather than in a config line the user also edits.
+    """
+    sh = SHELLS[current_shell()]
+    subprocess.Popen(sh["start"], stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def cmd_shell(which=None):
+    """
+    Which bar runs: caelestia's side rail, or Genesi's top bar.
+
+    They are two different bars, not one bar rotated -- caelestia's is a
+    vertical layout anchored to the screen edge, all the way down to how each
+    module stacks inside itself. So switching is starting one and stopping the
+    other, and the choice is remembered for the next login.
+
+    Deliberately does NOT edit hyprland.conf. The autostart line there is the
+    user's, and a tool that rewrites someone's config to change a runtime
+    choice is a tool they stop trusting. The state file is read at login by the
+    line genesi-caelestia-settings ships.
+    """
+    if which is None:
+        cur = current_shell()
+        for sid, sh in available_shells().items():
+            print(f"{' *' if sid == cur else '  '} {sid:<11} {sh['name']}")
+            print(f"      {sh['desc']}")
+        return
+
+    if which not in available_shells():
+        if which in SHELLS:
+            die(f"the {which!r} bar is withdrawn: it breaks caelestia. "
+                "Choose: " + ", ".join(available_shells()))
+        die(f"no bar called {which!r}. Choose: "
+            + ", ".join(available_shells()))
+
+    os.makedirs(os.path.dirname(SHELL_STATE), exist_ok=True)
+    with open(SHELL_STATE, "w", encoding="utf-8") as fh:
+        fh.write(which + "\n")
+
+    sh = SHELLS[which]
+    subprocess.run(sh["stop"], capture_output=True)
+    subprocess.Popen(sh["start"], stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+    print(sh["name"])
+
+
+def cmd_json(presets):
+    """
+    Everything a settings page needs, in one read.
+
+    The human `list` is for a terminal; a GUI wants the entry order too, so it
+    can draw what each preset actually does instead of describing it. Both come
+    from the same files, so the sketch a page draws cannot drift from the
+    arrangement the shell applies.
+    """
+    cfg = read_config()
+    cur = current_name(presets, cfg)
+    out = {
+        "shell": current_shell(),
+        "shells": [{"id": k, "name": v["name"], "description": v["desc"]}
+                   for k, v in available_shells().items()],
+        "current": cur or "",
+        "presets": [
+            {
+                "id": pid,
+                "name": p.get("name", pid),
+                "description": p.get("description", ""),
+                "entries": (p.get("bar") or {}).get("entries", []),
+                "width": (p.get("bar") or {}).get("width", 0),
+                "border": p.get("border", {}),
+            }
+            for pid, p in presets.items()
+        ],
+    }
+    json.dump(out, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+
+
+def cmd_current(presets):
+    cur = current_name(presets, read_config())
+    print(presets[cur].get("name", cur) if cur else "custom")
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog="genesi-bar",
+        description="Switch the caelestia bar between shipped presets.")
+    sub = ap.add_subparsers(dest="cmd")
+    sub.add_parser("list", help="show every preset, marking the current one")
+    a = sub.add_parser("apply", help="switch to a preset")
+    a.add_argument("name")
+    sub.add_parser("current", help="print the preset in use, or 'custom'")
+    sub.add_parser("json", help="every preset and the current one, as JSON")
+    sh = sub.add_parser("shell", help="which bar runs: caelestia or genesi")
+    sh.add_argument("which", nargs="?")
+    sh.add_argument("--start", action="store_true",
+                    help="start the remembered bar (for autostart)")
+
+    args = ap.parse_args()
+    presets = load_presets()
+
+    if args.cmd == "apply":
+        cmd_apply(presets, args.name)
+    elif args.cmd == "current":
+        cmd_current(presets)
+    elif args.cmd == "json":
+        cmd_json(presets)
+    elif args.cmd == "shell":
+        if args.start:
+            cmd_shell_start()
+        else:
+            cmd_shell(args.which)
+    else:
+        cmd_list(presets)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

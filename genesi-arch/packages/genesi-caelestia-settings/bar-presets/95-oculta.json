@@ -1,0 +1,51 @@
+{
+  "name": "Auto-hide · Oculta",
+  "description": "The bar stays out of the way until you reach for it",
+  "bar": {
+    "entries": [
+      {
+        "id": "logo",
+        "enabled": true
+      },
+      {
+        "id": "workspaces",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "activeWindow",
+        "enabled": true
+      },
+      {
+        "id": "spacer",
+        "enabled": true
+      },
+      {
+        "id": "tray",
+        "enabled": true
+      },
+      {
+        "id": "clock",
+        "enabled": true
+      },
+      {
+        "id": "statusIcons",
+        "enabled": true
+      },
+      {
+        "id": "power",
+        "enabled": true
+      }
+    ],
+    "persistent": false,
+    "showOnHover": true
+  },
+  "border": {
+    "thickness": 0,
+    "rounding": 0,
+    "smoothing": 0
+  }
+}

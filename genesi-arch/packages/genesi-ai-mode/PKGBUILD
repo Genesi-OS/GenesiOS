@@ -1006,7 +1006,754 @@ pkgver=1.0.0
 # line saying what this block provides in turn.
 # Fixed on the way: the power trigger referenced a threshold variable that only
 # exists in another branch (NameError at fire time on AC/battery events).
-pkgrel=171
+# 2026-08-21 (172): the Turbo switch showed INTENT, not reality. Anything can
+# start Turbo -- an Automation, the CLI, a Mesh peer, a server left running from
+# the last session -- and the switch only ever reflected what this window had
+# last asked for. So the machine could be serving a model with the switch
+# sitting at off, which is the UI telling the user something untrue about their
+# own computer (reported from real use, via an automation that enables Turbo).
+# state() now carries turbo_running/turbo_model from the same probe the rest of
+# the stack uses, and the 2s poll adopts it -- including the model actually
+# being served, so a running server is not labelled with whatever this window
+# happened to have picked. Two guards are load-bearing: `turbo_busy` suppresses
+# the sync while a start we asked for is still coming up (a start takes seconds
+# to answer /health, and syncing then would flick the switch back under the
+# user's finger), and `turboSyncing` makes the property handlers stand down
+# during the copy -- without it the sync is a feedback loop, where the poll
+# assigns turboRequested, the handler fires, and setTurbo restarts the very
+# server it was only trying to display.
+# 2026-08-21 (173): three things reported from one real automation ("when
+# Firefox opens ask the AI for its RAM, when it closes ask again, notify with
+# both"), plus a crash that had been shipping for weeks.
+# (1) QUICK CHAT WAS DEAD ON ARRIVAL. genesi_ai_quick imported TURBO from
+# genesi_ai_monitor; the Mesh work renamed that to LOCAL_TURBO and did not
+# update the importer, so an app that autostarts on every login died on its
+# import line, silently, since c114c95c. It now asks _turbo_base() where Turbo
+# is, which is what the rename was for. New ci/module-imports-test.py checks
+# every cross-module import by AST -- no Qt, no display -- because an
+# autostarted app that fails leaves no window to miss.
+# (2) AN APP BLOCK MID-CHAIN NOW WAITS. Reached through a link it used to pass
+# straight through, so "App opens -> AI -> App closes -> Notify" ran the whole
+# graph the instant the app opened and the second half measured nothing. It
+# blocks until the app is in the state it names, and a timeout is an ERROR
+# rather than a silent continue, so the err port can handle it.
+# (3) "ANY APP" instead of "never". An empty process name meant the node could
+# never fire, while looking perfectly configured. It now fires for whatever
+# opens or closes and reports it as {{app.name}}; a burst fires once.
+# (4) OUTPUT NAMES ARE VALIDATED. Someone declared "RAM {{app.name}} usage" as
+# a field name -- something {{ }} can never reference. The model was asked for
+# it, helpfully substituted the placeholder, and the block failed with
+# "expected JSON with ..." three steps from the mistake. The editor now slugs
+# the name as it is typed and says it did; the daemon refuses the rest and names
+# a spelling that would work.
+# 2026-08-21 (174): "any app closed" ran the workflow forever, and it was my
+# own doing. Running a workflow STARTS processes -- the shell behind Run Script,
+# notify-send, a model server, python -- and when they exit a trigger watching
+# for any app closing sees them and starts the workflow again, which starts more
+# of them. The loop is real, it is fast, and nothing in the user's graph is
+# wrong. A trigger now stands down while its own automation is still running,
+# and for five seconds afterwards, which is when the last run's children are
+# being reaped. Nothing legitimate is lost: the pollers re-check every couple of
+# seconds, so an event that still matters is still there. Covered by five checks
+# in ci/automation-engine-test.py.
+# 2026-08-21 (175): two reports that turned out to be the same story told from
+# both ends -- what you typed was not what the block ran.
+# (1) FIELDS NOW SAVE WHILE YOU TYPE. They only saved on Enter or focus loss,
+# and clicking from a field straight onto ANOTHER CARD swapped the panel out
+# before editingFinished ever arrived. The text was gone and the block kept
+# running with its previous value, which is how an output name nobody had typed
+# in a while kept appearing in the error messages. Debounced at 350ms -- a pause
+# in typing, not a keystroke -- and guarded on activeFocus, because `text` is
+# bound to the config and an unguarded save would rewrite the binding that fired
+# it.
+# (2) THE MODEL SPELLS THE KEY ITS OWN WAY. Asked for {"ram_before": ...} a
+# small local model answers {"RAM before": ...} or {"RAM llama-server usage":
+# ...} -- shape right, spelling its own -- and an exact-key match failed on
+# replies that plainly contained the number requested. Keys are now compared
+# with case, spaces and punctuation folded away, and a single requested field
+# facing a single returned value is taken whatever it was called. With SEVERAL
+# fields it still refuses: guessing which value belongs in which slot is how a
+# workflow silently reports the GPU figure as the CPU one.
+# 2026-08-26 (176): "Run now" could not pass a value along. A graph with no
+# trigger block on the sheet -- AI Action -> Notification, hit Run now -- went
+# down a SECOND runner: a flat topological sweep that called each action with
+# payload="" and no vars dict. With vars=None every _publish() is a no-op, so
+# the AI block's {{ai.reply}} and every custom output it declared were never
+# published, and the notification rendered them as the literal braces the user
+# typed; {input} arrived empty for the same reason. The links were not read
+# either, so on-ok/on-error did nothing. That path now builds a real _Walk and
+# enters it at the cards nothing links into, which means one runner, one set of
+# rules, whether or not there is a trigger on the sheet. Unconnected cards on a
+# sheet still all run -- that is what the old sweep was for. Six checks in
+# ci/automation-engine-test.py, including the reported graph end to end.
+# 2026-08-26 (177): "put an App block in front of the AI and the outputs start
+# failing with expected JSON; take it away and they work." The App block was
+# never the cause. In autonomous / ask mode the AGENT protocol owns the reply
+# format: the moment the model uses a tool, the run ends in a sentence about
+# what it found -- "Descobri que seu sistema usa uma Intel UHD Graphics 620" --
+# which is the right answer wearing the wrong clothes, and the declared outputs
+# were matched against it and failed. Whether that happened at all came down to
+# whether the prompt tempted the model into a tool call, and the trigger detail
+# that rides along in the prompt ("app opened: firefox") is exactly such a
+# nudge -- so the bug looked like it belonged to the block in front. The AI
+# block now spends ONE repair turn: plain chat, no agent prompt in the way,
+# shown only the original question and its own answer, asked to write that same
+# answer as the object it declared. Nothing is invented and a reformat that
+# fails still fails the block. When it does fail from a non-advisory block the
+# log now names the trap instead of leaving it to be deduced. Nine checks in
+# ci/automation-engine-test.py.
+# 2026-08-26 (178): five things reported from one afternoon of real use.
+# (1) THE ENABLED SWITCH STOPPED FOLLOWING THE SELECTION. GToggle flipped its
+# own `checked` on click, which DESTROYS the binding the call site had written
+# (checked: root.activeEnabled). From the first click onward, selecting a
+# disabled automation left the label reading "Disabled" beside a switch still
+# sitting in the on position. It now only reports the click; the owner turns it.
+# (2) THE RUN LOG FOUGHT BACK. It jumped to the bottom on every new line, so
+# scrolling up to read something during a run was impossible, and there was no
+# way to empty it. It follows the tail only while the user IS at the tail, gains
+# a Clear button, and appends new lines instead of rebuilding the whole list
+# every 1.5s (which was also throwing away any selection in progress).
+# (3) TEXT WAS NOT SELECTABLE. An answer you cannot copy out of the window is
+# half an answer. Chat bubbles and run-log lines are read-only TextEdits now.
+# (4) TWO APP BLOCKS OVERWROTE EACH OTHER. "Firefox opens -> ask the AI for the
+# RAM -> Firefox closes -> ask again" has two App cards, both publishing
+# app.name, so the back half of the graph reported whichever ran last -- and the
+# panel's value list silently dropped the second card's entry as a duplicate. A
+# block can now carry a value name and publishes under that too
+# ({{opened.name}}), which nothing else can take. The shared {{app.name}} keeps
+# its last-wins meaning for every graph already saved.
+# (5) "ANY APP" MEANT ANY PROCESS. A shell, a python helper, a thumbnailer --
+# something starts or exits every few seconds on a live desktop, so an empty app
+# name fired more or less constantly while looking like it was waiting for the
+# user to open something. It now matches against what the installed .desktop
+# files actually launch; if none can be read it fires for anything, because a
+# node that never fires is worse than one that fires too often.
+# Twenty-two checks in ci/automation-engine-test.py.
+# 2026-08-26 (179): "{{app1.name}} in the second App card does not find the
+# app." It never could: _wait_app read cfg["app"] straight instead of rendering
+# it, so the block waited for a process literally named "{{app1.name}}" until it
+# timed out. It was not alone -- launch/close app, the file operations, the
+# sound path and the wait duration all skipped _sub as well, which meant no
+# value from anywhere in the run could reach ANY of them. All five render now.
+# (The App POLLER stays raw on purpose: it is the trigger, and it runs before
+# there is a run to read values from.)
+# Looking for others turned up three fields the generator advertised that
+# nothing reads: act_file said "source" where the panel and daemon say "src",
+# and act_app / act_power said "action" where both say "op". The validator drops
+# any key not in the catalogue, so a generated block carried the wrong name or
+# no name at all and then sat on the canvas looking configured while copying no
+# files and launching no apps. A new check in ci/workflow-generator-test.py
+# reads the daemon with ast and fails if the catalogue ever again names a field
+# no executor reads. Eight more checks in ci/automation-engine-test.py.
+# 2026-08-26 (180): swept the whole feature for the classes of bug the last
+# three releases kept finding one at a time, instead of waiting for the next
+# report. Three files have to spell every field name identically -- the panel
+# writes it, the daemon reads it, the catalogue tells the model about it -- and
+# every disagreement shows up as "the block looks configured and does nothing".
+# FOUR BLOCKS ADVERTISED VALUES THEY NEVER PUBLISHED. The panel offered
+# {{process.name}}, {{process.metric}}, {{process.value}}, {{command.output}},
+# {{file.dest}} and {{app.name}}; nothing ever created them, so writing one into
+# the next block rendered it as its own braces. evt_process, evt_command (as a
+# trigger AND mid-chain), act_file and act_app now publish what they promise,
+# and the file/app blocks hand their result on as the payload too.
+# TWO MORE FIELD-NAME MISMATCHES, found by reading the daemon rather than by
+# use: evt_command said "pattern" where the panel and daemon say "match" (so a
+# generated sensor set to "output matches" matched an empty regex) and had no
+# "interval" at all.
+# THE VALUE NAME IS NO LONGER APP-ONLY. Two App cards fighting over
+# {{app.name}} was the report; two Run Scripts over {{stdout}} is the same bug
+# with a different noun. Every executor that publishes now passes its block's
+# own prefix, and the panel shows the field on any block that publishes
+# anything.
+# All three invariants are now pinned by ci/workflow-generator-test.py, which
+# parses the daemon with ast and fails if the catalogue or the panel ever again
+# names a field no executor reads, or advertises a value no executor publishes.
+# Verified by reintroducing the three fixed bugs and watching it fail. 200
+# checks in ci/automation-engine-test.py, 132 in the generator suite.
+# 2026-08-26 (181): the Monitor UI, rebuilt around the mockup -- and a harness
+# that made it possible to SEE what was being built. devtools/preview.py plus a
+# nine-type Kirigami stub run the app on a machine that is not Genesi, so this
+# pass was rendered and looked at rather than written blind (which is how
+# pkgrel 135 shipped a blank Monitor).
+# THE CHAT IS A DIFFERENT PAGE. The empty state was an icon and two lines
+# saying the chat was empty, which the empty chat had already conveyed. It is
+# now a hero with three suggestion cards that say what the thing can DO and
+# fill the composer when clicked, over a row of pills reaching the rest of the
+# app. The composer holds the message and everything that applies to it --
+# model, Genesi Find, reload -- instead of the model picker sitting in the top
+# bar two thirds of a window from the text it governs. Enter sends,
+# Shift+Enter breaks the line, and the box grows to five lines.
+# GENESI FIND IS IN THE CHAT. Turn the pill on and the next message searches
+# your FILES instead of going to the model, through `genesi-find --json` -- the
+# same single source of truth as genesi-find-ui and the Dolphin action, so the
+# chat cannot drift into a second, weaker search. Results arrive as CARDS:
+# type, name, folder, age, size. Clicking one opens it; "show in folder"
+# reveals it SELECTED via org.freedesktop.FileManager1.ShowItems, which is the
+# thing "open the containing folder" never does.
+# IT IS ACTUALLY RESPONSIVE NOW. Two breakpoints: the right rail leaves below
+# 1180 (everything on it is reachable elsewhere) and the sidebar collapses to
+# an icon rail below 1000 -- collapses rather than disappears, because losing
+# navigation would strand the user on whatever page they were on. The window
+# minimum was 936px, WIDER than the point the layout collapses at, so the
+# collapsed layout could never be reached; the floor is now 684. Two layout
+# bugs fell out of testing at those sizes: the sidebar history was an unbounded
+# Repeater that pushed the Memory Palace card off the bottom of the window (it
+# scrolls now), and the nav items set `height` where a ColumnLayout wants
+# Layout.preferredHeight, so they stretched to fill the rail.
+# The shared Theme.qml gains a radius/spacing/type scale so the apps stop each
+# inventing their own. Additive -- nothing else changes.
+# 2026-08-26 (182): first pass over the Dashboard, and the card chrome the
+# whole fleet shares.
+# THE METRIC ROW REFLOWS. Three 128px cards side by side stop being readable
+# long before the window stops shrinking -- the gauge and its number end up
+# sharing about ninety pixels. Two columns under 1180, one under 820.
+# THE CARD CHROME IS CALMER. GlassCard's radius was 18 while everything around
+# it used 18/14/12/10, so two cards side by side rounded differently; it is now
+# 16, matching the kit's one card radius. And an ACTIVE card drew the raw
+# accent at full saturation plus a 0.28 ring plus a 0.50 halo -- on the Turbo
+# card that read as an alarm rather than "this is on", and it was the loudest
+# thing in the window, competing with the numbers that are the actual content.
+# 0.30 / 0.12 / 0.22 now. This is the shared GlassCard, so every app using it
+# gets the same calm.
+# THE SHOUTED MICRO-HEADINGS. Five ALL-CAPS letterspaced accent labels (CPU,
+# MEMORY, INFERENCE...) competed with the readings underneath. Same size,
+# normal tracking, secondary colour -- the icon chip beside each already
+# carries the colour.
+# Still to do on this app: the Models, Automations and Mesh pages, and
+# QuickChat.
+# 2026-08-26 (183): the Models page, and a bug the preview harness found on a
+# page I was not even working on.
+# THE ADVISOR'S FAILURES WERE ITS ANSWER. advise() returned the raw OSError
+# text on any exception, and the page rendered it in the same monospace box the
+# advice goes in -- with wrapMode NoWrap, so it ran off the right edge. A
+# machine without the genesi-ai-mode CLI therefore showed "error querying the
+# advisor: [Errno 2] No such file or directory" as its hardware advice. Absent
+# and broken are now different things: absent returns "" and gets the page's
+# empty state, a real failure gets a framed error row with a retry, and the
+# advice itself wraps.
+# THE MODELS PAGE STOPPED BORROWING TURBO'S ORANGE. Orange means Turbo in this
+# app; on a page whose nav item is green it was doing duty as "local model
+# file", and it was the loudest thing on screen. The genuinely Turbo-related
+# bits (the ACTIVE model, the MoE fit badge) keep it.
+# AND: CanvasTheme.qml never defined `violet`, which AutomationCanvas.qml and
+# AutomationConfigPanel.qml both use -- so two icons on the Automations page
+# were handed `undefined` as a colour and drew nothing. Invisible on a dark
+# background; the only trace was a QML warning nobody sees without running the
+# app, which is exactly what devtools/preview.py now makes possible. Fixed, and
+# ci/qml-sanity-test.py fails if that family ever again uses a token its own
+# theme does not define (verified by removing violet and watching it fail).
+# 2026-08-26 (184): the Mesh page, and three more bugs that only a running app
+# could show.
+# "NOT INSTALLED" STOPPED BEING AN ERROR. The Mesh page announced a missing
+# optional package in a red box with a red border -- the same thing the app
+# says when something has gone wrong. Painting "you have not installed this
+# yet" red is how people learn to ignore red. It is an invitation now: what it
+# is, why you would want it, and the pacman command with a copy button.
+# UNDEFINED WAS BEING ASSIGNED TO bool. `a && a.b` evaluates to UNDEFINED, not
+# false, when `a` is missing, and QML cannot coerce that: it warns and KEEPS
+# THE PREVIOUS VALUE. Four `visible:` bindings on the Mesh page were written
+# that way, so a row could stay on screen describing state that was no longer
+# there. Coerced with !!.
+# THE PALETTE DRAG GHOST NEVER WORKED. `PaletteItem { dragGhost: dragGhost }`
+# binds the property to ITSELF -- inside the delegate the component's own
+# property shadows the outer id -- so Qt detected a binding loop, broke it, and
+# every palette item was left holding null. Dragging a block from the palette
+# showed no ghost. The ghost item is `paletteGhost` now.
+# And the canvas's undo Shortcut used the singular `sequence`, which binds only
+# the first of the chords StandardKey.Undo maps to.
+# The Mesh subtitle was hardcoded pt-BR while the rest of the app switches
+# language from the top bar, so an English user read that page in Portuguese.
+# Every tab now renders with ZERO QML warnings.
+# 2026-08-26 (185): the Automations canvas, against the reference sheet.
+# EVERY CARD SAYS WHAT KIND OF STEP IT IS. A coloured strip across the top
+# carries the category (TRIGGER / AI / CONDITION / ACTION / LOOP) and the step
+# number. On a sheet of a dozen cards that is the difference between scanning
+# and deciphering: the title says what THIS one does, the strip says whether it
+# is a trigger, a decision, or something that touches the machine. The link
+# animation is untouched.
+# THE INSPECTOR STOPPED SPILLING OUT OF ITS OWN PANEL. FieldLabel had neither
+# fillWidth nor wrapping, so one long label ("Process name — leave empty for
+# ANY app") set the column's implicit width and pushed every field below it
+# past the panel's right edge, where the window clipped them.
+# ZOOM IS ONE BAR THAT SAYS WHAT THE ZOOM IS. Three 34px squares stacked in a
+# corner read as three unrelated buttons, and none of them answered the
+# question you actually have when a graph looks wrong: how far in am I. Now
+# "− + 100% Fit", with the mini-map sitting above it.
+# CanvasTheme gains the shape/rhythm/type scale, mirroring the shared Theme
+# token for token. The canvas keeps its own PALETTE on purpose; it should not
+# also invent its own geometry. The sanity check caught the first attempt at
+# this within seconds of writing it.
+# 2026-08-26 (186): Quick Chat -- the Hyprland sizing bug, and the overlay
+# itself.
+# IT CAME UP THE FULL HEIGHT OF THE SCREEN, and went visibly wrong the moment
+# you asked it something. Two causes, both about who decides the size. The
+# window declared a `height:` binding and nothing else, which is a request the
+# client makes to ITSELF -- it never told the compositor a maximum, so a
+# compositor free to choose a height chose one. And the card inside used
+# anchors.fill, so it was exactly as tall as whatever surface arrived: content
+# in the top fifth of a huge empty panel. The window now declares
+# minimumHeight/maximumHeight (Qt forwards these as the xdg_toplevel min/max
+# size), and the card is sized by its CONTENT, so the panel is the right shape
+# even where the constraint is ignored and the surplus surface is simply
+# transparent. Verified by forcing a 700px window in the preview: the card
+# stays 92px instead of stretching.
+# THE OVERLAY SPEAKS THE APP'S LANGUAGE NOW. Same rounded surface and hairline
+# as the chat composer it is a miniature of. "ASK" was a 34x26 badge with 9px
+# text -- a label pretending to be a button, and the thing you press most in
+# this window; it is a real button with a state. And the settings/close
+# controls used freedesktop icon NAMES, which resolve against whatever icon
+# theme the desktop happens to have -- on a system missing those two they were
+# empty squares. They use the app's own bundled SVGs, like everything else in
+# the window.
+# devtools/preview.py runs Quick Chat too, and picks up an app's Backend
+# SUBCLASS rather than the base class it imports.
+# `theme: theme` binds the property TO ITSELF -- QML resolves a bare name on
+# the right-hand side against the object's own properties before the enclosing
+# scope's ids -- so every GButton/StudioCard/StatusBanner written that way was
+# handed `undefined` and rendered unstyled. Swept here too; the id is
+# `appTheme` now. ci/qml-sanity-test.py fails on the pattern from now on.
+# (AdvisorPage and the genesi-find-ui window were both affected.)
+# 2026-08-26 (188): genesi-find-ui shows the same card the chat does.
+# Genesi Find answers in two places, and a file looked like one thing in the
+# chat and another in the standalone window: there it was a flat 58px row that
+# opened only on a DOUBLE tap, with nothing on screen saying it was clickable
+# and no way to reveal it in a file manager -- which is usually what you want
+# after finding something. It is FileCard now, bundled into find/ at build
+# alongside FIcon and the icon set, so both surfaces get the type badge, the
+# single-click open, "show in folder" and "copy path" from one component. The
+# find backend gained a copyToClipboard alias, because one component driving
+# two backends means the two backends answer to the same verb.
+# Its empty state kept the three-state logic it already had (searching / found
+# nothing / not asked yet) and gained a shape. I nearly added a SECOND empty
+# state next to it before noticing -- the same duplication this pass has been
+# taking out of the other apps.
+# 2026-08-26 (189): the Dashboard now reads like the chat.
+# THE ANSWER IS IN THE MIDDLE OF THE WINDOW. The status was a wide banner: a
+# ring on the left, four stacked lines in the middle, and an ON/OFF pill
+# floating at the far right -- you read it left to right to find out the one
+# thing you opened the Dashboard for. It is the chat's hero shape now: the orb,
+# the state at headline size, one line qualifying it, and the rest as pills
+# underneath (tweaks, Turbo and its model, the governor). The orb only breathes
+# while the machine is actually generating; a pulse that never stops stops
+# meaning anything.
+# THE METRIC CARDS LOST THEIR DONUTS. Each led with a large grey ring holding
+# an em dash whenever there was no reading yet, which is the emptiest possible
+# way to say "nothing here". Same card language as the chat's suggestions now:
+# tinted icon chip, name, the number at headline size, a slim bar that simply
+# is not drawn when there is nothing to measure, and one line of context.
+# THE TURBO CARD STOPPED SHOUTING. As a GlassCard with accent: turbo and
+# active: on it drew a saturated border, ring and halo around the widest thing
+# on the page -- beside the calm cards under it, the one element shouting was
+# the one already saying it was on three other ways. Same surface as its
+# neighbours; the orange stays in the icon, the badge and the switch.
+# 193: follows the desktop's colour scheme when Genesi Center's switch
+# says to, through the shared genesi_palette bridge -- which also sets
+# the application QPalette. That second half is what was missing: Qt
+# draws popups, scrollbars and Fusion buttons from a palette no Genesi
+# app ever set, so they arrived in Fusion's default LIGHT one. A dark
+# window with a few white controls in it was not an app half following
+# the scheme, it was an app following nothing while Qt filled the gaps.
+# 194: follows the desktop's colour scheme by DEFAULT. It was the other
+# way round, on the reasoning that an identity should not leave in an
+# update -- but that reasoning is about the identity, not about the
+# desktop. "Every window follows the theme" cannot be true by default
+# in an OS whose default is that its own six windows do not. The
+# emerald is one switch away, on the same switch, and it is what you
+# ask for now rather than what you get.
+# 2026-09-11 (195): Kokoro could not be installed, and an Anthropic key had
+# never once worked.
+#
+# `genesi-ai-voice install` refused to start until `pip install --user
+# kokoro-onnx` had been run, and on Arch that command does not work at all --
+# the system Python is externally managed (PEP 668) and pip declines. So the
+# button in Genesi Center opened a terminal that printed an instruction which
+# could not be followed. Kokoro was uninstallable by design.
+#
+# It builds its own environment now, under the same directory as the model:
+# no root, nothing system-wide touched, deleted whole by `remove`, and
+# --system-site-packages so a machine with python-numpy and
+# python-onnxruntime from pacman reuses them. `say` and `voices` re-exec
+# themselves with that interpreter, because onnxruntime is a native extension
+# and putting another environment's site-packages on sys.path gives a segfault
+# rather than an error. espeak-ng stops being a hard requirement: current
+# kokoro-onnx pulls espeakng-loader, which carries the library and its data in
+# the wheel. And the install ends by synthesising one phrase, so an install
+# that reports success and cannot speak fails where somebody can read it.
+#
+# The hosted models: `anthropic` sat in the provider table under a comment
+# saying every endpoint in it speaks the OpenAI chat-completions shape. It
+# does not -- /v1/messages, an x-api-key header, an anthropic-version, and the
+# answer in content[0].text -- so an Anthropic key answered 404 to
+# `genesi-ai-key test` and fell back silently to the local model on every
+# ask(). Listed, documented, never working. There is a dialect per provider
+# now, gemini is there (OpenAI-compatible, at its own endpoint), and the table
+# lives in genesi_ai_assist beside the code that sends the request rather than
+# in the tool that writes the config.
+#
+# And counting: one request is one use, counted in the one function that sends
+# one, with local and hosted counted APART -- a single total would hide the
+# only question worth asking, which is how much of it left the machine. A
+# request that never landed is an error and not a use. `genesi-ai-key usage`
+# prints it; the AI page shows both numbers.
+#
+# The Monitor's chat can speak an answer: a Listen control on an assistant
+# bubble, drawn only when genesi-ai-voice says it is ready.
+# 2026-09-12 (196): the Kokoro install 404'd at the last step.
+#
+# The environment was built correctly, every dependency resolved, and then:
+#
+#   could not download kokoro-v1.0.onnx: HTTP Error 404: Not Found
+#
+# The release tag is `model-files-v1.0` and was written `model-v1.0` from
+# memory. Everything that could be checked locally was right; the one thing
+# that could not be is the one thing that was wrong.
+#
+# ci/voice-model-test.py asks GitHub whether the two URLs resolve. A 4xx fails
+# the build; a network error does not, because a runner with no route to
+# github.com must not go red about a URL that is fine.
+# 2026-09-12 (197): the API key was not connected to anything you talk to,
+# and there was no setting for the voice.
+#
+# Reported as "the API key is like it isn't integrated with our main AI
+# system: you can't choose to use it in the AI Mode Monitor or in Quick Chat",
+# which was exactly right. The key was wired into ask() -- the small
+# completions the passive helpers make -- and into nothing a person types
+# into. The chat picks a model string and routes it to Ollama or to
+# llama-server, and a hosted provider was not one of the things a model string
+# could be.
+#
+# It is now: `cloud:<provider>`, the same shape as the `gguf:<stem>` refs that
+# already make a local file a first-class model everywhere. So it appears in
+# the Monitor's picker and in Quick Chat's, `modelLabel` renders it as the
+# provider and the model it is set to, and the saved sessions and automation
+# configs keep treating a model as a string. Streaming lives in
+# genesi_ai_assist next to the dialects, because two places that know how
+# Anthropic differs from OpenAI is one too many -- and one stream is counted
+# as one request, there, including a stream the user stops partway (the
+# provider served it either way).
+#
+# Agent mode refuses a hosted model and says so. The loop runs tools, reads
+# files and asks for approval against a local transport; pointing it at a
+# provider would need the whole thing ported, and saying so is better than
+# half-doing it and much better than a silent nothing. Quick Chat sends a
+# hosted model through the plain chat path for the same reason.
+#
+# And spoken answers are a setting, remembered: a speaker chip beside the
+# model chip in the Monitor, a Voice row in Quick Chat's settings, and each
+# finished answer read out when it is on. Both are drawn only when
+# genesi-ai-voice says there is something to speak with, rather than drawn and
+# inert. `voiceReady` is cached, because answering it starts a second
+# interpreter to look inside a virtualenv, and `recheckVoice` is how it
+# changes after an install.
+# 2026-09-17 (198): Local | API, a key per provider, a model you type, and a
+# voice that speaks your language.
+#
+# Kokoro said everything in American English, Portuguese answers included,
+# because `lang` was a constant. It speaks nine languages from the two files
+# the install already fetched -- one model and one voices file carrying all
+# 54 voices -- so the language is a setting now, chosen in Genesi Center, the
+# Monitor or Quick Chat, and it defaults to the desktop's own. Each language
+# was synthesised for real before it was offered, and choosing one downloads
+# nothing and loads nothing extra.
+#
+# Hosted models: one key per provider instead of one key in total (setting a
+# Groq key used to forget the Gemini one), each with a model typed the way the
+# company names it, and the provider's own model list offered when asked --
+# asked of the provider rather than shipped here, because model names are the
+# part that goes stale. An old single-key file reads as a store with that one
+# provider active, so nobody who set a key before this has to set it again.
+#
+# The chat's API side is a switch, not a list: a provider sat in the middle of
+# the local models, which is the wrong shape for "my machine or somebody's
+# API". Local | API in the Monitor's composer and in Quick Chat's settings,
+# remembered and shared between the two. The answer's badge names the
+# provider instead of saying "Ollama", and the header stops printing
+# "undefined tok/s" for an answer that has no rate.
+#
+# TEST failed on a working Gemini key. It asked for eight tokens, Gemini 2.5
+# spent them thinking and replied with a message that had no content field,
+# and indexing that raised KeyError -- reported as "the endpoint answered, but
+# not in the shape an openai provider answers in". A reply with choices IS the
+# shape; an empty answer is still an answer.
+#
+# Quick Chat was a large frosted rectangle with a small bar at the top. It
+# told the compositor a size RANGE and Hyprland picked the top of it, 820 by
+# 620, and blurred the transparent surface behind the card. Its minimum and
+# maximum are now the same number -- the size its content needs -- so there is
+# nothing left to choose. And it reloads itself when its files are updated,
+# because it is a login service that kept running the code it started with:
+# after the last release the Monitor had the new features and Quick Chat did
+# not.
+# 2026-09-17 (199): API models act, Stop stops, Quick Chat's settings open.
+#
+# Agent mode on a hosted model: the same loop, with the tools, the approval
+# gate and the step limit on this machine and only the next-step reply from
+# the provider. Each step is one counted request. The automations run on them
+# too -- an AI block, its agent steps, its JSON repair turn, an AI condition and
+# the workflow builder all ask through one branch -- and a block's model picker
+# lists API models labelled "(API)", because a block that fires on a schedule
+# bills on every run. Quick Chat's API side goes through the agent again.
+#
+# Stop did not stop. It set a flag each transport read between lines of the
+# reply, and a model still loading or thinking, or any non-streaming agent
+# step, sends no lines -- so the read sat blocked until the model finished,
+# and the close() meant to end it waited on the same lock and froze the
+# window for as long. It shuts the socket down now, which wakes the reader at
+# once and makes Ollama and llama-server see the client leave and stop
+# generating; the window is released immediately, a stopped answer is not
+# read aloud, and the voice stops too.
+#
+# Quick Chat's settings would not open. Its height, minimum and maximum were
+# all bindings, and raising the height past a maximum that had not moved yet
+# clamped it straight back, locking the window at the size of the bare bar.
+# They move in order now: maximum first when growing, minimum first when
+# shrinking.
+# pkgrel 200: the Quick Chat is its own size again when the AI asks to run
+# something.
+#
+# Qt sends one legal size as the window's xdg minimum AND maximum, and a
+# floating Hyprland window obeys it. A TILED one does not -- it is the size of
+# the workspace -- so the card stretched across the screen with a blurred void
+# under it, which is what "it goes full screen and breaks again" was. Three
+# windowrules exist to keep it floating; one that did not match is
+# indistinguishable from this end.
+#
+# So the card no longer takes the window's width (it is 704 wide and centred,
+# and looks right in a window of any size), and if the window is not the size
+# it asked for, it asks Hyprland by class to float, resize and centre it --
+# twice at most, because a window that argues with the compositor forever is
+# worse than a wide one.
+# pkgrel 201: the Image page. Generate a picture from a description, edit one
+# by describing the change, or enlarge one 4x -- locally, in the Monitor, with
+# stable-diffusion.cpp (genesi-sd-cpp, the same ggml family as Turbo's
+# llama.cpp) instead of a ComfyUI/PyTorch stack.
+#
+# Nothing is installed by default. The page offers the engine (genesi-sd-cpp,
+# an optdepend) and each model as a button, like a chat model: FLUX.2 klein 4B
+# (generates AND edits, the default), Z-Image Turbo (generates) and
+# Real-ESRGAN 4x (upscales). Only Apache/BSD weights that download without a
+# Hugging Face login, each checked by size and SHA-256 when it lands.
+#
+# The new genesi-ai-image CLI owns the catalog, the resumable downloads and the
+# sd-cli command lines; the page is a front end over its --json, the Genesi
+# Find split. Before drawing it unloads Ollama's warm chat models and pauses
+# Turbo (back on with the same model afterwards), because a diffusion model
+# next to a resident LLM on an 8 GB card spills to RAM and runs several times
+# slower. "Improve with AI" has the chat model rewrite the prompt in English.
+#
+# The engine is not in [genesi]: publish-sd-cpp.yml publishes it to its own
+# release-hosted repo, [genesi-image], which .install adds to pacman.conf the
+# same way it adds [genesi-cuda]. That repo was published (and its db checked)
+# BEFORE this build, because a configured repo with no db breaks `pacman -Sy`.
+# pkgrel 202: the Image page, round two -- from the first report on real
+# hardware (RTX 3050 8 GB).
+#
+# EDITING FAILED with sd-cli's bare "main.cpp:928 - generate failed" after a
+# long "loading into the GPU". Upstream's own performance notes say why: the
+# VAE ENCODE step an edit adds has no out-of-memory retry (decoding has one),
+# so on an 8 GB card full of weights it simply died. Every edit and img2img now
+# tiles the VAE; any failed run retries once by itself in low-memory mode
+# (weights in RAM, ~0.6 MP); flash attention is no longer forced on Vulkan,
+# where upstream says it slows things down. And a failure now says WHY: the
+# reason is the error line BEFORE sd-cli's generic closing one, and the whole
+# engine output is one click away ("Show details", "Copy log").
+#
+# TURBO for images. Measured in WSL: a cold run spent 221 s just READING
+# weights; the next picture from the same process spent none. So Turbo keeps
+# the model loaded in a genesi-sd-server, owned by a keeper that gives the GPU
+# back after 10 idle minutes (or on "Free the GPU"); adds a Lightning LoRA
+# where one exists (Qwen-Image 30 steps -> 4) or a step cache; and on CUDA,
+# flash attention + SageAttention. NVIDIA owners are offered the CUDA engine
+# (genesi-sd-cpp-cuda, new, in [genesi-image]).
+#
+# FROM 3 MODELS TO 15, with quantization variants recommended by VRAM, in a
+# model browser with filters (unfiltered, fast, photo, anime, text, editing,
+# fits my GPU): FLUX.2 klein 4B/9B, Qwen-Image 2512 and Qwen-Image-Edit 2511,
+# Z-Image and Z-Image Turbo, Chroma1-HD and Chroma1-HD Flash, and five SDXL
+# checkpoints (Juggernaut XL, RealVisXL Lightning, DreamShaper XL Lightning,
+# Pony V6, Illustrious XL) that are converted to GGUF Q8_0 on the user's machine
+# after the download (6.9 GB -> 4.2 GB measured). Licences are shown, not
+# filtered; "unfiltered" marks models trained without a content filter. Edit
+# mode now also redraws a picture with ANY generation model (img2img, with a
+# strength slider). "Add my model" imports any SD 1.5/SDXL checkpoint -- Pony,
+# Illustrious, Civitai -- and can optimize it to Q8.
+#
+# pkgrel 203: the Image page, round three -- editing that keeps the photo.
+#
+# CHANGE ONLY A PART. In Edit, a brush paints over the picture (eraser, size,
+# invert, clear). The painted strokes are drawn into a mask at the picture's
+# own size by the backend (QPainter -- the QML Canvas's save() is unreliable on
+# some scene-graph backends and corrupted the heap in testing), and the result
+# is COMPOSITED back onto the original: outside the painted area every pixel is
+# the original's, exactly, at full resolution. Redraw models get sd-cli's own
+# inpainting mask as well.
+# KEEP FACES. Optional (python-opencv): faces found in the source are pasted
+# back over the edit, feathered. Only rectangles are computed; nothing kept.
+# EDITORS RANKED. Edit mode lists the instruction editors first, by how well
+# they keep identity (Qwen-Image-Edit, FLUX.2 klein 9B, klein 4B), with the
+# redraw (img2img) models folded below a plain warning that faces change.
+# USER LORAS. Import a LoRA you downloaded (Civitai, Hugging Face): only
+# .safetensors (a .ckpt/.pt is a pickle that runs code on load), its base is
+# read from the tensor names (SDXL/Pony/Illustrious, SD 1.5, FLUX, Qwen-Image,
+# Z-Image) and it is offered only on matching models, with a strength slider
+# and its trigger words. In-app guide with the legal/safety warning. LoRAs are
+# GENERATE-ONLY by design: they are not applied to edits of existing photos.
+#
+# pkgrel 204: Edit gets its model chooser back (the card with "Change" and the
+# full model browser), with the ranked editors as a compact "recommended for
+# editing photos" block above it; in Edit the browser lists instruction editors
+# first, best at keeping identity first, with a fidelity badge, and marks the
+# redraw models "faces change". User LoRAs now apply in Edit as well as
+# Generate (same family check; the guide says to use LoRAs made for the editor
+# itself, e.g. Qwen-Image-Edit or FLUX.2 klein).
+#
+# pkgrel 205: the Quick Chat feeds the AI island (genesi-caelestia-shell 56).
+# It writes what it is doing to $XDG_RUNTIME_DIR/genesi-ai-island.json --
+# phase, the agent's steps, the command waiting for permission, the start of
+# the answer -- and takes the island's answers over its socket, now JSON
+# commands: genesi-ai-quick --approve ID / --deny ID / --stop / --hide /
+# --attach PATH [--prompt TEXT]. An approval is matched by id, so a stale
+# click never answers a newer request. Files can be attached (dropped on the
+# window or on the island): text and code are read, PDFs through pdftotext
+# (poppler) or Qt's PDF module, images go by path; the model gets their text
+# in front of the question, the window shows only their names.
+#
+# pkgrel 206: the Image page, two requests from real use.
+# REFERENCE PICTURES. Editors that take several pictures (Qwen-Image-Edit up
+# to 3, FLUX.2 klein up to 4) get them: picture 1 is the one edited, 2, 3...
+# are references the prompt points at ("the jacket from image 2"); in
+# Generate, klein can follow references too. Clicking a picture writes its
+# name into the prompt, and the tool rewrites "imagem 2"/"foto 2"/"@2" into
+# the word the model was trained on -- "Picture 2" for Qwen (its own
+# template's label), "image 2" for FLUX.2. Extra references are scaled down
+# to ~0.8 MP first, because each one costs memory and time.
+# VARY THE SCENE. Distilled editors draw the SAME room for the same request
+# whatever the seed (checked: the seed does reach the warm server and the
+# conditioning cache compares the pictures -- it is the model). An on-by-
+# default option for edits adds lighting/angle/room style/pose drawn from the
+# seed (a lit prompt is not relit; a pose only when asked), shown under the
+# picture and kept apart from the person's prompt in the gallery.
+#
+# pkgrel 207: with the AI island on (Hyprland), an approval no longer forces
+# the Quick Chat window open over everything -- the island asks. And the
+# runtime windowrule is written as `match:class ..., float on, center on,
+# pin on`; the old `float class:...` had no match: and was discarded, which
+# is why the window opened tiled and see-through.
+# pkgrel 208: the AI island on EVERY desktop, and a Quick Chat redesign.
+#
+#   * genesi-ai-island: the island outside caelestia -- KDE Plasma, GNOME,
+#     Xfce, Cinnamon, Budgie, LXDE, COSMIC, Niri. The SAME card caelestia
+#     draws (GenesiAiIslandCard + GenesiLeaf, bundled from the shell package
+#     the way genesi-ui-kit is), in a wlr-layer-shell surface where the
+#     compositor has one and a placed X11 window where it does not (GNOME
+#     goes through XWayland). Started beside the Quick Chat, leaves when
+#     switched off; off until switched on (pkgrel 213), in "always" mode.
+#   * Ask ON the island: a click opens an input in the island itself, the
+#     answer comes back there whole (Markdown), with Copy / Ask again /
+#     Continue in chat. One-click asks about the clipboard (explain,
+#     translate, summarize). `genesi-ai-quick --ask TEXT [--clip]`, which is
+#     also what caelestia's launcher `>ai <question>` runs.
+#   * Smart Copy (off until switched on): copy an error or a long text and
+#     the island offers to explain / fix / summarize it. Classified on this
+#     machine; nothing is sent until the person clicks.
+#   * The island's settings in the island (right-click or the ... button)
+#     and in the Quick Chat's settings, one file for every desktop:
+#     ~/.config/genesi/ai-island.json, `genesi-ai-quick --set KEY=VALUE`.
+#   * Quick Chat redesigned: the leaf as its face (its mood is the chat's
+#     state), answers rendered as Markdown with a copy button, the agent's
+#     steps as a timeline, starter chips, an attach button, a real approval
+#     card, segmented settings -- and it follows the desktop's colours live.
+#     Strings in English and Portuguese.
+# Needs layer-shell-qt (the layer surface) -- a small Qt plugin from KDE.
+# pkgrel 209: after the first real use (2026-10-09).
+#   * More providers: Hugging Face (free credits, gpt-oss-120b on Cerebras
+#     hardware -- the one genesi-code defaults to), Cerebras, DeepSeek,
+#     Mistral, xAI and NVIDIA NIM join OpenAI, Anthropic, Gemini, Groq,
+#     OpenRouter and Together. The Quick Chat lists every one, says which have
+#     a free tier, takes the key right there (piped to genesi-ai-key, never on
+#     a command line) and links to where the key comes from; models are
+#     Genesi's suggestions plus whatever the provider says the key can use.
+#   * Picking another model now shows at once: the footer named the old one
+#     (a slot call in a binding re-runs only when its argument changes, and
+#     "cloud:gemini" did not), and the model box jumped to the list's first
+#     entry instead of the model in use.
+#   * Local models in the agent: thinking switched off (Ollama `think`, the
+#     chat template's enable_thinking on Turbo), an 8k window so the tool
+#     catalogue is never cut off the front, a capped and steady reply, and
+#     <think> blocks removed before parsing. ci/ai-agent-local-test.py.
+#   * The settings scroll instead of being cut off at the window's height.
+# pkgrel 210: the island's buttons stay inside the island. After asking ON
+# the island, the next card (an approval) came out ~50 px low with Deny/Allow
+# hanging below it: the card's content switched anchors with bindings, which
+# leaves the old position behind. Placed by a computed y now; plugins-test
+# fails on a toggled anchor in the card.
+# pkgrel 211: inference settings that looked shipped and never reached the
+# server (audited against llama.cpp's pinned commit, ci/ai-turbo-perf-test.py).
+#   * Turbo states `--parallel 1`. It only passed --parallel when it wanted
+#     MORE slots, and llama-server's own default is "auto" = 4 slots over a
+#     unified KV, so the single-slot choice never applied.
+#   * genesi-aid renices and pins every THREAD of llama-server/ollama. nice and
+#     affinity are per-thread on Linux; the main thread got them, the compute
+#     threads (spawned at load, before the daemon saw the process) did not.
+#   * Hybrid-CPU detection reads the kernel's cpu_core/cpu_atom PMUs instead of
+#     guessing from per-core max frequency, which amd-pstate makes uneven on a
+#     uniform Ryzen (it could put decode on 2-3 threads of a 6-core).
+#   * No default `--prio 2`: an EPERM warning as a user, SCHED_FIFO 80 on every
+#     compute thread as root. GENESI_TURBO_PRIO still passes it through.
+#   * ~/.config/genesi/turbo.env and /etc/genesi-ai-mode/turbo.env are read by
+#     Turbo itself, so GENESI_TURBO_* knobs apply to the Monitor / Quick Chat /
+#     automation launches, not only to the always-warm unit (LAN bind excepted).
+#   * --spec-type values checked against --help; mlock via --load-mode.
+#   * genesi-ai-tune benches the server's real placement (MoE experts in RAM,
+#     thread count swept) and picks ubatch by prefill speed, not decode noise.
+#   * `genesi-ai-mode info` says when Ollama runs a model on the CPU of a GPU
+#     machine (plain `ollama` on Arch is the CPU build) and what to install.
+# pkgrel 212: Unsloth re-uploaded five of the Image page's GGUFs (Z-Image
+# Q4_K_M/Q6_K, Qwen-Image-2512 Q3_K_M/Q4_K_M, Qwen-Image-Edit-2511 Q4_K_M)
+# under the same names. The catalog still carried the old sizes and sha256,
+# so every download of them failed the checksum and was deleted. Updated to
+# what the Hub reports now; image-cli-test is what caught it.
+# pkgrel 213: the AI island is off until switched on, on every desktop. It
+# defaulted on outside caelestia, so KDE users got a floating pill over their
+# windows they never asked for. Switch it on in Quick Chat -> settings ->
+# AI ISLAND, or `genesi-ai-quick --set enabled=on`. Anyone who already
+# switched it on keeps it; a running island with no switch file leaves.
+# The island's own menu (right-click or ...) also gets Island On/Off, so it
+# is switched off with a click, no terminal.
+# And the island no longer eats clicks under it: right-click on the desktop
+# below the pill did nothing, a 640x470 dead zone. The card's input rect is
+# pushed while the QML loads, before the host had its window, and was
+# dropped; a resting pill never pushes again, so no mask was ever set.
+# pkgrel 214: English users stop seeing Portuguese. The panel widget said
+# "Medir o ganho do Turbo" / "Nenhum modelo carregado"; the Monitor's Mesh
+# page was pt-BR only while every other page followed the language switch
+# (now root.tr(en, pt) like the Image page); the CUDA offer notification
+# and Turbo's CLI output were pt-BR for everyone. ci/stray-portuguese-test.py.
+# pkgrel 215: a model left loaded no longer pins the CPU governor all day.
+# Turbo keeps its model until stopped, and a resident model kept AI Mode on
+# the balanced profile (governor: performance) indefinitely: a laptop sat
+# at 90 C browsing hours after its last chat (user report). Past the idle
+# timeout (ai_idle_timeout, 90 s) it now uses the light profile, which hands
+# the governor back; the next generation gets max within a poll. Between
+# chat turns nothing changes.
+# pkgrel 216: the Monitor's Video page (genesi-ai-video). Text to video,
+# animate a picture (its face stays the clip's face), a person from a photo
+# in a new scene (VACE), first + last frame, restyle a video, continue one.
+# Built ON genesi-ai-image: same sd.cpp engine (its pinned commit already has
+# vid_gen), same models folder, downloads, LoRA store and out-of-memory
+# retry. Seven models, every size and sha256 checked against the Hub: Wan2.2
+# TI2V 5B (the start, fits 8 GB), Wan2.1 1.3B, Wan2.1 VACE 1.3B/14B, Wan2.2
+# I2V/T2V A14B (two experts, a Lightning LoRA each), LTX-2.3 distilled (with
+# sound, experimental). The catalog marks which keep a face best. Turbo = the
+# distillation LoRA (4-6 steps); low-memory mode (weights in RAM, tiled VAE,
+# 22 MB TAE decoder) is on by default under 12 GB. Wan LoRAs are told apart
+# by size (1.3B/5B/14B) from their tensor widths. ci/video-cli-test.py.
+# pkgrel 217: Hyprland 0.57 (Lua config only). Ctrl+Alt+Space and the Quick
+# Chat's float/center/pin rule were registered with `hyprctl keyword`, which
+# 0.57 removed, so the shortcut did nothing there; and the window fit used old
+# dispatcher names. Both now ask `hyprctl eval 'return 1'` and speak Lua when
+# the answer is "ok", the old form otherwise.
+pkgrel=217
 pkgdesc='Genesi OS AI Mode - adaptive, reversible local-AI optimizer (CPU/GPU/power) + Plasma 6 widget + monitor app'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -1028,6 +1775,8 @@ license=('AGPL-3.0-or-later')
 # would also fail) → aborting the whole publish. It's an optdepend for docs.
 # It conflicts with the AUR llama.cpp variants, so those are no longer listed.
 depends=('python' 'python-psutil' 'kirigami' 'pyside6' 'qqc2-desktop-style' 'qt6-svg'
+         # The AI island as a layer surface on KDE / Niri / COSMIC / labwc.
+         'layer-shell-qt'
          # genesi-ai-tray (standalone SNI tray applet) — libappindicator/Gtk, NOT
          # Qt's QSystemTrayIcon (broken with the caelestia/Quickshell bar on Qt 6.11)
          'python-gobject' 'libayatana-appindicator' 'gtk3')
@@ -1038,8 +1787,20 @@ optdepends=(
     'ollama: run local models (genesi-ai-mode bench)'
     'qt6-tools: qdbus for the KWin desktop-effect trimmer'
     'genesi-llama-cpp: Genesi Turbo speculative decoding (llama-server, Vulkan — shipped by default)'
+    'genesi-sd-cpp: the Image page (local image generation and editing) — installed from that page'
     'genesi-ttf-rubik-vf: Rubik brand UI font for the Monitor (shipped by default; falls back to the system sans if absent)'
     'libnotify: desktop notifications from Automations (notify-send)'
+    'python-opencv: keep faces unchanged when editing pictures on the Image page'
+    'ffmpeg: the Video page saves clips as MP4 and can restyle or continue a video'
+    'qt6-multimedia-ffmpeg: play clips inside the Video page (otherwise they open in your video player)'
+    'poppler: read the text of PDFs attached to the Quick Chat (pdftotext)'
+    'wl-clipboard: the AI island reads and copies the clipboard on Wayland (Smart Copy, "explain what I copied")'
+    'xclip: the same on X11 desktops'
+    # Speech. Neither is required: `genesi-ai-voice install` builds what it needs
+    # in its own virtualenv. Having them from pacman makes that install smaller and
+    # faster, because the venv is created with --system-site-packages.
+    'python-onnxruntime: runs the Kokoro speech model without pip fetching its own copy'
+    'espeak-ng: turns letters into phonemes for Kokoro (the wheel carries a copy if this is absent)'
 )
 install="$pkgname.install"
 # Opt-in advanced tweaks config (all OFF by default). backup() so pacman writes
@@ -1053,6 +1814,18 @@ package() {
     install -Dm755 "${startdir}/genesi-aid"      "$pkgdir/usr/local/bin/genesi-aid"
     install -Dm755 "${startdir}/genesi-ai-mode"  "$pkgdir/usr/local/bin/genesi-ai-mode"
     install -Dm755 "${startdir}/genesi-ai-turbo"  "$pkgdir/usr/local/bin/genesi-ai-turbo"
+    # Image generation: catalog, downloads and the sd-cli runs behind the
+    # Monitor's Image page.
+    install -Dm755 "${startdir}/genesi-ai-image"  "$pkgdir/usr/local/bin/genesi-ai-image"
+    # Video generation, built on genesi-ai-image (it loads that file as a
+    # module from its own directory, so the two must sit side by side).
+    install -Dm755 "${startdir}/genesi-ai-video"  "$pkgdir/usr/local/bin/genesi-ai-video"
+    # Spoken answers (Kokoro) and the hosted-model key. Separate tools
+    # rather than flags on genesi-ai-mode: each owns a file, each can be
+    # run and tested from a terminal, and Genesi Center reads both
+    # through their --json rather than looking for the files itself.
+    install -Dm755 "${startdir}/genesi-ai-voice"  "$pkgdir/usr/local/bin/genesi-ai-voice"
+    install -Dm755 "${startdir}/genesi-ai-key"  "$pkgdir/usr/local/bin/genesi-ai-key"
     # Nightly autotuner: sweeps ubatch/flash-attn/KV/threads with llama-bench on
     # THIS hardware and writes the winning knobs to tune.json, which
     # genesi-ai-turbo reads as its defaults (env vars still override).
@@ -1148,6 +1921,16 @@ package() {
         install -Dm644 "${startdir}/../genesi-ui-kit/components/${_fq}.qml" \
             "$pkgdir/usr/share/genesi-ai-mode/find/${_fq}.qml"
     done
+    # ...and the SAME result card the Monitor chat uses. Genesi Find answers
+    # in two places; a file should not look like one thing in the chat and
+    # another in the standalone window.
+    for _fc in FileCard FIcon; do
+        install -Dm644 "${startdir}/monitor/${_fc}.qml" \
+            "$pkgdir/usr/share/genesi-ai-mode/find/${_fc}.qml"
+    done
+    install -dm755 "$pkgdir/usr/share/genesi-ai-mode/find/icons"
+    install -Dm644 "${startdir}/monitor/icons/"*.svg \
+        -t "$pkgdir/usr/share/genesi-ai-mode/find/icons/"
     install -Dm644 "${startdir}/find/org.genesi.find.desktop" \
         "$pkgdir/usr/share/applications/org.genesi.find.desktop"
     # Dolphin: right-click a folder -> "Search with AI here", scoped to it.
@@ -1156,6 +1939,12 @@ package() {
 
     install -Dm644 "${startdir}/monitor/genesi_ai_monitor.py" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_ai_monitor.py"
+
+    # The shared colour bridge, bundled from genesi-ui-kit the same way the
+    # kit's QML is -- and beside the app's own module, because that is the
+    # directory the app puts on sys.path to import it.
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/genesi_palette.py" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_palette.py"
     install -Dm644 "${startdir}/monitor/genesi_agent.py" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/genesi_agent.py"
     install -Dm644 "${startdir}/monitor/genesi_ai_quick.py" \
@@ -1164,6 +1953,14 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/Main.qml"
     install -Dm644 "${startdir}/monitor/MeshPage.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/MeshPage.qml"
+    install -Dm644 "${startdir}/monitor/ImagePage.qml" \
+        "$pkgdir/usr/share/genesi-ai-mode/monitor/ImagePage.qml"
+    # The Video page, and its player in a file of its own: a missing
+    # QtMultimedia must cost the player, not the page.
+    for _vq in VideoPage VideoPlayer; do
+        install -Dm644 "${startdir}/monitor/${_vq}.qml" \
+            "$pkgdir/usr/share/genesi-ai-mode/monitor/${_vq}.qml"
+    done
     install -Dm644 "${startdir}/monitor/ChatPage.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatPage.qml"
     install -Dm644 "${startdir}/monitor/AdvisorPage.qml" \
@@ -1183,6 +1980,28 @@ package() {
         "$pkgdir/usr/share/genesi-ai-mode/monitor/ChatBubble.qml"
     install -Dm644 "${startdir}/monitor/QuickChat.qml" \
         "$pkgdir/usr/share/genesi-ai-mode/monitor/QuickChat.qml"
+    # The AI island outside caelestia, and what it shares with the chat.
+    for _iq in genesi_island_link.py genesi_ai_island.py \
+               IslandStage.qml IslandLayer.qml IslandPlain.qml; do
+        install -Dm644 "${startdir}/monitor/${_iq}" \
+            "$pkgdir/usr/share/genesi-ai-mode/monitor/${_iq}"
+    done
+    install -Dm755 "${startdir}/monitor/genesi-ai-island" \
+        "$pkgdir/usr/local/bin/genesi-ai-island"
+    # The island's card and the leaf are the shell's own files, bundled at
+    # build like genesi-ui-kit: one drawing of the island, on every desktop.
+    for _sq in GenesiAiIslandCard GenesiLeaf; do
+        install -Dm644 "${startdir}/../genesi-caelestia-shell/${_sq}.qml" \
+            "$pkgdir/usr/share/genesi-ai-mode/monitor/${_sq}.qml"
+    done
+    # Chat primitives: the Genesi Find result block, the empty-state
+    # suggestion card and the pill. A QML file that is not installed is a
+    # "Type unavailable" on the user machine and a blank page, which is
+    # exactly how pkgrel 135 went out -- so these ship with the page.
+    for _cq in FileCard SuggestCard GPill; do
+        install -Dm644 "${startdir}/monitor/${_cq}.qml" \
+            "$pkgdir/usr/share/genesi-ai-mode/monitor/${_cq}.qml"
+    done
     # Automations tab: the Forge Canvas adapted for PC-wide automation, plus its
     # self-contained graphite theme + primitives (no dep on the shared Theme.qml).
     for _aq in AutomationsPage AutomationCanvas AutomationConfigPanel CanvasNode \

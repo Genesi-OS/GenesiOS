@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>Genesi OS</vendor>
+  <vendor_url>https://github.com/Genesi-OS/GenesiOS</vendor_url>
+
+  <!--
+    exec.path is pinned to one file that takes no arguments reaching pacman.
+    That pinning IS the security boundary: whatever the GUI does, the widest
+    privileged action available to it is the fixed transaction inside that
+    script. See genesi-update-center-apply for the reasoning.
+
+    auth_admin_keep, matching org.genesi.channel.set: an update is a deliberate
+    act that the user just pressed a button for, and re-prompting inside one
+    session teaches people to click through prompts.
+  -->
+  <action id="org.genesi.updatecenter.apply">
+    <description>Update the system</description>
+    <description xml:lang="pt_BR">Atualizar o sistema</description>
+    <message>Authentication is required to update Genesi OS.</message>
+    <message xml:lang="pt_BR">É necessário autenticar para atualizar o Genesi OS.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/genesi-update-center-apply</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

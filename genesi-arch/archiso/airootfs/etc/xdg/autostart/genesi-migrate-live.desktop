@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Migrate
+Comment=Opens the installer when the ISO was started by Genesi Migrate
+Exec=/usr/local/bin/genesi-migrate-live autostart
+NoDisplay=true
+X-GNOME-Autostart-Phase=Applications

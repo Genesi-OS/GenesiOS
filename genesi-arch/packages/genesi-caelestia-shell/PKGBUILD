@@ -24,7 +24,810 @@ pkgver=2.0.3
 # Diagnosed from three identical coredumps on a Genesi RTX 3050 box. We ship the
 # whole fixed ContentList.qml and overwrite the tarball's copy in prepare() (a
 # full file, not a context patch, so the CI build can't fail on patch fuzz).
-pkgrel=2
+# pkgrel 3: fill in the Nexus "Updates" page. Upstream registers it in
+# PageRegistry and points it at PlaceholderComp -- the "Page under construction"
+# screen -- so the entry has always been in the settings menu leading nowhere.
+# The update UI belongs where a user already looks for settings, not in a
+# program of its own, which is the same reason Windows keeps it in Settings.
+#
+# Written entirely in caelestia's own design language (PageBase / ConnectedRect /
+# SectionHeader / InfoRow, Tokens and Colours): the palette here retints live
+# from the wallpaper, and Genesi's fixed emerald would fight it. The page is
+# Genesi by what it does, not by how it looks.
+#
+# prepare() now asserts each override's precondition and fails the build when it
+# stops holding -- including refusing to apply if upstream ever ships its own
+# UpdatesPage.qml, which we would otherwise erase in silence on the next bump.
+# pkgrel 4: two visual bugs in the Updates page, both found by looking at it
+# on a real screen -- which no amount of static verification was going to do.
+#
+# The hero icon sat upside down. `RotationAnimator on rotation` takes ownership
+# of the property and leaves it wherever the animation stopped, so the spinner
+# from the initial check froze the check-circle mid-turn. A standalone
+# RotationAnimator with target: can put it back, and does.
+#
+# And the System cards had a squared-off border over their rounded corners:
+# InfoRow ALREADY IS a ConnectedRect, drawing its own background and taking
+# first/last itself. Wrapping it in another one stacked two rectangles and the
+# inner, nearly-square one won. Upstream uses InfoRow bare (AboutPage's System
+# section); so does this now.
+# 16: the Display page shows WHICH screen is the main one. It was a button
+# with no state, so pressing it looked identical to it not working.
+# 17: bar.width and bar.spacing. caelestia exposed what the bar contains
+# and nothing about how it is drawn, so presets could only reorder modules.
+# 22: a second body for the launcher, and the shape it takes.
+# caelestia's launcher is a prompt with a list stacked over it, sized to its
+# content. The Genesi one is a wide slab: the wallpaper behind the prompt, the
+# clock and the weather in the corners, the selection named in a card of its
+# own, and the results in numbered columns. `launcher.layout` picks.
+#
+# Ships as two WHOLE FILES Genesi owns (GenesiContent.qml, GenesiAppGrid.qml)
+# rather than as a patch against upstream's Content.qml. A layout this different
+# expressed as a diff would rewrite nearly every line of a file we do not own,
+# and a fuzzy match on a version bump would give us a launcher that loads and is
+# subtly wrong instead of a build that stops. Upstream's Content.qml is not
+# touched at all; the only edit is the line in Wrapper.qml that chooses between
+# the two, which the patcher asserts.
+#
+# Nothing compiles this QML -- CMake installs modules/ as plain files -- so a
+# green build says nothing about whether the launcher loads. It was verified by
+# standing up the Quickshell and caelestia types it needs as stubs and having Qt
+# itself parse, instantiate and lay out the real file offscreen, failing on any
+# warning. That is also how the band bug was found: the children said
+# `parent.band`, a clipping container reparented them, the binding went
+# undefined, and the wallpaper covered the whole panel.
+# 23: the colour schemes, fanned out. `>scheme` in the Genesi launcher body is
+# a PathView of cards, each PAINTED IN ITS OWN COLOURS -- surface as the ground,
+# onSurface as the ink, a title bar in the container colour, and text/primary/
+# tertiary/secondary/error as five swatches. Upstream lists names with a
+# two-tone dot beside each, which tells catppuccin from gruvbox and cannot tell
+# four catppuccins apart. A colour scheme is the one setting whose value IS a
+# picture. Off to the sides the cards tilt, drop and fall behind; a click on one
+# of those brings it to the middle first rather than repainting the desktop from
+# a half-hidden card.
+# 24: fourteen desktop widgets. caelestia draws two things on the
+# wallpaper -- a clock and an audio visualiser -- and this is the rest of
+# what a desktop is usually asked to show: weather and forecast, what is
+# playing, cpu, memory, storage, network, battery, a calendar, an
+# analogue clock, the workspaces, recent notifications, uptime and a
+# greeting. Each is off by default, sits in one of nine named corners,
+# and scales; everything that lands in the same corner stacks in a
+# column instead of piling on top of itself.
+#
+# Verified by standing the services up as stubs and having Qt parse,
+# instantiate and lay out all sixteen files offscreen with every widget
+# on. That caught what reading them would not have: fourteen of them
+# used `Tokens` without importing Caelestia.Config, which is not a
+# warning but a ReferenceError at every size, radius and font in the
+# widget.
+# 25: a menu on the desktop, widgets you can drag, and a dock.
+#
+# Right-click the wallpaper: every widget with a tick, arrange mode, and
+# the two things people go looking for straight after (Genesi Center, and
+# another wallpaper). It writes through genesi-center-set rather than
+# editing shell.json -- two programs writing one file by two sets of
+# rules is how a config grows a key only one of them understands.
+#
+# Arrange mode has TWO gestures, not one. A widget in a corner lives in a
+# Column, and a Column sets the x and y of everything in it -- a drag
+# handler writing the same properties is two things assigning one value
+# every frame, which does not look like dragging, it looks like
+# vibrating. So an anchored widget offers UNPIN (it becomes free exactly
+# where it stands) and a free one is dragged. Free positions are stored
+# as FRACTIONS: the config outlives the monitor.
+#
+# And the dock: the open applications as icons along the bottom, grouped
+# one per application with a count, on its own layer above windows, with
+# an input mask that covers the bar and nothing else -- without that it
+# is a strip that swallows clicks meant for the bottom edge of every
+# maximised window. Between one icon and the next, lights run along a
+# track, staggered per GAP: every gap pulsing in unison reads as one
+# progress bar that never finishes.
+#
+# Its look is configurable down to the corners -- the bar on or off (not
+# the same as an opacity of zero: no bar means no edge), how solid it is,
+# its radius, the icons' radius, the spacing and the padding.
+#
+# The dock config lands in config.hpp AND config.cpp, where there are two
+# constructors both listing every member. Patching only the header
+# compiles and leaves m_dock null in whichever one was missed, which is a
+# crash on the first read of Config.dock; the patcher asserts it finds
+# exactly two.
+# 26: the dock never appeared, and widgets could not be dragged.
+#
+# The dock's input mask was `Region { item: bar }`. Not one Region in
+# caelestia names an item -- all of them are written as geometry -- and a
+# property that does not exist does not fail quietly in QML: the whole
+# file fails to load, so the dock was never built at all. Geometry now,
+# the same shape upstream uses.
+#
+# Its slide also did nothing: the bar is anchored to its parent's bottom
+# AND had a `y:` binding, which is two things assigning one property.
+# The anchor wins. It rides the margin now, like the launcher's Wrapper.
+#
+# And arrange mode asked for two gestures -- UNPIN a corner widget, then
+# drag it -- which is not what anybody means by "move it", and put the
+# pill under the widget, which is off-screen for anything anchored at the
+# bottom. Arrange mode moves every widget into the free layer instead,
+# seeded from where it already was, so one drag works on all of them and
+# nothing jumps.
+# pkgrel 27: the dock STILL did not appear, and the reason was one level
+# deeper. `Config` in QML is not the config object -- it is an attached
+# type that mirrors it property by property, and the dock's section was
+# added to the object and not to the mirror. That compiles, loads, runs,
+# and `Config.dock` is undefined: every binding in the file throws and the
+# dock is enabled and invisible. The patcher now writes the mirror too,
+# and refuses to finish if any section of the config is missing from it.
+#
+# Also: the colour schemes get a surface of their own, edge to edge, over
+# a dimmed desktop -- `launcher.schemePicker`. And a bug the offscreen
+# render found in the fan that has been there since it shipped: it read
+# `PathView.itemIndex`, which is Repeater's attached property and does not
+# exist here, so clicking a card did nothing at all and only Enter ever
+# applied a scheme.
+# pkgrel 28: the bar across the top, and it does not take caelestia away.
+#
+# Genesi shipped one of these once, as its OWN Quickshell process, and
+# switching to it ran `pkill -f caelestia` -- which does not disable a bar,
+# it kills the shell: the launcher, every drawer, the notification daemon,
+# the wallpaper, the theme bridge and the CLI go with it. It was withdrawn.
+#
+# This is a WINDOW inside caelestia, like the dock. Turning it on sets the
+# `disabled` flag caelestia's own BarWrapper already had for excludedScreens,
+# which collapses the rail's width AND its exclusive zone -- and every drawer
+# reflows on its own, because Panels.qml anchors them to bar.implicitWidth.
+# Nothing is killed and nothing is restarted, in either direction.
+#
+# The bar carries its own settings panel, because you change a bar while
+# looking at it or you change it twice; Genesi Center keeps exactly one
+# control for it, the switch that turns it on.
+# pkgrel 29: the shell studio. The bar's settings card became a rail and
+# seven pages -- bar, dock, launcher, widgets, desktop, shape, system --
+# driven by a TABLE rather than hand-written rows, because forty
+# hand-written controls out of the hundred and sixty-two the writer
+# accepts was the shape of that answer. It is a hundred and seventy now,
+# and a row names the config key it reads and writes exactly once.
+#
+# The bar wears the Genesi mark instead of a Material Symbols glyph of
+# three dots, drawn as a Shape so it takes the scheme's colours -- an SVG
+# carries its own green, and the one Genesi thing on the bar would be the
+# one green thing on a violet desktop. It opens the side panel now; the
+# launcher moved to the search glyph beside it.
+#
+# The bar also grew the flow between its islands, auto-hide, a border and
+# a shadow; the dock grew an edge, auto-hide, magnification, hover labels
+# and PINNED APPLICATIONS -- which are in the dock whether or not they
+# are running, and launch rather than focus when they are not.
+# 30: the bar was dead after every login, and no slider in the studio
+# wrote anything. Two bugs, both of which loaded clean.
+#
+# caelestia's drawers window takes input on a frame around the screen:
+# the border, plus a drag margin so a panel can be pulled in from its
+# edge. That margin is the largest dragThreshold of the four panels --
+# 80, the sidebar's -- and it applies whenever the active workspace has
+# no windows on it. So on an empty desktop the drawers window owns the
+# top and bottom ninety pixels. The top bar is 46 tall and the dock 76;
+# both sit entirely inside it, the drawers window is above them, and
+# neither took a click. An empty workspace is the state a session starts
+# in, which is why this read as a startup bug -- log in and the bar is
+# dead, open any window and it works. Regions.qml now drops that margin
+# on an edge a Genesi surface owns and keeps its border strip, so every
+# caelestia hover point stays where it was.
+#
+# And caelestia's StyledSlider never moves its own `value`: a MouseArea
+# of its own drives a 0-to-1 `pos` and hands it back through
+# `interaction`. The studio's rows watched `pressed` and read `value`,
+# and a drag touches neither -- so the handle moved, snapped back on
+# release and wrote nothing, silently, because a handler for a property
+# that never changes is not an error. ci/qml-sanity-test.py fails on it
+# now, reading the comment-stripped source, since the paragraph
+# explaining it names both strings it looks for.
+# 31: the bar has a shape, the dock has a style, and the studio has a
+# front door.
+#
+# `topbar.islands` was a bool -- three pills or one inset slab -- and a
+# switch labelled "islands rather than one bar" cannot grow a third
+# answer without becoming a switch that lies. It is `topbar.form` now,
+# with five: islands, full, fit, dock and notch. The dock has four the
+# same way: bar, islands, rail and seal. Each of them also decides how
+# tall the strip is, because a bar flush to the screen edge that still
+# reserves a gap above itself leaves a stripe of desktop nothing can be
+# dropped into.
+#
+# Both surfaces grew Frost, which is a Hyprland layerrule and not a Qt
+# effect: a layer surface cannot read what is under it, so there is
+# nothing for QML to blur. And the dock grew the media chip -- what is
+# playing, at the end of the row, click to play or pause and
+# right-click for the whole player.
+#
+# The studio: a viewfinder at the top of the Bar and Dock pages drawing
+# the surface as it is set, because five named forms and four styles
+# are nine words, and a word for a shape is something you have to try
+# before you know whether you wanted it. Form and style are picked as
+# CARDS next to it rather than as list rows. Every switch can carry a
+# second line, so "Auto-hide" can also say that the pointer is what
+# brings it back.
+#
+# And a front door: seven pages and a hundred and eighty rows is more
+# than a rail can answer for, so the studio opens on a map of the pages
+# with a search across every row in it. A result is the REAL row --
+# same delegate, same key -- because a search that shows you a copy of
+# a control is a search that can disagree with the page it came from.
+# 32: the quick settings, down the left edge.
+#
+# The Genesi mark used to open caelestia's dashboard -- a clock, a
+# calendar, a media player and four graphs. Useful, and not what a mark
+# in the corner of a bar is for: that is where a desktop keeps the
+# switches you reach for without thinking. It opens a panel of them now:
+# Wi-Fi, Bluetooth, Airplane, Night light, Keep awake, Do not disturb and
+# Gaming, the volume, the microphone and the screen, a calendar, and the
+# power profile.
+#
+# Two ways in, and they mean different things. The mark opens it PINNED,
+# because you asked for it by name and a panel that vanishes while you
+# reach for a slider is a panel nobody uses twice. The left four pixels
+# of the screen open it on hover and it closes when the pointer leaves --
+# caelestia already teaches that edges are where panels come from, and
+# with the Genesi bar on, the left edge is the one nothing is using: the
+# side rail has collapsed to make room for the bar. Which is also why
+# the panel exists exactly when the bar does.
+#
+# Every switch on it is a real service or it is not on it. Aeroplane mode
+# is rfkill and night light is hyprsunset -- the two that were not
+# already in the shell -- and both read their state back rather than
+# remembering what they were told, because something else can block a
+# radio and a toggle that only remembers is then showing the opposite of
+# what is true. hyprsunset is a hard dependency for the same reason: a
+# switch that turns on and does nothing is the failure this repository
+# keeps writing guards for.
+#
+# The mark itself can be something else now. `topbar.markIcon` takes any
+# Material Symbols name, and the Panel page in the studio offers six.
+# 33: Depth. The subject of the wallpaper, cut out and drawn again on
+# top of the clock and the widgets -- so they sit behind it while the
+# rest of the picture stays in front of nothing. There is no depth map
+# and nothing moves: one cut-out and a stacking order.
+#
+# genesi-depth does the cutting, and it is classical vision rather than
+# a network on purpose. A segmentation model is 170MB of weights and an
+# onnxruntime dependency for a feature that is off by default;
+# spectral-residual saliency and GrabCut need numpy and the core half of
+# OpenCV, and a wallpaper is the easy case for saliency because it was
+# chosen by a person for having a subject. If python-rembg happens to be
+# installed the Fine tier uses it, because on hair and foliage a network
+# really is better -- an optdepend, never a requirement.
+#
+# Cut-outs are cached by the picture's path, size and mtime plus the
+# settings, so changing the wallpaper and changing it back is instant
+# and editing one in place is not. A picture with no subject to find --
+# a texture, a gradient -- is left alone rather than cut down to a speck
+# and drawn over the clock.
+# 34: the side panel never appeared, and the bar came up in the wrong
+# place and would not take a click.
+#
+# The panel declared `modelData` on the Scope and then asked for
+# `win.modelData` -- a property the window does not have. So its "is
+# this my screen?" test compared undefined to a monitor id, which is
+# false, on every screen, always. Reading a property that is not there
+# is not an error in QML, and the offscreen harness had been editing
+# that very expression out of the file before rendering it.
+#
+# The bar: caelestia reserves each screen edge with a one-pixel window,
+# and the bar reserves the same edge. Layer-shell hands out exclusive
+# zones in map order, so on a cold start the border went first and the
+# bar was placed ten pixels down, inside the border that is drawn over
+# it. Exclusions.qml yields the edge the bar is on now. Everything
+# caelestia opens -- the dashboard, the launcher, the notifications in
+# the top right -- was laid out by Panels.qml inside `borderThickness`
+# and nothing else, which is why a notification arrived underneath the
+# bar; Panels insets by the bar as well now. Both read the one
+# expression for the bar's height, in GenesiEdges.
+#
+# Auto-hide flickered and could not be used: a MouseArea reports the
+# pointer has LEFT the moment it moves onto a child that takes hover,
+# and every button on the bar does. Reaching for one hid the bar, which
+# moved it away, which brought the bar back. HoverHandler does not
+# behave that way.
+#
+# The dock respects exclusive zones now (and still reserves none), so a
+# dock on the top edge sits below the bar; it grew headroom above it,
+# because a layer surface clips its own contents and the hover label was
+# drawn with its top half missing; and the media chip opens a player in
+# that headroom.
+#
+# Depth moved to the side panel, where it was asked for, and shows what
+# it FOUND -- the cut-out over a dimmed wallpaper, or a plain sentence
+# when the picture has no subject to cut. A sky full of cloud has none,
+# which is a correct answer and an invisible one: the desktop looks
+# exactly as it did before, so the feature reads as broken. And
+# genesi-depth takes the edge fade by name now, so no caller translates
+# "soft" into a pixel count.
+# 35: the side panel could not load at all, and the fix for it in 34
+# is what made that true. `modelData` was declared `required` on both of
+# its windows -- and Variants sets modelData on its DELEGATE, which is
+# the Scope, not on anything inside it. A required property nobody
+# initialises is a hard load error, so the whole file stopped
+# instantiating. It reads scope.modelData now, the way upstream's own
+# Drawers.qml does with the same shape.
+#
+# The offscreen harness had been substituting a plain property for EVERY
+# required declaration in the file before rendering it, so the shape
+# that cannot load rendered perfectly. It only supplies what Variants
+# supplies now -- the delegate's screen -- and it fails on the rest.
+#
+# 34 also moved caelestia's panels below the bar and left their
+# backgrounds where they were: three places convert a Panels-relative
+# position into a window-relative one by adding the border thickness,
+# and that was the whole offset until the bar was added to it. Every
+# blob, the fullscreen region and every panel's input region were drawn
+# one bar-height too high, which is the surface sticking out over the
+# notifications.
+#
+# And the bar still came up underneath the drawers on a cold start,
+# because the `layerrule` it asks for is applied to a surface as it MAPS
+# and this one was already up -- and because the drawers window remaps
+# itself during startup anyway, when Hyprland's IPC answers whether
+# something is fullscreen. The bar's first map waits for the shell to
+# settle now, which is the toggle that fixed it by hand, done once.
+#
+# genesi-shell-doctor prints what the surfaces are actually doing:
+# stacking order per monitor, what each reserved, which files loaded and
+# what the shell said while starting. Three bugs in a row were diagnosed
+# from a screenshot and two of those guesses were wrong.
+# 36: the dashboard's closed tab hung permanently below the bar, the
+# music card was clipped, the bar had no margin setting, and Depth was
+# picking embers out of a picture of a person.
+#
+# The tab: 35 insets caelestia's panel area by the bar so nothing opens
+# underneath it, and a closed drawer hides by moving up its own height
+# plus five -- measured from the top of that AREA. Upstream that put its
+# edge inside the ten-pixel border, invisible. With the bar in the
+# inset, five pixels above the panel area is forty-five pixels down the
+# screen, so the dashboard's blob sat there in plain view. It tucks the
+# bar's height further now, which puts it back where upstream had it.
+#
+# topbar.margin: how far the bar sits from the screen edge, which is a
+# different question from `gap` -- that is the space around the islands
+# INSIDE the strip. GenesiEdges counts both, so the exclusion zone,
+# caelestia's panels and its input regions all move with it.
+#
+# The player card was 290 tall in 220 of headroom, so the window clipped
+# its whole transport row away -- which is why none of it could be
+# clicked. The headroom is measured from the card now instead of chosen,
+# and the album art is capped so a wider card is not a taller one.
+#
+# Depth was only asking one question. Spectral-residual saliency finds
+# unusual TEXTURE, so on a wallpaper of a dark hooded figure against an
+# ember-filled sky it found the embers. Two more terms: frequency-tuned
+# saliency, which finds unusual COLOUR and to which a large dark flat
+# subject is obvious; and a centre prior, because a wallpaper is
+# composed and its scattered bright detail is not in the middle. The
+# test suite had a bright subject on a dark field and a flat gradient --
+# not the case that broke. It has it now, and the old code refuses that
+# picture outright while the new one cuts the figure.
+# 37: what genesi-shell-doctor said, acted on.
+#
+# `hyprctl layers` puts the bar last on the top layer on both monitors,
+# above caelestia-drawers -- so the stacking is fixed and the delayed
+# first map is what fixed it. The `layerrule = order` it also asked for
+# is refused by Hyprland 0.56.2 ("invalid field ... missing a value"),
+# so that call did nothing but print an error on every boot. Gone, from
+# the bar and from the dock.
+#
+# The same output showed caelestia-drawers sitting ABOVE the dock while
+# GenesiEdges.bottom was zero -- because the BAR is at the top. So the
+# drawers' eighty-pixel drag margin covered the dock again on an empty
+# workspace, which is the first bug in this whole sequence, back because
+# "does anything of ours own this edge" and "how much of it does the bar
+# occupy" had been given one name. Two questions, two names now:
+# top/bottom for layout, claimsTop/claimsBottom for input.
+#
+# And the doctor itself was looking for the shell in
+# /usr/lib/caelestia/shell; caelestia's CMake installs it to
+# /etc/xdg/quickshell/caelestia, so it reported the whole tree missing
+# on a machine where every file was present. A diagnostic that lies is
+# worse than one that says nothing.
+# 38: 36 and 37 left the shell as a wallpaper and a spinner.
+#
+# patch_hidden_panels writes `GenesiEdges.bottom` into the launcher's own
+# Wrapper.qml, and then removed the import again on the reasoning that a
+# file does not import its own directory. Quickshell does not work that
+# way: it exposes a directory's singletons through its MODULE, and a file
+# beside them still has to import it -- caelestia's own GenesiContent.qml
+# sits in modules/launcher and carries that import with a comment saying
+# so. Without it `GenesiEdges` is an unresolved name, Wrapper.qml fails to
+# load, Panels.qml fails with it, the drawers never come up, and there is
+# nothing on screen but the wallpaper.
+#
+# No harness could have caught it: every one of them renders Genesi's own
+# QML, and this is a file the PATCHER writes, in a tree no test loads. So
+# the patcher checks itself now -- after the last file is installed it
+# walks the tree and fails the build if a Genesi singleton is used
+# anywhere that cannot see it.
+# 39: the import that fixed 38 broke the dashboard instead.
+#
+# `import qs.modules.launcher` in modules/dashboard/Wrapper.qml was added to
+# reach GenesiEdges, and it did. It also brought in the launcher's
+# Content.qml -- and modules/dashboard has a Content.qml of its own. An
+# explicit module import outranks the file's own directory, so `Content` a
+# few lines further down stopped meaning the dashboard's Content and started
+# meaning the launcher's, which has no `facePicker`:
+#
+#   Wrapper.qml[59:13]: Cannot assign to non-existent property "facePicker"
+#
+# Same ending as 36 and 37 -- Wrapper fails, Panels fails, ContentWindow
+# fails, Drawers fails, the shell sits on its loading screen -- reached from
+# the same line, by the opposite mistake. An import that was meant to add one
+# name had quietly taken another away.
+#
+# Every cross-directory import the patcher injects is qualified now, and the
+# singletons are reached through it: `import qs.modules.launcher as Launcher`,
+# `Launcher.GenesiEdges.top`. Panels.qml had been doing exactly that since 35
+# and is the one file this never touched. The launcher's own Wrapper keeps the
+# plain form -- importing the module you live in resolves to the files beside
+# you, so there is nothing there to shadow.
+#
+# And the patcher now checks what an import TAKES as well as what it gives:
+# for every unqualified `import qs.x.y`, if that module and the file's own
+# directory both define a type and the file builds it, the build fails and
+# says which file, which type and which import. Reintroducing the bug was
+# tried, and it fails on it.
+# 40: Depth found half a wallpaper, or nothing at all.
+#
+# The test for "is there a subject here" was `inside_saliency > 4 *
+# outside_saliency`, and the 4 came from three drawn pictures: a disc on a
+# gradient (25), a planet on a starfield (85), a plain gradient (2.3). A drawn
+# picture has a property no photograph has -- its background has almost no
+# saliency -- so that number separated those three and nothing else. Measured
+# on eight photographs it lands between 2.7 and 6.0: it refused a cat on a
+# lawn and a Porsche in daylight, and it accepted a photograph of a concrete
+# wall. Both of the user's reports, in one constant.
+#
+# Three measures now, each meaningful on a photograph, all taken on the final
+# mask: how much sharper the picture is ALONG the cut than everywhere (a
+# subject's outline lies on an edge; one invented inside a texture does not);
+# how far the mask is from the picture's average colour in real Lab units, NOT
+# normalised (normalising is what hid the flat cases -- after it a concrete
+# wall and a portrait both peak at 1.0); and how much of the frame it covers.
+#
+# Two fixes to the cut itself, from the same photographs. The reach that sets
+# GrabCut's box comes from a percentile of the saliency map instead of a
+# fraction of its maximum -- a fraction of the max is set by the single
+# brightest pixel, so one highlight on a wing mirror opened the box until the
+# cut-out was the car AND the strip of track behind it. And the dim part
+# inside the box is offered to GrabCut as background rather than as
+# foreground, because asked whether a grey strip belongs with a grey car with
+# nothing to suggest otherwise, GrabCut said yes.
+#
+# On the same eight photographs the shipped code gets two wrong; this gets
+# seven of seven. `genesi-depth probe <image>` prints every number behind the
+# verdict, and a refusal now says which measure failed -- the side panel
+# already shows that line. ci/depth-test.py pins the thresholds to the table
+# they were measured from, has the two negatives it never had (a busy texture
+# and a ground region, where its only negative was a flat gradient nothing has
+# ever accepted), and takes real photographs through GENESI_DEPTH_PHOTOS.
+# 41: Depth stops guessing. It has a trained cutter now.
+#
+# Reported as "Depth keeps saying its outline does not match anything and it
+# should be 3x something", which is two problems: a sentence written for
+# whoever wrote the code, and a judgement that keeps saying no.
+#
+# The judgement was tuned twice -- once against three drawn fixtures, once
+# against eight photographs -- and it is right on all eight and still refuses
+# real wallpapers. There is no third number to find: every threshold in a
+# saliency pipeline is a guess about what a picture is made of, and wallpapers
+# are more varied than any such guess. It refuses a photograph of a cat
+# sitting on a lawn.
+#
+# So `genesi-depth setup` installs u2net, and the cutout uses it whenever it is
+# there. On the same eight photographs the model answers: 0.02 confidence on a
+# concrete wall (nothing, and it says so itself rather than needing a threshold
+# of ours), 10.8% for the cat -- traced to the whiskers -- 35% and 52% for two
+# Porsches, 18% for a flower. The built-in engine stays for a machine that has
+# not run setup, and its refusals are in plain words now.
+#
+# 176 MB of weights plus onnxruntime, which does not exist in Arch (checked,
+# not assumed -- assuming is what shipped a 404 for the speech model), so the
+# same shape as genesi-ai-voice: a virtualenv with --system-site-packages, so
+# the opencv and numpy pacman already installed are reused. Opt-in, because
+# nobody who leaves Depth off should pay for it.
+#
+# The side panel installs it in one tap and shows the progress, rather than
+# opening a terminal: the panel already polls `genesi-depth status`, so the
+# setup writes where it has got to and status reports it. A terminal that
+# closes takes its error with it, which is a bug this release also fixes
+# elsewhere.
+#
+# `genesi-depth probe <image>` names the engine and prints its numbers.
+# 42: the desktop widgets, redrawn -- and right-click to edit any of them.
+#
+# Reported as "weak little cards with no customisation, no wow, and pixelated
+# when you make them bigger". All three were true.
+#
+# Pixelated: the widgets were scaled with `scale:`, and caelestia's text renders
+# natively, rasterised at its own size before the transform stretches it -- a 2x
+# widget was a 1x widget's pixels, doubled. Every measurement is multiplied by
+# the widget's size now (GenesiWText, GenesiWIcon), and large text switches to
+# curve rendering, so a widget at 250% is drawn at 250%.
+#
+# The look: frosted glass cut from the wallpaper behind each card, gradient
+# rings and sparklines, gradient headline numbers, and a big digital clock as a
+# fifteenth widget.
+#
+# The editor (GenesiWidgetEditor): right-click a widget for Design (glass,
+# solid, outline, minimal), Size, Opacity, Colour (auto from the wallpaper,
+# one colour, or a gradient, with a picker), Snap to nine places or Free, Hide
+# and Settings. Sliders preview through GenesiWidgetEditState and write once on
+# release. caelestia's own desktop clock, which only Genesi Center could
+# change, opens the same editor (patch_desktop_clock_edit) and is switched on
+# from the desktop menu.
+#
+# The middle row of anchors no longer draws over a tall corner stack.
+# 43: four things about the desktop, all of them about where a click lands.
+#
+# The menu and the widget editor were drawn INSIDE the widget layer, which is
+# the layer the Depth cutout is drawn in front of -- so on a wallpaper with a
+# subject, right-clicking the desktop opened a menu with somebody's shoulder
+# across it. They are one item now (GenesiDesktopOverlay), added after the
+# cutout; the layer and the overlay ask each other for things through
+# GenesiWidgetEditState.
+#
+# The last eighty pixels of every edge belong to caelestia's drawers window
+# (its drag margin, which is exactly that wide on an empty desktop -- when
+# people right-click it). Genesi already gave the margin up on the edges its
+# own bar and dock stand on; the right edge is the one it never claims, so an
+# editor opened near it was drawn and then took no clicks. The third of the
+# three colour buttons simply did not respond. Both surfaces are placed inside
+# GenesiEdges' ring now, not inside the screen.
+#
+# caelestia's clock had nine corners and nothing else. It can be dropped
+# anywhere now: background.desktopClock.position takes "free", x and y are
+# fractions of the screen, and in arrange mode the clock drags like a Genesi
+# widget -- previewing through the same state, writing once on release.
+#
+# Also: gradient text no longer vanishes when a widget switches to a gradient
+# after it is built (a layer enabled on an invisible item is never rendered).
+# 44: the Game Center. Quick games in a drawer that opens from the
+# bottom-left corner of the screen -- the one place a thrown pointer can land
+# that nothing in caelestia answers yet. Snake, 2048, Minesweeper and Blocks,
+# painted in the scheme's colours, with best scores kept in a state file of
+# the drawer's own. Also `caelestia shell gameCenter toggle`.
+#
+# The corner goes away whenever the screen has a fullscreen window: it sits
+# on the overlay layer so caelestia's drawers cannot swallow it, and that
+# would otherwise put it above a real game too. The side panel's strip on the
+# left edge now stops 32 pixels short of the corner, so the two do not both
+# open on one throw.
+#
+# The games are plain QtQuick and are handed the palette, which is what lets
+# ci/plugins-test.py load them offscreen and play them -- the rules that
+# every first attempt gets wrong (2048 merging a tile twice in one move, a
+# snake chasing its own tail, a first click in Minesweeper landing on a mine)
+# are played there, not assumed.
+# 45: plugins, and the leaf.
+#
+# The Game Center is a PLUGIN now, not a corner everybody gets: it ships in
+# this package and stays off until the Plugins shelf of Genesi Store turns it
+# on. Turning one on is the store writing ~/.config/genesi/plugins/<id>.json
+# and turning it off is deleting it -- the store's existing `file` action and
+# its revert, so the store gained no new power: a card is still data, and the
+# code it switches on is code this signed package already carries.
+# GenesiPluginSwitch reads that file every three seconds rather than watching
+# it, because a watcher cannot watch a file that does not exist yet -- which
+# is every plugin before it is switched on.
+#
+# The leaf (GenesiPet): a desktop pet that is the state of the machine. It
+# sweats and goes autumn-orange when the CPU runs hot, sleeps when nobody is
+# there, dances to whatever is playing, yellows when a long list of updates
+# or a nearly full disk is waiting -- things the person can do something
+# about -- and hops when a notification arrives. It grows with time spent
+# together and with games in the Game Center (a dewdrop at level 3, a flower
+# at 5, a golden edge at 8), talks in the machine's language, can be dragged
+# along the bottom edge, and wanders there on its own. Top layer, so a
+# fullscreen game covers it.
+#
+# Cpu.percentage is a FRACTION; the leaf's rules speak percent. Read the
+# other way round it is a leaf that never feels the heat -- caught reading
+# cpu.cpp before it shipped, and pinned by ci/plugins-test.py.
+# 46: live weather, and the Plugins page.
+#
+# Live weather (GenesiLiveWeather, a plugin): when caelestia's Weather
+# service says it is raining, snowing, storming or foggy, it is -- on the
+# wallpaper, on the bottom layer, under every window, taking no input.
+# `caelestia shell liveWeather preview rain` shows a sky for thirty seconds,
+# because a plugin that depends on the weather needs a way to be seen on
+# the day it is switched on.
+#
+# Nexus -> System -> Plugins was upstream's "page under construction". It
+# is a page now: a switch for every plugin -- through the store, so the
+# store's record of what is applied never disagrees with it -- the leaf's
+# level, the weather right now and a preview of each sky.
+# 47: four more games, a leaf that lives where you tell it, and a Plugins
+# page worth opening.
+#
+# Flappy Leaf (the pet itself, flying between branches), Breakout (the
+# angle follows where the ball lands on the paddle), Memory (drawn symbols,
+# never a font glyph that renders differently per machine) and Simon. The
+# shelf scrolls now, and a score knows its unit -- points, seconds, turns.
+# Writing Breakout's test caught a property called `top`, which is FINAL on
+# Item: the game would not have loaded at all.
+#
+# The leaf: `caelestia shell leaf set screen <name|follow|next>`, a size,
+# wandering and talking on their own can be switched off, a nap, and a
+# right-click menu with all of it. The window stays the one writer of
+# genesi-pet.json; the page and the menu ask it over IPC.
+#
+# The Plugins page: a card per plugin with the store's picture, a switch,
+# and its settings -- records and the corner for the Game Center, the
+# leaf's level, screen, size and habits, the weather now and a preview of
+# each sky.
+# 48: two more plugins.
+#
+# Turntable (GenesiVinyl): whatever is playing, spinning on the desktop --
+# the cover on the label, a platter that spins up and coasts down instead of
+# snapping, the lamp's reflection holding still while the grooves turn, and
+# the tonearm creeping inward through the track. Click to pause, scroll to
+# skip; on the bottom layer, under every window.
+#
+# Retrospective (GenesiWrapped): your week or month as full-screen story
+# slides -- time at the machine against the period before, the app of the
+# week, the top five as growing bars, a 24-hour rhythm and who it says you
+# are (night owl, early bird, marathoner...), your biggest day, the Game
+# Center and the leaf. It counts only the CLASS of the focused window,
+# never a title, keeps ten weeks on this machine, and says on Sunday
+# evening, once, that the week is ready.
+# 49: the tray, on the top bar. Turning the bar on collapses caelestia's
+# rail, and the rail is where the system tray lived -- Genesi Update, AI
+# Mode and every app's tray icon disappeared with it. They are in the
+# bar's right-hand group now: left click activates, middle is the app's
+# secondary action, right opens its menu, the wheel scrolls. An arrow at
+# the end opens every icon with a pin; unpinned ones leave the bar but stay
+# one click away in that panel. The pins ARE caelestia's own
+# bar.tray.hiddenIcons, so the rail and the bar never disagree, and
+# `topbar.showTray` (the bar's studio) turns the whole tray off.
+# 50: three things reported from real hardware.
+#   * The tray icons on the top bar did nothing when clicked. Genesi Update
+#     and AI Mode are appindicator icons -- ONLY a menu, whose "activate" is
+#     a no-op -- and their menu went to SystemTrayItem.display(), which
+#     nothing in caelestia calls and which opened nothing from a layer-shell
+#     bar. The menu is drawn by the bar now, from the app's menu tree
+#     (QsMenuOpener), with submenus, checks and radios, the way caelestia's
+#     rail draws its own.
+#   * The Turntable sat on the bottom layer, under every window, and on a
+#     tiling desktop that is nowhere: it only showed on an empty workspace.
+#     It sits above the windows now, taking input only over the record, and
+#     "Above the windows" (Plugins page) puts it back on the desktop.
+#   * The Retrospective's buttons failed in silence. It now says why in a
+#     toast when it cannot open (switched off, or the story failed to build),
+#     answers the IPC call with what happened, and the page explains how the
+#     story is read.
+# 51: left click on a tray icon opens its menu too. Every Genesi icon is a
+#     libayatana AppIndicator, which ignores Activate and does not declare
+#     itself menu-only, so a left click did nothing on them; apps with a
+#     window get an "Open" row at the top of the menu instead. And the
+#     Retrospective's buttons no longer leave the process: the Plugins page
+#     raises a signal on GenesiPluginBus and the plugin answers it, and its
+#     toasts go straight to caelestia's Toaster -- the old path spawned
+#     `caelestia shell`, then `qs ipc call`, and failed with nothing shown.
+# 52: the top bar grows up.
+#   * FRAME, a sixth form: caelestia's own border thickens at the bar's edge
+#     and IS the bar -- the rounded inner corners where it meets the screen,
+#     the border's colour, opacity and shadow, and drawers that flow out of
+#     it. ContentWindow's BlobInvertedRect reads GenesiEdges.frameTop/Bottom.
+#   * Eighteen new settings, every default the old behaviour: numbered
+#     workspaces with the active one circled (and a fixed count), the window
+#     title on the left with its app above it, readings as rings that fill
+#     (plus disk and temperature), a now-playing chip (left, centre or
+#     right), volume and brightness you scroll, Bluetooth, the battery as a
+#     pill, an accent colour, a 12/24h clock with seconds and three date
+#     styles. All in the bar's studio.
+# 53: the Updates page (Nexus -> System) knows about an update it did not
+#     start. The update ran in a Process the page owned; closing the window
+#     lost track of it (pacman kept running as root), and the reopened page
+#     checked again and offered "Update now" beside the running transaction.
+#     It now starts the update detached and, every time it opens, first asks
+#     whether one is running -- ours, the tray's, or a pacman holding the
+#     database lock -- and follows it to the end before checking.
+# 54: the Frame bar was carved open under the clock when the pointer
+#     brushed the top edge. caelestia's blob shader opens a POCKET in the
+#     border wherever a panel's edge sits inside it (topPen in blob.frag),
+#     as deep as the edge is -- a few pixels in a stock border. Genesi parked
+#     the closed dashboard a whole bar-height up, which in the Frame form is
+#     deep inside the band, so the pocket ate the band. Closed drawers now
+#     clear GenesiEdges.hideTop/hideBottom, which is zero in the Frame form:
+#     they tuck into the band exactly as into a stock border.
+# 55: 53's "Update now" did nothing but re-check. It ran pkexec through
+#     execDetached, whose double fork hands the child to init at once, and
+#     pkexec refuses a caller whose parent is init ("Refusing to render
+#     service to dead parents") before any password prompt. A shell now
+#     stays alive as pkexec's parent, and the first probes after the click
+#     wait for the process to appear before calling the update finished.
+# 56: the AI island, a new plugin (GenesiAiIsland). The Quick Chat's state at
+# the top of the screen, with the leaf as its face: thinking, each step the
+# agent runs (2/4), the exact command waiting for permission with Deny/Allow
+# answered right there, the start of the answer when it is done, and files
+# dropped on it handed to the chat. "Always" or "only with the Quick Chat".
+# It leaves the topmost pixels to caelestia's dashboard hover and slides out
+# of the way while the dashboard is open, so the dashboard is always on top.
+# 57: the AI island belongs to the bar. With Genesi's top bar at the top, it
+# no longer floats on its own: it drops from the bar's centre pill, in the
+# bar's own colour, and the pill shows a chip with what the AI is doing (its
+# click opens the chat; the rest of the pill still opens the dashboard). The
+# card is drawn in the active scheme's colours. And Frost (bar and dock blur)
+# now works: its layerrules lacked `match:`, which Hyprland 0.53+ discards.
+# 58: a wallpaper per screen, and wallpapers that move. Each screen's
+# background builds GenesiWallpaper (patch_per_screen_wallpaper), which keeps
+# caelestia's own Wallpaper inside and differs only where `genesi-wallpaper`
+# named the screen: its own picture, a GIF, or a video (QtMultimedia + ffmpeg,
+# looped, silent, paused while a fullscreen window covers that screen). A
+# GIF/video on every screen is laid over a still of itself, which is what
+# caelestia gets, so the colour scheme still follows the wallpaper. Wallpaper
+# Engine items of type "video" (Steam's workshop folder, every library) play
+# directly; "scene"/"web" items are listed and need WE's renderer. Depth cuts
+# each screen's own picture, and switches off on a moving one.
+# Also: the AI island was drawn mostly ABOVE the screen under the top bar
+# (coordinates copied from the bar's window came out wrong on hardware) and
+# hid itself at rest under the bar even in "always on screen". It now lets
+# Hyprland place it (ExclusionMode.Normal: just under whatever reserves the
+# top -- the bar, caelestia's border, or the edge), centred, shown at rest
+# when the mode says so, and hides with a short fade instead of flying off.
+# 59: four things reported from real use.
+#   * The dashboard opened only on a click, never on hover. The bar is mapped
+#     above caelestia's drawers on purpose, and its centre pill touched the
+#     screen edge -- the very pixels where the drawers notice a pointer. The
+#     topmost 4 px over the pill are now not the bar's (only while it shows).
+#   * The left panel's edge strip opened it on some logins only: it shared the
+#     Top layer with the drawers, whose remap at startup decided who was on
+#     top. It is on the Overlay layer now, and starts below the bar.
+#   * Keep awake said "on" and the screen still slept. caelestia hung the
+#     inhibitor on a 0x0, unanchored surface Hyprland does not show; it is one
+#     transparent, input-less pixel on the overlay now (patch_idle_inhibitor).
+#     The side panel's tile is qualified to caelestia's IdleInhibitor -- the
+#     bare name could resolve to Quickshell.Wayland's type.
+#   * The side panel's wallpaper button did a random pick, which did nothing
+#     with an empty folder; it opens the launcher's wallpaper picker.
+# And the launcher's >wallpaper now changes the screen it is open on (its own
+# window's screen, read at the pick), previews there only, and keeps the
+# colours following the first screen (genesi-wallpaper pick).
+# pkgrel 60: the wallpaper map finally loads. GenesiWallpaperState's header
+# comment held a JSON example, and Quickshell ends its search for
+# `pragma Singleton` at the first line with a brace -- so the file loaded as
+# a plain type: >wallpaper picked nothing ("pick is not a function"), the
+# preview never showed, and no screen ever got its own wallpaper (reported
+# 2026-10-09). ci/qml-sanity-test.py now fails on a brace above the pragma.
+# Also: picking for a screen other than the first lets go of the preview's
+# colours, and the dock's flow lights no longer warn while an item goes away.
+# pkgrel 61: the AI island grows up (with genesi-ai-mode 208).
+#   * Ask ON the island: a click opens an input in the card, the island takes
+#     the keyboard while it is open (and only then), and the answer comes
+#     back whole, as Markdown, with Copy / Ask again / Continue in chat.
+#     One-click asks about the clipboard; Smart Copy offers to explain an
+#     error you just copied; right-click (or the ... button) opens the
+#     island's own settings. The leaf's eyes follow the pointer.
+#   * One drawing of the island everywhere: GenesiAiIslandCard is bundled by
+#     genesi-ai-mode into its standalone island for KDE, GNOME, Xfce,
+#     Cinnamon, Budgie, LXDE, COSMIC and Niri.
+#   * Its settings now live in ~/.config/genesi/ai-island.json, shared with
+#     the Quick Chat and every desktop (the old state file is still read).
+#   * >ai <question> in the launcher -- Genesi's layout and caelestia's --
+#     asks Genesi AI and answers on the island.
+# pkgrel 62: the island's "thinking" line stays inside the island -- the
+# agent's activity can be a whole sentence, and it ran out past the edge
+# (two lines at most now, then an ellipsis).
+# pkgrel 63: the island's buttons stay inside the island. After asking ON
+# the island, the next card (an approval) came out ~50 px low with Deny/Allow
+# hanging below it: the card's content switched anchors with bindings, which
+# leaves the old position behind. Placed by a computed y now; plugins-test
+# fails on a toggled anchor in the card.
+# pkgrel 64: the island's own menu (right-click or ...) has an Island On/Off
+# row, so it can be switched off without a terminal or the chat's settings.
+# pkgrel 65: Hyprland 0.57 (Lua config only). The top bar's and dock's
+# workspace clicks, the dock's focus-a-window, the side panel's Logout and the
+# Frost blur rule all used `hyprctl dispatch NAME` / `hyprctl keyword`, which
+# 0.57 rejects: they now go through caelestia's Hypr service and pick the form
+# from Hypr.usingLua, so they work on 0.56 and 0.57 alike. genesi-shell-doctor
+# asks its layer-rule question in Lua there too.
+pkgrel=65
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
@@ -32,21 +835,284 @@ license=('GPL-3.0-only')
 depends=('caelestia-cli' 'quickshell' 'ddcutil' 'brightnessctl' 'app2unit' 'libcava' 'networkmanager'
          'lm_sensors' 'fish' 'aubio' 'libpipewire' 'glibc' 'gcc-libs' 'ttf-material-symbols-variable'
          'power-profiles-daemon' 'ttf-rubik-vf' 'ttf-cascadia-code-nerd' 'swappy' 'libqalculate' 'bash'
-         'qt6-base' 'qt6-declarative' 'qt6-imageformats')
+         'qt6-base' 'qt6-declarative' 'qt6-imageformats' 'hyprsunset'
+         'util-linux' 'bluez' 'python' 'python-opencv' 'python-numpy'
+         'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'ffmpeg')
 makedepends=('cmake' 'ninja' 'qt6-shadertools')
+# python-rembg is Depth's Fine tier when it happens to be installed: a
+# segmentation network is genuinely better on hair and foliage. Never a
+# requirement -- without it Fine is the same classical method at a larger
+# working size, which is what the other two tiers already are.
+# No apostrophe in that description. This line read "Depth's Fine tier"
+# and the apostrophe CLOSED the single-quoted string -- bash then read
+# the rest of the file in the wrong quoting context and reported a
+# syntax error a hundred and forty lines later, and makepkg failed to
+# source the PKGBUILD at all. ci/pkgbuild-syntax-test.py runs `bash -n`
+# over every one of them now.
+optdepends=()
 provides=('caelestia-shell')
 conflicts=('caelestia-shell' 'caelestia-shell-git')
 source=("$url/releases/download/v$pkgver/caelestia-shell-v$pkgver.tar.gz"
-        "ContentList.qml")
+        "ContentList.qml"
+        "UpdatesPage.qml"
+        "DisplayPage.qml"
+        "MousePage.qml"
+        "GenesiContent.qml"
+        "GenesiAppGrid.qml"
+        "GenesiSchemeFlow.qml"
+        "GenesiWidgetAnalogClock.qml"
+        "GenesiWidgetBattery.qml"
+        "GenesiWidgetCalendar.qml"
+        "GenesiWidgetCard.qml"
+        "GenesiWidgetCpu.qml"
+        "GenesiWidgetForecast.qml"
+        "GenesiWidgetGreeting.qml"
+        "GenesiWidgetMedia.qml"
+        "GenesiWidgetMemory.qml"
+        "GenesiWidgetNetwork.qml"
+        "GenesiWidgetNotifications.qml"
+        "GenesiWidgetStorage.qml"
+        "GenesiWidgetUptime.qml"
+        "GenesiWidgetWeather.qml"
+        "GenesiWidgetWorkspaces.qml"
+        "GenesiWidgets.qml"
+        "GenesiWidgetHost.qml"
+        "GenesiDesktopMenu.qml"
+        "GenesiDesktopOverlay.qml"
+        "GenesiWidgetDigitalClock.qml"
+        "GenesiWidgetEditor.qml"
+        "GenesiWidgetEditState.qml"
+        "GenesiColourPicker.qml"
+        "GenesiWText.qml"
+        "GenesiWIcon.qml"
+        "GenesiWRing.qml"
+        "GenesiWSpark.qml"
+        "GenesiWGradText.qml"
+        "GenesiWChip.qml"
+        "GenesiDock.qml"
+        "GenesiSchemeState.qml"
+        "GenesiSchemeScreen.qml"
+        "GenesiTopBar.qml"
+        "GenesiStudio.qml"
+        "GenesiMark.qml"
+        "GenesiTopBarState.qml"
+        "GenesiEdges.qml"
+        "GenesiSidePanel.qml"
+        "GenesiSidePanelState.qml"
+        "GenesiDepth.qml"
+        "GenesiGameCenter.qml"
+        "GenesiGames.qml"
+        "GenesiGameSnake.qml"
+        "GenesiGame2048.qml"
+        "GenesiGameMines.qml"
+        "GenesiGameBlocks.qml"
+        "GenesiPluginSwitch.qml"
+        "GenesiPluginBus.qml"
+        "GenesiPet.qml"
+        "GenesiLeaf.qml"
+        "GenesiPetMind.qml"
+        "GenesiLiveWeather.qml"
+        "GenesiWeatherFx.qml"
+        "PluginsPage.qml"
+        "GenesiGameFlappy.qml"
+        "GenesiGameBreakout.qml"
+        "GenesiGameMemory.qml"
+        "GenesiGameSimon.qml"
+        "GenesiVinyl.qml"
+        "GenesiVinylDeck.qml"
+        "GenesiWrapped.qml"
+        "GenesiWrappedMath.qml"
+        "GenesiWrappedStory.qml"
+        "GenesiAiIsland.qml"
+        "GenesiAiIslandCard.qml"
+        "GenesiWallpaperState.qml"
+        "GenesiWallpaper.qml"
+        "GenesiWallpaperVideo.qml"
+        "genesi-wallpaper"
+        "genesi-depth"
+        "genesi-shell-doctor")
 sha256sums=('a27eefaa2a6ec817a51ecd10ef705e74daed9121c17f1d515625b5ef90c9cefa'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
             'SKIP')
 
 prepare() {
-    # Overwrite the launcher ContentList with the wallpaper-crash-fixed copy (see
-    # the pkgrel 2 note). install -D is a no-op-safe replace; the target always
-    # exists in the v2.0.3 tarball.
+    cd "${srcdir}"
+
+    # ── Every override below checks its own precondition first ───────────────
+    #
+    # An override is a bet that upstream still looks the way it did when the
+    # override was written. pkgver is pinned, so upstream releasing a new
+    # version changes nothing until we bump -- but the moment we DO bump, these
+    # files land on top of whatever they have now, silently.
+    #
+    # Silently is the whole problem. If upstream ships their own Updates page,
+    # ours would erase it and nobody would notice for months. If they
+    # restructure the registry, our patch could apply cleanly to something that
+    # no longer means what we assumed.
+    #
+    # So each override asserts its precondition and FAILS THE BUILD when it
+    # stops holding. A version bump then arrives as a red build with a specific
+    # message, and a person decides whether the override is still wanted --
+    # exactly the decision that must never be automatic.
+
+    # 1. Launcher wallpaper-crash fix (pkgrel 2). Drop once upstream carries
+    #    commit 79a387e9.
+    if [ ! -f release/modules/launcher/ContentList.qml ]; then
+        echo "ERROR: upstream no longer has modules/launcher/ContentList.qml --"
+        echo "       the wallpaper-crash override has nothing to replace."
+        return 1
+    fi
     install -Dm644 "${srcdir}/ContentList.qml" \
         "${srcdir}/release/modules/launcher/ContentList.qml"
+
+    # 2. The Nexus "Updates" page. Upstream REGISTERS it in PageRegistry and
+    #    points it at PlaceholderComp -- the "Page under construction" screen.
+    local reg="release/modules/nexus/PageCompRegistry.qml"
+    if [ ! -f "${reg}" ]; then
+        echo "ERROR: ${reg} is gone -- the Nexus page registry moved or was renamed."
+        return 1
+    fi
+    if [ -f release/modules/nexus/pages/UpdatesPage.qml ]; then
+        echo "ERROR: upstream now ships its own UpdatesPage.qml. Our override"
+        echo "       would silently replace it. Decide by hand: keep theirs"
+        echo "       (drop this override), or keep ours and record why."
+        return 1
+    fi
+    if ! grep -q '// System' "${reg}"; then
+        echo "ERROR: the '// System' section is gone from ${reg}."
+        return 1
+    fi
+
+    install -Dm644 "${srcdir}/UpdatesPage.qml" \
+        "${srcdir}/release/modules/nexus/pages/UpdatesPage.qml"
+
+    # 3. The launcher action list. genesi-caelestia-settings ships a shell.json
+    #    that sets launcher.actions -- and that property REPLACES upstream's
+    #    defaults wholesale instead of merging, because it is a single
+    #    CONFIG_GLOBAL_PROPERTY(QVariantList) in launcherconfig.hpp. So our file
+    #    must carry every default of theirs, and the day upstream adds one,
+    #    Genesi users silently stop getting it. Checked here because this is
+    #    where their source is on disk.
+    if [ -f release/plugin/src/Caelestia/Config/launcherconfig.hpp ]; then
+        python "${startdir}/../../ci/caelestia-actions-test.py"             release/plugin/src/Caelestia/Config/launcherconfig.hpp             "${startdir}/../genesi-caelestia-settings/shell.json" || return 1
+    fi
+
+    # 4. The Nexus "Display" and "Mouse" pages. Harder than Updates, because
+    #    upstream registers Display only as a COMMENT (a `// TODO` block in
+    #    PageRegistry) and has no Mouse page in any form -- so the menu ENTRY
+    #    has to be created as well as the page supplied.
+    #
+    #    PageRegistry.pages and PageCompRegistry.pageComps are two flat lists
+    #    matched BY INDEX; nothing but position connects an entry to its
+    #    component. Editing one and not the other, or at a different offset,
+    #    makes every page after that point open the wrong screen with no error
+    #    anywhere, because both lists stay valid QML. So both edits are made by
+    #    one script from one ordered list, and it asserts the alignment
+    #    afterwards.
+    #    The script does the CHECK and the COPY, in that order. Installing the
+    #    pages here first and calling it afterwards is what broke build #469:
+    #    its "does upstream ship this page?" test found the file prepare() had
+    #    just written and refused. One script owning both halves makes that
+    #    ordering mistake unrepresentable rather than merely fixed.
+    python "${startdir}/../../ci/caelestia-patches.py"         release "${srcdir}" || return 1
+
+    # Point the first System entry at the real page instead of the placeholder.
+    # Anchored on the '// System' comment AND the first PlaceholderComp after
+    # it, so a reordering upstream cannot silently retarget a different page.
+    python - "${reg}" <<'PYEOF'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read()
+i = s.index("// System")
+old = "Component {\n            PlaceholderComp {}\n        },"
+j = s.index(old, i)
+new = ("Component {\n"
+       "            // Updates (Genesi)\n"
+       "            StackPage {\n"
+       "                Component {\n"
+       "                    UpdatesPage {}\n"
+       "                }\n"
+       "            }\n"
+       "        },")
+io.open(p, "w", encoding="utf-8", newline="\n").write(s[:j] + new + s[j + len(old):])
+print("PageCompRegistry: Updates -> UpdatesPage")
+PYEOF
 }
 
 build() {
@@ -59,5 +1125,11 @@ build() {
 package() {
     cd "${srcdir}/release"
     DESTDIR="$pkgdir" cmake --install build
+    install -Dm755 "${srcdir}/genesi-depth" \
+        "${pkgdir}/usr/bin/genesi-depth"
+    install -Dm755 "${srcdir}/genesi-wallpaper" \
+        "${pkgdir}/usr/bin/genesi-wallpaper"
+    install -Dm755 "${srcdir}/genesi-shell-doctor" \
+        "${pkgdir}/usr/bin/genesi-shell-doctor"
     install -Dm644 LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
 }

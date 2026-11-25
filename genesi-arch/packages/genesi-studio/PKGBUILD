@@ -109,7 +109,7 @@ pkgver=1.0.0
 # several levels below it, so the levers were skipped for exactly the app they
 # were meant for. The test is on the cgroup's shape now — members whose parent is
 # not also a member are roots, and one root means one app.
-pkgrel=14
+pkgrel=15
 pkgdesc='Genesi Studio Mode: focus one app, freeze the rest, restore everything after'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

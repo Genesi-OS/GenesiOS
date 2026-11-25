@@ -18,25 +18,30 @@
 _migrate_hypr() {
     local cfg="$1" owner="$2"
     [ -f "$cfg" ] || return 0
-    # Only Genesi's caelestia config (distinctive exec-once marker), and skip if
-    # already migrated (tray present) AND already free of the broken lines.
-    grep -q 'caelestia shell -d' "$cfg" || return 0
-    # Skip only if fully up to date: tray present AND none of the broken forms
-    # left — pre-0.55 pseudotile, direct togglesplit, comma windowrule syntax, or
-    # the noborder/rounding/move windowrules Hyprland 0.55 rejects.
-    if grep -q 'genesi-ai-tray' "$cfg" \
-       && ! grep -qE '^[[:space:]]*pseudotile[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$cfg" \
-       && ! grep -qE ',[[:space:]]*J,[[:space:]]*togglesplit,[[:space:]]*$' "$cfg" \
-       && ! grep -qE '^windowrule = .*,[[:space:]]*class:' "$cfg" \
-       && ! grep -qE '^windowrule = (noborder|rounding|move).*genesi-ai-tray' "$cfg" \
-       && grep -q 'genesi-caelestia-theme-sync' "$cfg" \
-       && grep -q 'genesi-ports-tray' "$cfg" \
-       && grep -q 'genesi-studio-tray' "$cfg" \
-       && grep -q 'genesi-ai-quick --background' "$cfg" \
-       && grep -q 'genesi-scheme-init' "$cfg" \
-       && grep -q 'aiquick)' "$cfg"; then
-        return 0
-    fi
+    # Only Genesi's caelestia config -- never a config the user wrote
+    # themselves. EITHER marker counts, and that is not belt and braces: this
+    # scriptlet REWRITES `exec caelestia shell -d` into `genesi-bar shell
+    # --start` further down, so gating on the old string alone would mean the
+    # first upgrade to run that rewrite was also the last upgrade this function
+    # ever ran. A gate that the function itself invalidates is the same trap as
+    # the section-8 marker that matched a line genesi-display writes.
+    grep -qE 'caelestia shell -d|genesi-bar shell --start' "$cfg" || return 0
+    # There used to be a "skip if fully up to date" gate here that listed every
+    # previous migration by hand. Adding a section without also adding its
+    # marker to that list meant the function returned BEFORE reaching the new
+    # section, so it silently never ran -- which is exactly what happened to
+    # the display keybinds: written, shipped, installed, and never applied to a
+    # single existing config.
+    #
+    # The gate is gone. Every section below is individually idempotent (each
+    # appends only when its own marker is absent, and each sed matches only the
+    # broken form it repairs), so running the whole function on every upgrade is
+    # correct by construction rather than by remembering. It costs a handful of
+    # greps on one small file, once per upgrade.
+    #
+    # ci/hypr-migration-test.sh reads the markers straight out of this file and
+    # fails the build if any section does not apply, so a forgotten section
+    # cannot ship again.
 
     cp -n "$cfg" "$cfg.genesi-bak" 2>/dev/null || true
 
@@ -44,14 +49,16 @@ _migrate_hypr() {
     sed -i '/^[[:space:]]*pseudotile[[:space:]]*=[[:space:]]*true[[:space:]]*$/d' "$cfg"
     # 2. togglesplit is no longer a direct dispatcher (0.54+) — route via layoutmsg.
     sed -i 's/\(,[[:space:]]*J,[[:space:]]*\)togglesplit,[[:space:]]*$/\1layoutmsg, togglesplit/' "$cfg"
-    # 2b. Hyprland 0.55 windowrule syntax: the rule and its matchers are now
-    #     SPACE-separated, not comma — `windowrule = float, class:..` errors with
-    #     "invalid field". Heal the comma form an earlier upgrade may have written.
-    sed -i '/^windowrule = /s/,[[:space:]]*class:/ class:/' "$cfg"
-    # 2c. Hyprland 0.55 rejects the noborder/rounding/move windowrules
-    #     ("invalid field type noborder" / "rounding … garbage input"). They're
-    #     cosmetic — drop them, keep only `float` (the popup rounds itself).
-    sed -i -E '/^windowrule = (noborder|rounding|move).*genesi-ai-tray/d' "$cfg"
+    # 2b. Genesi's own windowrules, in a form Hyprland actually applies.
+    #     Since 0.53 a rule is `windowrule = match:class RE, effect on, ...`:
+    #     props are `match:`, effects take a value, and a rule with no `match:`
+    #     is thrown away. Two earlier "fixes" wrote `float, class:..` and then
+    #     `float class:..` -- neither has a match:, so the Quick Chat was never
+    #     floated and opened TILED, a transparent workspace-high slab (reported
+    #     2026-10-08, "it opens full screen and goes see-through"). Every old
+    #     form of the lines for OUR two windows is deleted here; sections 3 and
+    #     7 below append the working ones. A user's own rules are not touched.
+    sed -i -E '/^windowrule = [^m].*class:\^\((genesi-ai-tray|org\\\.genesi\\\.aiquick)\)\$/d' "$cfg"
 
     # 3. tray applets + popup windowrule (append once).
     if ! grep -q 'genesi-ai-tray' "$cfg"; then
@@ -64,10 +71,11 @@ exec-once = genesi-update --tray
 exec-once = genesi-ai-tray
 exec-once = genesi-containers-tray
 exec-once = genesi-ports-tray
-# Float the AI Mode tray popup (only `float` — Hyprland 0.55 rejects the
-# noborder/rounding/move rules; the popup rounds itself via its stylesheet).
-windowrule = float class:^(genesi-ai-tray)$
 HYPR
+    fi
+    # The AI Mode tray popup floats (it rounds itself via its stylesheet).
+    if ! grep -q 'match:class ^(genesi-ai-tray)' "$cfg"; then
+        printf '%s\n' 'windowrule = match:class ^(genesi-ai-tray)$, float on' >> "$cfg"
     fi
 
     # Users who already received the original tray block still need PortScope.
@@ -116,13 +124,55 @@ HYPR
     # 7. Quick Chat windowrules (append once). Hyprland TILED the frameless
     #    summon bar into a workspace-high slab (reported 2026-07-18, photo).
     #    Float it at its own compact size, centered, pinned to every workspace.
-    if ! grep -q 'aiquick)' "$cfg"; then
+    # The marker reads the same as a regex (here) and as a literal (the CI's
+    # grep -F): no `\.` -- a regex escape is not the text that is in the file.
+    if ! grep -q 'aiquick)$, float on' "$cfg"; then
         cat >> "$cfg" <<'HYPR'
 # Genesi AI Quick Chat (Ctrl+Alt+Space): never tile the summon bar — float it
 # at its own size, centered, on every workspace (it is drag-movable).
-windowrule = float class:^(org\.genesi\.aiquick)$
-windowrule = center class:^(org\.genesi\.aiquick)$
-windowrule = pin class:^(org\.genesi\.aiquick)$
+windowrule = match:class ^(org\.genesi\.aiquick)$, float on, center on, pin on
+HYPR
+    fi
+
+    # 7b. The bar is a remembered choice, not a hardcoded line.
+    #     Existing configs still say `exec caelestia shell -d`, so the switch
+    #     between caelestia's rail and Genesi's top bar would work until the
+    #     session ended and then revert -- a setting that forgets itself reads
+    #     as a broken setting. Rewritten in place so the VM software-rendering
+    #     wrapper around it survives.
+    if grep -q 'exec caelestia shell -d' "$cfg"; then
+        sed -i "s|exec caelestia shell -d|genesi-bar shell --start|" "$cfg"
+    fi
+
+    # 8. Display keybinds (added in pkgrel 21). The launcher entries for scale
+    #    and rotation only reach people who go looking in `>`; these are the
+    #    same actions on the keyboard. Guarded on the binary name so a user who
+    #    rebound them keeps their own.
+    #    The marker is the BIND LINE, not the word "genesi-display": that word
+    #    also appears in the `source = ~/.config/hypr/genesi-display.conf` line
+    #    genesi-display itself appends the first time someone changes a display
+    #    setting. Guarding on the tool's name meant anyone who had USED the
+    #    feature was told the section was already applied, so the people who
+    #    tried it were precisely the ones who never got the keys.
+    if ! grep -q 'genesi-display scale - up' "$cfg"; then
+        cat >> "$cfg" <<'HYPR'
+# Display: scale and rotation from the keyboard. `-` is the screen in use.
+bind = SUPER, equal, exec, genesi-display scale - up
+bind = SUPER, minus, exec, genesi-display scale - down
+bind = SUPER SHIFT, R, exec, genesi-display rotate - cycle
+HYPR
+    fi
+
+    # 9. Input wakes a screen DPMS turned off (added in pkgrel 46). With the
+    #    idle timeouts below (shell.json), a monitor that sleeps has to come
+    #    back on the first key or mouse move -- on NVIDIA over DisplayPort a
+    #    missed wake-up is a black screen until the monitor is power-cycled.
+    if ! grep -q 'mouse_move_enables_dpms' "$cfg"; then
+        cat >> "$cfg" <<'HYPR'
+misc {
+    key_press_enables_dpms = true
+    mouse_move_enables_dpms = true
+}
 HYPR
     fi
 
@@ -157,9 +207,20 @@ _migrate_cli_json() {
     local cli="$1" owner="$2"
     python3 - "$cli" <<'PY' || return 0
 import json, os, sys
+# Every open() here names its encoding.
+#
+# shell.json is full of non-ASCII: every Genesi action carries a "·" and the
+# Portuguese half of its name. Python decodes with the locale's encoding when
+# none is given, and a pacman scriptlet does not choose its locale -- under a C
+# or POSIX one this raises UnicodeDecodeError on the first read. The whole block
+# ends in `|| return 0`, so that failure is invisible: the migration simply does
+# not happen, on exactly the file it exists to migrate.
+#
+# Found by running this on a machine whose default encoding is cp1252. The
+# platform was wrong, the bug was not.
 p = sys.argv[1]
 try:
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict):
         data = {}
@@ -173,7 +234,7 @@ if theme.get("enableTerm") is False:
     sys.exit(0)  # already disabled — leave the file untouched
 theme["enableTerm"] = False
 os.makedirs(os.path.dirname(p), exist_ok=True)
-with open(p, "w") as f:
+with open(p, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
 PY
     chown "$owner" "$(dirname "$cli")" "$cli" 2>/dev/null || true
@@ -191,7 +252,7 @@ _migrate_shell_json() {
 import json, os, sys
 p = sys.argv[1]
 try:
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict):
         data = {}
@@ -205,11 +266,132 @@ commands = session.get("commands")
 if not isinstance(commands, dict):
     commands = {}
     session["commands"] = commands
-if commands.get("logout"):
-    sys.exit(0)  # user has their own logout command — leave the file alone
-commands["logout"] = ["hyprctl", "dispatch", "exit"]
+changed = False
+
+# 1. The session drawer's logout. Upstream's `loginctl terminate-user ""` kills
+#    every user process at once and leaves an infinite black screen.
+# `hyprctl dispatch exit` was the fix, until Hyprland 0.57 made dispatch take
+# Lua: there it is an error and Logout did nothing. genesi-hypr exit works on
+# both, so our own earlier value is replaced too (a command the user chose is
+# not).
+if not commands.get("logout") or commands.get("logout") == ["hyprctl", "dispatch", "exit"]:
+    commands["logout"] = ["genesi-hypr", "exit"]
+    changed = True
+
+# 2. The launcher actions.
+#
+# Without this, an EXISTING user gets nothing: shell.json ships through
+# /etc/skel, which only ever seeds a NEW home. That is exactly why `>` showed
+# no display controls after the first install carrying them -- the package was
+# on disk and the file it wanted to deliver was not.
+#
+# caelestia's launcher.actions is a single property that REPLACES upstream's
+# defaults rather than merging, so what gets written here is the whole list
+# from our shipped shell.json -- theirs plus ours -- read from /etc/skel rather
+# than duplicated in this scriptlet, so the two can never drift apart.
+#
+# It MERGES rather than seeding once. The first version only wrote the list
+# when the key was absent, so a user was served exactly once and then frozen:
+# every action added afterwards -- the pointer controls, the main-screen entry,
+# all sixteen shaders -- reached new accounts through /etc/skel and reached
+# nobody else, in silence. The package was installed, the feature was on disk,
+# and `>` showed a list from whenever that user first upgraded.
+#
+# Merging by NAME, and the second version of that merge was still wrong: it
+# only APPENDED names that were missing and never updated an entry that already
+# existed. So a change to an action we already ship reached nobody. Grouping the
+# shaders was exactly that -- sixteen existing entries gaining "group":
+# "shader" -- and on an upgraded machine the merge added the one new "Shaders"
+# row and left all sixteen ungrouped, so ">" still listed forty rows. Same
+# shape as the freeze it replaced: the first version never wrote twice, this
+# one never rewrote.
+#
+# So the rule is ownership, not novelty. An action whose name we ship is OURS:
+# it is replaced with the shipped version, and changes to it arrive. An action
+# whose name we do not ship is the user's: it is kept, untouched, and follows
+# ours in the list.
+#
+# The cost, stated: someone who EDITED one of our actions in place loses that
+# edit on upgrade. Renaming it keeps it, because a rename makes it theirs. That
+# is worth it -- the alternative is what just happened, where no correction to
+# a shipped action can ever reach anybody. An action deleted on purpose also
+# comes back, which was already true.
+launcher = data.get("launcher")
+if not isinstance(launcher, dict):
+    launcher = {}
+    data["launcher"] = launcher
+
+shipped = {}
+try:
+    with open("/etc/skel/.config/caelestia/shell.json",
+              encoding="utf-8") as f:
+        shipped = json.load(f)
+    if not isinstance(shipped, dict):
+        shipped = {}
+    shipped_actions = shipped.get("launcher", {}).get("actions") or []
+except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError):
+    shipped_actions = []
+
+if shipped_actions:
+    current = launcher.get("actions")
+    if not isinstance(current, list) or not current:
+        launcher["actions"] = shipped_actions
+        changed = True
+    else:
+        ours = {a.get("name") for a in shipped_actions if isinstance(a, dict)}
+        theirs = [a for a in current
+                  if isinstance(a, dict) and a.get("name") not in ours]
+        merged = shipped_actions + theirs
+        if merged != current:
+            launcher["actions"] = merged
+            changed = True
+
+# 3. The launcher has its OWN Logout action, separate from the session drawer's
+#    command, and it carried the same black-screen `loginctl terminate-user`.
+#    A user who already had an actions list would otherwise keep it forever.
+for a in launcher.get("actions") or []:
+    if isinstance(a, dict) and a.get("name") == "Logout" \
+            and a.get("command") in (["loginctl", "terminate-user", ""], ["hyprctl", "dispatch", "exit"]):
+        a["command"] = ["genesi-hypr", "exit"]
+        changed = True
+
+# 4. Every OTHER setting Genesi ships that this user does not have yet.
+#
+# Steps 1-3 each name one key, and each was written the day that key first
+# went missing on somebody's machine. The wallpaper transition would have been
+# the fourth: shell.json gained a "background" section, /etc/skel delivered it
+# to new accounts, and nobody else would ever have seen it -- the same failure
+# as the frozen action list, one section over. Naming keys one at a time only
+# ever fixes the instance.
+#
+# So: add what the shipped file has and this file does not, recursively, and
+# never touch a key the user already has. A value they changed stays changed;
+# a value they never had arrives. `launcher.actions` is excluded because it is
+# a list with its own merge rule above, and a whole-list copy would undo it.
+SKIP = {("launcher", "actions")}
+
+
+def fill_missing(dst, src, path=()):
+    added = False
+    for k, v in src.items():
+        here = path + (k,)
+        if here in SKIP:
+            continue
+        if k not in dst:
+            dst[k] = v
+            added = True
+        elif isinstance(dst[k], dict) and isinstance(v, dict):
+            added = fill_missing(dst[k], v, here) or added
+    return added
+
+
+if fill_missing(data, shipped):
+    changed = True
+
+if not changed:
+    sys.exit(0)
 os.makedirs(os.path.dirname(p), exist_ok=True)
-with open(p, "w") as f:
+with open(p, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
 PY
     chown "$owner" "$(dirname "$shl")" "$shl" 2>/dev/null || true
@@ -233,8 +415,16 @@ _migrate_all() {
     done < <(getent passwd)
 }
 
+# Hyprland 0.57+ reads only hyprland.lua. The script decides per user and per
+# installed version (it does nothing on 0.56 and older), and the same script
+# runs from a pacman hook on hyprland, for when Hyprland arrives later.
+_migrate_lua() {
+    [ -x /usr/lib/genesi/genesi-hypr-lua-migrate ] && /usr/lib/genesi/genesi-hypr-lua-migrate || true
+}
+
 post_upgrade() {
     _migrate_all || true
+    _migrate_lua
     echo "==> Caelestia/Hyprland config updated for existing users (backup: "
     echo "    ~/.config/hypr/hyprland.conf.genesi-bak). Reload with 'hyprctl reload'"
     echo "    or re-login for the tray icons + fixes to take effect."
@@ -244,4 +434,5 @@ post_install() {
     # Fresh installs get the config straight from /etc/skel; run the migration
     # anyway so a manual `pacman -S` on a pre-existing user is also healed.
     _migrate_all || true
+    _migrate_lua
 }

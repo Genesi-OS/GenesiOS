@@ -192,8 +192,18 @@ Item {
                         add(declared[d].name, declared[d].desc || "a value from the AI block", label)
             }
             var fields = outputCatalogue[n.kind] || []
+            // A block carrying a varName also publishes everything under that
+            // prefix. That form is listed FIRST and separately per block,
+            // because it is the only one two blocks of the same kind cannot
+            // take from each other — with two App cards the shared {{app.name}}
+            // belongs to whichever ran last, and `taken` was hiding the second
+            // card's entry entirely.
+            var handle = (n.config && n.config.varName) ? ("" + n.config.varName) : ""
             for (var f = 0; f < fields.length; f++) {
                 if (("" + fields[f].name).indexOf("<") === 0) continue
+                var bare = ("" + fields[f].name).split(".").pop()
+                if (handle)
+                    add(handle + "." + bare, fields[f].desc + " — from " + label, label)
                 add(fields[f].name, fields[f].desc, label)
             }
         }
@@ -202,7 +212,10 @@ Item {
     }
 
     Shortcut {
-        sequence: StandardKey.Undo
+        // `sequences`, plural: StandardKey.Undo maps to more than one chord on
+        // some platforms, and a singular `sequence` silently binds only the
+        // first of them.
+        sequences: [ StandardKey.Undo ]
         enabled: root.ready && root.undoStack.length > 0
         onActivated: root.undo()
     }
@@ -525,7 +538,7 @@ Item {
                 onClicked: { var id = backend.createAutomation("New automation"); root.refreshList(); root.switchTo(id) } }
             GButton { theme: root.theme; kind: "tonal"; text: root.tight ? "" : "Build with AI"; iconSource: "icons/bot.svg"
                 tooltip: "Describe an automation and have it built"
-                onClicked: { backend.loadModels(); genPopup.open() } }
+                onClicked: { backend.loadAllModels(); genPopup.open() } }
             GButton { theme: root.theme; kind: "tonal"; text: root.tight ? "" : "Template"; iconSource: "icons/layout-grid.svg"
                 tooltip: root.tight ? "Start from a template" : ""
                 onClicked: templatePopup.open() }
@@ -615,7 +628,9 @@ Item {
                                         icon: modelData.icon || ""
                                         kind: modelData.kind || ""
                                         accent: modelData.accent || root.theme.green
-                                        dragGhost: dragGhost
+                                        // paletteGhost, not dragGhost: the
+                                        // property shadows the id here.
+                                        dragGhost: paletteGhost
                                         onAdd: root.addNode(modelData)
                                     }
                                 }
@@ -734,6 +749,7 @@ Item {
                                 selected: root.selectedId === modelData.id
                                 runState: root.nodeRunState(modelData)
                                 outPorts: root.portsFor(modelData.kind)
+                                stepNumber: index + 1
                                 boundW: root.sheetW
                                 boundH: root.sheetH
                                 Component.onCompleted: { x = modelData.x; y = modelData.y; root.updatePos(modelData.id, x, y, width, height) }
@@ -753,10 +769,10 @@ Item {
                     anchors.fill: parent
                     keys: [ "genesi/node" ]
                     onDropped: function(drop) {
-                        if (!dragGhost.def) return
+                        if (!paletteGhost.def) return
                         var cx = (flick.contentX + drop.x) / root.zoom - 107
                         var cy = (flick.contentY + drop.y) / root.zoom - 60
-                        root.addNodeAt(Math.max(0, cx), Math.max(0, cy), dragGhost.def)
+                        root.addNodeAt(Math.max(0, cx), Math.max(0, cy), paletteGhost.def)
                     }
                 }
 
@@ -764,8 +780,8 @@ Item {
                     // Hide the mini-map when the canvas itself is small — it
                     // would cover most of the visible sheet.
                     visible: parent.width > 470
-                    x: 16; y: parent.height - height - 16
-                    width: 180; height: 120; radius: 12
+                    x: 16; y: parent.height - height - 62
+                    width: 180; height: 116; radius: root.theme.rMd
                     color: Qt.rgba(0.05, 0.055, 0.065, 0.92)
                     border.width: 1; border.color: root.theme.line
                     ColumnLayout {
@@ -792,18 +808,72 @@ Item {
                     }
                 }
 
-                ColumnLayout {
-                    x: parent.width - 50; y: parent.height - 158
-                    spacing: 7
-                    Repeater {
-                        model: [ { ic: "maximize", act: "fit" }, { ic: "plus", act: "in" }, { ic: "minus", act: "out" } ]
-                        delegate: Rectangle {
-                            Layout.preferredWidth: 34; Layout.preferredHeight: 34; radius: 9
-                            color: zma.containsMouse ? root.theme.cardHi : root.theme.card
-                            border.width: 1; border.color: root.theme.line
-                            FIcon { anchors.centerIn: parent; name: modelData.ic; size: 15; color: root.theme.textMid }
-                            MouseArea { id: zma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                onClicked: root.zoomAction(modelData.act) }
+                // One bar, and it says what the zoom IS. Three separate 34px
+                // squares stacked in a corner read as three unrelated buttons,
+                // and none of them answered the question you actually have when
+                // a graph looks wrong, which is "how far in am I?".
+                Rectangle {
+                    id: zoomBar
+                    x: 16
+                    y: parent.height - height - 16
+                    implicitWidth: zoomRow.implicitWidth + 16
+                    implicitHeight: 34
+                    radius: 17
+                    color: Qt.rgba(0.05, 0.055, 0.065, 0.92)
+                    border.width: 1
+                    border.color: root.theme.line
+
+                    RowLayout {
+                        id: zoomRow
+                        anchors.centerIn: parent
+                        spacing: 2
+                        Repeater {
+                            model: [ { ic: "minus", act: "out" }, { ic: "plus", act: "in" } ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                Layout.preferredWidth: 26; Layout.preferredHeight: 26
+                                radius: 13
+                                color: zma.containsMouse ? root.theme.cardHi : "transparent"
+                                FIcon { anchors.centerIn: parent; name: modelData.ic; size: 13
+                                        color: root.theme.textMid }
+                                MouseArea {
+                                    id: zma
+                                    anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.zoomAction(modelData.act)
+                                }
+                            }
+                        }
+                        QQC2.Label {
+                            Layout.leftMargin: 2; Layout.rightMargin: 2
+                            text: Math.round(root.zoom * 100) + "%"
+                            color: root.theme.textMid
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                        Rectangle {
+                            Layout.preferredWidth: 1; Layout.preferredHeight: 16
+                            color: root.theme.line
+                        }
+                        Rectangle {
+                            Layout.preferredWidth: fitLbl.implicitWidth + 16
+                            Layout.preferredHeight: 26
+                            radius: 13
+                            color: fitMa.containsMouse ? root.theme.cardHi : "transparent"
+                            QQC2.Label {
+                                id: fitLbl
+                                anchors.centerIn: parent
+                                text: "Fit"
+                                color: root.theme.textMid
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                            MouseArea {
+                                id: fitMa
+                                anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.zoomAction("fit")
+                            }
                         }
                     }
                 }
@@ -829,6 +899,13 @@ Item {
                             QQC2.Label { text: "Run Log"; color: root.theme.textHi; font.pixelSize: 12; font.bold: true }
                             QQC2.Label { text: root.running ? "running…" : (runLog.count ? "idle" : "")
                                 color: root.theme.textLo; font.pixelSize: 11; Layout.fillWidth: true }
+                            GButton { theme: root.theme; kind: "ghost"; text: "Clear"
+                                visible: runLog.count > 0
+                                // Clears it at the DAEMON. Emptying only this
+                                // model would look right for one poll and then
+                                // refill from status.json half a second later.
+                                onClicked: { runLog.clear(); root.logFollow = true
+                                    backend.clearAutomationLog(root.activeId) } }
                             Rectangle {
                                 width: 22; height: 22; radius: 6; color: xLogMa.containsMouse ? root.theme.cardHi : "transparent"
                                 FIcon { anchors.centerIn: parent; name: "x"; size: 11; color: root.theme.textLo }
@@ -861,14 +938,25 @@ Item {
                             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                             model: runLog
                             QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
-                            onCountChanged: positionViewAtEnd()
-                            delegate: QQC2.Label {
+                            // Follow the tail only while the user IS at the
+                            // tail. Scrolling up to read something and being
+                            // dragged back down by the next log line is the
+                            // whole complaint; a log you cannot read during a
+                            // run is not a log.
+                            onCountChanged: if (root.logFollow) positionViewAtEnd()
+                            onMovementEnded: root.logFollow = logList.atYEnd
+                            delegate: TextEdit {
                                 width: logList.width
                                 text: model.line
+                                readOnly: true
+                                selectByMouse: true
+                                persistentSelection: true
                                 color: model.level === "cmd" ? root.theme.greenBright
                                      : model.level === "step" ? root.theme.blue
                                      : model.level === "ok" ? root.theme.greenBright
                                      : model.level === "err" ? root.theme.red : root.theme.textMid
+                                selectionColor: root.theme.green
+                                selectedTextColor: root.theme.white
                                 font.family: root.theme.mono; font.pixelSize: 11
                                 wrapMode: Text.WrapAnywhere
                             }
@@ -952,7 +1040,7 @@ Item {
             root.genName = res.name || ""
         }
         function onNoticeToast(msg) { root.toast(msg) }
-        function onModelsLoaded(jsonStr) {
+        function onAllModelsLoaded(jsonStr) {
             try { root.genModels = JSON.parse(jsonStr) } catch (e) { root.genModels = [] }
         }
     }
@@ -1184,7 +1272,7 @@ Item {
 
     // Floating drag ghost (shared by every PaletteItem).
     Item {
-        id: dragGhost
+        id: paletteGhost
         property var def: null
         property bool dragging: false
         visible: dragging
@@ -1198,16 +1286,16 @@ Item {
             anchors.fill: parent; radius: 11; opacity: 0.97
             color: root.theme.cardHi
             border.width: 1.5
-            border.color: dragGhost.def ? root.theme.a(dragGhost.def.accent, 0.7) : root.theme.a(root.theme.green, 0.6)
+            border.color: paletteGhost.def ? root.theme.a(paletteGhost.def.accent, 0.7) : root.theme.a(root.theme.green, 0.6)
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; spacing: 9
                 Rectangle {
                     width: 26; height: 26; radius: 7
-                    color: dragGhost.def ? root.theme.a(dragGhost.def.accent, 0.18) : "transparent"
-                    FIcon { anchors.centerIn: parent; name: dragGhost.def ? dragGhost.def.icon : ""; size: 14
-                        color: dragGhost.def ? dragGhost.def.accent : root.theme.green }
+                    color: paletteGhost.def ? root.theme.a(paletteGhost.def.accent, 0.18) : "transparent"
+                    FIcon { anchors.centerIn: parent; name: paletteGhost.def ? paletteGhost.def.icon : ""; size: 14
+                        color: paletteGhost.def ? paletteGhost.def.accent : root.theme.green }
                 }
-                QQC2.Label { text: dragGhost.def ? dragGhost.def.label : ""; color: root.theme.textHi; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                QQC2.Label { text: paletteGhost.def ? paletteGhost.def.label : ""; color: root.theme.textHi; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
             }
         }
     }
@@ -1467,6 +1555,9 @@ Item {
     property bool showLog: false
     property bool running: false
     property var pendingApprovals: []
+    // Is the log view parked at the bottom? Set false the moment the user
+    // scrolls away, true again when they come back (or press Clear).
+    property bool logFollow: true
     ListModel { id: runLog }
 
     Timer {
@@ -1486,10 +1577,16 @@ Item {
         root.pendingApprovals = mine.pending || []
         if (root.pendingApprovals.length > 0) root.showLog = true
         var log = mine.log || []
-        if (runLog.count !== log.length) {
+        // Append what is new instead of rebuilding the whole list. A rebuild
+        // every 1.5s threw away the scroll position and any selection the user
+        // was in the middle of making, which is why the log felt like it was
+        // fighting back. Only a log that SHRANK (cleared, or rolled past
+        // LOG_KEEP) needs the full redraw.
+        if (log.length < runLog.count) {
             runLog.clear()
-            for (var i = 0; i < log.length; i++)
-                runLog.append({ line: log[i].line, level: log[i].level || "out" })
+            root.logFollow = true
         }
+        for (var i = runLog.count; i < log.length; i++)
+            runLog.append({ line: log[i].line, level: log[i].level || "out" })
     }
 }

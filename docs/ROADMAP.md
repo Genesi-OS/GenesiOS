@@ -9,30 +9,70 @@
 | Area | Status |
 |------|--------|
 | Bootable ISO based on CachyOS | ✅ Complete |
-| KDE Plasma 6 desktop | ✅ Complete |
+| KDE Plasma 6 desktop (+ 8 more DEs in the installer) | ✅ Complete |
 | Reproducible build system (archiso + Calamares) | ✅ Complete |
 | **Phase 1 — Visual Identity** | ✅ Complete |
-| **Phase 2 — AI Mode (local AI optimizations)** | 🟩 ~90% (core shipping) |
-| **Phase 3 — Own Packages & Repository** | ✅ Operational (8 packages shipping) |
-| **Phase 4 — IDE & Dev Tools** (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) | 🟦 In progress — Genesi Code shipping (local AI agent + LSP); Hermes pending |
-| **Phase 5 — Polish & Distribution** | ⬜ Pending |
-| **Phase 6 — Welcome & Control Center** (app installer + tweaks) | ⬜ Pending |
+| **Phase 2 — AI Mode (local AI optimizations)** | ✅ Shipping — daemon, Plasma widget, Monitor, Turbo, Mesh |
+| **Phase 3 — Own Packages & Repository** | ✅ Operational — **41 packages**, stable + testing channels |
+| **Phase 4 — IDE & Dev Tools** | 🟦 In progress — Genesi Code, Forge, Sandboxes, Ports, DB Explorer, API Inspector shipping; Hermes pending |
+| **Phase 5 — Polish & Distribution** | 🟦 In progress — site, wiki and forum live; DE selector done |
+| **Phase 6 — Welcome & Control Center** | ✅ Shipping — Welcome app, Package Installer, maintenance page, channel switch |
 
-### Two production CI pipelines
+Genesi is **rolling**: every push to `main` rebuilds the ISO and republishes the
+packages. There is no gap between merged and shipped, and no release train to
+wait for.
 
-Genesi OS ships through **two independent GitHub Actions pipelines**:
+### The CI pipelines
 
-1. **Package / Update pipeline** (`.github/workflows/publish-packages.yml`) —
-   builds the eight Genesi packages inside a `cachyos-v3` container, runs
-   `repo-add`, and commits the resulting pacman repository to
-   `genesi-arch/repo/x86_64`. Installed systems pull from this repo, so a
-   normal `pacman -Syu` (or the in-OS update notifier) delivers updates in near
-   real time. `main` = **stable** channel, `develop` = **testing** channel.
-2. **ISO pipeline** (`.github/workflows/iso-pipeline.yml`) — a two-stage build
-   that first **validates the install** (dependency dry-run + a real `pacstrap`
-   into a throwaway root) and only then runs `mkarchiso` to produce a fresh
-   `.iso`. Artifacts are uploaded per run; pushing a `v*` tag cuts a GitHub
-   Release. It only fires on ISO inputs (docs-only commits are skipped).
+Three workflows carry the product. They are deliberately separate, because a
+broken package must not be able to hold up an ISO and vice versa.
+
+1. **Packages / updates** — `publish-packages.yml`. Builds every Genesi package
+   inside a `cachyos-v3` container, runs `repo-add`, and commits the resulting
+   pacman repository into `genesi-arch/repo/x86_64` **on the branch it ran
+   from**. Installed systems pull that path over HTTPS, so a plain
+   `pacman -Syu` (or the in-OS update notifier) delivers updates minutes after a
+   merge. Runs on `main` **and** `develop` — see the channel table below.
+2. **ISO** — `iso-pipeline.yml`. Three stages now: it first *validates the
+   install* (dependency dry-run plus a real `pacstrap` into a throwaway root),
+   then runs `mkarchiso`, then **boots the finished image in QEMU** before
+   anything is published. **`main` only.** The finished ISO is uploaded to
+   Cloudflare R2 as a single object that is replaced in place, so the download
+   link never changes and only one ISO is ever stored. Older builds stay
+   browsable as split GitHub Releases.
+
+   The boot gate (`ci/iso-boot-test.sh`) exists because the R2 object is
+   replaced in place: without it, a build that produces an unbootable image
+   reaches the public download link with nothing in between. It runs three
+   stages — SeaBIOS→syslinux, OVMF→GRUB, and a direct kernel boot using the
+   **real cmdline read out of the built ISO** — and asserts against the serial
+   console, which both bootloaders already mirror. It distinguishes "does not
+   boot" (blocks the publish) from "could not be tested" (warns and publishes),
+   so a QEMU package rename can never stop Genesi from shipping.
+
+   Its static half, `ci/bootloader-config-test.sh`, runs on every push in a
+   second. It was written after finding that `archiso_sys.cfg` had
+   `DEFAULT arch64` while the BIOS labels were `cos64*` — the `arch64_*` labels
+   are PXE-only. DEFAULT named nothing, and BIOS booted on vesamenu's fallback
+   to the first entry: correct by luck, one reordering away from booting the
+   wrong kernel.
+3. **Hygiene** — `hygiene-check.yml`. Repository sanity, on both branches.
+
+### Update channels
+
+| | Stable | Testing |
+|---|---|---|
+| Branch | `main` | `develop` |
+| pacman repo | `[genesi]` | `[genesi-testing]` |
+| Database file | `genesi.db` | `genesi-testing.db` |
+| Served from | `raw.githubusercontent.com/Genesi-OS/GenesiOS/**main**/genesi-arch/repo/$arch` | the same path on **`develop`** |
+| Builds an ISO | Yes | **No** — packages only |
+| How to enable | Default | `genesi-channel set testing`, or the switch in the Welcome app |
+
+Testing is **additive**: a machine on it keeps `[genesi]` and gains
+`[genesi-testing]`, and pacman installs whichever build of a package is newer.
+A tester therefore never falls behind stable, and going back is just dropping
+the extra repo.
 
 See [Build & Release Infrastructure](#build--release-infrastructure) for details.
 
@@ -41,11 +81,11 @@ See [Build & Release Infrastructure](#build--release-infrastructure) for details
 ## Phase Order
 
 1. **Phase 1** — Visual Identity ✅ **Complete**
-2. **Phase 2** — AI Mode (local AI optimizations) 🟩 **~90%**
+2. **Phase 2** — AI Mode (local AI optimizations) ✅ **Shipping**
 3. **Phase 3** — Own Packages & Repository (infrastructure) ✅ **Operational**
-4. **Phase 4** — IDE & Dev Tools (Genesi Code, fork of Warp; Genesi Hermes, fork of Hermes Desktop) 🟦 **In progress** (Genesi Code shipping)
-5. **Phase 5** — Polish & Distribution ⬜ Pending
-6. **Phase 6** — Genesi Welcome & Control Center ⬜ Pending
+4. **Phase 4** — IDE & Dev Tools 🟦 **In progress** (Genesi Code, Forge and the dev tools ship; Hermes pending)
+5. **Phase 5** — Polish & Distribution 🟦 **In progress** (site, wiki, forum and DE selector done)
+6. **Phase 6** — Genesi Welcome & Control Center ✅ **Shipping**
 
 ---
 
@@ -75,7 +115,7 @@ See [Build & Release Infrastructure](#build--release-infrastructure) for details
 
 ---
 
-## PHASE 2: AI Mode — Local AI Optimizations 🟩 ~90%
+## PHASE 2: AI Mode — Local AI Optimizations ✅ SHIPPING
 > Make Genesi OS run local AI better than any other desktop OS.
 
 > **★ Core design principle — weak hardware is a first-class target.**
@@ -657,6 +697,73 @@ packages** built and published by CI.
 - [x] Installed systems update via plain `pacman -Syu` or the in-OS notifier
 - [x] Reproducible CI build inside a `cachyos-v3` container with CachyOS repos
 
+### Repository signing 🟦 machinery shipped, key pending
+
+Every Genesi repo was `SigLevel = Optional TrustAll`, which means pacman
+installed whatever was at the repository URL, as root, without checking who
+produced it. Fine while the only user builds it themselves; not fine the moment
+a stranger installs Genesi.
+
+- [x] `genesi-keyring` — ships the public key, imports it with `pacman-key
+      --populate genesi`. Guarded so it cannot break a pacstrap that has not
+      initialised a keyring yet.
+- [x] All three publish pipelines (`[genesi]`, `[genesi-apps]`, `[genesi-cuda]`)
+      sign packages **and** the database with one shared key, via the
+      `.github/actions/signing-key` composite action. Signatures are cut before
+      `repo-add`, or the database never records them.
+- [x] Signing is **conditional on the secret existing**: with no key the
+      pipelines publish exactly as they always did, with a warning. This
+      pipeline feeds the in-OS update notifier — it must never fail closed.
+- [x] `ci/keyring-wiring-test.sh` — the key and the packages referencing it must
+      appear together, checked in **both** directions. A dependency on a package
+      CI is still skipping would break every install and the ISO build.
+- [x] `ci/repo-signature-test.sh` — verifies the **live** repository against the
+      key users actually have. The gate for raising `SigLevel`.
+- [x] **The key exists** (`75C1C187…85C6BD0E`), generated on the maintainer's
+      machine. CI never generates it: a key CI could regenerate is a key anyone
+      with push access could replace.
+- [x] **Signing is ON** since 2026-08-30, behind the repository variable
+      `GENESI_SIGNING_ENABLED` — a switch a person throws, deliberately separate
+      from the key existing. Wiring it to "the secret exists" is what took every
+      machine's `pacman -Sy` down once.
+- [x] **Verified on real machines, not just CI**: 36/36 packages and the
+      database carry a `.sig`; the live ISO holds the key at `[ full ]` trust and
+      syncs the signed repo; an installed system upgrades clean AND verifies a
+      package signature on a forced reinstall; and the ISO pipeline builds
+      against the signed repo (both CI containers trust the key from the
+      checkout — without that, the first signed publish would have taken the ISO
+      build down).
+- [ ] **Raise `SigLevel` to `Required`** — the remaining step. Everything still
+      reads `Optional TrustAll`, which means an UNSIGNED package is still
+      accepted; signing is delivered, enforcement is not. Safe to do now that
+      the keyring demonstrably reaches machines, but it is the one change that
+      cannot be undone from inside a machine that gets it wrong.
+
+Full lifecycle, including rotation: `genesi-arch/docs/PACKAGE-SIGNING.md`.
+
+### The return path ✅ shipping
+
+Until `genesi-report` existed, the only way a problem reached the project was
+the maintainer happening to hit it on their own machine. Everyone else's
+failures were invisible — which is the real reason bugs here have had lifetimes
+measured in weeks: not that they were hard, but that nobody knew.
+
+- [x] `genesi-report` — collects OS/kernel/channel, desktop and session, GPU and
+      **which driver actually bound**, Genesi package versions, AI Mode status,
+      failed system **and user** units, this boot's errors, and the last package
+      transactions.
+- [x] **Redacts before it shows**: username, hostname, home paths, IPv4/IPv6,
+      MACs, emails, Wi-Fi names, serials. `ci/report-redaction-test.sh` checks
+      both halves — that the secrets die and that the *useful* detail survives,
+      since a report that redacts the kernel version is just as useless.
+- [x] **Never sends anything.** It writes a file and pre-fills an issue form;
+      the user submits or does not. The test also asserts the script contains no
+      upload path at all.
+- [x] Pure bash, no Qt, no Python required — the boot worth reporting is the one
+      where the desktop did not come up.
+- [ ] Surface it from the Welcome app and the AI Mode Monitor (it currently has
+      a menu entry and a CLI).
+
 ### Desktop polish (in progress)
 - [x] Klassy compiled/configured for rounded window corners (14px)
 - [ ] Custom taskbar icon selection style — rounded pill highlight + hover animation
@@ -918,7 +1025,7 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 
 ---
 
-## PHASE 5: Polish & Distribution ⬜ PENDING
+## PHASE 5: Polish & Distribution 🟦 IN PROGRESS
 > Final polish and public release.
 
 - [x] Custom Calamares slideshow & imagery — Genesi leaf logo/icon, three
@@ -927,10 +1034,10 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
       package and the live ISO read the exact same dir, so an installed system
       can no longer fall back to CachyOS art; `customize_airootfs.sh` copies it
       authoritatively (no fragile CachyOS overlay).
-- [ ] Official Genesi OS website
-- [ ] Complete end-user documentation
-- [ ] Download page with ISOs
-- [ ] Community (Discord/Forum)
+- [x] Official Genesi OS website — genesios.org
+- [x] End-user documentation — the wiki, plus a Privacy Policy and Terms
+- [x] Download page — one ISO on Cloudflare R2, replaced in place
+- [x] Community — forum.genesios.org
 - [x] Automatic updates via the self-hosted repository *(delivered in Phase 3)*
 
 ### 5.1 Desktop Environment selector in the installer (Calamares)
@@ -1069,6 +1176,38 @@ in the Genesi pacman repo. What works now vs. what's left for a 1.0:
 
 ---
 
+## Known gaps
+
+Things that ship today with a limit worth stating plainly, rather than being
+discovered by the person using them.
+
+### Plain-language file search cannot see inside images
+
+`genesi-find` turns your description into a filter over **file names,
+extensions and dates**, and runs it locally. That works when the file is named
+something ("contrato-aluguel.pdf"), and fails exactly where it would be most
+useful: a photo straight off a phone or a camera is `IMG_20260812_193344.jpg`,
+so "aquela foto do churrasco" has nothing to match on.
+
+Fixing it properly means looking at the pixels, and the design constraint is
+that the search must stay local and must not become expensive:
+
+- **Only with a vision-capable model already warm.** Same rule as every other
+  AI Assist helper: never load a model to be useful.
+- **Bounded.** Never "describe every image on the disk". Narrow by folder and
+  date first, then look at a handful of candidates.
+- **Cached by content hash**, so an image is described once and not again.
+
+Content search inside documents (PDF, text) has the same shape and is easier —
+Baloo already indexes much of it on KDE.
+
+### Other
+
+- Genesi Hermes (Phase 4.2) is designed but not built.
+- The Monitor and API Inspector have no light-theme pass; both assume dark.
+
+---
+
 ## Build & Release Infrastructure
 
 Genesi OS keeps **two strictly separate** pipelines so that fixing the live ISO
@@ -1159,3 +1298,162 @@ system that:
 Why it fits Genesi OS: persistent memory for local AI, automatic project-context
 indexing, zero cloud, and IDE integration via MCP. License: MIT (compatible with
 Genesi OS's AGPL-3.0).
+
+---
+
+## PHASE 7: Desktop depth (post-launch)
+> Everything below was scoped on 2026-08-30 after studying Dusky and Ryoku Arch.
+> The through-line: most of it is NOT shell-framework work.
+
+**Architecture decision — extend caelestia, do not fork.** Six of the seven
+features wanted are Hyprland-level or standalone apps, so they are built as
+**shell-independent** Genesi packages that talk to Hyprland directly. They then
+work on caelestia today, on a future genesi-hyprland, and on any third shell.
+A second shell would have to be maintained forever and would throw away the
+branding and app integration already paid for. Revisit when the caelestia
+overrides pile up enough that we are maintaining a fork in denial — two today
+(the launcher wallpaper crash, the logout command) is normal.
+
+### 7.1 Updates inside the settings you already use
+
+Not a separate app. Updates belong where people already look for them, the way
+Windows and macOS put them in System Settings. Every front-end calls one shared
+privileged helper, so there is a single path to root rather than one per
+desktop.
+
+#### Shipped
+
+- [x] **KDE** — a module inside System Settings (`genesi-update-kcm`).
+- [x] **caelestia** — the Updates page in Nexus, which upstream registers and
+      leaves as a placeholder. Written in caelestia's own components so it
+      retints with the wallpaper like the rest of the panel.
+- [x] **The privileged helper** (`genesi-update-center`) — one root-owned script
+      and one polkit action, shared by both front-ends.
+- [x] The existing update tray notifier stays as it is. The two have different
+      jobs: the notifier comes to you, the settings page receives you.
+
+#### Next
+
+- [x] **Everything else — decided: no standalone app.** GNOME, Xfce, Cinnamon,
+      MATE, LXDE, Budgie, Cosmic and Niri have no extension point for a settings
+      page, and the update tray notifier already reaches all of them. An
+      eleventh window for a job the taskbar icon already does is not worth its
+      maintenance.
+- [ ] First run of the KDE module on real hardware.
+
+### 7.2 Shell-independent desktop utilities
+
+Desktop settings Genesi was missing, built once and surfaced everywhere.
+
+**The shape.** Each utility is a CLI that talks to the compositor or to libinput
+directly; the graphical side is a thin caller. A control written into caelestia
+would not exist on a future genesi-hyprland, and a Quickshell widget would not
+exist for anyone on waybar — and Genesi already has ten Qt apps, so the eleventh
+is not the answer. Where a desktop can be extended, the UI goes inside *its*
+settings rather than into a new window.
+
+#### Shipped
+
+- [x] **Monitor scale and rotation** — `genesi-display`. Reads the compositor's
+      real state and writes back a complete monitor line, so nothing is reset by
+      omission. Persists to `~/.config/hypr/genesi-display.conf`, which holds
+      nothing hand-written and can be deleted whole.
+- [x] **Monitor arrangement** — a drag-and-drop map of the desk. Screens are
+      drawn at their true relative size, snap flush to their neighbours, and the
+      layout is kept anchored at the origin.
+- [x] **Main screen** — `genesi-display primary`. Uses the real `xrandr`
+      primary flag on X11 and the default workspace binding on Hyprland, which
+      has no such concept.
+- [x] **Pointer speed and acceleration** — `genesi-input`. Drives Hyprland and
+      X11 alike, and lists the pointers it can see, so "the slider does nothing"
+      can be told from "that is not the device the slider was talking to".
+- [x] **Display and Mouse pages in caelestia's settings.** Upstream ships
+      neither: Display is a commented-out placeholder and Mouse does not exist.
+- [x] **A working search in caelestia's settings.** Upstream ships the box
+      without anything behind it.
+- [x] **Launcher actions** for every one of the above, in Portuguese and
+      English, from configuration alone — no new app, no new package.
+- [x] **Keyboard shortcuts** — `SUPER +` / `SUPER -` step through the scales the
+      compositor accepts, `SUPER SHIFT R` rotates.
+- [x] **Screen shaders** — fifteen of them from the launcher: pixelate,
+      anaglyph 3D, CRT, vignette, film grain, colour fringing, posterize,
+      sepia, black and white, inverted, warm, night light, vivid, and two
+      colour-blindness aids. `>shader` lists the lot. `hyprshade` is AUR-only
+      upstream, so Genesi packages it and writes the shaders itself.
+- [x] **Audio quirk handling** — `genesi-audio`, a WirePlumber drop-in for USB
+      devices whose hardware mixer cannot be trusted.
+
+#### Build guards
+
+Written after each of these shipped broken in a way nothing reported. Each one
+fails the build rather than the desktop.
+
+- [x] `package-reachability-test.py` — a package that no install path names
+      reaches nobody, silently. Caught two.
+- [x] `caelestia-actions-test.py` — launcher entries must run something that is
+      actually installed, must not drift from upstream's list, and must be
+      findable in both languages.
+- [x] `hypr-migration-test.sh` — `/etc/skel` seeds only new accounts, so every
+      config change must reach existing ones through the migration.
+- [x] `gtk-init-order-test.py` — a tray that builds widgets before GTK is
+      initialised crashes at login and leaves no icon behind. Caught five.
+- [x] `caelestia-patches.py` — every edit to upstream QML asserts its assumptions
+      first, so a version bump arrives as a red build rather than a broken panel.
+
+#### Next
+
+- [ ] The same Display and Mouse settings on the KDE side, which has only the
+      CLI and the update page today.
+- [ ] Keyboard sound.
+- [x] **Wallpaper transition** — `background.transition` picks how a new
+      wallpaper arrives: `fade` (upstream's own crossfade), `zoom`, `grow` or
+      `none`, with `background.transitionDuration` in milliseconds. Genesi
+      defaults to `zoom` at 900ms. Upstream already crossfaded and offered no
+      say in it; the choice is the feature.
+- [x] **Bar presets** — ten named arrangements of the caelestia bar, switched
+      from `>bar` or with `genesi-bar apply <name>`: default, centred, minimal,
+      numbered workspaces, window icons, dense, compact, clean, trail and
+      auto-hide. caelestia's bar is already configuration rather than code —
+      `bar.entries` is an ordered list of ids with `spacer` among them — so a
+      preset is a named shell.json section, not new QML.
+- [ ] Waybar config switcher — only meaningful if a waybar-based desktop is ever
+      offered. Superseded in practice by the bar presets above.
+
+### 7.3 What is NOT ours to build
+Worth recording because it changed the scope: half of what impressed us in the
+Dusky screenshots was third-party software the author happens to run, not
+anything that project built. Those install on Genesi today with no work at all,
+and are the user's choice to make — nothing for the roadmap to carry.
+
+### 7.4 A Genesi settings app with real art direction
+Ryoku Arch's settings panel is the bar. Its stack is **Quickshell + QML** —
+exactly what Genesi already uses in the AI Mode Monitor, Forge, Snapshots and
+PortScope, and what caelestia runs. Nothing is missing technically.
+What it has that we do not is a committed point of view: one accent on black,
+a display serif against a monospace, density used as ornament (telemetry,
+section numbering, secondary labels), and one striking image treated as the
+subject. Its own identity is "paper and ink, warm bone on black" — copying it
+would make Genesi look like Ryoku rather than like Genesi.
+- [x] **Genesi Center** — `genesi-center`, the control surface. First pass:
+      the rail (nine sections, one sliding indicator), the Overview page built
+      to the mockup — hero, eight telemetry readings with live sparklines,
+      quick tools, snapshots, the storage ring, recent activity, the core plate
+      and the terminal mark — and `genesi-center-data`, a CLI printing JSON
+      that every number comes from. The remaining eight pages announce
+      themselves as unbuilt rather than showing an empty panel.
+      What was taken from Ryoku is the ARCHITECTURE, not the look: a data plane
+      that is a CLI, a front end that only draws, one file per page, one rail
+      that owns navigation. `devtools/render-center.py` draws the app to a PNG
+      with no desktop, which is how the layout gets reviewed.
+- [x] Decide what Genesi's equivalent conviction is — emerald on near-black, a
+      terminal that grew into a garden. `app/Tokens.qml` is the single place it
+      is decided, and unlike every other Genesi app it does NOT follow the
+      system scheme: this is the brand surface, so it leads rather than follows.
+- [ ] The artwork: the Overview's centre is a procedural glow until the tree is
+      dropped into `app/art/tree.png`.
+- [ ] A second type family with a job — everything factual in monospace
+- [ ] Density as ornament instead of empty space
+- [ ] Wallpaper-derived retinting on the Plasma side too (Hyprland already has
+      it via genesi-materialyoucolor; Plasma's palette is a frozen decision)
+
+---

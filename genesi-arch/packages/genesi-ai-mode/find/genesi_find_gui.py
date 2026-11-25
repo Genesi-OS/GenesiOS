@@ -107,6 +107,15 @@ class Backend(QObject):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     @Slot(str)
+    def copyToClipboard(self, text):
+        """Alias for copyPath.
+
+        FileCard is shared with the Monitor's chat, whose backend spells this
+        verb `copyToClipboard`. One component driving two backends means the
+        two backends have to answer to the same names."""
+        self.copyPath(text)
+
+    @Slot(str)
     def copyPath(self, path):
         QGuiApplication.clipboard().setText(path, QClipboard.Clipboard)
 

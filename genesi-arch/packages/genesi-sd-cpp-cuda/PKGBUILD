@@ -1,0 +1,108 @@
+# Maintainer: Genesi OS Team <dev@genesios.org>
+#
+# stable-diffusion.cpp with the CUDA backend: the fast engine for the Image
+# page on NVIDIA cards with the proprietary driver, the image counterpart of
+# genesi-llama-cpp-cuda. Same files, same paths, same /usr/bin names as the
+# Vulkan build (genesi-sd-cpp), so it is a 1:1 swap: genesi-ai-image notices
+# the CUDA device and turns on what only CUDA does well (flash attention in
+# the diffusion model, native SageAttention).
+#
+# Installed on demand from the Image page ("Install the CUDA engine"), never by
+# an install list, and published to the release-hosted [genesi-image] repo by
+# publish-sd-cpp.yml -- like the CUDA llama.cpp it is far too large for the
+# git-hosted [genesi], and it must not be able to hold back everyone's updates.
+#
+# Everything lives in /usr/lib/genesi-sd-cpp for the reasons spelled out in
+# genesi-sd-cpp's PKGBUILD: sd.cpp vendors its own patched ggml, which must not
+# collide with llama.cpp's libggml in /usr/lib, and the CPU backend is built as
+# runtime-picked variants so no CPU gets an illegal instruction.
+pkgname=genesi-sd-cpp-cuda
+pkgver=929
+pkgrel=1
+pkgdesc='stable-diffusion.cpp (CUDA) — fast NVIDIA image generation for Genesi AI Mode'
+arch=('x86_64')
+url='https://github.com/leejet/stable-diffusion.cpp'
+license=('MIT')
+# cuda provides libcudart/libcublas at run time; the proprietary driver
+# (nvidia-utils, present wherever this is wanted) provides libcuda.
+depends=('cuda' 'gcc-libs' 'glibc')
+makedepends=('git' 'cmake' 'cuda')
+provides=('genesi-sd-cpp')
+conflicts=('genesi-sd-cpp')
+# In lockstep with genesi-sd-cpp: genesi-ai-image builds its command lines
+# against one commit's flags, whichever backend is installed.
+_commit=3f8527a46c54ecf4cb4ed6003da8e8982283c73c
+source=("stable-diffusion.cpp::git+https://github.com/leejet/stable-diffusion.cpp.git#commit=${_commit}"
+        "ggml::git+https://github.com/leejet/ggml.git")
+sha256sums=('SKIP'
+            'SKIP')
+
+prepare() {
+    cd stable-diffusion.cpp
+    git submodule init ggml
+    git config submodule.ggml.url "$srcdir/ggml"
+    git -c protocol.file.allow=always submodule update ggml
+}
+
+build() {
+    # The consumer GeForce architectures, as in genesi-llama-cpp-cuda:
+    # 75 = RTX 20 / GTX 16, 86 = RTX 30, 89 = RTX 40. Each extra one multiplies
+    # an already-long ggml-cuda build. Override with GENESI_CUDA_ARCHS.
+    local archs="${GENESI_CUDA_ARCHS:-75;86;89}"
+
+    # An nvcc TU peaks around 2 GB, so drive parallelism by CPU count with a
+    # one-job-per-2-GB cap (RAM from /proc/meminfo: free(1) is translated).
+    local mem_gb jobs
+    jobs=$(nproc)
+    mem_gb=$(awk '/^MemTotal:/{printf "%d", $2/1048576}' /proc/meminfo 2>/dev/null)
+    [ -z "$mem_gb" ] && mem_gb=8
+    [ $(( mem_gb / 2 )) -lt "$jobs" ] && jobs=$(( mem_gb / 2 ))
+    [ "$jobs" -lt 1 ] && jobs=1
+    echo "genesi-sd-cpp-cuda: building with -j${jobs} (RAM ${mem_gb} GB), CUDA archs=${archs}"
+
+    export PATH="/opt/cuda/bin:$PATH"
+    cmake -B build -S stable-diffusion.cpp \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DSD_CUDA=ON \
+        -DCMAKE_CUDA_COMPILER=/opt/cuda/bin/nvcc \
+        -DCMAKE_CUDA_ARCHITECTURES="${archs}" \
+        -DSD_WEBP=OFF \
+        -DSD_WEBM=OFF \
+        -DSD_SERVER_BUILD_FRONTEND=OFF \
+        -DBUILD_SHARED_LIBS=ON \
+        -DSD_BUILD_SHARED_GGML_LIB=ON \
+        -DGGML_NATIVE=OFF \
+        -DGGML_BACKEND_DL=ON \
+        -DGGML_CPU_ALL_VARIANTS=ON \
+        -DCMAKE_SKIP_INSTALL_RPATH=OFF \
+        -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+        -DCMAKE_INSTALL_RPATH='$ORIGIN'
+    cmake --build build --config Release -j"${jobs}"
+}
+
+package() {
+    local lib="$pkgdir/usr/lib/genesi-sd-cpp"
+    install -dm755 "$lib" "$pkgdir/usr/bin"
+    install -Dm755 build/bin/sd-cli "$lib/sd-cli"
+    install -Dm755 build/bin/sd-server "$lib/sd-server"
+    # cp -P keeps libggml's .so symlinks as symlinks (see genesi-sd-cpp).
+    local so n=0
+    for so in build/bin/*.so*; do
+        [ -e "$so" ] || continue
+        cp -P "$so" "$lib/"
+        n=$((n + 1))
+    done
+    if ! ls "$lib"/libggml-cpu-*.so >/dev/null 2>&1; then
+        echo "genesi-sd-cpp-cuda: no libggml-cpu-*.so variants were built" >&2
+        return 1
+    fi
+    if ! ls "$lib"/libggml-cuda.so >/dev/null 2>&1; then
+        echo "genesi-sd-cpp-cuda: the CUDA backend (libggml-cuda.so) was not built" >&2
+        return 1
+    fi
+    echo "genesi-sd-cpp-cuda: packaged $n shared libraries"
+    ln -s /usr/lib/genesi-sd-cpp/sd-cli "$pkgdir/usr/bin/genesi-sd-cli"
+    ln -s /usr/lib/genesi-sd-cpp/sd-server "$pkgdir/usr/bin/genesi-sd-server"
+    install -Dm644 stable-diffusion.cpp/LICENSE \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

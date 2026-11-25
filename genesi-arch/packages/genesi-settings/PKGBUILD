@@ -159,11 +159,35 @@ pkgver=1.3.4
 # state, so the repair pass now bounces through another scheme to force a real
 # rewrite; and kwriteconfig6 emits no change signal, so already-open Qt apps kept
 # the stale palette -- KGlobalSettings.notifyChange is now sent too.
-pkgrel=51
+# 2026-08-21: license declaration corrected to AGPL-3.0-or-later, matching the
+# repository's LICENSE and the rest of the Genesi packages. GPL-1.0-only was a leftover from a PKGBUILD template -- that is the 1989
+# license, and this is Genesi's own settings app.
+# pkgrel 54: a colour scheme the user picks sticks across reboots. The
+# per-login repair in genesi-apply-theme.sh re-applied Genesi (plus its icons
+# and selection colours) for everyone, so any other scheme reverted at every
+# login. The repair now runs only while the user is still on Genesi, and the
+# icon repair only while they are on Tela. ci/apply-theme-test.sh runs the
+# script with the desktop tools stubbed.
+# pkgrel 55: the AI Mode launcher's notifications follow the session
+# language ("Modo IA Forçado ativado com sucesso!" reached English users).
+# The toggle moved out of the .desktop Exec line into genesi-aimode-toggle.
+# pkgrel 56: ships the `genesi` icon (hicolor 48-256) that os-release's LOGO=
+# names. It lived only in the live ISO's airootfs, so installed systems
+# showed a grey "?" in KDE's About this System. ci/os-logo-test.py.
+# pkgrel 57: removes the live session's SDDM autologin (01-autologin.conf,
+# User=liveuser) that the installer copied into every install, where it
+# fought the autologin set in System Settings. Only while it still names
+# liveuser: a file the user edited to their own name is kept.
+# pkgrel 58: an update no longer repaints a colour scheme the user picked.
+# The upgrade's colour heals (selection, glass, titlebar, button) wrote
+# Genesi's values into every user's kdeglobals, so another scheme came back
+# half-Genesi after each update (user report). They now run only while the
+# user is on Genesi. ci/settings-upgrade-scheme-test.sh.
+pkgrel=58
 epoch=1
 groups=(genesi)
 arch=('any')
-license=(GPL-1.0-only)
+license=('AGPL-3.0-or-later')
 makedepends=('coreutils' 'git')
 pkgdesc='Genesi OS - System Settings'
 url="https://github.com/Genesi-OS/genesi-settings"
@@ -256,8 +280,25 @@ package() {
   # Make the theme applicator + panel migration scripts executable
   chmod +x "$pkgdir/usr/bin/genesi-apply-theme.sh" 2>/dev/null || true
   chmod +x "$pkgdir/usr/bin/genesi-panel-migrate.sh" 2>/dev/null || true
+  chmod +x "$pkgdir/usr/bin/genesi-aimode-toggle" 2>/dev/null || true
   
-  # Replace all CachyOS references with Genesi OS
-  find "$pkgdir" -type f -exec sed -i 's/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
-  find "$pkgdir" -type f -exec sed -i 's/cachyos/genesi/g' {} + 2>/dev/null || true
+  # Replace all CachyOS references with Genesi OS.
+  #
+  # systemd units are excluded, and that exclusion is the whole point. A unit
+  # name is an identifier, not branding: the rename rewrote
+  # `Unit=cachyos-iw-set-regdomain.service` inside the .path file while leaving
+  # the .service FILE named cachyos-*, because the sed edits contents and not
+  # filenames. Every boot then logged
+  #
+  #   cachyos-iw-set-regdomain.path: Refusing to start, unit
+  #   genesi-iw-set-regdomain.service to trigger not loaded.
+  #
+  # Renaming the files instead would break the other direction -- other CachyOS
+  # packages reference these by their real names. Leave identifiers alone.
+  find "$pkgdir" -type f -not -path "*/systemd/*"     -exec sed -i 's/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
+  find "$pkgdir" -type f -not -path "*/systemd/*"     -exec sed -i 's/cachyos/genesi/g' {} + 2>/dev/null || true
+
+  # The Description= lines ARE branding, so those are still worth changing --
+  # just not the identifiers around them.
+  find "$pkgdir" -path "*/systemd/*" -type f -exec sed -i '/^Description=/s/CachyOS/Genesi OS/g' {} + 2>/dev/null || true
 }

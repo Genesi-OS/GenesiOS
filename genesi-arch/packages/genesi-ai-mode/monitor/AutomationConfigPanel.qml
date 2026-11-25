@@ -20,10 +20,14 @@ Item {
 
     readonly property bool isEvent: node && ("" + node.kind).indexOf("evt_") === 0
 
-    Component.onCompleted: backend.loadModels()
+    Component.onCompleted: backend.loadAllModels()
     Connections {
         target: backend
-        function onModelsLoaded(jsonStr) {
+        // Local and API models together: a block names one model and keeps
+        // it. The chat's Local | API switch is about a live conversation; a
+        // saved block needs no switch, only an honest label -- API entries
+        // read "(API)".
+        function onAllModelsLoaded(jsonStr) {
             try { root.models = JSON.parse(jsonStr) } catch (e) { root.models = [] }
         }
         function onHotkeyCaptured(combo) {
@@ -43,6 +47,12 @@ Item {
     component FieldLabel: QQC2.Label {
         color: root.theme.textMid; font.pixelSize: 12; font.bold: true
         Layout.topMargin: 6
+        // fillWidth + wrap, or ONE long label sets the column's implicit width
+        // and pushes the whole panel past its own right edge -- which is what
+        // "Process name — leave empty for ANY app" was doing to every field
+        // below it.
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
     }
     component Combo: QQC2.ComboBox {
         id: cb
@@ -56,6 +66,10 @@ Item {
         indicator: FIcon { x: cb.width - 26; y: (cb.height - 14) / 2; size: 14; name: "chevron-down"; color: root.theme.textMid }
     }
     component GField: Rectangle {
+        // Referenced by id rather than by parent.parent.parent: a Timer nested
+        // in the TextField sits one level deeper than the handlers do, and
+        // counting parents is how that silently starts calling the wrong thing.
+        id: field
         Layout.fillWidth: true; implicitHeight: 40
         radius: 9; color: root.theme.cardHi; border.width: 1; border.color: root.theme.lineHi
         property alias text: tf.text
@@ -66,7 +80,24 @@ Item {
             FIcon { visible: parent.parent.icon !== ""; name: parent.parent.icon; size: 14; color: root.theme.textMid }
             QQC2.TextField { id: tf; Layout.fillWidth: true; background: null; color: root.theme.textHi; font.pixelSize: 13
                 selectionColor: root.theme.green; selectedTextColor: root.theme.white
-                onEditingFinished: parent.parent.accepted(text) }
+                onEditingFinished: field.accepted(text)
+                // Save while typing, not only on Enter or focus loss. Clicking
+                // straight from a field onto ANOTHER CARD swapped the panel out
+                // before editingFinished ever arrived, so the text was simply
+                // gone — and the block went on running with its previous value,
+                // which is how an output name nobody had typed in a while kept
+                // showing up in the error messages.
+                //
+                // Guarded on activeFocus because `text` is bound to the config:
+                // a save rewrites the config, which rewrites the binding, which
+                // would fire this again. Only a human holding focus starts it.
+                onTextChanged: if (tf.activeFocus) fieldSave.restart()
+                Timer {
+                    id: fieldSave
+                    interval: 350          // a pause in typing, not a keystroke
+                    onTriggered: field.accepted(tf.text)
+                }
+            }
         }
     }
     component GArea: Rectangle {
@@ -81,7 +112,16 @@ Item {
             anchors.fill: parent; anchors.margins: 6; clip: true
             QQC2.TextArea { id: ta; background: null; color: root.theme.textHi; font.pixelSize: 13; wrapMode: Text.Wrap
                 selectionColor: root.theme.green; selectedTextColor: root.theme.white
-                onEditingFinished: area.accepted(text) }
+                onEditingFinished: area.accepted(text)
+                // Same as GField: a prompt is the field people type most and
+                // lose most. See there for why activeFocus guards it.
+                onTextChanged: if (ta.activeFocus) areaSave.restart()
+                Timer {
+                    id: areaSave
+                    interval: 350
+                    onTriggered: area.accepted(ta.text)
+                }
+            }
         }
     }
     component RowToggle: RowLayout {
@@ -134,6 +174,26 @@ Item {
                     color: root.theme.textLo; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
 
+                // Two blocks of the same kind publish the same names, so the
+                // later one wins and the first one's value is gone — two App
+                // cards fighting over {{app.name}} is how this was reported,
+                // but two Run Scripts over {{stdout}} is the same bug. Only the
+                // user can say which is which, so let them: this block's values
+                // also arrive under a name they choose, which nothing else can
+                // overwrite. Shown wherever the block actually publishes
+                // something, so it never appears on a block it would do nothing
+                // for. Slugged on the way in, like an AI output name.
+                FieldLabel { text: "Value name (optional)"; visible: root.canName() }
+                GField { visible: root.canName()
+                    text: root.cfg("varName", ""); icon: "tag"
+                    onAccepted: root.setConfig("varName", value ? root.slugPlain(value) : "") }
+                QQC2.Label { visible: root.canName()
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: ("" + root.cfg("varName", "")).length === 0
+                        ? "Give this block a name and its values are also published under it — " + root.handledExample("name") + " — so a second block of the same kind cannot overwrite them."
+                        : "Also publishes " + root.provides(true) + ", which nothing else can overwrite."
+                    color: root.theme.textLo; font.pixelSize: 10 }
+
                 FieldLabel { text: "Block name"; visible: root.node }
                 Rectangle {
                     visible: root.node
@@ -180,13 +240,29 @@ Item {
                 }
 
                 // ── evt_app ─────────────────────────────────────────────
-                FieldLabel { text: "Process name"; visible: root.kindIs("evt_app") }
+                FieldLabel { text: "Process name — leave empty for ANY app"
+                    visible: root.kindIs("evt_app") }
                 GField { visible: root.kindIs("evt_app"); text: root.cfg("app", ""); icon: "box"
                     onAccepted: root.setConfig("app", value) }
+                QQC2.Label { visible: root.kindIs("evt_app") && ("" + root.cfg("app", "")).length === 0
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Any app: this fires for whatever opens or closes, and {{app.name}} tells you which. Only installed applications count — background processes and helper scripts are ignored, which is what stopped this from firing every few seconds on an idle machine."
+                    color: root.theme.textLo; font.pixelSize: 10 }
                 FieldLabel { text: "When it"; visible: root.kindIs("evt_app") }
                 Combo { visible: root.kindIs("evt_app"); model: [ "opened", "closed" ]
                     currentIndex: root.optionIndex(model, root.cfg("transition", "opened"))
                     onActivated: root.setConfig("transition", currentText) }
+                // Only meaningful mid-chain, where the block WAITS instead of
+                // triggering — so it only appears once something feeds into it.
+                FieldLabel { text: "Give up after (seconds)"
+                    visible: root.kindIs("evt_app") && root.isFed() }
+                GField { visible: root.kindIs("evt_app") && root.isFed()
+                    text: root.cfg("waitSeconds", "300"); icon: "clock"
+                    onAccepted: root.setConfig("waitSeconds", value) }
+                QQC2.Label { visible: root.kindIs("evt_app") && root.isFed()
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Something is connected INTO this block, so it waits here instead of starting the workflow: the chain pauses until the app is in that state. Name the app — \"any app\" cannot be waited for. If it never happens the block fails, so wire the on-error dot if you want to handle that."
+                    color: root.theme.textLo; font.pixelSize: 10 }
 
                 // ── evt_hotkey ──────────────────────────────────────────
                 FieldLabel { text: "Shortcut"; visible: root.kindIs("evt_hotkey") }
@@ -529,13 +605,24 @@ Item {
                         Layout.fillWidth: true; spacing: 6
                         GField { text: modelData.name || ""; icon: "tag"
                             Layout.preferredWidth: 110
-                            onAccepted: root.setOutput(index, "name", value) }
+                            // Slugged on the way in, not rejected. Someone typed
+                            // "RAM {{app.name}} usage" as a field name; the model
+                            // was then asked for a key that {{ }} could never
+                            // reference, and the block failed three steps later
+                            // with a message about JSON. Correcting it here, in
+                            // front of them, beats explaining it afterwards.
+                            onAccepted: root.setOutput(index, "name",
+                                                       root.slugName(value)) }
                         GField { text: modelData.desc || ""; icon: "edit"
                             onAccepted: root.setOutput(index, "desc", value) }
                         GButton { theme: root.theme; kind: "ghost"; text: "✕"
                             onClicked: root.removeOutput(index) }
                     }
                 }
+                QQC2.Label { visible: root.kindIs("act_ai") && root.badOutput() !== ""
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "\"" + root.badOutput() + "\" was changed: a field name has to be letters, digits and _ so it can be written as {{name}} later."
+                    color: root.theme.turboBright; font.pixelSize: 10 }
                 QQC2.Label { visible: root.kindIs("act_ai"); Layout.fillWidth: true; wrapMode: Text.Wrap
                     text: root.outputs().length === 0
                         ? "With no outputs the block simply answers in prose, and the next block receives that text as {input}."
@@ -975,7 +1062,24 @@ Item {
         if (!root.node || !root.graphProvider) return []
         return root.graphProvider.upstreamOutputs(root.node.id)
     }
-    function provides() {
+    // Does this block publish anything? Only then is a value name any use.
+    function canName() {
+        if (!root.node || !root.graphProvider) return false
+        var cat = root.graphProvider.outputCatalogue[root.node.kind] || []
+        for (var i = 0; i < cat.length; i++)
+            if (("" + cat[i].name).indexOf("<") !== 0) return true
+        return root.node.kind === "act_ai"
+    }
+    function handledExample(handle) {
+        if (!root.node || !root.graphProvider) return ""
+        var cat = root.graphProvider.outputCatalogue[root.node.kind] || []
+        for (var i = 0; i < cat.length; i++) {
+            if (("" + cat[i].name).indexOf("<") === 0) continue
+            return "{{" + handle + "." + ("" + cat[i].name).split(".").pop() + "}}"
+        }
+        return "{{" + handle + ".value}}"
+    }
+    function provides(handledOnly) {
         if (!root.node || !root.graphProvider) return ""
         var cat = root.graphProvider.outputCatalogue[root.node.kind] || []
         var names = []
@@ -984,9 +1088,15 @@ Item {
             for (var d = 0; d < declared.length; d++)
                 if (declared[d].name) names.push("{{" + declared[d].name + "}}")
         }
+        var handle = ("" + root.cfg("varName", "")).trim()
+        if (handledOnly) names = []
         for (var i = 0; i < cat.length; i++) {
             if (("" + cat[i].name).indexOf("<") === 0) continue
-            names.push("{{" + cat[i].name + "}}")
+            // The block's own prefix first: it is the name nothing else can
+            // overwrite, which is the reason to have named the block at all.
+            if (handle)
+                names.push("{{" + handle + "." + ("" + cat[i].name).split(".").pop() + "}}")
+            if (!handledOnly) names.push("{{" + cat[i].name + "}}")
         }
         return names.join(", ")
     }
@@ -995,6 +1105,35 @@ Item {
         // fields the user is aiming at, and pasting into the wrong one is a
         // worse outcome than one extra keystroke.
         backend.copyToClipboard("{{" + name + "}}")
+    }
+    // Does anything link INTO this block? An event block with an incoming link
+    // stops being a trigger and becomes a step in the chain, which changes what
+    // its settings mean — so the panel has to know.
+    // The same shape the daemon accepts (_VAR_NAME_RE): what {{ }} can resolve.
+    property string lastSlugged: ""
+    // The shape without the bookkeeping. lastSlugged drives a warning that
+    // belongs to the AI block's output rows, so anything ELSE that needs a slug
+    // (an App block's value name) must not leave a stale warning behind for the
+    // next block the user clicks.
+    function slugPlain(raw) {
+        var clean = ("" + raw).trim().replace(/[^A-Za-z0-9_]+/g, "_")
+                              .replace(/^_+|_+$/g, "").toLowerCase()
+        if (clean.length === 0) clean = "value"
+        if (/^[0-9]/.test(clean)) clean = "v" + clean
+        return clean
+    }
+    function slugName(raw) {
+        var clean = slugPlain(raw)
+        lastSlugged = (clean !== ("" + raw).trim()) ? ("" + raw).trim() : ""
+        return clean
+    }
+    function badOutput() { return lastSlugged }
+    function isFed() {
+        if (!root.node || !root.graphProvider) return false
+        var links = root.graphProvider.links || []
+        for (var i = 0; i < links.length; i++)
+            if (links[i].to === root.node.id) return true
+        return false
     }
     function outputs() {
         var v = cfg("outputs", [])

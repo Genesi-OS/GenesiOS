@@ -1,0 +1,1042 @@
+#!/usr/bin/env python3
+"""
+genesi-ai-video — local video generation for Genesi AI Mode.
+
+The AI Mode Monitor's Video page is a front end over this tool, the same split
+as genesi-ai-image and its Image page: models, downloads, the engine and the
+GPU live here, where they can be run and tested from a terminal, and the
+window only draws what this prints. With --json every subcommand prints one
+JSON object per line on stdout; human text goes to stderr.
+
+    genesi-ai-video status    [--json]
+    genesi-ai-video catalog   [--json]
+    genesi-ai-video pull      MODEL [--variant V] [--json]
+    genesi-ai-video remove    MODEL [--variant V] [--json]
+    genesi-ai-video generate  --model MODEL [--variant V] --prompt TEXT
+                              [--mode t2v|i2v|flf2v|r2v|v2v|extend]
+                              [--image START_OR_REFERENCE] [--end-image END]
+                              [--video SOURCE] [--seconds S | --frames N]
+                              [--size 480p|720p] [--aspect 16:9|9:16|1:1]
+                              [--steps N] [--cfg C] [--seed S] [--negative TEXT]
+                              [--lora ID[:WEIGHT]]... [--turbo]
+                              [--low-memory] [--light-vae]
+                              [--out PATH] [--keep-llm] [--json]
+    genesi-ai-video lora      list|import FILE [--name N] [--trigger WORDS]
+                              |remove ID [--json]
+    genesi-ai-video gallery   [--limit N] [--json]
+
+── Why it is built on genesi-ai-image ──────────────────────────────────────
+
+Same engine (stable-diffusion.cpp, `sd-cli -M vid_gen`), same model folder,
+same download-resume-verify path, same LoRA store, same out-of-memory retry.
+So this tool LOADS genesi-ai-image as a module and adds only what is video:
+the catalog, the frame and size rules, the extra inputs (end frame, control
+video, a video to continue), and turning the engine's output into something
+a person can play and share. A fix to downloads or LoRAs lands in both pages
+at once, and the image catalog is never touched by anything here.
+
+── What the modes are ──────────────────────────────────────────────────────
+
+  t2v     text to video.
+  i2v     image to video: the picture is the FIRST FRAME. The face in it is
+          the face in the video -- the most faithful way to animate a person.
+  flf2v   first and last frame: the video travels from one to the other.
+  r2v     a reference (VACE): a person or object from a photo appears in a
+          NEW scene, not as the first frame.
+  v2v     restyle a video (VACE): its frames steer the new one, so motion and
+          composition stay while the look follows the prompt.
+  extend  continue a video: its last frame starts a new image-to-video run,
+          and the two are joined. Repeat it to go longer than one run allows.
+
+v2v and extend need ffmpeg (to read the source video). Output is the engine's
+MJPG .avi, turned into an H.264 .mp4 when ffmpeg is installed.
+
+── Turbo ───────────────────────────────────────────────────────────────────
+
+For video, Turbo is a distillation LoRA (Wan Lightning / LightX2V / Turbo):
+4 to 6 steps instead of 20 to 30, at cfg 1. Unlike pictures there is no warm
+server: a clip takes minutes, and the load is a small part of that.
+"""
+import argparse
+import datetime
+import importlib.machinery
+import importlib.util
+import json
+import os
+import random
+import re
+import shutil
+import signal
+import struct
+import subprocess
+import sys
+import time
+
+
+def _load_image_tool():
+    """genesi-ai-image, as a module. Beside this file when installed (both go
+    to /usr/local/bin), beside it in the source tree too; GENESI_AI_IMAGE_TOOL
+    overrides for tests."""
+    here = os.path.dirname(os.path.realpath(__file__))
+    for p in (os.environ.get("GENESI_AI_IMAGE_TOOL", "").strip(),
+              os.path.join(here, "genesi-ai-image"),
+              shutil.which("genesi-ai-image") or ""):
+        if p and os.path.isfile(p):
+            loader = importlib.machinery.SourceFileLoader("genesi_ai_image", p)
+            spec = importlib.util.spec_from_loader("genesi_ai_image", loader)
+            mod = importlib.util.module_from_spec(spec)
+            loader.exec_module(mod)
+            return mod
+    sys.stderr.write("genesi-ai-video: genesi-ai-image is missing (reinstall genesi-ai-mode)\n")
+    sys.exit(127)
+
+
+img = _load_image_tool()
+HF = img.HF
+C = img.C
+T = img.T
+
+
+# ── every file a video model needs ───────────────────────────────────────────
+# Sizes and SHA-256 are the Hub's own (ci/video-cli-test.py checks each one
+# against the API); the local name is what lands in the shared models folder.
+VIDEO_COMPONENTS = {
+    # Shared by every Wan model
+    "umt5-q4km": C("umt5-xxl-encoder-Q4_K_M.gguf", HF + "city96/umt5-xxl-encoder-gguf/resolve/main/umt5-xxl-encoder-Q4_K_M.gguf", 3655145312, "17cf97a5bbbc60a646d6105b832b6f657ce904a8a1ad970e4b59df0c67584a40"),
+    "wan21-vae": C("wan_2.1_vae.safetensors", HF + "Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors", 253815318, "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b"),
+    "wan22-vae": C("wan2.2_vae.safetensors", HF + "Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors", 1409400960, "e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156"),
+    # TAEHV: a 22 MB stand-in for the VAE -- the low-memory decoder.
+    "taew21": C("taew2_1.safetensors", HF + "Kijai/WanVideo_comfy/resolve/main/taew2_1.safetensors", 22642926, "a870ebc6a8bc36bb4124c304341e7b258ab4010e365743fbac2dc43af98cf9b2"),
+    "taew22": C("taew2_2.safetensors", HF + "Kijai/WanVideo_comfy/resolve/main/taew2_2.safetensors", 22848080, "885f67667e7d8838340d0c9ce03dd3f2da73bc2b44e3eda6e41ec1d0f725f97e"),
+    # Wan2.2 TI2V 5B
+    "wan22-5b-q4km": C("Wan2.2-TI2V-5B-Q4_K_M.gguf", HF + "QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/Wan2.2-TI2V-5B-Q4_K_M.gguf", 3433116000, "95b19697b7f98e65b0a543640e9ca7b4dfec32e2a6e3731e8e10708be52655e2"),
+    "wan22-5b-q6k": C("Wan2.2-TI2V-5B-Q6_K.gguf", HF + "QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/Wan2.2-TI2V-5B-Q6_K.gguf", 4211683680, "355f6bee35c4c6cbd0f275112619fe8ac6f7b9b067b885723667b3bde29497c3"),
+    "wan22-5b-q8": C("Wan2.2-TI2V-5B-Q8_0.gguf", HF + "QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/Wan2.2-TI2V-5B-Q8_0.gguf", 5400179040, "57bece983817ab2f957546683bb670f13be7d99022d45674840cd999a050ea8f"),
+    "wan22-5b-turbo": C("Wan22_TI2V_5B_Turbo_lora_rank_64_fp16.safetensors", HF + "Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22-Turbo/Wan22_TI2V_5B_Turbo_lora_rank_64_fp16.safetensors", 332348584, "0ace5244e3d1256f884662c261b017249796cf5b95f05d5ed93cc02a478967b8"),
+    # Wan2.1 T2V 1.3B
+    "wan21-1.3b-q4km": C("wan2.1_t2v_1.3b-q4_k_m.gguf", HF + "calcuis/wan-1.3b-gguf/resolve/main/wan2.1_t2v_1.3b-q4_k_m.gguf", 1034031328, "f3c1a3fb984d49d3963cc4a93d4f5103deef5909eb5e948513fb6c6d582a350e"),
+    "wan21-1.3b-q8": C("wan2.1_t2v_1.3b-q8_0.gguf", HF + "calcuis/wan-1.3b-gguf/resolve/main/wan2.1_t2v_1.3b-q8_0.gguf", 1587083488, "e6db35de304f0b5b4b4689d41b95fa853fff747581bea75adac25939a73dbead"),
+    "wan21-1.3b-causvid": C("Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors", HF + "Kijai/WanVideo_comfy/resolve/main/Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors", 91233416, "8e5331e780ffb16520bf1ff7ba90188ebd271a4698e5be8e618800e809cca704"),
+    # Wan2.1 VACE 1.3B
+    "wan21-vace-1.3b-q4km": C("wan2.1-vace-1.3b-q4_k_m.gguf", HF + "calcuis/wan-1.3b-gguf/resolve/main/wan2.1-vace-1.3b-q4_k_m.gguf", 1520837312, "bee9f9289e98b1f9a0a68c791228f9286d1fccfdd1408bc3a13be727572b22ab"),
+    "wan21-vace-1.3b-q8": C("wan2.1-vace-1.3b-q8_0.gguf", HF + "calcuis/wan-1.3b-gguf/resolve/main/wan2.1-vace-1.3b-q8_0.gguf", 2369289920, "28eac76977716fc0ae5a63ea7082bf809ef7ce94c56a0df3c0ca5f228b328281"),
+    # Wan2.2 I2V A14B (two experts: high noise, then low noise)
+    "wan22-i2v-hi-q3km": C("Wan2.2-I2V-A14B-HighNoise-Q3_K_M.gguf", HF + "QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/HighNoise/Wan2.2-I2V-A14B-HighNoise-Q3_K_M.gguf", 7176106496, "ac3a72d74330e030fe2ded047b0ef9afc21dd90afc4f300c7aa79e1b0f9dd940"),
+    "wan22-i2v-lo-q3km": C("Wan2.2-I2V-A14B-LowNoise-Q3_K_M.gguf", HF + "QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q3_K_M.gguf", 7176106496, "4472e4e30a9729da0e0de36c708c45344a70799d431b17371b0c513d20a1351b"),
+    "wan22-i2v-hi-q4km": C("Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf", HF + "QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/HighNoise/Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf", 9651728896, "836250abfaa3411694e2c9cf3a0cc18265329d5156d81aa116d5366b0f8f02e7"),
+    "wan22-i2v-lo-q4km": C("Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf", HF + "QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf", 9651728896, "e2f98d834af009d035c6b0918268f2eba0aa8a63025ce942277e2384d40b0866"),
+    "wan22-i2v-lightning-hi": C("wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors", HF + "Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors", 1226977424, "d176c808d6fc461999b68e321efcb7501b20b8c3797523ed0df14f7d1deff11e"),
+    "wan22-i2v-lightning-lo": C("wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors", HF + "Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors", 1226977424, "024f21de095bc8fad9809ded3e9e49a2e170dcf27075da8145ba7d60d8aab7f9"),
+    # Wan2.2 T2V A14B
+    "wan22-t2v-hi-q3km": C("Wan2.2-T2V-A14B-HighNoise-Q3_K_M.gguf", HF + "QuantStack/Wan2.2-T2V-A14B-GGUF/resolve/main/HighNoise/Wan2.2-T2V-A14B-HighNoise-Q3_K_M.gguf", 7174468096, "0a1166c9429630be04d5a9351abae7972acd18cee34ea52c130986ff1ab827b6"),
+    "wan22-t2v-lo-q3km": C("Wan2.2-T2V-A14B-LowNoise-Q3_K_M.gguf", HF + "QuantStack/Wan2.2-T2V-A14B-GGUF/resolve/main/LowNoise/Wan2.2-T2V-A14B-LowNoise-Q3_K_M.gguf", 7174468096, "13bf25ca46c94d210bd20796093f2f6cec35d3331004c0e50ff0f961c7b68947"),
+    "wan22-t2v-hi-q4km": C("Wan2.2-T2V-A14B-HighNoise-Q4_K_M.gguf", HF + "QuantStack/Wan2.2-T2V-A14B-GGUF/resolve/main/HighNoise/Wan2.2-T2V-A14B-HighNoise-Q4_K_M.gguf", 9650090496, "e0c490c6e316fd91ff52034e4ca66b825717e33ff11624585c0ccfcb5d410c59"),
+    "wan22-t2v-lo-q4km": C("Wan2.2-T2V-A14B-LowNoise-Q4_K_M.gguf", HF + "QuantStack/Wan2.2-T2V-A14B-GGUF/resolve/main/LowNoise/Wan2.2-T2V-A14B-LowNoise-Q4_K_M.gguf", 9650090496, "091a5bae02e14aa016bc9b10a7892efda4c629346b81c5dcebbe30ea2ac8923a"),
+    "wan22-t2v-lightning-hi": C("wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors", HF + "Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors", 1226977424, "698321cb86bd30c4af06c9b84e656a1048c8cb54e06d50694536fb5de37fde41"),
+    "wan22-t2v-lightning-lo": C("wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors", HF + "Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors", 1226977424, "ec95216e614b3c132c11bfb387b11feedf62163150ccc9068bca8a189771e75a"),
+    # Wan2.1 VACE 14B
+    "wan21-vace-14b-q4ks": C("Wan2.1_14B_VACE-Q4_K_S.gguf", HF + "QuantStack/Wan2.1_14B_VACE-GGUF/resolve/main/Wan2.1_14B_VACE-Q4_K_S.gguf", 10552539040, "4ffac58131d2dd6c0508783488ed43df801f1514c5438ecfa4c625da8573b25e"),
+    "wan21-vace-14b-q4km": C("Wan2.1_14B_VACE-Q4_K_M.gguf", HF + "QuantStack/Wan2.1_14B_VACE-GGUF/resolve/main/Wan2.1_14B_VACE-Q4_K_M.gguf", 11639453600, "d03b2280e996172e55d91e8c41cc8a0c28fd89afc6ddbdb0572caa97fd8cc5a6"),
+    "wan21-14b-lightx2v": C("Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors", HF + "Kijai/WanVideo_comfy/resolve/main/Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors", 316822496, "914fafa5dded72e6c470d6f764b97fe4d71567dae7cc01d1181b310efd5c37a6"),
+    # LTX-2.3 distilled (video WITH sound)
+    "ltx23-q3km": C("ltx-2.3-22b-distilled-Q3_K_M.gguf", HF + "unsloth/LTX-2.3-GGUF/resolve/main/distilled/ltx-2.3-22b-distilled-Q3_K_M.gguf", 10770199584, "388614a12f3d38c8bb08e42e92e5c73cb8cc1a1e5368b4cf02687ffa42c75269"),
+    "ltx23-q4km": C("ltx-2.3-22b-distilled-Q4_K_M.gguf", HF + "unsloth/LTX-2.3-GGUF/resolve/main/distilled/ltx-2.3-22b-distilled-Q4_K_M.gguf", 14326856736, "4e4459bee04199bf93187ba385729f6b7d8e874d754b72d26e751fe2066f4358"),
+    "ltx23-connectors": C("ltx-2.3-22b-distilled_embeddings_connectors.safetensors", HF + "unsloth/LTX-2.3-GGUF/resolve/main/text_encoders/ltx-2.3-22b-distilled_embeddings_connectors.safetensors", 2312144712, "c61cbb396e2a8175d8b2da51f0fdac885a4ccd22c9f64dafa5aa2c455dc8a507"),
+    "ltx23-video-vae": C("ltx-2.3-22b-distilled_video_vae.safetensors", HF + "unsloth/LTX-2.3-GGUF/resolve/main/vae/ltx-2.3-22b-distilled_video_vae.safetensors", 1452256522, "e68d6d8f8a42942ac9b862cc315beb3bc30805a8876c7ad63ba5bf7a2b8e168a"),
+    "ltx23-audio-vae": C("ltx-2.3-22b-distilled_audio_vae.safetensors", HF + "unsloth/LTX-2.3-GGUF/resolve/main/vae/ltx-2.3-22b-distilled_audio_vae.safetensors", 364853140, "3cd6a6eb8cb28f5ecc12f1f3126952b2a3d2b0b42ad3270e63cefafafe0d9b57"),
+    "gemma3-12b-q4km": C("gemma-3-12b-it-Q4_K_M.gguf", HF + "unsloth/gemma-3-12b-it-GGUF/resolve/main/gemma-3-12b-it-Q4_K_M.gguf", 7300778336, "15b8fd9d8672cd4240c178c217ca781409291f34e353d2e913b29c7602ceb3ff"),
+}
+
+# sd-cli flag for each role a video file plays (the image roles stay as they are).
+VIDEO_PART_FLAGS = {
+    "high_noise": "--high-noise-diffusion-model",
+    "clip_vision": "--clip_vision",
+    "audio_vae": "--audio-vae",
+    "connectors": "--embeddings-connectors",
+    "tae": "--tae",
+}
+
+# Wan's own negative prompt (from its reference code, in the language the
+# model was trained to read it in): over-saturation, static frames, blur,
+# subtitles, bad hands and faces, extra limbs, walking backwards.
+WAN_NEGATIVE = ("色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，"
+                "最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，"
+                "画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，"
+                "杂乱的背景，三条腿，背景人很多，倒着走")
+
+# LTX-2's distilled checkpoint is trained for exactly this 8-step schedule.
+LTX_DISTILLED_SIGMAS = "1.0,0.99375,0.9875,0.98125,0.975,0.909375,0.725,0.421875,0.0"
+
+# A size preset is a pixel AREA; the shape comes from the aspect ratio, or
+# from the picture/video being animated.
+SIZES = {"480p": (832, 480), "720p": (1280, 720)}
+ASPECTS = {"16:9": (16, 9), "9:16": (9, 16), "1:1": (1, 1), "4:3": (4, 3), "3:4": (3, 4)}
+MODES = ("t2v", "i2v", "flf2v", "r2v", "v2v", "extend")
+
+VIDEO_MODELS = [
+    {
+        "id": "wan22-ti2v-5b", "name": "Wan2.2 TI2V 5B", "family": "wan-5b",
+        "summary": {"en": "Text AND image to video, 720p at 24 fps, in one small model. Fits an 8 GB card — the place to start.",
+                    "pt": "Texto E imagem pra vídeo, 720p a 24 fps, num modelo pequeno. Cabe numa placa de 8 GB — comece por ele."},
+        "license": "Apache-2.0", "caps": ["t2v", "i2v"], "tags": ["fast", "faces"],
+        "parts": {"vae": "wan22-vae", "t5xxl": "umt5-q4km", "tae": "taew22"},
+        "variants": [{"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "wan22-5b-q4km"}},
+                     {"id": "q6", "label": "Q6_K", "parts": {"diffusion": "wan22-5b-q6k"}},
+                     {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "wan22-5b-q8"}}],
+        "defaults": {"steps": 30, "cfg": 5.0, "sampler": "euler", "flow_shift": 5.0,
+                     "negative": WAN_NEGATIVE},
+        "video": {"fps": 24, "frame_step": 4, "align": 32, "max_seconds": 5,
+                  "default_seconds": 2, "sizes": ["480p", "720p"]},
+        "turbo": {"lora": "wan22-5b-turbo", "steps": 4, "cfg": 1.0},
+        "identity": 2, "face": "start", "recommended": True,
+    },
+    {
+        "id": "wan21-t2v-1.3b", "name": "Wan2.1 1.3B", "family": "wan-1.3b",
+        "summary": {"en": "The lightest: text to video at 480p on almost any GPU. Simple scenes, quick tries.",
+                    "pt": "O mais leve: texto pra vídeo em 480p em quase qualquer GPU. Cenas simples, testes rápidos."},
+        "license": "Apache-2.0", "caps": ["t2v"], "tags": ["fast", "light"],
+        "parts": {"vae": "wan21-vae", "t5xxl": "umt5-q4km", "tae": "taew21"},
+        "variants": [{"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "wan21-1.3b-q4km"}},
+                     {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "wan21-1.3b-q8"}}],
+        "defaults": {"steps": 30, "cfg": 6.0, "sampler": "euler", "flow_shift": 3.0,
+                     "negative": WAN_NEGATIVE},
+        "video": {"fps": 16, "frame_step": 4, "align": 16, "max_seconds": 5,
+                  "default_seconds": 3, "sizes": ["480p"]},
+        "turbo": {"lora": "wan21-1.3b-causvid", "steps": 6, "cfg": 1.0},
+        "identity": 0, "face": "", "recommended": False,
+    },
+    {
+        "id": "wan21-vace-1.3b", "name": "Wan2.1 VACE 1.3B", "family": "wan-1.3b",
+        "summary": {"en": "Puts a person or object from a photo into a new scene, and restyles an existing video while keeping its motion. Light.",
+                    "pt": "Coloca uma pessoa ou objeto de uma foto numa cena nova, e muda o estilo de um vídeo mantendo o movimento. Leve."},
+        "license": "Apache-2.0", "caps": ["t2v", "r2v", "v2v"], "tags": ["faces", "edit", "light"],
+        "parts": {"vae": "wan21-vae", "t5xxl": "umt5-q4km", "tae": "taew21"},
+        "variants": [{"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "wan21-vace-1.3b-q4km"}},
+                     {"id": "q8", "label": "Q8_0", "parts": {"diffusion": "wan21-vace-1.3b-q8"}}],
+        "defaults": {"steps": 30, "cfg": 6.0, "sampler": "euler", "negative": WAN_NEGATIVE,
+                     "vace_strength": 1.0},
+        "video": {"fps": 16, "frame_step": 4, "align": 16, "max_seconds": 5,
+                  "default_seconds": 3, "sizes": ["480p"]},
+        "turbo": {"lora": "wan21-1.3b-causvid", "steps": 6, "cfg": 1.0},
+        "identity": 2, "face": "subject", "recommended": False,
+    },
+    {
+        "id": "wan22-i2v-a14b", "name": "Wan2.2 I2V A14B", "family": "wan22-a14b",
+        "summary": {"en": "The most faithful way to animate a photo: the face and details of your picture stay through the clip. Also first+last frame. Two 14B experts — needs 32 GB of RAM.",
+                    "pt": "O jeito mais fiel de animar uma foto: o rosto e os detalhes da sua imagem ficam no clipe todo. Também primeiro+último quadro. Dois especialistas 14B — precisa de 32 GB de RAM."},
+        "license": "Apache-2.0", "caps": ["i2v", "flf2v"], "tags": ["faces", "heavy"],
+        "parts": {"vae": "wan21-vae", "t5xxl": "umt5-q4km", "tae": "taew21"},
+        "variants": [{"id": "q3", "label": "Q3_K_M",
+                      "parts": {"diffusion": "wan22-i2v-lo-q3km", "high_noise": "wan22-i2v-hi-q3km"}},
+                     {"id": "q4", "label": "Q4_K_M",
+                      "parts": {"diffusion": "wan22-i2v-lo-q4km", "high_noise": "wan22-i2v-hi-q4km"}}],
+        "defaults": {"steps": 20, "cfg": 3.5, "sampler": "euler", "flow_shift": 3.0,
+                     "negative": WAN_NEGATIVE},
+        "video": {"fps": 16, "frame_step": 4, "align": 16, "max_seconds": 5,
+                  "default_seconds": 3, "sizes": ["480p", "720p"], "moe": True},
+        "turbo": {"lora": "wan22-i2v-lightning-lo", "lora_high": "wan22-i2v-lightning-hi",
+                  "steps": 4, "cfg": 1.0},
+        "identity": 3, "face": "start", "min_ram_gb": 32, "recommended": False,
+    },
+    {
+        "id": "wan22-t2v-a14b", "name": "Wan2.2 T2V A14B", "family": "wan22-a14b",
+        "summary": {"en": "The best open text-to-video: cinematic motion, lighting and camera work. Two 14B experts — needs 32 GB of RAM.",
+                    "pt": "O melhor texto-pra-vídeo aberto: movimento, luz e câmera de cinema. Dois especialistas 14B — precisa de 32 GB de RAM."},
+        "license": "Apache-2.0", "caps": ["t2v"], "tags": ["heavy", "cinematic"],
+        "parts": {"vae": "wan21-vae", "t5xxl": "umt5-q4km", "tae": "taew21"},
+        "variants": [{"id": "q3", "label": "Q3_K_M",
+                      "parts": {"diffusion": "wan22-t2v-lo-q3km", "high_noise": "wan22-t2v-hi-q3km"}},
+                     {"id": "q4", "label": "Q4_K_M",
+                      "parts": {"diffusion": "wan22-t2v-lo-q4km", "high_noise": "wan22-t2v-hi-q4km"}}],
+        "defaults": {"steps": 20, "cfg": 3.5, "sampler": "euler", "flow_shift": 3.0,
+                     "negative": WAN_NEGATIVE},
+        "video": {"fps": 16, "frame_step": 4, "align": 16, "max_seconds": 5,
+                  "default_seconds": 3, "sizes": ["480p", "720p"], "moe": True},
+        "turbo": {"lora": "wan22-t2v-lightning-lo", "lora_high": "wan22-t2v-lightning-hi",
+                  "steps": 4, "cfg": 1.0},
+        "identity": 0, "face": "", "min_ram_gb": 32, "recommended": False,
+    },
+    {
+        "id": "wan21-vace-14b", "name": "Wan2.1 VACE 14B", "family": "wan-14b",
+        "summary": {"en": "The strongest at keeping a person from a photo in a brand-new scene, and at restyling a video. 14B — needs 32 GB of RAM.",
+                    "pt": "O mais forte em manter uma pessoa de uma foto numa cena totalmente nova, e em mudar o estilo de um vídeo. 14B — precisa de 32 GB de RAM."},
+        "license": "Apache-2.0", "caps": ["t2v", "r2v", "v2v"], "tags": ["faces", "edit", "heavy"],
+        "parts": {"vae": "wan21-vae", "t5xxl": "umt5-q4km", "tae": "taew21"},
+        "variants": [{"id": "q4s", "label": "Q4_K_S", "parts": {"diffusion": "wan21-vace-14b-q4ks"}},
+                     {"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "wan21-vace-14b-q4km"}}],
+        "defaults": {"steps": 25, "cfg": 6.0, "sampler": "euler", "negative": WAN_NEGATIVE,
+                     "vace_strength": 1.0},
+        "video": {"fps": 16, "frame_step": 4, "align": 16, "max_seconds": 5,
+                  "default_seconds": 3, "sizes": ["480p", "720p"]},
+        "turbo": {"lora": "wan21-14b-lightx2v", "steps": 4, "cfg": 1.0},
+        "identity": 3, "face": "subject", "min_ram_gb": 32, "recommended": False,
+    },
+    {
+        "id": "ltx23", "name": "LTX-2.3 (with sound)", "family": "ltx2",
+        "summary": {"en": "Video WITH its own sound — voices, ambience, effects — from text or a picture. Distilled to 8 steps. 22B — needs 32 GB of RAM. Experimental.",
+                    "pt": "Vídeo COM o próprio som — vozes, ambiente, efeitos — a partir de texto ou imagem. Destilado em 8 passos. 22B — precisa de 32 GB de RAM. Experimental."},
+        "license": "LTX-2 Community License", "caps": ["t2v", "i2v", "flf2v"],
+        "tags": ["audio", "heavy", "experimental"],
+        "parts": {"vae": "ltx23-video-vae", "audio_vae": "ltx23-audio-vae",
+                  "llm": "gemma3-12b-q4km", "connectors": "ltx23-connectors"},
+        "variants": [{"id": "q3", "label": "Q3_K_M", "parts": {"diffusion": "ltx23-q3km"}},
+                     {"id": "q4", "label": "Q4_K_M", "parts": {"diffusion": "ltx23-q4km"}}],
+        "defaults": {"steps": 8, "cfg": 1.0, "sampler": "euler", "sigmas": LTX_DISTILLED_SIGMAS,
+                     "negative": "worst quality, low quality, blurry, distorted, artifacts"},
+        "video": {"fps": 24, "frame_step": 8, "align": 32, "max_seconds": 5,
+                  "default_seconds": 3, "sizes": ["480p", "720p"], "audio": True},
+        "turbo": {},
+        "identity": 1, "face": "start", "min_ram_gb": 32, "recommended": False,
+    },
+]
+
+# Which user LoRAs each family takes (genesi-ai-image reads the base of an
+# imported LoRA; Wan's three widths do not take each other's). Wan2.2 A14B is
+# built on Wan2.1 14B and takes its LoRAs. LTX-2 LoRAs are not recognized yet.
+VIDEO_LORA_FAMILIES = {
+    "wan-5b": ["wan-5b"], "wan-1.3b": ["wan-1.3b"], "wan-14b": ["wan-14b"],
+    "wan22-a14b": ["wan-14b"], "ltx2": [],
+}
+
+
+def _install_catalog():
+    """Hand the video catalog to the image module, so its download, removal,
+    state and LoRA code works on video models unchanged. Only in THIS process:
+    genesi-ai-image run on its own never sees a video model.
+
+    Idempotent, and it never overwrites an entry that is already there: main()
+    runs it on every call, and a second pass that put the real URLs back over
+    a test's stand-ins once sent the suite downloading 12 GB from the Hub."""
+    for cid, c in VIDEO_COMPONENTS.items():
+        img.COMPONENTS.setdefault(cid, c)
+    for role, flag in VIDEO_PART_FLAGS.items():
+        img.PART_FLAGS.setdefault(role, flag)
+    for fam, fams in VIDEO_LORA_FAMILIES.items():
+        img.LORA_FAMILIES.setdefault(fam, fams)
+    have = {m["id"] for m in img.MODELS}
+    img.MODELS.extend(m for m in VIDEO_MODELS if m["id"] not in have)
+    # The video run's log is its own: "Show details" on the Video page must
+    # not open the last PICTURE's engine output.
+    img.log_path = log_path
+
+
+# ── paths ────────────────────────────────────────────────────────────────────
+
+def cache_dir():
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    d = os.environ.get("GENESI_VIDEO_CACHE_DIR", "").strip() or os.path.join(base, "genesi-ai-video")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def log_path():
+    return os.path.join(cache_dir(), "last-run.log")
+
+
+def _xdg_videos():
+    try:
+        r = subprocess.run(["xdg-user-dir", "VIDEOS"], capture_output=True, text=True, timeout=3)
+        p = (r.stdout or "").strip()
+        if p and os.path.realpath(p) != os.path.realpath(os.path.expanduser("~")):
+            return p
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.path.expanduser("~/Videos")
+
+
+def output_dir():
+    env = os.environ.get("GENESI_VIDEO_OUTPUT_DIR", "").strip()
+    return env or os.path.join(_xdg_videos(), "Genesi AI")
+
+
+def find_ffmpeg():
+    env = os.environ.get("GENESI_FFMPEG", "").strip()
+    if env:
+        return env if os.path.exists(env) else None
+    return shutil.which("ffmpeg")
+
+
+def find_ffprobe():
+    env = os.environ.get("GENESI_FFPROBE", "").strip()
+    if env:
+        return env if os.path.exists(env) else None
+    return shutil.which("ffprobe")
+
+
+def tool_argv(path):
+    """A stand-in ffmpeg in the tests is a .py, run by this interpreter."""
+    return [sys.executable, path] if path.endswith(".py") else [path]
+
+
+def new_output_stem(kind="genesi-video"):
+    d = output_dir()
+    os.makedirs(d, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    stem = os.path.join(d, "%s-%s" % (kind, ts))
+    n = 2
+    while any(os.path.exists(stem + ext) for ext in (".mp4", ".avi", ".json")):
+        stem = os.path.join(d, "%s-%s-%d" % (kind, ts, n))
+        n += 1
+    return stem
+
+
+# ── catalog ──────────────────────────────────────────────────────────────────
+
+def video_model(mid):
+    for m in VIDEO_MODELS:
+        if m["id"] == mid:
+            return m
+    return None
+
+
+def video_state(m, vram_mb=None):
+    st = img.model_state(m, vram_mb)
+    vid = m.get("video", {})
+    t = m.get("turbo") or {}
+    st.update({
+        "kind": "video",
+        "modes": [c for c in MODES if c in m["caps"]] + (["extend"] if "i2v" in m["caps"] else []),
+        "fps": vid.get("fps", 16),
+        "frame_step": vid.get("frame_step", 4),
+        "max_seconds": vid.get("max_seconds", 5),
+        "default_seconds": vid.get("default_seconds", 3),
+        "sizes": vid.get("sizes", ["480p"]),
+        "moe": bool(vid.get("moe")),
+        "audio": bool(vid.get("audio")),
+        "face": m.get("face", ""),
+        "light_vae": "tae" in m.get("parts", {}),
+        "turbo": {"kind": "lora" if img.turbo_loras(m) else "none", "steps": t.get("steps")},
+    })
+    return st
+
+
+# ── frames, sizes ────────────────────────────────────────────────────────────
+
+def frame_count(m, seconds=None, frames=None):
+    """Frames for a clip: N*step + 1, which is what the video VAEs take (Wan
+    packs 4 frames per latent, LTX 8), never past the model's longest clip."""
+    vid = m.get("video", {})
+    fps = vid.get("fps", 16)
+    step = vid.get("frame_step", 4)
+    longest = (int(vid.get("max_seconds", 5) * fps) // step) * step + 1
+    if frames:
+        n = int(frames)
+    else:
+        n = int(round(float(seconds if seconds else vid.get("default_seconds", 3)) * fps))
+    n = max(step + 1, ((max(1, n - 1) + step // 2) // step) * step + 1)
+    return min(n, longest)
+
+
+def _snap(n, align):
+    return max(align * 8, int(round(n / float(align))) * align)
+
+
+def video_size(m, size="480p", aspect=None, src=None):
+    """(width, height): the preset's pixel area, in the shape of the aspect
+    ratio -- or of the picture/video being animated -- in multiples of the
+    model's alignment (16 for Wan 14B/1.3B, 32 for the 5B and LTX)."""
+    vid = m.get("video", {})
+    align = vid.get("align", 16)
+    if size not in vid.get("sizes", ["480p"]):
+        size = vid.get("sizes", ["480p"])[0]
+    pw, ph = SIZES.get(size, SIZES["480p"])
+    area = pw * ph
+    if src and src[0] > 0 and src[1] > 0:
+        rw, rh = src
+    else:
+        # The presets ARE the shapes the models were trained at (832x480,
+        # 1280x720): landscape and portrait use them as they are.
+        if (aspect or "16:9") == "16:9":
+            return _snap(pw, align), _snap(ph, align)
+        if aspect == "9:16":
+            return _snap(ph, align), _snap(pw, align)
+        rw, rh = ASPECTS.get(aspect, (16, 9))
+    scale = (area / float(rw * rh)) ** 0.5
+    return _snap(rw * scale, align), _snap(rh * scale, align)
+
+
+# ── turning the engine's output into a video ────────────────────────────────
+
+def avi_frames(path, limit=None):
+    """The JPEG frames of an MJPG .avi (what sd-cli writes), in order. Pure
+    Python on purpose: the gallery's poster and a clip's first frame must
+    not need ffmpeg."""
+    out = []
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError:
+        return out
+    i = data.find(b"movi")
+    while i >= 0:
+        i = data.find(b"00dc", i + 4)
+        if i < 0 or i + 8 > len(data):
+            break
+        size = struct.unpack("<I", data[i + 4:i + 8])[0]
+        chunk = data[i + 8:i + 8 + size]
+        if chunk[:2] == b"\xff\xd8":
+            out.append(chunk)
+            if limit and len(out) >= limit:
+                break
+        i += 8 + size - 4
+    return out
+
+
+def write_poster(avi, dest):
+    frames = avi_frames(avi, limit=1)
+    if not frames:
+        return False
+    try:
+        with open(dest, "wb") as fh:
+            fh.write(frames[0])
+        return True
+    except OSError:
+        return False
+
+
+def to_mp4(src, dest, out):
+    """H.264 + AAC .mp4 from the engine's .avi, small and playable anywhere.
+    The .avi stays when this fails -- a clip that cannot be shared is still a
+    clip."""
+    ff = find_ffmpeg()
+    if not ff:
+        return False
+    out.event("phase", phase="finish")
+    argv = tool_argv(ff) + ["-y", "-loglevel", "error", "-i", src,
+                            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18",
+                            "-preset", "medium", "-movflags", "+faststart",
+                            "-c:a", "aac", "-b:a", "160k", dest]
+    try:
+        r = subprocess.run(argv, capture_output=True, timeout=1800)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0 and os.path.isfile(dest) and os.path.getsize(dest) > 0
+
+
+def probe(path):
+    """(width, height, fps, seconds) of a video, or None. ffprobe when it is
+    there; our own .avi header otherwise."""
+    fp = find_ffprobe()
+    if fp:
+        try:
+            r = subprocess.run(tool_argv(fp) + ["-v", "error", "-select_streams", "v:0",
+                                                "-show_entries", "stream=width,height,r_frame_rate,nb_frames:format=duration",
+                                                "-of", "json", path],
+                               capture_output=True, text=True, timeout=30)
+            js = json.loads(r.stdout or "{}")
+            s = (js.get("streams") or [{}])[0]
+            num, _, den = str(s.get("r_frame_rate", "0/1")).partition("/")
+            fps = float(num) / float(den or 1) if float(den or 1) else 0.0
+            dur = float((js.get("format") or {}).get("duration") or 0)
+            if s.get("width") and s.get("height"):
+                return int(s["width"]), int(s["height"]), fps, dur
+        except (OSError, subprocess.SubprocessError, ValueError, ZeroDivisionError):
+            pass
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(256)
+        if head[:4] == b"RIFF" and head[8:12] == b"AVI ":
+            i = head.find(b"avih")
+            usec, _, _, _, nframes = struct.unpack("<IIIII", head[i + 8:i + 28])
+            w, h = struct.unpack("<II", head[i + 40:i + 48])
+            fps = 1e6 / usec if usec else 0.0
+            return w, h, fps, nframes / fps if fps else 0.0
+    except (OSError, struct.error, ValueError):
+        pass
+    return None
+
+
+def run_ffmpeg(args, timeout=1800):
+    ff = find_ffmpeg()
+    if not ff:
+        return 127, "ffmpeg is not installed"
+    try:
+        r = subprocess.run(tool_argv(ff) + ["-y", "-loglevel", "error"] + args,
+                           capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as e:
+        return 1, str(e)
+    return r.returncode, (r.stderr or "").strip()[-400:]
+
+
+def control_frames(src, width, height, fps, frames, out):
+    """A source video as the numbered PNG frames VACE reads (--control-video
+    takes a directory), at the model's frame rate and the run's size."""
+    d = os.path.join(cache_dir(), "control")
+    shutil.rmtree(d, ignore_errors=True)
+    os.makedirs(d, exist_ok=True)
+    out.event("status", text="reading the source video")
+    vf = ("fps=%d,scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,setsar=1"
+          % (fps, width, height, width, height))
+    rc, err = run_ffmpeg(["-i", src, "-vf", vf, "-frames:v", str(frames),
+                          os.path.join(d, "%05d.png")])
+    got = sorted(n for n in os.listdir(d) if n.endswith(".png")) if os.path.isdir(d) else []
+    if rc != 0 or not got:
+        return None, err or "no frames could be read from the video"
+    return d, ""
+
+
+def last_frame(src, out):
+    """The final frame of a video, where a continuation starts."""
+    dest = os.path.join(cache_dir(), "last-frame.png")
+    try:
+        os.unlink(dest)
+    except OSError:
+        pass
+    out.event("status", text="taking the last frame")
+    rc, err = run_ffmpeg(["-sseof", "-1", "-i", src, "-update", "1", "-q:v", "1", dest])
+    if rc != 0 or not os.path.isfile(dest):
+        return None, err or "could not read the video's last frame"
+    return dest, ""
+
+
+def join_clips(first, second, dest, width, height, fps, out):
+    """first + second as one clip. The second starts ON the first's last
+    frame, so that frame is dropped from it rather than shown twice."""
+    out.event("status", text="joining the clips")
+    fc = ("[0:v]fps=%d,scale=%d:%d,setsar=1[a];"
+          "[1:v]trim=start_frame=1,setpts=PTS-STARTPTS,fps=%d,scale=%d:%d,setsar=1[b];"
+          "[a][b]concat=n=2:v=1:a=0[v]" % (fps, width, height, fps, width, height))
+    rc, err = run_ffmpeg(["-i", first, "-i", second, "-filter_complex", fc, "-map", "[v]",
+                          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18",
+                          "-movflags", "+faststart", dest])
+    return rc == 0 and os.path.isfile(dest), err
+
+
+# ── what the engine is asked to do ───────────────────────────────────────────
+
+def video_settings(m, turbo, steps=0, cfg=None, negative=None):
+    d = m.get("defaults", {})
+    t = m.get("turbo") or {}
+    s = {"steps": d.get("steps", 20), "cfg": d.get("cfg", 5.0),
+         "sampler": d.get("sampler"), "scheduler": d.get("scheduler"),
+         "flow_shift": d.get("flow_shift"), "sigmas": d.get("sigmas"),
+         "vace_strength": d.get("vace_strength"),
+         "negative": d.get("negative", "") if negative is None else negative,
+         "loras": [], "turbo": False}
+    if turbo and img.turbo_loras(m) and img.turbo_ready(m):
+        s["loras"].append((img.component_path(t["lora"]), 1.0, False))
+        if t.get("lora_high"):
+            s["loras"].append((img.component_path(t["lora_high"]), 1.0, True))
+        s["steps"] = t.get("steps", s["steps"])
+        s["cfg"] = t.get("cfg", s["cfg"])
+        s["sigmas"] = None
+        s["turbo"] = True
+    if steps:
+        s["steps"] = int(steps)
+        # A fixed schedule IS a step count; another count means the
+        # scheduler's own schedule.
+        s["sigmas"] = None
+    if cfg is not None:
+        s["cfg"] = float(cfg)
+    if s["cfg"] <= 1.0:
+        s["negative"] = ""
+    return s
+
+
+def lora_tag(path, weight, high=False):
+    name = os.path.splitext(os.path.basename(path))[0]
+    return "<lora:%s%s:%g>" % ("|high_noise|" if high else "", name, weight)
+
+
+def build_video_argv(engine, m, v, s, prompt, out_path, width, height, frames, seed,
+                     mode, image, end_image, control_dir, backend, safe, vram_mb,
+                     low_memory=False, light_vae=False):
+    vid = m.get("video", {})
+    argv = img.engine_argv(engine) + ["-M", "vid_gen"]
+    parts = img.variant_parts(m, v)
+    tae = parts.get("tae")
+    use_tae = bool(light_vae and tae and img.component_ready(tae))
+    for role, ref in parts.items():
+        if role == "tae":
+            continue
+        if role == "vae" and use_tae:
+            argv += ["--tae", img.component_path(tae)]
+            continue
+        argv += [img.PART_FLAGS[role], img.component_path(ref)]
+    # Same rule as pictures: flash attention helps CUDA and CPU, slows Vulkan.
+    if backend in ("cuda", "cpu"):
+        argv += ["--diffusion-fa"]
+    if safe or low_memory or img._heavy(m, v, vram_mb):
+        argv += ["--offload-to-cpu", "--max-vram", "-1"]
+    argv += ["--lora-model-dir", img.models_dir()]
+    text = prompt
+    for path, weight, high in s["loras"]:
+        text += lora_tag(path, weight, high)
+    argv += ["-p", text]
+    if s["negative"]:
+        argv += ["-n", s["negative"]]
+    argv += ["-W", str(int(width)), "-H", str(int(height)),
+             "--video-frames", str(int(frames)), "--fps", str(int(vid.get("fps", 16))),
+             "--steps", str(int(s["steps"])), "--cfg-scale", str(s["cfg"]),
+             "--seed", str(int(seed)), "-o", out_path]
+    if s["sampler"]:
+        argv += ["--sampling-method", s["sampler"]]
+    if s["scheduler"]:
+        argv += ["--scheduler", s["scheduler"]]
+    if s["flow_shift"]:
+        argv += ["--flow-shift", str(s["flow_shift"])]
+    if s["sigmas"]:
+        argv += ["--sigmas", s["sigmas"]]
+    if vid.get("moe"):
+        # The high-noise expert is a second model with its own sampler
+        # settings; left unset it would run at its defaults, not ours. The
+        # split between the two is upstream's automatic boundary: --steps is
+        # the TOTAL.
+        argv += ["--high-noise-sampling-method", s["sampler"] or "euler",
+                 "--high-noise-cfg-scale", str(s["cfg"])]
+    if mode in ("i2v", "flf2v", "extend", "r2v") and image:
+        argv += ["-i", image]
+    if mode == "flf2v" and end_image:
+        argv += ["--end-img", end_image]
+    if mode == "v2v":
+        if image:
+            argv += ["-i", image]
+        argv += ["--control-video", control_dir]
+    if mode in ("r2v", "v2v") and s.get("vace_strength") is not None:
+        argv += ["--vace-strength", str(s["vace_strength"])]
+    # Encoding a picture or a control video has no out-of-memory retry
+    # upstream (decoding does), so every mode that encodes one is tiled --
+    # the same 8 GB failure the Image page's edits had.
+    if mode != "t2v" or safe or low_memory:
+        argv += ["--vae-tiling"]
+    return argv
+
+
+# ── subcommands ──────────────────────────────────────────────────────────────
+
+def cmd_status(args, out):
+    info = img.engine_info()
+    st = img.server_state()
+    out.data({
+        "engine": img.find_engine() or "",
+        "engine_installed": bool(info["installed"]),
+        "backend": info["backend"],
+        "devices": info["devices"],
+        "package": info["package"],
+        "nvidia": img.has_nvidia(),
+        "ffmpeg": bool(find_ffmpeg()),
+        "image_warm": bool(st),
+        "models_dir": img.models_dir(),
+        "output_dir": output_dir(),
+        "log": log_path(),
+        "loras": len(img.load_loras()),
+        "vram_mb": img.gpu_vram_mb(),
+        "ram_mb": img.ram_mb(),
+        "any_model": any(img.model_state(m)["installed"] for m in VIDEO_MODELS),
+    })
+    return 0
+
+
+def cmd_catalog(args, out):
+    vram = img.gpu_vram_mb()
+    out.data([video_state(m, vram) for m in VIDEO_MODELS])
+    return 0
+
+
+def _video_or_fail(mid, out):
+    m = video_model(mid)
+    if not m:
+        out.event("error", text="unknown video model: %s" % mid)
+    return m
+
+
+def cmd_pull(args, out):
+    if not _video_or_fail(args.model, out):
+        return 2
+    return img.cmd_pull(args, out)
+
+
+def cmd_remove(args, out):
+    if not _video_or_fail(args.model, out):
+        return 2
+    return img.cmd_remove(args, out)
+
+
+def _need_image(path, what, out):
+    if not path or not os.path.isfile(path):
+        out.event("error", code="no-input", text="%s: no such picture %s" % (what, path or ""))
+        return None
+    dims = img.image_size(path)
+    if not dims:
+        out.event("error", code="no-input", text="%s is not a PNG or JPEG" % path)
+        return None
+    return dims
+
+
+def cmd_generate(args, out):
+    m = _video_or_fail(args.model, out)
+    if not m:
+        return 2
+    vid = m.get("video", {})
+    mode = args.mode or ("i2v" if args.image and "i2v" in m["caps"] else "t2v")
+    can = list(m["caps"]) + (["extend"] if "i2v" in m["caps"] else [])
+    if mode not in can:
+        out.event("error", code="mode-unsupported", text="%s cannot do %s" % (m["name"], mode))
+        return 2
+    v = img.pick_variant(m, args.variant)
+    if not v or not img.variant_ready(m, v):
+        out.event("error", code="no-model", text="%s is not downloaded yet" % m["name"])
+        return 2
+    prompt = (args.prompt or "").strip()
+    asked = prompt
+    if not prompt:
+        out.event("error", text="empty prompt")
+        return 2
+
+    # The inputs each mode needs, checked before anything is loaded.
+    src_dims = None
+    if mode in ("i2v", "flf2v", "r2v"):
+        src_dims = _need_image(args.image, "the picture", out)
+        if not src_dims:
+            return 2
+    if mode == "flf2v" and not _need_image(args.end_image, "the last frame", out):
+        return 2
+    if mode == "v2v" and args.image and not _need_image(args.image, "the reference", out):
+        return 2
+    if mode in ("v2v", "extend"):
+        if not args.video or not os.path.isfile(args.video):
+            out.event("error", code="no-input", text="no such video: %s" % (args.video or ""))
+            return 2
+        if not find_ffmpeg():
+            out.event("error", code="no-ffmpeg",
+                      text="reading a video needs ffmpeg (sudo pacman -S ffmpeg)")
+            return 3
+        pr = probe(args.video)
+        if not pr:
+            out.event("error", code="no-input", text="%s is not a video Genesi can read" % args.video)
+            return 2
+        src_dims = (pr[0], pr[1])
+    engine = img._engine_or_fail(out)
+    if not engine:
+        return 3
+
+    fps = int(vid.get("fps", 16))
+    frames = frame_count(m, seconds=args.seconds, frames=args.frames)
+    # r2v places the reference in a NEW scene: the picture's shape is not the
+    # video's, so it follows the aspect chosen like text-to-video does.
+    shape_src = None if mode == "r2v" else src_dims
+    width, height = video_size(m, args.size or vid.get("sizes", ["480p"])[0], args.aspect, shape_src)
+    seed = args.seed if args.seed is not None and args.seed >= 0 else random.randint(0, 2 ** 31 - 1)
+
+    if not args.keep_llm:
+        n = img.ollama_unload_all()
+        if n:
+            out.event("status", text="unloaded %d chat model(s) to free the GPU" % n)
+    # The Image page's warm engine holds a model on the same card.
+    if img.server_state():
+        img.stop_server()
+        out.event("status", code="image-warm-stopped",
+                  text="stopped the Image page's warm engine to free the GPU")
+
+    info = img.engine_info()
+    backend = info["backend"] or "cpu"
+    vram = img.gpu_vram_mb()
+    s = video_settings(m, bool(args.turbo), steps=args.steps, cfg=args.cfg, negative=args.negative)
+    user_loras = img.resolve_loras(m, mode, args.lora, out)
+    if user_loras is None:
+        return 2
+    for path, weight, trigger in user_loras:
+        s["loras"].append((path, weight, False))
+        # A Wan2.2 A14B clip runs through BOTH experts: a style that only
+        # touched the second would arrive too late to shape the motion.
+        if vid.get("moe"):
+            s["loras"].append((path, weight, True))
+        if trigger and trigger.lower() not in prompt.lower():
+            prompt = prompt + ", " + trigger
+
+    stem = os.path.splitext(args.out)[0] if args.out else new_output_stem(
+        "genesi-video" if mode == "t2v" else "genesi-" + mode)
+    avi = stem + (".part.avi" if mode == "extend" else ".avi")
+    image, control_dir = args.image, None
+    if mode == "extend":
+        image, err = last_frame(args.video, out)
+        if not image:
+            out.event("error", code="no-input", text=err)
+            return 1
+    if mode == "v2v":
+        control_dir, err = control_frames(args.video, width, height, fps, frames, out)
+        if not control_dir:
+            out.event("error", code="no-input", text=err)
+            return 1
+        # A short source gives fewer frames than asked: never generate past it.
+        got = len([n for n in os.listdir(control_dir) if n.endswith(".png")])
+        if got < frames:
+            frames = max(vid.get("frame_step", 4) + 1,
+                         ((got - 1) // vid.get("frame_step", 4)) * vid.get("frame_step", 4) + 1)
+
+    out.event("start", mode=mode, model=m["id"], variant=v["id"], width=width, height=height,
+              frames=frames, fps=fps, seconds=round(frames / float(fps), 2), seed=seed,
+              steps=s["steps"], backend=backend, turbo=s["turbo"], path=stem)
+    t0 = time.monotonic()
+    ok, reason, parser, safe = False, "", None, False
+    for attempt in (1, 2):
+        safe = attempt == 2
+        light = bool(args.light_vae)
+        if safe:
+            # The low-memory shape: weights in RAM, tiled VAE, the 22 MB
+            # decoder when it is here, and no bigger than 480p.
+            light = True
+            w480, h480 = video_size(m, "480p", args.aspect, None if mode == "r2v" else src_dims)
+            if width * height > w480 * h480:
+                width, height = w480, h480
+            out.event("status", code="retry",
+                      text="retrying in low-memory mode (%dx%d)" % (width, height))
+        argv = build_video_argv(engine, m, v, s, prompt, avi, width, height, frames, seed,
+                                mode, image, args.end_image, control_dir, backend, safe, vram,
+                                low_memory=bool(args.low_memory), light_vae=light)
+        rc, reason, parser = img.run_engine(argv, out)
+        ok = rc == 0 and os.path.isfile(avi)
+        if not ok and rc == 0 and os.path.isfile(os.path.splitext(avi)[0] + ".png"):
+            reason = "the engine made a single picture, not a video"
+        if ok or rc in (-15, 130, 143) or attempt == 2:
+            break
+
+    if not ok:
+        out.event("error", code="oom" if parser and parser.oom else "engine",
+                  text=img._friendly(reason or "the video engine stopped", parser, safe),
+                  log=log_path())
+        return 1
+
+    final, audio = avi, bool(vid.get("audio"))
+    poster = stem + ".jpg"
+    if mode == "extend":
+        joined = stem + ".mp4"
+        good, err = join_clips(args.video, avi, joined, width, height, fps, out)
+        if not good:
+            out.event("error", code="join", text="the new part was made but could not be joined: "
+                                                 + (err or "ffmpeg failed"), log=log_path(), path=avi)
+            return 1
+        write_poster(avi, poster)
+        try:
+            os.unlink(avi)
+        except OSError:
+            pass
+        final = joined
+        # The poster of a continuation is the source's own first frame.
+        if find_ffmpeg():
+            run_ffmpeg(["-i", joined, "-frames:v", "1", "-q:v", "2", poster])
+    else:
+        write_poster(avi, poster)
+        mp4 = stem + ".mp4"
+        if to_mp4(avi, mp4, out):
+            try:
+                os.unlink(avi)
+            except OSError:
+                pass
+            final = mp4
+        elif find_ffmpeg():
+            out.event("status", text="kept the .avi (the .mp4 conversion failed)")
+
+    secs = round(time.monotonic() - t0, 1)
+    meta = {"mode": mode, "model": m["id"], "variant": v["id"], "prompt": asked, "seed": seed,
+            "width": width, "height": height, "frames": frames, "fps": fps,
+            "seconds_long": round(frames / float(fps), 2), "steps": s["steps"],
+            "turbo": s["turbo"], "backend": backend, "audio": audio,
+            "source": os.path.abspath(args.video or args.image) if (args.video or args.image) else "",
+            "loras": [os.path.basename(p_) for p_, _w, _h in s["loras"]],
+            "poster": poster if os.path.isfile(poster) else "",
+            "seconds": secs, "created": int(time.time())}
+    img.write_sidecar(stem + ".json", meta)
+    out.event("done", path=final, poster=meta["poster"], seconds=secs, seed=seed,
+              width=width, height=height, frames=frames, fps=fps, low_memory=safe)
+    return 0
+
+
+def cmd_gallery(args, out):
+    d = output_dir()
+    items = []
+    try:
+        names = [n for n in os.listdir(d) if n.lower().endswith((".mp4", ".avi", ".webm"))
+                 and ".part." not in n]
+    except OSError:
+        names = []
+    for n in names:
+        p = os.path.join(d, n)
+        stem = os.path.splitext(p)[0]
+        try:
+            mtime = os.path.getmtime(p)
+        except OSError:
+            continue
+        meta = {}
+        try:
+            with open(stem + ".json", encoding="utf-8") as fh:
+                meta = json.load(fh)
+        except (OSError, ValueError):
+            pass
+        meta.update({"path": p, "mtime": int(mtime),
+                     "poster": stem + ".jpg" if os.path.isfile(stem + ".jpg") else ""})
+        items.append(meta)
+    items.sort(key=lambda it: it["mtime"], reverse=True)
+    out.data(items[:max(1, args.limit)])
+    return 0
+
+
+def cmd_lora(args, out):
+    # The SAME store as the Image page: a LoRA imported on either page is
+    # one file, and each page shows the ones its models take.
+    return img.cmd_lora(args, out)
+
+
+def main(argv=None):
+    raw = list(sys.argv[1:] if argv is None else argv)
+    _install_catalog()
+
+    ap = argparse.ArgumentParser(prog="genesi-ai-video",
+                                 description="Local video generation for Genesi AI Mode")
+    ap.add_argument("--json", action="store_true", help="machine-readable output")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("status")
+    sub.add_parser("catalog")
+    p = sub.add_parser("pull"); p.add_argument("model"); p.add_argument("--variant")
+    p = sub.add_parser("remove"); p.add_argument("model"); p.add_argument("--variant")
+    p = sub.add_parser("generate")
+    p.add_argument("--model", default="wan22-ti2v-5b")
+    p.add_argument("--variant")
+    p.add_argument("--prompt", required=True)
+    p.add_argument("--mode", choices=list(MODES))
+    p.add_argument("--image", help="first frame (i2v, flf2v, extend) or reference (r2v, v2v)")
+    p.add_argument("--end-image", help="last frame (flf2v)")
+    p.add_argument("--video", help="the video to restyle (v2v) or continue (extend)")
+    p.add_argument("--seconds", type=float, default=None)
+    p.add_argument("--frames", type=int, default=None)
+    p.add_argument("--size", choices=list(SIZES))
+    p.add_argument("--aspect", choices=list(ASPECTS))
+    p.add_argument("--steps", type=int, default=0)
+    p.add_argument("--cfg", type=float, default=None)
+    p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--negative", default=None)
+    p.add_argument("--lora", action="append", default=[],
+                   help="an imported LoRA, ID or ID:WEIGHT (repeatable)")
+    p.add_argument("--turbo", action="store_true", help="the model's distillation LoRA: 4-6 steps")
+    p.add_argument("--low-memory", action="store_true",
+                   help="weights in RAM, tiled VAE: slower, fits small cards")
+    p.add_argument("--light-vae", action="store_true",
+                   help="decode with the 22 MB TAE instead of the VAE (much less memory, softer)")
+    p.add_argument("--out")
+    p.add_argument("--keep-llm", action="store_true")
+    p = sub.add_parser("gallery"); p.add_argument("--limit", type=int, default=60)
+    p = sub.add_parser("lora")
+    p.add_argument("action", choices=["list", "import", "remove"])
+    p.add_argument("target", nargs="?")
+    p.add_argument("--name")
+    p.add_argument("--trigger")
+
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+    as_json = "--json" in raw
+    raw = [a for a in raw if a != "--json"]
+    args = ap.parse_args(raw)
+    out = img.Out(as_json)
+    signal.signal(signal.SIGTERM, img._forward_signal)
+    signal.signal(signal.SIGINT, img._forward_signal)
+    handler = {"status": cmd_status, "catalog": cmd_catalog, "pull": cmd_pull,
+               "remove": cmd_remove, "generate": cmd_generate, "gallery": cmd_gallery,
+               "lora": cmd_lora}[args.cmd]
+    return handler(args, out)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

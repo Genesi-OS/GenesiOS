@@ -713,7 +713,12 @@ DisplayServer=x11
 X11CONF
 echo ">>> Forced SDDM DisplayServer=x11 in live ISO"
 
-# Autologin liveuser straight into Plasma X11.
+# Autologin liveuser straight into Plasma (Wayland).
+# Plasma 6.8 removed the X11 session (Arch dropped plasma-x11-session and
+# kwin-x11, 2026-10): `plasma` is the only Plasma session there is. The greeter
+# above still runs on X11 -- that is SDDM's own display server, not the
+# session's. On a VM without a usable GPU, kwin_wayland draws through
+# simpledrm + software rendering (the boot entries blacklist vmwgfx).
 # Without autologin, the live ISO would still show the SDDM greeter,
 # and if the greeter itself fails to render (e.g. its theme depends
 # on a QML import that isn't installed yet), the user lands on a
@@ -723,10 +728,10 @@ echo ">>> Forced SDDM DisplayServer=x11 in live ISO"
 cat > /etc/sddm.conf.d/01-autologin.conf << 'AUTOCONF'
 [Autologin]
 User=liveuser
-Session=plasmax11
+Session=plasma
 Relogin=true
 AUTOCONF
-echo ">>> Enabled SDDM autologin for liveuser -> plasmax11 in live ISO"
+echo ">>> Enabled SDDM autologin for liveuser -> plasma (Wayland) in live ISO"
 
 # ============================================================
 # 9. Install Tela Circle Icon Theme (AUR package workaround)
