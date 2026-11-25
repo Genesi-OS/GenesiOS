@@ -1015,6 +1015,9 @@ os.environ["HOME"] = home
 os.environ["USERPROFILE"] = home
 os.environ["XDG_DATA_HOME"] = os.path.join(home, ".local", "share")
 os.environ["XDG_CONFIG_HOME"] = os.path.join(home, ".config")
+# The apply/revert checks below are caelestia's; pin the session so they mean
+# the same on a developer's Plasma box. Plasma has its own section further on.
+os.environ["XDG_CURRENT_DESKTOP"] = "Hyprland"
 
 import importlib.util
 spec = importlib.util.spec_from_loader(
@@ -1190,6 +1193,65 @@ try:
     ck("plain http is refused", False, "it was allowed")
 except SystemExit:
     ck("plain http is refused", True)
+
+# ── Plasma ──────────────────────────────────────────────────────────────────
+# On Plasma the store shows only what it can do there; on Hyprland nothing is
+# filtered. Applied for real, through the same fake runner.
+every = {i["id"] for i in cat["items"]}
+os.environ["XDG_CURRENT_DESKTOP"] = "Hyprland"
+ck("Hyprland still sees every item",
+   {i["id"] for i in store.annotate(cat, fresh_state())} == every)
+os.environ["XDG_CURRENT_DESKTOP"] = "KDE"
+shown = store.annotate(cat, fresh_state())
+kinds = {a["action"] for i in shown for a in i.get("actions", [])}
+ck("Plasma is offered login screens, fastfetch and wallpapers",
+   {"greeter", "file", "wallpaper"} <= kinds, sorted(kinds))
+ck("...and nothing that needs caelestia (bar, scheme, config, unlocker)",
+   not kinds & {"bar", "scheme", "config", "unlocker"}, sorted(kinds))
+ck("...and no shell plugin switch",
+   not any(i["section"] == "plugins" for i in shown))
+ck("a rice is shown only if all it includes works here",
+   all(store.works_here(cat, store.item_by_id(cat, inc))
+       for i in shown for inc in i.get("includes") or []))
+
+bar = next(i for i in cat["items"]
+           if any(a["action"] == "bar" for a in i.get("actions", [])))
+try:
+    store.do_apply(cat, bar["id"], fresh_state())
+    ck("a caelestia-only item is refused on Plasma", False, "it applied")
+except SystemExit:
+    ck("a caelestia-only item is refused on Plasma", True)
+
+applets = os.path.join(os.environ["XDG_CONFIG_HOME"],
+                       "plasma-org.kde.plasma.desktop-appletsrc")
+old_pic = os.path.join(home, "old.png")
+open(old_pic, "wb").close()
+os.makedirs(os.path.dirname(applets), exist_ok=True)
+with io.open(applets, "w", encoding="utf-8") as fh:
+    fh.write("[Containments][1][Wallpaper][org.kde.image][General]\n"
+             "Image=file://%s\n" % old_pic)
+wall = next(i for i in shown
+            if any(a["action"] == "wallpaper" for a in i.get("actions", [])))
+state = fresh_state()
+asset_paths = {}
+for name in store.assets_of(wall):
+    pic = os.path.join(home, name + ".png")
+    open(pic, "wb").close()
+    asset_paths[name] = pic
+state.setdefault("installed", {})[wall["id"]] = {"assets": asset_paths}
+calls.clear()
+store.do_apply(cat, wall["id"], state)
+ck("a wallpaper is applied with plasma-apply-wallpaperimage",
+   ran("plasma-apply-wallpaperimage") and not ran("caelestia"), calls)
+undo = state["applied"][wall["id"]]["undo"]
+ck("...and Plasma's previous picture is remembered",
+   bool(undo) and undo[0].get("path") == old_pic, undo)
+calls.clear()
+store.do_revert(cat, wall["id"], state)
+ck("...and reverting puts it back",
+   any(c[:1] == ["plasma-apply-wallpaperimage"] and c[-1] == old_pic
+       for c in calls), calls)
+os.environ["XDG_CURRENT_DESKTOP"] = "Hyprland"
 
 shutil.rmtree(home, ignore_errors=True)
 

@@ -61,15 +61,19 @@ Item {
         index: "02"
         group: qsTr("Devices")
         title: qsTr("Input")
-        blurb: qsTr("How the keyboard repeats and how the pointer moves. Each "
-                    + "change applies at once and is written to a Genesi file "
-                    + "your Hyprland config pulls in, so it is still there after "
-                    + "a reload.")
+        blurb: page.d.desktop === "plasma"
+               ? qsTr("How the keyboard repeats and how the pointer moves. Each "
+                      + "change applies at once and is saved the same way "
+                      + "Plasma's own Mouse and Touchpad settings save it.")
+               : qsTr("How the keyboard repeats and how the pointer moves. Each "
+                      + "change applies at once and is written to a Genesi file "
+                      + "your Hyprland config pulls in, so it is still there after "
+                      + "a reload.")
         note: page.ready
               ? qsTr("%1 keyboard(s) · %2 pointer(s)")
                 .arg((page.d.keyboards || []).length)
                 .arg((page.d.mice || []).length)
-              : qsTr("no Hyprland session — nothing here can be applied")
+              : qsTr("this desktop's input settings could not be read")
         noteWarn: !page.ready
 
         // ── Keyboard ─────────────────────────────────────────────────────────
@@ -163,7 +167,7 @@ Item {
                     SettingRow {
                         width: parent.width
                         label: qsTr("Sensitivity")
-                        description: qsTr("Hyprland's range is -1 to 1, where 0 is "
+                        description: qsTr("The range is -1 to 1, where 0 is "
                                           + "the device's own speed. This is a "
                                           + "multiplier, not a DPI setting.")
                         Slider {

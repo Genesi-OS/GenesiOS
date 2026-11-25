@@ -364,6 +364,10 @@ def session():
             _caelestia_available()
             or bool(shutil.which("caelestia"))),
         "plasma": "kde" in desktop or "plasma" in desktop,
+        # genesi-display speaks Hyprland's IPC and, on Plasma, kscreen-doctor.
+        "displays": hypr or "kde" in desktop or "plasma" in desktop,
+        # Input options: Hyprland's config, or KWin's on Plasma.
+        "input": hypr or "kde" in desktop or "plasma" in desktop,
         "x11": (os.environ.get("XDG_SESSION_TYPE") or "").lower() == "x11",
         "desktop": os.environ.get("XDG_CURRENT_DESKTOP") or "unknown",
     }
@@ -631,6 +635,84 @@ def _cpu_times_per_core():
     return out
 
 
+
+def _busctl_get(path, iface, prop):
+    out = _run(["busctl", "--user", "--json=short", "get-property",
+                "org.kde.KWin", path, iface, prop], timeout=6)
+    try:
+        return json.loads(out).get("data") if out.strip() else None
+    except (json.JSONDecodeError, AttributeError):
+        return None
+
+
+def _kread(file, group, key):
+    out = _run(["kreadconfig6", "--file", file, "--group", group, "--key", key],
+               timeout=4)
+    return out.strip() or None
+
+
+def plasma_input_devices():
+    """
+    The Input page's settings as KDE Plasma has them, in the SAME keys the
+    Hyprland path reports, so the page reads Plasma unchanged. Keyboard from
+    kcminputrc/kxkbrc, focus from kwinrc, pointer and touchpad from KWin's
+    per-device D-Bus properties (what Plasma's own settings read).
+    """
+    base = "/org/kde/KWin/InputDevice"
+    iface = "org.kde.KWin.InputDevice"
+    names = _busctl_get(base, "org.kde.KWin.InputDeviceManager",
+                        "devicesSysNames") or []
+    pointer = touchpad = None
+    mice, keyboards = [], []
+    for n in names:
+        path = f"{base}/{n}"
+        label = _busctl_get(path, iface, "name") or n
+        if _busctl_get(path, iface, "touchpad") is True:
+            touchpad = touchpad or path
+            mice.append({"name": label + " (touchpad)"})
+        elif _busctl_get(path, iface, "pointer") is True:
+            pointer = pointer or path
+            mice.append({"name": label})
+        elif _busctl_get(path, iface, "alphaNumericKeyboard") is True:
+            keyboards.append({"name": label, "layout": None, "main": not keyboards})
+
+    opts = {}
+    layout = _kread("kxkbrc", "Layout", "LayoutList")
+    if layout:
+        opts["kb_layout"] = layout.split(",")[0]
+    for key, conf_key, default in (("repeat_rate", "RepeatRate", 25),
+                                   ("repeat_delay", "RepeatDelay", 600)):
+        v = _kread("kcminputrc", "Keyboard", conf_key)
+        try:
+            opts[key] = float(v) if v else default
+        except ValueError:
+            opts[key] = default
+    focus = _kread("kwinrc", "Windows", "FocusPolicy") or "ClickToFocus"
+    opts["follow_mouse"] = 0 if focus == "ClickToFocus" else 1
+    if pointer:
+        acc = _busctl_get(pointer, iface, "pointerAcceleration")
+        if acc is not None:
+            opts["sensitivity"] = acc
+        flat = _busctl_get(pointer, iface, "pointerAccelerationProfileFlat")
+        opts["accel_profile"] = "flat" if flat is True else "adaptive"
+        ns = _busctl_get(pointer, iface, "naturalScroll")
+        if ns is not None:
+            opts["natural_scroll"] = 1 if ns else 0
+    if touchpad:
+        for key, prop in (("tp_tap", "tapToClick"),
+                          ("tp_natural_scroll", "naturalScroll"),
+                          ("tp_dwt", "disableWhileTyping")):
+            v = _busctl_get(touchpad, iface, prop)
+            if v is not None:
+                opts[key] = 1 if v else 0
+        sf = _busctl_get(touchpad, iface, "scrollFactor")
+        if sf is not None:
+            opts["tp_scroll_factor"] = sf
+    return {"available": True, "keyboards": keyboards, "mice": mice,
+            "options": opts, "has_touchpad": touchpad is not None,
+            "desktop": "plasma"}
+
+
 def input_devices():
     """
     Keyboard and pointer, as Hyprland has them.
@@ -640,6 +722,9 @@ def input_devices():
     than shown with controls that write to a config nothing reads.
     """
     if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        desk = (os.environ.get("XDG_CURRENT_DESKTOP") or "").lower()
+        if "kde" in desk or "plasma" in desk:
+            return plasma_input_devices()
         return {"available": False}
 
     devices = _hypr_json("devices") or {}

@@ -199,7 +199,12 @@ pkgver=0.1.0
 # pkgrel 43: settings reach Hyprland 0.57 -- the drop-in gets a Lua twin
 # (genesi-center.lua, loaded by Genesi's hyprland.lua) and the live change
 # goes through `hyprctl eval` there, since 0.57 removed `keyword`.
-pkgrel=43
+# pkgrel 44: Displays and Input on KDE Plasma. Displays goes through
+# genesi-display's new kscreen-doctor path; Input writes where KWin keeps
+# each setting (kcminputrc, kwinrc, kxkbrc, and per-device properties on
+# org.kde.KWin.InputDevice) and reads them back in the Hyprland keys, so
+# the pages are unchanged. Hyprland takes the same path as before.
+pkgrel=44
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')

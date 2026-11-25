@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-genesi-display — monitor scale and rotation for Hyprland, from anywhere.
+genesi-display — monitor scale and rotation for Hyprland and KDE Plasma.
 
 ── Why a CLI and not a panel ────────────────────────────────────────────────
 
@@ -736,12 +736,233 @@ def cmd_reset(name=None):
     print("reset" + (f" {name}" if name else " all monitors"))
 
 
+
+# ── Plasma ───────────────────────────────────────────────────────────────────
+#
+# On KDE Plasma the same commands go through kscreen-doctor, which is what
+# Plasma's own Display settings use. KScreen keeps its own per-setup config,
+# so there is no override file to maintain and nothing to source: a change
+# made here is exactly as if it had been made in System Settings, and it
+# survives a reboot the same way. `list` prints the same record the Hyprland
+# path does, so the Displays page and every launcher entry work unchanged.
+
+# KScreen's rotation is a bit flag: None 1, Left 2, Inverted 4, Right 8.
+# Left is 90 degrees counter-clockwise, the same turn as Hyprland's
+# transform 1, so "rotate 90" means the same screen on both desktops.
+KSCREEN_ROT_TO_DEG = {1: 0, 2: 90, 4: 180, 8: 270}
+DEG_TO_KSCREEN = {0: "normal", 90: "left", 180: "inverted", 270: "right"}
+
+
+def on_plasma(env=None):
+    env = os.environ if env is None else env
+    if env.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return False
+    desk = (env.get("XDG_CURRENT_DESKTOP") or "").lower()
+    return "kde" in desk or "plasma" in desk
+
+
+def kscreen(*args, check=True):
+    if not shutil.which("kscreen-doctor"):
+        die("kscreen-doctor not found (install libkscreen)", 2)
+    p = subprocess.run(["kscreen-doctor", *args], capture_output=True, text=True)
+    if check and p.returncode != 0:
+        die((p.stderr or p.stdout).strip() or "kscreen-doctor failed")
+    return p
+
+
+def plasma_raw():
+    p = kscreen("-j")
+    try:
+        return json.loads(p.stdout).get("outputs", [])
+    except (json.JSONDecodeError, AttributeError):
+        die("could not read kscreen-doctor -j")
+
+
+def plasma_modes(raw):
+    seen = {}
+    for entry in raw.get("modes", []) or []:
+        size = entry.get("size") or {}
+        w, h = int(size.get("width", 0)), int(size.get("height", 0))
+        r = round(float(entry.get("refreshRate", 0)), 2)
+        if w and h:
+            seen[(w, h, r)] = {"width": w, "height": h, "refresh": r,
+                               "id": f"{w}x{h}@{r}", "kscreen": str(entry.get("id"))}
+    return [v for _, v in sorted(seen.items(),
+                                 key=lambda kv: (-kv[0][0] * kv[0][1], -kv[0][2]))]
+
+
+def plasma_monitors():
+    out = []
+    for o in plasma_raw():
+        if not o.get("connected", True):
+            continue
+        modes = plasma_modes(o)
+        cur = next((m for m in modes if m["kscreen"] == str(o.get("currentModeId"))),
+                   None)
+        w = cur["width"] if cur else int((o.get("size") or {}).get("width", 0))
+        h = cur["height"] if cur else int((o.get("size") or {}).get("height", 0))
+        rate = cur["refresh"] if cur else 0
+        rot = KSCREEN_ROT_TO_DEG.get(int(o.get("rotation", 1)), 0)
+        pos = o.get("pos") or {}
+        # Plasma 6 says "priority" (1 = the main screen); Plasma 5 said "primary".
+        primary = (o.get("priority") == 1) if "priority" in o else bool(o.get("primary"))
+        out.append({
+            "name": o.get("name", ""),
+            "description": " ".join(x for x in (o.get("vendor"), o.get("model"))
+                                    if x) or o.get("name", ""),
+            "width": w, "height": h, "refresh": rate,
+            "x": int(pos.get("x", 0)), "y": int(pos.get("y", 0)),
+            "scale": round(float(o.get("scale", 1)), 6),
+            "transform": DEG_TO_TRANSFORM.get(rot, 0),
+            "rotation": rot,
+            # Plasma has no "screen under the pointer" to report; the main
+            # screen is the honest answer to "the one in use".
+            "focused": primary,
+            "disabled": not o.get("enabled", True),
+            "primary": primary,
+            "modes": [{k: v for k, v in m.items() if k != "kscreen"} for m in modes],
+            "mode": f"{w}x{h}@{rate}",
+        })
+    return out
+
+
+def plasma_find(name):
+    mons = plasma_monitors()
+    if name == "-":
+        for m in mons:
+            if m["primary"]:
+                return m
+        if mons:
+            return mons[0]
+    for m in mons:
+        if m["name"] == name:
+            return m
+    die(f"no monitor called {name!r}. Connected: "
+        + ", ".join(m["name"] for m in mons))
+
+
+def plasma_logical(m):
+    w, h = m["width"], m["height"]
+    if m["rotation"] in (90, 270):
+        w, h = h, w
+    return round(w / m["scale"]), round(h / m["scale"])
+
+
+def plasma_main(cmd, rest):
+    if cmd == "list":
+        print(json.dumps(plasma_monitors(), indent=2))
+    elif cmd == "show":
+        for m in plasma_monitors():
+            print(f"{m['name']}: {m['mode']}  scale {m['scale']:g}  "
+                  f"rotated {m['rotation']}°  at {m['x']},{m['y']}"
+                  + ("  (main)" if m["primary"] else ""))
+    elif cmd == "scale":
+        if len(rest) != 2:
+            die("usage: genesi-display scale <monitor> <factor>")
+        m, value = plasma_find(rest[0]), rest[1]
+        if value in ("up", "down"):
+            cur = m["scale"]
+            i = min(range(len(SCALE_STEPS)), key=lambda k: abs(SCALE_STEPS[k] - cur))
+            i += 1 if value == "up" else -1
+            if i < 0 or i >= len(SCALE_STEPS):
+                print(f"{m['name']}: already at {cur:g}x "
+                      f"({'largest' if value == 'up' else 'smallest'})")
+                return
+            scale = SCALE_STEPS[i]
+        else:
+            try:
+                scale = float(value)
+            except ValueError:
+                die(f"{value!r} is not a number, and not 'up' or 'down'")
+        if not (0.1 <= scale <= 10):
+            die(f"scale {scale} is out of range (0.1 – 10)")
+        kscreen(f"output.{m['name']}.scale.{scale:g}")
+        print(f"{m['name']}: scale {scale:g}")
+    elif cmd == "rotate":
+        if len(rest) != 2:
+            die("usage: genesi-display rotate <monitor> <degrees>")
+        m, value = plasma_find(rest[0]), rest[1]
+        if value == "cycle":
+            deg = (m["rotation"] + 90) % 360
+        else:
+            try:
+                deg = int(value) % 360
+            except ValueError:
+                die(f"{value!r} is not a number of degrees, and not 'cycle'")
+        if deg not in DEG_TO_KSCREEN:
+            die(f"rotation must be 0, 90, 180, 270 or 'cycle' (got {value})")
+        kscreen(f"output.{m['name']}.rotation.{DEG_TO_KSCREEN[deg]}")
+        print(f"{m['name']}: rotated {deg}°")
+    elif cmd in ("mode", "modes"):
+        if (cmd == "mode" and len(rest) != 2) or (cmd == "modes" and len(rest) != 1):
+            die("usage: genesi-display mode <monitor> <WxH@Hz | WxH>"
+                if cmd == "mode" else "usage: genesi-display modes <monitor>")
+        raw = next((o for o in plasma_raw() if o.get("name") == plasma_find(rest[0])["name"]), {})
+        modes = plasma_modes(raw)
+        if cmd == "modes":
+            print(json.dumps([{k: v for k, v in x.items() if k != "kscreen"}
+                              for x in modes], indent=2))
+            return
+        wanted = rest[1]
+        match = [x for x in modes if x["id"] == wanted] or \
+                [x for x in modes if f"{x['width']}x{x['height']}" == wanted]
+        if not match:
+            die(f"{wanted!r} is not a mode {rest[0]} offers. Try: genesi-display modes {rest[0]}")
+        kscreen(f"output.{raw.get('name')}.mode.{match[0]['kscreen']}")
+        print(f"{raw.get('name')}: {match[0]['id']}")
+    elif cmd == "position":
+        if len(rest) != 3:
+            die("usage: genesi-display position <monitor> "
+                "left-of|right-of|above|below <other monitor>")
+        a, where, b = plasma_find(rest[0]), rest[1], plasma_find(rest[2])
+        if a["name"] == b["name"]:
+            die("a monitor cannot be placed next to itself")
+        aw, ah = plasma_logical(a)
+        bw, bh = plasma_logical(b)
+        spots = {"left-of": (b["x"] - aw, b["y"]), "right-of": (b["x"] + bw, b["y"]),
+                 "above": (b["x"], b["y"] - ah), "below": (b["x"], b["y"] + bh)}
+        if where not in spots:
+            die("where must be left-of, right-of, above or below")
+        x, y = spots[where]
+        kscreen(f"output.{a['name']}.position.{x},{y}")
+        print(f"{a['name']}: {where} {b['name']} at {x},{y}")
+    elif cmd == "place":
+        if len(rest) != 3:
+            die("usage: genesi-display place <monitor> <x> <y>")
+        m = plasma_find(rest[0])
+        try:
+            x, y = int(float(rest[1])), int(float(rest[2]))
+        except ValueError:
+            die("x and y must be numbers")
+        kscreen(f"output.{m['name']}.position.{x},{y}")
+        print(f"{m['name']}: at {x},{y}")
+    elif cmd == "primary":
+        if len(rest) != 1:
+            die("usage: genesi-display primary <monitor>")
+        m = plasma_find(rest[0])
+        kscreen(f"output.{m['name']}.priority.1")
+        print(f"{m['name']}: main screen")
+    elif cmd == "reset":
+        # KScreen has no "our override" to drop: it keeps one config per set
+        # of screens, the same one System Settings edits. Resetting means the
+        # defaults that config started from: scale 1, no rotation.
+        mons = [plasma_find(rest[0])] if rest else plasma_monitors()
+        for m in mons:
+            kscreen(f"output.{m['name']}.scale.1", f"output.{m['name']}.rotation.normal")
+        print("reset" + (f" {rest[0]}" if rest else " all monitors"))
+    else:
+        die(f"unknown command {cmd!r}. Try: genesi-display --help", 2)
+
+
 def main():
     args = sys.argv[1:]
     if not args or args[0] in ("-h", "--help", "help"):
         print(__doc__.strip())
         return 0
     cmd, rest = args[0], args[1:]
+    if on_plasma():
+        plasma_main(cmd, rest)
+        return 0
     if cmd == "list":
         cmd_list()
     elif cmd == "show":

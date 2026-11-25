@@ -25,7 +25,10 @@ pkgver=1.0.0
 # 8: Hyprland 0.57 -- scale/rotation/mode/primary apply through
 # `hyprctl eval` (hl.monitor / hl.workspace_rule) and persist in a Lua
 # twin of genesi-display.conf, since 0.57 reads neither keyword nor .conf.
-pkgrel=8
+# pkgrel 9: KDE Plasma support through kscreen-doctor: list, scale,
+# rotate, mode, position, place, primary and reset, with `list` printing
+# the same record as on Hyprland. Hyprland is untouched.
+pkgrel=9
 pkgdesc='Monitor scale and rotation for Hyprland, persisted across reloads'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'

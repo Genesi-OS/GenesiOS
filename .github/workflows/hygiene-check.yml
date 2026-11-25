@@ -130,6 +130,14 @@ jobs:
         # ISO's old SDDM theme over genesi-store's: black screen on logout.
         run: python genesi-arch/ci/installer-copy-overlap-test.py
 
+      - name: Displays and Input work on KDE Plasma, Hyprland unchanged
+        # genesi-display through kscreen-doctor, and the Hub's Input page
+        # through KWin, each against a fake; both also check that a Hyprland
+        # session never takes the Plasma path.
+        run: |
+          python genesi-arch/ci/display-plasma-test.py
+          python genesi-arch/ci/center-plasma-input-test.py
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh

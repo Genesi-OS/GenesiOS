@@ -23,6 +23,7 @@ Item {
     id: page
 
     property var backend: null
+    property var caps: ({})
     property var monitors: []
     property string selected: ""
     property bool busy: false
@@ -376,9 +377,15 @@ Item {
 
             Text {
                 width: parent.width
-                text: qsTr("Undo every resolution, scale, rotation and position set from "
-                           + "here. Anything you wrote in hyprland.conf yourself is left "
-                           + "alone.")
+                // On Plasma there is no override file to drop: KScreen keeps one
+                // config, the one System Settings edits, so reset means scale 1
+                // and no rotation, which is what genesi-display does there.
+                text: page.caps.plasma === true && page.caps.hyprland !== true
+                      ? qsTr("Set every screen back to scale 1 and no rotation. "
+                             + "Resolution and position stay as they are.")
+                      : qsTr("Undo every resolution, scale, rotation and position set from "
+                             + "here. Anything you wrote in hyprland.conf yourself is left "
+                             + "alone.")
                 color: Tokens.textDim
                 font.family: Tokens.sans
                 font.pixelSize: 11

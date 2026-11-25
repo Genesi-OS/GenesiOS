@@ -1015,12 +1015,134 @@ def hypr_write(option, value):
     sync_lua(DROPIN)
 
 
+
+# ── Plasma ───────────────────────────────────────────────────────────────────
+#
+# The Input page sends Hyprland's option names. On KDE Plasma the same
+# settings live in KWin: keyboard repeat in kcminputrc, focus policy in kwinrc,
+# layouts in kxkbrc, and pointer/touchpad per device on KWin's D-Bus
+# (org.kde.KWin.InputDevice). Setting a device property there is exactly what
+# Plasma's own Mouse/Touchpad settings do, and KWin saves it to kcminputrc
+# itself, so it survives a re-login. Same names, same limits as Hyprland --
+# validation above is shared -- only where the value goes differs.
+
+def on_plasma(env=None):
+    env = os.environ if env is None else env
+    if env.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return False
+    desk = (env.get("XDG_CURRENT_DESKTOP") or "").lower()
+    return "kde" in desk or "plasma" in desk
+
+
+KWIN = "org.kde.KWin"
+DEV_PATH = "/org/kde/KWin/InputDevice"
+DEV_IFACE = "org.kde.KWin.InputDevice"
+
+
+def busctl(*args):
+    try:
+        p = subprocess.run(["busctl", "--user", "--json=short", *args],
+                           capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    try:
+        return json.loads(p.stdout).get("data") if p.stdout.strip() else True
+    except (json.JSONDecodeError, AttributeError):
+        return None
+
+
+def kwin_devices(kind):
+    """sysNames of KWin's input devices of a kind: 'pointer' (a mouse, not a
+    touchpad) or 'touchpad'."""
+    names = busctl("get-property", KWIN, DEV_PATH,
+                   "org.kde.KWin.InputDeviceManager", "devicesSysNames") or []
+    out = []
+    for n in names:
+        path = f"{DEV_PATH}/{n}"
+        touch = busctl("get-property", KWIN, path, DEV_IFACE, "touchpad") is True
+        if kind == "touchpad" and touch:
+            out.append(path)
+        elif kind == "pointer" and not touch and \
+                busctl("get-property", KWIN, path, DEV_IFACE, "pointer") is True:
+            out.append(path)
+    return out
+
+
+def kwin_set(kind, prop, sig, value):
+    paths = kwin_devices(kind)
+    if not paths:
+        die(f"no {kind} found on this machine")
+    text = ("true" if value else "false") if sig == "b" else str(value)
+    for path in paths:
+        if busctl("set-property", KWIN, path, DEV_IFACE, prop, sig, text) is None:
+            die(f"KWin refused {prop} on {path}")
+
+
+def kconfig(file, group, key, value):
+    p = subprocess.run(["kwriteconfig6", "--notify", "--file", file,
+                        "--group", group, "--key", key, str(value)],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        die((p.stderr or "kwriteconfig6 failed").strip())
+
+
+def kwin_reconfigure():
+    subprocess.run(["dbus-send", "--session", "--type=method_call",
+                    "--dest=org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure"],
+                   capture_output=True)
+
+
+def plasma_input(option, value):
+    if option in ("input:kb_layout", "input:kb_variant", "input:kb_options"):
+        key = {"input:kb_layout": "LayoutList", "input:kb_variant": "VariantList",
+               "input:kb_options": "Options"}[option]
+        kconfig("kxkbrc", "Layout", "Use", "true")
+        if option == "input:kb_options":
+            kconfig("kxkbrc", "Layout", "ResetOldOptions", "true")
+        kconfig("kxkbrc", "Layout", key, value)
+        subprocess.run(["dbus-send", "--session", "--type=signal", "/Layouts",
+                        "org.kde.keyboard.reloadConfig"], capture_output=True)
+    elif option == "input:repeat_rate":
+        kconfig("kcminputrc", "Keyboard", "KeyRepeat", "repeat")
+        kconfig("kcminputrc", "Keyboard", "RepeatRate", value)
+    elif option == "input:repeat_delay":
+        kconfig("kcminputrc", "Keyboard", "KeyRepeat", "repeat")
+        kconfig("kcminputrc", "Keyboard", "RepeatDelay", value)
+    elif option == "input:follow_mouse":
+        kconfig("kwinrc", "Windows", "FocusPolicy",
+                "FocusFollowsMouse" if int(value) > 0 else "ClickToFocus")
+        kwin_reconfigure()
+    elif option == "input:sensitivity":
+        kwin_set("pointer", "pointerAcceleration", "d", value)
+    elif option == "input:accel_profile":
+        kwin_set("pointer", "pointerAccelerationProfileFlat", "b", value == "flat")
+        kwin_set("pointer", "pointerAccelerationProfileAdaptive", "b", value != "flat")
+    elif option == "input:natural_scroll":
+        kwin_set("pointer", "naturalScroll", "b", bool(value))
+    elif option == "input:touchpad:natural_scroll":
+        kwin_set("touchpad", "naturalScroll", "b", bool(value))
+    elif option == "input:touchpad:tap-to-click":
+        kwin_set("touchpad", "tapToClick", "b", bool(value))
+    elif option == "input:touchpad:disable_while_typing":
+        kwin_set("touchpad", "disableWhileTyping", "b", bool(value))
+    elif option == "input:touchpad:scroll_factor":
+        kwin_set("touchpad", "scrollFactor", "d", value)
+    else:
+        die(f"{option!r} has no Plasma setting")
+    print(f"{option} = {value}")
+
+
 def cmd_hypr(option, raw):
     spec = HYPR.get(option)
     if spec is None:
         die(f"{option!r} is not an option this writes. "
             "`genesi-center-set options` lists them.")
     value = coerce(spec, raw, option)
+    if on_plasma():
+        plasma_input(option, value)
+        return
     if isinstance(value, bool):
         value = 1 if value else 0
 
