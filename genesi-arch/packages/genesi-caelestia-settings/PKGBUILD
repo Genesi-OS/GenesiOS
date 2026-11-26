@@ -243,7 +243,11 @@ pkgver=1.0.0
 # nothing. genesi_hypr_lua.py (/usr/lib/genesi) writes a Lua twin of each
 # drop-in after every change and applies it with `hyprctl eval`; the
 # migration generates twins for settings saved before the upgrade.
-pkgrel=49
+# pkgrel 50: genesi-bar keeps the shell's output in
+# ~/.cache/genesi/shell-start.log instead of /dev/null. When caelestia
+# failed to load (its plugin's libsndio.so.7 was gone) the session was a
+# blank screen and nothing anywhere said why.
+pkgrel=50
 pkgdesc='Genesi OS Hyprland + caelestia-shell default configuration and branding'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
