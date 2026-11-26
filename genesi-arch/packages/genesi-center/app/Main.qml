@@ -469,10 +469,28 @@ Window {
                 MouseArea {
                     anchors.fill: parent
                     property point press
-                    onPressed: mouse => press = Qt.point(mouse.x, mouse.y)
+                    property bool handedOff: false
+                    onPressed: mouse => {
+                        press = Qt.point(mouse.x, mouse.y);
+                        handedOff = false;
+                    }
                     onPositionChanged: mouse => {
-                        if (!pressed)
+                        if (!pressed || handedOff)
                             return;
+                        // On Wayland a window cannot move itself: x and y are
+                        // the compositor's, and setting them did nothing on
+                        // Plasma, so the Hub could only be dragged with Super
+                        // held. startSystemMove asks the compositor to run the
+                        // drag (KWin, Hyprland, X11 all honour it). Only once
+                        // the pointer has really moved, so a double-click
+                        // still maximizes.
+                        if (Math.abs(mouse.x - press.x) + Math.abs(mouse.y - press.y) < 4)
+                            return;
+                        if (win.startSystemMove()) {
+                            handedOff = true;
+                            return;
+                        }
+                        // A platform without system moves: the old way.
                         win.x += mouse.x - press.x;
                         win.y += mouse.y - press.y;
                     }

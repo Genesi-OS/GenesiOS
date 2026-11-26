@@ -58,6 +58,7 @@ Usage:
     genesi-channel get                  Show the current channel
     genesi-channel set stable           Stable only (default)
     genesi-channel set testing          Stable + experimental packages
+    genesi-channel repair               Put the testing repo above [genesi]
     genesi-channel -h | --help          Show this help
 
 The testing channel adds packages built from the '${TESTING_BRANCH}' branch on
@@ -94,12 +95,17 @@ require_root() {
     fi
 }
 
-# Append the block, commented out. Called only when it is missing entirely.
+# Append the block, commented out. Called only when it is missing entirely;
+# place_block then moves it where it has to be.
 #
-# Appended at the end rather than spliced next to [genesi]: a repo section runs
-# until the next header, so appending cannot corrupt whatever came before it.
-# Position only decides ties between repos carrying the same version, and there
-# is no meaningful tie here — the whole point is picking the newer package.
+# Appending is safe (a repo section runs until the next header, so it cannot
+# corrupt what came before), but the end of the file is the WRONG place to
+# leave it. pacman takes a package from the first repository that lists it,
+# whatever the version in the ones after: pacman.conf(5), "regardless of
+# version number". Below [genesi], [genesi-testing] lost every package the two
+# share -- which is every Genesi package -- so the testing channel never
+# delivered a single build (a tester on testing saw genesi-store 23 while the
+# testing repo had 24).
 write_block() {
     {
         echo ""
@@ -111,6 +117,74 @@ write_block() {
         echo "#SigLevel = Optional TrustAll"
         echo "#Server = ${TESTING_URL}"
     } >> "$PACMAN_CONF"
+}
+
+# Print pacman.conf with the testing block (its header, its `Key = value`
+# lines, and the comment lines write_block puts above it) moved to sit right
+# before [genesi], enabled or commented exactly as it was. Idempotent. If there
+# is no [genesi] section the file is printed unchanged: with nothing to come
+# before, there is nothing to fix.
+place_block() {
+    awk -v repo="$REPO_NAME" '
+        FNR == NR {
+            line[NR] = $0; n = NR
+            if ($0 ~ "^[[:space:]]*#?\\[" repo "\\][[:space:]]*$") head = NR
+            if ($0 ~ /^[[:space:]]*\[genesi\][[:space:]]*$/ && !stable) stable = NR
+            next
+        }
+        END {
+            if (!head || !stable) { for (i = 1; i <= n; i++) print line[i]; exit }
+            last = head
+            while (last < n && line[last + 1] ~ /^[[:space:]]*#?[A-Za-z]+[[:space:]]*=/) last++
+            first = head
+            while (first > 1 && line[first - 1] ~ /^# (Genesi testing channel|Disabled by default|the experimental-updates|These are pre-release)/) first--
+            if (first > 1 && line[first - 1] ~ /^[[:space:]]*$/) first--
+            for (i = 1; i <= n; i++) {
+                if (i == stable) {
+                    for (j = first; j <= last; j++) if (line[j] !~ /^[[:space:]]*$/) print line[j]
+                    print ""
+                }
+                if (i >= first && i <= last) continue
+                print line[i]
+            }
+        }
+    ' "$PACMAN_CONF" "$PACMAN_CONF"
+}
+
+# Whether the testing block already comes before [genesi] (or cannot, because
+# one of the two is missing).
+block_in_place() {
+    awk -v repo="$REPO_NAME" '
+        $0 ~ "^[[:space:]]*#?\\[" repo "\\][[:space:]]*$" && !head { head = NR }
+        $0 ~ /^[[:space:]]*\[genesi\][[:space:]]*$/ && !stable { stable = NR }
+        END { exit !(!head || !stable || head < stable) }
+    ' "$PACMAN_CONF"
+}
+
+# Move the block into place, keeping a copy to put back if anything is off.
+# Returns 0 when nothing needed doing or the move verified; 1 when rolled back.
+repair_order() {
+    block_in_place && return 0
+    local bak tmp was
+    was="$(cmd_get)"
+    bak="$(mktemp)"; tmp="$(mktemp)"
+    cp -- "$PACMAN_CONF" "$bak"
+    place_block > "$tmp"
+    install -m644 -- "$tmp" "$PACMAN_CONF"
+    rm -f -- "$tmp"
+    # Verified, not assumed: in place, same channel as before, [genesi] still
+    # there, and no line lost or gained except blank ones.
+    if ! block_in_place || [ "$(cmd_get)" != "$was" ] \
+            || ! grep -Eq '^[[:space:]]*\[genesi\][[:space:]]*$' "$PACMAN_CONF" \
+            || [ "$(grep -cv '^[[:space:]]*$' "$PACMAN_CONF")" != "$(grep -cv '^[[:space:]]*$' "$bak")" ]; then
+        install -m644 -- "$bak" "$PACMAN_CONF"
+        rm -f -- "$bak"
+        echo "Error: could not reorder $PACMAN_CONF; left as it was." >&2
+        return 1
+    fi
+    rm -f -- "$bak"
+    echo "Moved [${REPO_NAME}] above [genesi], so its newer packages are the ones installed."
+    return 0
 }
 
 # Uncomment the block: the header, then every following line that still looks
@@ -163,6 +237,9 @@ cmd_set() {
         echo "Adding the ${REPO_NAME} repository to $PACMAN_CONF…"
         write_block
     fi
+    # Before the "already on" exit, so running `set testing` again is also how
+    # a machine with the block in the wrong place gets fixed.
+    repair_order || exit 1
 
     if [ "$(cmd_get)" = "$target" ]; then
         echo "Already on: $target"
@@ -215,6 +292,14 @@ cmd_set() {
 case "${1:-}" in
     get)            shift; cmd_get "$@" ;;
     set)            shift; cmd_set "$@" ;;
+    # Only the block's position, and only where the channel is ON: run by the
+    # package on upgrade, so it must not touch the pacman.conf of everyone who
+    # never enabled testing. A commented block's position does not matter, and
+    # `set testing` places it before enabling it.
+    repair)         require_root repair
+                    is_testing_enabled || exit 0
+                    [ -w "$PACMAN_CONF" ] || { echo "Error: cannot write $PACMAN_CONF" >&2; exit 1; }
+                    repair_order ;;
     -h|--help|"")   usage ;;
     *)              echo "Unknown command: $1" >&2; usage; exit 2 ;;
 esac

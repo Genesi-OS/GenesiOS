@@ -137,6 +137,14 @@ jobs:
         run: |
           python genesi-arch/ci/display-plasma-test.py
           python genesi-arch/ci/center-plasma-input-test.py
+          python genesi-arch/ci/frameless-drag-test.py
+
+      - name: The testing channel really delivers its packages
+        shell: bash
+        # genesi-channel edits the file every pacman -Syu depends on. Its
+        # testing block sat after [genesi], where pacman never takes a package
+        # from it; this suite was never in CI to catch that.
+        run: bash genesi-arch/ci/channel-switch-test.sh
 
       - name: The ISO boot test's own logic
         shell: bash

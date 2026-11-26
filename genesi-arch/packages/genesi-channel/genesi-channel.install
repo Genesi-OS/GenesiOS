@@ -1,0 +1,16 @@
+# Put [genesi-testing] above [genesi] on machines switched before 1.0.0-3.
+#
+# Those machines have the block at the end of pacman.conf, where pacman never
+# takes a package from it (the first repository listing a package wins,
+# whatever the version), so the testing channel delivered nothing. `repair`
+# only moves the block, keeps it enabled or disabled as it was, verifies the
+# result and puts the file back if anything is off. It acts only where the
+# testing channel is ON: everyone else's pacman.conf is left exactly as it is.
+
+post_install() {
+    genesi-channel repair || true
+}
+
+post_upgrade() {
+    genesi-channel repair || true
+}
