@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Genesi Plugins
+Comment=Game Center, the leaf, live weather, the turntable and the Retrospective on Plasma
+Exec=genesi-plugins
+Icon=genesi
+Terminal=false
+NoDisplay=true
+# Hyprland runs them inside caelestia; this host is for Plasma.
+OnlyShowIn=KDE;
+X-KDE-autostart-after=panel

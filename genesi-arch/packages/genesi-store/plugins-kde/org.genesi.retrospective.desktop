@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Retrospective
+Name[pt_BR]=Retrospectiva
+Comment=Your week on Genesi: where the time went
+Comment[pt_BR]=Sua semana no Genesi: para onde foi o tempo
+Exec=genesi-plugins wrapped 7
+Icon=view-calendar-week
+Terminal=false
+Categories=Utility;
+OnlyShowIn=KDE;

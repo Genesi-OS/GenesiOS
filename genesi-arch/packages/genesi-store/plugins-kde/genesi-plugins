@@ -1,0 +1,3 @@
+#!/bin/sh
+# Genesi plugins on KDE Plasma (on Hyprland caelestia hosts them).
+exec python3 /usr/share/genesi-store/plugins-kde/genesi_plugins.py "$@"

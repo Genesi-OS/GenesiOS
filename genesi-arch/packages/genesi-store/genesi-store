@@ -773,8 +773,9 @@ def session_desktop(env=None):
 
 # What an action needs on Plasma. Absent means it has no Plasma form yet.
 PLASMA_ACTIONS = {"wallpaper", "login", "greeter", "package", "file", "restore"}
-# Files only caelestia reads: a shell plugin's switch does nothing elsewhere.
-CAELESTIA_ONLY_PATHS = ("~/.config/genesi/plugins/",)
+# Files only caelestia reads. The shell plugins' switches used to be here;
+# on Plasma genesi-plugins (plugins-kde/) reads them now, so there are none.
+CAELESTIA_ONLY_PATHS = ()
 
 
 def step_works_on_plasma(step):
