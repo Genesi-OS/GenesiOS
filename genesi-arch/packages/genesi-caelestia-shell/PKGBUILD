@@ -827,7 +827,12 @@ pkgver=2.0.3
 # 0.57 rejects: they now go through caelestia's Hypr service and pick the form
 # from Hypr.usingLua, so they work on 0.56 and 0.57 alike. genesi-shell-doctor
 # asks its layer-rule question in Lua there too.
-pkgrel=65
+# pkgrel 66: rebuilt against sndio 1.11. Arch moved sndio from
+# libsndio.so.7 to .so.9 on 2026-11-20; the Caelestia services plugin was
+# linked to .so.7, failed to load, and with it every QML file that imports
+# Caelestia.Services: the shell never came up, and Hyprland sat on a blank
+# screen with no bar (user report). Same sources, rebuilt.
+pkgrel=66
 pkgdesc='Quickshell desktop shell for the Caelestia design (Genesi repackage of caelestia-shell)'
 arch=('x86_64')
 url='https://github.com/caelestia-dots/shell'
