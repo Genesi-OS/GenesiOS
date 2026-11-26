@@ -130,6 +130,13 @@ jobs:
         # ISO's old SDDM theme over genesi-store's: black screen on logout.
         run: python genesi-arch/ci/installer-copy-overlap-test.py
 
+      - name: The testing channel really delivers its packages
+        shell: bash
+        # genesi-channel edits the file every pacman -Syu depends on. Its
+        # testing block sat after [genesi], where pacman never takes a package
+        # from it; this suite was never in CI to catch that.
+        run: bash genesi-arch/ci/channel-switch-test.sh
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh

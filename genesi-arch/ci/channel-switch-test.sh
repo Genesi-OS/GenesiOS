@@ -154,6 +154,65 @@ check "[genesi] survived the rollback" \
       "$(grep -q '^Server = https://raw.githubusercontent.com/Genesi-OS/GenesiOS/main' "$BAD"; echo $?)"
 
 echo
+echo "== the testing repo must come BEFORE [genesi] =="
+# pacman takes a package from the first repository listing it, regardless of
+# version (pacman.conf(5)). Appended after [genesi], the testing repo lost every
+# package the two share, so the channel never delivered one build: a tester on
+# testing had genesi-store 23 while [genesi-testing] carried 24.
+order_ok() {        # order_ok <conf>: testing header precedes [genesi]
+    awk '/^[[:space:]]*#?\[genesi-testing\][[:space:]]*$/ && !t { t = NR }
+         /^[[:space:]]*\[genesi\][[:space:]]*$/ && !s { s = NR }
+         END { exit !(t && s && t < s) }' "$1"
+    echo $?
+}
+FRESH="$TMP/order-fresh.conf"; make_installed_conf "$FRESH"
+run "$FRESH" "$PAC_OK" set testing >/dev/null 2>&1
+check "set testing on a fresh install puts the block above [genesi]" "$(order_ok "$FRESH")"
+check "...enabled, with its Server line" \
+      "$(grep -q '^Server = https://raw.githubusercontent.com/Genesi-OS/GenesiOS/develop' "$FRESH"; echo $?)"
+
+# A machine switched by the old version: block enabled, at the end.
+OLD="$TMP/order-old.conf"; make_installed_conf "$OLD"
+printf '\n# Genesi testing channel — packages built from the %s branch.\n[genesi-testing]\nSigLevel = Optional TrustAll\nServer = https://raw.githubusercontent.com/Genesi-OS/GenesiOS/develop/genesi-arch/repo/$arch\n' "'develop'" >> "$OLD"
+lines_before=$(grep -cv '^[[:space:]]*$' "$OLD")
+check "(the old layout really is wrong)" "$([ "$(order_ok "$OLD")" != 0 ]; echo $?)"
+run "$OLD" "$PAC_OK" repair >/dev/null 2>&1
+check "repair moves it above [genesi]" "$(order_ok "$OLD")"
+check "...still enabled" "$([ "$(run "$OLD" "$PAC_OK" get)" = testing ]; echo $?)"
+check "...no line lost or added" \
+      "$([ "$(grep -cv '^[[:space:]]*$' "$OLD")" = "$lines_before" ]; echo $?)"
+check "...[core] still has its Include" \
+      "$(awk '/^\[core\]/{c=1;next} c&&/^Include = /{f=1} /^\[/{c=0} END{exit !f}' "$OLD"; echo $?)"
+snapshot="$(cat "$OLD")"
+run "$OLD" "$PAC_OK" repair >/dev/null 2>&1
+check "repair again changes nothing" "$([ "$(cat "$OLD")" = "$snapshot" ]; echo $?)"
+
+# Every installed machine has a COMMENTED block after [genesi]. `repair` runs
+# from the package on every upgrade, so it must leave those files alone:
+# position only matters once the channel is on, and `set testing` places the
+# block before enabling it.
+OLDOFF="$TMP/order-old-off.conf"; make_iso_conf "$OLDOFF"
+snapshot="$(cat "$OLDOFF")"
+run "$OLDOFF" "$PAC_OK" repair >/dev/null 2>&1
+check "repair leaves a machine that never enabled testing untouched"       "$([ "$(cat "$OLDOFF")" = "$snapshot" ]; echo $?)"
+run "$OLDOFF" "$PAC_OK" set testing >/dev/null 2>&1
+check "...and set testing places the block before enabling it" "$(order_ok "$OLDOFF")"
+
+# Already-on-testing with the block in the wrong place: `set testing` fixes it.
+OLDSET="$TMP/order-old-set.conf"; cp "$TMP/order-old.conf" "$OLDSET"
+make_installed_conf "$OLDSET"
+printf '\n[genesi-testing]\nSigLevel = Optional TrustAll\nServer = https://raw.githubusercontent.com/Genesi-OS/GenesiOS/develop/genesi-arch/repo/$arch\n' >> "$OLDSET"
+run "$OLDSET" "$PAC_OK" set testing >/dev/null 2>&1
+check "set testing while already on testing fixes the order" "$(order_ok "$OLDSET")"
+
+# No [genesi] at all: nothing to come before, so nothing is touched.
+NOSTABLE="$TMP/order-nostable.conf"
+printf '[options]\nArchitecture = auto\n\n[core]\nInclude = /etc/pacman.d/mirrorlist\n\n[genesi-testing]\nServer = x\n' > "$NOSTABLE"
+snapshot="$(cat "$NOSTABLE")"
+run "$NOSTABLE" "$PAC_OK" repair >/dev/null 2>&1
+check "without [genesi], repair leaves the file alone" "$([ "$(cat "$NOSTABLE")" = "$snapshot" ]; echo $?)"
+
+echo
 echo "== bad input =="
 run "$CONF" "$PAC_OK" set banana >/dev/null 2>&1
 check "an unknown channel is rejected" "$([ "$?" = 2 ]; echo $?)"
