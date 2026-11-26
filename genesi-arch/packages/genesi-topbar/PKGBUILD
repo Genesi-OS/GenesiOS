@@ -27,7 +27,10 @@
 pkgname=genesi-topbar
 pkgver=0.1.0
 # pkgrel 3: clicking a workspace works on Hyprland 0.57 (dispatch takes Lua).
-pkgrel=3
+# pkgrel 4: the bar loads again. Its qmldir listed only BarTokens, so
+# BarContent was "not a type" and the whole bar failed to load (with the
+# current Qt; an unlisted file used to get through). ci/qmldir-complete-test.py.
+pkgrel=4
 pkgdesc="Genesi's horizontal bar for Hyprland"
 arch=('any')
 groups=('genesi')
