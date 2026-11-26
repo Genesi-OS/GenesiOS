@@ -204,7 +204,11 @@ pkgver=0.1.0
 # each setting (kcminputrc, kwinrc, kxkbrc, and per-device properties on
 # org.kde.KWin.InputDevice) and reads them back in the Hyprland keys, so
 # the pages are unchanged. Hyprland takes the same path as before.
-pkgrel=44
+# pkgrel 45: the window can be dragged by its header on KDE Plasma. A
+# frameless window cannot move itself on Wayland (x/y are the
+# compositor's), so it only moved with Super held; the header now asks
+# the compositor with startSystemMove(). ci/frameless-drag-test.py.
+pkgrel=45
 pkgdesc='Genesi control centre — system overview, resources and settings'
 arch=('any')
 groups=('genesi')
