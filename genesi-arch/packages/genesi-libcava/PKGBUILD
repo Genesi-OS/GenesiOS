@@ -8,7 +8,10 @@
 # caelestia's `libcava` dependency resolves to this build.
 pkgname=genesi-libcava
 pkgver=0.10.7
-pkgrel=1
+# pkgrel 2: rebuilt against sndio 1.11 (libsndio.so.9). Arch moved sndio
+# from libsndio.so.7 on 2026-11-20 and rebuilt its own packages; this one is
+# ours, so it kept asking for a library that was gone.
+pkgrel=2
 pkgdesc='cava as a shared library, used by caelestia-shell (Genesi repackage of libcava)'
 arch=('x86_64')
 url='https://github.com/LukashonakV/cava'

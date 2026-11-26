@@ -232,6 +232,30 @@ def current_shell():
         return "caelestia"
 
 
+def _launch(argv):
+    """
+    Start a shell detached, with its output kept.
+
+    Its output used to go to /dev/null. When caelestia failed to load -- a
+    library of its plugin had moved under it -- nothing anywhere said why: the
+    session was a blank screen and this printed nothing. Now the reason is in
+    ~/.cache/genesi/shell-start.log, rewritten on every start.
+    """
+    cache = os.path.join(os.environ.get("XDG_CACHE_HOME")
+                         or os.path.expanduser("~/.cache"), "genesi")
+    try:
+        os.makedirs(cache, exist_ok=True)
+        log = open(os.path.join(cache, "shell-start.log"), "w", encoding="utf-8")
+    except OSError:
+        log = subprocess.DEVNULL
+    try:
+        subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT,
+                         start_new_session=True)
+    finally:
+        if log is not subprocess.DEVNULL:
+            log.close()
+
+
 def cmd_shell_start():
     """
     Start whichever bar is remembered. Run once, at login.
@@ -244,8 +268,7 @@ def cmd_shell_start():
     one state file rather than in a config line the user also edits.
     """
     sh = SHELLS[current_shell()]
-    subprocess.Popen(sh["start"], stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    _launch(sh["start"])
 
 
 def cmd_shell(which=None):
@@ -282,8 +305,7 @@ def cmd_shell(which=None):
 
     sh = SHELLS[which]
     subprocess.run(sh["stop"], capture_output=True)
-    subprocess.Popen(sh["start"], stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    _launch(sh["start"])
     print(sh["name"])
 
 
