@@ -146,6 +146,19 @@ jobs:
         # from it; this suite was never in CI to catch that.
         run: bash genesi-arch/ci/channel-switch-test.sh
 
+      - name: Merging main into develop keeps both sides
+        shell: bash
+        # sync-develop.sh runs after every stable publish (sync-develop.yml).
+        # Throwaway repos: develop keeps its work, the package folder comes
+        # from main, a real conflict stops without pushing.
+        run: |
+          git config --global user.email ci@genesi.local
+          git config --global user.name ci
+          bash genesi-arch/ci/sync-develop-test.sh
+
+      - name: Every component in a folder with a qmldir is listed in it
+        run: python genesi-arch/ci/qmldir-complete-test.py
+
       - name: The ISO boot test's own logic
         shell: bash
         run: bash genesi-arch/ci/iso-boot-test-selftest.sh

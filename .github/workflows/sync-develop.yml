@@ -1,0 +1,67 @@
+name: Keep testing at or ahead of stable
+
+# After every successful stable publish, merge main into develop and start
+# the testing publish, so the testing channel never holds a stable fix back.
+#
+# Why it matters: [genesi-testing] is listed ABOVE [genesi] in pacman.conf
+# (pacman takes a package from the first repo listing it, whatever the
+# version), so a testing build older than stable wins. A tester stayed on the
+# caelestia build that Arch's sndio 1.11 update broke until develop was merged
+# by hand. The merge logic is genesi-arch/ci/sync-develop.sh, tested by
+# genesi-arch/ci/sync-develop-test.sh in Hygiene.
+#
+# Separate from publish-packages.yml on purpose: that pipeline feeds every
+# machine's updates and is not edited for new automation. A push made with
+# GITHUB_TOKEN does not start other workflows, so the testing publish is
+# started explicitly with workflow_dispatch, which it already accepts.
+
+on:
+  workflow_run:
+    workflows: ["Build and Publish Packages"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sync-develop
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          # GITHUB_TOKEN may not push a merge that changes a workflow file
+          # (GitHub refuses without the `workflows` scope, which it never has).
+          # SYNC_TOKEN, a token with contents + workflows write, covers that
+          # case once it exists; until then those rare syncs fail loudly and
+          # develop is merged by hand.
+          token: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Merge main into develop
+        id: merge
+        shell: bash
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          # The script as main has it, not as the develop checkout does: the
+          # first run failed because develop did not have the script yet.
+          git show origin/main:genesi-arch/ci/sync-develop.sh > "$RUNNER_TEMP/sync-develop.sh"
+          SYNC_PUSH=1 bash "$RUNNER_TEMP/sync-develop.sh"
+
+      - name: Start the testing publish
+        if: steps.merge.outputs.synced == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run publish-packages.yml --ref develop
