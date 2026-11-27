@@ -59,6 +59,34 @@ def last_publish():
     return m.group(1) if m else None
 
 
+def publish_bases():
+    """
+    Every tree the artifacts in repo/x86_64 may have been built from.
+
+    On main that is the last stable publish. On develop (its repo directory
+    carries genesi-testing.db) it is ALSO the last stable publish: syncing
+    main into develop brings main's built packages along with main's sources,
+    so a package main bumped and published is current on develop although the
+    last TESTING publish predates it. Comparing only against that testing
+    publish failed the first automatic sync on genesi-topbar -- 0.1.0-4 in
+    the directory, built from main, reported as "changed without a version".
+    """
+    bases = []
+    on_testing = "genesi-testing.db" in git("ls-tree", "--name-only", "HEAD",
+                                            REPODIR + "/")
+    channels = ("stable", "testing") if on_testing else ("stable",)
+    for ch in channels:
+        log = git("log", "--grep=ci(%s): publish packages from" % ch,
+                  "--fixed-strings", "-1", "--format=%s")
+        m = re.search(r"publish packages from ([0-9a-f]{7,40})", log)
+        if m:
+            bases.append(m.group(1))
+    newest = last_publish()
+    if newest and newest not in bases:
+        bases.insert(0, newest)
+    return bases
+
+
 def pkg_meta(d):
     """(pkgname, pkgver, pkgrel) declared by a package directory."""
     p = os.path.join(PKGDIR, d, "PKGBUILD")
@@ -139,14 +167,14 @@ def published():
 
 def main():
     print("== pkgrel bumps ==")
-    base = last_publish()
-    if not base:
+    bases = publish_bases()
+    if not bases:
         print("  SKIP  no publish commit found; nothing to compare against")
         return 0
-    if not git("cat-file", "-e", base + "^{commit}") and not git(
-            "rev-parse", "--verify", base + "^{commit}"):
-        print(f"  SKIP  {base} is not in this checkout (shallow clone?)")
-        return 0
+    for base in bases:
+        if not git("rev-parse", "--verify", base + "^{commit}"):
+            print(f"  SKIP  {base} is not in this checkout (shallow clone?)")
+            return 0
 
     have = published()
     stale = []
@@ -164,8 +192,14 @@ def main():
         # this before committing reported nothing changed -- which is exactly
         # when a person wants to be told. Diffing base against the tree covers
         # both: in CI the tree is HEAD.
-        changed = git("diff", "--name-only", base, "--", rel_path,
-                      *build_inputs(d))
+        # Unchanged against ANY tree the published artifacts came from means
+        # the artifact in the directory was built from these very files.
+        changed = ""
+        for base in bases:
+            changed = git("diff", "--name-only", base, "--", rel_path,
+                          *build_inputs(d))
+            if not changed.strip():
+                break
         if not changed.strip():
             continue
         checked += 1
@@ -173,7 +207,8 @@ def main():
             stale.append((d, name, have[name],
                           [l for l in changed.splitlines()][:4]))
 
-    print(f"  compared against {base[:8]}; {checked} package(s) changed since")
+    print(f"  compared against {', '.join(b[:8] for b in bases)}; "
+          f"{checked} package(s) changed since")
 
     if stale:
         print("  FAIL  package(s) changed without a new version:")
