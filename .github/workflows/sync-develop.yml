@@ -40,7 +40,12 @@ jobs:
         with:
           ref: develop
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # GITHUB_TOKEN may not push a merge that changes a workflow file
+          # (GitHub refuses without the `workflows` scope, which it never has).
+          # SYNC_TOKEN, a token with contents + workflows write, covers that
+          # case once it exists; until then those rare syncs fail loudly and
+          # develop is merged by hand.
+          token: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Merge main into develop
         id: merge
