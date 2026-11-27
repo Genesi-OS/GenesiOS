@@ -1208,8 +1208,8 @@ ck("Plasma is offered login screens, fastfetch and wallpapers",
    {"greeter", "file", "wallpaper"} <= kinds, sorted(kinds))
 ck("...and nothing that needs caelestia (bar, scheme, config, unlocker)",
    not kinds & {"bar", "scheme", "config", "unlocker"}, sorted(kinds))
-ck("...and no shell plugin switch",
-   not any(i["section"] == "plugins" for i in shown))
+ck("...and the shell plugins, which genesi-plugins hosts on Plasma",
+   {"plugin-game-center", "plugin-leaf", "plugin-vinyl"} <= {i["id"] for i in shown})
 ck("a rice is shown only if all it includes works here",
    all(store.works_here(cat, store.item_by_id(cat, inc))
        for i in shown for inc in i.get("includes") or []))

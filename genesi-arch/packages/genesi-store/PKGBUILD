@@ -249,7 +249,14 @@ pkgver=0.1.0
 # previous picture kept for revert). Items that need caelestia (bars,
 # schemes, plugins, lock screen) are not offered on Plasma and are refused
 # if asked. Hyprland sees exactly what it saw before.
-pkgrel=24
+# pkgrel 25: the shell plugins (Game Center, the leaf, live weather, the
+# turntable, the Retrospective) work on KDE Plasma too. On Hyprland caelestia
+# hosts them, as before -- nothing there changes. On Plasma a small host,
+# genesi-plugins (plugins-kde/), draws the SAME plugin QML in layer-shell
+# windows and keeps the state files in caelestia's format, so the records
+# and the leaf are the same on both desktops. The Plugins shelf is offered
+# on Plasma again.
+pkgrel=25
 pkgdesc='Genesi Store — themes, wallpapers, bars, lock screens and whole desktops, one click each'
 arch=('any')
 url='https://github.com/Genesi-OS/GenesiOS'
@@ -259,7 +266,11 @@ license=('AGPL-3.0-or-later')
 # qt6-svg because every icon in the window is an SVG (see Glyph.qml: a font
 # that turned out not to be installed is why they are files), and sddm because
 # the login screen this ships a theme for is the one it themes.
-depends=('python' 'pyside6' 'polkit' 'qt6-svg')
+# layer-shell-qt, playerctl, python-psutil and the symbols font are what the
+# plugin host on Plasma reads with: its windows, the turntable, the leaf's
+# moods and the plugins' icons.
+depends=('python' 'pyside6' 'polkit' 'qt6-svg' 'layer-shell-qt' 'playerctl'
+         'python-psutil' 'ttf-material-symbols-variable')
 optdepends=(
     'genesi-caelestia-cli: colour schemes and wallpapers'
     'genesi-caelestia-settings: the fifteen bar arrangements'
@@ -485,4 +496,34 @@ package() {
 
     install -Dm644 "${startdir}/org.genesi.store.desktop" \
         "${pkgdir}/usr/share/applications/org.genesi.store.desktop"
+
+    # ── The shell plugins on Plasma ─────────────────────────────────────────
+    #
+    # The host, and the plugin QML itself copied from genesi-caelestia-shell:
+    # one source for both desktops, so a plugin fixed there is fixed here.
+    local _pk="${pkgdir}/usr/share/genesi-store/plugins-kde"
+    install -Dm644 "${startdir}/plugins-kde/genesi_plugins.py" "${_pk}/genesi_plugins.py"
+    install -Dm644 "${startdir}/../genesi-ui-kit/components/genesi_palette.py" \
+        "${_pk}/genesi_palette.py"
+    install -Dm644 "${startdir}/plugins-kde/kwin/genesi-plugins-active.js" \
+        "${_pk}/kwin/genesi-plugins-active.js"
+    for f in "${startdir}"/plugins-kde/qml/*.qml; do
+        install -Dm644 "$f" "${_pk}/qml/$(basename "$f")"
+    done
+    local _sq
+    for _sq in GenesiGames GenesiGame2048 GenesiGameBlocks GenesiGameBreakout \
+               GenesiGameFlappy GenesiGameMemory GenesiGameMines GenesiGameSimon \
+               GenesiGameSnake GenesiLeaf GenesiPetMind GenesiVinylDeck \
+               GenesiWeatherFx GenesiWrappedMath GenesiWrappedStory; do
+        install -Dm644 "${startdir}/../genesi-caelestia-shell/${_sq}.qml" \
+            "${_pk}/qml/${_sq}.qml"
+    done
+    install -Dm755 "${startdir}/plugins-kde/genesi-plugins" "${pkgdir}/usr/bin/genesi-plugins"
+    # Started at Plasma login only (OnlyShowIn=KDE): Hyprland has caelestia.
+    install -Dm644 "${startdir}/plugins-kde/genesi-plugins-autostart.desktop" \
+        "${pkgdir}/etc/xdg/autostart/genesi-plugins.desktop"
+    install -Dm644 "${startdir}/plugins-kde/org.genesi.gamecenter.desktop" \
+        "${pkgdir}/usr/share/applications/org.genesi.gamecenter.desktop"
+    install -Dm644 "${startdir}/plugins-kde/org.genesi.retrospective.desktop" \
+        "${pkgdir}/usr/share/applications/org.genesi.retrospective.desktop"
 }

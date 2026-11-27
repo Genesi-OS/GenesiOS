@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Game Center
+Name[pt_BR]=Central de Jogos
+Comment=Eight small games: Snake, 2048, Flappy Leaf, Blocks and more
+Comment[pt_BR]=Oito joguinhos: Snake, 2048, Flappy Leaf, Blocks e mais
+Exec=genesi-plugins toggle game-center
+Icon=applications-games
+Terminal=false
+Categories=Game;
+OnlyShowIn=KDE;

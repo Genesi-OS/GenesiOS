@@ -26,6 +26,7 @@ genesi-arch/packages/genesi-grub-theme/45_genesi_power   text eol=lf
 genesi-arch/packages/genesi-center/genesi-center           text eol=lf
 genesi-arch/packages/genesi-store/genesi-store             text eol=lf
 genesi-arch/packages/genesi-store/genesi-store-helper      text eol=lf
+genesi-arch/packages/genesi-store/plugins-kde/genesi-plugins text eol=lf
 genesi-arch/packages/genesi-center/genesi-center-data      text eol=lf
 genesi-arch/packages/genesi-center/genesi-center-set       text eol=lf
 genesi-arch/packages/genesi-caelestia-shell/genesi-depth   text eol=lf

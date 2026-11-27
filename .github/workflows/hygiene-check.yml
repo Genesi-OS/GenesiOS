@@ -303,6 +303,13 @@ jobs:
           python -m pip install --quiet PySide6-Essentials
           python genesi-arch/ci/plugins-test.py
 
+      - name: The shell plugins on KDE Plasma come up and keep caelestia's records
+        # genesi-plugins (in genesi-store) hosts the same plugin QML on Plasma.
+        # Its Stage loads offscreen with a stub backend: each plugin gets its
+        # window, the Game Center opens on toggle and saves in caelestia's
+        # format, and it refuses to run inside Hyprland. PySide6 is above.
+        run: python genesi-arch/ci/plugins-kde-test.py
+
       - name: Genesi Migrate reads other distros, and its screen saves the plan
         # The migration tool runs on Ubuntu/Fedora/Arch, never on Genesi, so
         # the scanner is played against fake roots answering like dpkg, rpm,
