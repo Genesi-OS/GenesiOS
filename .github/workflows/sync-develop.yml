@@ -49,7 +49,10 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          SYNC_PUSH=1 bash genesi-arch/ci/sync-develop.sh
+          # The script as main has it, not as the develop checkout does: the
+          # first run failed because develop did not have the script yet.
+          git show origin/main:genesi-arch/ci/sync-develop.sh > "$RUNNER_TEMP/sync-develop.sh"
+          SYNC_PUSH=1 bash "$RUNNER_TEMP/sync-develop.sh"
 
       - name: Start the testing publish
         if: steps.merge.outputs.synced == 'true'
